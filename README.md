@@ -59,7 +59,19 @@ Quality checks:
 ```bash
 npm run lint
 npm run build
+npm run build:pages
 ```
+
+## GitHub Pages
+
+The repository includes a Pages workflow that exports the browser-local tour
+as static HTML, CSS, and JavaScript. Pushes to `codex/momentum-v1` rebuild and
+publish the tour automatically. The static deployment preserves all current V1
+interactions because this release stores its demo workspace in `localStorage`.
+
+Static hosting is not the production security boundary. Real authentication,
+shared records, server-side authorization, audit retention, and provider
+integrations still require trusted backend services.
 
 ## Implementation notes
 
