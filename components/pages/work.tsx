@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Clock3,
-  PackageSearch,
   RotateCcw,
   ShieldCheck,
   Store,
@@ -74,9 +73,15 @@ export function WorkPage() {
   };
 
   const exceptionRecords: Array<{ icon: typeof AlertTriangle; tone: string; title: string; detail: string; action: string; page: PageKey }> = [
-    { icon: PackageSearch, tone: "danger", title: "Sellable product record is incomplete", detail: "Six critical facts block safe automation of quotes, claims, receiving, and recalls.", action: "Review product gate", page: "inventory" },
-    { icon: Store, tone: "warning", title: "Roosevelt Social placement at risk", detail: "Product was reported in back-room inventory with zero cold facings.", action: "Open retail check", page: "retail" },
-    { icon: Clock3, tone: "info", title: "Payroll calendar is not configured", detail: "Weekly boundaries, cutoffs, provider, and backup approval are still open decisions.", action: "Open People & time", page: "people" },
+    ...data.inventory.filter((lot) => lot.status === "Quality hold").map((lot) => ({ icon: Boxes, tone: "danger", title: `${lot.lotCode} is on quality hold`, detail: `${lot.onHand} cases at ${lot.location} are unavailable until the hold is resolved.`, action: "Review inventory", page: "inventory" as PageKey })),
+    ...data.placements.filter((placement) => placement.status !== "Healthy").map((placement) => {
+      const account = data.accounts.find((item) => item.id === placement.accountId);
+      return { icon: Store, tone: placement.status === "Out of stock" ? "danger" : "warning", title: `${account?.name ?? "Placement"}: ${placement.status}`, detail: `${placement.observedStock} units observed, ${placement.facings} facings, ${placement.cold ? "cold" : "not cold"}.`, action: "Review placement", page: "retail" as PageKey };
+    }),
+    ...data.timecards.filter((card) => card.status === "Returned").map((card) => {
+      const employee = data.users.find((user) => user.id === card.userId);
+      return { icon: Clock3, tone: "warning", title: `${employee?.name ?? "Employee"} timecard was returned`, detail: `The week ending ${formatDate(card.weekEnd)} requires correction and resubmission.`, action: "Open timecard", page: "people" as PageKey };
+    }),
   ];
 
   return (
@@ -84,7 +89,7 @@ export function WorkPage() {
       <PageHeader
         eyebrow="Universal work queue"
         title="My work"
-        description="Approvals, exceptions, deadlines, and escalations in one accountable place."
+        description="Review approval requests and record-driven exceptions in one accountable place."
         actions={<StatusPill tone={pending.some((item) => item.priority === "Urgent") ? "danger" : "info"}>{pending.length} pending</StatusPill>}
       />
 
@@ -102,7 +107,7 @@ export function WorkPage() {
       </div>
 
       {tab === "approvals" && (
-        <Section title="Ready for your decision" description="Highest risk first · actions are recorded locally in this demo" className="approval-list-panel">
+        <Section title="Ready for review" description="Open the underlying record before approving or returning it" className="approval-list-panel">
           <div className="approval-list">{pending.map(approvalCard)}</div>
           {pending.length === 0 && <div className="review-empty"><CheckCircle2 size={27} /><h3>Approval queue clear</h3><p>No records are waiting for a decision.</p></div>}
         </Section>
@@ -126,7 +131,7 @@ export function WorkPage() {
       )}
 
       {tab === "completed" && (
-        <Section title="Decision history" description="The full audit event will include actor, version, reason, and timestamp after backend integration" className="completed-list-panel">
+        <Section title="Decision history" description="Completed approval outcomes in this workspace" className="completed-list-panel">
           {completed.map((approval) => (
             <article className="completed-item" key={approval.id}>
               <span><CheckCircle2 size={18} /></span><div><strong>{approval.title}</strong><p>{approval.type} · {approval.requestedBy}</p></div><StatusPill tone={approval.status === "Approved" ? "success" : "danger"}>{approval.status}</StatusPill>

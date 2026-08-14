@@ -49,7 +49,6 @@ export function RetailPage() {
         eyebrow="Market execution"
         title="Retail execution"
         description="Prove delivery, placement, consumer movement, and reorder as separate facts."
-        actions={<Button variant="gold" icon={<Camera size={17} />}>New placement check</Button>}
       />
 
       <div className="commercial-proof-chain">

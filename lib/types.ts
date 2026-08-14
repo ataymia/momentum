@@ -8,7 +8,6 @@ export type PageKey =
   | "inventory"
   | "people"
   | "reports"
-  | "knowledge"
   | "settings";
 
 export type Role =

@@ -6,11 +6,9 @@ import {
   ChevronRight,
   Mail,
   MapPin,
-  MoreHorizontal,
   Phone,
   Plus,
   Search,
-  SlidersHorizontal,
   Store,
   UserRound,
 } from "lucide-react";
@@ -118,7 +116,6 @@ export function AccountsPage() {
             </button>
           ))}
         </div>
-        <button className="filter-button" aria-label="More filters"><SlidersHorizontal size={17} /> Filters</button>
       </div>
 
       <div className="account-workspace">
@@ -161,7 +158,6 @@ export function AccountsPage() {
             <header className="account-detail__header">
               <div className="account-detail__logo"><Building2 size={23} /></div>
               <div><StatusPill tone={stageTone(selected.stage)}>{selected.stage}</StatusPill><h2>{selected.name}</h2><p><MapPin size={14} /> {selected.location} · {selected.channel}</p></div>
-              <button className="icon-button"><MoreHorizontal size={19} /></button>
             </header>
 
             <div className="account-detail__actions">

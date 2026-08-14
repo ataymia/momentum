@@ -30,10 +30,10 @@ used.
 - Schedule and dispatch board with status changes and audited reassignment
 - Retail placement checks and stock observations
 - Draft orders, proposed-price snapshots, approval routing, and order status
-- Product-truth controls, lot inventory, holds, and container-planning shell
+- Lot inventory, reservations, custody, and quality holds
 - Universal approval and exception queue
 - Clock in/out, weekly timecard submission, manager approval, and return flow
-- Metric dictionary, fact register, decision log, and integration status
+- Record-derived operational reports and integration status
 - Browser-local persistence with a one-click demo reset
 
 All customers, people, orders, inventory, metrics, and commercial outcomes are

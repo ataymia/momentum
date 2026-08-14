@@ -3,7 +3,6 @@
 import {
   BarChart3,
   Bell,
-  BookOpen,
   Boxes,
   Building2,
   CalendarDays,
@@ -11,14 +10,10 @@ import {
   ChevronDown,
   ChevronRight,
   CircleHelp,
-  ClipboardList,
   Command,
-  FileCheck2,
   LayoutDashboard,
   LogOut,
   Menu,
-  PackageCheck,
-  Plus,
   Search,
   Settings,
   ShoppingCart,
@@ -33,14 +28,13 @@ import { AccountsPage } from "./pages/accounts";
 import { DashboardPage } from "./pages/dashboard";
 import { DispatchPage } from "./pages/dispatch";
 import { InventoryPage } from "./pages/inventory";
-import { KnowledgePage } from "./pages/knowledge";
 import { OrdersPage } from "./pages/orders";
 import { PeoplePage } from "./pages/people";
 import { ReportsPage } from "./pages/reports";
 import { RetailPage } from "./pages/retail";
 import { SettingsPage } from "./pages/settings";
 import { WorkPage } from "./pages/work";
-import { Avatar, BrandMark, Button, Modal, StatusPill, formatDate } from "./ui";
+import { Avatar, BrandMark, Modal, StatusPill, formatDate } from "./ui";
 
 type NavItem = {
   key: PageKey;
@@ -62,7 +56,6 @@ const primaryNav: NavItem[] = [
 
 const secondaryNav: NavItem[] = [
   { key: "reports", label: "Reports", icon: BarChart3 },
-  { key: "knowledge", label: "Knowledge & controls", icon: BookOpen },
   {
     key: "settings",
     label: "Administration",
@@ -72,7 +65,7 @@ const secondaryNav: NavItem[] = [
 ];
 
 function NavButton({ item }: { item: NavItem }) {
-  const { activePage, navigate } = useWorkspace();
+  const { activePage, navigate, data } = useWorkspace();
   const Icon = item.icon;
   return (
     <button
@@ -82,7 +75,7 @@ function NavButton({ item }: { item: NavItem }) {
     >
       <Icon size={18} strokeWidth={1.9} />
       <span>{item.label}</span>
-      {item.key === "work" && <i className="nav-count">3</i>}
+      {item.key === "work" && data.approvals.filter((approval) => approval.status === "Pending").length > 0 && <i className="nav-count">{data.approvals.filter((approval) => approval.status === "Pending").length}</i>}
     </button>
   );
 }
@@ -108,8 +101,6 @@ function PageView() {
       return <PeoplePage />;
     case "reports":
       return <ReportsPage />;
-    case "knowledge":
-      return <KnowledgePage />;
     case "settings":
       return <SettingsPage />;
   }
@@ -128,7 +119,6 @@ export function AppShell() {
     markNotificationsRead,
   } = useWorkspace();
   const [searchOpen, setSearchOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -141,7 +131,6 @@ export function AppShell() {
       }
       if (event.key === "Escape") {
         setSearchOpen(false);
-        setCreateOpen(false);
         setNotificationsOpen(false);
         setUserOpen(false);
       }
@@ -222,16 +211,6 @@ export function AppShell() {
           {allowedSecondary.map((item) => <NavButton key={item.key} item={item} />)}
         </nav>
 
-        <div className="sidebar__truth-card">
-          <div>
-            <FileCheck2 size={17} />
-            <span>Product truth</span>
-          </div>
-          <strong>Verification required</strong>
-          <p>SKU, package and claims are not approved in this demo.</p>
-          <button onClick={() => navigate("inventory")}>Review controls <ChevronRight size={14} /></button>
-        </div>
-
         <div className="sidebar__help">
           <CircleHelp size={17} />
           <span>Help & support</span>
@@ -257,9 +236,6 @@ export function AppShell() {
             <button className="topbar-search-mobile" onClick={() => setSearchOpen(true)} aria-label="Search">
               <Search size={19} />
             </button>
-            <Button variant="gold" size="sm" icon={<Plus size={16} />} onClick={() => setCreateOpen(true)}>
-              Create
-            </Button>
             <div className="popover-wrap">
               <button
                 className="icon-button topbar__notification"
@@ -395,39 +371,6 @@ export function AppShell() {
         </div>
       </Modal>
 
-      <Modal
-        open={createOpen}
-        title="Create new"
-        description="Choose a connected record to start."
-        onClose={() => setCreateOpen(false)}
-      >
-        <div className="create-grid">
-          {[
-            ["accounts", Building2, "Account", "Start a qualified customer record"],
-            ["dispatch", CalendarDays, "Appointment", "Schedule field or delivery work"],
-            ["orders", PackageCheck, "Draft order", "Create a controlled sales handoff"],
-            ["work", ClipboardList, "Task", "Add an owner and deadline"],
-          ].map(([page, Icon, label, detail]) => {
-            const ItemIcon = Icon as typeof Building2;
-            return (
-              <button
-                key={label as string}
-                onClick={() => {
-                  navigate(page as PageKey);
-                  setCreateOpen(false);
-                }}
-              >
-                <span><ItemIcon size={20} /></span>
-                <div><strong>{label as string}</strong><small>{detail as string}</small></div>
-                <ChevronRight size={17} />
-              </button>
-            );
-          })}
-        </div>
-        <p className="create-note">
-          Records created in V1 are saved only in this browser. Firebase/Cloudflare persistence is intentionally disconnected.
-        </p>
-      </Modal>
     </div>
   );
 }

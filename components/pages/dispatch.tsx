@@ -21,7 +21,7 @@ const nextLabel: Record<AppointmentStatus, string> = {
   "En route": "Mark arrived",
   Arrived: "Complete visit",
   Completed: "Create follow-up",
-  "Needs follow-up": "Reset demo status",
+  "Needs follow-up": "Mark resolved",
 };
 
 const toneForStatus = (status: AppointmentStatus) => {
@@ -80,7 +80,6 @@ export function DispatchPage() {
         eyebrow="Field operations"
         title="Schedule & dispatch"
         description="Plan the work, preserve ownership history, and close every visit with a real result."
-        actions={<Button variant="gold" icon={<CalendarDays size={17} />}>Schedule appointment</Button>}
       />
 
       <div className="dispatch-summary">
