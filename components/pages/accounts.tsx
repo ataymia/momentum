@@ -13,6 +13,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
+import { canCreateAccount, isCustomer } from "../../lib/access";
 import type { AccountStage } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import {
@@ -44,10 +45,10 @@ const stageTone = (stage: AccountStage) => {
 };
 
 export function AccountsPage() {
-  const { data, createAccount, navigate } = useWorkspace();
+  const { data, scope, currentUser, createAccount, navigate } = useWorkspace();
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState<(typeof stages)[number]>("All");
-  const [selectedId, setSelectedId] = useState(data.accounts[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(scope.accounts[0]?.id ?? "");
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -61,7 +62,7 @@ export function AccountsPage() {
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return data.accounts.filter((account) => {
+    return scope.accounts.filter((account) => {
       const matchesStage = stage === "All" || account.stage === stage;
       const matchesQuery =
         !normalized ||
@@ -71,17 +72,18 @@ export function AccountsPage() {
           .includes(normalized);
       return matchesStage && matchesQuery;
     });
-  }, [data.accounts, query, stage]);
+  }, [query, scope.accounts, stage]);
 
-  const selected = data.accounts.find((account) => account.id === selectedId) ?? filtered[0];
+  const selected = scope.accounts.find((account) => account.id === selectedId) ?? filtered[0];
   const owner = data.users.find((user) => user.id === selected?.ownerId);
-  const accountActivities = data.activities.filter((activity) => activity.accountId === selected?.id);
-  const accountOrders = data.orders.filter((order) => order.accountId === selected?.id);
-  const accountPlacements = data.placements.filter((placement) => placement.accountId === selected?.id);
+  const accountActivities = scope.activities.filter((activity) => activity.accountId === selected?.id);
+  const accountOrders = scope.orders.filter((order) => order.accountId === selected?.id);
+  const accountPlacements = scope.placements.filter((placement) => placement.accountId === selected?.id);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const id = createAccount(form);
+    if (!id) return;
     setSelectedId(id);
     setCreateOpen(false);
     setForm({
@@ -95,13 +97,28 @@ export function AccountsPage() {
     });
   };
 
+  const openLinkedPage = (page: "dispatch" | "orders") => {
+    if (selected) window.sessionStorage.setItem("momentum-focus-record", selected.id);
+    navigate(page);
+  };
+
+  if (isCustomer(currentUser)) {
+    return <div className="page page--accounts page--customer-account">
+      <PageHeader eyebrow="Partner portal" title="My account" description="Organization and contact information for the account linked to your login." actions={<Button variant="gold" icon={<Plus size={17}/>} onClick={() => openLinkedPage("orders")}>Place order</Button>}/>
+      {selected ? <div className="customer-account-layout">
+        <section className="customer-account-card"><header><span><Building2 size={25}/></span><div><StatusPill tone="success">Linked account</StatusPill><h2>{selected.name}</h2><p><MapPin size={14}/> {selected.location} · {selected.channel}</p></div></header><div className="customer-account-card__metrics"><div><span>Orders</span><strong>{accountOrders.length}</strong></div><div><span>Cases on record</span><strong>{accountOrders.reduce((sum,order) => sum + order.cases,0)}</strong></div><div><span>Account status</span><strong>{selected.stage}</strong></div></div></section>
+        <section className="customer-contact-card"><h3>Organization contact</h3><div><span><UserRound size={18}/></span><p><strong>{selected.contactName}</strong><small>{selected.contactRole}</small></p></div><a href={`tel:${selected.phone}`}><Phone size={16}/> {selected.phone}</a><a href={`mailto:${selected.email}`}><Mail size={16}/> {selected.email}</a><p className="customer-scope-note">This view does not expose internal notes, staff assignments, other customers, or company records.</p></section>
+      </div> : <div className="list-empty">No account is linked to this demo customer login.</div>}
+    </div>;
+  }
+
   return (
     <div className="page page--accounts">
       <PageHeader
         eyebrow="Revenue operations"
         title="Sales & accounts"
         description="One customer record from first conversation through paid reorder."
-        actions={<Button variant="gold" icon={<Plus size={17} />} onClick={() => setCreateOpen(true)}>New account</Button>}
+        actions={canCreateAccount(currentUser) ? <Button variant="gold" icon={<Plus size={17} />} onClick={() => setCreateOpen(true)}>New account</Button> : undefined}
       />
 
       <div className="account-toolbar">
@@ -161,8 +178,8 @@ export function AccountsPage() {
             </header>
 
             <div className="account-detail__actions">
-              <Button variant="primary" size="sm" icon={<CalendarPlus size={15} />} onClick={() => navigate("dispatch")}>Schedule</Button>
-              <Button variant="secondary" size="sm" icon={<Plus size={15} />} onClick={() => navigate("orders")}>Draft order</Button>
+              <Button variant="primary" size="sm" icon={<CalendarPlus size={15} />} onClick={() => openLinkedPage("dispatch")}>Schedule</Button>
+              <Button variant="secondary" size="sm" icon={<Plus size={15} />} onClick={() => openLinkedPage("orders")}>Draft order</Button>
             </div>
 
             <div className="account-detail__metrics">

@@ -14,6 +14,7 @@ import {
   Store,
 } from "lucide-react";
 import { useState } from "react";
+import { canReviewApproval } from "../../lib/access";
 import type { Approval, PageKey } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Avatar, Button, PageHeader, Section, StatusPill, formatDate } from "../ui";
@@ -32,16 +33,16 @@ const priorityTone = (priority: Approval["priority"]) => {
 };
 
 export function WorkPage() {
-  const { data, decideApproval, decideTimecard, navigate } = useWorkspace();
+  const { data, scope, currentUser, decideApproval, decideTimecard, navigate } = useWorkspace();
   const [tab, setTab] = useState<"approvals" | "exceptions" | "completed">("approvals");
-  const pending = data.approvals.filter((approval) => approval.status === "Pending");
-  const completed = data.approvals.filter((approval) => approval.status !== "Pending");
+  const pending = scope.approvals.filter((approval) => approval.status === "Pending");
+  const completed = scope.approvals.filter((approval) => approval.status !== "Pending");
   const dueToday = pending.filter((item) => new Date(item.dueAt).toDateString() === new Date().toDateString()).length;
 
   const decide = (approval: Approval, decision: "Approved" | "Returned") => {
     if (approval.type === "Timecard") {
-      const employee = data.users.find((user) => approval.title.includes(user.name));
-      const timecard = data.timecards.find((card) => card.userId === employee?.id && card.status === "Submitted");
+      const employee = data.users.find((user) => user.id === approval.requesterId);
+      const timecard = data.timecards.find((card) => (card.id === approval.recordId || card.userId === employee?.id) && card.status === "Submitted");
       if (timecard) {
         decideTimecard(timecard.id, decision === "Approved" ? "Manager approved" : "Returned");
         return;
@@ -65,21 +66,21 @@ export function WorkPage() {
             <span>Requested by {approval.requestedBy}</span><i /><span>{formatDate(approval.submittedAt, { hour: "numeric", minute: "2-digit" })}</span>
           </div>
         </div>
-        <div className="approval-card__actions">
+        {canReviewApproval(data,currentUser,approval) ? <div className="approval-card__actions">
           <Button size="sm" variant="secondary" icon={<RotateCcw size={15} />} onClick={() => decide(approval, "Returned")}>Return</Button>
           <Button size="sm" icon={<Check size={15} />} onClick={() => decide(approval, "Approved")}>Approve</Button>
-        </div>
+        </div> : <div className="approval-card__waiting"><Clock3 size={16}/><span>Waiting for an authorized reviewer</span></div>}
       </article>
     );
   };
 
   const exceptionRecords: Array<{ icon: typeof AlertTriangle; tone: string; title: string; detail: string; action: string; page: PageKey }> = [
-    ...data.inventory.filter((lot) => lot.status === "Quality hold").map((lot) => ({ icon: Boxes, tone: "danger", title: `${lot.lotCode} is on quality hold`, detail: `${lot.onHand} cases at ${lot.location} are unavailable until the hold is resolved.`, action: "Review inventory", page: "inventory" as PageKey })),
-    ...data.placements.filter((placement) => placement.status !== "Healthy").map((placement) => {
-      const account = data.accounts.find((item) => item.id === placement.accountId);
+    ...scope.inventory.filter((lot) => lot.status === "Quality hold").map((lot) => ({ icon: Boxes, tone: "danger", title: `${lot.lotCode} is on quality hold`, detail: `${lot.onHand} cases at ${lot.location} are unavailable until the hold is resolved.`, action: "Review inventory", page: "inventory" as PageKey })),
+    ...scope.placements.filter((placement) => placement.status !== "Healthy").map((placement) => {
+      const account = scope.accounts.find((item) => item.id === placement.accountId);
       return { icon: Store, tone: placement.status === "Out of stock" ? "danger" : "warning", title: `${account?.name ?? "Placement"}: ${placement.status}`, detail: `${placement.observedStock} units observed, ${placement.facings} facings, ${placement.cold ? "cold" : "not cold"}.`, action: "Review placement", page: "retail" as PageKey };
     }),
-    ...data.timecards.filter((card) => card.status === "Returned").map((card) => {
+    ...scope.timecards.filter((card) => card.status === "Returned").map((card) => {
       const employee = data.users.find((user) => user.id === card.userId);
       return { icon: Clock3, tone: "warning", title: `${employee?.name ?? "Employee"} timecard was returned`, detail: `The week ending ${formatDate(card.weekEnd)} requires correction and resubmission.`, action: "Open timecard", page: "people" as PageKey };
     }),
@@ -90,7 +91,7 @@ export function WorkPage() {
       <PageHeader
         eyebrow="Universal work queue"
         title="My work"
-        description="Review approval requests and record-driven exceptions in one accountable place."
+        description="Decisions and record-driven exceptions limited to your assigned scope."
         actions={<StatusPill tone={pending.some((item) => item.priority === "Urgent") ? "danger" : "info"}>{pending.length} pending</StatusPill>}
       />
 

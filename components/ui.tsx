@@ -214,13 +214,15 @@ export function Field({
   label,
   hint,
   children,
+  className = "",
 }: {
   label: string;
   hint?: string;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <label className="field">
+    <label className={`field ${className}`.trim()}>
       <span className="field__label">{label}</span>
       {children}
       {hint && <small>{hint}</small>}

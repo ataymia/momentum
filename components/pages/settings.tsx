@@ -76,20 +76,21 @@ export function SettingsPage() {
         </Section>
       </div>
 
-      <Section title="Role & permission foundation" description="Visibility here is illustrative; production authorization belongs on every server request" className="permission-panel">
-        <div className="permission-table permission-table--head"><span>Capability</span><span>Executive</span><span>Administrator</span><span>Sales rep</span><span>Operations</span></div>
+      <Section title="Role & permission model" description="The demo enforces these scopes in navigation, record queries, search, and actions; production must repeat the same checks on every server request" className="permission-panel">
+        <div className="permission-table permission-table--head"><span>Capability</span><span>Administrator</span><span>Manager</span><span>Sales rep</span><span>Operations</span><span>Customer</span></div>
         {[
-          ["Company-wide reporting", true, true, false, false],
-          ["Account and pipeline records", true, true, "Owned scope", "Read only"],
-          ["Dispatch and reassignment", true, true, "Owned work", true],
-          ["Order approval and price exceptions", true, true, false, false],
-          ["Inventory movements and holds", "Read only", true, false, true],
-          ["Timecard approval", true, true, false, "Assigned scope"],
-          ["User, role, and integration settings", false, true, false, false],
-        ].map(([capability, executive, admin, rep, operations]) => (
+          ["Company and team reporting", "All", "Managed team", "Own", "Assigned", false],
+          ["Account and pipeline records", "All", "Managed team", "Owned", "Delivery context", "Linked account"],
+          ["Schedule, dispatch, and closeout", "All", "Managed team", "Owned work", "Assigned work", false],
+          ["Orders", "Create / approve", "Team approval", "Create / view own", "Fulfill", "Create / view own"],
+          ["Inventory movements and holds", "All", false, false, "Manage", false],
+          ["Timecards", "All / approve", "Team / approve", "Own", "Own", false],
+          ["Dashboard bulletins", "Company / any team", "Managed team", "View assigned", "View assigned", false],
+          ["Users, roles, and integrations", "All", false, false, false, false],
+        ].map(([capability, admin, manager, rep, operations, customer]) => (
           <div className="permission-table" key={capability as string}>
             <span><strong>{capability as string}</strong></span>
-            {[executive, admin, rep, operations].map((value, index) => <span key={index}>{value === true ? <i className="permission-check"><Check size={14} /></i> : value === false ? <i className="permission-none">—</i> : <small>{value as string}</small>}</span>)}
+            {[admin, manager, rep, operations, customer].map((value, index) => <span key={index}>{value === true ? <i className="permission-check"><Check size={14} /></i> : value === false ? <i className="permission-none">—</i> : <small>{value as string}</small>}</span>)}
           </div>
         ))}
       </Section>

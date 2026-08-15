@@ -15,6 +15,7 @@ import {
   Truck,
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
+import { canAdvanceFulfillment, canCreateOrder, isCustomer } from "../../lib/access";
 import type { OrderStatus } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Modal, PageHeader, Section, StatusPill, formatDate, formatMoney } from "../ui";
@@ -37,30 +38,39 @@ const toneForOrder = (status: OrderStatus) => {
 };
 
 export function OrdersPage() {
-  const { data, createOrder, setOrderStatus, navigate } = useWorkspace();
+  const { scope, currentUser, createOrder, setOrderStatus, navigate } = useWorkspace();
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState(data.orders[0]?.id ?? "");
+  const focusId = typeof window !== "undefined" ? window.sessionStorage.getItem("momentum-focus-record") : null;
+  const focusedOrder = scope.orders.find(order => order.id === focusId);
+  const focusedAccountOrder = scope.orders.find(order => order.accountId === focusId);
+  const [selectedId, setSelectedId] = useState(focusedOrder?.id ?? focusedAccountOrder?.id ?? scope.orders[0]?.id ?? "");
   const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({ accountId: data.accounts[0]?.id ?? "", cases: 10, pricePerCase: 24 });
+  const [formError, setFormError] = useState("");
+  const [form, setForm] = useState({ accountId: scope.accounts[0]?.id ?? "", cases: 10, pricePerCase: 24 });
+  const customerMode = isCustomer(currentUser);
+  const canFulfill = canAdvanceFulfillment(currentUser);
+  const canReview = currentUser?.role === "Administrator" || currentUser?.role === "Sales Manager";
 
   const orders = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return data.orders.filter((order) => {
-      const account = data.accounts.find((item) => item.id === order.accountId);
+    return scope.orders.filter((order) => {
+      const account = scope.accounts.find((item) => item.id === order.accountId);
       return !normalized || `${order.number} ${account?.name} ${order.status}`.toLowerCase().includes(normalized);
     });
-  }, [data.accounts, data.orders, query]);
+  }, [query, scope.accounts, scope.orders]);
 
-  const selected = data.orders.find((order) => order.id === selectedId) ?? orders[0];
-  const selectedAccount = data.accounts.find((account) => account.id === selected?.accountId);
-  const openValue = data.orders.filter((order) => order.paymentStatus !== "Paid").reduce((sum, order) => sum + order.amount, 0);
-  const deliveredCases = data.orders.filter((order) => ["Delivered", "Paid"].includes(order.status)).reduce((sum, order) => sum + order.cases, 0);
+  const selected = scope.orders.find((order) => order.id === selectedId) ?? orders[0];
+  const selectedAccount = scope.accounts.find((account) => account.id === selected?.accountId);
+  const openValue = scope.orders.filter((order) => order.paymentStatus !== "Paid").reduce((sum, order) => sum + order.amount, 0);
+  const deliveredCases = scope.orders.filter((order) => ["Delivered", "Paid"].includes(order.status)).reduce((sum, order) => sum + order.cases, 0);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const id = createOrder(form);
+    if (!id) { setFormError(customerMode ? "A prior delivered order price is required for this demo reorder." : "Choose an account and enter valid order quantities."); return; }
     setSelectedId(id);
     setCreateOpen(false);
+    setFormError("");
   };
 
   const currentIndex = selected ? lifecycle.indexOf(selected.status) : -1;
@@ -70,16 +80,16 @@ export function OrdersPage() {
     <div className="page page--orders">
       <PageHeader
         eyebrow="Commercial operations"
-        title="Orders"
-        description="Track orders from review through fulfillment, delivery, and payment."
-        actions={<Button variant="gold" icon={<Plus size={17} />} onClick={() => setCreateOpen(true)}>Draft order</Button>}
+        title={customerMode ? "My orders" : "Orders"}
+        description={customerMode ? "Place an order and follow its status from review through delivery." : "Track orders from review through fulfillment, delivery, and payment."}
+        actions={canCreateOrder(currentUser) ? <Button variant="gold" icon={<Plus size={17} />} onClick={() => setCreateOpen(true)}>{customerMode ? "Place order" : "Draft order"}</Button> : undefined}
       />
 
       <div className="order-stats">
-        <div><span><ReceiptText size={18} /></span><div><small>Demo orders</small><strong>{data.orders.length}</strong></div></div>
+        <div><span><ReceiptText size={18} /></span><div><small>{customerMode ? "Your orders" : "Orders in scope"}</small><strong>{scope.orders.length}</strong></div></div>
         <div><span><CircleDollarSign size={18} /></span><div><small>Open amount</small><strong>{formatMoney(openValue)}</strong></div></div>
         <div><span><Truck size={18} /></span><div><small>Delivered cases</small><strong>{deliveredCases}</strong></div></div>
-        <div className="order-stats__warning"><AlertCircle size={18} /><p>Tour prices are fictional entries. Production pricing will come from an approved price book or authorized exception.</p></div>
+        <div className="order-stats__warning"><AlertCircle size={18} /><p>{customerMode ? "Tour totals use the prior fictional order snapshot and remain subject to review." : "Tour prices are fictional entries. Production pricing will come from an approved price book or authorized exception."}</p></div>
       </div>
 
       <div className="orders-layout">
@@ -88,7 +98,7 @@ export function OrdersPage() {
           <div className="order-table order-table--head"><span>Order</span><span>Customer</span><span>Cases</span><span>Amount</span><span>Status</span><span /></div>
           <div className="order-table-body">
             {orders.map((order) => {
-              const account = data.accounts.find((item) => item.id === order.accountId);
+              const account = scope.accounts.find((item) => item.id === order.accountId);
               return (
                 <button className={`order-table ${selected?.id === order.id ? "is-selected" : ""}`} key={order.id} onClick={() => setSelectedId(order.id)}>
                   <span><strong>{order.number}</strong><small>{formatDate(order.placedAt, { month: "short", day: "numeric" })}</small></span>
@@ -130,13 +140,17 @@ export function OrdersPage() {
               {selected.status === "Awaiting approval" ? (
                 <div className="order-approval-callout">
                   <ShieldCheck size={20} />
-                  <div><strong>Controlled approval required</strong><p>The requested price cannot move into fulfillment until an authorized reviewer approves it.</p></div>
-                  <Button size="sm" onClick={() => navigate("work")}>Review</Button>
+                  <div><strong>{canReview ? "Controlled approval required" : "Order is under review"}</strong><p>{canReview ? "Open the approval and underlying order before making a decision." : "An authorized reviewer must approve the order before fulfillment begins."}</p></div>
+                  {canReview && <Button size="sm" onClick={() => navigate("work")}>Review</Button>}
                 </div>
-              ) : nextStatus ? (
+              ) : nextStatus && canFulfill ? (
                 <Button size="lg" icon={<ArrowRight size={17} />} onClick={() => setOrderStatus(selected.id, nextStatus)}>
                   Move to {nextStatus.toLowerCase()}
                 </Button>
+              ) : selected.status === "Draft" ? (
+                <div className="order-approval-callout"><AlertCircle size={20}/><div><strong>Returned for correction</strong><p>The order owner must review the returned request before submitting a replacement.</p></div></div>
+              ) : nextStatus ? (
+                <div className="order-approval-callout"><Truck size={20}/><div><strong>Fulfillment in progress</strong><p>Only authorized operations staff can advance delivery and payment status.</p></div></div>
               ) : (
                 <div className="order-complete"><CheckCircle2 size={20} /><span>Paid record locked · eligible for compensation evaluation</span></div>
               )}
@@ -147,22 +161,23 @@ export function OrdersPage() {
 
       <Modal
         open={createOpen}
-        title="Create draft order"
-        description="This creates a linked order and approval request."
+        title={customerMode ? "Place an order" : "Create draft order"}
+        description={customerMode ? "Submit a reorder for the account linked to this login." : "This creates a linked order and approval request."}
         onClose={() => setCreateOpen(false)}
         footer={<><Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button><Button type="submit" form="new-order-form">Create & submit</Button></>}
       >
         <form id="new-order-form" className="form-grid" onSubmit={submit}>
-          <Field label="Customer account">
+          <Field label={customerMode ? "Your account" : "Customer account"}>
             <select value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value })}>
-              {data.accounts.map((account) => <option value={account.id} key={account.id}>{account.name}</option>)}
+              {scope.accounts.map((account) => <option value={account.id} key={account.id}>{account.name}</option>)}
             </select>
           </Field>
           <Field label="Cases"><input type="number" min="1" required value={form.cases} onChange={(event) => setForm({ ...form, cases: Number(event.target.value) })} /></Field>
-          <Field label="Demo price per case" hint="Fictional tour value only">
+          {!customerMode && <Field label="Demo price per case" hint="Fictional tour value only">
             <input type="number" min="0.01" step="0.01" required value={form.pricePerCase} onChange={(event) => setForm({ ...form, pricePerCase: Number(event.target.value) })} />
-          </Field>
-          <div className="order-preview"><Box size={20} /><div><span>Draft total</span><strong>{formatMoney(form.cases * form.pricePerCase)}</strong></div></div>
+          </Field>}
+          <div className="order-preview"><Box size={20} /><div><span>{customerMode ? "Requested quantity" : "Draft total"}</span><strong>{customerMode ? `${form.cases} cases` : formatMoney(form.cases * form.pricePerCase)}</strong></div></div>
+          {formError && <p className="form-error field--full" role="alert">{formError}</p>}
           <div className="form-callout form-callout--warning"><AlertCircle size={17} /><p>Creating this record does not quote or commit Golden Eagle to binding commercial terms.</p></div>
         </form>
       </Modal>

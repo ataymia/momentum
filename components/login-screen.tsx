@@ -39,7 +39,7 @@ export function LoginScreen() {
 
         <div className="login-hero__content">
           <p className="login-kicker">One operating system. One source of truth.</p>
-          <h1>Run the market.<br />Keep the momentum.</h1>
+          <h1>Run the market.<br /><span>Keep the momentum.</span></h1>
           <p className="login-hero__copy">
             From the first buyer conversation to placement, reorder, delivery, payment,
             and payroll—every handoff stays connected.

@@ -29,17 +29,18 @@ const timecardTone = (status: string) => {
 export function PeoplePage() {
   const {
     data,
+    scope,
     currentUser,
     toggleClock,
     submitTimecard,
     decideTimecard,
   } = useWorkspace();
   const [tab, setTab] = useState<"mine" | "review">("mine");
-  const myTimecard = data.timecards.find((card) => card.userId === currentUser?.id);
-  const myEntries = data.timeEntries.filter((entry) => entry.userId === currentUser?.id && (!myTimecard || (entry.date >= myTimecard.weekStart && entry.date <= myTimecard.weekEnd)));
+  const myTimecard = scope.timecards.find((card) => card.userId === currentUser?.id);
+  const myEntries = scope.timeEntries.filter((entry) => entry.userId === currentUser?.id && (!myTimecard || (entry.date >= myTimecard.weekStart && entry.date <= myTimecard.weekEnd)));
   const activeEntry = myEntries.find((entry) => !entry.clockOut);
-  const reviewCards = data.timecards.filter((card) => card.status === "Submitted" && card.userId !== currentUser?.id);
-  const canReview = currentUser?.role === "Administrator" || currentUser?.role === "Executive" || currentUser?.role === "Sales Manager";
+  const reviewCards = scope.timecards.filter((card) => card.status === "Submitted" && card.userId !== currentUser?.id);
+  const canReview = currentUser?.role === "Administrator" || currentUser?.role === "Sales Manager";
 
   const myHours = myEntries.reduce((sum, entry) => sum + hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes), 0);
 
@@ -112,7 +113,7 @@ export function PeoplePage() {
           <Section title="Submitted timecards" description="No self-approval; backup approvers remain configurable" className="timecard-review-list">
             {reviewCards.map((card) => {
               const employee = data.users.find((user) => user.id === card.userId);
-              const entries = data.timeEntries.filter((entry) => entry.userId === card.userId);
+              const entries = scope.timeEntries.filter((entry) => entry.userId === card.userId);
               const hours = entries.reduce((sum, entry) => sum + hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes), 0);
               return (
                 <article className="review-card" key={card.id}>
