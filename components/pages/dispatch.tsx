@@ -20,8 +20,8 @@ const nextLabel: Record<AppointmentStatus, string> = {
   Dispatched: "Start route",
   "En route": "Mark arrived",
   Arrived: "Complete visit",
-  Completed: "Create follow-up",
-  "Needs follow-up": "Mark resolved",
+  Completed: "Completed",
+  "Needs follow-up": "Follow-up required",
 };
 
 const toneForStatus = (status: AppointmentStatus) => {
@@ -141,12 +141,9 @@ export function DispatchPage() {
                     ))}
                   </select>
                 </label>
-                <Button size="lg" icon={<ArrowRight size={17} />} onClick={() => advanceAppointment(selected.id)}>
-                  {nextLabel[selected.status]}
-                </Button>
-                {selected.status === "Completed" && (
-                  <div className="closeout-warning"><CheckCircle2 size={17} /><p>Completion is timestamped. A disposition and next action remain required before full closeout.</p></div>
-                )}
+                {!['Completed', 'Needs follow-up'].includes(selected.status) && <Button size="lg" icon={<ArrowRight size={17} />} onClick={() => advanceAppointment(selected.id)}>{nextLabel[selected.status]}</Button>}
+                {selected.status === "Completed" && <div className="closeout-warning"><CheckCircle2 size={17} /><p>Visit completed and timestamped.</p></div>}
+                {selected.status === "Needs follow-up" && <div className="closeout-warning"><Clock3 size={17} /><p>Follow-up work must be completed from the linked account record.</p></div>}
               </div>
             );
           })() : <div className="dispatch-empty"><p>Select an appointment.</p></div>}

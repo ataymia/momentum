@@ -9,7 +9,6 @@ import {
   CheckSquare2,
   ChevronDown,
   ChevronRight,
-  CircleHelp,
   Command,
   LayoutDashboard,
   LogOut,
@@ -46,11 +45,11 @@ type NavItem = {
 const primaryNav: NavItem[] = [
   { key: "home", label: "Control tower", icon: LayoutDashboard },
   { key: "work", label: "My work", icon: CheckSquare2 },
-  { key: "accounts", label: "Sales & accounts", icon: Building2 },
-  { key: "dispatch", label: "Schedule & dispatch", icon: CalendarDays },
-  { key: "retail", label: "Retail execution", icon: Store },
-  { key: "orders", label: "Orders", icon: ShoppingCart },
-  { key: "inventory", label: "Supply & inventory", icon: Boxes },
+  { key: "accounts", label: "Sales & accounts", icon: Building2, roles: ["Administrator", "Executive", "Sales Manager", "Sales Representative"] },
+  { key: "dispatch", label: "Schedule & dispatch", icon: CalendarDays, roles: ["Administrator", "Executive", "Sales Manager", "Sales Representative", "Operations"] },
+  { key: "retail", label: "Retail execution", icon: Store, roles: ["Administrator", "Executive", "Sales Manager", "Sales Representative"] },
+  { key: "orders", label: "Orders", icon: ShoppingCart, roles: ["Administrator", "Executive", "Sales Manager", "Sales Representative", "Operations"] },
+  { key: "inventory", label: "Supply & inventory", icon: Boxes, roles: ["Administrator", "Executive", "Sales Manager", "Operations"] },
   { key: "people", label: "People & time", icon: UsersRound },
 ];
 
@@ -143,6 +142,9 @@ export function AppShell() {
   const allowedSecondary = secondaryNav.filter(
     (item) => !item.roles || (currentUser && item.roles.includes(currentUser.role)),
   );
+  const allowedPrimary = primaryNav.filter(
+    (item) => !item.roles || (currentUser && item.roles.includes(currentUser.role)),
+  );
 
   const searchResults = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -206,15 +208,11 @@ export function AppShell() {
 
         <nav className="sidebar__nav" aria-label="Primary navigation">
           <p>Operate</p>
-          {primaryNav.map((item) => <NavButton key={item.key} item={item} />)}
+          {allowedPrimary.map((item) => <NavButton key={item.key} item={item} />)}
           <p>Understand</p>
           {allowedSecondary.map((item) => <NavButton key={item.key} item={item} />)}
         </nav>
 
-        <div className="sidebar__help">
-          <CircleHelp size={17} />
-          <span>Help & support</span>
-        </div>
       </aside>
 
       {sidebarOpen && <button className="sidebar-scrim" onClick={() => setSidebarOpen(false)} aria-label="Close menu" />}

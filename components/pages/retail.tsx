@@ -100,7 +100,6 @@ export function RetailPage() {
 
         {selected && (() => {
           const account = data.accounts.find((item) => item.id === selected.accountId);
-          const approximateMovement = Math.max(0, selected.casesDelivered * 24 - selected.observedStock);
           return (
             <Section title="Placement check" description={account?.name} className="placement-detail" action={<StatusPill tone="gold">Demo</StatusPill>}>
               <div className="placement-detail__product">
@@ -109,20 +108,18 @@ export function RetailPage() {
               </div>
 
               <div className="movement-estimate">
-                <div><small>Delivered units</small><strong>{selected.casesDelivered * 24}</strong></div>
-                <span>−</span>
-                <div><small>Observed stock</small><strong>{selected.observedStock}</strong></div>
-                <span>=</span>
-                <div><small>Possible movement</small><strong>{approximateMovement}</strong></div>
+                <div><small>Cases delivered</small><strong>{selected.casesDelivered}</strong></div>
+                <div><small>Observed stock</small><strong>{selected.observedStock} units</strong></div>
+                <div><small>Evidence source</small><strong>{selected.source}</strong></div>
               </div>
-              <p className="movement-caveat"><CircleAlert size={15} /> This is an inventory observation, not verified consumer POS sell-through.</p>
+              <p className="movement-caveat"><CircleAlert size={15} /> No unit conversion or sell-through estimate is calculated until the product case configuration is approved.</p>
 
               <form className="placement-check-form" onSubmit={submit}>
                 <Field label="Observed units"><input type="number" min="0" value={check.observedStock} onChange={(event) => setCheck({ ...check, observedStock: Number(event.target.value) })} /></Field>
                 <Field label="Facings"><input type="number" min="0" value={check.facings} onChange={(event) => setCheck({ ...check, facings: Number(event.target.value) })} /></Field>
                 <label className="toggle-field"><span><strong>Cold availability</strong><small>Product available chilled</small></span><input type="checkbox" checked={check.cold} onChange={(event) => setCheck({ ...check, cold: event.target.checked })} /><i /></label>
-                <div className="evidence-row"><span><Camera size={17} /> Photo evidence</span><button type="button" disabled>Upload after storage connection</button></div>
-                <Button type="submit" icon={<Check size={17} />}>Save demo observation</Button>
+                <div className="evidence-row"><span><Camera size={17} /> Photo evidence</span><small>Unavailable in the local tour</small></div>
+                <Button type="submit" icon={<Check size={17} />}>Save observation</Button>
               </form>
 
               <button className="reorder-link" onClick={() => navigate("orders")}><RefreshCcw size={17} /><span>Move to reorder workflow</span><ChevronRight size={16} /></button>

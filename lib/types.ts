@@ -108,7 +108,7 @@ export type Order = {
   status: OrderStatus;
   placedAt: string;
   ownerId: string;
-  priceBasis: "Demo introductory" | "Demo partner" | "Demo standard";
+  priceBasis: "Demo entered price";
   paymentStatus: "Not invoiced" | "Open" | "Partially paid" | "Paid";
 };
 

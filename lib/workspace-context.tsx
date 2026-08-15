@@ -73,8 +73,8 @@ const nextAppointmentStatus: Record<AppointmentStatus, AppointmentStatus> = {
   Dispatched: "En route",
   "En route": "Arrived",
   Arrived: "Completed",
-  Completed: "Needs follow-up",
-  "Needs follow-up": "Scheduled",
+  Completed: "Completed",
+  "Needs follow-up": "Needs follow-up",
 };
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
@@ -191,6 +191,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         const appointment = current.appointments.find((item) => item.id === appointmentId);
         if (!appointment) return current;
         const status = nextAppointmentStatus[appointment.status];
+        if (status === appointment.status) return current;
         const account = current.accounts.find((item) => item.id === appointment.accountId);
         const completed = status === "Completed";
         return {
@@ -285,7 +286,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
             status: "Awaiting approval",
             placedAt: todayKey(),
             ownerId: actorId,
-            priceBasis: pricePerCase <= 24 ? "Demo introductory" : "Demo standard",
+            priceBasis: "Demo entered price",
             paymentStatus: "Not invoiced",
           },
           ...current.orders,
@@ -299,8 +300,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           {
             id: `apr-${Date.now()}`,
             type: "Order",
-            title: `Approve demo order ${number}`,
-            detail: `${cases} cases · $${pricePerCase.toFixed(2)}/case · ${account?.name ?? "Account"}`,
+            title: `Review order ${number}`,
+            detail: `${cases} cases · demo-entered price · ${account?.name ?? "Account"}`,
             requestedBy: current.users.find((user) => user.id === actorId)?.name ?? "Demo user",
             submittedAt: nowStamp(),
             dueAt: nowStamp(),
@@ -327,7 +328,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
                 facings,
                 cold,
                 lastChecked: todayKey(),
-                status: observedStock === 0 ? "Out of stock" : observedStock < 48 || !cold ? "Check soon" : "Healthy",
+                status: observedStock === 0 ? "Out of stock" : facings === 0 || !cold ? "Check soon" : "Healthy",
               }
             : placement,
         ),
@@ -406,7 +407,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const employee = current.users.find((user) => user.id === timecard?.userId);
       if (!timecard || !employee) return current;
       const existingApproval = current.approvals.some(
-        (approval) => approval.type === "Timecard" && approval.title.includes(employee.name),
+        (approval) => approval.type === "Timecard" && approval.status === "Pending" && approval.title.includes(employee.name),
       );
       return {
         ...current,

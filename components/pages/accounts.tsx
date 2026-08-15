@@ -226,7 +226,7 @@ export function AccountsPage() {
               <option>Independent retail</option><option>Convenience store</option><option>Restaurant / nightlife</option><option>Gym / fitness</option><option>Vending</option><option>Distributor</option>
             </select>
           </Field>
-          <Field label="Decision-maker"><input required value={form.contactName} onChange={(event) => setForm({ ...form, contactName: event.target.value })} placeholder="Full name" /></Field>
+          <Field label="Primary contact"><input value={form.contactName} onChange={(event) => setForm({ ...form, contactName: event.target.value })} placeholder="Add when known" /></Field>
           <Field label="Contact role"><input value={form.contactRole} onChange={(event) => setForm({ ...form, contactRole: event.target.value })} /></Field>
           <Field label="Phone"><input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="(602) 555-0123" /></Field>
           <Field label="Email"><input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="buyer@example.test" /></Field>

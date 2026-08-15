@@ -12,7 +12,6 @@ import {
   Mail,
   RefreshCcw,
   ShieldCheck,
-  UsersRound,
   WalletCards,
 } from "lucide-react";
 import { useState } from "react";
@@ -74,7 +73,6 @@ export function SettingsPage() {
           {data.users.map((user) => (
             <article key={user.id}><Avatar initials={user.initials} color={user.accent} /><div><strong>{user.name}</strong><p>{user.title}</p><small>{user.email}</small></div><StatusPill tone={user.role === "Administrator" ? "gold" : "neutral"} dot={false}>{user.role}</StatusPill></article>
           ))}
-          <button disabled><UsersRound size={16} /> User provisioning arrives with authentication</button>
         </Section>
       </div>
 

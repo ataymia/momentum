@@ -15,7 +15,7 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Avatar, Button, PageHeader, Section, StatusPill, formatDate, hoursBetween } from "../ui";
 
@@ -35,16 +35,13 @@ export function PeoplePage() {
     decideTimecard,
   } = useWorkspace();
   const [tab, setTab] = useState<"mine" | "review">("mine");
-  const myEntries = data.timeEntries.filter((entry) => entry.userId === currentUser?.id);
-  const activeEntry = myEntries.find((entry) => !entry.clockOut);
   const myTimecard = data.timecards.find((card) => card.userId === currentUser?.id);
-  const reviewCards = data.timecards.filter((card) => card.status === "Submitted");
+  const myEntries = data.timeEntries.filter((entry) => entry.userId === currentUser?.id && (!myTimecard || (entry.date >= myTimecard.weekStart && entry.date <= myTimecard.weekEnd)));
+  const activeEntry = myEntries.find((entry) => !entry.clockOut);
+  const reviewCards = data.timecards.filter((card) => card.status === "Submitted" && card.userId !== currentUser?.id);
   const canReview = currentUser?.role === "Administrator" || currentUser?.role === "Executive" || currentUser?.role === "Sales Manager";
 
-  const myHours = useMemo(
-    () => myEntries.reduce((sum, entry) => sum + hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes), 0),
-    [myEntries],
-  );
+  const myHours = myEntries.reduce((sum, entry) => sum + hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes), 0);
 
   return (
     <div className="page page--people">
@@ -84,7 +81,8 @@ export function PeoplePage() {
               <div className="weekly-total"><span><strong>{myHours.toFixed(2)}</strong> hours</span><small>{myEntries.length} time events · 0 open exceptions</small></div>
               <div className="daily-bars">
                 {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, index) => {
-                  const hours = index < myEntries.length ? hoursBetween(myEntries[index]?.clockIn ?? "00:00", myEntries[index]?.clockOut, myEntries[index]?.breakMinutes) : 0;
+                  const dayEntries = myEntries.filter((entry) => { const weekday = new Date(`${entry.date}T12:00:00`).getDay(); return (weekday + 6) % 7 === index; });
+                  const hours = dayEntries.reduce((sum, entry) => sum + hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes), 0);
                   return <div key={day}><span><i style={{ height: `${Math.max(6, hours * 8)}px` }} /></span><small>{day}</small></div>;
                 })}
               </div>
@@ -120,7 +118,7 @@ export function PeoplePage() {
                 <article className="review-card" key={card.id}>
                   <div className="review-card__person">{employee && <Avatar initials={employee.initials} color={employee.accent} />}<div><strong>{employee?.name}</strong><p>{employee?.title}</p></div><StatusPill tone="info">Submitted</StatusPill></div>
                   <div className="review-card__facts"><div><small>Period</small><strong>{formatDate(card.weekStart, { month: "short", day: "numeric" })} – {formatDate(card.weekEnd, { month: "short", day: "numeric" })}</strong></div><div><small>Recorded</small><strong>{hours.toFixed(2)} hrs</strong></div><div><small>Attested</small><strong>{card.attested ? "Yes" : "No"}</strong></div></div>
-                  <div className="review-card__notice"><FileCheck2 size={16} /><span>One acknowledged demo correction · raw event preserved</span></div>
+                  <div className="review-card__notice"><FileCheck2 size={16} /><span>Employee attestation and original time events remain available for review.</span></div>
                   <div className="review-card__actions"><Button variant="secondary" icon={<RotateCcw size={15} />} onClick={() => decideTimecard(card.id, "Returned")}>Return</Button><Button icon={<Check size={16} />} onClick={() => decideTimecard(card.id, "Manager approved")}>Approve</Button></div>
                 </article>
               );
@@ -138,7 +136,7 @@ export function PeoplePage() {
               const StepIcon = Icon as typeof UsersRound;
               return <div key={title as string}><span><StepIcon size={18} /></span><div><strong>{title as string}</strong><p>{detail as string}</p></div><i>{index + 1}</i></div>;
             })}
-            <div className="payroll-pipeline__gate"><AlertTriangle size={17} /><p>Pay-period boundary, cutoff times, payday, provider, leave source of truth, and backup approver remain unconfirmed.</p></div>
+            <div className="payroll-pipeline__gate"><AlertTriangle size={17} /><p>Payroll configuration is restricted to administrators and must be completed before live timecards are accepted.</p></div>
           </Section>
         </div>
       )}

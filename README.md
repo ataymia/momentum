@@ -25,7 +25,7 @@ used.
 ## What works in V1
 
 - Role-aware sign-in tour and role switching
-- Company control tower with decisions and exceptions
+- Role-aware control tower with schedules, approvals, exceptions, and follow-ups
 - Account search, stage filtering, detail view, and account creation
 - Schedule and dispatch board with status changes and audited reassignment
 - Retail placement checks and stock observations

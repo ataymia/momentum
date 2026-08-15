@@ -297,7 +297,7 @@ export function createDemoData(): WorkspaceData {
         status: "Paid",
         placedAt: dateKey(-4),
         ownerId: "usr-jordan",
-        priceBasis: "Demo partner",
+        priceBasis: "Demo entered price",
         paymentStatus: "Paid",
       },
       {
@@ -310,7 +310,7 @@ export function createDemoData(): WorkspaceData {
         status: "Delivered",
         placedAt: dateKey(-2),
         ownerId: "usr-jordan",
-        priceBasis: "Demo introductory",
+        priceBasis: "Demo entered price",
         paymentStatus: "Open",
       },
       {
@@ -323,7 +323,7 @@ export function createDemoData(): WorkspaceData {
         status: "Awaiting approval",
         placedAt: dateKey(0),
         ownerId: "usr-mia",
-        priceBasis: "Demo introductory",
+        priceBasis: "Demo entered price",
         paymentStatus: "Not invoiced",
       },
     ],
@@ -331,7 +331,7 @@ export function createDemoData(): WorkspaceData {
       {
         id: "plc-1",
         accountId: "acc-101",
-        product: "Golden Eagle · SKU pending verification",
+        product: "Golden Eagle · tour SKU",
         casesDelivered: 12,
         facings: 5,
         location: "Front checkout cooler",
@@ -346,7 +346,7 @@ export function createDemoData(): WorkspaceData {
       {
         id: "plc-2",
         accountId: "acc-102",
-        product: "Golden Eagle · SKU pending verification",
+        product: "Golden Eagle · tour SKU",
         casesDelivered: 10,
         facings: 4,
         location: "Lobby cooler",
@@ -361,7 +361,7 @@ export function createDemoData(): WorkspaceData {
       {
         id: "plc-3",
         accountId: "acc-106",
-        product: "Golden Eagle · SKU pending verification",
+        product: "Golden Eagle · tour SKU",
         casesDelivered: 8,
         facings: 0,
         location: "Back-room inventory",
@@ -378,7 +378,7 @@ export function createDemoData(): WorkspaceData {
       {
         id: "lot-1",
         lotCode: "DEMO-AZ-2408",
-        product: "Golden Eagle · unverified package",
+        product: "Golden Eagle · tour SKU",
         receivedAt: dateKey(-31),
         bestBy: dateKey(330),
         onHand: 428,
@@ -390,7 +390,7 @@ export function createDemoData(): WorkspaceData {
       {
         id: "lot-2",
         lotCode: "DEMO-HOLD-01",
-        product: "Golden Eagle · unverified package",
+        product: "Golden Eagle · tour SKU",
         receivedAt: dateKey(-14),
         bestBy: dateKey(347),
         onHand: 24,
@@ -404,8 +404,8 @@ export function createDemoData(): WorkspaceData {
       {
         id: "apr-1",
         type: "Order",
-        title: "Approve demo order GE-1049",
-        detail: "10 cases · proposed introductory price · Juniper Night Market",
+        title: "Review order GE-1049",
+        detail: "10 cases · demo-entered price · Juniper Night Market",
         requestedBy: "Mia",
         submittedAt: stamp(-2),
         dueAt: stamp(4),
@@ -421,17 +421,6 @@ export function createDemoData(): WorkspaceData {
         submittedAt: stamp(-8),
         dueAt: stamp(18),
         priority: "Normal",
-        status: "Pending",
-      },
-      {
-        id: "apr-3",
-        type: "Inventory adjustment",
-        title: "Review 24-case quality hold",
-        detail: "Demo lot DEMO-HOLD-01 · release requires two-person review",
-        requestedBy: "Elena Torres",
-        submittedAt: stamp(-10),
-        dueAt: stamp(2),
-        priority: "Urgent",
         status: "Pending",
       },
     ],
@@ -494,8 +483,8 @@ export function createDemoData(): WorkspaceData {
     notifications: [
       {
         id: "note-1",
-        title: "Product truth is incomplete",
-        detail: "SKU, package size and claims still require owner/legal verification.",
+        title: "Inventory hold requires review",
+        detail: "DEMO-HOLD-01 remains unavailable while the quality hold is open.",
         at: stamp(-1),
         read: false,
         tone: "warning",

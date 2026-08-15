@@ -71,7 +71,7 @@ export function OrdersPage() {
       <PageHeader
         eyebrow="Commercial operations"
         title="Orders"
-        description="Controlled handoff from proposed terms to delivery, collection, and reorder."
+        description="Track orders from review through fulfillment, delivery, and payment."
         actions={<Button variant="gold" icon={<Plus size={17} />} onClick={() => setCreateOpen(true)}>Draft order</Button>}
       />
 
@@ -79,7 +79,7 @@ export function OrdersPage() {
         <div><span><ReceiptText size={18} /></span><div><small>Demo orders</small><strong>{data.orders.length}</strong></div></div>
         <div><span><CircleDollarSign size={18} /></span><div><small>Open amount</small><strong>{formatMoney(openValue)}</strong></div></div>
         <div><span><Truck size={18} /></span><div><small>Delivered cases</small><strong>{deliveredCases}</strong></div></div>
-        <div className="order-stats__warning"><AlertCircle size={18} /><p>All prices are proposed demo terms—not approved quotes.</p></div>
+        <div className="order-stats__warning"><AlertCircle size={18} /><p>Tour prices are fictional entries. Production pricing will come from an approved price book or authorized exception.</p></div>
       </div>
 
       <div className="orders-layout">
@@ -121,9 +121,9 @@ export function OrdersPage() {
               </div>
 
               <dl className="order-facts">
-                <div><dt>Price basis</dt><dd>{selected.priceBasis}<StatusPill tone="warning" dot={false}>Proposed</StatusPill></dd></div>
+                <div><dt>Price basis</dt><dd>{selected.priceBasis}<StatusPill tone="warning" dot={false}>Tour only</StatusPill></dd></div>
                 <div><dt>Payment</dt><dd>{selected.paymentStatus}</dd></div>
-                <div><dt>Product</dt><dd>Golden Eagle · SKU pending verification</dd></div>
+                <div><dt>Product</dt><dd>Golden Eagle · tour SKU</dd></div>
                 <div><dt>Inventory</dt><dd>{["Approved", "Allocated", "Out for delivery", "Delivered", "Paid"].includes(selected.status) ? "Eligible for reservation" : "Not reserved"}</dd></div>
               </dl>
 
@@ -147,7 +147,7 @@ export function OrdersPage() {
 
       <Modal
         open={createOpen}
-        title="Create demo draft order"
+        title="Create draft order"
         description="This creates a linked order and approval request."
         onClose={() => setCreateOpen(false)}
         footer={<><Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button><Button type="submit" form="new-order-form">Create & submit</Button></>}
@@ -159,10 +159,8 @@ export function OrdersPage() {
             </select>
           </Field>
           <Field label="Cases"><input type="number" min="1" required value={form.cases} onChange={(event) => setForm({ ...form, cases: Number(event.target.value) })} /></Field>
-          <Field label="Proposed price per case" hint="Demo only · commercial policy is not approved">
-            <select value={form.pricePerCase} onChange={(event) => setForm({ ...form, pricePerCase: Number(event.target.value) })}>
-              <option value={24}>$24 · proposed introductory/partner</option><option value={27}>$27 · proposed preferred</option><option value={30}>$30 · proposed standard</option>
-            </select>
+          <Field label="Demo price per case" hint="Fictional tour value only">
+            <input type="number" min="0.01" step="0.01" required value={form.pricePerCase} onChange={(event) => setForm({ ...form, pricePerCase: Number(event.target.value) })} />
           </Field>
           <div className="order-preview"><Box size={20} /><div><span>Draft total</span><strong>{formatMoney(form.cases * form.pricePerCase)}</strong></div></div>
           <div className="form-callout form-callout--warning"><AlertCircle size={17} /><p>Creating this record does not quote or commit Golden Eagle to binding commercial terms.</p></div>

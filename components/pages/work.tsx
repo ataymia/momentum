@@ -36,6 +36,7 @@ export function WorkPage() {
   const [tab, setTab] = useState<"approvals" | "exceptions" | "completed">("approvals");
   const pending = data.approvals.filter((approval) => approval.status === "Pending");
   const completed = data.approvals.filter((approval) => approval.status !== "Pending");
+  const dueToday = pending.filter((item) => new Date(item.dueAt).toDateString() === new Date().toDateString()).length;
 
   const decide = (approval: Approval, decision: "Approved" | "Returned") => {
     if (approval.type === "Timecard") {
@@ -96,7 +97,7 @@ export function WorkPage() {
       <div className="work-summary">
         <div><span><ClipboardCheck size={19} /></span><div><small>Pending approval</small><strong>{pending.length}</strong></div></div>
         <div><span><AlertOctagon size={19} /></span><div><small>Exceptions</small><strong>{exceptionRecords.length}</strong></div></div>
-        <div><span><Clock3 size={19} /></span><div><small>Due today</small><strong>{pending.filter((item) => item.priority !== "Normal").length}</strong></div></div>
+        <div><span><Clock3 size={19} /></span><div><small>Due today</small><strong>{dueToday}</strong></div></div>
         <div><span><CheckCircle2 size={19} /></span><div><small>Completed</small><strong>{completed.length}</strong></div></div>
       </div>
 
