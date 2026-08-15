@@ -25,16 +25,36 @@ used.
 ## What works in V1
 
 - Role-aware sign-in tour and role switching
-- Role-aware control tower with schedules, approvals, exceptions, and follow-ups
+- Role-aware control tower with targeted company/team bulletins, schedules,
+  approvals, exceptions, and follow-ups
 - Account search, stage filtering, detail view, and account creation
-- Schedule and dispatch board with status changes and audited reassignment
+- Schedule and dispatch board with status changes, audited reassignment, and a
+  required outcome/next-action closeout before a visit can be completed
 - Retail placement checks and stock observations
-- Draft orders, proposed-price snapshots, approval routing, and order status
-- Lot inventory, reservations, custody, and quality holds
+- Internal draft orders plus a customer reorder portal, proposed-price
+  snapshots, approval routing, and order status
+- Lot inventory, reservations, custody, and reasoned quality-hold disposition
 - Universal approval and exception queue
 - Clock in/out, weekly timecard submission, manager approval, and return flow
 - Record-derived operational reports and integration status
+- Collapsible desktop navigation and a mobile drawer
 - Browser-local persistence with a one-click demo reset
+
+## Role model
+
+- **Administrator:** company-wide visibility and action authority, including
+  users, settings, integrations, approvals, inventory, and company/team posts
+- **Sales Manager:** managed-team records, team approvals, team scheduling,
+  direct reports, and bulletins only for teams they manage
+- **Sales Representative:** owned accounts, assigned field work, own orders,
+  own approvals, and own time records
+- **Operations:** assigned dispatch work, fulfillment, inventory, holds, and
+  own time records, without sales-management or administration access
+- **Customer:** only the linked account and its orders, with the ability to
+  submit a reorder for review; no internal notes, staff, inventory, or reports
+
+The browser demo applies these scopes to navigation, lists, search results, and
+actions. Production must enforce the same rules again on every server request.
 
 All customers, people, orders, inventory, metrics, and commercial outcomes are
 fictional demo records. Proposed prices and product facts are visibly labeled
