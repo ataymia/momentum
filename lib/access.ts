@@ -50,9 +50,17 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
   const accountIds = new Set(accounts.map(account => account.id));
   const managedIds = managedUserIds(data, user);
   const users = user.role === "Administrator" ? data.users : data.users.filter(candidate => candidate.id === user.id || (user.role === "Sales Manager" && managedIds.has(candidate.id)) || (user.role === "Sales Representative" && candidate.id === user.managerId));
-  const appointments = user.role === "Administrator" || user.role === "Operations" ? data.appointments : user.role === "Sales Manager" ? data.appointments.filter(item => managedIds.has(item.ownerId)) : user.role === "Sales Representative" ? data.appointments.filter(item => item.ownerId === user.id) : [];
+  const appointments = user.role === "Administrator"
+    ? data.appointments
+    : user.role === "Operations"
+      ? data.appointments.filter(item => item.ownerId === user.id || item.type === "Delivery")
+      : user.role === "Sales Manager"
+        ? data.appointments.filter(item => managedIds.has(item.ownerId))
+        : user.role === "Sales Representative"
+          ? data.appointments.filter(item => item.ownerId === user.id)
+          : [];
   const orders = user.role === "Administrator" || user.role === "Operations" ? data.orders : data.orders.filter(order => accountIds.has(order.accountId));
-  const placements = user.role === "Customer" ? [] : user.role === "Administrator" ? data.placements : data.placements.filter(item => accountIds.has(item.accountId));
+  const placements = user.role === "Customer" || user.role === "Operations" ? [] : user.role === "Administrator" ? data.placements : data.placements.filter(item => accountIds.has(item.accountId));
   const approvals = user.role === "Administrator" ? data.approvals : user.role === "Sales Manager" ? data.approvals.filter(item => (item.requesterId && managedIds.has(item.requesterId)) || Boolean(item.team && (user.managedTeams ?? []).includes(item.team))) : data.approvals.filter(item => item.requesterId === user.id);
   const timecards = user.role === "Administrator" ? data.timecards : user.role === "Sales Manager" ? data.timecards.filter(card => card.userId === user.id || managedIds.has(card.userId)) : data.timecards.filter(card => card.userId === user.id);
   const timecardUserIds = new Set(timecards.map(card => card.userId));
@@ -63,10 +71,11 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
     if (item.audience === "Company") return true;
     return user.role === "Sales Manager" ? Boolean(item.team && (user.managedTeams ?? []).includes(item.team)) : item.team === user.team;
   });
+  const activities = user.role === "Operations"
+    ? data.activities.filter(item => item.type === "order" || (item.type === "visit" && appointments.some(appointment => appointment.accountId === item.accountId)))
+    : data.activities.filter(item => !item.accountId || accountIds.has(item.accountId));
   return {
-    users, accounts,
-    activities: data.activities.filter(item => !item.accountId || accountIds.has(item.accountId)),
-    appointments, orders, placements,
+    users, accounts, activities, appointments, orders, placements,
     inventory: user.role === "Administrator" || user.role === "Operations" ? data.inventory : [],
     approvals,
     timeEntries: data.timeEntries.filter(item => timecardUserIds.has(item.userId)),
