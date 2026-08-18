@@ -29,17 +29,14 @@ test("administrator has company-wide records and all pages", () => {
 test("sales manager sees the managed team but not administration or inventory", () => {
   const manager = user("usr-avery");
   const scope = getWorkspaceScope(data, manager);
-  assert.deepEqual(
-    scope.accounts.map((account) => account.ownerId),
-    ["usr-jordan", "usr-jordan", "usr-jordan", "usr-jordan"],
-  );
+  assert.deepEqual(scope.accounts.map((account) => account.ownerId), ["usr-jordan", "usr-jordan", "usr-jordan", "usr-jordan"]);
   assert.equal(scope.inventory.length, 0);
   assert.equal(canAccessPage(manager, "reports"), true);
   assert.equal(canAccessPage(manager, "settings"), false);
   assert.equal(canAccessPage(manager, "inventory"), false);
 });
 
-test("sales representative is limited to owned customer and field records", () => {
+test("sales representative is limited to responsible customer and assigned field records", () => {
   const rep = user("usr-jordan");
   const scope = getWorkspaceScope(data, rep);
   assert.equal(scope.accounts.every((account) => account.ownerId === rep.id), true);
@@ -49,13 +46,17 @@ test("sales representative is limited to owned customer and field records", () =
   assert.equal(canAccessPage(rep, "settings"), false);
 });
 
-test("operations gets fulfillment records without sales or admin pages", () => {
+test("operations gets fulfillment and inventory context without unrelated sales execution", () => {
   const operations = user("usr-elena");
   const scope = getWorkspaceScope(data, operations);
   assert.equal(scope.orders.length, data.orders.length);
   assert.equal(scope.inventory.length, data.inventory.length);
+  assert.equal(scope.placements.length, 0);
+  assert.equal(scope.appointments.every((item) => item.ownerId === operations.id || item.type === "Delivery"), true);
+  assert.equal(scope.activities.every((item) => item.type === "order" || item.type === "visit"), true);
   assert.equal(canAccessPage(operations, "orders"), true);
   assert.equal(canAccessPage(operations, "accounts"), false);
+  assert.equal(canAccessPage(operations, "retail"), false);
   assert.equal(canAccessPage(operations, "reports"), false);
 });
 
@@ -85,12 +86,7 @@ test("approval and bulletin authority follows the hierarchy", () => {
   assert.equal(canReviewApproval(data, manager, jordanApproval), true);
   assert.equal(canReviewApproval(data, rep, jordanApproval), false);
 
-  const managerSelfApproval: Approval = {
-    ...jordanApproval,
-    id: "apr-manager-self",
-    requesterId: manager.id,
-    requestedBy: manager.name,
-  };
+  const managerSelfApproval: Approval = { ...jordanApproval, id: "apr-manager-self", requesterId: manager.id, requestedBy: manager.name };
   assert.equal(canReviewApproval(data, manager, managerSelfApproval), false);
   assert.equal(canReviewApproval(data, admin, managerSelfApproval), true);
   assert.equal(canPublishBulletinTo(admin, "Company"), true);
