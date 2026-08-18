@@ -67,12 +67,18 @@
 .dashboard-account-action strong,.dashboard-account-action p { overflow-wrap: anywhere; }
 .dashboard-account-action p { margin: 3px 0 0; color: var(--muted); font-size: 10px; }
 .dashboard-account-action small { white-space: nowrap; color: var(--muted); }
-.schedule-row-button { display: grid; grid-template-columns: 76px 24px minmax(0,1fr); padding: 0; border-bottom: 1px solid #edf0f4; }
+.goal-panel { display: block; padding-bottom: 0; }
+.goal-panel .panel__header { display: flex; }
+.goal-panel .activity-list { padding: 7px 0 0; }
+.schedule-row-button { min-height: 102px; display: grid; grid-template-columns: 50px 17px minmax(0,1fr); gap: 9px; padding: 0; border-bottom: 0; }
 .schedule-row-button:hover { background: #fbfcfe; }
-.next-action-card--button { width: 100%; border: 0; cursor: pointer; text-align: left; }
+.schedule-row-button:last-child .schedule-marker::after { display: none; }
+.schedule-row-button:last-child .schedule-info { border-bottom: 0; }
+.next-action-card--button { width: 100%; border: 1px solid #d9e3f0; cursor: pointer; text-align: left; }
 .integration-list article,.security-checklist > div,.settings-users article { grid-template-columns: 40px minmax(0,1fr) auto !important; align-items: center !important; gap: 12px !important; }
 .integration-list article > div,.security-checklist > div > div,.settings-users article > div { min-width: 0; }
 .integration-list article p,.integration-list article small,.security-checklist p,.settings-users p,.settings-users small { overflow-wrap: anywhere; }
 .integration-list .status-pill,.security-checklist .status-pill,.settings-users .status-pill { justify-self: end; max-width: 100%; }
 @media (max-width: 900px) { .record-review__facts,.record-review__facts--compact { grid-template-columns: repeat(2,minmax(0,1fr)); } .approval-card__actions--review { min-width: 0; } .login-official-logo { width: min(420px, 88%); } }
-@media (max-width: 680px) { .record-review__facts,.record-review__facts--compact { grid-template-columns: 1fr; } .record-review__banner { grid-template-columns: auto minmax(0,1fr); } .record-review__banner .status-pill { grid-column: 2; justify-self: start; } .modal__footer { flex-wrap: wrap; } .modal__footer .button { flex: 1 1 180px; } .integration-list article,.security-checklist > div,.settings-users article { grid-template-columns: 36px minmax(0,1fr) !important; align-items: start !important; } .integration-list .status-pill,.security-checklist .status-pill,.settings-users .status-pill { grid-column: 2; justify-self: start; } .schedule-row-button { grid-template-columns: 64px 18px minmax(0,1fr); } }
+@media (max-width: 820px) { .topbar__location .breadcrumb-home,.topbar__location svg { display: none; } }
+@media (max-width: 680px) { .record-review__facts,.record-review__facts--compact { grid-template-columns: 1fr; } .record-review__banner { grid-template-columns: auto minmax(0,1fr); } .record-review__banner .status-pill { grid-column: 2; justify-self: start; } .modal__footer { flex-wrap: wrap; } .modal__footer .button { flex: 1 1 180px; } .integration-list article,.security-checklist > div,.settings-users article { grid-template-columns: 36px minmax(0,1fr) !important; align-items: start !important; } .integration-list .status-pill,.security-checklist .status-pill,.settings-users .status-pill { grid-column: 2; justify-self: start; } .schedule-row-button { grid-template-columns: 44px 14px minmax(0,1fr); gap: 7px; } }
