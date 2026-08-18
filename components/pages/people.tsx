@@ -6,6 +6,7 @@ import {
   Check,
   CheckCircle2,
   Clock3,
+  Coffee,
   FileCheck2,
   RotateCcw,
   Send,
@@ -32,6 +33,8 @@ export function PeoplePage() {
     scope,
     currentUser,
     toggleClock,
+    startMeal,
+    endMeal,
     submitTimecard,
     decideTimecard,
   } = useWorkspace();
@@ -39,9 +42,9 @@ export function PeoplePage() {
   const myTimecard = scope.timecards.find((card) => card.userId === currentUser?.id);
   const myEntries = scope.timeEntries.filter((entry) => entry.userId === currentUser?.id && (!myTimecard || (entry.date >= myTimecard.weekStart && entry.date <= myTimecard.weekEnd)));
   const activeEntry = myEntries.find((entry) => !entry.clockOut);
+  const mealOpen = Boolean(activeEntry?.mealStart && !activeEntry.mealEnd);
   const reviewCards = scope.timecards.filter((card) => card.status === "Submitted" && card.userId !== currentUser?.id);
   const canReview = currentUser?.role === "Administrator" || currentUser?.role === "Sales Manager";
-
   const myHours = myEntries.reduce((sum, entry) => sum + hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes), 0);
 
   return (
@@ -49,13 +52,13 @@ export function PeoplePage() {
       <PageHeader
         eyebrow="People operations"
         title="People & time"
-        description="Worked time, weekly attestations, manager review, and payroll handoff—without silent edits."
+        description="Worked time, meals, employee attestation, manager review, corrections, and payroll handoff from the same source record."
         actions={<StatusPill tone="gold">Weekly pay period · demo</StatusPill>}
       />
 
       <div className="payroll-control-alert">
         <ShieldCheck size={20} />
-        <div><strong>Approval verifies the record; it does not make worked time payable.</strong><p>Raw punches remain preserved. Corrections create an audited record instead of rewriting history.</p></div>
+        <div><strong>Approval verifies the record; it does not rewrite worked time.</strong><p>Clock, meal, correction, and attestation details stay visible so a reviewer can understand the week before deciding.</p></div>
       </div>
 
       <div className="people-tabs">
@@ -67,19 +70,24 @@ export function PeoplePage() {
         <>
           <div className="time-overview">
             <section className={`clock-card ${activeEntry ? "is-running" : ""}`}>
-              <div className="clock-card__top"><span><Clock3 size={21} /></span><StatusPill tone={activeEntry ? "success" : "neutral"}>{activeEntry ? "On the clock" : "Clocked out"}</StatusPill></div>
+              <div className="clock-card__top"><span><Clock3 size={21} /></span><StatusPill tone={mealOpen ? "gold" : activeEntry ? "success" : "neutral"}>{mealOpen ? "On meal" : activeEntry ? "On the clock" : "Clocked out"}</StatusPill></div>
               <p>{formatDate(new Date().toISOString(), { weekday: "long", month: "long", day: "numeric" })}</p>
-              <strong className="clock-card__time">{activeEntry ? `Since ${activeEntry.clockIn}` : `${myHours.toFixed(2)} hrs`}</strong>
-              <small>{activeEntry ? "Server and device times will both be retained after integration." : "Recorded in the current demo week."}</small>
-              <Button variant={activeEntry ? "danger" : "primary"} size="lg" icon={activeEntry ? <X size={17} /> : <ArrowRight size={17} />} onClick={toggleClock}>
-                {activeEntry ? "Clock out" : "Clock in"}
-              </Button>
+              <strong className="clock-card__time">{mealOpen ? `Meal since ${activeEntry?.mealStart}` : activeEntry ? `Since ${activeEntry.clockIn}` : `${myHours.toFixed(2)} hrs`}</strong>
+              <small>{activeEntry ? "Clock and meal events are kept as separate facts." : "Recorded in the current demo pay period."}</small>
+              <div className="clock-actions">
+                <Button variant={activeEntry ? "danger" : "primary"} size="lg" icon={activeEntry ? <X size={17} /> : <ArrowRight size={17} />} onClick={toggleClock} disabled={mealOpen}>
+                  {activeEntry ? "Clock out" : "Clock in"}
+                </Button>
+                {activeEntry && !activeEntry.mealStart && <Button variant="secondary" size="lg" icon={<Coffee size={17}/>} onClick={startMeal}>Start meal</Button>}
+                {mealOpen && <Button variant="gold" size="lg" icon={<Coffee size={17}/>} onClick={endMeal}>End meal</Button>}
+              </div>
+              {mealOpen && <p className="submit-blocker"><AlertTriangle size={14} /> End the meal period before clocking out.</p>}
               <div className="clock-source"><span>Source</span><strong>Demo desktop · GPS off</strong></div>
             </section>
 
             <section className="weekly-card-summary">
               <div className="weekly-card-summary__head"><div><small>Current pay period</small><h2>{myTimecard ? `${formatDate(myTimecard.weekStart, { month: "short", day: "numeric" })} – ${formatDate(myTimecard.weekEnd, { month: "short", day: "numeric" })}` : "No timecard"}</h2></div>{myTimecard && <StatusPill tone={timecardTone(myTimecard.status)}>{myTimecard.status}</StatusPill>}</div>
-              <div className="weekly-total"><span><strong>{myHours.toFixed(2)}</strong> hours</span><small>{myEntries.length} time events · 0 open exceptions</small></div>
+              <div className="weekly-total"><span><strong>{myHours.toFixed(2)}</strong> hours</span><small>{myEntries.length} daily record{myEntries.length === 1 ? "" : "s"}</small></div>
               <div className="daily-bars">
                 {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, index) => {
                   const dayEntries = myEntries.filter((entry) => { const weekday = new Date(`${entry.date}T12:00:00`).getDay(); return (weekday + 6) % 7 === index; });
@@ -87,20 +95,21 @@ export function PeoplePage() {
                   return <div key={day}><span><i style={{ height: `${Math.max(6, hours * 8)}px` }} /></span><small>{day}</small></div>;
                 })}
               </div>
-              {myTimecard?.status === "Open" && (
+              {(myTimecard?.status === "Open" || myTimecard?.status === "Returned") && (
                 <Button icon={<Send size={17} />} onClick={() => submitTimecard(myTimecard.id)} disabled={Boolean(activeEntry)}>Attest & submit week</Button>
               )}
               {myTimecard?.status === "Submitted" && <div className="submitted-note"><CheckCircle2 size={17} /><span>Submitted for manager review. Ordinary editing is locked.</span></div>}
+              {myTimecard?.status === "Returned" && <div className="submitted-note submitted-note--returned"><RotateCcw size={17}/><span>Returned for correction. Review the source events, correct the issue, then resubmit.</span></div>}
               {activeEntry && <p className="submit-blocker"><AlertTriangle size={14} /> Clock out before submitting this week.</p>}
             </section>
           </div>
 
-          <Section title="Time events" description="Original events remain visible after corrections" className="time-events-panel">
-            <div className="time-event-table time-event-table--head"><span>Date</span><span>Clock in</span><span>Clock out</span><span>Break</span><span>Hours</span><span>Source</span><span>Status</span></div>
+          <Section title="Time events" description="Clock, meal, correction, and source details remain visible" className="time-events-panel">
+            <div className="time-event-table time-event-table--head"><span>Date</span><span>Clock in</span><span>Meal start</span><span>Meal end</span><span>Clock out</span><span>Hours</span><span>Source</span><span>Status</span></div>
             {myEntries.map((entry) => (
               <div className="time-event-table" key={entry.id}>
                 <span><strong>{formatDate(entry.date, { weekday: "short" })}</strong><small>{formatDate(entry.date, { month: "short", day: "numeric" })}</small></span>
-                <span>{entry.clockIn}</span><span>{entry.clockOut ?? "Active"}</span><span>{entry.breakMinutes} min</span><span>{entry.clockOut ? hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes).toFixed(2) : "—"}</span><span>{entry.source}</span><span><StatusPill tone={entry.clockOut ? "success" : "info"} dot={false}>{entry.clockOut ? "Complete" : "Open"}</StatusPill></span>
+                <span>{entry.clockIn}</span><span>{entry.mealStart ?? (entry.breakMinutes ? `${entry.breakMinutes} min recorded` : "—")}</span><span>{entry.mealEnd ?? "—"}</span><span>{entry.clockOut ?? "Active"}</span><span>{entry.clockOut ? hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes).toFixed(2) : "—"}</span><span><strong>{entry.source}</strong>{entry.note && <small>{entry.note}</small>}</span><span><StatusPill tone={entry.clockOut ? "success" : "info"} dot={false}>{entry.clockOut ? "Complete" : mealOpen && activeEntry?.id === entry.id ? "Meal" : "Open"}</StatusPill></span>
               </div>
             ))}
             {myEntries.length === 0 && <div className="list-empty">No time events in this demo week.</div>}
@@ -110,34 +119,41 @@ export function PeoplePage() {
 
       {tab === "review" && canReview && (
         <div className="manager-review-layout">
-          <Section title="Submitted timecards" description="No self-approval; backup approvers remain configurable" className="timecard-review-list">
+          <Section title="Submitted timecards" description="Review source punches and meals before the decision controls appear" className="timecard-review-list">
             {reviewCards.map((card) => {
               const employee = data.users.find((user) => user.id === card.userId);
-              const entries = scope.timeEntries.filter((entry) => entry.userId === card.userId);
+              const entries = scope.timeEntries.filter((entry) => entry.userId === card.userId && entry.date >= card.weekStart && entry.date <= card.weekEnd).sort((a,b) => a.date.localeCompare(b.date));
               const hours = entries.reduce((sum, entry) => sum + hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes), 0);
               return (
                 <article className="review-card" key={card.id}>
                   <div className="review-card__person">{employee && <Avatar initials={employee.initials} color={employee.accent} />}<div><strong>{employee?.name}</strong><p>{employee?.title}</p></div><StatusPill tone="info">Submitted</StatusPill></div>
                   <div className="review-card__facts"><div><small>Period</small><strong>{formatDate(card.weekStart, { month: "short", day: "numeric" })} – {formatDate(card.weekEnd, { month: "short", day: "numeric" })}</strong></div><div><small>Recorded</small><strong>{hours.toFixed(2)} hrs</strong></div><div><small>Attested</small><strong>{card.attested ? "Yes" : "No"}</strong></div></div>
-                  <div className="review-card__notice"><FileCheck2 size={16} /><span>Employee attestation and original time events remain available for review.</span></div>
-                  <div className="review-card__actions"><Button variant="secondary" icon={<RotateCcw size={15} />} onClick={() => decideTimecard(card.id, "Returned")}>Return</Button><Button icon={<Check size={16} />} onClick={() => decideTimecard(card.id, "Manager approved")}>Approve</Button></div>
+                  <div className="review-card__notice"><FileCheck2 size={16} /><span>Decision controls are inside the source-detail review below.</span></div>
+                  <details className="timecard-drilldown">
+                    <summary>Review punches, meals & attestation</summary>
+                    <div className="timecard-drilldown__table-wrap">
+                      <div className="timecard-drilldown__table timecard-drilldown__table--head"><span>Date</span><span>In</span><span>Meal start</span><span>Meal end</span><span>Out</span><span>Hours</span><span>Source / note</span></div>
+                      {entries.map(entry => <div className="timecard-drilldown__table" key={entry.id}><span>{formatDate(entry.date,{weekday:"short",month:"short",day:"numeric"})}</span><span>{entry.clockIn}</span><span>{entry.mealStart ?? (entry.breakMinutes ? `${entry.breakMinutes} min` : "—")}</span><span>{entry.mealEnd ?? "—"}</span><span>{entry.clockOut ?? "Open"}</span><span><strong>{hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes).toFixed(2)}</strong></span><span><strong>{entry.source}</strong>{entry.note && <small>{entry.note}</small>}</span></div>)}
+                    </div>
+                    <div className="review-card__actions"><Button variant="secondary" icon={<RotateCcw size={15} />} onClick={() => decideTimecard(card.id, "Returned")}>Return for correction</Button><Button icon={<Check size={16} />} onClick={() => decideTimecard(card.id, "Manager approved")}>Approve timecard</Button></div>
+                  </details>
                 </article>
               );
             })}
             {reviewCards.length === 0 && <div className="review-empty"><CheckCircle2 size={24} /><h3>Queue clear</h3><p>No submitted timecards need manager review.</p></div>}
           </Section>
 
-          <Section title="Weekly payroll pipeline" description="Provider-neutral by design" className="payroll-pipeline">
+          <Section title="Momentum payroll pipeline" description="The platform owns the payroll workflow; an external rail only moves money" className="payroll-pipeline">
             {[
-              [UsersRound, "Employee submits", "Attestation and snapshot"],
-              [UserCheck, "Manager reviews", "Accuracy and exceptions"],
-              [ShieldCheck, "HR / payroll audit", "Pay codes and corrections"],
-              [WalletCards, "Provider handoff", "Batch, acceptance, reconciliation"],
+              [UsersRound, "Employee submits", "Attestation and source-time snapshot"],
+              [UserCheck, "Manager reviews", "Punches, meals, corrections, exceptions"],
+              [ShieldCheck, "Payroll control", "Pay rules, earnings, deductions, approvals"],
+              [WalletCards, "Payment rail handoff", "Release instruction and reconciliation"],
             ].map(([Icon, title, detail], index) => {
               const StepIcon = Icon as typeof UsersRound;
               return <div key={title as string}><span><StepIcon size={18} /></span><div><strong>{title as string}</strong><p>{detail as string}</p></div><i>{index + 1}</i></div>;
             })}
-            <div className="payroll-pipeline__gate"><AlertTriangle size={17} /><p>Payroll configuration is restricted to administrators and must be completed before live timecards are accepted.</p></div>
+            <div className="payroll-pipeline__gate"><AlertTriangle size={17} /><p>Live wage, tax, deduction, and payment rules remain intentionally unconfigured until approved business rules are entered.</p></div>
           </Section>
         </div>
       )}

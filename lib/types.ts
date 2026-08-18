@@ -60,7 +60,8 @@ export type Approval = {
 };
 
 export type TimeEntry = {
-  id: string; userId: string; date: string; clockIn: string; clockOut?: string; breakMinutes: number;
+  id: string; userId: string; date: string; clockIn: string; clockOut?: string;
+  mealStart?: string; mealEnd?: string; breakMinutes: number;
   source: "Demo mobile" | "Demo desktop" | "Manual correction"; note?: string;
 };
 export type Timecard = {

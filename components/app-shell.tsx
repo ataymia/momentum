@@ -31,9 +31,7 @@ function NavButton({ item, user }: { item: NavItem; user: WorkspaceUser }) {
   const { activePage, navigate, scope } = useWorkspace();
   const Icon = item.icon; const label = labelFor(item, user);
   const pending = item.key === "work" ? scope.approvals.filter(item => item.status === "Pending").length : 0;
-  return <button className={`nav-item ${activePage === item.key ? "is-active" : ""}`} onClick={() => navigate(item.key)} aria-current={activePage === item.key ? "page" : undefined} title={label}>
-    <Icon size={18} strokeWidth={1.9} /><span>{label}</span>{pending > 0 && <i className="nav-count">{pending}</i>}
-  </button>;
+  return <button className={`nav-item ${activePage === item.key ? "is-active" : ""}`} onClick={() => navigate(item.key)} aria-current={activePage === item.key ? "page" : undefined} title={label}><Icon size={18} strokeWidth={1.9} /><span>{label}</span>{pending > 0 && <i className="nav-count">{pending}</i>}</button>;
 }
 
 function PageView() {
@@ -81,30 +79,17 @@ export function AppShell() {
         <button className="sidebar__close" onClick={() => setSidebarOpen(false)} aria-label="Close menu"><X size={20}/></button>
       </div>
       <button className="sidebar-search" onClick={() => setSearchOpen(true)} title="Search records"><Search size={17}/><span>Search records</span><kbd>⌘ K</kbd></button>
-      <nav className="sidebar__nav" aria-label="Primary navigation"><p>Operate</p>{allowedPrimary.map(item => <NavButton key={item.key} item={item} user={currentUser}/>)}
-        {allowedSecondary.length > 0 && <p>Understand</p>}{allowedSecondary.map(item => <NavButton key={item.key} item={item} user={currentUser}/>)}
-      </nav>
+      <nav className="sidebar__nav" aria-label="Primary navigation"><p>Operate</p>{allowedPrimary.map(item => <NavButton key={item.key} item={item} user={currentUser}/>)}{allowedSecondary.length > 0 && <p>Understand</p>}{allowedSecondary.map(item => <NavButton key={item.key} item={item} user={currentUser}/>)}</nav>
     </aside>
     {sidebarOpen && <button className="sidebar-scrim" onClick={() => setSidebarOpen(false)} aria-label="Close menu"/>}
 
     <div className="app-main">
       <header className="topbar">
-        <div className="topbar__left"><button className="menu-button" onClick={() => setSidebarOpen(true)} aria-label="Open menu"><Menu size={21}/></button><div className="topbar__location"><span>Momentum</span><ChevronRight size={14}/><strong>{pageName}</strong></div></div>
+        <div className="topbar__left"><button className="menu-button" onClick={() => setSidebarOpen(true)} aria-label="Open menu"><Menu size={21}/></button><nav className="topbar__location" aria-label="Breadcrumb"><button className="breadcrumb-home" onClick={() => navigate("home")} disabled={activePage === "home"}>Momentum</button><ChevronRight size={14}/><strong>{pageName}</strong></nav></div>
         <div className="topbar__actions">
           <button className="topbar-search-mobile" onClick={() => setSearchOpen(true)} aria-label="Search"><Search size={19}/></button>
-          {!customerMode && <div className="popover-wrap">
-            <button className="icon-button topbar__notification" onClick={() => { setNotificationsOpen(open => !open); setUserOpen(false); }} aria-label={`${unread} unread notifications`}><Bell size={19}/>{unread > 0 && <i>{unread}</i>}</button>
-            {notificationsOpen && <div className="popover notification-popover"><header><div><strong>Notifications</strong><small>{unread} unread</small></div><button onClick={markNotificationsRead}>Mark all read</button></header><div className="notification-list">
-              {scope.notifications.slice(0,6).map(notification => { const unreadItem = !notification.readBy.includes(currentUser.id); return <article key={notification.id} className={unreadItem ? "is-unread" : ""}><i className={`notification-dot notification-dot--${notification.tone}`}/><div><strong>{notification.title}</strong><p>{notification.detail}</p><small>{formatDate(notification.at,{hour:"numeric",minute:"2-digit"})}</small></div></article>; })}
-              {scope.notifications.length === 0 && <div className="popover-empty">No notifications.</div>}
-            </div></div>}
-          </div>}
-          <div className="popover-wrap"><button className="user-button" onClick={() => { setUserOpen(open => !open); setNotificationsOpen(false); }}><Avatar initials={currentUser.initials} color={currentUser.accent} size="sm"/><span><strong>{currentUser.firstName}</strong><small>{currentUser.role}</small></span><ChevronDown size={14}/></button>
-            {userOpen && <div className="popover user-popover"><div className="user-popover__current"><Avatar initials={currentUser.initials} color={currentUser.accent}/><div><strong>{currentUser.name}</strong><small>{currentUser.email}</small></div></div><p>Tour another demo role</p>
-              {data.users.map(user => <button key={user.id} className={user.id === currentUser.id ? "is-current" : ""} onClick={() => { switchUser(user.id); setUserOpen(false); }}><Avatar initials={user.initials} color={user.accent} size="sm"/><span><strong>{user.name}</strong><small>{user.role}</small></span></button>)}
-              <button className="user-popover__logout" onClick={logout}><LogOut size={16}/><span>Sign out of demo</span></button>
-            </div>}
-          </div>
+          {!customerMode && <div className="popover-wrap"><button className="icon-button topbar__notification" onClick={() => { setNotificationsOpen(open => !open); setUserOpen(false); }} aria-label={`${unread} unread notifications`}><Bell size={19}/>{unread > 0 && <i>{unread}</i>}</button>{notificationsOpen && <div className="popover notification-popover"><header><div><strong>Notifications</strong><small>{unread} unread</small></div><button onClick={markNotificationsRead}>Mark all read</button></header><div className="notification-list">{scope.notifications.slice(0,6).map(notification => { const unreadItem = !notification.readBy.includes(currentUser.id); return <article key={notification.id} className={unreadItem ? "is-unread" : ""}><i className={`notification-dot notification-dot--${notification.tone}`}/><div><strong>{notification.title}</strong><p>{notification.detail}</p><small>{formatDate(notification.at,{hour:"numeric",minute:"2-digit"})}</small></div></article>; })}{scope.notifications.length === 0 && <div className="popover-empty">No notifications.</div>}</div></div>}</div>}
+          <div className="popover-wrap"><button className="user-button" onClick={() => { setUserOpen(open => !open); setNotificationsOpen(false); }}><Avatar initials={currentUser.initials} color={currentUser.accent} size="sm"/><span><strong>{currentUser.firstName}</strong><small>{currentUser.role}</small></span><ChevronDown size={14}/></button>{userOpen && <div className="popover user-popover"><div className="user-popover__current"><Avatar initials={currentUser.initials} color={currentUser.accent}/><div><strong>{currentUser.name}</strong><small>{currentUser.email}</small></div></div><p>Tour another demo role</p>{data.users.map(user => <button key={user.id} className={user.id === currentUser.id ? "is-current" : ""} onClick={() => { switchUser(user.id); setUserOpen(false); }}><Avatar initials={user.initials} color={user.accent} size="sm"/><span><strong>{user.name}</strong><small>{user.role}</small></span></button>)}<button className="user-popover__logout" onClick={logout}><LogOut size={16}/><span>Sign out of demo</span></button></div>}</div>
         </div>
       </header>
       <div className="demo-banner"><StatusPill tone="gold">Demo workspace</StatusPill><span>{customerMode ? "Fictional customer account and order history · no live payments" : "Fictional records · proposed commercial terms · no live integrations"}</span>{currentUser.role === "Administrator" && <button onClick={() => navigate("settings")}>Integration status</button>}</div>
@@ -113,10 +98,7 @@ export function AppShell() {
 
     <Modal open={searchOpen} title="Search Momentum" description={customerMode ? "Find your account or order." : "Find an account or order within your assigned scope."} onClose={() => { setSearchOpen(false); setQuery(""); }} wide>
       <div className="command-search"><Search size={20}/><input autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder={customerMode ? "Search account or order…" : "Search account, location, or order…"}/><kbd>ESC</kbd></div>
-      <div className="command-results">{!query && <div className="command-empty"><Command size={28}/><p>Start typing to search records you can access.</p></div>}
-        {query && searchResults.length === 0 && <div className="command-empty"><p>No matching records in your scope.</p></div>}
-        {searchResults.map(result => <button key={result.id} onClick={() => openResult(result.page,result.focus)}><span className="command-result__icon">{result.type === "Account" ? <Building2 size={18}/> : <ShoppingCart size={18}/>}</span><div><strong>{result.title}</strong><small>{result.detail}</small></div><span>{result.type}</span><ChevronRight size={16}/></button>)}
-      </div>
+      <div className="command-results">{!query && <div className="command-empty"><Command size={28}/><p>Start typing to search records you can access.</p></div>}{query && searchResults.length === 0 && <div className="command-empty"><p>No matching records in your scope.</p></div>}{searchResults.map(result => <button key={result.id} onClick={() => openResult(result.page,result.focus)}><span className="command-result__icon">{result.type === "Account" ? <Building2 size={18}/> : <ShoppingCart size={18}/>}</span><div><strong>{result.title}</strong><small>{result.detail}</small></div><span>{result.type}</span><ChevronRight size={16}/></button>)}</div>
     </Modal>
   </div>;
 }
