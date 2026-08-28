@@ -16,37 +16,45 @@ const user = (id: string) => {
   return match;
 };
 
-test("administrator has company-wide records and all pages", () => {
+test("administrator has company-wide records and every department", () => {
   const admin = user("usr-mia");
   const scope = getWorkspaceScope(data, admin);
   assert.equal(scope.accounts.length, data.accounts.length);
   assert.equal(scope.orders.length, data.orders.length);
   assert.equal(scope.inventory.length, data.inventory.length);
   assert.equal(scope.bulletins.length, data.bulletins.length);
-  assert.equal(canAccessPage(admin, "settings"), true);
+  for (const page of ["accounts","inventory","marketing","people","payroll","finance","reports","settings"] as const) assert.equal(canAccessPage(admin, page), true);
 });
 
-test("sales manager sees the managed team but not administration or inventory", () => {
+test("sales manager sees managed sales plus employee self-service departments but not administration or inventory", () => {
   const manager = user("usr-avery");
   const scope = getWorkspaceScope(data, manager);
   assert.deepEqual(scope.accounts.map((account) => account.ownerId), ["usr-jordan", "usr-jordan", "usr-jordan", "usr-jordan"]);
   assert.equal(scope.inventory.length, 0);
   assert.equal(canAccessPage(manager, "reports"), true);
+  assert.equal(canAccessPage(manager, "marketing"), true);
+  assert.equal(canAccessPage(manager, "people"), true);
+  assert.equal(canAccessPage(manager, "payroll"), true);
+  assert.equal(canAccessPage(manager, "finance"), true);
   assert.equal(canAccessPage(manager, "settings"), false);
   assert.equal(canAccessPage(manager, "inventory"), false);
 });
 
-test("sales representative is limited to responsible customer and assigned field records", () => {
+test("sales representative is limited to responsible sales records and own employee workflows", () => {
   const rep = user("usr-jordan");
   const scope = getWorkspaceScope(data, rep);
   assert.equal(scope.accounts.every((account) => account.ownerId === rep.id), true);
   assert.equal(scope.appointments.every((item) => item.ownerId === rep.id), true);
   assert.equal(scope.inventory.length, 0);
+  assert.equal(canAccessPage(rep, "marketing"), true);
+  assert.equal(canAccessPage(rep, "people"), true);
+  assert.equal(canAccessPage(rep, "payroll"), true);
+  assert.equal(canAccessPage(rep, "finance"), true);
   assert.equal(canAccessPage(rep, "reports"), false);
   assert.equal(canAccessPage(rep, "settings"), false);
 });
 
-test("operations gets fulfillment and inventory context without unrelated sales execution", () => {
+test("operations gets fulfillment, inventory and own employee workflows without unrelated sales execution", () => {
   const operations = user("usr-elena");
   const scope = getWorkspaceScope(data, operations);
   assert.equal(scope.orders.length, data.orders.length);
@@ -55,6 +63,11 @@ test("operations gets fulfillment and inventory context without unrelated sales 
   assert.equal(scope.appointments.every((item) => item.ownerId === operations.id || item.type === "Delivery"), true);
   assert.equal(scope.activities.every((item) => item.type === "order" || item.type === "visit"), true);
   assert.equal(canAccessPage(operations, "orders"), true);
+  assert.equal(canAccessPage(operations, "inventory"), true);
+  assert.equal(canAccessPage(operations, "marketing"), true);
+  assert.equal(canAccessPage(operations, "people"), true);
+  assert.equal(canAccessPage(operations, "payroll"), true);
+  assert.equal(canAccessPage(operations, "finance"), true);
   assert.equal(canAccessPage(operations, "accounts"), false);
   assert.equal(canAccessPage(operations, "retail"), false);
   assert.equal(canAccessPage(operations, "reports"), false);
@@ -72,7 +85,10 @@ test("customer sees only its linked account and orders", () => {
   assert.equal(canAccessPage(customer, "home"), true);
   assert.equal(canAccessPage(customer, "accounts"), true);
   assert.equal(canAccessPage(customer, "orders"), true);
+  assert.equal(canAccessPage(customer, "marketing"), false);
   assert.equal(canAccessPage(customer, "people"), false);
+  assert.equal(canAccessPage(customer, "payroll"), false);
+  assert.equal(canAccessPage(customer, "finance"), false);
   assert.equal(canAccessPage(customer, "settings"), false);
 });
 
