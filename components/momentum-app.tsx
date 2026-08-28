@@ -1,5 +1,6 @@
 "use client";
 
+import { CrmProvider } from "../lib/crm-context";
 import { HcmProvider } from "../lib/hcm-context";
 import { PerformanceProvider } from "../lib/performance-context";
 import { WorkspaceProvider, useWorkspace } from "../lib/workspace-context";
@@ -12,5 +13,5 @@ function MomentumExperience(){
 }
 
 export function MomentumApp(){
-  return <WorkspaceProvider><HcmProvider><PerformanceProvider><MomentumExperience/></PerformanceProvider></HcmProvider></WorkspaceProvider>;
+  return <WorkspaceProvider><CrmProvider><HcmProvider><PerformanceProvider><MomentumExperience/></PerformanceProvider></HcmProvider></CrmProvider></WorkspaceProvider>;
 }
