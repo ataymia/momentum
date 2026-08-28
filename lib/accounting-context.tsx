@@ -19,7 +19,9 @@ import {
   unprocessedSourceEvents,
 } from "./accounting-engine";
 import { useCommerce } from "./commerce-context";
+import { useFinance } from "./finance-context";
 import { useInventoryLedger } from "./inventory-ledger-context";
+import { usePayroll } from "./payroll-context";
 import { useWorkspace } from "./workspace-context";
 
 const now = () => new Date().toISOString();
@@ -47,6 +49,8 @@ export function AccountingProvider({ children }: { children: ReactNode }) {
   const { currentUser } = useWorkspace();
   const { commerce } = useCommerce();
   const { ledger } = useInventoryLedger();
+  const { payroll } = usePayroll();
+  const { finance } = useFinance();
   const read = () => {
     if (typeof window === "undefined") return createAccountingSeed();
     try {
@@ -61,7 +65,7 @@ export function AccountingProvider({ children }: { children: ReactNode }) {
     if (typeof window !== "undefined") window.localStorage.setItem(ACCOUNTING_STORAGE_KEY, JSON.stringify(accounting));
   }, [accounting]);
 
-  const events = useMemo(() => sourceEvents(commerce, ledger), [commerce, ledger]);
+  const events = useMemo(() => sourceEvents(commerce, ledger, payroll, finance), [commerce, ledger, payroll, finance]);
   const setSettings = (basis: AccountingBasis, inventoryValuation: InventoryValuation) => setAccounting((state) => ({ ...state, settings: { ...state.settings, basis, inventoryValuation } }));
   const addAccount = (input: Omit<LedgerAccount, "id">) => {
     const id = uid("account");
@@ -102,21 +106,7 @@ export function AccountingProvider({ children }: { children: ReactNode }) {
     if (!input.memo.trim() || input.amount <= 0 || input.debitAccountId === input.creditAccountId) return null;
     const id = uid("journal");
     const number = `JE-${String(accounting.journals.length + 1).padStart(5, "0")}`;
-    const entry: JournalEntry = {
-      id,
-      number,
-      date: input.date,
-      memo: input.memo.trim(),
-      status: "Draft",
-      sourceType: "Manual",
-      sourceId: id,
-      lines: [
-        { id: uid("line"), accountId: input.debitAccountId, debit: input.amount, credit: 0 },
-        { id: uid("line"), accountId: input.creditAccountId, debit: 0, credit: input.amount },
-      ],
-      createdAt: now(),
-      createdBy: currentUser?.id ?? "system",
-    };
+    const entry: JournalEntry = { id, number, date: input.date, memo: input.memo.trim(), status: "Draft", sourceType: "Manual", sourceId: id, lines: [{ id: uid("line"), accountId: input.debitAccountId, debit: input.amount, credit: 0 }, { id: uid("line"), accountId: input.creditAccountId, debit: 0, credit: input.amount }], createdAt: now(), createdBy: currentUser?.id ?? "system" };
     setAccounting((state) => ({ ...state, journals: [entry, ...state.journals] }));
     return id;
   };
@@ -125,17 +115,7 @@ export function AccountingProvider({ children }: { children: ReactNode }) {
     if (!account) return null;
     const ledgerEndingBalance = accountBalance(accounting, accountId, periodEnd);
     const id = uid("reconciliation");
-    const record: Reconciliation = {
-      id,
-      accountId,
-      periodEnd,
-      statementEndingBalance,
-      ledgerEndingBalance,
-      difference: statementEndingBalance - ledgerEndingBalance,
-      status: "Open",
-      createdAt: now(),
-      createdBy: currentUser?.id ?? "system",
-    };
+    const record: Reconciliation = { id, accountId, periodEnd, statementEndingBalance, ledgerEndingBalance, difference: statementEndingBalance - ledgerEndingBalance, status: "Open", createdAt: now(), createdBy: currentUser?.id ?? "system" };
     setAccounting((state) => ({ ...state, reconciliations: [record, ...state.reconciliations] }));
     return id;
   };
