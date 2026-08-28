@@ -41,7 +41,11 @@ export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, a
   const rule = PARTNER_PRICING_RULE;
   const asOfKey = dateKey(asOf);
   const orders = data.orders.filter((order) => order.accountId === accountId).sort((a, b) => a.placedAt.localeCompare(b.placedAt));
+  const paidOrders = orders.filter(isPaid);
   const firstOrder = orders[0];
+
+  const paidBetween = (start: string, end: string, includeStart = false) => paidOrders.filter((order) => (includeStart ? order.placedAt >= start : order.placedAt > start) && order.placedAt <= end);
+  const cases = (items: typeof paidOrders) => items.reduce((sum, order) => sum + order.cases, 0);
 
   if (!firstOrder) {
     return {
@@ -58,114 +62,110 @@ export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, a
   const firstOrderDate = firstOrder.placedAt;
   const introEnd = addDays(firstOrderDate, rule.introDays);
   const openingQualified = firstOrder.cases >= rule.minimumOpeningCases;
-  const paidIntroOrders = orders.filter((order) => order.placedAt >= firstOrderDate && order.placedAt <= introEnd && isPaid(order));
-  const introCases = paidIntroOrders.reduce((sum, order) => sum + order.cases, 0);
+  const introOrders = paidBetween(firstOrderDate, introEnd, true);
+  const introCases = cases(introOrders);
 
-  if (asOfKey <= introEnd && openingQualified) {
+  if (asOfKey <= introEnd) {
     return {
       accountId,
-      status: "Intro partner pricing",
+      status: openingQualified ? "Intro partner pricing" : "Standard pricing",
       firstOrderDate,
       currentWindowStart: firstOrderDate,
       currentWindowEnd: introEnd,
       countedCases: introCases,
       thresholdCases: rule.introQualificationCases,
       partnerPricePerCase: rule.partnerPricePerCase,
-      currentPricePerCase: rule.partnerPricePerCase,
-      reason: `$${rule.partnerPricePerCase.toFixed(2)} partner pricing is active during the first ${rule.introDays} days. ${introCases}/${rule.introQualificationCases} paid cases currently count toward continuation.`,
+      currentPricePerCase: openingQualified ? rule.partnerPricePerCase : undefined,
+      reason: openingQualified
+        ? `$${rule.partnerPricePerCase.toFixed(2)} Partner Pricing is active during the first ${rule.introDays} days. ${introCases}/${rule.introQualificationCases} paid cases count toward continuation.`
+        : `The opening order was below ${rule.minimumOpeningCases} cases, so introductory Partner Pricing was not activated.`,
       nextReviewDate: introEnd,
-      evidenceOrderIds: paidIntroOrders.map((order) => order.id),
+      evidenceOrderIds: introOrders.map((order) => order.id),
     };
   }
 
-  if (!openingQualified) {
-    return {
-      accountId,
-      status: "Standard pricing",
-      firstOrderDate,
-      currentWindowStart: firstOrderDate,
-      currentWindowEnd: introEnd,
-      countedCases: introCases,
-      thresholdCases: rule.introQualificationCases,
-      partnerPricePerCase: rule.partnerPricePerCase,
-      reason: `The opening order was below ${rule.minimumOpeningCases} cases, so the introductory partner-pricing entry condition was not met.`,
-      nextReviewDate: introEnd,
-      evidenceOrderIds: paidIntroOrders.map((order) => order.id),
-    };
-  }
+  let partnerActive = openingQualified && introCases >= rule.introQualificationCases;
+  let periodStart = introEnd;
 
-  const introQualified = introCases >= rule.introQualificationCases;
-  let windowStart = introEnd;
-  let partnerActive = introQualified;
-  let mostRecentQualifyingDate: string | undefined;
-  let evidenceOrderIds: string[] = [];
-  let countedCases = 0;
+  const findReentry = (inactiveSince: string, through: string) => {
+    const candidates = paidOrders.filter((order) => order.placedAt > inactiveSince && order.placedAt <= through);
+    for (const order of candidates) {
+      const trailingStart = addDays(order.placedAt, -rule.rollingWindowDays);
+      const trailing = paidOrders.filter((candidate) => candidate.placedAt > trailingStart && candidate.placedAt <= order.placedAt);
+      if (cases(trailing) >= rule.rollingQualificationCases) return { date: order.placedAt, evidence: trailing };
+    }
+    return null;
+  };
 
-  while (windowStart <= asOfKey) {
-    const windowEnd = addDays(windowStart, rule.rollingWindowDays);
-    const paidInWindow = orders.filter((order) => order.placedAt > windowStart && order.placedAt <= windowEnd && isPaid(order));
-    countedCases = paidInWindow.reduce((sum, order) => sum + order.cases, 0);
-    evidenceOrderIds = paidInWindow.map((order) => order.id);
+  while (periodStart <= asOfKey) {
+    if (partnerActive) {
+      const periodEnd = addDays(periodStart, rule.rollingWindowDays);
+      const periodOrders = paidBetween(periodStart, periodEnd);
+      const periodCases = cases(periodOrders);
 
-    if (asOfKey <= windowEnd) {
-      if (!partnerActive && countedCases >= rule.rollingQualificationCases) {
-        const cumulative: typeof paidInWindow = [];
-        let running = 0;
-        for (const order of paidInWindow) {
-          cumulative.push(order);
-          running += order.cases;
-          if (running >= rule.rollingQualificationCases) { mostRecentQualifyingDate = order.placedAt; break; }
-        }
-        const reentryStart = mostRecentQualifyingDate ?? windowStart;
+      if (asOfKey <= periodEnd) {
         return {
           accountId,
           status: "Partner pricing",
           firstOrderDate,
-          currentWindowStart: reentryStart,
-          currentWindowEnd: addDays(reentryStart, rule.rollingWindowDays),
-          countedCases,
+          currentWindowStart: periodStart,
+          currentWindowEnd: periodEnd,
+          countedCases: periodCases,
           thresholdCases: rule.rollingQualificationCases,
           partnerPricePerCase: rule.partnerPricePerCase,
           currentPricePerCase: rule.partnerPricePerCase,
-          reason: `The account restored eligibility after reaching ${rule.rollingQualificationCases} paid cases in the active rolling period.`,
-          nextReviewDate: addDays(reentryStart, rule.rollingWindowDays),
-          evidenceOrderIds,
+          reason: `Partner Pricing is active for this ${rule.rollingWindowDays}-day period. ${periodCases}/${rule.rollingQualificationCases} paid cases are recorded toward the next continuation decision.`,
+          nextReviewDate: periodEnd,
+          evidenceOrderIds: periodOrders.map((order) => order.id),
         };
       }
+
+      if (periodCases >= rule.rollingQualificationCases) {
+        periodStart = periodEnd;
+        continue;
+      }
+
+      partnerActive = false;
+      periodStart = periodEnd;
+      continue;
+    }
+
+    const reentry = findReentry(periodStart, asOfKey);
+    if (!reentry) {
+      const trailingStart = addDays(asOfKey, -rule.rollingWindowDays);
+      const trailingOrders = paidOrders.filter((order) => order.placedAt > trailingStart && order.placedAt <= asOfKey);
+      const trailingCases = cases(trailingOrders);
       return {
         accountId,
-        status: partnerActive ? "Partner pricing" : "Standard pricing",
+        status: "Standard pricing",
         firstOrderDate,
-        currentWindowStart: windowStart,
-        currentWindowEnd: windowEnd,
-        countedCases,
+        currentWindowStart: trailingStart,
+        currentWindowEnd: asOfKey,
+        countedCases: trailingCases,
         thresholdCases: rule.rollingQualificationCases,
         partnerPricePerCase: rule.partnerPricePerCase,
-        currentPricePerCase: partnerActive ? rule.partnerPricePerCase : undefined,
-        reason: partnerActive
-          ? `Partner pricing is active for this ${rule.rollingWindowDays}-day period. ${countedCases}/${rule.rollingQualificationCases} paid cases are recorded toward the next continuation decision.`
-          : `Partner pricing is inactive. The account can re-enter after reaching ${rule.rollingQualificationCases} paid cases during the active rolling period.`,
-        nextReviewDate: windowEnd,
-        evidenceOrderIds,
+        reason: `Partner Pricing is inactive. ${trailingCases}/${rule.rollingQualificationCases} paid cases are present in the current trailing ${rule.rollingWindowDays}-day requalification window.`,
+        nextReviewDate: undefined,
+        evidenceOrderIds: trailingOrders.map((order) => order.id),
       };
     }
 
-    partnerActive = countedCases >= rule.rollingQualificationCases;
-    windowStart = windowEnd;
+    partnerActive = true;
+    periodStart = reentry.date;
   }
 
   return {
     accountId,
-    status: introQualified ? "Partner pricing" : "Standard pricing",
+    status: partnerActive ? "Partner pricing" : "Standard pricing",
     firstOrderDate,
-    currentWindowStart: introEnd,
-    currentWindowEnd: addDays(introEnd, rule.rollingWindowDays),
+    currentWindowStart: periodStart,
+    currentWindowEnd: addDays(periodStart, rule.rollingWindowDays),
     countedCases: 0,
     thresholdCases: rule.rollingQualificationCases,
     partnerPricePerCase: rule.partnerPricePerCase,
-    currentPricePerCase: introQualified ? rule.partnerPricePerCase : undefined,
-    reason: introQualified ? "Introductory qualification carried the account into the next partner-pricing window." : "Introductory volume did not qualify for continuation.",
-    nextReviewDate: addDays(introEnd, rule.rollingWindowDays),
+    currentPricePerCase: partnerActive ? rule.partnerPricePerCase : undefined,
+    reason: partnerActive ? "Partner Pricing is active." : "Partner Pricing is inactive pending requalification.",
+    nextReviewDate: partnerActive ? addDays(periodStart, rule.rollingWindowDays) : undefined,
     evidenceOrderIds: [],
   };
 }
