@@ -1,10 +1,10 @@
 import type { Account, Approval, Bulletin, PageKey, WorkspaceData, WorkspaceUser } from "./types";
 
 const pageAccess: Record<WorkspaceUser["role"], PageKey[]> = {
-  Administrator: ["home","work","accounts","dispatch","retail","orders","inventory","people","company","reports","settings"],
-  "Sales Manager": ["home","work","accounts","dispatch","retail","orders","people","company","reports"],
-  "Sales Representative": ["home","work","accounts","dispatch","retail","orders","people","company"],
-  Operations: ["home","work","dispatch","orders","inventory","people","company"],
+  Administrator: ["home","work","accounts","dispatch","retail","orders","inventory","marketing","people","payroll","finance","reports","settings"],
+  "Sales Manager": ["home","work","accounts","dispatch","retail","orders","marketing","people","payroll","finance","reports"],
+  "Sales Representative": ["home","work","accounts","dispatch","retail","orders","marketing","people","payroll","finance"],
+  Operations: ["home","work","dispatch","orders","inventory","marketing","people","payroll","finance"],
   Customer: ["home","accounts","orders"],
 };
 
