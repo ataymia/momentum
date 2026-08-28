@@ -6,7 +6,7 @@ import type { WorkspaceData } from "../lib/types";
 
 test("opening bonus eligibility is detected from a qualifying completed first order", () => {
   const data = createDemoData();
-  const signals = evaluateSalesRepAccountBonuses(data, new Date("2026-08-28T12:00:00"));
+  const signals = evaluateSalesRepAccountBonuses(data, new Date());
   const desertLantern = signals.find((signal) => signal.id === "bonus-acc-101-opening");
   assert.ok(desertLantern);
   assert.equal(desertLantern.observedCases, 12);
@@ -29,14 +29,14 @@ test("sustained bonus requires 40 cumulative completed cases inside the 90 day w
         pricePerCase: 24,
         amount: 672,
         status: "Paid",
-        placedAt: base.orders.find((order) => order.id === "ord-1047")?.placedAt ?? "2026-08-24",
+        placedAt: base.orders.find((order) => order.id === "ord-1047")?.placedAt ?? new Date().toISOString().slice(0, 10),
         ownerId: "usr-jordan",
         priceBasis: "Demo entered price",
         paymentStatus: "Paid",
       },
     ],
   };
-  const signals = evaluateSalesRepAccountBonuses(data, new Date("2026-08-28T12:00:00"));
+  const signals = evaluateSalesRepAccountBonuses(data, new Date());
   const sustained = signals.find((signal) => signal.id === "bonus-acc-101-sustained");
   assert.ok(sustained);
   assert.equal(sustained.observedCases, 40);
@@ -47,7 +47,7 @@ test("sustained bonus requires 40 cumulative completed cases inside the 90 day w
 
 test("accounts not owned by a sales representative do not produce rep bonus signals", () => {
   const data = createDemoData();
-  const signals = evaluateSalesRepAccountBonuses(data, new Date("2026-08-28T12:00:00"));
+  const signals = evaluateSalesRepAccountBonuses(data, new Date());
   assert.equal(signals.some((signal) => signal.accountId === "acc-103"), false);
   assert.equal(signals.some((signal) => signal.accountId === "acc-105"), false);
 });
