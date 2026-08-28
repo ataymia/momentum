@@ -3,6 +3,7 @@
 import { AccountingProvider } from "../lib/accounting-context";
 import { CommerceProvider } from "../lib/commerce-context";
 import { CrmProvider } from "../lib/crm-context";
+import { FinanceProvider } from "../lib/finance-context";
 import { HcmProvider } from "../lib/hcm-context";
 import { InventoryLedgerProvider } from "../lib/inventory-ledger-context";
 import { MarketingProvider } from "../lib/marketing-context";
@@ -18,5 +19,5 @@ function MomentumExperience(){
 }
 
 export function MomentumApp(){
-  return <WorkspaceProvider><CrmProvider><HcmProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><AccountingProvider><MarketingProvider><MomentumExperience/></MarketingProvider></AccountingProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></HcmProvider></CrmProvider></WorkspaceProvider>;
+  return <WorkspaceProvider><CrmProvider><HcmProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><FinanceProvider><AccountingProvider><MarketingProvider><MomentumExperience/></MarketingProvider></AccountingProvider></FinanceProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></HcmProvider></CrmProvider></WorkspaceProvider>;
 }
