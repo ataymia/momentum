@@ -1,5 +1,6 @@
 "use client";
 
+import { AccountingProvider } from "../lib/accounting-context";
 import { CommerceProvider } from "../lib/commerce-context";
 import { CrmProvider } from "../lib/crm-context";
 import { HcmProvider } from "../lib/hcm-context";
@@ -15,5 +16,5 @@ function MomentumExperience(){
 }
 
 export function MomentumApp(){
-  return <WorkspaceProvider><CrmProvider><HcmProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><MomentumExperience/></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></HcmProvider></CrmProvider></WorkspaceProvider>;
+  return <WorkspaceProvider><CrmProvider><HcmProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><AccountingProvider><MomentumExperience/></AccountingProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></HcmProvider></CrmProvider></WorkspaceProvider>;
 }
