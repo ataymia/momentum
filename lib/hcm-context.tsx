@@ -1,16 +1,10 @@
 "use client";
 
-import { Dispatch, ReactNode, SetStateAction, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { Dispatch, ReactNode, SetStateAction, createContext, useContext, useEffect, useState } from "react";
 import { HCM_STORAGE_KEY, HCMState, createHcmSeed, normalizeHcmState } from "./hcm-engine";
 import { useWorkspace } from "./workspace-context";
 
-type HcmContextValue={
-  hcm:HCMState;
-  setHcm:Dispatch<SetStateAction<HCMState>>;
-  resetHcm:()=>void;
-  reloadHcm:()=>void;
-};
-
+type HcmContextValue={hcm:HCMState;setHcm:Dispatch<SetStateAction<HCMState>>;resetHcm:()=>void;reloadHcm:()=>void};
 const HcmContext=createContext<HcmContextValue|null>(null);
 
 const readState=(data:ReturnType<typeof useWorkspace>["data"]):HCMState=>{
@@ -24,8 +18,7 @@ export function HcmProvider({children}:{children:ReactNode}){
   useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(HCM_STORAGE_KEY,JSON.stringify(hcm));},[hcm]);
   const resetHcm=()=>setHcm(createHcmSeed(data));
   const reloadHcm=()=>setHcm(readState(data));
-  const value=useMemo(()=>({hcm,setHcm,resetHcm,reloadHcm}),[hcm,data]);
-  return <HcmContext.Provider value={value}>{children}</HcmContext.Provider>;
+  return <HcmContext.Provider value={{hcm,setHcm,resetHcm,reloadHcm}}>{children}</HcmContext.Provider>;
 }
 
 export function useHcm(){const value=useContext(HcmContext);if(!value)throw new Error("useHcm must be used inside HcmProvider");return value;}
