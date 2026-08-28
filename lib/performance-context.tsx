@@ -1,14 +1,16 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
-import { PERFORMANCE_STORAGE_KEY, PerformanceGoal, PerformanceState, WorkReport, ReportNote, createPerformanceSeed, normalizePerformanceState } from "./performance-engine";
+import { DailyWorkReport, ManagerWeeklyReport, PERFORMANCE_STORAGE_KEY, PerformanceGoal, PerformanceState, WorkReport, ReportNote, createPerformanceSeed, normalizePerformanceState } from "./performance-engine";
 import { useWorkspace } from "./workspace-context";
 
 const now=()=>new Date().toISOString();
 const uid=(prefix:string)=>`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 
 type NewGoal=Omit<PerformanceGoal,"id"|"createdAt"|"updatedAt">;
-type NewReport=Omit<WorkReport,"id"|"submittedAt"|"status"|"reviewerId"|"reviewedAt"|"reviewerNotes">;
+type NewDailyReport=Omit<DailyWorkReport,"id"|"submittedAt"|"status"|"reviewerId"|"reviewedAt"|"reviewerNotes">;
+type NewManagerReport=Omit<ManagerWeeklyReport,"id"|"submittedAt"|"status"|"reviewerId"|"reviewedAt"|"reviewerNotes">;
+type NewReport=NewDailyReport|NewManagerReport;
 type PerformanceContextValue={
   performance:PerformanceState; createGoal:(goal:NewGoal)=>string; updateManualGoal:(goalId:string,value:number,note?:string)=>void; cancelGoal:(goalId:string)=>void;
   submitReport:(report:NewReport)=>string; reviewReport:(reportId:string,note:string)=>void; addReportNote:(reportId:string,note:string)=>void; resetPerformance:()=>void;
