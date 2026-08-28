@@ -9,12 +9,19 @@ export type WorkspaceUser = {
   accountIds?: string[]; accent: string;
 };
 
+export type CustomerAccount = {
+  id:string; name:string; accountType:"Independent"|"Chain / franchise"|"Distributor"|"Other";
+  billingContactName?:string; billingEmail?:string; billingPhone?:string; notes?:string; createdAt:string;
+};
+
 export type AccountStage = "Prospect" | "Qualified" | "Sampled" | "Opening order" | "Placed" | "Reordered" | "At risk";
 export type Account = {
   id: string; name: string; location: string; channel: string; stage: AccountStage;
   ownerId: string; contactName: string; contactRole: string; phone: string; email: string;
   lastActivity: string; nextAction: string; nextActionDate: string;
   health: "Strong" | "Watch" | "New" | "At risk"; lifetimeCases: number; reorderCount: number; notes: string;
+  customerId?:string; locationName?:string; streetAddress?:string; city?:string; state?:string; postalCode?:string;
+  originatorId?:string; accountManagerId?:string; closerId?:string; responsibilityStartedAt?:string;
 };
 
 export type Activity = {
@@ -25,10 +32,12 @@ export type Activity = {
 export type AppointmentStatus = "Scheduled" | "Dispatched" | "En route" | "Arrived" | "Completed" | "Needs follow-up";
 export type AppointmentOutcome = "Order placed" | "Follow-up scheduled" | "Placement verified" | "No decision" | "Closed lost" | "Delivery completed";
 export type Appointment = {
-  id: string; accountId: string; ownerId: string; date: string; startTime: string; duration: number;
+  id: string; accountId: string; ownerId?: string; date: string; startTime: string; duration: number;
   type: "First visit" | "Sample drop" | "Placement check" | "Reorder" | "Delivery";
   status: AppointmentStatus; objective: string; location: string; completedAt?: string;
   outcome?: AppointmentOutcome; closeoutNote?: string; nextAction?: string; nextActionDate?: string;
+  customerId?:string; priority?:"Normal"|"High"|"Urgent"; tags?:string[]; requiredSkills?:string[];
+  confirmed?:boolean; arrivalWindow?:string; assignedBy?:string; assignedAt?:string;
 };
 
 export type OrderStatus = "Draft" | "Awaiting approval" | "Approved" | "Allocated" | "Out for delivery" | "Delivered" | "Paid";
@@ -82,7 +91,7 @@ export type Bulletin = {
 };
 
 export type WorkspaceData = {
-  users: WorkspaceUser[]; accounts: Account[]; activities: Activity[]; appointments: Appointment[];
+  users: WorkspaceUser[]; customers?:CustomerAccount[]; accounts: Account[]; activities: Activity[]; appointments: Appointment[];
   orders: Order[]; placements: Placement[]; inventory: InventoryLot[]; approvals: Approval[];
   timeEntries: TimeEntry[]; timecards: Timecard[]; notifications: Notification[]; bulletins: Bulletin[];
 };
