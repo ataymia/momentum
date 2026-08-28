@@ -6,6 +6,7 @@ import { canAccessPage } from "../lib/access";
 import { evaluateSalesRepAccountBonuses } from "../lib/bonus-engine";
 import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
+import { AdvancedHcmPanel } from "./hcm/advanced-hcm";
 import { AccountsPage } from "./pages/accounts";
 import { DashboardPage } from "./pages/dashboard";
 import { DispatchPage } from "./pages/dispatch";
@@ -41,7 +42,25 @@ function NavButton({item,user}:{item:NavItem;user:WorkspaceUser}){
   return <button className={`nav-item ${activePage===item.key?"is-active":""}`} onClick={()=>navigate(item.key)} aria-current={activePage===item.key?"page":undefined} title={label}><Icon size={18} strokeWidth={1.9}/><span>{label}</span>{pending>0&&<i className="nav-count">{pending}</i>}</button>;
 }
 
-function PageView(){const{activePage}=useWorkspace();switch(activePage){case"home":return <DashboardPage/>;case"work":return <WorkPage/>;case"accounts":return <AccountsPage/>;case"dispatch":return <DispatchPage/>;case"retail":return <RetailPage/>;case"orders":return <OrdersPage/>;case"inventory":return <InventoryPage/>;case"marketing":return <MarketingPage/>;case"people":return <PeoplePage/>;case"payroll":return <PayrollPage/>;case"finance":return <FinancePage/>;case"reports":return <ReportsPage/>;case"settings":return <SettingsPage/>;default:return <DashboardPage/>;}}
+function PageView(){
+  const{activePage}=useWorkspace();
+  switch(activePage){
+    case"home":return <DashboardPage/>;
+    case"work":return <WorkPage/>;
+    case"accounts":return <AccountsPage/>;
+    case"dispatch":return <DispatchPage/>;
+    case"retail":return <RetailPage/>;
+    case"orders":return <OrdersPage/>;
+    case"inventory":return <InventoryPage/>;
+    case"marketing":return <MarketingPage/>;
+    case"people":return <><PeoplePage/><AdvancedHcmPanel/></>;
+    case"payroll":return <PayrollPage/>;
+    case"finance":return <FinancePage/>;
+    case"reports":return <ReportsPage/>;
+    case"settings":return <SettingsPage/>;
+    default:return <DashboardPage/>;
+  }
+}
 
 export function AppShell(){
   const {data,scope,currentUser,activePage,sidebarOpen,sidebarCollapsed,setSidebarOpen,setSidebarCollapsed,navigate,logout,switchUser,markNotificationsRead}=useWorkspace();
