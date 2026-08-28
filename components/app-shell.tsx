@@ -6,7 +6,10 @@ import { canAccessPage } from "../lib/access";
 import { evaluateSalesRepAccountBonuses } from "../lib/bonus-engine";
 import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
+import { OrderCashPanel } from "./commerce/order-cash-panel";
+import { CrmDepthPanel } from "./crm/crm-depth-panel";
 import { AdvancedHcmPanel } from "./hcm/advanced-hcm";
+import { InventoryLedgerPanel } from "./inventory/inventory-ledger-panel";
 import { AccountsPage } from "./pages/accounts";
 import { DashboardPage } from "./pages/dashboard";
 import { DispatchPage } from "./pages/dispatch";
@@ -49,11 +52,11 @@ function PageView(){
   switch(activePage){
     case"home":return <><DashboardPage/><DashboardPerformance/></>;
     case"work":return <WorkPage/>;
-    case"accounts":return <AccountsPage/>;
+    case"accounts":return <><AccountsPage/><CrmDepthPanel/></>;
     case"dispatch":return <DispatchPage/>;
     case"retail":return <RetailPage/>;
-    case"orders":return <OrdersPage/>;
-    case"inventory":return <InventoryPage/>;
+    case"orders":return <><OrdersPage/><OrderCashPanel/></>;
+    case"inventory":return <><InventoryPage/><InventoryLedgerPanel/></>;
     case"marketing":return <MarketingPage/>;
     case"people":return <><PeoplePage/><AdvancedHcmPanel/></>;
     case"payroll":return <PayrollPage/>;
@@ -70,7 +73,7 @@ export function AppShell(){
   useEffect(()=>{const listener=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();setSearchOpen(true);}if(event.key==="Escape"){setSearchOpen(false);setNotificationsOpen(false);setUserOpen(false);}};addEventListener("keydown",listener);return()=>removeEventListener("keydown",listener);},[]);
   const allowedPrimary=currentUser?primaryNav.filter((item)=>canAccessPage(currentUser,item.key)):[];const allowedSecondary=currentUser?secondaryNav.filter((item)=>canAccessPage(currentUser,item.key)):[];
   const unread=currentUser?.role==="Customer"?0:scope.notifications.filter((item)=>!item.readBy.includes(currentUser?.id??"")).length;
-  const searchResults=useMemo(()=>{const normalized=query.trim().toLowerCase();if(!normalized)return[];const accounts=(currentUser&&canAccessPage(currentUser,"accounts")?scope.accounts:[]).filter((account)=>[account.name,account.location,account.contactName,account.channel].join(" ").toLowerCase().includes(normalized)).slice(0,5).map((account)=>({id:account.id,type:"Location",title:account.name,detail:`${account.location} · ${account.stage}`,page:"accounts" as PageKey,focus:account.id}));const orders=scope.orders.filter((order)=>{const account=scope.accounts.find((item)=>item.id===order.accountId);return`${order.number} ${account?.name??""}`.toLowerCase().includes(normalized);}).slice(0,4).map((order)=>({id:order.id,type:"Order",title:order.number,detail:`${order.cases} cases · ${order.status}`,page:"orders" as PageKey,focus:order.id}));return[...accounts,...orders];},[currentUser,query,scope.accounts,scope.orders]);
+  const searchResults=useMemo(()=>{const normalized=query.trim().toLowerCase();if(!normalized)return[];const accounts=(currentUser&&canAccessPage(currentUser,"accounts")?scope.accounts:[]).filter((account)=>[account.name,account.locationName,account.location,account.contactName,account.channel].join(" ").toLowerCase().includes(normalized)).slice(0,5).map((account)=>({id:account.id,type:"Location",title:account.locationName??account.name,detail:`${account.location} · ${account.stage}`,page:"accounts" as PageKey,focus:account.id}));const orders=scope.orders.filter((order)=>{const account=scope.accounts.find((item)=>item.id===order.accountId);return`${order.number} ${account?.name??""} ${account?.locationName??""}`.toLowerCase().includes(normalized);}).slice(0,4).map((order)=>({id:order.id,type:"Order",title:order.number,detail:`${order.cases} cases · ${order.status}`,page:"orders" as PageKey,focus:order.id}));return[...accounts,...orders];},[currentUser,query,scope.accounts,scope.orders]);
   if(!currentUser)return null;
   const allNav=[...primaryNav,...secondaryNav];const activeNav=allNav.find((item)=>item.key===activePage);const pageName=activeNav?labelFor(activeNav,currentUser):"Home";const customerMode=currentUser.role==="Customer";
   const openResult=(page:PageKey,focus:string)=>{sessionStorage.setItem("momentum-focus-record",focus);navigate(page);setSearchOpen(false);setQuery("");};
