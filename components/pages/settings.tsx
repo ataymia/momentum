@@ -1,1 +1,1 @@
-export { SettingsPage } from "./settings-v2";
+export { SettingsPage } from "./settings-v3";

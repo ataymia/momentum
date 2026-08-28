@@ -3,6 +3,7 @@ import "./globals.css";
 import "./final-pass.css";
 import "./departments.css";
 import "./performance-dispatch.css";
+import "./platform-controls.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
