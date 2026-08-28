@@ -13,7 +13,7 @@ import type { Order, WorkspaceData, WorkspaceUser } from "../lib/types";
 
 const paidOrder = (id:string,accountId:string,cases:number,placedAt:string,ownerId="usr-jordan"):Order => ({
   id, number:`GE-${id}`, accountId, cases, pricePerCase:24, amount:cases*24,
-  status:"Delivered", placedAt, paidAt:placedAt, ownerId, priceBasis:"Test", paymentStatus:"Paid",
+  status:"Delivered", placedAt, paidAt:placedAt, ownerId, priceBasis:"Demo entered price", paymentStatus:"Paid",
 });
 
 test("customer hierarchy keeps parent customer separate from an individual location", () => {
