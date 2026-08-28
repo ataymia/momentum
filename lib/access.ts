@@ -53,7 +53,7 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
   const appointments = user.role === "Administrator"
     ? data.appointments
     : user.role === "Operations"
-      ? data.appointments.filter(item => item.ownerId === user.id || item.type === "Delivery" || (!item.ownerId && item.type === "Delivery"))
+      ? data.appointments.filter(item => item.ownerId === user.id || item.type === "Delivery")
       : user.role === "Sales Manager"
         ? data.appointments.filter(item => !item.ownerId ? item.type !== "Delivery" : managedIds.has(item.ownerId))
         : user.role === "Sales Representative"
