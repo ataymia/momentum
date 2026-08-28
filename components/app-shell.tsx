@@ -6,6 +6,7 @@ import { canAccessPage } from "../lib/access";
 import { evaluateSalesRepAccountBonuses } from "../lib/bonus-engine";
 import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
+import { AccountingPanel } from "./accounting/accounting-panel";
 import { OrderCashPanel } from "./commerce/order-cash-panel";
 import { CrmDepthPanel } from "./crm/crm-depth-panel";
 import { AdvancedHcmPanel } from "./hcm/advanced-hcm";
@@ -60,7 +61,7 @@ function PageView(){
     case"marketing":return <MarketingPage/>;
     case"people":return <><PeoplePage/><AdvancedHcmPanel/></>;
     case"payroll":return <PayrollPage/>;
-    case"finance":return <FinancePage/>;
+    case"finance":return <><FinancePage/><AccountingPanel/></>;
     case"reports":return <><ReportsPage/><ReportingCenter/></>;
     case"settings":return <SettingsPage/>;
     default:return <DashboardPage/>;
