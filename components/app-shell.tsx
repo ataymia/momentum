@@ -3,6 +3,7 @@
 import { BarChart3, Bell, Boxes, BriefcaseBusiness, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, Command, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings, ShoppingCart, Store, UsersRound, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { canAccessPage } from "../lib/access";
+import { evaluateSalesRepAccountBonuses } from "../lib/bonus-engine";
 import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
 import { AccountsPage } from "./pages/accounts";
@@ -30,9 +31,11 @@ const secondaryNav: NavItem[] = [{ key: "reports", label: "Reports", icon: BarCh
 const labelFor = (item: NavItem, user: WorkspaceUser) => user.role !== "Customer" ? item.label : item.key === "home" ? "Account overview" : item.key === "accounts" ? "My account" : item.key === "orders" ? "My orders" : item.label;
 
 function NavButton({ item, user }: { item: NavItem; user: WorkspaceUser }) {
-  const { activePage, navigate, scope } = useWorkspace();
+  const { activePage, navigate, scope, data } = useWorkspace();
   const Icon = item.icon; const label = labelFor(item, user);
-  const pending = item.key === "work" ? scope.approvals.filter(item => item.status === "Pending").length : 0;
+  const accountIds = new Set(scope.accounts.map((account) => account.id));
+  const bonusSignals = item.key === "company" ? evaluateSalesRepAccountBonuses(data).filter((signal) => signal.status === "Eligibility detected" && accountIds.has(signal.accountId)).length : 0;
+  const pending = item.key === "work" ? scope.approvals.filter(item => item.status === "Pending").length : bonusSignals;
   return <button className={`nav-item ${activePage === item.key ? "is-active" : ""}`} onClick={() => navigate(item.key)} aria-current={activePage === item.key ? "page" : undefined} title={label}><Icon size={18} strokeWidth={1.9} /><span>{label}</span>{pending > 0 && <i className="nav-count">{pending}</i>}</button>;
 }
 
