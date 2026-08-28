@@ -64,7 +64,6 @@ export function userCommercialMetrics(data:WorkspaceData,userId:string,start:str
   const appointments=data.appointments.filter((appointment)=>appointment.ownerId===userId&&appointment.status==="Completed"&&inRange(appointment.date,start,end));
   const accountFirstPaid=new Map<string,string>();
   for(const order of data.orders.filter((item)=>item.paymentStatus==="Paid").sort((a,b)=>orderDate(a).localeCompare(orderDate(b)))) if(!accountFirstPaid.has(order.accountId))accountFirstPaid.set(order.accountId,orderDate(order));
-  const newPaidAccounts=[...accountFirstPaid.entries()].filter(([,date])=>inRange(date,start,end)&&data.accounts.find((account)=>account.id===arguments[0]?.accountId)).length;
   const ownedAccountIds=new Set(data.accounts.filter((account)=>account.ownerId===userId).map((account)=>account.id));
   const ownedNewPaidAccounts=[...accountFirstPaid.entries()].filter(([accountId,date])=>ownedAccountIds.has(accountId)&&inRange(date,start,end)).length;
   return{paidCases,paidOrders:paidOrders.length,collectedRevenue,completedAppointments:appointments.length,newPaidAccounts:ownedNewPaidAccounts,
