@@ -3,9 +3,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { accountIsVisible, canAccessPage, canAdvanceFulfillment, canCreateAccount, canCreateOrder, canCreateScheduleItem, canManageSchedule, canPublishBulletinTo, canReviewApproval, getWorkspaceScope } from "./access";
 import { createDemoData } from "./demo-data";
-import type { Account, Appointment, AppointmentOutcome, AppointmentStatus, Bulletin, OrderStatus, PageKey, Team, WorkspaceData, WorkspaceUser } from "./types";
+import type { Account, Appointment, AppointmentOutcome, AppointmentStatus, Bulletin, CustomerAccount, OrderStatus, PageKey, Team, WorkspaceData, WorkspaceUser } from "./types";
 
-const DATA_KEY = "momentum-demo-workspace-v3";
+const DATA_KEY = "momentum-demo-workspace-v4";
 const SESSION_KEY = "momentum-demo-session-v2";
 const SIDEBAR_KEY = "momentum-sidebar-collapsed-v1";
 const nowStamp = () => new Date().toISOString();
@@ -17,6 +17,9 @@ const minutesBetween = (start: string, end: string) => {
   const [endHours, endMinutes] = end.split(":").map(Number);
   return Math.max(0, endHours * 60 + endMinutes - startHours * 60 - startMinutes);
 };
+const slug=(value:string)=>value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+const parentCustomerName=(name:string)=>name.replace(/\s+#\d+\s*$/,"").trim()||name;
+const customerIdFor=(name:string)=>`cust-${slug(parentCustomerName(name))}`;
 
 const dateKeyFrom = (date: Date) => date.toISOString().slice(0, 10);
 const previousWeekRange = () => {
@@ -29,14 +32,25 @@ const previousWeekRange = () => {
   return { start: dateKeyFrom(start), end: dateKeyFrom(end), day: (offset: number) => { const date = new Date(start); date.setDate(start.getDate() + offset); return dateKeyFrom(date); } };
 };
 
+const normalizeCustomerHierarchy=(data:WorkspaceData):WorkspaceData=>{
+  const existingCustomers=data.customers??[];const byId=new Map(existingCustomers.map((customer)=>[customer.id,customer]));
+  const accounts=data.accounts.map((account)=>{
+    const customerId=account.customerId??customerIdFor(account.name);const customerName=parentCustomerName(account.name);
+    if(!byId.has(customerId))byId.set(customerId,{id:customerId,name:customerName,accountType:customerName!==account.name?"Chain / franchise":"Independent",billingContactName:account.contactName,billingEmail:account.email,billingPhone:account.phone,createdAt:nowStamp()});
+    return{...account,customerId,locationName:account.locationName??account.name,originatorId:account.originatorId??account.ownerId,accountManagerId:account.accountManagerId??account.ownerId,closerId:account.closerId,responsibilityStartedAt:account.responsibilityStartedAt??nowStamp()};
+  });
+  const customerByLocation=new Map(accounts.map((account)=>[account.id,account.customerId]));
+  return{...data,customers:[...byId.values()],accounts,appointments:data.appointments.map((appointment)=>({...appointment,customerId:appointment.customerId??customerByLocation.get(appointment.accountId),priority:appointment.priority??"Normal",tags:appointment.tags??[]}))};
+};
+
 const createNormalizedDemoData = (): WorkspaceData => {
-  const data = createDemoData();
+  const data = normalizeCustomerHierarchy(createDemoData());
   const previousWeek = previousWeekRange();
   const jordanRows = [
     { id: "te-jordan-mon", userId: "usr-jordan", date: previousWeek.day(0), clockIn: "08:00", mealStart: "12:00", mealEnd: "12:30", clockOut: "17:00", breakMinutes: 30, source: "Demo mobile" as const },
     { id: "te-jordan-tue", userId: "usr-jordan", date: previousWeek.day(1), clockIn: "08:15", mealStart: "12:15", mealEnd: "12:45", clockOut: "16:45", breakMinutes: 30, source: "Demo mobile" as const },
     { id: "te-jordan-wed", userId: "usr-jordan", date: previousWeek.day(2), clockIn: "08:00", mealStart: "12:00", mealEnd: "12:30", clockOut: "16:30", breakMinutes: 30, source: "Manual correction" as const, note: "Clock-out correction retained as a separate source note for review." },
-    { id: "te-jordan-thu", userId: "usr-jordan", date: previousWeek.day(3), clockIn: "08:30", mealStart: "12:30", mealEnd: "13:00", clockOut: "17:00", breakMinutes: 30, source: "Demo mobile" as const },
+    { id: "te-jordan-thu", userId: "usr-jordan", date: previousWeek.day(3), clockIn: "08:30", mealStart: "12:30", mealEnd: "12:45", clockOut: "16:45", breakMinutes: 15, source: "Demo mobile" as const },
   ];
   const otherRows = data.timeEntries.filter(entry => entry.userId !== "usr-jordan");
   return {
@@ -49,9 +63,9 @@ const createNormalizedDemoData = (): WorkspaceData => {
   };
 };
 
-type NewAccount = Pick<Account, "name"|"location"|"channel"|"contactName"|"contactRole"|"phone"|"email">;
+type NewAccount = Pick<Account, "name"|"location"|"channel"|"contactName"|"contactRole"|"phone"|"email"> & {customerName?:string;locationName?:string;streetAddress?:string};
 type NewOrder = { accountId: string; cases: number; pricePerCase?: number };
-type NewAppointment = Pick<Appointment, "accountId"|"date"|"startTime"|"duration"|"type"|"objective"> & { ownerId?: string };
+type NewAppointment = Pick<Appointment, "accountId"|"date"|"startTime"|"duration"|"type"|"objective"> & { ownerId?: string; priority?:Appointment["priority"]; tags?:string[]; arrivalWindow?:string };
 type AppointmentCloseout = { outcome: AppointmentOutcome; closeoutNote: string; nextAction: string; nextActionDate: string };
 type NewBulletin = { title: string; body: string; audience: Bulletin["audience"]; team?: Team; priority: Bulletin["priority"]; expiresAt?: string };
 type Scope = ReturnType<typeof getWorkspaceScope>;
@@ -64,6 +78,7 @@ type WorkspaceContextValue = {
   switchUser: (userId: string) => void; createAccount: (account: NewAccount) => string | null;
   createAppointment: (appointment: NewAppointment) => string | null; advanceAppointment: (id: string) => void;
   completeAppointment: (id: string, closeout: AppointmentCloseout) => boolean; reassignAppointment: (id: string, ownerId: string) => void;
+  moveAppointment:(id:string,ownerId:string|undefined,date:string,startTime:string)=>boolean;
   setOrderStatus: (id: string, status: OrderStatus) => void; createOrder: (order: NewOrder) => string | null;
   updatePlacement: (id: string, stock: number, facings: number, cold: boolean, shelfPrice: number) => void;
   decideApproval: (id: string, decision: "Approved"|"Returned") => void;
@@ -90,7 +105,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const timer = window.setTimeout(() => {
       try {
         const savedData = localStorage.getItem(DATA_KEY);
-        if (savedData) setData(JSON.parse(savedData) as WorkspaceData);
+        if (savedData) setData(normalizeCustomerHierarchy(JSON.parse(savedData) as WorkspaceData));
         setCurrentUserId(localStorage.getItem(SESSION_KEY));
         setSidebarCollapsedState(localStorage.getItem(SIDEBAR_KEY) === "true");
       } catch { localStorage.removeItem(DATA_KEY); localStorage.removeItem(SESSION_KEY); }
@@ -115,10 +130,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const createAccount = useCallback((account: NewAccount) => {
     if (!currentUser || !canCreateAccount(currentUser)) return null;
-    const id = `acc-${Date.now()}`;
+    const id = `acc-${Date.now()}`;const customerName=account.customerName?.trim()||account.name.trim();const customerId=`cust-${slug(customerName)}`;
+    const customer:CustomerAccount={id:customerId,name:customerName,accountType:customerName===account.name?"Independent":"Chain / franchise",billingContactName:account.contactName,billingEmail:account.email,billingPhone:account.phone,createdAt:nowStamp()};
     setData(current => ({ ...current,
-      accounts: [{ ...account, id, stage: "Prospect", ownerId: currentUser.id, lastActivity: "Account created", nextAction: "Qualify the decision-maker and buying process", nextActionDate: todayKey(), health: "New", lifetimeCases: 0, reorderCount: 0, notes: "Created in the local demo workspace." }, ...current.accounts],
-      activities: [{ id: `act-${Date.now()}`, accountId: id, type: "note", title: "Account created", detail: "New prospect added to the demo workspace.", at: nowStamp(), userId: currentUser.id }, ...current.activities]
+      customers:(current.customers??[]).some((item)=>item.id===customerId)?current.customers:[customer,...(current.customers??[])],
+      accounts: [{ ...account, id, customerId,locationName:account.locationName?.trim()||account.name,streetAddress:account.streetAddress, stage: "Prospect", ownerId: currentUser.id,originatorId:currentUser.id,accountManagerId:currentUser.id,responsibilityStartedAt:nowStamp(), lastActivity: "Location created", nextAction: "Qualify the decision-maker and buying process", nextActionDate: todayKey(), health: "New", lifetimeCases: 0, reorderCount: 0, notes: "Created in the local demo workspace." }, ...current.accounts],
+      activities: [{ id: `act-${Date.now()}`, accountId: id, type: "note", title: "Customer location created", detail: `${customerName} · ${account.locationName?.trim()||account.name} added to the demo workspace.`, at: nowStamp(), userId: currentUser.id }, ...current.activities]
     }));
     return id;
   }, [currentUser]);
@@ -127,13 +144,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if (!currentUser || !canCreateScheduleItem(currentUser)) return null;
     const account = data.accounts.find(item => item.id === appointment.accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
-    const ownerId = currentUser.role === "Sales Representative" ? currentUser.id : appointment.ownerId ?? currentUser.id;
-    const owner = data.users.find(user => user.id === ownerId && user.role !== "Customer");
-    if (!owner) return null;
-    const id = `apt-${Date.now()}`;
+    const forcedSelf=currentUser.role === "Sales Representative";const requestedOwner=forcedSelf?currentUser.id:appointment.ownerId||undefined;
+    if(requestedOwner&&!data.users.some((user)=>user.id===requestedOwner&&user.role!=="Customer"))return null;
+    const id = `apt-${Date.now()}`;const owner=data.users.find((user)=>user.id===requestedOwner);
     setData(current => ({ ...current,
-      appointments: [{ ...appointment, id, ownerId, status: "Scheduled", location: account.location }, ...current.appointments],
-      activities: [{ id: `act-${Date.now()}`, accountId: account.id, type: "visit", title: `${appointment.type} scheduled`, detail: `${appointment.date} at ${appointment.startTime} · assigned to ${owner.name}.`, at: nowStamp(), userId: currentUser.id }, ...current.activities]
+      appointments: [{ ...appointment, id, ownerId:requestedOwner, customerId:account.customerId,status: "Scheduled", location: account.streetAddress||account.location,priority:appointment.priority??"Normal",tags:appointment.tags??[],assignedBy:requestedOwner?currentUser.id:undefined,assignedAt:requestedOwner?nowStamp():undefined }, ...current.appointments],
+      activities: [{ id: `act-${Date.now()}`, accountId: account.id, type: "visit", title: `${appointment.type} scheduled`, detail: `${appointment.date} at ${appointment.startTime} · ${owner?`assigned to ${owner.name}`:"left unassigned for dispatch"}.`, at: nowStamp(), userId: currentUser.id }, ...current.activities]
     }));
     return id;
   }, [currentUser, data]);
@@ -142,13 +158,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if (!currentUser) return;
     setData(current => {
       const appointment = current.appointments.find(item => item.id === id);
-      if (!appointment || (appointment.ownerId !== currentUser.id && !canManageSchedule(currentUser))) return current;
+      if (!appointment || !appointment.ownerId || (appointment.ownerId !== currentUser.id && !canManageSchedule(currentUser))) return current;
       const status = nextAppointment[appointment.status];
       if (status === appointment.status) return current;
       const account = current.accounts.find(item => item.id === appointment.accountId);
       return { ...current,
         appointments: current.appointments.map(item => item.id === id ? { ...item, status } : item),
-        activities: [{ id: `act-${Date.now()}`, accountId: appointment.accountId, type: "visit", title: `${appointment.type} · ${status}`, detail: `${account?.name ?? "Account"} moved to ${status.toLowerCase()}.`, at: nowStamp(), userId: currentUser.id }, ...current.activities]
+        activities: [{ id: `act-${Date.now()}`, accountId: appointment.accountId, type: "visit", title: `${appointment.type} · ${status}`, detail: `${account?.locationName ?? account?.name ?? "Location"} moved to ${status.toLowerCase()}.`, at: nowStamp(), userId: currentUser.id }, ...current.activities]
       };
     });
   }, [currentUser]);
@@ -159,7 +175,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if (!appointment || appointment.status !== "Arrived" || (appointment.ownerId !== currentUser.id && !canManageSchedule(currentUser))) return false;
     setData(current => ({ ...current,
       appointments: current.appointments.map(item => item.id === id ? { ...item, status: "Completed", completedAt: nowStamp(), ...closeout, closeoutNote: closeout.closeoutNote.trim(), nextAction: closeout.nextAction.trim() } : item),
-      accounts: current.accounts.map(account => account.id === appointment.accountId ? { ...account, lastActivity: `${appointment.type}: ${closeout.outcome}`, nextAction: closeout.nextAction.trim(), nextActionDate: closeout.nextActionDate, stage: closeout.outcome === "Order placed" ? "Opening order" : account.stage } : account),
+      accounts: current.accounts.map(account => account.id === appointment.accountId ? { ...account, lastActivity: `${appointment.type}: ${closeout.outcome}`, nextAction: closeout.nextAction.trim(), nextActionDate: closeout.nextActionDate, stage: closeout.outcome === "Order placed" ? "Opening order" : account.stage,closerId:closeout.outcome==="Order placed"?(appointment.ownerId??account.closerId):account.closerId } : account),
       activities: [{ id: `act-${Date.now()}`, accountId: appointment.accountId, type: "visit", title: `${appointment.type} completed · ${closeout.outcome}`, detail: `${closeout.closeoutNote.trim()} Next: ${closeout.nextAction.trim()} on ${closeout.nextActionDate}.`, at: nowStamp(), userId: currentUser.id }, ...current.activities]
     }));
     return true;
@@ -168,22 +184,27 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const reassignAppointment = useCallback((id: string, ownerId: string) => {
     if (!currentUser || !canManageSchedule(currentUser)) return;
     setData(current => {
-      const appointment = current.appointments.find(item => item.id === id);
-      const owner = current.users.find(user => user.id === ownerId && user.role !== "Customer");
-      if (!appointment || !owner) return current;
+      const appointment = current.appointments.find(item => item.id === id);if(!appointment||appointment.status!=="Scheduled")return current;
+      const owner=ownerId?current.users.find(user => user.id === ownerId && user.role !== "Customer"):undefined;if(ownerId&&!owner)return current;
+      const prior=current.users.find((user)=>user.id===appointment.ownerId);
       return { ...current,
-        appointments: current.appointments.map(item => item.id === id ? { ...item, ownerId } : item),
-        activities: [{ id: `act-${Date.now()}`, accountId: appointment.accountId, type: "note", title: "Appointment reassigned", detail: `Responsibility moved to ${owner.name}. Prior assignment history remains in the activity record.`, at: nowStamp(), userId: currentUser.id }, ...current.activities]
+        appointments: current.appointments.map(item => item.id === id ? { ...item, ownerId:ownerId||undefined,assignedBy:ownerId?currentUser.id:undefined,assignedAt:ownerId?nowStamp():undefined } : item),
+        activities: [{ id: `act-${Date.now()}`, accountId: appointment.accountId, type: "note", title: ownerId?"Appointment assigned":"Appointment unassigned", detail: `${prior?.name??"Unassigned"} → ${owner?.name??"Holding area"}. Assignment change recorded by ${currentUser.name}.`, at: nowStamp(), userId: currentUser.id }, ...current.activities]
       };
     });
   }, [currentUser]);
+
+  const moveAppointment=useCallback((id:string,ownerId:string|undefined,date:string,startTime:string)=>{
+    if(!currentUser||!canManageSchedule(currentUser))return false;let moved=false;
+    setData(current=>{const appointment=current.appointments.find((item)=>item.id===id);if(!appointment||appointment.status!=="Scheduled")return current;if(ownerId&&!current.users.some((user)=>user.id===ownerId&&user.role!=="Customer"))return current;const before=`${appointment.ownerId??"Unassigned"} · ${appointment.date} ${appointment.startTime}`;const after=`${ownerId??"Unassigned"} · ${date} ${startTime}`;moved=true;return{...current,appointments:current.appointments.map((item)=>item.id===id?{...item,ownerId,date,startTime,assignedBy:ownerId?currentUser.id:undefined,assignedAt:ownerId?nowStamp():undefined}:item),activities:[{id:`act-${Date.now()}`,accountId:appointment.accountId,type:"note",title:"Dispatch schedule changed",detail:`${before} → ${after}.`,at:nowStamp(),userId:currentUser.id},...current.activities]};});return moved;
+  },[currentUser]);
 
   const setOrderStatus = useCallback((id: string, status: OrderStatus) => {
     if (!currentUser || !canAdvanceFulfillment(currentUser)) return;
     setData(current => {
       const order = current.orders.find(item => item.id === id);
       if (!order || nextOrder[order.status] !== status) return current;
-      return { ...current, orders: current.orders.map(item => item.id === id ? { ...item, status, paymentStatus: status === "Paid" ? "Paid" : status === "Delivered" && item.paymentStatus === "Not invoiced" ? "Open" : item.paymentStatus } : item) };
+      return { ...current, orders: current.orders.map(item => item.id === id ? { ...item, status, paymentStatus: status === "Paid" ? "Paid" : status === "Delivered" && item.paymentStatus === "Not invoiced" ? "Open" : item.paymentStatus,paidAt:status==="Paid"?todayKey():item.paidAt } : item) };
     });
   }, [currentUser]);
 
@@ -200,8 +221,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData(current => ({ ...current,
       orders: [{ id, number, accountId, cases, pricePerCase: price, amount: cases * price, status: "Awaiting approval", placedAt: todayKey(), ownerId: currentUser.id, priceBasis: customer ? "Prior demo order snapshot" : "Demo entered price", paymentStatus: "Not invoiced" }, ...current.orders],
       accounts: current.accounts.map(item => item.id === accountId ? { ...item, stage: "Opening order", lastActivity: `Order request ${number} submitted` } : item),
-      approvals: [{ id: `apr-${Date.now()}`, type: "Order", title: `Review order ${number}`, detail: `${cases} cases · ${customer ? "prior order snapshot" : "demo-entered price"} · ${account.name}`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.team, submittedAt: nowStamp(), dueAt: plusHours(24), priority: "High", status: "Pending" }, ...current.approvals],
-      notifications: [{ id: `note-${Date.now()}`, title: `Order ${number} needs review`, detail: `${account.name} · ${cases} cases`, at: nowStamp(), readBy: [], tone: "info", audienceUserIds: reviewers }, ...current.notifications]
+      approvals: [{ id: `apr-${Date.now()}`, type: "Order", title: `Review order ${number}`, detail: `${cases} cases · ${customer ? "prior order snapshot" : "demo-entered price"} · ${account.locationName??account.name}`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.team, submittedAt: nowStamp(), dueAt: plusHours(24), priority: "High", status: "Pending" }, ...current.approvals],
+      notifications: [{ id: `note-${Date.now()}`, title: `Order ${number} needs review`, detail: `${account.locationName??account.name} · ${cases} cases`, at: nowStamp(), readBy: [], tone: "info", audienceUserIds: reviewers }, ...current.notifications]
     }));
     return id;
   }, [currentUser, data]);
@@ -305,7 +326,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const markNotificationsRead = useCallback(() => { if (!currentUser) return; const ids = new Set(scope.notifications.map(item => item.id)); setData(current => ({ ...current, notifications: current.notifications.map(item => ids.has(item.id) && !item.readBy.includes(currentUser.id) ? { ...item, readBy: [...item.readBy, currentUser.id] } : item) })); }, [currentUser, scope.notifications]);
   const resetDemo = useCallback(() => { if (currentUser?.role !== "Administrator") return; setData(createNormalizedDemoData()); setActivePage("home"); }, [currentUser]);
 
-  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, setOrderStatus, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, setOrderStatus, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
+  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment,moveAppointment, setOrderStatus, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment,moveAppointment, setOrderStatus, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 
