@@ -57,10 +57,13 @@ test("missing the next rolling 20-case threshold lapses Partner Pricing", () => 
   assert.equal(pricing.status,"Standard pricing");assert.equal(pricing.currentPricePerCase,undefined);
 });
 
-test("an account that lost Partner Pricing can re-enter after restoring 20 paid cases in its active rolling period", () => {
+test("an account that lost Partner Pricing can re-enter after restoring 20 paid cases in a rolling 90-day window", () => {
   const data=account101Scenario([paidOrder("opening",10,"2026-01-01"),paidOrder("intro-reorder",10,"2026-02-01"),paidOrder("requalify",20,"2026-06-05")]);
   const pricing=evaluatePartnerPricing(data,"acc-101",new Date("2026-06-06T12:00:00"));
-  assert.equal(pricing.status,"Partner pricing");assert.equal(pricing.currentPricePerCase,24);assert.equal(pricing.countedCases,20);
+  assert.equal(pricing.status,"Partner pricing");
+  assert.equal(pricing.currentPricePerCase,24);
+  assert.equal(pricing.currentWindowStart,"2026-06-05");
+  assert.equal(pricing.countedCases,0);
 });
 
 test("accounts not owned by a sales representative do not produce rep bonus signals", () => {
