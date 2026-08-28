@@ -27,6 +27,7 @@ import { WorkPage } from "./pages/work";
 import { DashboardPerformance } from "./performance/dashboard-performance";
 import { ReportingCenter } from "./performance/reporting-center";
 import { Avatar, BrandMark, Modal, StatusPill, formatDate } from "./ui";
+import { ActionCenter } from "./work/action-center";
 
 type NavItem={key:PageKey;label:string;icon:typeof LayoutDashboard};
 const primaryNav:NavItem[]=[
@@ -52,7 +53,7 @@ function PageView(){
   const{activePage}=useWorkspace();
   switch(activePage){
     case"home":return <><DashboardPage/><DashboardPerformance/></>;
-    case"work":return <WorkPage/>;
+    case"work":return <><WorkPage/><ActionCenter/></>;
     case"accounts":return <><AccountsPage/><CrmDepthPanel/></>;
     case"dispatch":return <DispatchPage/>;
     case"retail":return <RetailPage/>;
