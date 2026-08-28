@@ -1,4 +1,4 @@
-export type PageKey = "home" | "work" | "accounts" | "dispatch" | "retail" | "orders" | "inventory" | "people" | "company" | "reports" | "settings";
+export type PageKey = "home" | "work" | "accounts" | "dispatch" | "retail" | "orders" | "inventory" | "people" | "payroll" | "finance" | "marketing" | "reports" | "settings";
 
 export type Role = "Administrator" | "Sales Manager" | "Sales Representative" | "Operations" | "Customer";
 export type Team = "Leadership" | "Sales" | "Operations" | "Customer";
@@ -34,7 +34,7 @@ export type Appointment = {
 export type OrderStatus = "Draft" | "Awaiting approval" | "Approved" | "Allocated" | "Out for delivery" | "Delivered" | "Paid";
 export type Order = {
   id: string; number: string; accountId: string; cases: number; pricePerCase: number; amount: number;
-  status: OrderStatus; placedAt: string; ownerId: string;
+  status: OrderStatus; placedAt: string; ownerId: string; paidAt?: string;
   priceBasis: "Demo entered price" | "Prior demo order snapshot";
   paymentStatus: "Not invoiced" | "Open" | "Partially paid" | "Paid";
 };
@@ -52,7 +52,7 @@ export type InventoryLot = {
   holdReason?: string; holdDecision?: string; holdResolvedAt?: string; holdResolvedBy?: string;
 };
 
-export type ApprovalType = "Order" | "Timecard" | "Price exception" | "Inventory adjustment" | "Leave";
+export type ApprovalType = "Order" | "Timecard" | "Price exception" | "Inventory adjustment" | "Leave" | "Expense" | "Marketing spend" | "Compensation";
 export type Approval = {
   id: string; type: ApprovalType; title: string; detail: string; requestedBy: string;
   requesterId?: string; recordId?: string; team?: Team; submittedAt: string; dueAt: string;
