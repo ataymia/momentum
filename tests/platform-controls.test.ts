@@ -1,0 +1,45 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { collectAuditableRecords, diffAuditableRecords } from "../lib/audit-engine";
+import { findAccountDuplicate } from "../lib/duplicate-engine";
+import { resolveNotificationRecipients } from "../lib/notification-engine";
+import { isDateLocked, isRangeLocked, type PeriodLockState } from "../lib/period-lock-engine";
+import type { Account, AuditEvent } from "../lib/types";
+import type { WorkspaceData } from "../lib/types";
+
+test("period locks block dates and overlapping ranges only while active", () => {
+  const state: PeriodLockState = { version: 1, locks: [{ id:"lock-1",domain:"Payroll",startDate:"2026-08-01",endDate:"2026-08-31",reason:"Month close",lockedAt:"2026-09-01T00:00:00Z",lockedBy:"admin" }] };
+  assert.equal(isDateLocked(state,"Payroll","2026-08-15"),true);
+  assert.equal(isDateLocked(state,"Payroll","2026-09-01"),false);
+  assert.equal(isRangeLocked(state,"Payroll","2026-07-25","2026-08-02"),true);
+  assert.equal(isRangeLocked(state,"Accounting","2026-08-01","2026-08-31"),false);
+  state.locks[0].releasedAt="2026-09-02T00:00:00Z";
+  assert.equal(isDateLocked(state,"Payroll","2026-08-15"),false);
+});
+
+test("duplicate blocker catches exact normalized street address", () => {
+  const existing = [{ id:"acc-1",name:"Corner Market",location:"Phoenix, AZ",streetAddress:"123 W. Main Street, Ste 100",phone:"602-555-0100",email:"buyer@example.com" }] as Account[];
+  const duplicate = findAccountDuplicate(existing,{ name:"Different label",location:"Phoenix, AZ",streetAddress:"123 West Main St Suite 100",phone:"",email:"" });
+  assert.ok(duplicate);
+  assert.equal(duplicate?.account.id,"acc-1");
+  assert.equal(duplicate?.confidence,"Exact");
+});
+
+test("audit diff records actor record and changed fields", () => {
+  const before = collectAuditableRecords("Workspace",{orders:[{id:"ord-1",number:"GE-1001",accountId:"acc-1",status:"Approved",cases:10}]});
+  const after = collectAuditableRecords("Workspace",{orders:[{id:"ord-1",number:"GE-1001",accountId:"acc-1",status:"Delivered",cases:10}]});
+  const events = diffAuditableRecords(before,after,{id:"usr-admin",role:"Administrator"},"2026-08-28T12:00:00Z");
+  assert.equal(events.length,1);
+  assert.equal(events[0].entityType,"Workspace.orders");
+  assert.equal(events[0].relatedAccountId,"acc-1");
+  assert.equal(events[0].actorId,"usr-admin");
+  assert.ok(events[0].changes.some((change)=>change.field==="status"&&change.before==="Approved"&&change.after==="Delivered"));
+});
+
+test("notification routing reaches responsible sales chain for account changes", () => {
+  const data = { users:[{id:"usr-admin",name:"Admin",firstName:"Admin",email:"admin@example.com",initials:"AD",title:"Admin",role:"Administrator",team:"Leadership",accent:"#000"},{id:"usr-manager",name:"Manager",firstName:"Manager",email:"manager@example.com",initials:"MA",title:"Manager",role:"Sales Manager",team:"Sales",accent:"#000"},{id:"usr-rep",name:"Rep",firstName:"Rep",email:"rep@example.com",initials:"RE",title:"Rep",role:"Sales Representative",team:"Sales",managerId:"usr-manager",accent:"#000"}], accounts:[{id:"acc-1",name:"Market",location:"Phoenix, AZ",channel:"Independent retail",stage:"Prospect",ownerId:"usr-rep",accountManagerId:"usr-manager",contactName:"",contactRole:"",phone:"",email:"",lastActivity:"",nextAction:"",nextActionDate:"2026-08-28",health:"New",lifetimeCases:0,reorderCount:0,notes:""}], activities:[],appointments:[],orders:[],placements:[],inventory:[],approvals:[],timeEntries:[],timecards:[],notifications:[],bulletins:[] } as unknown as WorkspaceData;
+  const event = { id:"audit-1",at:"2026-08-28T12:00:00Z",actorId:"usr-admin",actorRole:"Administrator",action:"Updated",module:"Workspace",collection:"accounts",entityType:"Workspace.accounts",entityId:"acc-1",label:"Market",summary:"Market updated",sensitivity:"operational",relatedAccountId:"acc-1",changes:[] } as unknown as import("../lib/audit-engine").AuditEvent;
+  const recipients = resolveNotificationRecipients(event,data);
+  assert.ok(recipients.includes("usr-rep"));
+  assert.ok(recipients.includes("usr-manager"));
+});

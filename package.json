@@ -10,7 +10,9 @@
     "build:pages": "next build",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs && npm run test:logic",
-    "test:logic": "node --import tsx --test tests/access-control.test.ts tests/workflow-integrity.test.ts tests/business-workflows.test.ts tests/hcm-workflows.test.ts tests/platform-engines.test.ts",
+    "test:logic": "node --import tsx --test tests/access-control.test.ts tests/workflow-integrity.test.ts tests/business-workflows.test.ts tests/hcm-workflows.test.ts tests/platform-engines.test.ts tests/platform-controls.test.ts",
+    "typecheck": "tsc --noEmit",
+    "verify:pages": "node scripts/verify-pages-artifact.mjs",
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern out",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"

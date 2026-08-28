@@ -32,17 +32,19 @@ jobs:
         run: npm ci
       - name: Lint source
         run: npm run lint
-      - name: Verify workflow invariants
+      - name: TypeScript check
+        run: npm run typecheck
+      - name: Run expanded logic tests
         run: npm run test:logic
       - name: Export static site
         run: npm run build:pages
         env:
           GITHUB_PAGES: "true"
           NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
-      - name: Verify export
-        run: |
-          test -f out/index.html
-          grep -q "Momentum Distribution" out/index.html
+      - name: Verify Pages artifact
+        run: npm run verify:pages
+        env:
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
