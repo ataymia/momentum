@@ -1,10 +1,11 @@
 "use client";
 
-import { Dispatch, ReactNode, SetStateAction, createContext, useContext, useEffect, useState } from "react";
+import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { HCM_STORAGE_KEY, HCMState, createHcmSeed, normalizeHcmState } from "./hcm-engine";
 import { useWorkspace } from "./workspace-context";
 
-type HcmContextValue={hcm:HCMState;setHcm:Dispatch<SetStateAction<HCMState>>;resetHcm:()=>void;reloadHcm:()=>void};
+type HcmMutation=HCMState|((state:HCMState)=>unknown);
+type HcmContextValue={hcm:HCMState;setHcm:(mutation:HcmMutation)=>void;resetHcm:()=>void;reloadHcm:()=>void};
 const HcmContext=createContext<HcmContextValue|null>(null);
 
 const readState=(data:ReturnType<typeof useWorkspace>["data"]):HCMState=>{
@@ -14,10 +15,11 @@ const readState=(data:ReturnType<typeof useWorkspace>["data"]):HCMState=>{
 
 export function HcmProvider({children}:{children:ReactNode}){
   const {data}=useWorkspace();
-  const [hcm,setHcm]=useState<HCMState>(()=>readState(data));
+  const [hcm,setState]=useState<HCMState>(()=>readState(data));
   useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(HCM_STORAGE_KEY,JSON.stringify(hcm));},[hcm]);
-  const resetHcm=()=>setHcm(createHcmSeed(data));
-  const reloadHcm=()=>setHcm(readState(data));
+  const setHcm=(mutation:HcmMutation)=>setState((current)=>normalizeHcmState(typeof mutation==="function"?mutation(current):mutation,data));
+  const resetHcm=()=>setState(createHcmSeed(data));
+  const reloadHcm=()=>setState(readState(data));
   return <HcmContext.Provider value={{hcm,setHcm,resetHcm,reloadHcm}}>{children}</HcmContext.Provider>;
 }
 
