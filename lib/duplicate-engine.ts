@@ -2,7 +2,7 @@ import type { Account } from "./types";
 
 export type AccountDuplicateInput = Pick<Account, "name" | "location" | "phone" | "email"> & { streetAddress?: string; locationName?: string };
 export type DuplicateMatch = { account: Account; reason: string; confidence: "Exact" | "Strong" };
-const normalizeText = (value?: string) => (value ?? "").toLowerCase().replace(/\b(street|st|avenue|ave|road|rd|boulevard|blvd|suite|ste|unit)\b/g, " ").replace(/[^a-z0-9]/g, "").trim();
+const normalizeText = (value?: string) => (value ?? "").toLowerCase().replace(/\bwest\b/g, "w").replace(/\beast\b/g, "e").replace(/\bnorth\b/g, "n").replace(/\bsouth\b/g, "s").replace(/\b(street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|court|ct|parkway|pkwy|suite|ste|unit)\b/g, " ").replace(/[^a-z0-9]/g, "").trim();
 const normalizePhone = (value?: string) => (value ?? "").replace(/\D/g, "").slice(-10);
 const normalizeEmail = (value?: string) => (value ?? "").trim().toLowerCase();
 
