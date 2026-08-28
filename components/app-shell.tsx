@@ -1,11 +1,12 @@
 "use client";
 
-import { BarChart3, Bell, Boxes, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, Command, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings, ShoppingCart, Store, UsersRound, X } from "lucide-react";
+import { BarChart3, Bell, Boxes, BriefcaseBusiness, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, Command, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings, ShoppingCart, Store, UsersRound, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { canAccessPage } from "../lib/access";
 import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
 import { AccountsPage } from "./pages/accounts";
+import { CompanyPage } from "./pages/company";
 import { DashboardPage } from "./pages/dashboard";
 import { DispatchPage } from "./pages/dispatch";
 import { InventoryPage } from "./pages/inventory";
@@ -23,6 +24,7 @@ const primaryNav: NavItem[] = [
   { key: "accounts", label: "Sales & accounts", icon: Building2 }, { key: "dispatch", label: "Schedule & dispatch", icon: CalendarDays },
   { key: "retail", label: "Retail execution", icon: Store }, { key: "orders", label: "Orders", icon: ShoppingCart },
   { key: "inventory", label: "Supply & inventory", icon: Boxes }, { key: "people", label: "People & time", icon: UsersRound },
+  { key: "company", label: "Company hub", icon: BriefcaseBusiness },
 ];
 const secondaryNav: NavItem[] = [{ key: "reports", label: "Reports", icon: BarChart3 }, { key: "settings", label: "Administration", icon: Settings }];
 const labelFor = (item: NavItem, user: WorkspaceUser) => user.role !== "Customer" ? item.label : item.key === "home" ? "Account overview" : item.key === "accounts" ? "My account" : item.key === "orders" ? "My orders" : item.label;
@@ -39,7 +41,7 @@ function PageView() {
   switch (activePage) {
     case "home": return <DashboardPage />; case "work": return <WorkPage />; case "accounts": return <AccountsPage />;
     case "dispatch": return <DispatchPage />; case "retail": return <RetailPage />; case "orders": return <OrdersPage />;
-    case "inventory": return <InventoryPage />; case "people": return <PeoplePage />; case "reports": return <ReportsPage />;
+    case "inventory": return <InventoryPage />; case "people": return <PeoplePage />; case "company": return <CompanyPage />; case "reports": return <ReportsPage />;
     case "settings": return <SettingsPage />; default: return <DashboardPage />;
   }
 }
