@@ -1,4 +1,4 @@
-import type { OrderStatus, WorkspaceData } from "./types";
+import type { WorkspaceData } from "./types";
 
 export const SALES_REP_ACCOUNT_BONUS_RULE = {
   openingOrderCases: 10,
@@ -6,11 +6,10 @@ export const SALES_REP_ACCOUNT_BONUS_RULE = {
   sustainedAccountCases: 40,
   sustainedBonusAmount: 25,
   windowDays: 90,
-  countedStatuses: ["Delivered", "Paid"] as OrderStatus[],
-  countingBasisLabel: "Delivered / paid orders (demo proxy; final earned-state rule still requires owner confirmation)",
+  countingBasisLabel: "Paid orders only; 90-day clock starts on the first order date",
 };
 
-export type BonusMilestoneStatus = "Not started" | "Tracking" | "Eligibility detected" | "Window expired";
+export type BonusMilestoneStatus = "Not started" | "Awaiting payment" | "Tracking" | "Earned" | "Window expired" | "Not qualified";
 
 export type BonusMilestone = {
   id: string;
@@ -34,61 +33,64 @@ const addDays = (value: string, days: number) => {
   date.setDate(date.getDate() + days);
   return dateKey(date);
 };
+const isPaid = (order: WorkspaceData["orders"][number]) => order.status === "Paid" && order.paymentStatus === "Paid";
 
 export function evaluateSalesRepAccountBonuses(data: WorkspaceData, asOf = new Date()): BonusMilestone[] {
   const rule = SALES_REP_ACCOUNT_BONUS_RULE;
-  const counted = new Set<OrderStatus>(rule.countedStatuses);
   const repIds = new Set(data.users.filter((user) => user.role === "Sales Representative").map((user) => user.id));
   const asOfKey = dateKey(asOf);
   const signals: BonusMilestone[] = [];
 
   for (const account of data.accounts.filter((item) => repIds.has(item.ownerId))) {
-    const completedOrders = data.orders
-      .filter((order) => order.accountId === account.id && counted.has(order.status))
+    const allOrders = data.orders
+      .filter((order) => order.accountId === account.id)
       .sort((a, b) => a.placedAt.localeCompare(b.placedAt));
-    const firstCompletedOrder = completedOrders[0];
+    const firstOrder = allOrders[0];
 
-    if (!firstCompletedOrder) {
+    if (!firstOrder) {
       signals.push({
         id: `bonus-${account.id}-opening`, accountId: account.id, repId: account.ownerId,
         milestone: "Opening order", amount: rule.openingBonusAmount, thresholdCases: rule.openingOrderCases,
         observedCases: 0, status: "Not started", evidenceOrderIds: [],
-        ruleNote: `First qualifying order must be at least ${rule.openingOrderCases} cases.`,
+        ruleNote: `The first order must be at least ${rule.openingOrderCases} cases and payment must clear before the bonus is earned.`,
       });
       signals.push({
         id: `bonus-${account.id}-sustained`, accountId: account.id, repId: account.ownerId,
         milestone: "Sustained account", amount: rule.sustainedBonusAmount, thresholdCases: rule.sustainedAccountCases,
         observedCases: 0, status: "Not started", evidenceOrderIds: [],
-        ruleNote: `${rule.sustainedAccountCases} cumulative cases within ${rule.windowDays} days after the account window starts.`,
+        ruleNote: `The ${rule.windowDays}-day clock begins when the first order is placed. Only paid orders count toward the ${rule.sustainedAccountCases}-case milestone.`,
       });
       continue;
     }
 
-    const openingEligible = firstCompletedOrder.cases >= rule.openingOrderCases;
-    const windowStart = firstCompletedOrder.placedAt;
+    const windowStart = firstOrder.placedAt;
     const windowEnd = addDays(windowStart, rule.windowDays);
-    const ordersInWindow = completedOrders.filter((order) => order.placedAt >= windowStart && order.placedAt <= windowEnd);
-    const cumulativeCases = ordersInWindow.reduce((sum, order) => sum + order.cases, 0);
+    const openingQualified = firstOrder.cases >= rule.openingOrderCases;
+    const openingPaid = isPaid(firstOrder);
+    const paidOrdersInWindow = allOrders.filter((order) => order.placedAt >= windowStart && order.placedAt <= windowEnd && isPaid(order));
+    const cumulativePaidCases = paidOrdersInWindow.reduce((sum, order) => sum + order.cases, 0);
     const expired = asOfKey > windowEnd;
 
     signals.push({
       id: `bonus-${account.id}-opening`, accountId: account.id, repId: account.ownerId,
       milestone: "Opening order", amount: rule.openingBonusAmount, thresholdCases: rule.openingOrderCases,
-      observedCases: firstCompletedOrder.cases,
-      status: openingEligible ? "Eligibility detected" : "Window expired",
+      observedCases: firstOrder.cases,
+      status: !openingQualified ? "Not qualified" : openingPaid ? "Earned" : "Awaiting payment",
       windowStart, windowEnd,
-      evidenceOrderIds: [firstCompletedOrder.id],
-      ruleNote: `Opening-order signal uses the first completed order on record. Counting basis: ${rule.countingBasisLabel}.`,
+      evidenceOrderIds: [firstOrder.id],
+      ruleNote: openingQualified
+        ? `Opening order met the ${rule.openingOrderCases}-case threshold. The $${rule.openingBonusAmount} becomes earned only after that order is paid.`
+        : `The first order was below ${rule.openingOrderCases} cases, so it does not earn the opening-order bonus.`,
     });
 
     signals.push({
       id: `bonus-${account.id}-sustained`, accountId: account.id, repId: account.ownerId,
       milestone: "Sustained account", amount: rule.sustainedBonusAmount, thresholdCases: rule.sustainedAccountCases,
-      observedCases: cumulativeCases,
-      status: openingEligible && cumulativeCases >= rule.sustainedAccountCases ? "Eligibility detected" : expired ? "Window expired" : "Tracking",
+      observedCases: cumulativePaidCases,
+      status: cumulativePaidCases >= rule.sustainedAccountCases ? "Earned" : expired ? "Window expired" : "Tracking",
       windowStart, windowEnd,
-      evidenceOrderIds: ordersInWindow.map((order) => order.id),
-      ruleNote: `${rule.sustainedAccountCases} cumulative cases within ${rule.windowDays} days. This is an eligibility signal, not a payroll payment instruction.`,
+      evidenceOrderIds: paidOrdersInWindow.map((order) => order.id),
+      ruleNote: `${cumulativePaidCases}/${rule.sustainedAccountCases} paid cases inside the ${rule.windowDays}-day window that began with the first order on ${windowStart}.`,
     });
   }
 
