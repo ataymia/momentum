@@ -1,32 +1,152 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
-import { ACCOUNTING_STORAGE_KEY, AccountingBasis, AccountingRule, AccountingState, InventoryValuation, JournalEntry, LedgerAccount, Reconciliation, SourceEventType, accountBalance, buildJournalFromEvent, createAccountingSeed, journalBalanced, normalizeAccountingState, sourceEvents, unprocessedSourceEvents } from "./accounting-engine";
+import {
+  ACCOUNTING_STORAGE_KEY,
+  AccountingBasis,
+  AccountingRule,
+  AccountingState,
+  InventoryValuation,
+  JournalEntry,
+  LedgerAccount,
+  Reconciliation,
+  accountBalance,
+  buildJournalFromEvent,
+  createAccountingSeed,
+  journalBalanced,
+  normalizeAccountingState,
+  sourceEvents,
+  unprocessedSourceEvents,
+} from "./accounting-engine";
 import { useCommerce } from "./commerce-context";
 import { useInventoryLedger } from "./inventory-ledger-context";
 import { useWorkspace } from "./workspace-context";
 
-const now=()=>new Date().toISOString();const uid=(prefix:string)=>`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-type AccountingContextValue={accounting:AccountingState;events:ReturnType<typeof sourceEvents>;setSettings:(basis:AccountingBasis,inventoryValuation:InventoryValuation)=>void;addAccount:(input:Omit<LedgerAccount,"id">)=>string;addRule:(input:Omit<AccountingRule,"id">)=>string;toggleRule:(id:string,active:boolean)=>void;runAutomation:()=>number;postJournal:(id:string)=>boolean;voidJournal:(id:string,reason:string)=>void;addManualJournal:(input:{date:string;memo:string;debitAccountId:string;creditAccountId:string;amount:number})=>string|null;createReconciliation:(accountId:string,periodEnd:string,statementEndingBalance:number)=>string|null;reconcile:(id:string,note:string)=>void;resetAccounting:()=>void};
-const AccountingContext=createContext<AccountingContextValue|null>(null);
+const now = () => new Date().toISOString();
+const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-export function AccountingProvider({children}:{children:ReactNode}){
-  const{currentUser}=useWorkspace();const{commerce}=useCommerce();const{ledger}=useInventoryLedger();
-  const read=()=>{if(typeof window==="undefined")return createAccountingSeed();try{return normalizeAccountingState(JSON.parse(window.localStorage.getItem(ACCOUNTING_STORAGE_KEY)??"null"));}catch{return createAccountingSeed();}};const[accounting,setAccounting]=useState<AccountingState>(()=>read());
-  useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(ACCOUNTING_STORAGE_KEY,JSON.stringify(accounting));},[accounting]);
-  const events=useMemo(()=>sourceEvents(commerce,ledger),[commerce,ledger]);
-  const setSettings=(basis:AccountingBasis,inventoryValuation:InventoryValuation)=>setAccounting((state)=>({...state,settings:{...state.settings,basis,inventoryValuation}}));
-  const addAccount=(input:Omit<LedgerAccount,"id">)=>{const id=uid("account");setAccounting((state)=>({...state,accounts:[{...input,id},...state.accounts]}));return id;};
-  const addRule=(input:Omit<AccountingRule,"id">)=>{const id=uid("rule");setAccounting((state)=>({...state,rules:[{...input,id},...state.rules]}));return id;};
-  const toggleRule=(id:string,active:boolean)=>setAccounting((state)=>({...state,rules:state.rules.map((rule)=>rule.id===id?{...rule,active}:rule)}));
-  const runAutomation=()=>{if(!currentUser)return 0;const pending=unprocessedSourceEvents(accounting,events);const journals=pending.map((event)=>buildJournalFromEvent(accounting,event,currentUser.id)).filter((entry):entry is JournalEntry=>Boolean(entry));if(!journals.length)return 0;setAccounting((state)=>({...state,journals:[...journals,...state.journals]}));return journals.length;};
-  const postJournal=(id:string)=>{let posted=false;setAccounting((state)=>({...state,journals:state.journals.map((entry)=>{if(entry.id!==id||entry.status!=="Draft"||!journalBalanced(entry))return entry;posted=true;return{...entry,status:"Posted",postedAt:now(),postedBy:currentUser?.id??"system"};})}));return posted;};
-  const voidJournal=(id:string,reason:string)=>{if(!reason.trim())return;setAccounting((state)=>({...state,journals:state.journals.map((entry)=>entry.id===id&&entry.status==="Posted"?{...entry,status:"Voided",voidReason:reason.trim(),voidedAt:now(),voidedBy:currentUser?.id??"system"}:entry)}));};
-  const addManualJournal=(input:{date:string;memo:string;debitAccountId:string;creditAccountId:string;amount:number})=>{if(!input.memo.trim()||input.amount<=0||input.debitAccountId===input.creditAccountId)return null;const id=uid("journal");const number=`JE-${String(accounting.journals.length+1).padStart(5,"0")}`;const entry:JournalEntry={id,number,date:input.date,memo:input.memo.trim(),status:"Draft",sourceType:"Manual",sourceId:id,lines:[{id:uid("line"),accountId:input.debitAccountId,debit:input.amount,credit:0},{id:uid("line"),accountId:input.creditAccountId,debit:0,credit:input.amount}],createdAt:now(),createdBy:currentUser?.id??"system"};setAccounting((state)=>({...state,journals:[entry,...state.journals]}));return id;};
-  const createReconciliation=(accountId:string,periodEnd:string,statementEndingBalance:number)=>{const account=accounting.accounts.find((item)=>item.id===accountId);if(!account)return null;const ledgerEndingBalance=accountBalance(accounting,accountId,periodEnd);const id=uid("reconciliation");const record:Reconciliation={id,accountId,periodEnd,statementEndingBalance,ledgerEndingBalance,difference:statementEndingBalance-ledgerEndingBalance,status:"Open",createdAt:now(),createdBy:currentUser?.id??"system"};setAccounting((state)=>({...state,reconciliations:[record,...state.reconciliations]}));return id;};
-  const reconcile=(id:string,note:string)=>setAccounting((state)=>({...state,reconciliations:state.reconciliations.map((item)=>item.id===id&&Math.abs(item.difference)<0.005?{...item,status:"Reconciled",note:note.trim()||undefined,reconciledAt:now(),reconciledBy:currentUser?.id??"system"}:item)}));
-  const resetAccounting=()=>setAccounting(createAccountingSeed());
-  const value=useMemo(()=>({accounting,events,setSettings,addAccount,addRule,toggleRule,runAutomation,postJournal,voidJournal,addManualJournal,createReconciliation,reconcile,resetAccounting}),[accounting,events,currentUser]);
+type AccountingContextValue = {
+  accounting: AccountingState;
+  events: ReturnType<typeof sourceEvents>;
+  setSettings: (basis: AccountingBasis, inventoryValuation: InventoryValuation) => void;
+  addAccount: (input: Omit<LedgerAccount, "id">) => string;
+  addRule: (input: Omit<AccountingRule, "id">) => string;
+  toggleRule: (id: string, active: boolean) => void;
+  runAutomation: () => number;
+  postJournal: (id: string) => boolean;
+  voidJournal: (id: string, reason: string) => void;
+  addManualJournal: (input: { date: string; memo: string; debitAccountId: string; creditAccountId: string; amount: number }) => string | null;
+  createReconciliation: (accountId: string, periodEnd: string, statementEndingBalance: number) => string | null;
+  reconcile: (id: string, note: string) => void;
+  resetAccounting: () => void;
+};
+
+const AccountingContext = createContext<AccountingContextValue | null>(null);
+
+export function AccountingProvider({ children }: { children: ReactNode }) {
+  const { currentUser } = useWorkspace();
+  const { commerce } = useCommerce();
+  const { ledger } = useInventoryLedger();
+  const read = () => {
+    if (typeof window === "undefined") return createAccountingSeed();
+    try {
+      return normalizeAccountingState(JSON.parse(window.localStorage.getItem(ACCOUNTING_STORAGE_KEY) ?? "null"));
+    } catch {
+      return createAccountingSeed();
+    }
+  };
+  const [accounting, setAccounting] = useState<AccountingState>(() => read());
+
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem(ACCOUNTING_STORAGE_KEY, JSON.stringify(accounting));
+  }, [accounting]);
+
+  const events = useMemo(() => sourceEvents(commerce, ledger), [commerce, ledger]);
+  const setSettings = (basis: AccountingBasis, inventoryValuation: InventoryValuation) => setAccounting((state) => ({ ...state, settings: { ...state.settings, basis, inventoryValuation } }));
+  const addAccount = (input: Omit<LedgerAccount, "id">) => {
+    const id = uid("account");
+    setAccounting((state) => ({ ...state, accounts: [{ ...input, id }, ...state.accounts] }));
+    return id;
+  };
+  const addRule = (input: Omit<AccountingRule, "id">) => {
+    const id = uid("rule");
+    setAccounting((state) => ({ ...state, rules: [{ ...input, id }, ...state.rules] }));
+    return id;
+  };
+  const toggleRule = (id: string, active: boolean) => setAccounting((state) => ({ ...state, rules: state.rules.map((rule) => rule.id === id ? { ...rule, active } : rule) }));
+  const runAutomation = () => {
+    if (!currentUser) return 0;
+    const pending = unprocessedSourceEvents(accounting, events);
+    const journals = pending.map((event) => buildJournalFromEvent(accounting, event, currentUser.id)).filter((entry): entry is JournalEntry => Boolean(entry));
+    if (!journals.length) return 0;
+    setAccounting((state) => ({ ...state, journals: [...journals, ...state.journals] }));
+    return journals.length;
+  };
+  const postJournal = (id: string) => {
+    let posted = false;
+    setAccounting((state) => ({
+      ...state,
+      journals: state.journals.map((entry) => {
+        if (entry.id !== id || entry.status !== "Draft" || !journalBalanced(entry)) return entry;
+        posted = true;
+        return { ...entry, status: "Posted", postedAt: now(), postedBy: currentUser?.id ?? "system" };
+      }),
+    }));
+    return posted;
+  };
+  const voidJournal = (id: string, reason: string) => {
+    if (!reason.trim()) return;
+    setAccounting((state) => ({ ...state, journals: state.journals.map((entry) => entry.id === id && entry.status === "Posted" ? { ...entry, status: "Voided", voidReason: reason.trim(), voidedAt: now(), voidedBy: currentUser?.id ?? "system" } : entry) }));
+  };
+  const addManualJournal = (input: { date: string; memo: string; debitAccountId: string; creditAccountId: string; amount: number }) => {
+    if (!input.memo.trim() || input.amount <= 0 || input.debitAccountId === input.creditAccountId) return null;
+    const id = uid("journal");
+    const number = `JE-${String(accounting.journals.length + 1).padStart(5, "0")}`;
+    const entry: JournalEntry = {
+      id,
+      number,
+      date: input.date,
+      memo: input.memo.trim(),
+      status: "Draft",
+      sourceType: "Manual",
+      sourceId: id,
+      lines: [
+        { id: uid("line"), accountId: input.debitAccountId, debit: input.amount, credit: 0 },
+        { id: uid("line"), accountId: input.creditAccountId, debit: 0, credit: input.amount },
+      ],
+      createdAt: now(),
+      createdBy: currentUser?.id ?? "system",
+    };
+    setAccounting((state) => ({ ...state, journals: [entry, ...state.journals] }));
+    return id;
+  };
+  const createReconciliation = (accountId: string, periodEnd: string, statementEndingBalance: number) => {
+    const account = accounting.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+    const ledgerEndingBalance = accountBalance(accounting, accountId, periodEnd);
+    const id = uid("reconciliation");
+    const record: Reconciliation = {
+      id,
+      accountId,
+      periodEnd,
+      statementEndingBalance,
+      ledgerEndingBalance,
+      difference: statementEndingBalance - ledgerEndingBalance,
+      status: "Open",
+      createdAt: now(),
+      createdBy: currentUser?.id ?? "system",
+    };
+    setAccounting((state) => ({ ...state, reconciliations: [record, ...state.reconciliations] }));
+    return id;
+  };
+  const reconcile = (id: string, note: string) => setAccounting((state) => ({ ...state, reconciliations: state.reconciliations.map((item) => item.id === id && Math.abs(item.difference) < 0.005 ? { ...item, status: "Reconciled", note: note.trim() || undefined, reconciledAt: now(), reconciledBy: currentUser?.id ?? "system" } : item) }));
+  const resetAccounting = () => setAccounting(createAccountingSeed());
+  const value: AccountingContextValue = { accounting, events, setSettings, addAccount, addRule, toggleRule, runAutomation, postJournal, voidJournal, addManualJournal, createReconciliation, reconcile, resetAccounting };
   return <AccountingContext.Provider value={value}>{children}</AccountingContext.Provider>;
 }
-export function useAccounting(){const value=useContext(AccountingContext);if(!value)throw new Error("useAccounting must be used inside AccountingProvider");return value;}
+
+export function useAccounting() {
+  const value = useContext(AccountingContext);
+  if (!value) throw new Error("useAccounting must be used inside AccountingProvider");
+  return value;
+}
