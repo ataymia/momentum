@@ -1,162 +1,73 @@
 "use client";
 
-import {
-  AlertTriangle,
-  ArrowRight,
-  Check,
-  CheckCircle2,
-  Clock3,
-  Coffee,
-  FileCheck2,
-  RotateCcw,
-  Send,
-  ShieldCheck,
-  UserCheck,
-  UsersRound,
-  WalletCards,
-  X,
-} from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, ArrowRight, BookOpenCheck, BriefcaseBusiness, CalendarClock, Check, CheckCircle2, Clock3, Coffee, FileCheck2, FileText, HeartHandshake, RotateCcw, Send, ShieldCheck, UserCheck, UsersRound, X } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "../../lib/workspace-context";
-import { Avatar, Button, PageHeader, Section, StatusPill, formatDate, hoursBetween } from "../ui";
+import { Avatar, Button, Field, PageHeader, Section, StatusPill, formatDate, hoursBetween } from "../ui";
 
-const timecardTone = (status: string) => {
-  if (["Manager approved", "Payroll ready"].includes(status)) return "success" as const;
-  if (status === "Submitted") return "info" as const;
-  if (status === "Returned") return "danger" as const;
-  return "neutral" as const;
+type LeaveRequest = { id:string; userId:string; startDate:string; endDate:string; reason:string; submittedAt:string; status:"Submitted"|"Approved"|"Returned"; reviewerId?:string };
+type EmployeeDocument = { id:string; userId:string; title:string; category:"Employment"|"Compensation"|"Benefits"|"Policy"; status:"Available"|"Acknowledgment required"|"Missing"; fileName?:string; acknowledgedAt?:string };
+type TrainingAssignment = { id:string; userId:string; title:string; category:string; dueDate?:string; status:"Assigned"|"In progress"|"Complete"; completedAt?:string };
+type Goal = { id:string; userId:string; title:string; measure:string; status:"Active"|"Complete" };
+type HRState = { leave:LeaveRequest[]; documents:EmployeeDocument[]; training:TrainingAssignment[]; goals:Goal[] };
+const HR_KEY = "momentum-hr-v2";
+const seedHR:HRState = {
+  leave:[],
+  documents:[
+    { id:"doc-jordan-employment",userId:"usr-jordan",title:"Employment agreement",category:"Employment",status:"Missing" },
+    { id:"doc-jordan-comp",userId:"usr-jordan",title:"Sales compensation plan",category:"Compensation",status:"Missing" },
+    { id:"doc-jordan-benefits",userId:"usr-jordan",title:"Benefits summary",category:"Benefits",status:"Missing" },
+  ],
+  training:[
+    { id:"tr-jordan-1",userId:"usr-jordan",title:"Golden Eagle sales field onboarding",category:"Role onboarding",status:"Assigned" },
+    { id:"tr-elena-1",userId:"usr-elena",title:"Inventory custody and fulfillment controls",category:"Operations",status:"Assigned" },
+  ],
+  goals:[],
 };
+const loadHR=():HRState=>{if(typeof window==="undefined")return seedHR;try{return JSON.parse(window.localStorage.getItem(HR_KEY)??JSON.stringify(seedHR)) as HRState;}catch{return seedHR;}};
+const timecardTone=(status:string)=>["Manager approved","Payroll ready"].includes(status)?"success" as const:status==="Submitted"?"info" as const:status==="Returned"?"danger" as const:"neutral" as const;
 
-export function PeoplePage() {
-  const {
-    data,
-    scope,
-    currentUser,
-    toggleClock,
-    startMeal,
-    endMeal,
-    submitTimecard,
-    decideTimecard,
-  } = useWorkspace();
-  const [tab, setTab] = useState<"mine" | "review">("mine");
-  const myTimecard = scope.timecards.find((card) => card.userId === currentUser?.id);
-  const myEntries = scope.timeEntries.filter((entry) => entry.userId === currentUser?.id && (!myTimecard || (entry.date >= myTimecard.weekStart && entry.date <= myTimecard.weekEnd)));
-  const activeEntry = myEntries.find((entry) => !entry.clockOut);
-  const mealOpen = Boolean(activeEntry?.mealStart && !activeEntry.mealEnd);
-  const reviewCards = scope.timecards.filter((card) => card.status === "Submitted" && card.userId !== currentUser?.id);
-  const canReview = currentUser?.role === "Administrator" || currentUser?.role === "Sales Manager";
-  const myHours = myEntries.reduce((sum, entry) => sum + hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes), 0);
+export function PeoplePage(){
+  const {data,scope,currentUser,toggleClock,startMeal,endMeal,submitTimecard,decideTimecard}=useWorkspace();
+  const [tab,setTab]=useState<"profile"|"time"|"leave"|"benefits"|"learning"|"review">("profile");
+  const [hr,setHR]=useState<HRState>(loadHR);
+  const [leaveStart,setLeaveStart]=useState("");const[leaveEnd,setLeaveEnd]=useState("");const[leaveReason,setLeaveReason]=useState("");
+  const [documentTitle,setDocumentTitle]=useState("");const[documentCategory,setDocumentCategory]=useState<EmployeeDocument["category"]>("Employment");const[documentFile,setDocumentFile]=useState("");
+  const canReview=currentUser?.role==="Administrator"||currentUser?.role==="Sales Manager";
+  const admin=currentUser?.role==="Administrator";
+  useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(HR_KEY,JSON.stringify(hr));},[hr]);
 
-  return (
-    <div className="page page--people">
-      <PageHeader
-        eyebrow="People operations"
-        title="People & time"
-        description="Worked time, meals, employee attestation, manager review, corrections, and payroll handoff from the same source record."
-        actions={<StatusPill tone="gold">Weekly pay period · demo</StatusPill>}
-      />
+  const myTimecard=scope.timecards.find((card)=>card.userId===currentUser?.id);
+  const myEntries=scope.timeEntries.filter((entry)=>entry.userId===currentUser?.id&&(!myTimecard||(entry.date>=myTimecard.weekStart&&entry.date<=myTimecard.weekEnd)));
+  const activeEntry=myEntries.find((entry)=>!entry.clockOut);const mealOpen=Boolean(activeEntry?.mealStart&&!activeEntry.mealEnd);
+  const reviewCards=scope.timecards.filter((card)=>card.status==="Submitted"&&card.userId!==currentUser?.id);
+  const myHours=myEntries.reduce((sum,entry)=>sum+hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes),0);
+  const myDocs=hr.documents.filter((doc)=>doc.userId===currentUser?.id);
+  const myTraining=hr.training.filter((item)=>item.userId===currentUser?.id);
+  const myLeave=hr.leave.filter((item)=>item.userId===currentUser?.id);
+  const reviewLeave=hr.leave.filter((request)=>request.userId!==currentUser?.id&&request.status==="Submitted"&&canReviewLeave(request));
+  const visibleEmployees=admin?data.users.filter((u)=>u.role!=="Customer"):currentUser?.role==="Sales Manager"?scope.users.filter((u)=>u.role!=="Customer"):currentUser?[currentUser]:[];
 
-      <div className="payroll-control-alert">
-        <ShieldCheck size={20} />
-        <div><strong>Approval verifies the record; it does not rewrite worked time.</strong><p>Clock, meal, correction, and attestation details stay visible so a reviewer can understand the week before deciding.</p></div>
-      </div>
+  function canReviewLeave(request:LeaveRequest){if(!currentUser)return false;if(admin)return true;if(currentUser.role!=="Sales Manager")return false;const employee=data.users.find((u)=>u.id===request.userId);return employee?.managerId===currentUser.id||employee?.team===currentUser.team;}
+  const submitLeave=(event:FormEvent)=>{event.preventDefault();if(!currentUser||!leaveStart||!leaveEnd||!leaveReason.trim()||leaveEnd<leaveStart)return;const next:LeaveRequest={id:`leave-${Date.now()}`,userId:currentUser.id,startDate:leaveStart,endDate:leaveEnd,reason:leaveReason.trim(),submittedAt:new Date().toISOString(),status:"Submitted"};setHR((current)=>({...current,leave:[next,...current.leave]}));setLeaveStart("");setLeaveEnd("");setLeaveReason("");};
+  const decideLeave=(id:string,status:"Approved"|"Returned")=>setHR((current)=>({...current,leave:current.leave.map((request)=>request.id===id&&canReviewLeave(request)?{...request,status,reviewerId:currentUser?.id}:request)}));
+  const addDocument=(event:FormEvent)=>{event.preventDefault();if(!admin||!documentTitle.trim()||!documentFile)return;const userId=visibleEmployees[0]?.id;if(!userId)return;const next:EmployeeDocument={id:`doc-${Date.now()}`,userId,title:documentTitle.trim(),category:documentCategory,status:"Available",fileName:documentFile};setHR((current)=>({...current,documents:[next,...current.documents]}));setDocumentTitle("");setDocumentFile("");};
+  const acknowledge=(id:string)=>setHR((current)=>({...current,documents:current.documents.map((doc)=>doc.id===id&&doc.userId===currentUser?.id?{...doc,status:"Available",acknowledgedAt:new Date().toISOString()}:doc)}));
+  const completeTraining=(id:string)=>setHR((current)=>({...current,training:current.training.map((item)=>item.id===id&&item.userId===currentUser?.id?{...item,status:"Complete",completedAt:new Date().toISOString()}:item)}));
 
-      <div className="people-tabs">
-        <button className={tab === "mine" ? "is-active" : ""} onClick={() => setTab("mine")}><Clock3 size={17} /> My time</button>
-        {canReview && <button className={tab === "review" ? "is-active" : ""} onClick={() => setTab("review")}><UserCheck size={17} /> Manager review <i>{reviewCards.length}</i></button>}
-      </div>
+  return <div className="page page--people"><PageHeader eyebrow="Human resources & workforce management" title="People & HR" description="Employee records, time, leave, benefits, documents, training, performance, and manager approvals live together so the employee lifecycle remains traceable." actions={<StatusPill tone="gold">Native HR workspace</StatusPill>}/>
+    <div className="company-tabs"><button className={tab==="profile"?"is-active":""} onClick={()=>setTab("profile")}>Profile & documents</button><button className={tab==="time"?"is-active":""} onClick={()=>setTab("time")}>Time & attendance</button><button className={tab==="leave"?"is-active":""} onClick={()=>setTab("leave")}>Time off</button><button className={tab==="benefits"?"is-active":""} onClick={()=>setTab("benefits")}>Benefits</button><button className={tab==="learning"?"is-active":""} onClick={()=>setTab("learning")}>Learning & performance</button>{canReview&&<button className={tab==="review"?"is-active":""} onClick={()=>setTab("review")}>Manager review <i>{reviewCards.length+reviewLeave.length}</i></button>}</div>
 
-      {tab === "mine" && (
-        <>
-          <div className="time-overview">
-            <section className={`clock-card ${activeEntry ? "is-running" : ""}`}>
-              <div className="clock-card__top"><span><Clock3 size={21} /></span><StatusPill tone={mealOpen ? "gold" : activeEntry ? "success" : "neutral"}>{mealOpen ? "On meal" : activeEntry ? "On the clock" : "Clocked out"}</StatusPill></div>
-              <p>{formatDate(new Date().toISOString(), { weekday: "long", month: "long", day: "numeric" })}</p>
-              <strong className="clock-card__time">{mealOpen ? `Meal since ${activeEntry?.mealStart}` : activeEntry ? `Since ${activeEntry.clockIn}` : `${myHours.toFixed(2)} hrs`}</strong>
-              <small>{activeEntry ? "Clock and meal events are kept as separate facts." : "Recorded in the current demo pay period."}</small>
-              <div className="clock-actions">
-                <Button variant={activeEntry ? "danger" : "primary"} size="lg" icon={activeEntry ? <X size={17} /> : <ArrowRight size={17} />} onClick={toggleClock} disabled={mealOpen}>
-                  {activeEntry ? "Clock out" : "Clock in"}
-                </Button>
-                {activeEntry && !activeEntry.mealStart && <Button variant="secondary" size="lg" icon={<Coffee size={17}/>} onClick={startMeal}>Start meal</Button>}
-                {mealOpen && <Button variant="gold" size="lg" icon={<Coffee size={17}/>} onClick={endMeal}>End meal</Button>}
-              </div>
-              {mealOpen && <p className="submit-blocker"><AlertTriangle size={14} /> End the meal period before clocking out.</p>}
-              <div className="clock-source"><span>Source</span><strong>Demo desktop · GPS off</strong></div>
-            </section>
+    {tab==="profile"&&<div className="company-grid company-grid--two"><Section title="Employee profile" description="The employee should always be able to see the records that define their employment relationship"><div className="employee-profile-card">{currentUser&&<><Avatar initials={currentUser.initials} color={currentUser.accent}/><div><strong>{currentUser.name}</strong><p>{currentUser.title}</p><small>{currentUser.email} · {currentUser.team} · reports to {data.users.find((u)=>u.id===currentUser.managerId)?.name??"Company leadership"}</small></div></>}</div><div className="hr-profile-facts"><div><span>Employment status</span><strong>Active demo user</strong></div><div><span>Role</span><strong>{currentUser?.role}</strong></div><div><span>Manager</span><strong>{data.users.find((u)=>u.id===currentUser?.managerId)?.name??"Leadership"}</strong></div><div><span>Document exceptions</span><strong>{myDocs.filter((doc)=>doc.status==="Missing").length}</strong></div></div></Section><Section title="My document vault" description="Employment agreement, compensation plan, benefits information, policies and acknowledgments remain available from the employee profile"><div className="asset-register">{myDocs.map((doc)=><article key={doc.id}><span><FileText size={20}/></span><div><strong>{doc.title}</strong><p>{doc.category}{doc.fileName?` · ${doc.fileName}`:" · file not loaded"}</p></div><StatusPill tone={doc.status==="Available"?"success":doc.status==="Missing"?"danger":"warning"}>{doc.status}</StatusPill>{doc.status==="Acknowledgment required"&&<Button size="sm" onClick={()=>acknowledge(doc.id)}>Acknowledge</Button>}</article>)}{myDocs.length===0&&<div className="review-empty"><p>No employee documents are assigned yet.</p></div>}</div>{admin&&<form className="form-grid hr-upload-form" onSubmit={addDocument}><Field label="Document title"><input required value={documentTitle} onChange={(e)=>setDocumentTitle(e.target.value)}/></Field><Field label="Category"><select value={documentCategory} onChange={(e)=>setDocumentCategory(e.target.value as EmployeeDocument["category"])}><option>Employment</option><option>Compensation</option><option>Benefits</option><option>Policy</option></select></Field><Field label="File metadata" className="field--full"><label className="receipt-upload"><FileCheck2 size={17}/><span>{documentFile||"Choose employee document"}</span><input type="file" accept=".pdf,.doc,.docx" onChange={(e)=>setDocumentFile(e.target.files?.[0]?.name??"")}/></label></Field><Button type="submit">Add to demo vault</Button></form>}</Section></div>}
 
-            <section className="weekly-card-summary">
-              <div className="weekly-card-summary__head"><div><small>Current pay period</small><h2>{myTimecard ? `${formatDate(myTimecard.weekStart, { month: "short", day: "numeric" })} – ${formatDate(myTimecard.weekEnd, { month: "short", day: "numeric" })}` : "No timecard"}</h2></div>{myTimecard && <StatusPill tone={timecardTone(myTimecard.status)}>{myTimecard.status}</StatusPill>}</div>
-              <div className="weekly-total"><span><strong>{myHours.toFixed(2)}</strong> hours</span><small>{myEntries.length} daily record{myEntries.length === 1 ? "" : "s"}</small></div>
-              <div className="daily-bars">
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, index) => {
-                  const dayEntries = myEntries.filter((entry) => { const weekday = new Date(`${entry.date}T12:00:00`).getDay(); return (weekday + 6) % 7 === index; });
-                  const hours = dayEntries.reduce((sum, entry) => sum + hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes), 0);
-                  return <div key={day}><span><i style={{ height: `${Math.max(6, hours * 8)}px` }} /></span><small>{day}</small></div>;
-                })}
-              </div>
-              {(myTimecard?.status === "Open" || myTimecard?.status === "Returned") && (
-                <Button icon={<Send size={17} />} onClick={() => submitTimecard(myTimecard.id)} disabled={Boolean(activeEntry)}>Attest & submit week</Button>
-              )}
-              {myTimecard?.status === "Submitted" && <div className="submitted-note"><CheckCircle2 size={17} /><span>Submitted for manager review. Ordinary editing is locked.</span></div>}
-              {myTimecard?.status === "Returned" && <div className="submitted-note submitted-note--returned"><RotateCcw size={17}/><span>Returned for correction. Review the source events, correct the issue, then resubmit.</span></div>}
-              {activeEntry && <p className="submit-blocker"><AlertTriangle size={14} /> Clock out before submitting this week.</p>}
-            </section>
-          </div>
+    {tab==="time"&&<><div className="payroll-control-alert"><ShieldCheck size={20}/><div><strong>Approval verifies the record; it does not rewrite worked time.</strong><p>Clock, meal, correction, and attestation details stay visible so payroll can trace every paid hour to source events.</p></div></div><div className="time-overview"><section className={`clock-card ${activeEntry?"is-running":""}`}><div className="clock-card__top"><span><Clock3 size={21}/></span><StatusPill tone={mealOpen?"gold":activeEntry?"success":"neutral"}>{mealOpen?"On meal":activeEntry?"On the clock":"Clocked out"}</StatusPill></div><p>{formatDate(new Date().toISOString(),{weekday:"long",month:"long",day:"numeric"})}</p><strong className="clock-card__time">{mealOpen?`Meal since ${activeEntry?.mealStart}`:activeEntry?`Since ${activeEntry.clockIn}`:`${myHours.toFixed(2)} hrs`}</strong><small>{activeEntry?"Clock and meal events are separate facts.":"Recorded in the current demo pay period."}</small><div className="clock-actions"><Button variant={activeEntry?"danger":"primary"} size="lg" icon={activeEntry?<X size={17}/>:<ArrowRight size={17}/>} onClick={toggleClock} disabled={mealOpen}>{activeEntry?"Clock out":"Clock in"}</Button>{activeEntry&&!activeEntry.mealStart&&<Button variant="secondary" size="lg" icon={<Coffee size={17}/>} onClick={startMeal}>Start meal</Button>}{mealOpen&&<Button variant="gold" size="lg" icon={<Coffee size={17}/>} onClick={endMeal}>End meal</Button>}</div>{mealOpen&&<p className="submit-blocker"><AlertTriangle size={14}/> End the meal period before clocking out.</p>}</section><section className="weekly-card-summary"><div className="weekly-card-summary__head"><div><small>Current pay period</small><h2>{myTimecard?`${formatDate(myTimecard.weekStart,{month:"short",day:"numeric"})} – ${formatDate(myTimecard.weekEnd,{month:"short",day:"numeric"})}`:"No timecard"}</h2></div>{myTimecard&&<StatusPill tone={timecardTone(myTimecard.status)}>{myTimecard.status}</StatusPill>}</div><div className="weekly-total"><span><strong>{myHours.toFixed(2)}</strong> hours</span><small>{myEntries.length} daily records</small></div>{(myTimecard?.status==="Open"||myTimecard?.status==="Returned")&&<Button icon={<Send size={17}/>} onClick={()=>submitTimecard(myTimecard.id)} disabled={Boolean(activeEntry)}>Attest & submit week</Button>}{myTimecard?.status==="Submitted"&&<div className="submitted-note"><CheckCircle2 size={17}/><span>Submitted for manager review.</span></div>}{activeEntry&&<p className="submit-blocker"><AlertTriangle size={14}/> Clock out before submitting this week.</p>}</section></div><Section title="Time events" description="Clock, meal, correction and source details"><div className="time-event-table time-event-table--head"><span>Date</span><span>Clock in</span><span>Meal start</span><span>Meal end</span><span>Clock out</span><span>Hours</span><span>Source</span><span>Status</span></div>{myEntries.map((entry)=><div className="time-event-table" key={entry.id}><span><strong>{formatDate(entry.date,{weekday:"short"})}</strong><small>{formatDate(entry.date,{month:"short",day:"numeric"})}</small></span><span>{entry.clockIn}</span><span>{entry.mealStart??"—"}</span><span>{entry.mealEnd??"—"}</span><span>{entry.clockOut??"Active"}</span><span>{entry.clockOut?hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes).toFixed(2):"—"}</span><span><strong>{entry.source}</strong>{entry.note&&<small>{entry.note}</small>}</span><span><StatusPill tone={entry.clockOut?"success":"info"}>{entry.clockOut?"Complete":"Open"}</StatusPill></span></div>)}</Section></>}
 
-          <Section title="Time events" description="Clock, meal, correction, and source details remain visible" className="time-events-panel">
-            <div className="time-event-table time-event-table--head"><span>Date</span><span>Clock in</span><span>Meal start</span><span>Meal end</span><span>Clock out</span><span>Hours</span><span>Source</span><span>Status</span></div>
-            {myEntries.map((entry) => (
-              <div className="time-event-table" key={entry.id}>
-                <span><strong>{formatDate(entry.date, { weekday: "short" })}</strong><small>{formatDate(entry.date, { month: "short", day: "numeric" })}</small></span>
-                <span>{entry.clockIn}</span><span>{entry.mealStart ?? (entry.breakMinutes ? `${entry.breakMinutes} min recorded` : "—")}</span><span>{entry.mealEnd ?? "—"}</span><span>{entry.clockOut ?? "Active"}</span><span>{entry.clockOut ? hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes).toFixed(2) : "—"}</span><span><strong>{entry.source}</strong>{entry.note && <small>{entry.note}</small>}</span><span><StatusPill tone={entry.clockOut ? "success" : "info"} dot={false}>{entry.clockOut ? "Complete" : mealOpen && activeEntry?.id === entry.id ? "Meal" : "Open"}</StatusPill></span>
-              </div>
-            ))}
-            {myEntries.length === 0 && <div className="list-empty">No time events in this demo week.</div>}
-          </Section>
-        </>
-      )}
+    {tab==="leave"&&<div className="company-grid company-grid--requests"><Section title="Request time off" description="Combined PTO/time-off requests route to the appropriate manager and retain the decision record"><form className="form-grid" onSubmit={submitLeave}><Field label="Start"><input type="date" required value={leaveStart} onChange={(e)=>setLeaveStart(e.target.value)}/></Field><Field label="End"><input type="date" required value={leaveEnd} onChange={(e)=>setLeaveEnd(e.target.value)}/></Field><Field label="Reason / note" className="field--full"><textarea required rows={4} value={leaveReason} onChange={(e)=>setLeaveReason(e.target.value)} placeholder="Time-off request details. Protected medical information should not be unnecessarily entered in general notes."/></Field><div className="form-callout"><CalendarClock size={17}/><p>The request workflow is active. Accrual, carryover, protected sick-time rules, blackout rules and balance calculations become effective-dated HR policies rather than hidden assumptions.</p></div><Button type="submit" icon={<CalendarClock size={16}/>}>Submit time-off request</Button></form></Section><Section title="My time-off requests" description="Submitted, approved and returned requests remain visible"><div className="company-request-list">{myLeave.map((request)=><article key={request.id}><div><small>{formatDate(request.submittedAt,{month:"short",day:"numeric"})}</small><strong>{formatDate(request.startDate,{month:"short",day:"numeric"})} – {formatDate(request.endDate,{month:"short",day:"numeric"})}</strong><p>{request.reason}</p></div><StatusPill tone={request.status==="Approved"?"success":request.status==="Returned"?"danger":"warning"}>{request.status}</StatusPill></article>)}{myLeave.length===0&&<div className="review-empty"><p>No time-off requests submitted.</p></div>}</div></Section></div>}
 
-      {tab === "review" && canReview && (
-        <div className="manager-review-layout">
-          <Section title="Submitted timecards" description="Review source punches and meals before the decision controls appear" className="timecard-review-list">
-            {reviewCards.map((card) => {
-              const employee = data.users.find((user) => user.id === card.userId);
-              const entries = scope.timeEntries.filter((entry) => entry.userId === card.userId && entry.date >= card.weekStart && entry.date <= card.weekEnd).sort((a,b) => a.date.localeCompare(b.date));
-              const hours = entries.reduce((sum, entry) => sum + hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes), 0);
-              return (
-                <article className="review-card" key={card.id}>
-                  <div className="review-card__person">{employee && <Avatar initials={employee.initials} color={employee.accent} />}<div><strong>{employee?.name}</strong><p>{employee?.title}</p></div><StatusPill tone="info">Submitted</StatusPill></div>
-                  <div className="review-card__facts"><div><small>Period</small><strong>{formatDate(card.weekStart, { month: "short", day: "numeric" })} – {formatDate(card.weekEnd, { month: "short", day: "numeric" })}</strong></div><div><small>Recorded</small><strong>{hours.toFixed(2)} hrs</strong></div><div><small>Attested</small><strong>{card.attested ? "Yes" : "No"}</strong></div></div>
-                  <div className="review-card__notice"><FileCheck2 size={16} /><span>Decision controls are inside the source-detail review below.</span></div>
-                  <details className="timecard-drilldown">
-                    <summary>Review punches, meals & attestation</summary>
-                    <div className="timecard-drilldown__table-wrap">
-                      <div className="timecard-drilldown__table timecard-drilldown__table--head"><span>Date</span><span>In</span><span>Meal start</span><span>Meal end</span><span>Out</span><span>Hours</span><span>Source / note</span></div>
-                      {entries.map(entry => <div className="timecard-drilldown__table" key={entry.id}><span>{formatDate(entry.date,{weekday:"short",month:"short",day:"numeric"})}</span><span>{entry.clockIn}</span><span>{entry.mealStart ?? (entry.breakMinutes ? `${entry.breakMinutes} min` : "—")}</span><span>{entry.mealEnd ?? "—"}</span><span>{entry.clockOut ?? "Open"}</span><span><strong>{hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes).toFixed(2)}</strong></span><span><strong>{entry.source}</strong>{entry.note && <small>{entry.note}</small>}</span></div>)}
-                    </div>
-                    <div className="review-card__actions"><Button variant="secondary" icon={<RotateCcw size={15} />} onClick={() => decideTimecard(card.id, "Returned")}>Return for correction</Button><Button icon={<Check size={16} />} onClick={() => decideTimecard(card.id, "Manager approved")}>Approve timecard</Button></div>
-                  </details>
-                </article>
-              );
-            })}
-            {reviewCards.length === 0 && <div className="review-empty"><CheckCircle2 size={24} /><h3>Queue clear</h3><p>No submitted timecards need manager review.</p></div>}
-          </Section>
+    {tab==="benefits"&&<div className="company-grid company-grid--two"><Section title="Benefits center" description="Employees will enroll, compare coverage, report life events and see plan documents here"><div className="company-list">{[[HeartHandshake,"Medical","Plan design, eligibility, employee contribution and enrollment window not configured"],[HeartHandshake,"Dental","Plan design, eligibility, employee contribution and enrollment window not configured"],[CalendarClock,"Paid time off","Combined time-off bank policy is being defined; requests already route through HR workflow"],[FileText,"Plan documents","Benefit summaries and controlling documents attach to the employee record once finalized"]].map(([Icon,title,copy])=>{const I=Icon as typeof HeartHandshake;return <div key={title as string}><span><I size={18}/></span><div><strong>{title as string}</strong><p>{copy as string}</p></div></div>;})}</div></Section><Section title="Benefits administration build" description="Native Momentum capabilities planned in this module"><div className="company-list company-list--questions">{["Plan setup and effective dates","Eligibility rules and waiting periods","Open enrollment and life-event enrollment","Dependent records and document evidence","Employee/employer contribution calculation","Payroll deduction handoff to the native payroll engine","Enrollment confirmations and benefit history"].map((item)=><div key={item}><span><Check size={17}/></span><div><p>{item}</p></div></div>)}</div></Section></div>}
 
-          <Section title="Momentum payroll pipeline" description="The platform owns the payroll workflow; an external rail only moves money" className="payroll-pipeline">
-            {[
-              [UsersRound, "Employee submits", "Attestation and source-time snapshot"],
-              [UserCheck, "Manager reviews", "Punches, meals, corrections, exceptions"],
-              [ShieldCheck, "Payroll control", "Pay rules, earnings, deductions, approvals"],
-              [WalletCards, "Payment rail handoff", "Release instruction and reconciliation"],
-            ].map(([Icon, title, detail], index) => {
-              const StepIcon = Icon as typeof UsersRound;
-              return <div key={title as string}><span><StepIcon size={18} /></span><div><strong>{title as string}</strong><p>{detail as string}</p></div><i>{index + 1}</i></div>;
-            })}
-            <div className="payroll-pipeline__gate"><AlertTriangle size={17} /><p>Live wage, tax, deduction, and payment rules remain intentionally unconfigured until approved business rules are entered.</p></div>
-          </Section>
-        </div>
-      )}
-    </div>
-  );
+    {tab==="learning"&&<div className="company-grid company-grid--two"><Section title="My learning" description="Role-specific training stays assigned to the employee record"><div className="asset-register">{myTraining.map((item)=><article key={item.id}><span><BookOpenCheck size={20}/></span><div><strong>{item.title}</strong><p>{item.category}{item.dueDate?` · due ${formatDate(item.dueDate,{month:"short",day:"numeric"})}`:""}</p></div><StatusPill tone={item.status==="Complete"?"success":"info"}>{item.status}</StatusPill>{item.status!=="Complete"&&<Button size="sm" onClick={()=>completeTraining(item.id)}>Mark complete</Button>}</article>)}{myTraining.length===0&&<div className="review-empty"><p>No training assignments yet.</p></div>}</div></Section><Section title="Talent & performance" description="The same employee record will carry onboarding, goals, reviews, feedback, skills and development"><div className="company-list">{[[BriefcaseBusiness,"Onboarding / offboarding","Role checklist, equipment, access, documents, required training and final handoff"],[UserCheck,"Goals & reviews","Effective-period goals, manager feedback, employee acknowledgment and development actions"],[UsersRound,"Recruiting / candidate handoff","Applicant record becomes the employee record after an authorized hire decision"],[BookOpenCheck,"Learning paths","Training assignments by role, department, policy and observed performance gap"]].map(([Icon,title,copy])=>{const I=Icon as typeof BriefcaseBusiness;return <div key={title as string}><span><I size={18}/></span><div><strong>{title as string}</strong><p>{copy as string}</p></div></div>;})}</div></Section></div>}
+
+    {tab==="review"&&canReview&&<div className="manager-review-layout"><Section title="Submitted timecards" description="Review source punches and meals before deciding">{reviewCards.map((card)=>{const employee=data.users.find((u)=>u.id===card.userId);const entries=scope.timeEntries.filter((entry)=>entry.userId===card.userId&&entry.date>=card.weekStart&&entry.date<=card.weekEnd).sort((a,b)=>a.date.localeCompare(b.date));const hours=entries.reduce((sum,e)=>sum+hoursBetween(e.clockIn,e.clockOut,e.breakMinutes),0);return <article className="review-card" key={card.id}><div className="review-card__person">{employee&&<Avatar initials={employee.initials} color={employee.accent}/>}<div><strong>{employee?.name}</strong><p>{employee?.title}</p></div><StatusPill tone="info">Submitted</StatusPill></div><div className="review-card__facts"><div><small>Period</small><strong>{formatDate(card.weekStart,{month:"short",day:"numeric"})} – {formatDate(card.weekEnd,{month:"short",day:"numeric"})}</strong></div><div><small>Recorded</small><strong>{hours.toFixed(2)} hrs</strong></div><div><small>Attested</small><strong>{card.attested?"Yes":"No"}</strong></div></div><details className="timecard-drilldown"><summary>Review punches, meals & attestation</summary><div className="timecard-drilldown__table-wrap"><div className="timecard-drilldown__table timecard-drilldown__table--head"><span>Date</span><span>In</span><span>Meal start</span><span>Meal end</span><span>Out</span><span>Hours</span><span>Source / note</span></div>{entries.map((entry)=><div className="timecard-drilldown__table" key={entry.id}><span>{formatDate(entry.date,{weekday:"short",month:"short",day:"numeric"})}</span><span>{entry.clockIn}</span><span>{entry.mealStart??"—"}</span><span>{entry.mealEnd??"—"}</span><span>{entry.clockOut??"Open"}</span><span>{hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes).toFixed(2)}</span><span>{entry.source}</span></div>)}</div><div className="review-card__actions"><Button variant="secondary" icon={<RotateCcw size={15}/>} onClick={()=>decideTimecard(card.id,"Returned")}>Return</Button><Button icon={<Check size={16}/>} onClick={()=>decideTimecard(card.id,"Manager approved")}>Approve timecard</Button></div></details></article>})}</Section><Section title="Time-off requests" description="Managers act only on requests inside their reporting scope"><div className="company-request-list">{reviewLeave.map((request)=>{const employee=data.users.find((u)=>u.id===request.userId);return <article key={request.id}><div><small>{employee?.name}</small><strong>{formatDate(request.startDate,{month:"short",day:"numeric"})} – {formatDate(request.endDate,{month:"short",day:"numeric"})}</strong><p>{request.reason}</p></div><StatusPill tone="warning">Submitted</StatusPill><div className="request-actions"><Button size="sm" variant="secondary" onClick={()=>decideLeave(request.id,"Returned")}>Return</Button><Button size="sm" icon={<Check size={14}/>} onClick={()=>decideLeave(request.id,"Approved")}>Approve</Button></div></article>})}{reviewLeave.length===0&&<div className="review-empty"><p>No time-off requests need review.</p></div>}</div></Section></div>}
+  </div>;
 }
