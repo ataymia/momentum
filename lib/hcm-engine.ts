@@ -111,7 +111,7 @@ export function appendAudit(state:HCMState,event:Omit<HcmAuditEvent,"id"|"at">):
   return {...state,audit:[{id:id("audit"),at:now(),...event},...state.audit]};
 }
 
-export function canManageEmployee(actor:WorkspaceUser|undefined,targetUserId:string,data:WorkspaceData){
+export function canManageEmployee(actor:WorkspaceUser|null|undefined,targetUserId:string,data:WorkspaceData){
   if(!actor)return false;if(actor.role==="Administrator")return true;if(actor.id===targetUserId)return true;if(actor.role!=="Sales Manager")return false;
   const target=data.users.find((u)=>u.id===targetUserId);return target?.managerId===actor.id||target?.team===actor.team;
 }
