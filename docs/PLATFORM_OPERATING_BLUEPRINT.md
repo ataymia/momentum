@@ -2,176 +2,225 @@
 
 ## Purpose
 
-Momentum should become the operating layer that connects sales, field execution, orders, inventory, employee workflows, marketing requests, expenses, training, documents, compensation evidence, reporting, and management approvals without turning the platform into a homemade payroll processor or benefits administrator.
+Momentum is being built as the operating system for the Golden Eagle Arizona business. The platform should connect Sales, field execution, orders, customer pricing, inventory, Marketing, HR, time and attendance, benefits, payroll, Finance, accounting, expenses, training, documents, compensation, reporting, approvals, and management controls inside one coherent product.
 
-The design principle is simple: records should create the next piece of work automatically. People should not have to remember that a paid order might trigger a bonus review, that an expense needs reimbursement, that approved time off changes staffing capacity, or that a new employee needs a specific document and training package.
+This project is build-first. Other business platforms are benchmarks for useful workflow patterns, not purchase recommendations or systems of record. Momentum should own the business logic, user experience, records, audit history, calculations, and automation rules. Firebase is the planned production foundation for identity, permissions, records, and file storage. Outside processors or banks may move money, but they do not replace Momentum's payroll, accounting, order, or reimbursement records.
 
-## Confirmed commercial rule now represented in the demo
+The core design principle is simple: source records create the next work automatically. People should not have to remember that a paid order earned a bonus, that an account crossed a pricing threshold, that an expense needs reimbursement, that approved time off affects payroll and staffing, or that a new employee needs documents and training.
 
-The current owner clarification defines a two-part sales-representative account bonus:
+## Confirmed sales-representative account bonus rule
 
-1. $25 when the opening order is at least 10 cases.
-2. $25 when the account reaches 40 cumulative cases within a 90-day account-health window.
+The current owner clarification is represented as follows:
 
-The platform now contains a pure eligibility engine that tracks those thresholds from source order records.
+1. The first order date starts a 90-day account window.
+2. If that first order is at least 10 cases, it creates an opening-bonus eligibility event.
+3. The $25 opening bonus becomes earned only after payment on that qualifying first order clears.
+4. Paid orders inside the same 90-day window accumulate toward the sustained-account milestone.
+5. When cumulative paid volume reaches 40 cases inside the 90-day window, the second $25 becomes earned.
+6. A first order below 10 cases does not earn the opening-order bonus.
+7. An unpaid order does not produce earned compensation.
 
-### Important unresolved rule
+The system preserves the source order IDs, first-order date, window end, observed paid cases, threshold, amount, and status so every compensation result is auditable.
 
-The business has not yet formally defined which order state makes each bonus earned. The current demo uses Delivered/Paid orders as a conservative calculation proxy. That proxy is deliberately labeled in the interface and must not become a payroll instruction until the business defines whether Ordered, Approved, Delivered, Paid, Net Collected, or another state controls the bonus.
+## Preferred Partner pricing rule
 
-The 90-day start event also needs formal definition. The demo currently proxies the start from the first completed order date because a separate account-established event does not yet exist.
+The current build uses the following account-pricing logic:
+
+1. A qualifying new account receives Partner Pricing of $24 per 24-can case, or $1.00 per can, during its first 60 days.
+2. The qualifying opening-order minimum is 10 cases.
+3. The first order date starts the 60-day introductory clock.
+4. The account must reach 20 paid cases during the first 60 days to continue Partner Pricing into the next 90-day period.
+5. After the introductory period, Partner Pricing is evaluated in rolling 90-day periods.
+6. A qualifying period requires 20 paid cases.
+7. If the threshold is missed, Partner Pricing becomes inactive and the account returns to standard pricing.
+8. If the account later reaches the required 20-case threshold again, it can re-enter Partner Pricing for a new 90-day eligibility period.
+9. The regular/standard price is not hard-coded until the company approves the controlling standard price.
+
+The interface must show the first-order date, current pricing status, current measurement window, paid cases counted, threshold, next review date, and the source orders used in the calculation.
 
 ## System architecture
 
-### Momentum should own
+### Momentum owns
 
-- CRM accounts, contacts, ownership, notes, stages, follow-ups, activities, sales opportunities and retailer execution
-- Order requests, approval history, fulfillment status and customer order visibility
-- Inventory lots, reservations, movements, holds, shrink/exception records and location custody
-- Field schedule, dispatch, visit closeout, placement checks and next actions
-- Compensation evidence, rule evaluation, eligibility signals, exceptions and approval history
-- Expense and reimbursement requests, receipt metadata, business purpose, approval routing and payout/reconciliation status
-- Marketing material requests, sample/event requests, partnership requests, campaign requests and ad-spend authorization
-- Employee-facing document index, training assignments, acknowledgments and role-specific required materials
-- Cross-functional task routing, notification rules, escalation, ownership and audit history
-- KPI definitions, event-level source data, metric ownership and drill-down evidence
-- Customer portal functions that are operationally specific to Momentum
+- Authentication experience, roles, permissions and user lifecycle
+- CRM accounts, contacts, ownership, notes, stages, follow-ups, activities and opportunities
+- Partner-pricing eligibility and price-history records
+- Order intake, approval, invoice state, payment state, fulfillment, delivery and customer visibility
+- Inventory lots, receipts, reservations, movements, custody, counts, holds, returns, damages, samples, shrink and reconciliation
+- Field schedule, dispatch, visits, closeout, placements, samples and next actions
+- Marketing requests, campaign plans, budgets, approvals, actual spend, asset control, partnerships and performance evidence
+- Employee profiles, reporting relationships, employment records, document vaults, acknowledgments and company-property records
+- Time clock, meal events, timecard corrections, attestation and manager review
+- PTO/time-off rules, balances, requests, approvals, leave history and staffing impact
+- Benefit plan setup, eligibility, enrollment, life events, dependents, employee/employer contribution calculations and payroll deductions
+- Recruiting, onboarding, offboarding, training, skills, goals, reviews and performance records
+- Payroll configuration, earnings calculations, bonuses/commissions, deductions, withholding logic, pay runs, statements, payment instructions and reconciliation
+- Finance workflows, reimbursement, receivables, payables, budgets, purchasing controls and accounting records
+- Chart of accounts, effective-dated accounting rules, journal generation, reconciliation and exports
+- Compensation rules, evidence, earning events, approvals, reversals, disputes and employee statements
+- Cross-functional task routing, notifications, escalations, approvals and immutable material history
+- KPI definitions, calculations, drill-down evidence and reporting
+- Customer self-service functions
 
-### A specialist HCM/payroll provider should own
+### External infrastructure may provide a rail, not the business brain
 
-- Gross-to-net payroll calculation
-- Payroll tax calculation, filing and year-end forms
-- Direct-deposit instructions and payroll disbursement
-- Employee tax withholding forms and sensitive payroll elections
-- Benefit enrollment and carrier-facing benefit administration
-- Statutory payroll records that must remain in the payroll/HCM system of record
-- Regulated leave/payroll calculations that depend on provider configuration
+- Firebase Authentication for identity and MFA
+- Cloud Firestore for production records and event data
+- Firebase Storage for documents, receipts, photos and evidence
+- Cloudflare or GoDaddy for hosting after deployment fit is selected
+- A tokenized payment processor or bank connection for customer payments and payroll/reimbursement disbursement
+- Email/SMS delivery services for outbound communications
 
-Momentum may surface these functions through integrations and deep links, but it should not create a second conflicting payroll or benefits truth.
-
-## Why this boundary matters
-
-A connected employee experience is valuable. Rebuilding regulated payroll and benefits logic is not. The platform should feel cohesive while each specialist system remains authoritative for the data it is designed to own.
-
-Example: a manager can approve time off in Momentum. Once an HCM/payroll provider is selected, the approved request should sync to that provider, the provider remains authoritative for the official PTO balance/payroll treatment, and the sync result should reconcile back into Momentum.
+Momentum remains authoritative for the business workflow and reconciliation surrounding those rails.
 
 ## Event and automation spine
 
-Every important workflow should follow the same sequence:
+Every material process should follow the same sequence:
 
 1. A source record changes.
-2. A rule evaluates the source facts.
-3. The platform determines the next owner and deadline.
-4. A task/notification is created.
+2. An effective-dated rule evaluates the facts.
+3. The platform determines the next owner, deadline and required evidence.
+4. A task, alert or approval is created automatically.
 5. The owner reviews the linked source record.
-6. The decision creates downstream work.
-7. The full transition remains auditable.
+6. The decision creates downstream records or work.
+7. The outcome reconciles back to the original record.
+8. The full transition remains auditable.
 
 Examples:
 
 ### Sales bonus
 
-Order state changes -> bonus evaluator recomputes account milestones -> eligibility signal is created -> sales manager/compensation owner receives review work -> approved earning is exported to payroll -> payroll result reconciles back.
+First order is created -> 90-day clock starts -> payment clears -> opening threshold is evaluated -> $25 earning is created if the first order was at least 10 cases -> paid-case total keeps updating -> 40 paid cases inside 90 days creates the second $25 earning -> payroll includes the approved earning -> payment result reconciles back.
+
+### Partner pricing
+
+First qualifying order is created -> 60-day introductory Partner Pricing starts -> paid cases accumulate -> Day 60 continuation rule evaluates -> qualifying account enters next 90-day Partner window -> paid cases continue accumulating -> each window renews, lapses, or re-enters based on source orders.
 
 ### Time off
 
-Employee submits request -> manager receives review -> staffing/schedule impact is shown -> manager approves/returns -> approved request syncs to HCM/payroll -> official balance is returned -> employee receives final status.
+Employee submits request -> reporting manager receives review work -> approved leave updates the employee leave record and staffing calendar -> balance and payroll implications recalculate -> employee receives final status -> original request and decision remain preserved.
 
 ### Expense reimbursement
 
-Employee submits amount + business purpose + receipt -> direct manager validates business purpose -> finance/admin validates policy and coding -> approved reimbursement is sent to the selected payment/payroll/accounting rail -> payment status reconciles -> expense is closed.
+Employee submits amount + business purpose + receipt -> manager validates business purpose -> Finance validates policy/coding -> approved reimbursement becomes payable -> Momentum sends a payment instruction to the selected money rail -> settlement reconciles -> accounting entry and reimbursement record close together.
 
 ### Marketing material request
 
-Sales/operations submits material need -> marketing owner receives task -> required asset/version/quantity/date/account are validated -> fulfillment is recorded -> requester is notified -> material usage can later be tied to the account/campaign outcome.
+Sales/Operations submits material need -> Marketing receives task -> asset/version/quantity/date/account are validated -> physical or digital fulfillment is recorded -> requester is notified -> material use stays attributable to an account, event or campaign.
 
 ### Ad spend
 
-Requester proposes campaign, audience, amount, dates and success measure -> marketing validates campaign -> budget owner approves spend -> spend is activated only through an authorized advertising account -> actual spend/results reconcile -> campaign closes with outcome evidence.
+Campaign is proposed with audience, amount, dates and success measure -> budget approval occurs -> authorized campaign becomes active -> actual spend is reconciled -> commercial outcomes link to the campaign where evidence exists -> campaign closes with results and variance.
 
 ## Department coverage
 
-### Sales
+### Sales & Accounts
 
 Required capabilities:
 
 - Account creation and duplicate checks
-- Contacts and decision-maker roles
-- Activity logging: call, email, visit, sample, note, follow-up
+- Multiple contacts and decision-maker roles
+- Activity logging: call, email, visit, sample, note and follow-up
 - Next action + due date
 - Pipeline stage and account health
 - Opportunity/order linkage
-- Pricing basis and approval
+- Pricing eligibility and price history
 - Placement and reorder history
-- Account ownership changes with history
-- Sales-rep bonus and commission evidence
+- Originator, current responsibility, account manager and closer attribution
+- Transfer history and acceptance
+- Sales-rep bonus, commission and manager-override evidence
+- Lost/at-risk reasons
+- Search, territory and portfolio filters
 - Manager scorecard drill-down
-- Lost/at-risk reason tracking
-- Search and portfolio filters
 
-### Operations
+### Operations & Supply
 
 Required capabilities:
 
-- Inventory lot register
-- Receipts into inventory
+- Product/SKU and pack configuration
+- Inventory receiving
 - Lot/location/custody movement ledger
-- Holds and reasoned release decisions
-- Pick/allocation/delivery workflow
-- Delivery exceptions and proof
-- Returns/damages/shrink
-- Office/warehouse supply inventory if the company chooses to track consumables in the same system
-- Vendor/service records when purchasing workflow is defined
-- Expense/receipt submissions
+- Reservations and allocations
+- Pick, verify, load, dispatch and proof-of-delivery flow
+- Holds and controlled release decisions
+- Returns, credits, damages, samples, shrink and expiration
+- Physical counts and variance investigation
+- Warehouse/office supplies if tracked
+- Vendor and purchasing records
 
 ### Marketing
 
 Required capabilities:
 
-- Material request intake
-- Asset library and approved-version control
-- Inventory of physical marketing materials
-- Sample/event material requests
-- Campaign records
+- Marketing-material request intake
+- Approved asset library and version control
+- Physical collateral inventory
+- Sample/event requests
+- Campaign records and calendars
 - Ad-spend request, budget, approval and actual spend
-- Partnerships/sponsorship requests
+- Partnerships/sponsorships
+- Creator/PR/community opportunities
 - Leads generated / accounts influenced
 - Retail activation linkage
-- Campaign outcome and sell-through/reorder connection where evidence exists
+- Campaign outcome tied to paid sales/reorders where evidence exists
 
-### People / HR operations
+### People & HR
 
 Required capabilities:
 
-- Employee profile and reporting manager
-- Employment agreement access
-- Compensation-plan access
-- Benefits-document access
-- Policy/handbook access
-- Role training assignments
-- Required acknowledgment tracking
-- Time clock, meals and timecards
-- Corrections with original events preserved
-- Time-off request and approval workflow
-- PTO/sick-time balance through the selected HCM integration
+- Employee profile and manager hierarchy
+- Employment agreement and compensation-plan access
+- Benefits documents and enrollment records
+- Policy/handbook access and acknowledgments
+- Time clock, meals, corrections and timecards
+- Time-off/PTO request, balance and approval workflow
 - Onboarding/offboarding checklists
-- Company-property assignments when defined
+- Training assignments and completion evidence
+- Recruiting-to-employee handoff
+- Goals, reviews, feedback and development plans
+- Skills/certifications where relevant
+- Company-property assignments
 
-### Finance / administrative control
+### Payroll
+
+Required capabilities:
+
+- Employee pay configuration and effective dates
+- Hourly, salary and other earning types
+- Overtime rules where applicable
+- Commission and bonus earnings from source records
+- Reimbursements where paid through payroll
+- Tax/withholding configuration
+- Pretax/post-tax deductions
+- Benefit deduction handoff
+- Employer payroll costs/liabilities
+- Draft, review, approval and release pay runs
+- Employee pay statements
+- Reversals/corrections
+- Payment instructions and settlement reconciliation
+- Payroll registers, tax liabilities and filing/export records
+
+### Finance & Accounting
 
 Required capabilities:
 
 - Expense review and reimbursement status
-- Sales compensation review/export/reconciliation
-- Order/invoice/payment reconciliation
-- Marketing spend approvals and budget visibility
-- Vendor/purchase authorization when defined
-- Cash-flow reporting only from authoritative transaction/accounting sources
-- Exception queue and audit evidence
+- Customer receivables and payment reconciliation
+- Vendor/purchase workflow and payables
+- Marketing spend approvals and budgets
+- Payroll accounting
+- Inventory accounting and COGS rules once valuation method is defined
+- Chart of accounts
+- Source-event-to-journal rules
+- Balanced journal records
+- Credits/refunds/write-offs
+- Bank/payment reconciliation
+- Financial statements and management reports
+- Downloadable accounting exports and later integrations without surrendering the source records
 
 ## KPI architecture
 
-No dashboard number should exist without a metric definition. Each KPI needs:
+No dashboard number should exist without a metric definition. Every KPI requires:
 
 - Name
 - Business question
@@ -187,99 +236,88 @@ No dashboard number should exist without a metric definition. Each KPI needs:
 - Gaming risk
 - Action triggered
 
-Examples of metrics that can eventually be supported once rules/data are defined:
+Examples once their exact business definitions are approved:
 
-- Net collected sales
+- Paid sales / net collected revenue
 - New paid opening accounts
-- 40-case/90-day healthy-account attainment
+- 10-case opening-bonus attainment
+- 40-paid-case / 90-day sustained-account attainment
+- Partner-pricing continuation rate
 - Reorder rate
 - Cases per active account
 - Placement compliance
 - Stockout rate
-- Inventory availability
-- Inventory shrink/expiration
+- Inventory availability and variance
+- Shrink/expiration
 - Order cycle time
 - Delivery exception rate
 - Expense approval cycle time
 - Marketing spend vs approved budget
-- Qualified demand tied to marketing programs
-- Training completion by role
+- Qualified demand tied to Marketing
+- Training completion
 - Timecard exception rate
 - PTO request response time
+- Payroll exception rate
 
-## Required source-of-truth register
+## Source-of-truth register
 
-Before production, each record type needs one authoritative owner/system:
-
-| Record | Proposed system of record | Production dependency |
+| Record | Planned system of record | Production dependency |
 | --- | --- | --- |
-| Employee identity / employment status | HCM or Momentum identity service with HCM sync | Provider decision |
-| Payroll / tax / direct deposit | HCM/payroll provider | Provider decision |
-| Benefit elections | HCM/benefit administrator | Benefit/provider decision |
-| Accounts / sales activity | Momentum | Database/auth |
-| Orders / fulfillment | Momentum | Database/invoicing integration |
-| Inventory | Momentum | Database + operational SOP |
-| Compensation eligibility evidence | Momentum | Final compensation rules |
-| Paid compensation result | Payroll provider | Payroll integration |
-| Expenses | Momentum request + accounting/payment system | Expense policy + payout rail |
-| Marketing approvals | Momentum | Marketing owner + budgets |
-| Employee documents | Secure object storage + Momentum index | Final documents + file storage |
-| Training | Momentum or LMS integration | Build-vs-buy decision |
+| Employee identity / employment status | Momentum on Firebase | Auth + HR schema |
+| Payroll calculations / pay history | Momentum on Firebase | Payroll rules + secure access |
+| Benefits eligibility / enrollment | Momentum on Firebase | Final plan terms + HR schema |
+| Accounts / sales activity | Momentum on Firebase | CRM schema |
+| Partner pricing | Momentum pricing engine | Approved program rules + order/payment data |
+| Orders / fulfillment | Momentum on Firebase | Order/inventory schema |
+| Inventory | Momentum on Firebase | Inventory SOP + movement engine |
+| Compensation earnings | Momentum compensation engine | Final effective-dated plans |
+| Expenses | Momentum on Firebase | Expense policy + payment rail |
+| Marketing | Momentum on Firebase | Marketing authority + budget rules |
+| Employee documents | Firebase Storage + Momentum index | Final documents + security rules |
+| Training / performance | Momentum on Firebase | Role requirements + HR rules |
+| Accounting records | Momentum on Firebase | Chart of accounts + accounting rules |
+| Customer/payroll money movement | External tokenized processor/bank rail with Momentum reconciliation | Provider selection |
 
 ## Decisions that must not be guessed
 
 - Exact legal employer/entity and who employs each role
-- Manager/reporting hierarchy and backup approvers
-- When a sales bonus is legally earned and when it is payable
-- Definition of the 90-day account start event
+- Final manager hierarchy and backup approvers
 - Commission basis, exclusions, reversals and termination treatment
-- PTO amount, accrual/front-load method, carryover and HCM configuration
-- Benefits eligibility, waiting period, contributions and plan terms
-- Expense policy, spending limits, categories and finance owner
-- Marketing department owner, approval limits and campaign budgets
-- Inventory movement reasons, warehouses/locations and physical count cadence
-- Customer credit/payment terms
+- PTO bank amount, accrual/front-load method, carryover and protected-use rules
+- Benefits eligibility, waiting periods, contribution rules and plan terms
+- Tax and payroll configuration required for each employee/jurisdiction
+- Expense limits/categories and approval authority
+- Marketing department owner, approval limits and budgets
+- Inventory valuation method and accounting treatment
+- Customer standard price and any Preferred/other price tiers outside the confirmed $24 Partner price
+- Credit-line and payment-term rules
 - Document retention rules
-- Which training is mandatory by role
-
-## Build-vs-buy position
-
-### Build inside Momentum
-
-Operational workflows that are unique to Golden Eagle/Momentum and need to connect directly to sales, customers, inventory, orders and local execution.
-
-### Integrate
-
-Payroll, tax filing, benefit enrollment, regulated payroll disbursement, carrier administration, payment processing and other mature specialist functions where duplicating the provider would create compliance/security risk.
-
-### Decide later
-
-Learning-management depth, full accounting/ERP, advanced marketing automation and procurement. Start with workflow visibility and evidence, then buy/integrate when the process volume justifies it.
+- Mandatory training by role
 
 ## Current implementation status
 
-The Company Hub added to V1 now provides:
+The browser demo now places functions in their operating departments instead of a generic Company Hub:
 
-- A visible system-coverage map
-- Sales-representative account bonus milestone tracking
-- A clearly labeled unresolved counting-basis control
-- Time-off request intake and manager/admin demo approval
-- Expense reimbursement intake with receipt-file selection metadata
-- Marketing-material request intake
-- Ad-spend request intake
-- Employee document/training architecture
-- Cross-functional routing rules and unresolved-owner warnings
+- Sales & Accounts: CRM, Partner Pricing tracker, paid-order bonus milestone tracker
+- Marketing: requests, campaigns, budgets, spend approvals, asset/version library and KPI controls
+- People & HR: employee profile, document vault, time/attendance, time off, benefits architecture, learning and performance
+- Payroll: employee pay setup, gross-to-net demo calculation, paid bonus earnings, pay runs, approval and payment-release state
+- Finance & Expenses: reimbursement workflow, receipt metadata, receivables and accounting-rule architecture
+- Operations: orders, fulfillment and inventory controls
 
-The request workflows use browser-local demo persistence. They are not a substitute for production database, file storage, audit log, server authorization, event workers or HCM/accounting integrations.
+The demo still uses browser-local persistence. Production requires Firebase authentication, records, security rules, Storage, audit/event processing, backups and background workers before live employee/customer/financial data is used.
 
-## Production critical path
+## Development critical path
 
-1. Confirm legal employer, authority and reporting hierarchy.
-2. Define final compensation earned/payable rules and PTO/benefit terms.
-3. Select HCM/payroll/benefits provider or integration direction.
-4. Define expense and marketing approval owners/limits.
-5. Finish inventory movement SOP and source fields.
-6. Implement persistent database, server authorization, audit log and file storage.
-7. Implement event/automation service and notification delivery.
-8. Integrate HCM/payroll, accounting/payment and messaging providers.
-9. Build dashboards only from defined metrics and verified source data.
+1. Finish canonical CRM contacts, ownership, opportunities and account-history model.
+2. Connect the Preferred Partner pricing engine to order quoting/approval so the current eligible price is enforced automatically.
+3. Finish order-to-cash, invoice/payment/credit/refund and reconciliation workflows.
+4. Finish transaction-based inventory movements, custody, physical counts and inventory accounting.
+5. Finish People & HR data model: employee lifecycle, PTO balance engine, benefits enrollment, onboarding/offboarding and performance.
+6. Complete payroll calculation rules, tax tables/configuration, earning codes, deductions, liabilities, statements and correction logic.
+7. Complete compensation plans and automatic earning/reversal/dispute workflow.
+8. Complete Finance/accounting: chart of accounts, journals, payables, purchasing, inventory accounting and financial statements.
+9. Complete Marketing asset inventory, campaign attribution and outcome reporting.
+10. Move browser-local records to Firebase with server-enforced permissions, audit events, Storage and background automation workers.
+11. Connect payment/banking rails and reconcile every external settlement to Momentum records.
+12. Harden accessibility, mobile use, security, backup/restore, load behavior and cross-role workflow tests.
