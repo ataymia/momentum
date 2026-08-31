@@ -26,30 +26,30 @@ test("administrator has company-wide records and every department", () => {
   for (const page of ["accounts","inventory","marketing","people","payroll","finance","reports","settings"] as const) assert.equal(canAccessPage(admin, page), true);
 });
 
-test("sales manager sees managed sales plus employee self-service departments but not administration or inventory", () => {
+test("sales manager is limited to team sales workflows, approvals, and reports", () => {
   const manager = user("usr-avery");
   const scope = getWorkspaceScope(data, manager);
   assert.deepEqual(scope.accounts.map((account) => account.ownerId), ["usr-jordan", "usr-jordan", "usr-jordan", "usr-jordan"]);
   assert.equal(scope.inventory.length, 0);
   assert.equal(canAccessPage(manager, "reports"), true);
-  assert.equal(canAccessPage(manager, "marketing"), true);
-  assert.equal(canAccessPage(manager, "people"), true);
-  assert.equal(canAccessPage(manager, "payroll"), true);
-  assert.equal(canAccessPage(manager, "finance"), true);
+  assert.equal(canAccessPage(manager, "marketing"), false);
+  assert.equal(canAccessPage(manager, "people"), false);
+  assert.equal(canAccessPage(manager, "payroll"), false);
+  assert.equal(canAccessPage(manager, "finance"), false);
   assert.equal(canAccessPage(manager, "settings"), false);
   assert.equal(canAccessPage(manager, "inventory"), false);
 });
 
-test("sales representative is limited to responsible sales records and own employee workflows", () => {
+test("sales representative is limited to own core sales execution", () => {
   const rep = user("usr-jordan");
   const scope = getWorkspaceScope(data, rep);
   assert.equal(scope.accounts.every((account) => account.ownerId === rep.id), true);
   assert.equal(scope.appointments.every((item) => item.ownerId === rep.id), true);
   assert.equal(scope.inventory.length, 0);
-  assert.equal(canAccessPage(rep, "marketing"), true);
-  assert.equal(canAccessPage(rep, "people"), true);
-  assert.equal(canAccessPage(rep, "payroll"), true);
-  assert.equal(canAccessPage(rep, "finance"), true);
+  assert.equal(canAccessPage(rep, "marketing"), false);
+  assert.equal(canAccessPage(rep, "people"), false);
+  assert.equal(canAccessPage(rep, "payroll"), false);
+  assert.equal(canAccessPage(rep, "finance"), false);
   assert.equal(canAccessPage(rep, "reports"), false);
   assert.equal(canAccessPage(rep, "settings"), false);
 });
@@ -96,13 +96,13 @@ test("approval and bulletin authority follows the hierarchy", () => {
   const admin = user("usr-mia");
   const manager = user("usr-avery");
   const rep = user("usr-jordan");
-  const jordanApproval = data.approvals.find((item) => item.requesterId === rep.id);
-  assert.ok(jordanApproval);
-  assert.equal(canReviewApproval(data, admin, jordanApproval), true);
-  assert.equal(canReviewApproval(data, manager, jordanApproval), true);
-  assert.equal(canReviewApproval(data, rep, jordanApproval), false);
+  const repApproval = data.approvals.find((item) => item.requesterId === rep.id);
+  assert.ok(repApproval);
+  assert.equal(canReviewApproval(data, admin, repApproval), true);
+  assert.equal(canReviewApproval(data, manager, repApproval), true);
+  assert.equal(canReviewApproval(data, rep, repApproval), false);
 
-  const managerSelfApproval: Approval = { ...jordanApproval, id: "apr-manager-self", requesterId: manager.id, requestedBy: manager.name };
+  const managerSelfApproval: Approval = { ...repApproval, id: "apr-manager-self", requesterId: manager.id, requestedBy: manager.name };
   assert.equal(canReviewApproval(data, manager, managerSelfApproval), false);
   assert.equal(canReviewApproval(data, admin, managerSelfApproval), true);
   assert.equal(canPublishBulletinTo(admin, "Company"), true);
