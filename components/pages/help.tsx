@@ -90,7 +90,7 @@ export function HelpPage() {
   if (!currentUser) return null;
   const guide = roleGuides[currentUser.role];
   const leadership = currentUser.role === "Administrator";
-  const quickLinks: Array<{ label: string; page: PageKey }> = [
+  const allQuickLinks: Array<{ label: string; page: PageKey }> = [
     { label: "Home", page: "home" },
     { label: "My Work", page: "work" },
     { label: "CRM & Sales", page: "accounts" },
@@ -99,7 +99,8 @@ export function HelpPage() {
     { label: "Human Resources", page: "people" },
     { label: "Reports", page: "reports" },
     { label: "Administration", page: "settings" },
-  ].filter((item) => canAccessPage(currentUser, item.page));
+  ];
+  const quickLinks = allQuickLinks.filter((item) => canAccessPage(currentUser, item.page));
 
   return <div className="page page--help">
     <PageHeader
