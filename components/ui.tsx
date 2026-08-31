@@ -5,9 +5,9 @@ import type { ReactNode } from "react";
 
 export function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={compact ? "brand brand--compact" : "brand"} aria-label="Momentum Distribution platform">
+    <div className={compact ? "brand brand--compact" : "brand"} aria-label="Momentum Distribution">
       <span className="brand__mark" aria-hidden="true"><span>M</span></span>
-      {!compact && <span className="brand__type"><strong>Momentum</strong><small>Distribution Platform</small></span>}
+      {!compact && <span className="brand__type"><strong>Momentum</strong><small>Distribution</small></span>}
     </div>
   );
 }
@@ -16,12 +16,12 @@ export function Avatar({ initials, color, size = "md" }: { initials: string; col
   return <span className={`avatar avatar--${size}`} style={{ "--avatar-accent": color ?? "#e49e13" } as React.CSSProperties} aria-hidden="true">{initials}</span>;
 }
 
-export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode; }) {
-  return <header className="page-header"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h1>{title}</h1>{description && <p className="page-header__description">{description}</p>}</div>{actions && <div className="page-header__actions">{actions}</div>}</header>;
+export function PageHeader({ title, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode; }) {
+  return <header className="page-header"><div><h1>{title}</h1></div>{actions && <div className="page-header__actions">{actions}</div>}</header>;
 }
 
-export function Section({ title, description, action, children, className = "" }: { title?: string; description?: string; action?: ReactNode; children: ReactNode; className?: string; }) {
-  return <section className={`panel ${className}`.trim()}>{(title || action) && <div className="panel__header"><div>{title && <h2>{title}</h2>}{description && <p>{description}</p>}</div>{action}</div>}{children}</section>;
+export function Section({ title, action, children, className = "" }: { title?: string; description?: string; action?: ReactNode; children: ReactNode; className?: string; }) {
+  return <section className={`panel ${className}`.trim()}>{(title || action) && <div className="panel__header"><div>{title && <h2>{title}</h2>}</div>{action}</div>}{children}</section>;
 }
 
 export function StatusPill({ children, tone = "neutral", dot = true }: { children: ReactNode; tone?: "neutral" | "success" | "warning" | "danger" | "info" | "gold"; dot?: boolean; }) {
