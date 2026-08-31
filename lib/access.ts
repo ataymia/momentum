@@ -1,11 +1,11 @@
 import type { Account, Approval, Bulletin, PageKey, WorkspaceData, WorkspaceUser } from "./types";
 
 const pageAccess: Record<WorkspaceUser["role"], PageKey[]> = {
-  Administrator: ["home","work","accounts","dispatch","retail","orders","inventory","marketing","people","payroll","finance","reports","settings"],
-  "Sales Manager": ["home","work","accounts","dispatch","retail","orders","reports"],
-  "Sales Representative": ["home","work","accounts","dispatch","retail","orders"],
-  Operations: ["home","work","dispatch","orders","inventory","marketing","people","payroll","finance"],
-  Customer: ["home","accounts","orders"],
+  Administrator: ["home","work","accounts","dispatch","retail","orders","inventory","marketing","people","payroll","finance","reports","settings","help"],
+  "Sales Manager": ["home","work","accounts","dispatch","retail","orders","reports","help"],
+  "Sales Representative": ["home","work","accounts","dispatch","retail","orders","help"],
+  Operations: ["home","work","dispatch","orders","inventory","marketing","people","payroll","finance","help"],
+  Customer: ["home","accounts","orders","help"],
 };
 
 export const canAccessPage = (user: WorkspaceUser | null, page: PageKey) => Boolean(user && pageAccess[user.role].includes(page));
