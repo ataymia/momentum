@@ -1,4 +1,4 @@
-export type PageKey = "home" | "work" | "accounts" | "dispatch" | "retail" | "orders" | "inventory" | "people" | "payroll" | "finance" | "marketing" | "reports" | "settings";
+export type PageKey = "home" | "work" | "accounts" | "dispatch" | "retail" | "orders" | "inventory" | "people" | "payroll" | "finance" | "marketing" | "reports" | "settings" | "help";
 
 export type Role = "Administrator" | "Sales Manager" | "Sales Representative" | "Operations" | "Customer";
 export type Team = "Leadership" | "Sales" | "Operations" | "Customer";
