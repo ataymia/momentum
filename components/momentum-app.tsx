@@ -1,6 +1,5 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
 import { AccountingProvider } from "../lib/accounting-context";
 import { AuditProvider } from "../lib/audit-context";
 import { CommerceProvider } from "../lib/commerce-context";
@@ -26,16 +25,10 @@ const PRESENTATION_RESET_KEYS = [
   "momentum-notification-rules-v1",
 ];
 
-function PresentationSeedGate({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    if (window.localStorage.getItem(PRESENTATION_SEED_KEY) !== "ready") {
-      PRESENTATION_RESET_KEYS.forEach((key) => window.localStorage.removeItem(key));
-      window.localStorage.setItem(PRESENTATION_SEED_KEY, "ready");
-    }
-    setReady(true);
-  }, []);
-  return ready ? children : null;
+function ensurePresentationSeed() {
+  if (typeof window === "undefined" || window.localStorage.getItem(PRESENTATION_SEED_KEY) === "ready") return;
+  PRESENTATION_RESET_KEYS.forEach((key) => window.localStorage.removeItem(key));
+  window.localStorage.setItem(PRESENTATION_SEED_KEY, "ready");
 }
 
 function MomentumExperience(){
@@ -44,5 +37,6 @@ function MomentumExperience(){
 }
 
 export function MomentumApp(){
-  return <PresentationSeedGate><WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider></PresentationSeedGate>;
+  ensurePresentationSeed();
+  return <WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider>;
 }
