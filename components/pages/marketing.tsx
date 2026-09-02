@@ -2,7 +2,7 @@
 
 import { BarChart3, Check, FileImage, Megaphone, PackageOpen, Plus, RotateCcw, Search, Target, UsersRound, WalletCards } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
-import { AttributionRelation, Campaign, MarketingRequestType, MarketingTouchType, campaignCommercialActivity, campaignSpend, attributionSummary, materialBalance } from "../../lib/marketing-engine";
+import { AttributionRelation, MarketingRequestType, MarketingTouchType, campaignCommercialActivity, campaignSpend, attributionSummary, materialBalance } from "../../lib/marketing-engine";
 import { useMarketing } from "../../lib/marketing-context";
 import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
 import { useWorkspace } from "../../lib/workspace-context";
