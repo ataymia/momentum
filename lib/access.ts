@@ -5,6 +5,7 @@ const pageAccess: Record<WorkspaceUser["role"], PageKey[]> = {
   "Sales Manager": ["home","work","accounts","dispatch","retail","orders","reports","help"],
   "Sales Representative": ["home","work","accounts","dispatch","retail","orders","help"],
   Operations: ["home","work","dispatch","orders","inventory","marketing","people","payroll","finance","help"],
+  Warehouse: ["home","work","orders","inventory","people","payroll","help"],
   Customer: ["home","accounts","orders","help"],
 };
 
@@ -14,7 +15,7 @@ export const canCreateAccount = (user: WorkspaceUser | null) => Boolean(user && 
 export const canCreateOrder = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager","Sales Representative","Customer"].includes(user.role));
 export const canAdvanceFulfillment = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Operations"].includes(user.role));
 export const canManageSchedule = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager","Operations"].includes(user.role));
-export const canCreateScheduleItem = (user: WorkspaceUser | null) => Boolean(user && user.role !== "Customer");
+export const canCreateScheduleItem = (user: WorkspaceUser | null) => Boolean(user && !["Customer","Warehouse"].includes(user.role));
 export const canPostBulletin = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager"].includes(user.role));
 
 const managedUserIds = (data: WorkspaceData, user: WorkspaceUser) => {
@@ -23,7 +24,7 @@ const managedUserIds = (data: WorkspaceData, user: WorkspaceUser) => {
 };
 
 export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, account: Account) => {
-  if (user.role === "Administrator" || user.role === "Operations") return true;
+  if (["Administrator","Operations","Warehouse"].includes(user.role)) return true;
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
   if (user.role === "Sales Representative") return account.ownerId === user.id;
   return managedUserIds(data, user).has(account.ownerId);
@@ -59,8 +60,8 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
         : user.role === "Sales Representative"
           ? data.appointments.filter(item => item.ownerId === user.id)
           : [];
-  const orders = user.role === "Administrator" || user.role === "Operations" ? data.orders : data.orders.filter(order => accountIds.has(order.accountId));
-  const placements = user.role === "Customer" || user.role === "Operations" ? [] : user.role === "Administrator" ? data.placements : data.placements.filter(item => accountIds.has(item.accountId));
+  const orders = ["Administrator","Operations","Warehouse"].includes(user.role) ? data.orders : data.orders.filter(order => accountIds.has(order.accountId));
+  const placements = ["Customer","Operations","Warehouse"].includes(user.role) ? [] : user.role === "Administrator" ? data.placements : data.placements.filter(item => accountIds.has(item.accountId));
   const approvals = user.role === "Administrator" ? data.approvals : user.role === "Sales Manager" ? data.approvals.filter(item => (item.requesterId && managedIds.has(item.requesterId)) || Boolean(item.team && (user.managedTeams ?? []).includes(item.team))) : data.approvals.filter(item => item.requesterId === user.id);
   const timecards = user.role === "Administrator" ? data.timecards : user.role === "Sales Manager" ? data.timecards.filter(card => card.userId === user.id || managedIds.has(card.userId)) : data.timecards.filter(card => card.userId === user.id);
   const timecardUserIds = new Set(timecards.map(card => card.userId));
@@ -73,10 +74,12 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
   });
   const activities = user.role === "Operations"
     ? data.activities.filter(item => item.type === "order" || (item.type === "visit" && appointments.some(appointment => appointment.accountId === item.accountId)))
-    : data.activities.filter(item => !item.accountId || accountIds.has(item.accountId));
+    : user.role === "Warehouse"
+      ? data.activities.filter(item => item.type === "order")
+      : data.activities.filter(item => !item.accountId || accountIds.has(item.accountId));
   return {
     users, accounts, activities, appointments, orders, placements,
-    inventory: user.role === "Administrator" || user.role === "Operations" ? data.inventory : [],
+    inventory: ["Administrator","Operations","Warehouse"].includes(user.role) ? data.inventory : [],
     approvals,
     timeEntries: data.timeEntries.filter(item => timecardUserIds.has(item.userId)),
     timecards,
