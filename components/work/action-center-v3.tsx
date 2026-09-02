@@ -1,0 +1,39 @@
+"use client";
+
+import { AlertTriangle, BadgeDollarSign, BookOpenCheck, Boxes, CalendarClock, FileText, Megaphone, Receipt, ShieldCheck, UsersRound } from "lucide-react";
+import { canAccessPage } from "../../lib/access";
+import { useAccounting } from "../../lib/accounting-context";
+import { unprocessedSourceEvents } from "../../lib/accounting-engine";
+import { useFinance } from "../../lib/finance-context";
+import { useHcm } from "../../lib/hcm-context";
+import { canManageEmployee } from "../../lib/hcm-engine";
+import { inventoryProductStatuses } from "../../lib/inventory-ledger";
+import { useInventoryLedger } from "../../lib/inventory-ledger-context";
+import { useMarketing } from "../../lib/marketing-context";
+import { usePerformance } from "../../lib/performance-context";
+import { reportVisibleTo } from "../../lib/performance-engine";
+import type { PageKey } from "../../lib/types";
+import { useWorkspace } from "../../lib/workspace-context";
+import { Button, Section, StatusPill, formatDate, formatMoney } from "../ui";
+
+type Urgency="Blocking"|"Due"|"Review"|"Watch";
+type ActionItem={id:string;title:string;detail:string;category:string;page?:PageKey;urgency:Urgency;icon:typeof AlertTriangle};
+const urgencyTone=(urgency:Urgency)=>urgency==="Blocking"?"danger" as const:urgency==="Due"?"warning" as const:urgency==="Review"?"info" as const:"neutral" as const;
+const rank:Record<Urgency,number>={Blocking:0,Due:1,Review:2,Watch:3};
+
+export function ActionCenter(){
+  const {data,scope,currentUser,navigate}=useWorkspace();const{hcm}=useHcm();const{performance}=usePerformance();const{finance}=useFinance();const{state:marketing}=useMarketing();const{accounting,events}=useAccounting();const{ledger}=useInventoryLedger();
+  if(!currentUser||currentUser.role==="Customer")return null;
+  const admin=currentUser.role==="Administrator";const manager=currentUser.role==="Sales Manager";const warehouse=currentUser.role==="Warehouse";const operations=currentUser.role==="Operations";const actions:ActionItem[]=[];const today=new Date().toISOString().slice(0,10);
+  for(const task of hcm.tasks.filter((task)=>task.status==="Open"&&(task.ownerId===currentUser.id||admin)))actions.push({id:`hcm:${task.id}`,title:task.title,detail:task.detail,category:"Human Resources",page:"people",urgency:task.dueDate&&task.dueDate<today?"Due":"Review",icon:UsersRound});
+  if(admin||manager)for(const request of hcm.workflows.filter((request)=>request.status==="Submitted"&&request.userId!==currentUser.id&&canManageEmployee(currentUser,request.userId,data)))actions.push({id:`hr:${request.id}`,title:request.title,detail:`${data.users.find((user)=>user.id===request.userId)?.name??"Employee"} · ${request.type}`,category:"Human Resources",page:"people",urgency:"Review",icon:UsersRound});
+  if(admin||manager)for(const report of performance.reports.filter((report)=>report.status==="Submitted"&&report.userId!==currentUser.id&&reportVisibleTo(currentUser,report,data))){const author=data.users.find((user)=>user.id===report.userId);actions.push({id:`report:${report.id}`,title:`Review ${report.type.toLowerCase()} report`,detail:`${author?.name??"Employee"} · submitted ${formatDate(report.submittedAt,{month:"short",day:"numeric"})}`,category:"Performance",page:"reports",urgency:"Review",icon:FileText});}
+  for(const expense of finance.expenses){const requester=data.users.find((user)=>user.id===expense.requesterId);const managerCan=manager&&expense.requesterId!==currentUser.id&&(requester?.managerId===currentUser.id||requester?.team===currentUser.team);if(expense.status==="Submitted"&&(admin||managerCan))actions.push({id:`expense:${expense.id}`,title:"Review business expense",detail:`${requester?.name??"Employee"} · ${expense.merchant} · ${formatMoney(expense.amount)}`,category:"Finance",page:"finance",urgency:"Review",icon:Receipt});else if(expense.status==="Manager approved"&&admin)actions.push({id:`expense-finance:${expense.id}`,title:"Finance approval required",detail:`${expense.merchant} · ${formatMoney(expense.amount)}`,category:"Finance",page:"finance",urgency:"Review",icon:Receipt});else if(expense.status==="Finance approved"&&admin)actions.push({id:`expense-pay:${expense.id}`,title:"Reimbursement ready for payment",detail:`${requester?.name??"Employee"} · ${formatMoney(expense.amount)}`,category:"Finance",page:"finance",urgency:"Due",icon:BadgeDollarSign});}
+  if(admin){for(const request of marketing.requests.filter((item)=>item.status==="Submitted"))actions.push({id:`marketing:${request.id}`,title:"Marketing request needs review",detail:request.title,category:"Marketing",page:"marketing",urgency:"Review",icon:Megaphone});for(const campaign of marketing.campaigns.filter((item)=>item.status==="Awaiting approval"))actions.push({id:`campaign:${campaign.id}`,title:"Campaign budget needs approval",detail:`${campaign.name} · ${formatMoney(campaign.requestedBudget)}`,category:"Marketing",page:"marketing",urgency:"Review",icon:Megaphone});for(const event of unprocessedSourceEvents(accounting,events))actions.push({id:`accounting:${event.id}`,title:event.blockedReason?"Accounting policy required":"Accounting event ready",detail:event.blockedReason??event.description,category:"Accounting",page:"finance",urgency:event.blockedReason?"Blocking":"Review",icon:BookOpenCheck});}
+  if(admin||manager||operations)for(const appointment of scope.appointments.filter((item)=>item.status==="Scheduled"&&!item.ownerId&&item.date<=today)){const location=data.accounts.find((account)=>account.id===appointment.accountId);actions.push({id:`dispatch:${appointment.id}`,title:"Unassigned scheduled work",detail:`${location?.locationName??location?.name??"Location"} · ${appointment.date} ${appointment.startTime}`,category:"Dispatch",page:"dispatch",urgency:appointment.date<today?"Blocking":"Due",icon:CalendarClock});}
+  if(admin||manager||warehouse||operations)for(const stock of inventoryProductStatuses(ledger,data).filter((item)=>item.reorderNeeded))actions.push({id:`stock:${stock.product}`,title:stock.requiresManagerApproval?"Low stock blocks unapproved sales":"Inventory reorder required",detail:`${stock.product} · ${stock.available} available sellable cases`,category:"Inventory",page:canAccessPage(currentUser,"inventory")?"inventory":undefined,urgency:stock.requiresManagerApproval?"Blocking":"Due",icon:Boxes});
+  for(const lot of scope.inventory.filter((lot)=>lot.status==="Quality hold"))actions.push({id:`hold:${lot.id}`,title:"Inventory quality hold",detail:`${lot.lotCode} · ${lot.onHand} cases unavailable`,category:"Inventory",page:"inventory",urgency:"Blocking",icon:ShieldCheck});
+  actions.sort((a,b)=>rank[a.urgency]-rank[b.urgency]||a.category.localeCompare(b.category));
+  const groups=[...new Set(actions.map((item)=>item.category))];
+  return <Section title="Action center" action={<StatusPill tone={actions.some((item)=>item.urgency==="Blocking")?"danger":actions.length?"warning":"success"}>{actions.length} open</StatusPill>}><div className="action-center-v3">{groups.map((category)=>{const items=actions.filter((item)=>item.category===category);return <section key={category}><header><strong>{category}</strong><span>{items.length}</span></header><div>{items.map((item)=>{const Icon=item.icon;return <article key={item.id}><span className={`action-center-v3__icon is-${item.urgency.toLowerCase()}`}><Icon size={17}/></span><div><strong>{item.title}</strong><p>{item.detail}</p></div><StatusPill tone={urgencyTone(item.urgency)}>{item.urgency}</StatusPill>{item.page?<Button size="sm" variant="secondary" onClick={()=>navigate(item.page!)}>Open</Button>:<small>Management notification only</small>}</article>})}</div></section>})}{actions.length===0&&<div className="review-empty"><ShieldCheck size={25}/><h3>No open actions</h3></div>}</div></Section>;
+}
