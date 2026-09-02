@@ -1,7 +1,9 @@
 export type PageKey = "home" | "work" | "accounts" | "dispatch" | "retail" | "orders" | "inventory" | "people" | "payroll" | "finance" | "marketing" | "reports" | "settings" | "help";
 
-export type Role = "Administrator" | "Sales Manager" | "Sales Representative" | "Operations" | "Customer";
+export type Role = "Administrator" | "Sales Manager" | "Sales Representative" | "Operations" | "Warehouse" | "Customer";
 export type Team = "Leadership" | "Sales" | "Operations" | "Customer";
+export type PricingTier = "A" | "B" | "C";
+export type PremiseType = "On-premise" | "Off-premise" | "Hybrid" | "Unclassified";
 
 export type WorkspaceUser = {
   id: string; name: string; firstName: string; email: string; initials: string;
@@ -22,6 +24,8 @@ export type Account = {
   health: "Strong" | "Watch" | "New" | "At risk"; lifetimeCases: number; reorderCount: number; notes: string;
   customerId?:string; locationName?:string; streetAddress?:string; city?:string; state?:string; postalCode?:string;
   originatorId?:string; accountManagerId?:string; closerId?:string; responsibilityStartedAt?:string;
+  premiseType?:PremiseType; businessType?:string; categoryReviewDate?:string;
+  pricingTier?:PricingTier; pricingUpdatedAt?:string; pricingUpdatedBy?:string;
 };
 
 export type Activity = {
@@ -44,8 +48,9 @@ export type OrderStatus = "Draft" | "Awaiting approval" | "Approved" | "Allocate
 export type Order = {
   id: string; number: string; accountId: string; cases: number; pricePerCase: number; amount: number;
   status: OrderStatus; placedAt: string; ownerId: string; paidAt?: string;
-  priceBasis: "Demo entered price" | "Prior demo order snapshot";
+  priceBasis: "Demo entered price" | "Prior demo order snapshot" | "Account pricing tier";
   paymentStatus: "Not invoiced" | "Open" | "Partially paid" | "Paid";
+  product?:string; creditedRepId?:string; inventoryAvailableAtOrder?:number; lowStockApprovalRequired?:boolean;
 };
 
 export type Placement = {
@@ -61,7 +66,7 @@ export type InventoryLot = {
   holdReason?: string; holdDecision?: string; holdResolvedAt?: string; holdResolvedBy?: string;
 };
 
-export type ApprovalType = "Order" | "Timecard" | "Price exception" | "Inventory adjustment" | "Leave" | "Expense" | "Marketing spend" | "Compensation";
+export type ApprovalType = "Order" | "Low stock sale" | "Timecard" | "Price exception" | "Inventory adjustment" | "Leave" | "Expense" | "Marketing spend" | "Compensation";
 export type Approval = {
   id: string; type: ApprovalType; title: string; detail: string; requestedBy: string;
   requesterId?: string; recordId?: string; team?: Team; submittedAt: string; dueAt: string;
