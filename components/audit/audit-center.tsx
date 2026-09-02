@@ -12,9 +12,9 @@ const toneFor=(action:string)=>action==="Deleted"?"danger" as const:action==="Cr
 const moduleNames:Record<string,string>={Workspace:"Core records",CRM:"CRM & sales",Commerce:"Orders & billing",Inventory:"Inventory",HCM:"Human Resources",Payroll:"Payroll",Finance:"Finance",Accounting:"Accounting",Performance:"Performance & reports",Marketing:"Marketing","Period locks":"Period controls"};
 const fieldNames:Record<string,string>={ownerId:"Responsible rep",accountManagerId:"Account manager",originatorId:"Opening rep",closerId:"Closer",creditedRepId:"Credited rep",pricingTier:"Pricing tier",pricingUpdatedAt:"Pricing change date",pricingUpdatedBy:"Pricing changed by",premiseType:"Premise",businessType:"Business type",categoryReviewDate:"Category review date",nextAction:"Next action",nextActionDate:"Next action date",paymentStatus:"Payment status",paidAt:"Payment date",pricePerCase:"Price per case",contactName:"Primary contact",contactRole:"Contact role",streetAddress:"Street address",locationName:"Location name",reorderCount:"Reorders",lifetimeCases:"Lifetime cases",status:"Status",stage:"Stage",cases:"Cases",facings:"Facings",observedStock:"Observed stock",cold:"Cold availability",shelfPrice:"Shelf price",managerId:"Manager",employeeId:"Employee",userId:"Employee",requesterId:"Requested by",assignedBy:"Assigned by",assignedAt:"Assigned date"};
 const hiddenFields=new Set(["id","version","updatedAt","createdAt","accountId","locationId","customerId"]);
-const humanField=(field:string)=>fieldNames[field]??field.replace(/([a-z0-9])([A-Z])/g,"$1 $2").replace(/[_-]+/g," ").replace(/^./,(letter)=>letter.toUpperCase());
+const humanField=(field:string):string=>fieldNames[field]??field.replace(/([a-z0-9])([A-Z])/g,"$1 $2").replace(/[_-]+/g," ").replace(/^./,(letter)=>letter.toUpperCase());
 
-function humanValue(value:string|undefined,data:WorkspaceData){
+function humanValue(value:string|undefined,data:WorkspaceData):string{
   if(value===undefined||value===""||value==="null"||value==="undefined")return "Not set";
   if(value==="true")return "Yes";
   if(value==="false")return "No";
@@ -24,11 +24,11 @@ function humanValue(value:string|undefined,data:WorkspaceData){
   const appointment=data.appointments.find((item)=>item.id===value);if(appointment)return `${appointment.type} on ${formatDate(appointment.date,{month:"short",day:"numeric",year:"numeric"})}`;
   const lot=data.inventory.find((item)=>item.id===value);if(lot)return lot.lotCode;
   if(/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(value)){try{return formatDate(value,{month:"short",day:"numeric",year:"numeric",hour:value.includes("T")?"numeric":undefined,minute:value.includes("T")?"2-digit":undefined})}catch{return value}}
-  if(value.startsWith("[")||value.startsWith("{")){try{const parsed=JSON.parse(value);if(Array.isArray(parsed))return parsed.map((item)=>humanValue(String(item),data)).join(", ")||"None";return "Details updated"}catch{return value}}
+  if(value.startsWith("[")||value.startsWith("{")){try{const parsed:unknown=JSON.parse(value);if(Array.isArray(parsed))return parsed.map((item:unknown):string=>humanValue(String(item),data)).join(", ")||"None";return "Details updated"}catch{return value}}
   return value;
 }
-function readableChanges(changes:AuditChange[],data:WorkspaceData){return changes.filter((change)=>!hiddenFields.has(change.field)).slice(0,8).map((change)=>({label:humanField(change.field),before:humanValue(change.before,data),after:humanValue(change.after,data)}));}
-function eventSummary(event:AuditEvent,data:WorkspaceData){const changes=readableChanges(event.changes,data);if(event.action==="Created")return `${event.label} was created.`;if(event.action==="Deleted")return `${event.label} was removed.`;if(changes.length===0)return `${event.label} was updated.`;if(changes.length===1)return `${changes[0].label} changed from ${changes[0].before} to ${changes[0].after}.`;return `${changes.length} details were updated.`;}
+function readableChanges(changes:AuditChange[],data:WorkspaceData):Array<{label:string;before:string;after:string}>{return changes.filter((change)=>!hiddenFields.has(change.field)).slice(0,8).map((change)=>({label:humanField(change.field),before:humanValue(change.before,data),after:humanValue(change.after,data)}));}
+function eventSummary(event:AuditEvent,data:WorkspaceData):string{const changes=readableChanges(event.changes,data);if(event.action==="Created")return `${event.label} was created.`;if(event.action==="Deleted")return `${event.label} was removed.`;if(changes.length===0)return `${event.label} was updated.`;if(changes.length===1)return `${changes[0].label} changed from ${changes[0].before} to ${changes[0].after}.`;return `${changes.length} details were updated.`;}
 
 export function AuditCenter(){
   const {visibleEvents}=useAudit();
