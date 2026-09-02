@@ -1,6 +1,8 @@
 import type { InventoryLot, WorkspaceData } from "./types";
 
 export const INVENTORY_LEDGER_STORAGE_KEY="momentum-inventory-ledger-v1";
+export const LOW_STOCK_MANAGER_APPROVAL_THRESHOLD_CASES=50;
+export const WAREHOUSE_REORDER_THRESHOLD_CASES=500;
 export type InventoryNodeType="Warehouse"|"Bin"|"Vehicle"|"Employee custody"|"Customer"|"Quality hold"|"Disposed"|"External";
 export type InventoryNode={id:string;name:string;type:InventoryNodeType;active:boolean;userId?:string;accountId?:string};
 export type MovementType="Receipt"|"Transfer"|"Allocation"|"Release"|"Delivery"|"Return"|"Sample"|"Damage"|"Shrink"|"Adjustment"|"Disposal";
@@ -9,7 +11,6 @@ export type InventoryReservation={id:string;orderId:string;lotId:string;quantity
 export type InventoryCount={id:string;nodeId:string;lotId:string;countedQty:number;systemQty:number;variance:number;countedAt:string;countedBy:string;status:"Open"|"Reconciled";reason?:string;reconciledAt?:string;reconciledBy?:string;adjustmentMovementId?:string};
 export type InventoryLedgerState={version:1;nodes:InventoryNode[];movements:InventoryMovement[];reservations:InventoryReservation[];counts:InventoryCount[]};
 
-const now=()=>new Date().toISOString();
 export const warehouseNodeId="node-warehouse-main";
 export const holdNodeId="node-quality-hold";
 export const disposedNodeId="node-disposed";
@@ -36,5 +37,8 @@ export function lotBalances(state:InventoryLedgerState,lotId:string){return stat
 export function lotSystemQuantity(state:InventoryLedgerState,lotId:string){return state.nodes.filter((node)=>node.type!=="External").reduce((sum,node)=>sum+nodeLotBalance(state,node.id,lotId),0);}
 export function reservedQuantity(state:InventoryLedgerState,lotId:string){return state.reservations.filter((reservation)=>reservation.lotId===lotId&&reservation.status==="Active").reduce((sum,item)=>sum+item.quantity,0);}
 export function warehouseAvailable(state:InventoryLedgerState,lotId:string){return Math.max(0,nodeLotBalance(state,warehouseNodeId,lotId)-reservedQuantity(state,lotId));}
+export function productAvailableSellableCases(state:InventoryLedgerState,data:WorkspaceData,product:string){return data.inventory.filter((lot)=>lot.product===product).reduce((sum,lot)=>sum+warehouseAvailable(state,lot.id),0);}
+export function productInventoryStatus(state:InventoryLedgerState,data:WorkspaceData,product:string){const available=productAvailableSellableCases(state,data,product);return{product,available,requiresManagerApproval:available<LOW_STOCK_MANAGER_APPROVAL_THRESHOLD_CASES,reorderNeeded:available<WAREHOUSE_REORDER_THRESHOLD_CASES};}
+export function inventoryProductStatuses(state:InventoryLedgerState,data:WorkspaceData){return [...new Set(data.inventory.map((lot)=>lot.product))].sort().map((product)=>productInventoryStatus(state,data,product));}
 export function movementCanPost(state:InventoryLedgerState,input:{lotId:string;quantity:number;type:MovementType;fromNodeId?:string;toNodeId?:string}){if(input.quantity<=0)return false;if(!input.fromNodeId&&!input.toNodeId)return false;if(input.fromNodeId&&input.fromNodeId===input.toNodeId)return false;if(input.type!=="Adjustment"&&input.fromNodeId&&state.nodes.find((node)=>node.id===input.fromNodeId)?.type!=="External"&&nodeLotBalance(state,input.fromNodeId,input.lotId)<input.quantity)return false;return true;}
 export function lotById(data:WorkspaceData,lotId:string):InventoryLot|undefined{return data.inventory.find((lot)=>lot.id===lotId);}
