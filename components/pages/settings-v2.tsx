@@ -3,7 +3,7 @@
 import { AlertTriangle, BellRing, Check, Cloud, CreditCard, Database, HardDrive, KeyRound, LockKeyhole, Mail, RefreshCcw, SearchCheck, ShieldCheck, WalletCards } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useWorkspace } from "../../lib/workspace-context";
-import { Avatar, Button, Modal, PageHeader, Section, StatusPill, formatDate } from "../ui";
+import { Avatar, Button, Modal, PageHeader, Section, StatusPill } from "../ui";
 
 const integrations = [
   { name:"Identity & access", provider:"Firebase Authentication", icon:KeyRound, boundary:"Sign-in, MFA, sessions, role claims", status:"Configuration required", tone:"warning" as const },
