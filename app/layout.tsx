@@ -6,6 +6,7 @@ import "./performance-dispatch.css";
 import "./platform-controls.css";
 import "./owner-feedback.css";
 import "./account-health.css";
+import "./hcm-workflow.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
