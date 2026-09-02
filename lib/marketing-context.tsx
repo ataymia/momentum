@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { MARKETING_STORAGE_KEY, Asset, Campaign, MarketingAttribution, MarketingRequest, MarketingSpend, MarketingState, MarketingTouch, MaterialItem, MaterialMovement, Partnership, createMarketingSeed, materialBalance, normalizeMarketingState } from "./marketing-engine";
 import { useWorkspace } from "./workspace-context";
 
@@ -29,7 +29,7 @@ export function MarketingProvider({children}:{children:ReactNode}){
   const reviewAttribution=(id:string)=>setState((s)=>({...s,attributions:s.attributions.map((item)=>item.id===id?{...item,reviewed:true,reviewedBy:currentUser?.id,reviewedAt:now()}:item)}));
   const addPartnership=(input:Omit<Partnership,"id"|"createdAt"|"ownerId">)=>{const id=uid("partnership");setState((s)=>({...s,partnerships:[{...input,id,createdAt:now(),ownerId:currentUser?.id??"system"},...s.partnerships]}));return id;};
   const resetMarketing=()=>setState(createMarketingSeed());
-  const value=useMemo(()=>({state,submitRequest,decideRequest,fulfillRequest,createCampaign,decideCampaign,setCampaignStatus,recordSpend,decideSpend,reconcileSpend,addAsset,setAssetStatus,addMaterial,moveMaterial,addTouch,addAttribution,reviewAttribution,addPartnership,resetMarketing}),[state,currentUser]);
+  const value:MarketingContextValue={state,submitRequest,decideRequest,fulfillRequest,createCampaign,decideCampaign,setCampaignStatus,recordSpend,decideSpend,reconcileSpend,addAsset,setAssetStatus,addMaterial,moveMaterial,addTouch,addAttribution,reviewAttribution,addPartnership,resetMarketing};
   return <MarketingContext.Provider value={value}>{children}</MarketingContext.Provider>;
 }
 export function useMarketing(){const value=useContext(MarketingContext);if(!value)throw new Error("useMarketing must be used inside MarketingProvider");return value;}
