@@ -11,6 +11,7 @@ import { Button, Field, Modal, StatusPill, formatDate, hoursBetween } from "../u
 const tone=(status:string)=>["Manager approved","Payroll ready"].includes(status)?"success" as const:status==="Returned"?"danger" as const:status==="Submitted"?"info" as const:"neutral" as const;
 type CorrectionForm={clockIn:string;mealStart:string;mealEnd:string;clockOut:string;breakMinutes:string;reason:string};
 const blank:CorrectionForm={clockIn:"",mealStart:"",mealEnd:"",clockOut:"",breakMinutes:"0",reason:""};
+const minutes=(value:string)=>{const[hour,minute]=value.split(":").map(Number);return hour*60+minute;};
 
 export function TimecardRecord({timecardId,history=true}:{timecardId:string;history?:boolean}){
   const {data,currentUser,correctTimeEntry}=useWorkspace();
@@ -35,7 +36,20 @@ export function TimecardRecord({timecardId,history=true}:{timecardId:string;hist
   const canCorrect=Boolean(currentUser&&currentUser.id===card.userId&&(card.status==="Returned"||card.status==="Open"));
   const editing=entries.find((entry)=>entry.id===editingId);
   const openCorrection=(entry:TimeEntry)=>{setEditingId(entry.id);setError("");setForm({clockIn:entry.clockIn,mealStart:entry.mealStart??"",mealEnd:entry.mealEnd??"",clockOut:entry.clockOut??"",breakMinutes:String(entry.breakMinutes),reason:""});};
-  const saveCorrection=()=>{if(!editing)return;if(!form.reason.trim()){setError("Explain why this punch is being corrected.");return;}const ok=correctTimeEntry(editing.id,{clockIn:form.clockIn,mealStart:form.mealStart||undefined,mealEnd:form.mealEnd||undefined,clockOut:form.clockOut||undefined,breakMinutes:Number(form.breakMinutes||0)},form.reason.trim());if(!ok){setError("Check the time sequence and make sure something actually changed.");return;}setEditingId(null);setForm(blank);setError("");};
+  const saveCorrection=()=>{
+    if(!editing)return;
+    if(!form.reason.trim()){setError("Explain why this punch is being corrected.");return;}
+    if(!form.clockIn){setError("Clock-in time is required.");return;}
+    if(Boolean(form.mealStart)!==Boolean(form.mealEnd)){setError("Meal start and meal end must both be entered or both be blank.");return;}
+    if(form.clockOut&&minutes(form.clockOut)<minutes(form.clockIn)){setError("Clock-out cannot be earlier than clock-in.");return;}
+    if(form.mealStart&&form.mealEnd&&(minutes(form.mealStart)<minutes(form.clockIn)||minutes(form.mealEnd)<minutes(form.mealStart)||(form.clockOut&&minutes(form.mealEnd)>minutes(form.clockOut)))){setError("Meal times must fall between clock-in and clock-out in the correct order.");return;}
+    const breakMinutes=Number(form.breakMinutes||0);
+    if(!Number.isFinite(breakMinutes)||breakMinutes<0){setError("Break minutes must be zero or greater.");return;}
+    const same=editing.clockIn===form.clockIn&&(editing.mealStart??"")===form.mealStart&&(editing.mealEnd??"")===form.mealEnd&&(editing.clockOut??"")===form.clockOut&&editing.breakMinutes===breakMinutes;
+    if(same){setError("Change at least one time or break value before saving.");return;}
+    correctTimeEntry(editing.id,{clockIn:form.clockIn,mealStart:form.mealStart||undefined,mealEnd:form.mealEnd||undefined,clockOut:form.clockOut||undefined,breakMinutes},form.reason.trim());
+    setEditingId(null);setForm(blank);setError("");
+  };
   return <div className="timecard-record">
     <section className="timecard-record__summary">
       <div className="timecard-record__person"><span><UserRound size={20}/></span><div><small>Employee</small><strong>{employee?.name??"Employee"}</strong><p>{formatDate(card.weekStart,{month:"short",day:"numeric"})} – {formatDate(card.weekEnd,{month:"short",day:"numeric",year:"numeric"})}</p></div></div>
