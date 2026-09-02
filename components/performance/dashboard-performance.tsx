@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeDollarSign, CalendarRange, Plus, Target, TrendingUp } from "lucide-react";
+import { Plus, Target, TrendingUp } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { GoalMetric, GoalPeriod, canViewPerformanceRecord, goalProgress, monthlyBonusTracker, periodRange, resolvedGoalStatus } from "../../lib/performance-engine";
 import { usePerformance } from "../../lib/performance-context";
