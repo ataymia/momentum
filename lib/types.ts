@@ -73,15 +73,21 @@ export type Approval = {
   priority: "Normal" | "High" | "Urgent"; status: "Pending" | "Approved" | "Returned";
 };
 
+export type TimeEntryCorrection = {
+  at: string; by: string; reason: string;
+  before: { clockIn: string; mealStart?: string; mealEnd?: string; clockOut?: string; breakMinutes: number };
+};
 export type TimeEntry = {
   id: string; userId: string; date: string; clockIn: string; clockOut?: string;
   mealStart?: string; mealEnd?: string; breakMinutes: number;
   source: "Demo mobile" | "Demo desktop" | "Manual correction"; note?: string;
+  corrections?: TimeEntryCorrection[];
 };
 export type Timecard = {
   id: string; userId: string; weekStart: string; weekEnd: string;
   status: "Open" | "Submitted" | "Manager approved" | "Returned" | "Payroll ready";
   submittedAt?: string; approvedAt?: string; approverId?: string; attested: boolean;
+  returnedAt?: string; returnedBy?: string; returnReason?: string;
 };
 
 export type Notification = {
