@@ -5,6 +5,7 @@ import "./departments.css";
 import "./performance-dispatch.css";
 import "./platform-controls.css";
 import "./owner-feedback.css";
+import "./account-health.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
