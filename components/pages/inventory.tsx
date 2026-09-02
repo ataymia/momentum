@@ -1,14 +1,17 @@
 "use client";
 
 import { Boxes, CalendarClock, CheckCircle2, ChevronRight, ClipboardCheck, PackageOpen, ShieldAlert, Warehouse } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Modal, PageHeader, Section, StatusPill, formatDate } from "../ui";
 
 export function InventoryPage() {
   const { scope, resolveInventoryHold } = useWorkspace();
-  const [selectedLotId, setSelectedLotId] = useState(scope.inventory[0]?.id ?? "");
+  const focusId=typeof window!=="undefined"?window.sessionStorage.getItem("momentum-focus-record"):null;
+  const focusedLot=scope.inventory.find((lot)=>lot.id===focusId);
+  const [selectedLotId, setSelectedLotId] = useState(focusedLot?.id??scope.inventory[0]?.id ?? "");
   const [holdOpen,setHoldOpen] = useState(false); const [decision,setDecision] = useState<"Release"|"Retain">("Retain"); const [reason,setReason] = useState(""); const [error,setError] = useState("");
+  useEffect(()=>{if(focusId)window.sessionStorage.removeItem("momentum-focus-record")},[focusId]);
   const selectedLot = scope.inventory.find((lot) => lot.id === selectedLotId) ?? scope.inventory[0];
   const onHand = scope.inventory.reduce((sum, lot) => sum + lot.onHand, 0);
   const available = scope.inventory.reduce((sum, lot) => sum + lot.available, 0);
@@ -19,14 +22,12 @@ export function InventoryPage() {
   return (
     <div className="page page--inventory">
       <PageHeader eyebrow="Supply chain" title="Inventory" description="Track case availability, reservations, holds, custody, and lot dates." />
-
       <div className="inventory-kpis">
         <div><span><Boxes size={19} /></span><div><small>On hand</small><strong>{onHand} cases</strong></div></div>
         <div><span><CheckCircle2 size={19} /></span><div><small>Available</small><strong>{available} cases</strong></div></div>
         <div><span><ClipboardCheck size={19} /></span><div><small>Reserved</small><strong>{reserved} cases</strong></div></div>
         <div><span><ShieldAlert size={19} /></span><div><small>Quality hold</small><strong>{held} cases</strong></div></div>
       </div>
-
       <Section title="Lot inventory" description="Select a lot to review quantity, custody, and status" className="lot-panel">
         <div className="lot-table lot-table--head"><span>Lot</span><span>Status</span><span>On hand</span><span>Available</span><span>Best by</span><span /></div>
         {scope.inventory.map((lot) => (
