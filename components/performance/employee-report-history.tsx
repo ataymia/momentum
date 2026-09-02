@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { canViewPerformanceRecord, reportVisibleTo } from "../../lib/performance-engine";
 import { usePerformance } from "../../lib/performance-context";
 import { useWorkspace } from "../../lib/workspace-context";
-import { Button, Section, StatusPill, formatDate, formatMoney } from "../ui";
+import { Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 export function EmployeeReportHistory(){
   const{data,currentUser}=useWorkspace();const{performance}=usePerformance();const employees=data.users.filter((user)=>user.role!=="Customer"&&canViewPerformanceRecord(currentUser,user.id,data));
