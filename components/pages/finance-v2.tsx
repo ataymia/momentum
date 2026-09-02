@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, FileUp, Receipt, RotateCcw, WalletCards } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { invoiceBalance, openReceivables } from "../../lib/commerce-engine";
 import { useCommerce } from "../../lib/commerce-context";
 import { useFinance } from "../../lib/finance-context";
@@ -31,7 +31,7 @@ export function FinancePage() {
     const requester = data.users.find((user) => user.id === requesterId);
     return requester?.managerId === currentUser.id || requester?.team === currentUser.team;
   };
-  const visibleExpenses = useMemo(() => finance.expenses.filter((expense) => expense.requesterId === currentUser?.id || admin || canReview(expense.requesterId)), [finance.expenses, currentUser?.id, admin, manager]);
+  const visibleExpenses = finance.expenses.filter((expense) => expense.requesterId === currentUser?.id || admin || canReview(expense.requesterId));
   const scopeOrderIds = new Set(scope.orders.map((order) => order.id));
   const receivables = openReceivables(commerce).filter((item) => scopeOrderIds.has(item.invoice.orderId));
   const arTotal = receivables.reduce((sum, item) => sum + item.balance, 0);
