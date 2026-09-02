@@ -4,12 +4,13 @@ import "./final-pass.css";
 import "./departments.css";
 import "./performance-dispatch.css";
 import "./platform-controls.css";
+import "./owner-feedback.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export const metadata: Metadata = {
   title: "Momentum Distribution | Golden Eagle",
-  description: "The connected business platform for Momentum Distribution.",
+  description: "Momentum Distribution",
   other: { "codex-preview": "development" },
   icons: { icon: `${basePath}/favicon.svg`, shortcut: `${basePath}/favicon.svg` },
 };
