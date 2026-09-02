@@ -45,6 +45,11 @@ export function visibleAuditEvents(user: WorkspaceUser | null, data: WorkspaceDa
       if (event.module === "Inventory" || event.collection === "inventory" || event.collection === "orders") return true;
       return event.relatedUserId === user.id;
     }
+    if (user.role === "Warehouse") {
+      if (event.sensitivity !== "operational") return false;
+      if (event.module === "Inventory" || event.collection === "inventory" || event.collection === "orders") return true;
+      return event.relatedUserId === user.id;
+    }
     return false;
   });
 }
