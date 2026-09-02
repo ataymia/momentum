@@ -40,6 +40,8 @@ const minutesBetween = (start: string, end: string) => {
   const [endHours, endMinutes] = end.split(":").map(Number);
   return Math.max(0, endHours * 60 + endMinutes - startHours * 60 - startMinutes);
 };
+const validTime = (value?: string) => !value || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+const minuteOfDay = (value: string) => { const [hours, minutes] = value.split(":").map(Number); return hours * 60 + minutes; };
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const parentCustomerName = (name: string) => name.replace(/\s+#\d+\s*$/, "").trim() || name;
 const customerIdFor = (name: string) => `cust-${slug(parentCustomerName(name))}`;
@@ -122,6 +124,7 @@ type NewOrder = { accountId: string; cases: number; pricePerCase?: number };
 type NewAppointment = Pick<Appointment, "accountId" | "date" | "startTime" | "duration" | "type" | "objective"> & { ownerId?: string; priority?: Appointment["priority"]; tags?: string[]; arrivalWindow?: string };
 type AppointmentCloseout = { outcome: AppointmentOutcome; closeoutNote: string; nextAction: string; nextActionDate: string };
 type NewBulletin = { title: string; body: string; audience: Bulletin["audience"]; team?: Team; priority: Bulletin["priority"]; expiresAt?: string };
+type TimeEntryCorrectionInput = { clockIn: string; mealStart?: string; mealEnd?: string; clockOut?: string; breakMinutes: number };
 type Scope = ReturnType<typeof getWorkspaceScope>;
 
 type WorkspaceContextValue = {
@@ -153,6 +156,7 @@ type WorkspaceContextValue = {
   toggleClock: () => void;
   startMeal: () => void;
   endMeal: () => void;
+  correctTimeEntry: (id: string, values: TimeEntryCorrectionInput, reason: string) => boolean;
   submitTimecard: (id: string) => void;
   decideTimecard: (id: string, decision: "Manager approved" | "Returned") => void;
   createBulletin: (bulletin: NewBulletin) => boolean;
@@ -387,14 +391,34 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData((current) => { const active = current.timeEntries.find((item) => item.userId === currentUser.id && !item.clockOut); if (!active?.mealStart || active.mealEnd) return current; const mealEnd = localTime(); return { ...current, timeEntries: current.timeEntries.map((item) => item.id === active.id ? { ...item, mealEnd, breakMinutes: minutesBetween(active.mealStart!, mealEnd) } : item) }; });
   }, [currentUser]);
 
+  const correctTimeEntry = useCallback((id: string, values: TimeEntryCorrectionInput, reason: string) => {
+    if (!currentUser || currentUser.role === "Customer" || reason.trim().length < 3 || !validTime(values.clockIn) || !validTime(values.mealStart) || !validTime(values.mealEnd) || !validTime(values.clockOut) || values.breakMinutes < 0) return false;
+    if (values.clockOut && minuteOfDay(values.clockOut) < minuteOfDay(values.clockIn)) return false;
+    if ((values.mealStart && !values.mealEnd) || (!values.mealStart && values.mealEnd)) return false;
+    if (values.mealStart && values.mealEnd && (minuteOfDay(values.mealStart) < minuteOfDay(values.clockIn) || minuteOfDay(values.mealEnd) < minuteOfDay(values.mealStart) || (values.clockOut && minuteOfDay(values.mealEnd) > minuteOfDay(values.clockOut)))) return false;
+    let changed = false;
+    setData((current) => {
+      const entry = current.timeEntries.find((item) => item.id === id && item.userId === currentUser.id);
+      if (!entry) return current;
+      const card = current.timecards.find((item) => item.userId === currentUser.id && entry.date >= item.weekStart && entry.date <= item.weekEnd && (item.status === "Open" || item.status === "Returned"));
+      if (!card) return current;
+      const before = { clockIn: entry.clockIn, mealStart: entry.mealStart, mealEnd: entry.mealEnd, clockOut: entry.clockOut, breakMinutes: entry.breakMinutes };
+      const same = before.clockIn === values.clockIn && before.mealStart === values.mealStart && before.mealEnd === values.mealEnd && before.clockOut === values.clockOut && before.breakMinutes === values.breakMinutes;
+      if (same) return current;
+      changed = true;
+      return { ...current, timeEntries: current.timeEntries.map((item) => item.id === id ? { ...item, ...values, source: "Manual correction", note: reason.trim(), corrections: [{ at: nowStamp(), by: currentUser.id, reason: reason.trim(), before }, ...(item.corrections ?? [])] } : item) };
+    });
+    return changed;
+  }, [currentUser]);
+
   const submitTimecard = useCallback((id: string) => {
     if (!currentUser) return;
     setData((current) => {
       const card = current.timecards.find((item) => item.id === id && item.userId === currentUser.id && (item.status === "Open" || item.status === "Returned"));
       if (!card) return current;
-      if (current.timeEntries.some((item) => item.userId === currentUser.id && item.date >= card.weekStart && item.date <= card.weekEnd && !item.clockOut)) return current;
+      if (current.timeEntries.some((item) => item.userId === currentUser.id && item.date >= card.weekStart && item.date <= card.weekEnd && (!item.clockOut || Boolean(item.mealStart && !item.mealEnd)))) return current;
       const exists = current.approvals.some((item) => item.type === "Timecard" && item.recordId === id && item.status === "Pending");
-      return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: "Submitted", submittedAt: nowStamp(), attested: true } : item), approvals: exists ? current.approvals : [{ id: `apr-${Date.now()}`, type: "Timecard", title: `${currentUser.name} · weekly timecard`, detail: `${card.weekStart} through ${card.weekEnd} · employee attested`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.team, submittedAt: nowStamp(), dueAt: plusHours(24), priority: "Normal", status: "Pending" }, ...current.approvals] };
+      return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: "Submitted", submittedAt: nowStamp(), attested: true, approvedAt: undefined, approverId: undefined } : item), approvals: exists ? current.approvals : [{ id: `apr-${Date.now()}`, type: "Timecard", title: `${currentUser.name} · weekly timecard`, detail: `${card.weekStart} through ${card.weekEnd} · employee attested`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.team, submittedAt: nowStamp(), dueAt: plusHours(24), priority: "Normal", status: "Pending" }, ...current.approvals] };
     });
   }, [currentUser]);
 
@@ -404,7 +428,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const card = current.timecards.find((item) => item.id === id);
       const approval = current.approvals.find((item) => item.type === "Timecard" && item.recordId === id && item.status === "Pending");
       if (!card || card.userId === currentUser.id || !approval || !canReviewApproval(current, currentUser, approval)) return current;
-      return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: decision, approvedAt: decision === "Manager approved" ? nowStamp() : undefined, approverId: currentUser.id } : item), approvals: current.approvals.map((item) => item.id === approval.id ? { ...item, status: decision === "Manager approved" ? "Approved" : "Returned" } : item), notifications: [{ id: `note-${Date.now()}`, title: `Timecard ${decision === "Manager approved" ? "approved" : "returned"}`, detail: `${card.weekStart} through ${card.weekEnd}`, at: nowStamp(), readBy: [], tone: decision === "Manager approved" ? "success" : "warning", audienceUserIds: [card.userId] }, ...current.notifications] };
+      const stamp = nowStamp();
+      return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: decision, attested: decision === "Returned" ? false : item.attested, approvedAt: decision === "Manager approved" ? stamp : undefined, approverId: decision === "Manager approved" ? currentUser.id : undefined, returnedAt: decision === "Returned" ? stamp : item.returnedAt, returnedBy: decision === "Returned" ? currentUser.id : item.returnedBy } : item), approvals: current.approvals.map((item) => item.id === approval.id ? { ...item, status: decision === "Manager approved" ? "Approved" : "Returned" } : item), notifications: [{ id: `note-${Date.now()}`, title: `Timecard ${decision === "Manager approved" ? "approved" : "returned"}`, detail: `${card.weekStart} through ${card.weekEnd}`, at: stamp, readBy: [], tone: decision === "Manager approved" ? "success" : "warning", audienceUserIds: [card.userId] }, ...current.notifications] };
     });
   }, [currentUser]);
 
@@ -417,7 +442,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const markNotificationsRead = useCallback(() => { if (!currentUser) return; const ids = new Set(scope.notifications.map((item) => item.id)); setData((current) => ({ ...current, notifications: current.notifications.map((item) => ids.has(item.id) && !item.readBy.includes(currentUser.id) ? { ...item, readBy: [...item.readBy, currentUser.id] } : item) })); }, [currentUser, scope.notifications]);
   const resetDemo = useCallback(() => { if (currentUser?.role !== "Administrator") return; setData(createNormalizedDemoData()); setActivePage("home"); }, [currentUser]);
 
-  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
+  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 
