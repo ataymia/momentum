@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, CircleDollarSign, History, MapPin, PackageCheck, RefreshCcw, Store, UserRoundCheck } from "lucide-react";
+import { ChevronDown, History, MapPin, PackageCheck, RefreshCcw, Store, UserRoundCheck } from "lucide-react";
 import { useState } from "react";
 import { ACCOUNT_PRICING_TIERS, accountHealthSnapshot } from "../../lib/account-health";
 import { useCrm } from "../../lib/crm-context";
@@ -70,32 +70,32 @@ function AccountProfile({ account }: { account: Account }) {
         </section>
         <section>
           <h3>Pricing</h3>
-          <div className="crm-tier-picker">{(["A","B","C"] as PricingTier[]).map((tier)=><button key={tier} className={account.pricingTier===tier?"is-active":""} disabled={!canEdit} onClick={()=>setTier(tier)}><strong>{tier}</strong><span>{formatMoney(ACCOUNT_PRICING_TIERS[tier].pricePerCase)}/case</span></button>)}</div>
-          {account.pricingUpdatedAt&&<small className="crm-profile-note">Last changed {formatDate(account.pricingUpdatedAt,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})} by {data.users.find((user)=>user.id===account.pricingUpdatedBy)?.name??"recorded user"}</small>}
+          <div className="crm-tier-picker">{(["A", "B", "C"] as PricingTier[]).map((tier) => <button key={tier} className={account.pricingTier === tier ? "is-active" : ""} disabled={!canEdit} onClick={() => setTier(tier)}><strong>{tier}</strong><span>{formatMoney(ACCOUNT_PRICING_TIERS[tier].pricePerCase)}/case</span></button>)}</div>
+          {account.pricingUpdatedAt && <small className="crm-profile-note">Last changed {formatDate(account.pricingUpdatedAt, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })} by {data.users.find((user) => user.id === account.pricingUpdatedBy)?.name ?? "recorded user"}</small>}
         </section>
       </div>
 
       <div className="crm-profile-columns">
         <section>
           <h3>Classification</h3>
-          <div className="form-grid crm-profile-form"><Field label="Premise"><select disabled={!canEdit} value={premiseType} onChange={(event)=>setPremiseType(event.target.value as PremiseType)}>{premiseOptions.map((option)=><option key={option}>{option}</option>)}</select></Field><Field label="Business type"><input disabled={!canEdit} value={businessType} onChange={(event)=>setBusinessType(event.target.value)}/></Field><Field label="Next category review"><input disabled={!canEdit} type="date" value={categoryReviewDate} onChange={(event)=>setCategoryReviewDate(event.target.value)}/></Field>{canEdit&&<Button size="sm" onClick={saveClassification}>Save classification</Button>}</div>
+          <div className="form-grid crm-profile-form"><Field label="Premise"><select disabled={!canEdit} value={premiseType} onChange={(event) => setPremiseType(event.target.value as PremiseType)}>{premiseOptions.map((option) => <option key={option}>{option}</option>)}</select></Field><Field label="Business type"><input disabled={!canEdit} value={businessType} onChange={(event) => setBusinessType(event.target.value)}/></Field><Field label="Next category review"><input disabled={!canEdit} type="date" value={categoryReviewDate} onChange={(event) => setCategoryReviewDate(event.target.value)}/></Field>{canEdit && <Button size="sm" onClick={saveClassification}>Save classification</Button>}</div>
         </section>
         <section>
           <h3>Contacts</h3>
-          <div className="crm-profile-list">{contacts.slice(0,6).map((contact)=><div key={contact.id}><strong>{contact.name}</strong><span>{contact.role}{contact.phone?` · ${contact.phone}`:""}{contact.email?` · ${contact.email}`:""}</span></div>)}{contacts.length===0&&<span>No contacts recorded.</span>}</div>
+          <div className="crm-profile-list">{contacts.slice(0, 6).map((contact) => <div key={contact.id}><strong>{contact.name}</strong><span>{contact.role}{contact.phone ? ` · ${contact.phone}` : ""}{contact.email ? ` · ${contact.email}` : ""}</span></div>)}{contacts.length === 0 && <span>No contacts recorded.</span>}</div>
         </section>
       </div>
 
-      {canTransfer&&<section className="crm-handoff-panel"><div><UserRoundCheck size={18}/><div><strong>Responsibility handoff</strong><span>Changes future responsibility only. Existing order credit stays with the rep who created each order.</span></div></div><div className="crm-handoff-controls"><select value={handoffTo} onChange={(event)=>setHandoffTo(event.target.value)}>{salesUsers.map((user)=><option key={user.id} value={user.id}>{user.name}</option>)}</select><input placeholder="Reason for handoff" value={handoffReason} onChange={(event)=>setHandoffReason(event.target.value)}/><Button size="sm" variant="secondary" disabled={handoffTo===account.ownerId||!handoffReason.trim()} onClick={transfer}>Transfer</Button></div></section>}
+      {canTransfer && <section className="crm-handoff-panel"><div><UserRoundCheck size={18}/><div><strong>Responsibility handoff</strong><span>Changes future responsibility only. Existing order credit stays with the rep who created each order.</span></div></div><div className="crm-handoff-controls"><select value={handoffTo} onChange={(event) => setHandoffTo(event.target.value)}>{salesUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select><input placeholder="Reason for handoff" value={handoffReason} onChange={(event) => setHandoffReason(event.target.value)}/><Button size="sm" variant="secondary" disabled={handoffTo === account.ownerId || !handoffReason.trim()} onClick={transfer}>Transfer</Button></div></section>}
 
       <div className="crm-profile-columns">
         <section>
           <h3><PackageCheck size={15}/> Order history</h3>
-          <div className="crm-profile-list">{orders.slice(0,8).map((order)=>{const credited=data.users.find((user)=>user.id===(order.creditedRepId??order.ownerId));return <div key={order.id}><strong>{order.number} · {order.product??"Golden Eagle"} · {order.cases} cases</strong><span>{formatDate(order.placedAt)} · {formatMoney(order.pricePerCase)}/case · credit: {credited?.name??"No sales rep"}</span></div>})}{orders.length===0&&<span>No orders recorded.</span>}</div>
+          <div className="crm-profile-list">{orders.slice(0, 8).map((order) => { const credited = data.users.find((user) => user.id === (order.creditedRepId ?? order.ownerId)); return <div key={order.id}><strong>{order.number} · {order.product ?? "Golden Eagle"} · {order.cases} cases</strong><span>{formatDate(order.placedAt)} · {formatMoney(order.pricePerCase)}/case · credit: {credited?.name ?? "No sales rep"}</span></div>; })}{orders.length === 0 && <span>No orders recorded.</span>}</div>
         </section>
         <section>
           <h3><RefreshCcw size={15}/> Responsibility history</h3>
-          <div className="crm-profile-list">{crm.responsibilityHistory.filter((event)=>event.locationId===account.id).slice(0,8).map((event)=><div key={event.id}><strong>{data.users.find((user)=>user.id===event.fromUserId)?.name??"Unassigned"} → {data.users.find((user)=>user.id===event.toUserId)?.name??"Unknown"}</strong><span>{event.reason} · {formatDate(event.effectiveAt,{month:"short",day:"numeric",year:"numeric"})}</span></div>)}</div>
+          <div className="crm-profile-list">{crm.responsibilityHistory.filter((event) => event.locationId === account.id).slice(0, 8).map((event) => <div key={event.id}><strong>{data.users.find((user) => user.id === event.fromUserId)?.name ?? "Unassigned"} → {data.users.find((user) => user.id === event.toUserId)?.name ?? "Unknown"}</strong><span>{event.reason} · {formatDate(event.effectiveAt, { month: "short", day: "numeric", year: "numeric" })}</span></div>)}</div>
         </section>
       </div>
 
@@ -104,8 +104,8 @@ function AccountProfile({ account }: { account: Account }) {
   </details>;
 }
 
-export function AccountProfilePanel(){
+export function AccountProfilePanel() {
   const { scope, currentUser } = useWorkspace();
   if (!currentUser || currentUser.role === "Customer") return null;
-  return <section className="crm-expandable-profiles"><header><div><h2>Account profiles</h2></div><StatusPill tone="info">{scope.accounts.length} in scope</StatusPill></header><div>{scope.accounts.map((account)=><AccountProfile key={account.id} account={account}/>)}</div></section>;
+  return <section className="crm-expandable-profiles"><header><div><h2>Account profiles</h2><p>Expand an account to review pricing, ownership, classification, order credit, and change history.</p></div><StatusPill tone="info">{scope.accounts.length} in scope</StatusPill></header><div>{scope.accounts.map((account) => <AccountProfile key={account.id} account={account}/>)}</div></section>;
 }
