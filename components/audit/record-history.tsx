@@ -17,9 +17,9 @@ const fieldNames:Record<string,string>={
 };
 const hiddenFields=new Set(["id","version","updatedAt","createdAt","accountId","locationId","customerId"]);
 
-const humanField=(field:string)=>fieldNames[field]??field.replace(/([a-z0-9])([A-Z])/g,"$1 $2").replace(/[_-]+/g," ").replace(/^./,(letter)=>letter.toUpperCase());
+const humanField=(field:string):string=>fieldNames[field]??field.replace(/([a-z0-9])([A-Z])/g,"$1 $2").replace(/[_-]+/g," ").replace(/^./,(letter)=>letter.toUpperCase());
 
-function humanValue(value:string|undefined,data:WorkspaceData){
+function humanValue(value:string|undefined,data:WorkspaceData):string{
   if(value===undefined||value===""||value==="null"||value==="undefined")return "Not set";
   if(value==="true")return "Yes";
   if(value==="false")return "No";
@@ -29,11 +29,11 @@ function humanValue(value:string|undefined,data:WorkspaceData){
   const appointment=data.appointments.find((item)=>item.id===value);if(appointment)return `${appointment.type} on ${formatDate(appointment.date,{month:"short",day:"numeric",year:"numeric"})}`;
   const lot=data.inventory.find((item)=>item.id===value);if(lot)return lot.lotCode;
   if(/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(value)){try{return formatDate(value,{month:"short",day:"numeric",year:"numeric",hour:value.includes("T")?"numeric":undefined,minute:value.includes("T")?"2-digit":undefined})}catch{return value}}
-  if(value.startsWith("[")||value.startsWith("{")){try{const parsed=JSON.parse(value);if(Array.isArray(parsed))return parsed.map((item)=>humanValue(String(item),data)).join(", ")||"None";return "Details updated"}catch{return value}}
+  if(value.startsWith("[")||value.startsWith("{")){try{const parsed:unknown=JSON.parse(value);if(Array.isArray(parsed))return parsed.map((item:unknown):string=>humanValue(String(item),data)).join(", ")||"None";return "Details updated"}catch{return value}}
   return value;
 }
 
-function readableChanges(changes:AuditChange[],data:WorkspaceData){return changes.filter((change)=>!hiddenFields.has(change.field)).slice(0,8).map((change)=>({label:humanField(change.field),before:humanValue(change.before,data),after:humanValue(change.after,data)}));}
+function readableChanges(changes:AuditChange[],data:WorkspaceData):Array<{label:string;before:string;after:string}>{return changes.filter((change)=>!hiddenFields.has(change.field)).slice(0,8).map((change)=>({label:humanField(change.field),before:humanValue(change.before,data),after:humanValue(change.after,data)}));}
 
 export function RecordHistory({ accountId, entityType, entityId, limit = 12 }: { accountId?: string; entityType?: string; entityId?: string; limit?: number }) {
   const { eventsForAccount, eventsForRecord } = useAudit();
