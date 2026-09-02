@@ -325,14 +325,14 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const prior = data.orders.filter((order) => order.accountId === accountId && ["Delivered", "Paid"].includes(order.status) && order.pricePerCase > 0).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0];
     const customer = currentUser.role === "Customer";
     const tierPrice = pricingTierPrice(account.pricingTier);
-    const price = customer ? prior?.pricePerCase : tierPrice ?? pricePerCase;
+    const price = tierPrice ?? (customer ? prior?.pricePerCase : pricePerCase);
     if (!price || price <= 0) return null;
     const available = inventoryAvailableAtOrder ?? data.inventory.filter((lot) => lot.product === selectedProduct).reduce((sum, lot) => sum + lot.available, 0);
     const lowStock = available < 50;
     const id = uid("ord");
     const number = `GE-${data.orders.length + 1050}`;
     const creditedRepId = currentUser.role === "Sales Representative" ? currentUser.id : undefined;
-    const order: Order = { id, number, accountId, cases, pricePerCase: price, amount: cases * price, status: "Awaiting approval", placedAt: today(), ownerId: currentUser.id, creditedRepId, product: selectedProduct, inventoryAvailableAtOrder: available, lowStockApprovalRequired: lowStock, priceBasis: customer ? "Prior demo order snapshot" : tierPrice ? "Account pricing tier" : "Demo entered price", paymentStatus: "Not invoiced" };
+    const order: Order = { id, number, accountId, cases, pricePerCase: price, amount: cases * price, status: "Awaiting approval", placedAt: today(), ownerId: currentUser.id, creditedRepId, product: selectedProduct, inventoryAvailableAtOrder: available, lowStockApprovalRequired: lowStock, priceBasis: tierPrice ? "Account pricing tier" : customer ? "Prior demo order snapshot" : "Demo entered price", paymentStatus: "Not invoiced" };
     const approval: Approval = { id: uid("apr"), type: lowStock ? "Low stock sale" : "Order", title: lowStock ? `Low-stock approval · ${number}` : `Review order ${number}`, detail: `${selectedProduct} · ${cases} cases · ${available} available sellable cases · ${account.locationName ?? account.name}`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.role === "Customer" ? "Sales" : currentUser.team, submittedAt: now(), dueAt: new Date(Date.now() + 86400000).toISOString(), priority: lowStock ? "Urgent" : "High", status: "Pending" };
     setCommercial((state) => ({ ...state, orders: [order, ...state.orders], approvals: [approval, ...state.approvals], accountPatches: { ...state.accountPatches, [accountId]: { ...(state.accountPatches[accountId] ?? {}), stage: "Opening order", lastActivity: `Order request ${number} submitted` } }, activities: [{ id: uid("act-order"), accountId, type: "order", title: lowStock ? "Low-stock order submitted" : "Order submitted", detail: `${number} · ${selectedProduct} · ${cases} cases · ${available} available at submission.`, at: now(), userId: currentUser.id }, ...state.activities] }));
     return id;
