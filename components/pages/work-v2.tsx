@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertOctagon, AlertTriangle, ArrowRight, Boxes, Check, CheckCircle2, ClipboardCheck, Clock3, Eye, FileText, RotateCcw, ShieldCheck, Store } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { canReviewApproval } from "../../lib/access";
 import { useHcm } from "../../lib/hcm-context";
 import { appendAudit } from "../../lib/hcm-engine";
@@ -29,9 +29,6 @@ export function WorkPage(){
   const reviewOrder=reviewApproval&&orderApproval(reviewApproval.type)?scope.orders.find((order)=>order.id===reviewApproval.recordId)??null:null;
   const reviewAccount=reviewOrder?scope.accounts.find((account)=>account.id===reviewOrder.accountId)??null:null;
   const reviewTimecard=reviewApproval?.type==="Timecard"?data.timecards.find((card)=>card.id===reviewApproval.recordId)??null:null;
-  const reviewEmployee=reviewTimecard?data.users.find((user)=>user.id===reviewTimecard.userId):undefined;
-  const reviewEntries=useMemo(()=>reviewTimecard?data.timeEntries.filter((entry)=>entry.userId===reviewTimecard.userId&&entry.date>=reviewTimecard.weekStart&&entry.date<=reviewTimecard.weekEnd):[],[data.timeEntries,reviewTimecard]);
-  const reviewHours=reviewEntries.reduce((sum,entry)=>sum+hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes),0);
   const canDecide=Boolean(reviewApproval&&canReviewApproval(data,currentUser,reviewApproval)&&(reviewApproval.type!=="Timecard"||reviewTimecard?.userId!==currentUser.id));
   const auditReturn=(cardId:string,note:string)=>setHcm((state)=>appendAudit(state,{actorId:currentUser.id,action:"Timecard returned",entityType:"TimecardReview",entityId:cardId,reason:note.trim()}));
   const auditApprove=(cardId:string)=>setHcm((state)=>appendAudit(state,{actorId:currentUser.id,action:"Timecard approved",entityType:"TimecardReview",entityId:cardId}));
