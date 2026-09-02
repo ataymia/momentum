@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { DailyWorkReport, ManagerWeeklyReport, PERFORMANCE_STORAGE_KEY, PerformanceGoal, PerformanceState, WorkReport, ReportNote, createPerformanceSeed, normalizePerformanceState } from "./performance-engine";
 import { useWorkspace } from "./workspace-context";
 
@@ -29,7 +29,7 @@ export function PerformanceProvider({children}:{children:ReactNode}){
   const reviewReport=(reportId:string,note:string)=>{if(!currentUser)return;setPerformance((state)=>({...state,reports:state.reports.map((report)=>report.id===reportId?{...report,status:"Reviewed",reviewerId:currentUser.id,reviewedAt:now(),reviewerNotes:note.trim()||undefined}:report)}));};
   const addReportNote=(reportId:string,note:string)=>{if(!currentUser||!note.trim())return;const record:ReportNote={id:uid("report-note"),reportId,authorId:currentUser.id,note:note.trim(),createdAt:now()};setPerformance((state)=>({...state,notes:[record,...state.notes]}));};
   const resetPerformance=()=>setPerformance(createPerformanceSeed());
-  const value=useMemo(()=>({performance,createGoal,updateManualGoal,cancelGoal,submitReport,reviewReport,addReportNote,resetPerformance}),[performance,currentUser]);
+  const value:PerformanceContextValue={performance,createGoal,updateManualGoal,cancelGoal,submitReport,reviewReport,addReportNote,resetPerformance};
   return <PerformanceContext.Provider value={value}>{children}</PerformanceContext.Provider>;
 }
 
