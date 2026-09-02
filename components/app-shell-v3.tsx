@@ -14,7 +14,6 @@ import { AccountingPanel } from "./accounting/accounting-panel";
 import { AuditCenter } from "./audit/audit-center";
 import { OrderCashPanel } from "./commerce/order-cash-panel";
 import { CrmDepthPanel } from "./crm/crm-depth-panel";
-import { AdvancedHcmPanel } from "./hcm/advanced-hcm";
 import { InventoryLedgerPanel } from "./inventory/inventory-ledger-panel";
 import { AccountsPage } from "./pages/accounts";
 import { DashboardPage } from "./pages/dashboard";
@@ -49,7 +48,7 @@ const primaryNav: NavItem[] = [
 const secondaryNav: NavItem[] = [
   { key: "reports", label: "Performance & reports", icon: BarChart3 },
   { key: "settings", label: "Administration", icon: Settings },
-  { key: "help", label: "Help & training", icon: CircleHelp },
+  { key: "help", label: "Help", icon: CircleHelp },
 ];
 const demoTourIds = new Set(["usr-flo", "usr-mia", "usr-avery", "usr-jordan", "usr-customer"]);
 const labelFor = (item: NavItem, user: WorkspaceUser) => user.role !== "Customer" ? item.label : item.key === "home" ? "Account overview" : item.key === "accounts" ? "My account" : item.key === "orders" ? "My orders" : item.label;
@@ -73,7 +72,7 @@ function PageView() {
     case "orders": return <><OrdersPage/><OrderCashPanel/></>;
     case "inventory": return <><InventoryPage/><InventoryLedgerPanel/></>;
     case "marketing": return <MarketingPage/>;
-    case "people": return <><PeoplePage/><AdvancedHcmPanel/></>;
+    case "people": return <PeoplePage/>;
     case "payroll": return <PayrollPage/>;
     case "finance": return <><FinancePage/><AccountingPanel/></>;
     case "reports": return <><ReportsPage/><ReportingCenter/><AuditCenter/></>;
