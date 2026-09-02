@@ -2,6 +2,8 @@
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useAudit } from "./audit-context";
+import { inventoryProductStatuses } from "./inventory-ledger";
+import { useInventoryLedger } from "./inventory-ledger-context";
 import { NOTIFICATION_STORAGE_KEY, NotificationDelivery, NotificationPreference, NotificationState, createNotificationSeed, deliveryKey, enabledChannels, normalizeNotificationState, notificationCopy, resolveNotificationRecipients } from "./notification-engine";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
@@ -12,10 +14,36 @@ const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toStrin
 function readState(users: ReturnType<typeof useWorkspace>["data"]["users"]) { if (typeof window === "undefined") return createNotificationSeed(users); try { return normalizeNotificationState(JSON.parse(window.localStorage.getItem(NOTIFICATION_STORAGE_KEY) ?? "null"), users); } catch { return createNotificationSeed(users); } }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { data, currentUser } = useWorkspace(); const { audit } = useAudit(); const runtime = useRuntimeMode(); const [state, setState] = useState<NotificationState>(() => readState(data.users));
+  const { data, currentUser } = useWorkspace(); const { audit } = useAudit(); const { ledger } = useInventoryLedger(); const runtime = useRuntimeMode(); const [state, setState] = useState<NotificationState>(() => readState(data.users));
   useEffect(() => { const handle = window.setTimeout(() => setState((current) => normalizeNotificationState(current, data.users)), 0); return () => window.clearTimeout(handle); }, [data.users]);
   useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(state)); }, [state]);
   useEffect(() => { const handle = window.setTimeout(() => setState((current) => { const existing = new Set(current.deliveries.map((item) => deliveryKey(item.sourceEventId, item.recipientUserId, item.channel))); const additions: NotificationDelivery[] = []; for (const event of audit.events.slice(0, 500)) { const copy = notificationCopy(event); for (const userId of resolveNotificationRecipients(event, data)) { const preference = current.preferences.find((item) => item.userId === userId); if (!preference) continue; for (const channel of enabledChannels(preference)) { const key = deliveryKey(event.id, userId, channel); if (existing.has(key)) continue; existing.add(key); additions.push({ id: uid("notice"), sourceEventId: event.id, recipientUserId: userId, channel, title: copy.title, detail: copy.detail, tone: copy.tone, createdAt: event.at, status: channel === "In app" ? "Unread" : "Awaiting integration" }); } } } return additions.length ? { ...current, deliveries: [...additions, ...current.deliveries].slice(0, 12000) } : current; }), 0); return () => window.clearTimeout(handle); }, [audit.events, data]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setState((current) => {
+      const statuses = inventoryProductStatuses(ledger, data).filter((item) => item.reorderNeeded);
+      const activeSourceIds = new Set(statuses.map((item) => `inventory-threshold:${item.requiresManagerApproval ? "critical" : "reorder"}:${item.product}`));
+      const retained = current.deliveries.filter((delivery) => !delivery.sourceEventId.startsWith("inventory-threshold:") || activeSourceIds.has(delivery.sourceEventId));
+      const existing = new Set(retained.map((item) => deliveryKey(item.sourceEventId, item.recipientUserId, item.channel)));
+      const recipientIds = data.users.filter((user) => user.role === "Administrator" || user.role === "Sales Manager" || user.role === "Warehouse").map((user) => user.id);
+      const additions: NotificationDelivery[] = [];
+      for (const stock of statuses) {
+        const sourceEventId = `inventory-threshold:${stock.requiresManagerApproval ? "critical" : "reorder"}:${stock.product}`;
+        const title = stock.requiresManagerApproval ? "Low stock approval required" : "Inventory reorder required";
+        const detail = `${stock.product} has ${stock.available} available sellable cases. ${stock.requiresManagerApproval ? "Sales require manager approval below 50 cases. Replenishment is also required." : "Replenishment is required below 500 cases."}`;
+        for (const recipientUserId of recipientIds) {
+          const preference = current.preferences.find((item) => item.userId === recipientUserId); if (!preference) continue;
+          for (const channel of enabledChannels(preference)) {
+            const key = deliveryKey(sourceEventId, recipientUserId, channel); if (existing.has(key)) continue; existing.add(key);
+            additions.push({ id: uid("stock-alert"), sourceEventId, recipientUserId, channel, title, detail, tone: "warning", createdAt: new Date().toISOString(), status: channel === "In app" ? "Unread" : "Awaiting integration" });
+          }
+        }
+      }
+      return additions.length || retained.length !== current.deliveries.length ? { ...current, deliveries: [...additions, ...retained].slice(0, 12000) } : current;
+    }), 0);
+    return () => window.clearTimeout(handle);
+  }, [data, ledger]);
+
   useEffect(() => {
     const evaluateEscalations = () => {
       const checkedAt = new Date().toISOString(); const nowMs = Date.now();
