@@ -8,7 +8,7 @@ export type PaymentStatus="Pending"|"Cleared"|"Failed"|"Reversed";
 export type PaymentMethod="Card"|"ACH"|"Wire"|"Cash"|"Other";
 export type Payment={id:string;accountId:string;receivedAt:string;amount:number;method:PaymentMethod;status:PaymentStatus;processorReference?:string;note?:string;createdBy:string;createdAt:string;settledAt?:string;reversedAt?:string};
 export type PaymentAllocation={id:string;paymentId:string;invoiceId:string;amount:number;createdAt:string;createdBy:string};
-export type CreditMemo={id:string;invoiceId:string;amount:number;reason:string;status:"Draft"|"Approved"|"Applied"|"Void";createdAt:string;createdBy:string;approvedBy?:string;approvedAt?:string};
+export type CreditMemo={id:string;invoiceId:string;amount:number;reason:string;status:"Draft"|"Approved"|"Applied"|"Void";createdAt:string;createdBy:string;approvedBy?:string;approvedAt?:string;appliedAt?:string};
 export type Refund={id:string;paymentId:string;amount:number;reason:string;basis?:"Verified quality issue";evidence?:string;status:"Requested"|"Approved"|"Sent"|"Settled"|"Failed";createdAt:string;createdBy:string;approvedBy?:string;approvedAt?:string;settledAt?:string};
 export type ReceivableNote={id:string;invoiceId:string;authorId:string;note:string;createdAt:string};
 export type CommerceState={version:1;invoices:Invoice[];payments:Payment[];allocations:PaymentAllocation[];credits:CreditMemo[];refunds:Refund[];notes:ReceivableNote[]};
@@ -17,7 +17,7 @@ const now=()=>new Date().toISOString();const today=()=>new Date().toISOString().
 const eligibleForInvoice=(status:string)=>["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(status);
 const invoiceNumber=(orderNumber:string)=>`INV-${orderNumber.replace(/^GE-/,"")}`;
 export function createCommerceSeed(data:WorkspaceData):CommerceState{
-  const invoices:Invoice[]=data.orders.filter((order)=>eligibleForInvoice(order.status)||order.paymentStatus!=="Not invoiced").map((order)=>({id:`invoice-${order.id}`,number:invoiceNumber(order.number),orderId:order.id,accountId:order.accountId,issuedAt:order.placedAt,terms:"Prepaid",total:order.amount,status:order.paymentStatus==="Paid"?"Paid":order.paymentStatus==="Partially paid"?"Partially paid":"Open",createdAt:now()}));
+  const invoices:Invoice[]=data.orders.filter((order)=>eligibleForInvoice(order.status)||order.paymentStatus!=="Not invoiced").map((order)=>{const createdAt=now();return{id:`invoice-${order.id}`,number:invoiceNumber(order.number),orderId:order.id,accountId:order.accountId,issuedAt:createdAt,terms:"Prepaid",total:order.amount,status:order.paymentStatus==="Paid"?"Paid":order.paymentStatus==="Partially paid"?"Partially paid":"Open",createdAt};});
   const payments:Payment[]=[];const allocations:PaymentAllocation[]=[];
   for(const order of data.orders.filter((item)=>item.paymentStatus==="Paid")){const invoice=invoices.find((item)=>item.orderId===order.id);if(!invoice)continue;const paymentId=`payment-${order.id}-seed`;const settledAt=order.firstSettledAt??order.paidAt??order.placedAt;payments.push({id:paymentId,accountId:order.accountId,receivedAt:settledAt,settledAt,amount:order.amount,method:"Other",status:"Cleared",note:"Seeded from paid demo order",createdBy:"system",createdAt:now()});allocations.push({id:`allocation-${order.id}-seed`,paymentId,invoiceId:invoice.id,amount:order.amount,createdAt:now(),createdBy:"system"});}
   return{version:1,invoices,payments,allocations,credits:[],refunds:[],notes:[]};
