@@ -1,4 +1,4 @@
-import type { InventoryLot, WorkspaceData } from "./types";
+import type { InventoryLot, Order, WorkspaceData } from "./types";
 
 export const INVENTORY_LEDGER_STORAGE_KEY="momentum-inventory-ledger-v1";
 export const LOW_STOCK_MANAGER_APPROVAL_THRESHOLD_CASES=50;
@@ -36,9 +36,39 @@ export function nodeLotBalance(state:InventoryLedgerState,nodeId:string,lotId:st
 export function lotBalances(state:InventoryLedgerState,lotId:string){return state.nodes.map((node)=>({node,balance:nodeLotBalance(state,node.id,lotId)})).filter((item)=>item.balance!==0);}
 export function lotSystemQuantity(state:InventoryLedgerState,lotId:string){return state.nodes.filter((node)=>node.type!=="External").reduce((sum,node)=>sum+nodeLotBalance(state,node.id,lotId),0);}
 export function reservedQuantity(state:InventoryLedgerState,lotId:string){return state.reservations.filter((reservation)=>reservation.lotId===lotId&&reservation.status==="Active").reduce((sum,item)=>sum+item.quantity,0);}
+export function activeReservedForOrder(state:InventoryLedgerState,orderId:string,lotId?:string){return state.reservations.filter((reservation)=>reservation.orderId===orderId&&reservation.status==="Active"&&(!lotId||reservation.lotId===lotId)).reduce((sum,item)=>sum+item.quantity,0);}
+export function fulfilledForOrder(state:InventoryLedgerState,orderId:string){return state.reservations.filter((reservation)=>reservation.orderId===orderId&&reservation.status==="Fulfilled").reduce((sum,item)=>sum+item.quantity,0);}
 export function warehouseAvailable(state:InventoryLedgerState,lotId:string){return Math.max(0,nodeLotBalance(state,warehouseNodeId,lotId)-reservedQuantity(state,lotId));}
-export function productAvailableSellableCases(state:InventoryLedgerState,data:WorkspaceData,product:string){return data.inventory.filter((lot)=>lot.product===product).reduce((sum,lot)=>sum+warehouseAvailable(state,lot.id),0);}
+export function productAvailableSellableCases(state:InventoryLedgerState,data:WorkspaceData,product:string){return data.inventory.filter((lot)=>lot.product===product&&lot.status!=="Quality hold").reduce((sum,lot)=>sum+warehouseAvailable(state,lot.id),0);}
 export function productInventoryStatus(state:InventoryLedgerState,data:WorkspaceData,product:string){const available=productAvailableSellableCases(state,data,product);return{product,available,requiresManagerApproval:available<LOW_STOCK_MANAGER_APPROVAL_THRESHOLD_CASES,reorderNeeded:available<WAREHOUSE_REORDER_THRESHOLD_CASES};}
 export function inventoryProductStatuses(state:InventoryLedgerState,data:WorkspaceData){return [...new Set(data.inventory.map((lot)=>lot.product))].sort().map((product)=>productInventoryStatus(state,data,product));}
-export function movementCanPost(state:InventoryLedgerState,input:{lotId:string;quantity:number;type:MovementType;fromNodeId?:string;toNodeId?:string}){if(input.quantity<=0)return false;if(!input.fromNodeId&&!input.toNodeId)return false;if(input.fromNodeId&&input.fromNodeId===input.toNodeId)return false;if(input.type!=="Adjustment"&&input.fromNodeId&&state.nodes.find((node)=>node.id===input.fromNodeId)?.type!=="External"&&nodeLotBalance(state,input.fromNodeId,input.lotId)<input.quantity)return false;return true;}
+
+export function reservationCanCreate(state:InventoryLedgerState,data:WorkspaceData,orderId:string,lotId:string,quantity:number){
+  if(quantity<=0)return false;
+  const order=data.orders.find((item)=>item.id===orderId);const lot=data.inventory.find((item)=>item.id===lotId);
+  if(!order||!lot||!["Approved","Allocated"].includes(order.status)||lot.status==="Quality hold")return false;
+  if(order.product&&order.product!==lot.product)return false;
+  if(activeReservedForOrder(state,orderId)+quantity>order.cases)return false;
+  if(quantity>warehouseAvailable(state,lotId))return false;
+  return true;
+}
+
+export function movementCanPost(state:InventoryLedgerState,input:{lotId:string;quantity:number;type:MovementType;fromNodeId?:string;toNodeId?:string;relatedOrderId?:string}){
+  if(input.quantity<=0)return false;if(!input.fromNodeId&&!input.toNodeId)return false;if(input.fromNodeId&&input.fromNodeId===input.toNodeId)return false;
+  const fromNode=input.fromNodeId?state.nodes.find((node)=>node.id===input.fromNodeId):undefined;const toNode=input.toNodeId?state.nodes.find((node)=>node.id===input.toNodeId):undefined;
+  if(input.fromNodeId&&!fromNode)return false;if(input.toNodeId&&!toNode)return false;
+  if(input.type!=="Adjustment"&&input.fromNodeId&&fromNode?.type!=="External"){
+    const balance=nodeLotBalance(state,input.fromNodeId,input.lotId);if(balance<input.quantity)return false;
+    if(input.fromNodeId===warehouseNodeId){const totalReserved=reservedQuantity(state,input.lotId);const thisOrderReserved=input.relatedOrderId?activeReservedForOrder(state,input.relatedOrderId,input.lotId):0;const protectedForOtherOrders=Math.max(0,totalReserved-thisOrderReserved);if(balance-protectedForOtherOrders<input.quantity)return false;}
+  }
+  return true;
+}
+
+export function orderDeliveryQuantity(state:InventoryLedgerState,orderId:string){return state.movements.filter((movement)=>movement.relatedOrderId===orderId&&movement.type==="Delivery").reduce((sum,movement)=>sum+movement.quantity,0);}
+export function orderOutboundQuantity(state:InventoryLedgerState,orderId:string){return state.movements.filter((movement)=>movement.relatedOrderId===orderId&&["Transfer","Delivery"].includes(movement.type)&&movement.fromNodeId===warehouseNodeId).reduce((sum,movement)=>sum+movement.quantity,0);}
+export function orderCanAdvanceInventory(state:InventoryLedgerState,order:Order,nextStatus:"Allocated"|"Out for delivery"|"Delivered"){
+  if(nextStatus==="Allocated")return activeReservedForOrder(state,order.id)>=order.cases;
+  if(nextStatus==="Out for delivery")return activeReservedForOrder(state,order.id)+fulfilledForOrder(state,order.id)>=order.cases&&orderOutboundQuantity(state,order.id)>=order.cases;
+  return orderDeliveryQuantity(state,order.id)>=order.cases;
+}
 export function lotById(data:WorkspaceData,lotId:string):InventoryLot|undefined{return data.inventory.find((lot)=>lot.id===lotId);}
