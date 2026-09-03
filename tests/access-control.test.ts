@@ -7,7 +7,7 @@ import {
   getWorkspaceScope,
 } from "../lib/access";
 import { createDemoData } from "../lib/demo-data";
-import type { Approval } from "../lib/types";
+import type { Approval, WorkspaceUser } from "../lib/types";
 
 const data = createDemoData();
 const user = (id: string) => {
@@ -26,37 +26,28 @@ test("administrator has company-wide records and every department", () => {
   for (const page of ["accounts","inventory","marketing","people","payroll","finance","reports","settings","help"] as const) assert.equal(canAccessPage(admin, page), true);
 });
 
-test("sales manager is limited to team sales workflows, approvals, reports, and help", () => {
+test("sales manager gets managed sales plus team and own workforce self-service without administration or inventory", () => {
   const manager = user("usr-avery");
   const scope = getWorkspaceScope(data, manager);
   assert.deepEqual(scope.accounts.map((account) => account.ownerId), ["usr-jordan", "usr-jordan", "usr-jordan", "usr-jordan"]);
   assert.equal(scope.inventory.length, 0);
-  assert.equal(canAccessPage(manager, "reports"), true);
-  assert.equal(canAccessPage(manager, "help"), true);
-  assert.equal(canAccessPage(manager, "marketing"), false);
-  assert.equal(canAccessPage(manager, "people"), false);
-  assert.equal(canAccessPage(manager, "payroll"), false);
-  assert.equal(canAccessPage(manager, "finance"), false);
+  for (const page of ["accounts","dispatch","retail","orders","marketing","people","payroll","finance","reports","help"] as const) assert.equal(canAccessPage(manager, page), true);
   assert.equal(canAccessPage(manager, "settings"), false);
   assert.equal(canAccessPage(manager, "inventory"), false);
 });
 
-test("sales representative is limited to own core sales execution and help", () => {
+test("sales representative gets own sales execution plus employee self-service and own reporting", () => {
   const rep = user("usr-jordan");
   const scope = getWorkspaceScope(data, rep);
   assert.equal(scope.accounts.every((account) => account.ownerId === rep.id), true);
   assert.equal(scope.appointments.every((item) => item.ownerId === rep.id), true);
   assert.equal(scope.inventory.length, 0);
-  assert.equal(canAccessPage(rep, "help"), true);
-  assert.equal(canAccessPage(rep, "marketing"), false);
-  assert.equal(canAccessPage(rep, "people"), false);
-  assert.equal(canAccessPage(rep, "payroll"), false);
-  assert.equal(canAccessPage(rep, "finance"), false);
-  assert.equal(canAccessPage(rep, "reports"), false);
+  for (const page of ["accounts","dispatch","retail","orders","marketing","people","payroll","finance","reports","help"] as const) assert.equal(canAccessPage(rep, page), true);
   assert.equal(canAccessPage(rep, "settings"), false);
+  assert.equal(canAccessPage(rep, "inventory"), false);
 });
 
-test("operations gets fulfillment, inventory, employee workflows, and help without unrelated sales execution", () => {
+test("operations gets fulfillment, inventory and employee self-service without unrelated sales execution", () => {
   const operations = user("usr-elena");
   const scope = getWorkspaceScope(data, operations);
   assert.equal(scope.orders.length, data.orders.length);
@@ -74,6 +65,16 @@ test("operations gets fulfillment, inventory, employee workflows, and help witho
   assert.equal(canAccessPage(operations, "accounts"), false);
   assert.equal(canAccessPage(operations, "retail"), false);
   assert.equal(canAccessPage(operations, "reports"), false);
+});
+
+test("warehouse gets warehouse and own workforce self-service only", () => {
+  const warehouse: WorkspaceUser = { id:"usr-warehouse",name:"Warehouse Demo",firstName:"Warehouse",email:"warehouse@momentum.demo",initials:"WH",title:"Warehouse Coordinator",role:"Warehouse",team:"Operations",managerId:"usr-mia",accent:"#53657d" };
+  const warehouseData = { ...data, users:[...data.users, warehouse] };
+  const scope = getWorkspaceScope(warehouseData, warehouse);
+  assert.equal(scope.orders.length, warehouseData.orders.length);
+  assert.equal(scope.inventory.length, warehouseData.inventory.length);
+  for (const page of ["orders","inventory","people","payroll","help"] as const) assert.equal(canAccessPage(warehouse, page), true);
+  for (const page of ["accounts","retail","marketing","finance","reports","settings"] as const) assert.equal(canAccessPage(warehouse, page), false);
 });
 
 test("customer sees only its linked account, orders, and help", () => {
