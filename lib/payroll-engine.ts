@@ -1,4 +1,4 @@
-import { evaluateSalesRepAccountBonuses, type BonusMilestone } from "./bonus-engine";
+import { evaluateSalesRepAccountBonuses, orderFirstSettlementDate, type BonusMilestone } from "./bonus-engine";
 import { activeCompensation, benefitDeductionPerPayPeriod, type HCMState } from "./hcm-engine";
 import type { TimeEntry, WorkspaceData } from "./types";
 
@@ -40,10 +40,6 @@ export type Disbursement = { id: string; payRunId: string; userId: string; amoun
 export type PayrollState = { version: 5; payGroups: PayGroup[]; employees: PayrollEmployee[]; withholdingProfiles: WithholdingProfile[]; employerTaxRules: EmployerTaxRule[]; runs: PayRun[]; liabilities: TaxLiability[]; disbursements: Disbursement[] };
 
 const today = () => new Date().toISOString().slice(0, 10);
-const orderSettlementDate = (data: WorkspaceData, orderId: string) => {
-  const order = data.orders.find((item) => item.id === orderId);
-  return order?.paidAt ?? order?.placedAt;
-};
 
 export function createPayrollSeed(): PayrollState {
   return { version: 5, payGroups: [], employees: [], withholdingProfiles: [], employerTaxRules: [], runs: [], liabilities: [], disbursements: [] };
@@ -104,13 +100,13 @@ export function bonusEarnedDate(data: WorkspaceData, signal: BonusMilestone) {
   if (signal.status !== "Earned") return undefined;
   const evidence = signal.evidenceOrderIds
     .map((orderId) => data.orders.find((order) => order.id === orderId))
-    .filter((order): order is WorkspaceData["orders"][number] => Boolean(order && order.paymentStatus === "Paid"))
-    .sort((a, b) => (a.paidAt ?? a.placedAt).localeCompare(b.paidAt ?? b.placedAt));
-  if (signal.milestone === "Opening order") return evidence[0] ? orderSettlementDate(data, evidence[0].id) : undefined;
+    .filter((order): order is WorkspaceData["orders"][number] => Boolean(order && orderFirstSettlementDate(data, order)))
+    .sort((a, b) => (orderFirstSettlementDate(data, a) ?? a.placedAt).localeCompare(orderFirstSettlementDate(data, b) ?? b.placedAt));
+  if (signal.milestone === "Opening order") return evidence[0] ? orderFirstSettlementDate(data, evidence[0]) : undefined;
   let cases = 0;
   for (const order of evidence) {
     cases += order.cases;
-    if (cases >= signal.thresholdCases) return orderSettlementDate(data, order.id);
+    if (cases >= signal.thresholdCases) return orderFirstSettlementDate(data, order);
   }
   return undefined;
 }
