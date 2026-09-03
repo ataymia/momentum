@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { sourceEvents, createAccountingSeed, buildJournalFromEvent } from "../lib/accounting-engine";
 import { evaluateSalesRepAccountBonuses } from "../lib/bonus-engine";
-import { createCommerceSeed, computedInvoiceStatus, invoiceBalance, type Payment, type PaymentAllocation } from "../lib/commerce-engine";
+import { createCommerceSeed, computedInvoiceStatus, invoiceBalance, type Payment, type PaymentAllocation, type Refund } from "../lib/commerce-engine";
 import { customerForLocation, locationLabel } from "../lib/crm-hierarchy";
 import { createDemoData } from "../lib/demo-data";
 import { createFinanceSeed } from "../lib/finance-engine";
@@ -60,6 +60,20 @@ test("commerce distinguishes partial settlement from full settlement", () => {
   const paid={...partial,payments:[payment,second],allocations:[allocation,secondAllocation]};
   assert.equal(computedInvoiceStatus(paid,invoice),"Paid");
   assert.equal(invoiceBalance(paid,invoice),0);
+});
+
+test("a settled customer refund reopens the receivable instead of leaving the invoice falsely paid", () => {
+  const data=createDemoData();
+  const order={...data.orders.find((item)=>item.id==="ord-1049")!,status:"Approved" as const,paymentStatus:"Open" as const};
+  const workspace={...data,orders:data.orders.map((item)=>item.id===order.id?order:item)};
+  const state=createCommerceSeed(workspace);
+  const invoice=state.invoices.find((item)=>item.orderId===order.id)!;
+  const payment:Payment={id:"p-full",accountId:invoice.accountId,receivedAt:"2026-08-28T12:00:00Z",amount:invoice.total,method:"ACH",status:"Cleared",createdBy:"test",createdAt:"2026-08-28T12:00:00Z"};
+  const allocation:PaymentAllocation={id:"a-full",paymentId:payment.id,invoiceId:invoice.id,amount:payment.amount,createdAt:payment.createdAt,createdBy:"test"};
+  const settled:Refund={id:"refund-partial",paymentId:payment.id,amount:24,reason:"One-case customer adjustment",status:"Settled",createdAt:"2026-08-29T12:00:00Z",createdBy:"test",settledAt:"2026-08-30T12:00:00Z"};
+  const refunded={...state,payments:[payment],allocations:[allocation],refunds:[settled]};
+  assert.equal(computedInvoiceStatus(refunded,invoice),"Partially paid");
+  assert.equal(invoiceBalance(refunded,invoice),24);
 });
 
 test("accounting inbox connects cleared payments and blocks inventory values until cost policy exists", () => {
