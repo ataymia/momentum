@@ -2,8 +2,8 @@
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { accountIsVisible, canAdvanceFulfillment, canManageSchedule, canReviewApproval, getWorkspaceScope } from "./access";
-import { pricingTierPrice } from "./account-health";
 import { findAccountDuplicate } from "./duplicate-engine";
+import { evaluatePartnerPricing } from "./pricing-engine";
 import type { Account, Activity, Appointment, AppointmentStatus, Approval, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, WorkspaceData, WorkspaceUser } from "./types";
 import { WorkspaceProvider as BaseWorkspaceProvider, useWorkspace as useBaseWorkspace } from "./workspace-context-v5";
 
@@ -207,6 +207,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return false;
     const pricingChanged = patch.pricingTier !== undefined && patch.pricingTier !== account.pricingTier;
+    if (pricingChanged && currentUser.role === "Sales Representative") return false;
     setCommercial((state) => ({
       ...state,
       accountPatches: {
@@ -317,24 +318,23 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const createOrder = ({ accountId, cases, pricePerCase, product, inventoryAvailableAtOrder }: EnhancedOrderInput) => {
+  const createOrder = ({ accountId, cases, product, inventoryAvailableAtOrder }: EnhancedOrderInput) => {
     if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role) || cases < 1) return null;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
     const selectedProduct = product || data.inventory[0]?.product || "Golden Eagle";
-    const prior = data.orders.filter((order) => order.accountId === accountId && ["Delivered", "Paid"].includes(order.status) && order.pricePerCase > 0).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0];
-    const customer = currentUser.role === "Customer";
-    const tierPrice = pricingTierPrice(account.pricingTier);
-    const price = tierPrice ?? (customer ? prior?.pricePerCase : pricePerCase);
+    const pricing = evaluatePartnerPricing(data, accountId);
+    const price = pricing.currentPricePerCase;
     if (!price || price <= 0) return null;
     const available = inventoryAvailableAtOrder ?? data.inventory.filter((lot) => lot.product === selectedProduct).reduce((sum, lot) => sum + lot.available, 0);
     const lowStock = available < 50;
     const id = uid("ord");
     const number = `GE-${data.orders.length + 1050}`;
     const creditedRepId = currentUser.role === "Sales Representative" ? currentUser.id : undefined;
-    const order: Order = { id, number, accountId, cases, pricePerCase: price, amount: cases * price, status: "Awaiting approval", placedAt: today(), ownerId: currentUser.id, creditedRepId, product: selectedProduct, inventoryAvailableAtOrder: available, lowStockApprovalRequired: lowStock, priceBasis: tierPrice ? "Account pricing tier" : customer ? "Prior demo order snapshot" : "Demo entered price", paymentStatus: "Not invoiced" };
+    const priceBasis = pricing.effectiveTier ? `Tier ${pricing.effectiveTier} · ${pricing.status}` : pricing.status;
+    const order: Order = { id, number, accountId, cases, pricePerCase: price, amount: cases * price, status: "Awaiting approval", placedAt: today(), ownerId: currentUser.id, creditedRepId, product: selectedProduct, inventoryAvailableAtOrder: available, lowStockApprovalRequired: lowStock, priceBasis, paymentStatus: "Not invoiced" };
     const approval: Approval = { id: uid("apr"), type: lowStock ? "Low stock sale" : "Order", title: lowStock ? `Low-stock approval · ${number}` : `Review order ${number}`, detail: `${selectedProduct} · ${cases} cases · ${available} available sellable cases · ${account.locationName ?? account.name}`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.role === "Customer" ? "Sales" : currentUser.team, submittedAt: now(), dueAt: new Date(Date.now() + 86400000).toISOString(), priority: lowStock ? "Urgent" : "High", status: "Pending" };
-    setCommercial((state) => ({ ...state, orders: [order, ...state.orders], approvals: [approval, ...state.approvals], accountPatches: { ...state.accountPatches, [accountId]: { ...(state.accountPatches[accountId] ?? {}), stage: "Opening order", lastActivity: `Order request ${number} submitted` } }, activities: [{ id: uid("act-order"), accountId, type: "order", title: lowStock ? "Low-stock order submitted" : "Order submitted", detail: `${number} · ${selectedProduct} · ${cases} cases · ${available} available at submission.`, at: now(), userId: currentUser.id }, ...state.activities] }));
+    setCommercial((state) => ({ ...state, orders: [order, ...state.orders], approvals: [approval, ...state.approvals], accountPatches: { ...state.accountPatches, [accountId]: { ...(state.accountPatches[accountId] ?? {}), stage: "Opening order", lastActivity: `Order request ${number} submitted` } }, activities: [{ id: uid("act-order"), accountId, type: "order", title: lowStock ? "Low-stock order submitted" : "Order submitted", detail: `${number} · ${selectedProduct} · ${cases} cases · Tier ${pricing.effectiveTier ?? "unassigned"} · ${price.toFixed(2)}/case · ${available} available at submission.`, at: now(), userId: currentUser.id }, ...state.activities] }));
     return id;
   };
 
@@ -365,19 +365,26 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       return;
     }
     const becamePaid = status === "Paid" && order.paymentStatus !== "Paid";
+    const lostPaid = order.paymentStatus === "Paid" && status !== "Paid";
+    const paidStatusChanged = becamePaid || lostPaid;
+    const paidOrdersAfter = data.orders
+      .filter((item) => item.accountId === order.accountId && item.id !== order.id && item.paymentStatus === "Paid")
+      .concat(status === "Paid" ? [{ ...order, paymentStatus: "Paid" as const, paidAt: paidAt ?? today() }] : []);
+    const lifetimeCasesAfter = paidOrdersAfter.reduce((sum, item) => sum + item.cases, 0);
+    const reorderCountAfter = Math.max(0, paidOrdersAfter.length - 1);
     setCommercial((state) => ({
       ...state,
       orders: state.orders.map((item) => item.id === id ? { ...item, paymentStatus: status, paidAt: status === "Paid" ? paidAt ?? today() : undefined } : item),
-      accountPatches: becamePaid ? {
+      accountPatches: paidStatusChanged ? {
         ...state.accountPatches,
         [order.accountId]: {
           ...(state.accountPatches[order.accountId] ?? {}),
-          lastActivity: `Payment cleared for ${order.number}`,
-          lifetimeCases: (data.accounts.find((account) => account.id === order.accountId)?.lifetimeCases ?? 0) + order.cases,
-          reorderCount: (data.accounts.find((account) => account.id === order.accountId)?.lifetimeCases ?? 0) > 0 ? (data.accounts.find((account) => account.id === order.accountId)?.reorderCount ?? 0) + 1 : (data.accounts.find((account) => account.id === order.accountId)?.reorderCount ?? 0),
+          lastActivity: becamePaid ? `Payment cleared for ${order.number}` : `Payment status changed for ${order.number}: ${status}`,
+          lifetimeCases: lifetimeCasesAfter,
+          reorderCount: reorderCountAfter,
         },
       } : state.accountPatches,
-      activities: becamePaid ? [{ id: uid("act-paid"), accountId: order.accountId, type: "order", title: "Payment cleared", detail: `${order.number} settled. Credit remains with ${order.creditedRepId ? data.users.find((user) => user.id === order.creditedRepId)?.name ?? "the creating rep" : "the recorded order source"}.`, at: now(), userId: currentUser?.id ?? "system" }, ...state.activities] : state.activities,
+      activities: paidStatusChanged ? [{ id: uid(becamePaid ? "act-paid" : "act-payment-reversal"), accountId: order.accountId, type: "order", title: becamePaid ? "Payment cleared" : "Cleared payment reduced or reversed", detail: becamePaid ? `${order.number} settled. Credit remains with ${order.creditedRepId ? data.users.find((user) => user.id === order.creditedRepId)?.name ?? "the creating rep" : "the recorded order source"}.` : `${order.number} changed from Paid to ${status}. Paid-case totals, pricing eligibility, sales incentives, and downstream payroll must revalidate from the revised source state.`, at: now(), userId: currentUser?.id ?? "system" }, ...state.activities] : state.activities,
     }));
   };
 
