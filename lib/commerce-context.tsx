@@ -162,7 +162,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
       const credit = state.credits.find((item) => item.id === creditId);
       if (!credit || !creditCanApply(state, credit)) return state;
       applied = true;
-      return { ...state, credits: state.credits.map((item) => item.id === creditId ? { ...item, status: "Applied" } : item) };
+      return { ...state, credits: state.credits.map((item) => item.id === creditId ? { ...item, status: "Applied", appliedAt: now() } : item) };
     });
     return applied;
   };
