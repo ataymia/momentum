@@ -94,6 +94,12 @@ export function consumedBonuses(state: PayrollState) {
   return new Set(state.runs.filter((run) => run.status !== "Voided").flatMap((run) => run.lines.flatMap((line) => line.sourceBonusIds)));
 }
 
+export function invalidBonusSourcesForRun(run: PayRun, data: WorkspaceData) {
+  if (run.kind !== "Monthly bonus") return [] as string[];
+  const currentlyEarned = new Set(evaluateSalesRepAccountBonuses(data).filter((signal) => signal.status === "Earned").map((signal) => signal.id));
+  return [...new Set(run.lines.flatMap((line) => line.sourceBonusIds).filter((bonusId) => !currentlyEarned.has(bonusId)))];
+}
+
 export function bonusEarnedDate(data: WorkspaceData, signal: BonusMilestone) {
   if (signal.status !== "Earned") return undefined;
   const evidence = signal.evidenceOrderIds
