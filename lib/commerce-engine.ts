@@ -41,7 +41,7 @@ export function arAgingBucket(invoice:Invoice,balance:number,asOf=today()){if(ba
 export function openReceivables(state:CommerceState){return state.invoices.map((invoice)=>({invoice,balance:invoiceBalance(state,invoice),status:computedInvoiceStatus(state,invoice)})).filter((item)=>item.balance>0&&item.status!=="Void");}
 export function canRecordSettlementDate(value?:string){return validDateKey(value)&&value!>today();}
 export function paymentCanFail(payment:Payment,reason:string){return payment.status==="Pending"&&Boolean(reason.trim());}
-export function paymentCanReverse(payment:Payment,reason:string){return payment.status==="Cleared"&&Boolean(reason.trim());}
+export function paymentCanReverse(state:CommerceState,payment:Payment,reason:string){return payment.status==="Cleared"&&Boolean(reason.trim())&&!state.refunds.some((refund)=>refund.paymentId===payment.id&&refund.status!=="Failed");}
 export function refundRemainingAmount(state:CommerceState,paymentId:string){const payment=state.payments.find((item)=>item.id===paymentId);if(!payment)return 0;const committed=state.refunds.filter((refund)=>refund.paymentId===paymentId&&refund.status!=="Failed").reduce((sum,refund)=>sum+refund.amount,0);return Math.max(0,payment.amount-committed);}
 export function refundCanRequest(state:CommerceState,paymentId:string,amount:number,reason:string,evidence:string){const payment=state.payments.find((item)=>item.id===paymentId);return Boolean(payment&&payment.status==="Cleared"&&amount>0&&amount<=refundRemainingAmount(state,paymentId)&&reason.trim()&&evidence.trim());}
 export function creditCanApprove(credit:CreditMemo,actorId:string){return credit.status==="Draft"&&Boolean(actorId)&&credit.createdBy!==actorId;}
