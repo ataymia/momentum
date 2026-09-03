@@ -70,7 +70,7 @@ test("a settled customer refund reopens the receivable instead of leaving the in
   const invoice=state.invoices.find((item)=>item.orderId===order.id)!;
   const payment:Payment={id:"p-full",accountId:invoice.accountId,receivedAt:"2026-08-28T12:00:00Z",amount:invoice.total,method:"ACH",status:"Cleared",createdBy:"test",createdAt:"2026-08-28T12:00:00Z"};
   const allocation:PaymentAllocation={id:"a-full",paymentId:payment.id,invoiceId:invoice.id,amount:payment.amount,createdAt:payment.createdAt,createdBy:"test"};
-  const settled:Refund={id:"refund-partial",paymentId:payment.id,amount:24,reason:"One-case customer adjustment",status:"Settled",createdAt:"2026-08-29T12:00:00Z",createdBy:"test",settledAt:"2026-08-30T12:00:00Z"};
+  const settled:Refund={id:"refund-partial",paymentId:payment.id,amount:24,reason:"Verified quality issue",status:"Settled",createdAt:"2026-08-29T12:00:00Z",createdBy:"test",settledAt:"2026-08-30T12:00:00Z"};
   const refunded={...state,payments:[payment],allocations:[allocation],refunds:[settled]};
   assert.equal(computedInvoiceStatus(refunded,invoice),"Partially paid");
   assert.equal(invoiceBalance(refunded,invoice),24);
@@ -104,14 +104,29 @@ test("monthly bonus payroll consumption prevents the same earned bonus from ente
   assert.equal(earnedBonusesForMonth(consumed,data,"2026-08").some((item)=>item.signal.id===opening!.signal.id),false);
 });
 
-test("payroll detects a bonus source that stopped being earned after customer payment reversal", () => {
+test("an earned opening bonus remains earned after a later refund or receivable reopening", () => {
   const base=createDemoData();
-  const earnedData={...base,orders:[...base.orders.filter((item)=>item.accountId!=="acc-101"),paidOrder("opening","acc-101",10,"2026-08-01")]};
+  const opening=paidOrder("opening","acc-101",10,"2026-08-01");
+  const settlementActivity={id:"act-settlement",accountId:"acc-101",type:"order" as const,title:"Payment cleared",detail:`${opening.number} settled.`,at:"2026-08-05T12:00:00Z",userId:"usr-mia"};
+  const earnedData={...base,orders:[...base.orders.filter((item)=>item.accountId!=="acc-101"),{...opening,paidAt:"2026-08-05"}],activities:[settlementActivity,...base.activities]};
   const bonusId="bonus-acc-101-opening";
-  const run:PayRun={id:"run-stale",kind:"Monthly bonus",createdAt:"2026-08-31T12:00:00Z",periodStart:"2026-08-01",periodEnd:"2026-08-31",payDate:"2026-09-01",status:"Approved",lines:[{employeeId:"usr-jordan",regularHours:0,overtimeHours:0,regularPay:0,overtimePay:0,bonusPay:25,grossPay:25,benefitDeduction:0,taxableWages:25,federalTax:0,stateTax:0,localTax:0,additionalWithholding:0,postTaxDeduction:0,employeeTaxes:0,employerTaxes:0,netPay:25,sourceTimecardIds:[],sourceBonusIds:[bonusId]}]};
+  const run:PayRun={id:"run-settled",kind:"Monthly bonus",createdAt:"2026-08-31T12:00:00Z",periodStart:"2026-08-01",periodEnd:"2026-08-31",payDate:"2026-09-01",status:"Approved",lines:[{employeeId:"usr-jordan",regularHours:0,overtimeHours:0,regularPay:0,overtimePay:0,bonusPay:25,grossPay:25,benefitDeduction:0,taxableWages:25,federalTax:0,stateTax:0,localTax:0,additionalWithholding:0,postTaxDeduction:0,employeeTaxes:0,employerTaxes:0,netPay:25,sourceTimecardIds:[],sourceBonusIds:[bonusId]}]};
   assert.deepEqual(invalidBonusSourcesForRun(run,earnedData),[]);
-  const reversedData={...earnedData,orders:earnedData.orders.map((order)=>order.id==="opening"?{...order,paymentStatus:"Open" as const,paidAt:undefined}:order)};
-  assert.deepEqual(invalidBonusSourcesForRun(run,reversedData),[bonusId]);
+  const reopenedData={...earnedData,orders:earnedData.orders.map((order)=>order.id==="opening"?{...order,paymentStatus:"Open" as const,paidAt:undefined}:order)};
+  const signal=evaluateSalesRepAccountBonuses(reopenedData,new Date("2026-09-01T12:00:00")).find((item)=>item.id===bonusId);
+  assert.equal(signal?.status,"Earned");
+  assert.deepEqual(invalidBonusSourcesForRun(run,reopenedData),[]);
+});
+
+test("the sustained 40-case bonus counts only payments settled inside the 90-day window", () => {
+  const base=createDemoData();
+  const opening={...paidOrder("open","acc-101",10,"2026-08-01"),paidAt:"2026-08-02"};
+  const inside={...paidOrder("inside","acc-101",20,"2026-08-20"),paidAt:"2026-08-21"};
+  const late={...paidOrder("late","acc-101",10,"2026-10-29"),paidAt:"2026-11-10"};
+  const data={...base,orders:[...base.orders.filter((item)=>item.accountId!=="acc-101"),opening,inside,late]};
+  const sustained=evaluateSalesRepAccountBonuses(data,new Date("2026-11-15T12:00:00")).find((item)=>item.id==="bonus-acc-101-sustained");
+  assert.equal(sustained?.observedCases,30);
+  assert.equal(sustained?.status,"Window expired");
 });
 
 test("performance metrics count cleared orders and manager visibility follows reporting hierarchy", () => {
