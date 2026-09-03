@@ -28,7 +28,6 @@ export function FinancePage() {
 
   useEffect(() => {
     if (!focusedExpense || !focusId) return;
-    setTab("expenses");
     const handle = window.setTimeout(() => document.getElementById(`expense-${focusedExpense.id}`)?.scrollIntoView({ behavior:"smooth", block:"center" }), 0);
     window.sessionStorage.removeItem("momentum-focus-record");
     return () => window.clearTimeout(handle);
