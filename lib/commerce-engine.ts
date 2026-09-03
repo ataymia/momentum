@@ -23,7 +23,14 @@ export function createCommerceSeed(data:WorkspaceData):CommerceState{
   return{version:1,invoices,payments,allocations,credits:[],refunds:[],notes:[]};
 }
 export function normalizeCommerceState(input:unknown,data:WorkspaceData):CommerceState{const seed=createCommerceSeed(data);if(!input||typeof input!=="object")return seed;const state=input as Partial<CommerceState>;const invoices=Array.isArray(state.invoices)?state.invoices:[];const existingOrders=new Set(invoices.map((invoice)=>invoice.orderId));for(const invoice of seed.invoices)if(!existingOrders.has(invoice.orderId))invoices.push(invoice);return{version:1,invoices,payments:Array.isArray(state.payments)?state.payments:seed.payments,allocations:Array.isArray(state.allocations)?state.allocations:seed.allocations,credits:Array.isArray(state.credits)?state.credits:[],refunds:Array.isArray(state.refunds)?state.refunds:[],notes:Array.isArray(state.notes)?state.notes:[]};}
-export function invoicePaidAmount(state:CommerceState,invoiceId:string){const paymentIds=new Set(state.payments.filter((payment)=>payment.status==="Cleared").map((payment)=>payment.id));return state.allocations.filter((allocation)=>allocation.invoiceId===invoiceId&&paymentIds.has(allocation.paymentId)).reduce((sum,item)=>sum+item.amount,0);}
+export function invoicePaidAmount(state:CommerceState,invoiceId:string){
+  const clearedPaymentIds=new Set(state.payments.filter((payment)=>payment.status==="Cleared").map((payment)=>payment.id));
+  const allocations=state.allocations.filter((allocation)=>allocation.invoiceId===invoiceId&&clearedPaymentIds.has(allocation.paymentId));
+  const allocated=allocations.reduce((sum,item)=>sum+item.amount,0);
+  const paymentIds=new Set(allocations.map((allocation)=>allocation.paymentId));
+  const settledRefunds=state.refunds.filter((refund)=>paymentIds.has(refund.paymentId)&&refund.status==="Settled").reduce((sum,refund)=>sum+refund.amount,0);
+  return Math.max(0,allocated-settledRefunds);
+}
 export function invoiceCreditAmount(state:CommerceState,invoiceId:string){return state.credits.filter((credit)=>credit.invoiceId===invoiceId&&credit.status==="Applied").reduce((sum,item)=>sum+item.amount,0);}
 export function invoiceBalance(state:CommerceState,invoice:Invoice){return Math.max(0,invoice.total-invoicePaidAmount(state,invoice.id)-invoiceCreditAmount(state,invoice.id));}
 export function computedInvoiceStatus(state:CommerceState,invoice:Invoice):InvoiceStatus{if(invoice.status==="Void")return"Void";const balance=invoiceBalance(state,invoice);if(balance<=0)return"Paid";if(balance<invoice.total)return"Partially paid";return invoice.status==="Draft"?"Draft":"Open";}
