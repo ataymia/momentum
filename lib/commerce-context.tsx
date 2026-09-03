@@ -150,7 +150,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const reversePayment = (paymentId: string, reason: string, reference?: string) => {
     if (!canManageCash || !currentUser) return false;
     const payment = commerce.payments.find((item) => item.id === paymentId);
-    if (!payment || !paymentCanReverse(payment, reason)) return false;
+    if (!payment || !paymentCanReverse(commerce, payment, reason)) return false;
     const reversedAt = now();
     setCommerce((state) => ({ ...state, payments: state.payments.map((item) => item.id === paymentId ? { ...item, status: "Reversed", reversedAt, reversedBy: currentUser.id, reversalReason: reason.trim(), reversalReference: reference?.trim() || undefined } : item) }));
     return true;
