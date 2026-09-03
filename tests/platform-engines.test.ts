@@ -6,7 +6,7 @@ import { createCommerceSeed, computedInvoiceStatus, invoiceBalance, type Payment
 import { customerForLocation, locationLabel } from "../lib/crm-hierarchy";
 import { createDemoData } from "../lib/demo-data";
 import { createFinanceSeed } from "../lib/finance-engine";
-import { createInventoryLedgerSeed, movementCanPost, nodeLotBalance, warehouseNodeId } from "../lib/inventory-ledger";
+import { activeReservedForOrder, createInventoryLedgerSeed, movementCanPost, nodeLotBalance, orderCanAdvanceInventory, reservationCanCreate, warehouseNodeId } from "../lib/inventory-ledger";
 import { consumedBonuses, createPayrollSeed, earnedBonusesForMonth, invalidBonusSourcesForRun, type PayRun } from "../lib/payroll-engine";
 import { canViewPerformanceRecord, periodRange, userCommercialMetrics } from "../lib/performance-engine";
 import type { Order, WorkspaceData, WorkspaceUser } from "../lib/types";
@@ -42,6 +42,51 @@ test("inventory custody prevents transferring more than the source node holds", 
   const warehouse=nodeLotBalance(ledger,warehouseNodeId,lot.id);
   assert.equal(movementCanPost(ledger,{lotId:lot.id,quantity:warehouse+1,type:"Transfer",fromNodeId:warehouseNodeId,toNodeId:`node-user-usr-jordan`}),false);
   assert.equal(movementCanPost(ledger,{lotId:lot.id,quantity:1,type:"Transfer",fromNodeId:warehouseNodeId,toNodeId:`node-user-usr-jordan`}),true);
+});
+
+test("inventory reservations cannot exceed the order quantity or the sellable lot balance", () => {
+  const base=createDemoData();
+  const lot=base.inventory.find((item)=>item.status==="Available")!;
+  const source=base.orders[0];
+  const order:Order={...source,id:"reserve-order",number:"GE-RESERVE",status:"Approved",cases:10,product:lot.product,paymentStatus:"Not invoiced",paidAt:undefined,amount:240,pricePerCase:24};
+  const data={...base,orders:[order]};
+  const ledger=createInventoryLedgerSeed(data);
+  assert.equal(reservationCanCreate(ledger,data,order.id,lot.id,6),true);
+  const withSix={...ledger,reservations:[{id:"r1",orderId:order.id,lotId:lot.id,quantity:6,status:"Active" as const,createdAt:"2026-09-03T12:00:00Z",createdBy:"usr-mia"}]};
+  assert.equal(activeReservedForOrder(withSix,order.id),6);
+  assert.equal(reservationCanCreate(withSix,data,order.id,lot.id,5),false);
+  assert.equal(reservationCanCreate(withSix,data,order.id,lot.id,4),true);
+  assert.equal(reservationCanCreate(withSix,data,order.id,lot.id,nodeLotBalance(withSix,warehouseNodeId,lot.id)+1),false);
+});
+
+test("reserved warehouse stock is protected from unrelated movements", () => {
+  const data=createDemoData();
+  const lot=data.inventory.find((item)=>item.status==="Available")!;
+  const base=createInventoryLedgerSeed(data);
+  const ledger={...base,reservations:[
+    {id:"r-a",orderId:"order-a",lotId:lot.id,quantity:10,status:"Active" as const,createdAt:"2026-09-03T12:00:00Z",createdBy:"usr-mia"},
+    {id:"r-b",orderId:"order-b",lotId:lot.id,quantity:10,status:"Active" as const,createdAt:"2026-09-03T12:00:00Z",createdBy:"usr-mia"},
+  ]};
+  const warehouse=nodeLotBalance(ledger,warehouseNodeId,lot.id);
+  assert.equal(movementCanPost(ledger,{lotId:lot.id,quantity:Math.max(1,warehouse-19),type:"Transfer",fromNodeId:warehouseNodeId,toNodeId:"node-user-usr-jordan"}),false);
+  assert.equal(movementCanPost(ledger,{lotId:lot.id,quantity:10,type:"Transfer",fromNodeId:warehouseNodeId,toNodeId:"node-user-usr-jordan",relatedOrderId:"order-a"}),true);
+});
+
+test("order fulfillment cannot outrun reservation, outbound custody, and delivery evidence", () => {
+  const base=createDemoData();
+  const lot=base.inventory.find((item)=>item.status==="Available")!;
+  const source=base.orders[0];
+  const order:Order={...source,id:"fulfillment-order",number:"GE-FULFILL",status:"Approved",cases:10,product:lot.product,paymentStatus:"Not invoiced",paidAt:undefined,amount:240,pricePerCase:24,accountId:base.accounts[0].id};
+  const data={...base,orders:[order]};
+  const seed=createInventoryLedgerSeed(data);
+  const reserved={...seed,reservations:[{id:"r-fulfill",orderId:order.id,lotId:lot.id,quantity:10,status:"Active" as const,createdAt:"2026-09-03T12:00:00Z",createdBy:"usr-mia"}]};
+  assert.equal(orderCanAdvanceInventory(reserved,order,"Allocated"),true);
+  assert.equal(orderCanAdvanceInventory(reserved,order,"Out for delivery"),false);
+  const outbound={...reserved,movements:[{id:"move-out",lotId:lot.id,product:lot.product,quantity:10,type:"Transfer" as const,fromNodeId:warehouseNodeId,toNodeId:"node-user-usr-jordan",relatedOrderId:order.id,reason:"Load for delivery",at:"2026-09-03T13:00:00Z",actorId:"usr-mia"},...reserved.movements]};
+  assert.equal(orderCanAdvanceInventory(outbound,{...order,status:"Allocated"},"Out for delivery"),true);
+  assert.equal(orderCanAdvanceInventory(outbound,{...order,status:"Out for delivery"},"Delivered"),false);
+  const delivered={...outbound,movements:[{id:"move-deliver",lotId:lot.id,product:lot.product,quantity:10,type:"Delivery" as const,fromNodeId:"node-user-usr-jordan",toNodeId:`node-account-${order.accountId}`,relatedOrderId:order.id,reason:"Customer delivery",at:"2026-09-03T14:00:00Z",actorId:"usr-jordan"},...outbound.movements]};
+  assert.equal(orderCanAdvanceInventory(delivered,{...order,status:"Out for delivery"},"Delivered"),true);
 });
 
 test("commerce distinguishes partial settlement from full settlement", () => {
