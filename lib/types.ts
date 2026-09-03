@@ -48,7 +48,8 @@ export type OrderStatus = "Draft" | "Awaiting approval" | "Approved" | "Allocate
 export type Order = {
   id: string; number: string; accountId: string; cases: number; pricePerCase: number; amount: number;
   status: OrderStatus; placedAt: string; ownerId: string; paidAt?: string;
-  priceBasis: "Demo entered price" | "Prior demo order snapshot" | "Account pricing tier";
+  firstSettledAt?: string;
+  priceBasis: string;
   paymentStatus: "Not invoiced" | "Open" | "Partially paid" | "Paid";
   product?:string; creditedRepId?:string; inventoryAvailableAtOrder?:number; lowStockApprovalRequired?:boolean;
 };
