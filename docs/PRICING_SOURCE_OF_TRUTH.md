@@ -22,9 +22,24 @@ Updated: 2026-09-03
 
 The sales-representative account bonus does not control customer pricing.
 
-- The first rep bonus is $25 only when the first order is at least 10 cases and its payment clears.
+- The first rep bonus is $25 only when the first order is at least 10 cases and its customer payment settles.
+- Order placement starts the account-health timing and provides the claim/source record, but placement alone does not earn the bonus.
+- Once a qualifying payment has first settled, that earning event is locked for compensation purposes. A later receivable reopening, refund, credit, or other customer-account correction does not automatically erase an already-earned rep bonus.
 - A first order below 10 cases does not earn that opening $25 even though the retailer still begins at the Tier A introductory customer price.
-- The second $25 milestone is independent and requires 40 cumulative paid cases inside the 90-day account-health bonus window that starts on the first order date.
+- The second $25 milestone is independent and requires 40 cumulative cases whose qualifying payments first settle inside the 90-day account-health bonus window that starts on the first order date.
+- Sales-representative bonuses are processed on the monthly payroll cadence after qualification has occurred.
+
+## Refund boundary
+
+The company has not yet approved a complete refund policy and Momentum must not invent one.
+
+Current operating direction:
+
+- Refunds are not a general satisfaction or change-of-mind policy.
+- Retailers sample/taste the product before ordering, so dislike after purchase is not currently an approved refund basis.
+- Refunds are expected only for a verified quality issue attributable to the company/product side, subject to the future formal policy and authority controls.
+- Quality checks are part of the normal process and are intended to make those cases rare.
+- No automatic employee-bonus clawback rule is approved. If leadership later wants a clawback or future-pay offset for a specific refund scenario, it must be defined explicitly before Momentum enforces it.
 
 ## Open commercial rule that must not be invented
 
