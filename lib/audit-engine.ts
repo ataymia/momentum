@@ -10,16 +10,38 @@ export const createAuditSeed = (): AuditState => ({ version: 1, events: [] });
 export function normalizeAuditState(input: unknown): AuditState { if (!input || typeof input !== "object") return createAuditSeed(); const state = input as Partial<AuditState>; return { version: 1, events: Array.isArray(state.events) ? state.events : [] }; }
 const text = (value: unknown) => typeof value === "string" ? value : undefined;
 const display = (value: unknown) => { if (value === undefined) return undefined; if (value === null) return "null"; if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value).slice(0, 180); try { return JSON.stringify(value).slice(0, 180); } catch { return "[unavailable]"; } };
-function sensitivityFor(module: string, collection: string): AuditSensitivity { if (["Payroll", "Accounting", "HCM"].includes(module)) return "admin"; if (["Finance", "Performance", "Period locks"].includes(module) || ["approvals", "timecards"].includes(collection)) return "manager"; return "operational"; }
+function sensitivityFor(module: string, collection: string): AuditSensitivity { if (["Payroll", "Accounting", "HCM"].includes(module)) return "admin"; if (["Finance", "Performance", "Period locks"].includes(module) || ["approvals", "timecards"].includes(collection)) return "manager"; if (module === "Commerce" && ["payments", "allocations", "credits", "refunds", "notes"].includes(collection)) return "manager"; return "operational"; }
 function recordLabel(record: Record<string, unknown>, id: string) { return text(record.number) || text(record.name) || text(record.title) || text(record.lotCode) || text(record.email) || id; }
 function relatedAccount(record: Record<string, unknown>, module: string, collection: string, id: string) { if (module === "Workspace" && collection === "accounts") return id; return text(record.accountId) || text(record.locationId); }
 function relatedUser(record: Record<string, unknown>, module: string, collection: string, id: string) { if (module === "Workspace" && collection === "users") return id; return text(record.userId) || text(record.employeeId) || text(record.requesterId) || text(record.ownerId); }
 
+function commerceRelatedAccount(state: Record<string, unknown>, collection: string, record: Record<string, unknown>) {
+  const invoices = Array.isArray(state.invoices) ? state.invoices as Record<string, unknown>[] : [];
+  const payments = Array.isArray(state.payments) ? state.payments as Record<string, unknown>[] : [];
+  const allocations = Array.isArray(state.allocations) ? state.allocations as Record<string, unknown>[] : [];
+  if (collection === "credits" || collection === "notes") {
+    const invoice = invoices.find((item) => text(item.id) === text(record.invoiceId));
+    return invoice ? text(invoice.accountId) : undefined;
+  }
+  if (collection === "allocations") {
+    const invoice = invoices.find((item) => text(item.id) === text(record.invoiceId));
+    return invoice ? text(invoice.accountId) : undefined;
+  }
+  if (collection === "refunds") {
+    const payment = payments.find((item) => text(item.id) === text(record.paymentId));
+    if (payment) return text(payment.accountId);
+    const allocation = allocations.find((item) => text(item.paymentId) === text(record.paymentId));
+    const invoice = allocation ? invoices.find((item) => text(item.id) === text(allocation.invoiceId)) : undefined;
+    return invoice ? text(invoice.accountId) : undefined;
+  }
+  return undefined;
+}
+
 export function collectAuditableRecords(module: string, state: unknown): Map<string, AuditSnapshot> {
-  const records = new Map<string, AuditSnapshot>(); if (!state || typeof state !== "object") return records;
-  for (const [collection, value] of Object.entries(state as Record<string, unknown>)) {
+  const records = new Map<string, AuditSnapshot>(); if (!state || typeof state !== "object") return records; const root = state as Record<string, unknown>;
+  for (const [collection, value] of Object.entries(root)) {
     if (!Array.isArray(value) || collection === "notifications") continue;
-    for (const item of value) { if (!item || typeof item !== "object") continue; const record = item as Record<string, unknown>; const id = text(record.id); if (!id) continue; const entityType = `${module}.${collection}`; const key = `${entityType}:${id}`; records.set(key, { key, module, collection, entityType, entityId: id, label: recordLabel(record, id), sensitivity: sensitivityFor(module, collection), relatedAccountId: relatedAccount(record, module, collection, id), relatedUserId: relatedUser(record, module, collection, id), payload: record }); }
+    for (const item of value) { if (!item || typeof item !== "object") continue; const record = item as Record<string, unknown>; const id = text(record.id); if (!id) continue; const entityType = `${module}.${collection}`; const key = `${entityType}:${id}`; const directAccount = relatedAccount(record, module, collection, id); const relatedAccountId = directAccount ?? (module === "Commerce" ? commerceRelatedAccount(root, collection, record) : undefined); records.set(key, { key, module, collection, entityType, entityId: id, label: recordLabel(record, id), sensitivity: sensitivityFor(module, collection), relatedAccountId, relatedUserId: relatedUser(record, module, collection, id), payload: record }); }
   }
   return records;
 }
@@ -41,6 +63,7 @@ export function visibleAuditEvents(user: WorkspaceUser | null, data: WorkspaceDa
       return event.sensitivity === "operational" && Boolean((event.relatedAccountId && accountIds.has(event.relatedAccountId)) || event.relatedUserId === user.id);
     }
     if (user.role === "Operations") {
+      if (event.module === "Commerce" && event.sensitivity === "manager") return true;
       if (event.sensitivity !== "operational") return false;
       if (event.module === "Inventory" || event.collection === "inventory" || event.collection === "orders") return true;
       return event.relatedUserId === user.id;
