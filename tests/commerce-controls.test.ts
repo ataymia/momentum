@@ -4,12 +4,17 @@ import {
   canRecordSettlementDate,
   createCommerceSeed,
   creditCanApply,
+  creditCanApprove,
   invoiceBalance,
   invoiceCanVoid,
   invoicePendingAmount,
   invoiceRecordableAmount,
   paymentSettlementDate,
+  refundCanApprove,
+  refundCanFail,
   refundCanRequest,
+  refundCanSend,
+  refundCanSettle,
   refundRemainingAmount,
   type CreditMemo,
   type Payment,
@@ -68,6 +73,13 @@ test("settlement evidence uses the actual settlement date rather than the entry 
   assert.equal(canRecordSettlementDate(undefined), false);
 });
 
+test("credit approval requires a different authorized actor than the creator", () => {
+  const credit: CreditMemo = { id: "credit-independent", invoiceId: "invoice-1", amount: 25, reason: "Documented billing correction", status: "Draft", createdAt: "2026-09-03T12:00:00Z", createdBy: "usr-elena" };
+  assert.equal(creditCanApprove(credit, "usr-elena"), false);
+  assert.equal(creditCanApprove(credit, "usr-mia"), true);
+  assert.equal(creditCanApprove({ ...credit, status: "Approved" }, "usr-mia"), false);
+});
+
 test("an approved credit cannot be applied after later settlement consumes the receivable", () => {
   const { state, invoice } = openInvoiceState();
   const credit: CreditMemo = { id: "credit-1", invoiceId: invoice.id, amount: 100, reason: "Documented billing correction", status: "Approved", createdAt: "2026-09-03T12:00:00Z", createdBy: "usr-elena", approvedBy: "usr-mia", approvedAt: "2026-09-03T13:00:00Z" };
@@ -93,6 +105,23 @@ test("refund requests require verified-quality evidence and cannot exceed uncomm
   const committed = { ...paid, refunds: [existing] };
   assert.equal(refundRemainingAmount(committed, cleared.id), 40);
   assert.equal(refundCanRequest(committed, cleared.id, 41, "Second verified issue", "Additional evidence"), false);
+});
+
+test("refund approval, send, settlement, and failure each require their own evidence", () => {
+  const requested: Refund = { id: "refund-lifecycle", paymentId: "payment-1", amount: 24, reason: "Verified quality issue", basis: "Verified quality issue", evidence: "Inspection record", status: "Requested", createdAt: "2026-09-01T12:00:00Z", createdBy: "usr-elena" };
+  assert.equal(refundCanApprove(requested, "usr-elena"), false);
+  assert.equal(refundCanApprove(requested, "usr-mia"), true);
+
+  const approved: Refund = { ...requested, status: "Approved", approvedBy: "usr-mia", approvedAt: "2026-09-02T10:00:00Z" };
+  assert.equal(refundCanSend(approved, ""), false);
+  assert.equal(refundCanSend(approved, "ACH-TRACE-123"), true);
+
+  const sent: Refund = { ...approved, status: "Sent", sentReference: "ACH-TRACE-123", sentAt: "2026-09-03T09:00:00Z", sentBy: "usr-elena" };
+  assert.equal(refundCanSettle(sent, "2026-09-02"), false);
+  assert.equal(refundCanSettle(sent, "2026-09-03"), true);
+  assert.equal(refundCanSettle(sent, "2099-01-01"), false);
+  assert.equal(refundCanFail(sent, ""), false);
+  assert.equal(refundCanFail(sent, "Bank return"), true);
 });
 
 test("invoice void is blocked while money or active credits still point at the invoice", () => {
