@@ -7,7 +7,7 @@ import { useWorkspace } from "../lib/workspace-context";
 import { BrandMark, Button } from "./ui";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-const tourIds = ["usr-flo", "usr-mia", "usr-avery", "usr-jordan", "usr-customer"] as const;
+const tourIds = ["usr-flo", "usr-mia", "usr-avery", "usr-jordan", "usr-elena", "usr-warehouse", "usr-customer"] as const;
 
 export function LoginScreen() {
   const { data, login, ready } = useWorkspace();
