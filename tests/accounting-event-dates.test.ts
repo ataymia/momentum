@@ -38,6 +38,27 @@ test("accounting posts cleared cash on the actual settlement date, not the later
   assert.equal(event?.date, "2026-08-30");
 });
 
+test("a reversed cleared payment stays visible to accounting on the reversal date", () => {
+  const payment: Payment = {
+    id: "payment-reversal-test",
+    accountId: invoice.accountId,
+    receivedAt: "2026-08-30T18:00:00Z",
+    settledAt: "2026-08-30",
+    settledBy: "usr-elena",
+    reversedAt: "2026-09-03T16:00:00Z",
+    reversedBy: "usr-mia",
+    amount: 240,
+    method: "ACH",
+    status: "Reversed",
+    createdBy: "usr-elena",
+    createdAt: "2026-08-30T18:00:00Z",
+  };
+  const event = sourceEvents({ ...baseCommerce(), payments: [payment] }, inventory).find((item) => item.type === "Payment reversed" && item.sourceId === payment.id);
+  assert.equal(event?.date, "2026-09-03");
+  assert.equal(event?.amount, 240);
+  assert.match(event?.blockedReason ?? "", /approved treatment/i);
+});
+
 test("accounting dates an applied credit when it is applied, not when it was approved", () => {
   const credit: CreditMemo = {
     id: "credit-date-test",
