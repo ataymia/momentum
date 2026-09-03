@@ -11,11 +11,15 @@ import {
   PaymentMethod,
   ReceivableNote,
   Refund,
+  canRecordSettlementDate,
   computedInvoiceStatus,
   createCommerceSeed,
   invoiceBalance,
   invoicePaidAmount,
+  invoicePendingAmount,
+  invoiceRecordableAmount,
   normalizeCommerceState,
+  paymentSettlementDate,
 } from "./commerce-engine";
 import { useWorkspace } from "./workspace-context";
 
@@ -36,19 +40,19 @@ const validRefundTransition = (from: Refund["status"], to: Refund["status"]) => 
   return false;
 };
 
-type NewPaymentInput = { invoiceId: string; amount: number; method: PaymentMethod; status: Payment["status"]; processorReference?: string; note?: string };
+type NewPaymentInput = { invoiceId: string; amount: number; method: PaymentMethod; status: Payment["status"]; settlementDate?: string; processorReference?: string; note?: string };
 type CommerceContextValue = {
   commerce: CommerceState;
   setInvoiceTerms: (invoiceId: string, terms: InvoiceTerms, dueDate?: string) => void;
   recordPayment: (input: NewPaymentInput) => string | null;
-  setPaymentStatus: (paymentId: string, status: Payment["status"]) => void;
+  setPaymentStatus: (paymentId: string, status: Payment["status"], settlementDate?: string) => boolean;
   createCredit: (invoiceId: string, amount: number, reason: string) => string | null;
   approveCredit: (creditId: string) => void;
-  applyCredit: (creditId: string) => void;
-  requestRefund: (paymentId: string, amount: number, reason: string) => string | null;
+  applyCredit: (creditId: string) => boolean;
+  requestRefund: (paymentId: string, amount: number, reason: string, evidence: string) => string | null;
   setRefundStatus: (refundId: string, status: Refund["status"]) => void;
   addNote: (invoiceId: string, note: string) => void;
-  voidInvoice: (invoiceId: string, reason: string) => void;
+  voidInvoice: (invoiceId: string, reason: string) => boolean;
   resetCommerce: () => void;
 };
 
@@ -89,10 +93,11 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
         const clearedPaymentIds = new Set(commerce.payments.filter((payment) => payment.status === "Cleared").map((payment) => payment.id));
         const settlementDates = commerce.allocations
           .filter((allocation) => allocation.invoiceId === invoice.id && clearedPaymentIds.has(allocation.paymentId))
-          .map((allocation) => commerce.payments.find((payment) => payment.id === allocation.paymentId)?.receivedAt)
+          .map((allocation) => commerce.payments.find((payment) => payment.id === allocation.paymentId))
+          .map((payment) => payment ? paymentSettlementDate(payment) : undefined)
           .filter((date): date is string => Boolean(date))
           .sort();
-        reconcileOrderPayment(order.id, status, status === "Paid" ? settlementDates.at(-1)?.slice(0, 10) : undefined);
+        reconcileOrderPayment(order.id, status, status === "Paid" ? settlementDates.at(-1) : undefined);
       }
     }, 0);
     return () => window.clearTimeout(handle);
@@ -114,26 +119,31 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const recordPayment = (input: NewPaymentInput) => {
     if (!canManageCash) return null;
     const invoice = commerce.invoices.find((item) => item.id === input.invoiceId);
-    if (!invoice || computedInvoiceStatus(commerce, invoice) === "Void" || input.amount <= 0 || input.amount > invoiceBalance(commerce, invoice)) return null;
+    if (!invoice || computedInvoiceStatus(commerce, invoice) === "Void" || input.amount <= 0 || input.amount > invoiceRecordableAmount(commerce, invoice)) return null;
+    if (input.status === "Cleared" && !canRecordSettlementDate(input.settlementDate)) return null;
     const paymentId = uid("payment");
-    const payment: Payment = { id: paymentId, accountId: invoice.accountId, receivedAt: now(), amount: input.amount, method: input.method, status: input.status, processorReference: input.processorReference?.trim() || undefined, note: input.note?.trim() || undefined, createdBy: currentUser.id, createdAt: now() };
+    const payment: Payment = { id: paymentId, accountId: invoice.accountId, receivedAt: now(), settledAt: input.status === "Cleared" ? input.settlementDate : undefined, amount: input.amount, method: input.method, status: input.status, processorReference: input.processorReference?.trim() || undefined, note: input.note?.trim() || undefined, createdBy: currentUser.id, createdAt: now() };
     const allocation: PaymentAllocation = { id: uid("allocation"), paymentId, invoiceId: invoice.id, amount: input.amount, createdAt: now(), createdBy: currentUser.id };
     setCommerce((state) => ({ ...state, payments: [payment, ...state.payments], allocations: [allocation, ...state.allocations] }));
     return paymentId;
   };
 
-  const setPaymentStatus = (paymentId: string, status: Payment["status"]) => {
-    if (!canManageCash) return;
+  const setPaymentStatus = (paymentId: string, status: Payment["status"], settlementDate?: string) => {
+    if (!canManageCash) return false;
+    const payment = commerce.payments.find((item) => item.id === paymentId);
+    if (!payment || !validPaymentTransition(payment.status, status)) return false;
+    if (status === "Cleared" && !canRecordSettlementDate(settlementDate)) return false;
     setCommerce((state) => ({
       ...state,
-      payments: state.payments.map((payment) => payment.id === paymentId && validPaymentTransition(payment.status, status) ? { ...payment, status } : payment),
+      payments: state.payments.map((item) => item.id === paymentId ? { ...item, status, settledAt: status === "Cleared" ? settlementDate : item.settledAt, reversedAt: status === "Reversed" ? now() : item.reversedAt } : item),
     }));
+    return true;
   };
 
   const createCredit = (invoiceId: string, amount: number, reason: string) => {
     if (!canManageCash) return null;
     const invoice = commerce.invoices.find((item) => item.id === invoiceId);
-    if (!invoice || computedInvoiceStatus(commerce, invoice) === "Void" || amount <= 0 || amount > invoiceBalance(commerce, invoice) || !reason.trim()) return null;
+    if (!invoice || computedInvoiceStatus(commerce, invoice) === "Void" || amount <= 0 || amount > invoiceRecordableAmount(commerce, invoice) || !reason.trim()) return null;
     const id = uid("credit");
     const record: CreditMemo = { id, invoiceId, amount, reason: reason.trim(), status: "Draft", createdAt: now(), createdBy: currentUser.id };
     setCommerce((state) => ({ ...state, credits: [record, ...state.credits] }));
@@ -145,17 +155,26 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
     setCommerce((state) => ({ ...state, credits: state.credits.map((credit) => credit.id === creditId && credit.status === "Draft" ? { ...credit, status: "Approved", approvedBy: currentUser.id, approvedAt: now() } : credit) }));
   };
   const applyCredit = (creditId: string) => {
-    if (!canManageCash) return;
-    setCommerce((state) => ({ ...state, credits: state.credits.map((credit) => credit.id === creditId && credit.status === "Approved" ? { ...credit, status: "Applied" } : credit) }));
+    if (!canManageCash) return false;
+    let applied = false;
+    setCommerce((state) => {
+      const credit = state.credits.find((item) => item.id === creditId && item.status === "Approved");
+      if (!credit) return state;
+      const invoice = state.invoices.find((item) => item.id === credit.invoiceId);
+      if (!invoice || computedInvoiceStatus(state, invoice) === "Void" || credit.amount > invoiceRecordableAmount(state, invoice)) return state;
+      applied = true;
+      return { ...state, credits: state.credits.map((item) => item.id === creditId ? { ...item, status: "Applied" } : item) };
+    });
+    return applied;
   };
 
-  const requestRefund = (paymentId: string, amount: number, reason: string) => {
+  const requestRefund = (paymentId: string, amount: number, reason: string, evidence: string) => {
     if (!canManageCash) return null;
     const payment = commerce.payments.find((item) => item.id === paymentId);
     const alreadyRequested = commerce.refunds.filter((refund) => refund.paymentId === paymentId && refund.status !== "Failed").reduce((sum, refund) => sum + refund.amount, 0);
-    if (!payment || payment.status !== "Cleared" || amount <= 0 || amount > payment.amount - alreadyRequested || !reason.trim()) return null;
+    if (!payment || payment.status !== "Cleared" || amount <= 0 || amount > payment.amount - alreadyRequested || !reason.trim() || !evidence.trim()) return null;
     const id = uid("refund");
-    const record: Refund = { id, paymentId, amount, reason: reason.trim(), status: "Requested", createdAt: now(), createdBy: currentUser.id };
+    const record: Refund = { id, paymentId, amount, reason: reason.trim(), basis: "Verified quality issue", evidence: evidence.trim(), status: "Requested", createdAt: now(), createdBy: currentUser.id };
     setCommerce((state) => ({ ...state, refunds: [record, ...state.refunds] }));
     return id;
   };
@@ -184,14 +203,11 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   };
 
   const voidInvoice = (invoiceId: string, reason: string) => {
-    if (!canManageCash || !reason.trim()) return;
-    setCommerce((state) => ({
-      ...state,
-      invoices: state.invoices.map((invoice) => {
-        if (invoice.id !== invoiceId || computedInvoiceStatus(state, invoice) === "Paid" || invoicePaidAmount(state, invoice.id) > 0) return invoice;
-        return { ...invoice, status: "Void", voidReason: reason.trim() };
-      }),
-    }));
+    if (!canManageCash || !reason.trim()) return false;
+    const invoice = commerce.invoices.find((item) => item.id === invoiceId);
+    if (!invoice || computedInvoiceStatus(commerce, invoice) === "Paid" || invoicePaidAmount(commerce, invoice.id) > 0 || invoicePendingAmount(commerce, invoice.id) > 0 || commerce.credits.some((credit) => credit.invoiceId === invoice.id && credit.status !== "Void")) return false;
+    setCommerce((state) => ({ ...state, invoices: state.invoices.map((item) => item.id === invoiceId ? { ...item, status: "Void", voidReason: reason.trim() } : item) }));
+    return true;
   };
 
   const resetCommerce = () => {
