@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createDemoData } from "../lib/demo-data";
 import { createHcmSeed } from "../lib/hcm-engine";
+import { createInventoryLedgerSeed, holdNodeId, lotSystemQuantity, nodeLotBalance, warehouseAvailable, warehouseNodeId } from "../lib/inventory-ledger";
 import { createNotificationSeed, deliveryKey } from "../lib/notification-engine";
 
 const data = createDemoData();
@@ -65,15 +66,31 @@ test("appointments, orders and placements never point at missing business record
   for (const placement of data.placements) assert.ok(accountIds.has(placement.accountId), `${placement.id} account must exist`);
 });
 
-test("inventory quantities remain physically possible", () => {
+test("legacy inventory snapshot quantities remain physically possible", () => {
   for (const lot of data.inventory) {
     assert.ok(lot.onHand >= 0, `${lot.id} on hand cannot be negative`);
     assert.ok(lot.reserved >= 0, `${lot.id} reserved cannot be negative`);
     assert.ok(lot.available >= 0, `${lot.id} available cannot be negative`);
     assert.ok(lot.reserved <= lot.onHand, `${lot.id} reserved cannot exceed on hand`);
     assert.ok(lot.available <= lot.onHand - lot.reserved, `${lot.id} available cannot exceed unreserved on hand`);
-    if (lot.status === "Available") assert.equal(lot.available, lot.onHand - lot.reserved, `${lot.id} available lot should expose all unreserved cases`);
-    if (lot.status === "Quality hold") assert.equal(lot.available, 0, `${lot.id} quality hold must block availability`);
+    if (lot.status === "Available") assert.equal(lot.available, lot.onHand - lot.reserved, `${lot.id} available lot should expose all unreserved cases in the legacy snapshot`);
+    if (lot.status === "Quality hold") assert.equal(lot.available, 0, `${lot.id} quality hold must block legacy snapshot availability`);
+  }
+});
+
+test("custody ledger is the operational inventory quantity source of truth", () => {
+  const ledger=createInventoryLedgerSeed(data);
+  assertUnique("inventory movement",ids(ledger.movements));
+  for(const lot of data.inventory){
+    assert.equal(lotSystemQuantity(ledger,lot.id),lot.onHand,`${lot.id} opening custody must reconcile to the physical opening balance`);
+    for(const node of ledger.nodes.filter((item)=>item.type!=="External"))assert.ok(nodeLotBalance(ledger,node.id,lot.id)>=0,`${lot.id} cannot begin with negative custody at ${node.id}`);
+    if(lot.status==="Quality hold"){
+      assert.equal(nodeLotBalance(ledger,holdNodeId,lot.id),lot.onHand,`${lot.id} held cases must physically sit in the quality-hold node`);
+      assert.equal(nodeLotBalance(ledger,warehouseNodeId,lot.id),0,`${lot.id} held cases cannot also sit in sellable warehouse custody`);
+      assert.equal(warehouseAvailable(ledger,lot.id),0,`${lot.id} quality-hold opening balance cannot be warehouse available`);
+    }else{
+      assert.equal(nodeLotBalance(ledger,warehouseNodeId,lot.id),lot.onHand,`${lot.id} available opening balance must start in warehouse custody`);
+    }
   }
 });
 
