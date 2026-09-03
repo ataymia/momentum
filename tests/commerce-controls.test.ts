@@ -9,6 +9,8 @@ import {
   invoiceCanVoid,
   invoicePendingAmount,
   invoiceRecordableAmount,
+  paymentCanFail,
+  paymentCanReverse,
   paymentSettlementDate,
   refundCanApprove,
   refundCanFail,
@@ -71,6 +73,28 @@ test("settlement evidence uses the actual settlement date rather than the entry 
   assert.equal(canRecordSettlementDate("2020-01-01"), true);
   assert.equal(canRecordSettlementDate("2099-01-01"), false);
   assert.equal(canRecordSettlementDate(undefined), false);
+});
+
+test("payment failure and reversal require the correct source state and evidence", () => {
+  const { state, invoice } = openInvoiceState();
+  const pending = payment("pending-fail", invoice.accountId, 100, "Pending");
+  assert.equal(paymentCanFail(pending, ""), false);
+  assert.equal(paymentCanFail(pending, "ACH rejected"), true);
+  assert.equal(paymentCanReverse(state, pending, "Bank reversal"), false);
+
+  const cleared = payment("cleared-reverse", invoice.accountId, 100, "Cleared", "2026-09-02");
+  const withCleared = { ...state, payments: [cleared] };
+  assert.equal(paymentCanReverse(withCleared, cleared, ""), false);
+  assert.equal(paymentCanReverse(withCleared, cleared, "Bank reversal"), true);
+  assert.equal(paymentCanFail(cleared, "Processor failure"), false);
+});
+
+test("a live refund lifecycle blocks reversal of the parent payment", () => {
+  const { state, invoice } = openInvoiceState();
+  const cleared = payment("cleared-refund-collision", invoice.accountId, 240, "Cleared", "2026-09-02");
+  const refund: Refund = { id: "refund-collision", paymentId: cleared.id, amount: 24, reason: "Verified quality issue", basis: "Verified quality issue", evidence: "Inspection", status: "Requested", createdAt: "2026-09-03T12:00:00Z", createdBy: "usr-elena" };
+  assert.equal(paymentCanReverse({ ...state, payments: [cleared], refunds: [refund] }, cleared, "Bank reversal"), false);
+  assert.equal(paymentCanReverse({ ...state, payments: [cleared], refunds: [{ ...refund, status: "Failed" }] }, cleared, "Bank reversal"), true);
 });
 
 test("credit approval requires a different authorized actor than the creator", () => {
