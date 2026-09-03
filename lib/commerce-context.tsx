@@ -20,6 +20,8 @@ import {
   invoicePaidAmount,
   invoiceRecordableAmount,
   normalizeCommerceState,
+  paymentCanFail,
+  paymentCanReverse,
   paymentSettlementDate,
   refundCanApprove,
   refundCanFail,
@@ -32,19 +34,14 @@ import { useWorkspace } from "./workspace-context";
 const now = () => new Date().toISOString();
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-const validPaymentTransition = (from: Payment["status"], to: Payment["status"]) => {
-  if (from === to) return true;
-  if (from === "Pending") return to === "Cleared" || to === "Failed";
-  if (from === "Cleared") return to === "Reversed";
-  return false;
-};
-
-type NewPaymentInput = { invoiceId: string; amount: number; method: PaymentMethod; status: Payment["status"]; settlementDate?: string; processorReference?: string; note?: string };
+type NewPaymentInput = { invoiceId: string; amount: number; method: PaymentMethod; status: "Pending" | "Cleared"; settlementDate?: string; processorReference?: string; note?: string };
 type CommerceContextValue = {
   commerce: CommerceState;
   setInvoiceTerms: (invoiceId: string, terms: InvoiceTerms, dueDate?: string) => void;
   recordPayment: (input: NewPaymentInput) => string | null;
-  setPaymentStatus: (paymentId: string, status: Payment["status"], settlementDate?: string) => boolean;
+  setPaymentStatus: (paymentId: string, status: "Cleared", settlementDate?: string) => boolean;
+  failPayment: (paymentId: string, reason: string) => boolean;
+  reversePayment: (paymentId: string, reason: string, reference?: string) => boolean;
   createCredit: (invoiceId: string, amount: number, reason: string) => string | null;
   approveCredit: (creditId: string) => boolean;
   applyCredit: (creditId: string) => boolean;
@@ -130,25 +127,32 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
     return paymentId;
   };
 
-  const setPaymentStatus = (paymentId: string, status: Payment["status"], settlementDate?: string) => {
-    if (!canManageCash || !currentUser) return false;
+  const setPaymentStatus = (paymentId: string, status: "Cleared", settlementDate?: string) => {
+    if (!canManageCash || !currentUser || status !== "Cleared") return false;
     const payment = commerce.payments.find((item) => item.id === paymentId);
-    if (!payment || !validPaymentTransition(payment.status, status)) return false;
-    if (status === "Cleared" && !canRecordSettlementDate(settlementDate)) return false;
-    const changedAt = now();
+    if (!payment || payment.status !== "Pending" || !canRecordSettlementDate(settlementDate)) return false;
     setCommerce((state) => ({
       ...state,
-      payments: state.payments.map((item) => item.id === paymentId ? {
-        ...item,
-        status,
-        settledAt: status === "Cleared" ? settlementDate : item.settledAt,
-        settledBy: status === "Cleared" ? currentUser.id : item.settledBy,
-        failedAt: status === "Failed" ? changedAt : item.failedAt,
-        failedBy: status === "Failed" ? currentUser.id : item.failedBy,
-        reversedAt: status === "Reversed" ? changedAt : item.reversedAt,
-        reversedBy: status === "Reversed" ? currentUser.id : item.reversedBy,
-      } : item),
+      payments: state.payments.map((item) => item.id === paymentId ? { ...item, status: "Cleared", settledAt: settlementDate, settledBy: currentUser.id } : item),
     }));
+    return true;
+  };
+
+  const failPayment = (paymentId: string, reason: string) => {
+    if (!canManageCash || !currentUser) return false;
+    const payment = commerce.payments.find((item) => item.id === paymentId);
+    if (!payment || !paymentCanFail(payment, reason)) return false;
+    const failedAt = now();
+    setCommerce((state) => ({ ...state, payments: state.payments.map((item) => item.id === paymentId ? { ...item, status: "Failed", failedAt, failedBy: currentUser.id, failureReason: reason.trim() } : item) }));
+    return true;
+  };
+
+  const reversePayment = (paymentId: string, reason: string, reference?: string) => {
+    if (!canManageCash || !currentUser) return false;
+    const payment = commerce.payments.find((item) => item.id === paymentId);
+    if (!payment || !paymentCanReverse(payment, reason)) return false;
+    const reversedAt = now();
+    setCommerce((state) => ({ ...state, payments: state.payments.map((item) => item.id === paymentId ? { ...item, status: "Reversed", reversedAt, reversedBy: currentUser.id, reversalReason: reason.trim(), reversalReference: reference?.trim() || undefined } : item) }));
     return true;
   };
 
@@ -242,7 +246,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const resetCommerce = () => {
     if (currentUser?.role === "Administrator") setCommerce(createCommerceSeed(data));
   };
-  const value: CommerceContextValue = { commerce, setInvoiceTerms, recordPayment, setPaymentStatus, createCredit, approveCredit, applyCredit, requestRefund, approveRefund, markRefundSent, settleRefund, failRefund, addNote, voidInvoice, resetCommerce };
+  const value: CommerceContextValue = { commerce, setInvoiceTerms, recordPayment, setPaymentStatus, failPayment, reversePayment, createCredit, approveCredit, applyCredit, requestRefund, approveRefund, markRefundSent, settleRefund, failRefund, addNote, voidInvoice, resetCommerce };
   return <CommerceContext.Provider value={value}>{children}</CommerceContext.Provider>;
 }
 
