@@ -8,7 +8,7 @@ import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Modal, Section, StatusPill, formatDate } from "../ui";
 
-const movementTypes: MovementType[] = ["Receipt", "Transfer", "Delivery", "Return", "Sample", "Damage", "Shrink", "Adjustment", "Disposal"];
+const movementTypes: MovementType[] = ["Receipt", "Transfer", "Delivery", "Return", "Sample", "Damage", "Shrink", "Disposal"];
 const countTone = (status: string) => status === "Reconciled" ? "success" as const : "warning" as const;
 
 export function InventoryLedgerPanel() {
@@ -42,8 +42,8 @@ export function InventoryLedgerPanel() {
       lotId: selectedLot.id,
       quantity: Number(movement.quantity),
       type: movement.type,
-      fromNodeId: movement.fromNodeId || undefined,
-      toNodeId: movement.toNodeId || undefined,
+      fromNodeId: movement.fromNodeId,
+      toNodeId: movement.toNodeId,
       relatedOrderId: movement.relatedOrderId || undefined,
       reason: movement.reason,
     });
@@ -75,6 +75,11 @@ export function InventoryLedgerPanel() {
     setReservationForm({ orderId: "", quantity: "" });
   };
 
+  const changeMovementType=(type:MovementType)=>{
+    const order=data.orders.find((item)=>item.id===movement.relatedOrderId);
+    const external=ledger.nodes.find((node)=>node.type==="External")?.id??"";
+    setMovement((current)=>({...current,type,fromNodeId:type==="Receipt"?external:current.fromNodeId||warehouseNodeId,toNodeId:type==="Delivery"&&order?`node-account-${order.accountId}`:current.toNodeId}));
+  };
   const changeMovementOrder = (orderId:string) => {
     const order=data.orders.find((item)=>item.id===orderId);
     setMovement((current)=>({...current,relatedOrderId:orderId,toNodeId:current.type==="Delivery"&&order?`node-account-${order.accountId}`:current.toNodeId}));
@@ -100,7 +105,7 @@ export function InventoryLedgerPanel() {
               const from = ledger.nodes.find((node) => node.id === item.fromNodeId);
               const to = ledger.nodes.find((node) => node.id === item.toNodeId);
               const order = item.relatedOrderId ? data.orders.find((entry) => entry.id === item.relatedOrderId) : undefined;
-              return <article key={item.id}><span><Route size={16} /></span><div><small>{item.type} · {formatDate(item.at, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</small><strong>{item.quantity} cs · {from?.name ?? "External source"} → {to?.name ?? "Removed from custody"}</strong><p>{item.reason}{order ? ` · ${order.number}` : ""}</p></div></article>;
+              return <article key={item.id}><span><Route size={16} /></span><div><small>{item.type} · {formatDate(item.at, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</small><strong>{item.quantity} cs · {from?.name ?? "Unknown source"} → {to?.name ?? "Unknown destination"}</strong><p>{item.reason}{order ? ` · ${order.number}` : ""}</p></div></article>;
             })}
           </div>
         </Section>
@@ -129,8 +134,8 @@ export function InventoryLedgerPanel() {
         </div>
       </Section>
 
-      <Modal open={movementOpen} title="Record inventory movement" description="Use Transfer for a physical custody handoff and Delivery only when cases reach the retailer. Reservations are created separately." onClose={() => setMovementOpen(false)} footer={<><Button variant="ghost" onClick={() => setMovementOpen(false)}>Cancel</Button><Button type="submit" form="movement-form">Post movement</Button></>} wide>
-        <form id="movement-form" className="form-grid" onSubmit={submitMovement}><Field label="Movement type"><select value={movement.type} onChange={(event) => {const type=event.target.value as MovementType;const order=data.orders.find((item)=>item.id===movement.relatedOrderId);setMovement({...movement,type,toNodeId:type==="Delivery"&&order?`node-account-${order.accountId}`:movement.toNodeId});}}>{movementTypes.map((type) => <option key={type}>{type}</option>)}</select></Field><Field label="Quantity (cases)"><input required type="number" min="0.01" step="0.01" value={movement.quantity} onChange={(event) => setMovement({ ...movement, quantity: event.target.value })} /></Field><Field label="From"><select value={movement.fromNodeId} onChange={(event) => setMovement({ ...movement, fromNodeId: event.target.value })}><option value="">No source / external receipt</option>{ledger.nodes.filter((node) => node.active).map((node) => <option key={node.id} value={node.id}>{node.name} · {node.type}</option>)}</select></Field><Field label="To"><select value={movement.toNodeId} onChange={(event) => setMovement({ ...movement, toNodeId: event.target.value })}><option value="">No destination / remove from active custody</option>{ledger.nodes.filter((node) => node.active).map((node) => <option key={node.id} value={node.id}>{node.name} · {node.type}</option>)}</select></Field><Field label="Related order"><select value={movement.relatedOrderId} onChange={(event) => changeMovementOrder(event.target.value)}><option value="">None</option>{data.orders.filter((order)=>["Approved","Allocated","Out for delivery"].includes(order.status)).map((order) => <option key={order.id} value={order.id}>{order.number} · {order.cases} cases</option>)}</select></Field><Field label="Reason" className="field--full"><textarea required rows={3} value={movement.reason} onChange={(event) => setMovement({ ...movement, reason: event.target.value })} /></Field></form>
+      <Modal open={movementOpen} title="Record inventory movement" description="Every manual movement requires both a source and destination custody point. Count adjustments are created only through the independent count-reconciliation workflow." onClose={() => setMovementOpen(false)} footer={<><Button variant="ghost" onClick={() => setMovementOpen(false)}>Cancel</Button><Button type="submit" form="movement-form">Post movement</Button></>} wide>
+        <form id="movement-form" className="form-grid" onSubmit={submitMovement}><Field label="Movement type"><select value={movement.type} onChange={(event) => changeMovementType(event.target.value as MovementType)}>{movementTypes.map((type) => <option key={type}>{type}</option>)}</select></Field><Field label="Quantity (cases)"><input required type="number" min="0.01" step="0.01" value={movement.quantity} onChange={(event) => setMovement({ ...movement, quantity: event.target.value })} /></Field><Field label="From custody"><select required value={movement.fromNodeId} onChange={(event) => setMovement({ ...movement, fromNodeId: event.target.value })}><option value="">Select source</option>{ledger.nodes.filter((node) => node.active).map((node) => <option key={node.id} value={node.id}>{node.name} · {node.type}</option>)}</select></Field><Field label="To custody"><select required value={movement.toNodeId} onChange={(event) => setMovement({ ...movement, toNodeId: event.target.value })}><option value="">Select destination</option>{ledger.nodes.filter((node) => node.active).map((node) => <option key={node.id} value={node.id}>{node.name} · {node.type}</option>)}</select></Field><Field label="Related order"><select value={movement.relatedOrderId} onChange={(event) => changeMovementOrder(event.target.value)}><option value="">None</option>{data.orders.filter((order)=>["Approved","Allocated","Out for delivery"].includes(order.status)).map((order) => <option key={order.id} value={order.id}>{order.number} · {order.cases} cases</option>)}</select></Field><Field label="Reason / source record" className="field--full"><textarea required rows={3} value={movement.reason} onChange={(event) => setMovement({ ...movement, reason: event.target.value })} /></Field></form>
       </Modal>
 
       <Modal open={countOpen} title="Record physical count" description="Count one lot at one custody point. The person recording the count cannot reconcile their own variance." onClose={() => setCountOpen(false)} footer={<><Button variant="ghost" onClick={() => setCountOpen(false)}>Cancel</Button><Button type="submit" form="count-form">Record count</Button></>}>
