@@ -65,7 +65,8 @@ export function movementCanPost(state:InventoryLedgerState,input:{lotId:string;q
 }
 
 export function orderDeliveryQuantity(state:InventoryLedgerState,orderId:string){return state.movements.filter((movement)=>movement.relatedOrderId===orderId&&movement.type==="Delivery").reduce((sum,movement)=>sum+movement.quantity,0);}
-export function orderOutboundQuantity(state:InventoryLedgerState,orderId:string){return state.movements.filter((movement)=>movement.relatedOrderId===orderId&&["Transfer","Delivery"].includes(movement.type)&&movement.fromNodeId===warehouseNodeId).reduce((sum,movement)=>sum+movement.quantity,0);}
+export function orderLotWarehouseNetOutbound(state:InventoryLedgerState,orderId:string,lotId:string){return Math.max(0,state.movements.filter((movement)=>movement.relatedOrderId===orderId&&movement.lotId===lotId).reduce((sum,movement)=>sum+(movement.fromNodeId===warehouseNodeId?movement.quantity:0)-(movement.toNodeId===warehouseNodeId?movement.quantity:0),0));}
+export function orderOutboundQuantity(state:InventoryLedgerState,orderId:string){const lots=[...new Set(state.movements.filter((movement)=>movement.relatedOrderId===orderId).map((movement)=>movement.lotId))];return lots.reduce((sum,lotId)=>sum+orderLotWarehouseNetOutbound(state,orderId,lotId),0);}
 export function orderCanAdvanceInventory(state:InventoryLedgerState,order:Order,nextStatus:"Allocated"|"Out for delivery"|"Delivered"){
   if(nextStatus==="Allocated")return activeReservedForOrder(state,order.id)>=order.cases;
   if(nextStatus==="Out for delivery")return activeReservedForOrder(state,order.id)+fulfilledForOrder(state,order.id)>=order.cases&&orderOutboundQuantity(state,order.id)>=order.cases;
