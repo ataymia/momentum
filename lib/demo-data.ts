@@ -330,6 +330,7 @@ export function createDemoData(): WorkspaceData {
         amount: 288,
         status: "Paid",
         placedAt: dateKey(-4),
+        paidAt: dateKey(0),
         ownerId: "usr-jordan",
         priceBasis: "Demo entered price",
         paymentStatus: "Paid",
