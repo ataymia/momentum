@@ -7,7 +7,7 @@ import { customerForLocation, locationLabel } from "../lib/crm-hierarchy";
 import { createDemoData } from "../lib/demo-data";
 import { createFinanceSeed } from "../lib/finance-engine";
 import { createInventoryLedgerSeed, movementCanPost, nodeLotBalance, warehouseNodeId } from "../lib/inventory-ledger";
-import { consumedBonuses, createPayrollSeed, earnedBonusesForMonth, type PayRun } from "../lib/payroll-engine";
+import { consumedBonuses, createPayrollSeed, earnedBonusesForMonth, invalidBonusSourcesForRun, type PayRun } from "../lib/payroll-engine";
 import { canViewPerformanceRecord, periodRange, userCommercialMetrics } from "../lib/performance-engine";
 import type { Order, WorkspaceData, WorkspaceUser } from "../lib/types";
 
@@ -102,6 +102,16 @@ test("monthly bonus payroll consumption prevents the same earned bonus from ente
   const consumed={...state,runs:[run]};
   assert.equal(consumedBonuses(consumed).has(opening!.signal.id),true);
   assert.equal(earnedBonusesForMonth(consumed,data,"2026-08").some((item)=>item.signal.id===opening!.signal.id),false);
+});
+
+test("payroll detects a bonus source that stopped being earned after customer payment reversal", () => {
+  const base=createDemoData();
+  const earnedData={...base,orders:[...base.orders.filter((item)=>item.accountId!=="acc-101"),paidOrder("opening","acc-101",10,"2026-08-01")]};
+  const bonusId="bonus-acc-101-opening";
+  const run:PayRun={id:"run-stale",kind:"Monthly bonus",createdAt:"2026-08-31T12:00:00Z",periodStart:"2026-08-01",periodEnd:"2026-08-31",payDate:"2026-09-01",status:"Approved",lines:[{employeeId:"usr-jordan",regularHours:0,overtimeHours:0,regularPay:0,overtimePay:0,bonusPay:25,grossPay:25,benefitDeduction:0,taxableWages:25,federalTax:0,stateTax:0,localTax:0,additionalWithholding:0,postTaxDeduction:0,employeeTaxes:0,employerTaxes:0,netPay:25,sourceTimecardIds:[],sourceBonusIds:[bonusId]}]};
+  assert.deepEqual(invalidBonusSourcesForRun(run,earnedData),[]);
+  const reversedData={...earnedData,orders:earnedData.orders.map((order)=>order.id==="opening"?{...order,paymentStatus:"Open" as const,paidAt:undefined}:order)};
+  assert.deepEqual(invalidBonusSourcesForRun(run,reversedData),[bonusId]);
 });
 
 test("performance metrics count cleared orders and manager visibility follows reporting hierarchy", () => {
