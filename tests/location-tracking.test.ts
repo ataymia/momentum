@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { AuditEvent } from "../lib/audit-engine";
 import {
   DEFAULT_GEOFENCE_RADIUS_MILES,
   DEPARTURE_CONFIRM_SECONDS,
@@ -13,6 +14,7 @@ import {
   type GeofenceProfile,
   type RouteSample,
 } from "../lib/location-tracking-engine";
+import { auditEventCreatesNotification, notificationCopy } from "../lib/notification-engine";
 
 const profile: GeofenceProfile = {
   id: "geo-1",
@@ -84,4 +86,29 @@ test("continuous work-device tracking is scoped to sales representatives", () =>
   assert.equal(roleIsTracked("Operations"), false);
   assert.equal(roleIsTracked("Warehouse"), false);
   assert.equal(roleIsTracked("Customer"), false);
+});
+
+test("field tracking notifications interrupt managers only for a newly confirmed departure", () => {
+  const base: AuditEvent = {
+    id: "audit-field-1",
+    at: "2026-09-08T13:00:00Z",
+    actorId: "usr-rep",
+    actorRole: "Sales Representative",
+    action: "Created",
+    module: "Field tracking",
+    collection: "appointmentEvents",
+    entityType: "Field tracking.appointmentEvents",
+    entityId: "event-1",
+    label: "event-1",
+    summary: "event-1 created",
+    sensitivity: "manager",
+    relatedAccountId: "acc-101",
+    relatedUserId: "usr-rep",
+    changes: [],
+  };
+  assert.equal(auditEventCreatesNotification(base), false);
+  const departure = { ...base, id: "audit-field-2", collection: "departureAlerts", entityType: "Field tracking.departureAlerts", entityId: "alert-1", label: "alert-1" };
+  assert.equal(auditEventCreatesNotification(departure), true);
+  assert.equal(notificationCopy(departure).tone, "warning");
+  assert.equal(auditEventCreatesNotification({ ...departure, action: "Updated" }), false);
 });
