@@ -7,6 +7,7 @@ import { CrmProvider } from "../lib/crm-context";
 import { FinanceProvider } from "../lib/finance-context";
 import { HcmProvider } from "../lib/hcm-context";
 import { InventoryLedgerProvider } from "../lib/inventory-ledger-context";
+import { FieldTrackingProvider } from "../lib/location-tracking-context";
 import { MarketingProvider } from "../lib/marketing-context";
 import { NotificationProvider } from "../lib/notification-context";
 import { PayrollProvider } from "../lib/payroll-context";
@@ -15,6 +16,7 @@ import { PeriodLockProvider } from "../lib/period-lock-context";
 import { RuntimeModeProvider } from "../lib/runtime-mode";
 import { WorkspaceProvider, useWorkspace } from "../lib/workspace-context";
 import { AppShell } from "./app-shell";
+import { DeparturePrompt } from "./field-tracking/departure-prompt";
 import { LoginScreen } from "./login-screen";
 
 const PRESENTATION_SEED_KEY = "momentum-presentation-seed-2026-08-31";
@@ -23,6 +25,7 @@ const PRESENTATION_RESET_KEYS = [
   "momentum-demo-session-v2",
   "momentum-audit-v1",
   "momentum-notification-rules-v1",
+  "momentum-field-tracking-v1",
 ];
 
 function ensurePresentationSeed() {
@@ -33,10 +36,10 @@ function ensurePresentationSeed() {
 
 function MomentumExperience(){
   const {currentUser}=useWorkspace();
-  return currentUser?<AppShell/>:<LoginScreen/>;
+  return currentUser?<><AppShell/><DeparturePrompt/></>:<LoginScreen/>;
 }
 
 export function MomentumApp(){
   ensurePresentationSeed();
-  return <WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider>;
+  return <WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><FieldTrackingProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></FieldTrackingProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider>;
 }
