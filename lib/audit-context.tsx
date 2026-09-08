@@ -8,6 +8,7 @@ import { useCrm } from "./crm-context";
 import { useFinance } from "./finance-context";
 import { useHcm } from "./hcm-context";
 import { useInventoryLedger } from "./inventory-ledger-context";
+import { useFieldTracking } from "./location-tracking-context";
 import { useMarketing } from "./marketing-context";
 import { usePayroll } from "./payroll-context";
 import { usePerformance } from "./performance-context";
@@ -21,11 +22,55 @@ const AuditContext = createContext<AuditContextValue | null>(null);
 function readAudit() { if (typeof window === "undefined") return createAuditSeed(); try { return normalizeAuditState(JSON.parse(window.localStorage.getItem(AUDIT_STORAGE_KEY) ?? "null")); } catch { return createAuditSeed(); } }
 
 export function AuditProvider({ children }: { children: ReactNode }) {
-  const { data, currentUser } = useWorkspace(); const { crm } = useCrm(); const { hcm } = useHcm(); const { payroll } = usePayroll(); const { performance } = usePerformance(); const { commerce } = useCommerce(); const { ledger } = useInventoryLedger(); const { finance } = useFinance(); const { accounting } = useAccounting(); const { state: marketing } = useMarketing(); const { state: periodLocks } = usePeriodLocks(); const runtime = useRuntimeMode();
-  const [audit, setAudit] = useState<AuditState>(() => readAudit()); const previous = useRef<ReturnType<typeof mergeAuditSnapshots> | null>(null);
+  const { data, currentUser } = useWorkspace();
+  const { crm } = useCrm();
+  const { hcm } = useHcm();
+  const { payroll } = usePayroll();
+  const { performance } = usePerformance();
+  const { commerce } = useCommerce();
+  const { ledger } = useInventoryLedger();
+  const { finance } = useFinance();
+  const { accounting } = useAccounting();
+  const { state: marketing } = useMarketing();
+  const { state: periodLocks } = usePeriodLocks();
+  const { state: fieldTracking } = useFieldTracking();
+  const runtime = useRuntimeMode();
+  const [audit, setAudit] = useState<AuditState>(() => readAudit());
+  const previous = useRef<ReturnType<typeof mergeAuditSnapshots> | null>(null);
+
   useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify(audit)); }, [audit]);
-  const snapshots = useMemo(() => mergeAuditSnapshots(collectAuditableRecords("Workspace", data), collectAuditableRecords("CRM", crm), collectAuditableRecords("HCM", hcm), collectAuditableRecords("Payroll", payroll), collectAuditableRecords("Performance", performance), collectAuditableRecords("Commerce", commerce), collectAuditableRecords("Inventory", ledger), collectAuditableRecords("Finance", finance), collectAuditableRecords("Accounting", accounting), collectAuditableRecords("Marketing", marketing), collectAuditableRecords("Period locks", periodLocks)), [data, crm, hcm, payroll, performance, commerce, ledger, finance, accounting, marketing, periodLocks]);
-  useEffect(() => { if (!previous.current) { previous.current = snapshots; return; } const actor = { id: currentUser?.id ?? "system", role: currentUser?.role ?? "System" }; const additions = diffAuditableRecords(previous.current, snapshots, actor); previous.current = snapshots; if (additions.length) setAudit((state) => ({ ...state, events: [...additions, ...state.events].slice(0, 10000) })); }, [snapshots, currentUser]);
+
+  const auditableFieldTracking = useMemo(() => ({
+    geofences: fieldTracking.geofences,
+    sessions: fieldTracking.sessions,
+    appointmentEvents: fieldTracking.appointmentEvents,
+    exceptions: fieldTracking.exceptions,
+    departureAlerts: fieldTracking.departureAlerts,
+  }), [fieldTracking.appointmentEvents, fieldTracking.departureAlerts, fieldTracking.exceptions, fieldTracking.geofences, fieldTracking.sessions]);
+
+  const snapshots = useMemo(() => mergeAuditSnapshots(
+    collectAuditableRecords("Workspace", data),
+    collectAuditableRecords("CRM", crm),
+    collectAuditableRecords("HCM", hcm),
+    collectAuditableRecords("Payroll", payroll),
+    collectAuditableRecords("Performance", performance),
+    collectAuditableRecords("Commerce", commerce),
+    collectAuditableRecords("Inventory", ledger),
+    collectAuditableRecords("Finance", finance),
+    collectAuditableRecords("Accounting", accounting),
+    collectAuditableRecords("Marketing", marketing),
+    collectAuditableRecords("Period locks", periodLocks),
+    collectAuditableRecords("Field tracking", auditableFieldTracking),
+  ), [data, crm, hcm, payroll, performance, commerce, ledger, finance, accounting, marketing, periodLocks, auditableFieldTracking]);
+
+  useEffect(() => {
+    if (!previous.current) { previous.current = snapshots; return; }
+    const actor = { id: currentUser?.id ?? "system", role: currentUser?.role ?? "System" };
+    const additions = diffAuditableRecords(previous.current, snapshots, actor);
+    previous.current = snapshots;
+    if (additions.length) setAudit((state) => ({ ...state, events: [...additions, ...state.events].slice(0, 10000) }));
+  }, [snapshots, currentUser]);
+
   const visibleEvents = useMemo(() => visibleAuditEvents(currentUser, data, audit.events), [currentUser, data, audit.events]);
   const resetAudit = () => { if (!runtime.isDemo || currentUser?.role !== "Administrator") return false; setAudit(createAuditSeed()); previous.current = snapshots; return true; };
   const eventsForRecord = (entityType: string, entityId: string) => visibleEvents.filter((event) => event.entityType === entityType && event.entityId === entityId);
