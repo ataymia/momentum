@@ -16,6 +16,7 @@ import {
 import { DragEvent, FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import { canCreateScheduleItem, canManageSchedule } from "../../lib/access";
 import { customerForLocation, customerLocations, customersForLocations, locationLabel } from "../../lib/crm-hierarchy";
+import { useFieldTracking } from "../../lib/location-tracking-context";
 import type { Appointment, AppointmentOutcome, AppointmentStatus } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Avatar, Button, Field, Modal, PageHeader, Section, StatusPill, formatDate } from "../ui";
@@ -65,12 +66,14 @@ type AppointmentForm = {
 
 export function DispatchPage() {
   const { data, scope, currentUser, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, navigate } = useWorkspace();
+  const tracking = useFieldTracking();
   const focus = typeof window !== "undefined" ? sessionStorage.getItem("momentum-focus-record") : null;
   const focusAppointment = scope.appointments.find((item) => item.id === focus);
   const focusLocation = scope.accounts.find((item) => item.id === focus);
   const operationsMode = currentUser?.role === "Operations";
   const canManage = canManageSchedule(currentUser);
   const canCreate = canCreateScheduleItem(currentUser);
+  const canConfigureGeofence = currentUser?.role === "Administrator" || currentUser?.role === "Sales Manager";
   const visibleCustomers = customersForLocations(data, scope.accounts);
   const initialCustomer = focusLocation ? customerForLocation(data, focusLocation).id : visibleCustomers[0]?.id ?? "";
   const initialLocation = focusLocation?.id ?? customerLocations(data, initialCustomer, scope.accounts)[0]?.id ?? scope.accounts[0]?.id ?? "";
@@ -79,12 +82,16 @@ export function DispatchPage() {
   const [selectedId, setSelectedId] = useState(focusAppointment?.id ?? scope.appointments[0]?.id ?? "");
   const [createOpen, setCreateOpen] = useState(Boolean(focusLocation));
   const [closeoutOpen, setCloseoutOpen] = useState(false);
+  const [offsiteOpen, setOffsiteOpen] = useState(false);
+  const [offsiteReason, setOffsiteReason] = useState("");
   const [error, setError] = useState("");
   const [dragId, setDragId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
   const [technicianFilter, setTechnicianFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "scheduled" | "active" | "closed">("all");
   const [clock, setClock] = useState(() => new Date());
+  const [geoLatitude, setGeoLatitude] = useState("");
+  const [geoLongitude, setGeoLongitude] = useState("");
   const [appointmentForm, setAppointmentForm] = useState<AppointmentForm>({
     customerId: initialCustomer,
     accountId: initialLocation,
@@ -117,7 +124,7 @@ export function DispatchPage() {
 
   const dates = useMemo(() => Array.from({ length: 7 }, (_, index) => dateOffset(index)), []);
   const assignable = data.users.filter((user) => {
-    if (user.role === "Customer") return false;
+    if (user.role === "Customer" || user.role === "Warehouse") return false;
     if (currentUser?.role === "Administrator") return ["Sales", "Operations", "Leadership"].includes(user.team);
     if (currentUser?.role === "Operations") return user.team === "Operations";
     if (currentUser?.role === "Sales Manager") return scope.users.some((item) => item.id === user.id) && user.team === "Sales";
@@ -125,10 +132,12 @@ export function DispatchPage() {
   });
   const technicians = assignable.filter((user) => technicianFilter === "all" || user.id === technicianFilter);
   const allForDate = scope.appointments.filter((item) => item.date === selectedDate);
+  const isCloseoutRequired = (appointment: Appointment) => Boolean(tracking.openAlertForAppointment(appointment.id));
+  const isInMotion = (appointment: Appointment) => ["Dispatched", "En route", "Arrived"].includes(appointment.status) && !isCloseoutRequired(appointment);
   const filteredForDate = allForDate.filter((item) => {
     if (statusFilter === "all") return true;
     if (statusFilter === "scheduled") return item.status === "Scheduled";
-    if (statusFilter === "active") return ["Dispatched", "En route", "Arrived"].includes(item.status);
+    if (statusFilter === "active") return isInMotion(item);
     return ["Completed", "Needs follow-up"].includes(item.status);
   });
   const unassigned = filteredForDate.filter((item) => !item.ownerId);
@@ -136,12 +145,21 @@ export function DispatchPage() {
   const selectedLocation = selected ? scope.accounts.find((item) => item.id === selected.accountId) : undefined;
   const selectedCustomer = selectedLocation ? customerForLocation(data, selectedLocation) : undefined;
   const selectedOwner = data.users.find((item) => item.id === selected?.ownerId);
-  const canOperate = Boolean(selected && currentUser && selected.ownerId && (selected.ownerId === currentUser.id || canManage));
+  const selectedAlert = selected ? tracking.openAlertForAppointment(selected.id) : undefined;
+  const selectedGeofence = selected ? tracking.geofenceForAccount(selected.accountId) : undefined;
+  const selectedDecision = selected ? tracking.decisionForAppointment(selected) : undefined;
+  const selectedEvents = selected ? tracking.eventsForAppointment(selected.id) : [];
+  const salesRepOwnWork = Boolean(selected && currentUser?.role === "Sales Representative" && selected.ownerId === currentUser.id);
+  const operationsOwnWork = Boolean(selected && currentUser?.role === "Operations" && selected.ownerId === currentUser.id);
+  const canOperate = salesRepOwnWork || operationsOwnWork;
   const formLocations = customerLocations(data, appointmentForm.customerId, scope.accounts);
   const workTypes: Appointment["type"][] = operationsMode ? ["Delivery"] : ["First visit", "Sample drop", "Placement check", "Reorder", "Delivery"];
   const currentMinutes = clock.getHours() * 60 + clock.getMinutes();
   const currentLineVisible = selectedDate === todayKey() && currentMinutes >= BOARD_START && currentMinutes <= BOARD_END;
   const currentLineLeft = `${((currentMinutes - BOARD_START) / BOARD_SPAN) * 100}%`;
+  const visibleTrackedReps = data.users.filter((user) => user.role === "Sales Representative" && tracking.canViewUserTracking(user.id));
+  const routeFocusUserId = technicianFilter !== "all" && tracking.canViewUserTracking(technicianFilter) ? technicianFilter : currentUser?.role === "Sales Representative" ? currentUser.id : visibleTrackedReps[0]?.id;
+  const routeTrail = routeFocusUserId ? tracking.routeSamplesForUserDay(routeFocusUserId, selectedDate) : [];
 
   const changeCustomer = (customerId: string) => {
     const locations = customerLocations(data, customerId, scope.accounts);
@@ -173,16 +191,56 @@ export function DispatchPage() {
     sessionStorage.removeItem("momentum-focus-record");
   };
 
-  const submitCloseout = (event: FormEvent) => {
+  const handleFieldAction = async () => {
+    if (!selected) return;
+    if (selected.status === "Arrived") { setCloseoutOpen(true); setError(""); return; }
+    if (salesRepOwnWork) {
+      const result = await tracking.transitionAppointment(selected.id);
+      if (!result.ok) { setError(result.message ?? "Location verification failed."); return; }
+      setError("");
+      return;
+    }
+    if (operationsOwnWork) {
+      advanceAppointment(selected.id);
+      setError("");
+    }
+  };
+
+  const submitCloseout = async (event: FormEvent) => {
     event.preventDefault();
     if (!selected) return;
-    if (!completeAppointment(selected.id, closeout)) {
-      setError("Outcome, note, next action, and next-action date are required.");
+    const result = salesRepOwnWork ? await tracking.completeTrackedAppointment(selected.id, closeout) : { ok: completeAppointment(selected.id, closeout) };
+    if (!result.ok) {
+      setError("message" in result && result.message ? result.message : "Outcome, note, next action, and next-action date are required.");
       return;
     }
     setCloseoutOpen(false);
     setError("");
     setCloseout({ outcome: "Follow-up scheduled", closeoutNote: "", nextAction: "", nextActionDate: dateOffset(1) });
+  };
+
+  const captureLocationLock = async () => {
+    if (!selectedLocation) return;
+    const result = await tracking.captureGeofence(selectedLocation.id);
+    setError(result.ok ? "" : result.message ?? "Could not configure this location lock.");
+  };
+
+  const saveManualLocationLock = () => {
+    if (!selectedLocation) return;
+    const result = tracking.configureGeofence(selectedLocation.id, Number(geoLatitude), Number(geoLongitude));
+    if (!result.ok) { setError(result.message ?? "Enter valid coordinates."); return; }
+    setGeoLatitude("");
+    setGeoLongitude("");
+    setError("");
+  };
+
+  const saveOffsiteContinuation = () => {
+    if (!selected) return;
+    const result = tracking.documentOffsiteContinuation(selected.id, offsiteReason);
+    if (!result.ok) { setError(result.message ?? "Document why the customer interaction is continuing offsite."); return; }
+    setOffsiteOpen(false);
+    setOffsiteReason("");
+    setError("");
   };
 
   const assignmentAllowed = (appointment: Appointment) => appointment.status === "Scheduled";
@@ -227,6 +285,7 @@ export function DispatchPage() {
     const customer = customerForLocation(data, location);
     const owner = data.users.find((item) => item.id === appointment.ownerId);
     const draggable = canManage && assignmentAllowed(appointment);
+    const closeoutRequired = isCloseoutRequired(appointment);
     return (
       <button
         type="button"
@@ -243,8 +302,8 @@ export function DispatchPage() {
         <span className="dispatch-time-card__time">{appointment.startTime}</span>
         <strong>{customer.name}</strong>
         <small>{locationLabel(location)}</small>
-        <span>{appointment.type}</span>
-        {appointment.priority !== "Normal" && <i>{appointment.priority}</i>}
+        <span>{closeoutRequired ? "Closeout required" : appointment.type}</span>
+        {(appointment.priority !== "Normal" || closeoutRequired) && <i>{closeoutRequired ? "Departure detected" : appointment.priority}</i>}
         {owner && <em>{owner.firstName}</em>}
       </button>
     );
@@ -262,8 +321,8 @@ export function DispatchPage() {
       <div className="dispatch-summary">
         <div><span className="summary-icon summary-icon--blue"><CalendarDays size={19} /></span><span><strong>{allForDate.length}</strong><small>appointments</small></span></div><i />
         <div><span className="summary-icon summary-icon--gold"><UsersRound size={19} /></span><span><strong>{unassigned.length}</strong><small>unassigned</small></span></div><i />
-        <div><span className="summary-icon summary-icon--green"><Route size={19} /></span><span><strong>{allForDate.filter((item) => ["Dispatched", "En route", "Arrived"].includes(item.status)).length}</strong><small>in motion</small></span></div><i />
-        <div className="dispatch-summary__policy"><Navigation size={17} /><span><strong>Location-level assignment</strong><small>Parent customer stays separate from the job</small></span></div>
+        <div><span className="summary-icon summary-icon--green"><Route size={19} /></span><span><strong>{allForDate.filter(isInMotion).length}</strong><small>in motion</small></span></div><i />
+        <div className="dispatch-summary__policy"><Navigation size={17} /><span><strong>2-mile arrival lock</strong><small>Sales rep arrival requires verified device location</small></span></div>
       </div>
 
       <div className="dispatch-toolbar-v2">
@@ -299,12 +358,23 @@ export function DispatchPage() {
 
       <div className="company-grid company-grid--two">
         <Section title="Selected work" description="Job detail stays tied to the customer and exact location">
-          {selected && selectedLocation ? <div className="dispatch-detail__body"><div className="dispatch-detail__status"><StatusPill tone={tone(selected.status)}>{selected.status}</StatusPill><span>{selected.startTime} · {selected.duration} min</span></div><div className="dispatch-record-pair"><article><small>Customer</small><strong>{selectedCustomer?.name}</strong><p>{selectedCustomer?.accountType}</p></article><article><small>Location</small><strong>{locationLabel(selectedLocation)}</strong><p>{selectedLocation.streetAddress || selectedLocation.location}</p></article></div><div className="objective-card"><span>Work objective</span><p>{selected.objective}</p></div><dl className="detail-list"><div><dt><UserRoundCheck size={15} /> Assigned to</dt><dd>{selectedOwner?.name ?? "Unassigned"}</dd></div><div><dt><Clock3 size={15} /> Scheduled</dt><dd>{formatDate(selected.date, { month: "short", day: "numeric" })} at {selected.startTime}</dd></div><div><dt><MapPin size={15} /> Address</dt><dd>{selectedLocation.streetAddress || selected.location}</dd></div></dl><div className="account-detail__actions"><Button size="sm" variant="secondary" onClick={openLocationRecord}>Open location</Button>{canOperate && !["Completed", "Needs follow-up"].includes(selected.status) && <Button size="sm" icon={<ArrowRight size={15} />} onClick={() => selected.status === "Arrived" ? setCloseoutOpen(true) : advanceAppointment(selected.id)}>{nextLabel[selected.status]}</Button>}</div>{selected.status === "Completed" && <div className="completed-closeout"><div><CheckCircle2 size={17} /><strong>{selected.outcome ?? "Work completed"}</strong></div>{selected.closeoutNote && <p>{selected.closeoutNote}</p>}{selected.nextAction && <small>Next: {selected.nextAction} · {selected.nextActionDate ? formatDate(selected.nextActionDate) : "date not set"}</small>}</div>}</div> : <div className="review-empty"><p>Select an appointment.</p></div>}
+          {selected && selectedLocation ? <div className="dispatch-detail__body"><div className="dispatch-detail__status"><StatusPill tone={selectedAlert ? "warning" : tone(selected.status)}>{selectedAlert ? "Closeout required" : selected.status}</StatusPill><span>{selected.startTime} · {selected.duration} min</span></div><div className="dispatch-record-pair"><article><small>Customer</small><strong>{selectedCustomer?.name}</strong><p>{selectedCustomer?.accountType}</p></article><article><small>Location</small><strong>{locationLabel(selectedLocation)}</strong><p>{selectedLocation.streetAddress || selectedLocation.location}</p></article></div>{selectedAlert && <div className="form-callout"><MapPin size={17}/><p>The tracked work tablet left the 2-mile customer radius at {formatDate(selectedAlert.triggeredAt, { hour: "numeric", minute: "2-digit" })}. Field presence is ended. Submit the required closeout or document a legitimate offsite continuation.</p></div>}<div className="objective-card"><span>Work objective</span><p>{selected.objective}</p></div><dl className="detail-list"><div><dt><UserRoundCheck size={15} /> Assigned to</dt><dd>{selectedOwner?.name ?? "Unassigned"}</dd></div><div><dt><Clock3 size={15} /> Scheduled</dt><dd>{formatDate(selected.date, { month: "short", day: "numeric" })} at {selected.startTime}</dd></div><div><dt><MapPin size={15} /> Address</dt><dd>{selectedLocation.streetAddress || selected.location}</dd></div></dl><div className="account-detail__actions"><Button size="sm" variant="secondary" onClick={openLocationRecord}>Open location</Button>{canOperate && !["Completed", "Needs follow-up"].includes(selected.status) && <Button size="sm" icon={<ArrowRight size={15} />} onClick={handleFieldAction}>{selectedAlert ? "Complete closeout" : nextLabel[selected.status]}</Button>}{salesRepOwnWork && selectedAlert && <Button size="sm" variant="secondary" onClick={() => setOffsiteOpen(true)}>Continue offsite</Button>}</div>{error && <p className="form-error" role="alert">{error}</p>}{selected.status === "Completed" && <div className="completed-closeout"><div><CheckCircle2 size={17} /><strong>{selected.outcome ?? "Work completed"}</strong></div>{selected.closeoutNote && <p>{selected.closeoutNote}</p>}{selected.nextAction && <small>Next: {selected.nextAction} · {selected.nextActionDate ? formatDate(selected.nextActionDate) : "date not set"}</small>}</div>}</div> : <div className="review-empty"><p>Select an appointment.</p></div>}
         </Section>
-        <Section title="Dispatch controls" description="Assignment changes remain deliberate and auditable">
-          {selected && canManage ? <div className="form-grid"><Field label="Assigned field employee"><select value={selected.ownerId ?? ""} disabled={!assignmentAllowed(selected)} onChange={(event) => reassignAppointment(selected.id, event.target.value)}><option value="">Unassigned</option>{assignable.map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}</select></Field><Field label="Status"><input readOnly value={selected.status} /></Field><div className="field--full form-callout"><Navigation size={16} /><p>{assignmentAllowed(selected) ? "Scheduled work can be reassigned or moved. Once work is dispatched, the assignment is locked to protect the audit trail." : "This assignment is locked because work has already started or closed."}</p></div></div> : <div className="review-empty"><p>{canManage ? "Select work to manage its assignment." : "Your schedule is read-only except for your assigned execution steps."}</p></div>}
+        <Section title="Dispatch controls" description="Assignment and location-lock controls remain deliberate and auditable">
+          {selected && canManage ? <div className="form-grid"><Field label="Assigned field employee"><select value={selected.ownerId ?? ""} disabled={!assignmentAllowed(selected)} onChange={(event) => reassignAppointment(selected.id, event.target.value)}><option value="">Unassigned</option>{assignable.map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}</select></Field><Field label="Status"><input readOnly value={selectedAlert ? "Closeout required" : selected.status} /></Field><div className="field--full form-callout"><Navigation size={16} /><p>{assignmentAllowed(selected) ? "Scheduled work can be reassigned or moved. Once field work starts, managers can monitor it but cannot impersonate the assigned rep's arrival action." : "This assignment is locked because work has already started or closed."}</p></div>{canConfigureGeofence && selectedLocation && <><div className="field--full company-rule-facts"><div><span>Location lock</span><strong>{selectedGeofence ? "Configured" : "Not configured"}</strong><small>Fixed 2-mile radius</small></div>{selectedGeofence && <div><span>Center</span><strong>{selectedGeofence.latitude.toFixed(5)}, {selectedGeofence.longitude.toFixed(5)}</strong><small>{selectedGeofence.source}</small></div>}</div><div className="field--full account-detail__actions"><Button size="sm" variant="secondary" onClick={captureLocationLock}>Capture this device as center</Button></div><Field label="Latitude"><input type="number" step="any" value={geoLatitude} onChange={(event) => setGeoLatitude(event.target.value)} placeholder="33.4484" /></Field><Field label="Longitude"><input type="number" step="any" value={geoLongitude} onChange={(event) => setGeoLongitude(event.target.value)} placeholder="-112.0740" /></Field><div className="field--full"><Button size="sm" variant="secondary" onClick={saveManualLocationLock} disabled={!geoLatitude || !geoLongitude}>Save coordinates</Button></div></>}</div> : <div className="review-empty"><p>{canManage ? "Select work to manage its assignment." : "Your schedule is read-only except for your assigned execution steps."}</p></div>}
         </Section>
       </div>
+
+      {(currentUser?.role === "Sales Representative" || currentUser?.role === "Sales Manager" || currentUser?.role === "Administrator") && <div className="company-grid company-grid--two">
+        <Section title="Location verification" description="Sales rep field actions are tied to the managed device location">
+          {selected && selectedOwner?.role === "Sales Representative" ? <div className="company-rule-facts"><div><span>Tracking</span><strong>{selected.ownerId === currentUser?.id ? tracking.permission : tracking.latestSampleForUser(selected.ownerId ?? "") ? "Reporting" : "No recent location"}</strong><small>{selected.ownerId === currentUser?.id && tracking.currentUserTrackingActive ? "Active work-device session" : "Location evidence is role-scoped"}</small></div><div><span>Geofence</span><strong>{selectedGeofence ? "2 miles" : "Not configured"}</strong><small>{selectedGeofence ? "Arrival lock active" : "Arrival will be blocked"}</small></div><div><span>Current distance</span><strong>{selectedDecision?.distanceMiles === undefined ? "Not available" : `${selectedDecision.distanceMiles.toFixed(2)} mi`}</strong><small>{selectedDecision?.reason ?? "Waiting for location fix"}</small></div><div><span>Appointment events</span><strong>{selectedEvents.length}</strong><small>Dispatch, route, arrival, departure and closeout evidence</small></div></div> : <div className="review-empty"><p>Select a sales-rep appointment to inspect its location evidence.</p></div>}
+          {selectedEvents.length > 0 && <div className="company-request-list">{selectedEvents.slice(0, 8).map((event) => <article key={event.id}><span><MapPin size={16}/></span><div><small>{formatDate(event.at, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</small><strong>{event.event}</strong><p>{event.distanceMiles === undefined ? "Location captured" : `${event.distanceMiles.toFixed(2)} mi from location center`} · accuracy {Math.round(event.accuracyMeters)} m</p></div><StatusPill tone={event.withinGeofence === false ? "warning" : "success"}>{event.withinGeofence === false ? "Outside" : event.withinGeofence === true ? "Verified" : "Recorded"}</StatusPill></article>)}</div>}
+        </Section>
+        <Section title="Daily rep route" description="Route samples are retained in the field-tracking ledger while the work-device session is active">
+          <div className="company-request-list">{visibleTrackedReps.map((rep) => { const latest = tracking.latestSampleForUser(rep.id); const samples = tracking.routeSamplesForUserDay(rep.id, selectedDate); const active = tracking.state.sessions.some((session) => session.userId === rep.id && !session.endedAt); return <article key={rep.id}><span><Route size={16}/></span><div><small>{rep.name}</small><strong>{samples.length} route point{samples.length === 1 ? "" : "s"} · {active ? "tracking active" : "session closed"}</strong><p>{latest ? `Latest ${formatDate(latest.at, { hour: "numeric", minute: "2-digit" })} · ${latest.latitude.toFixed(5)}, ${latest.longitude.toFixed(5)} · ±${Math.round(latest.accuracyMeters)} m` : "No location sample recorded"}</p></div><StatusPill tone={active ? "success" : "neutral"}>{active ? "Active" : "Offline"}</StatusPill></article>; })}{visibleTrackedReps.length === 0 && <div className="review-empty"><p>No sales-rep location records are visible in your scope.</p></div>}</div>
+          {routeFocusUserId && routeTrail.length > 0 && <div className="hcm-audit-list">{routeTrail.slice(-8).reverse().map((sample) => <article key={sample.id}><span><Navigation size={15}/></span><div><strong>{formatDate(sample.at, { hour: "numeric", minute: "2-digit" })} · {sample.source}</strong><p>{sample.latitude.toFixed(5)}, {sample.longitude.toFixed(5)} · accuracy ±{Math.round(sample.accuracyMeters)} m</p></div></article>)}</div>}
+        </Section>
+      </div>}
 
       {contextMenu && <div className="dispatch-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={(event) => event.stopPropagation()}><strong>Quick assign</strong>{assignable.map((user) => <button key={user.id} onClick={() => { reassignAppointment(contextMenu.appointmentId, user.id); setContextMenu(null); }}>{user.name}</button>)}<button onClick={() => { reassignAppointment(contextMenu.appointmentId, ""); setContextMenu(null); }}>Move to unassigned</button></div>}
 
@@ -325,7 +395,7 @@ export function DispatchPage() {
         </form>
       </Modal>
 
-      <Modal open={closeoutOpen} title="Close the work" description="Outcome, reflection, next action, and date are required." onClose={() => setCloseoutOpen(false)} footer={<><Button variant="ghost" onClick={() => setCloseoutOpen(false)}>Keep open</Button><Button type="submit" form="closeout-form">Complete work</Button></>}>
+      <Modal open={closeoutOpen} title={selectedAlert ? "Departure closeout required" : "Close the work"} description={selectedAlert ? "The tracked device left the customer radius. Outcome, reflection, next action and date are required to close the appointment." : "Outcome, reflection, next action, and date are required."} onClose={() => setCloseoutOpen(false)} footer={<><Button variant="ghost" onClick={() => setCloseoutOpen(false)}>Keep open</Button><Button type="submit" form="closeout-form">Complete work</Button></>}>
         <form id="closeout-form" className="form-grid" onSubmit={submitCloseout}>
           <Field label="Outcome"><select value={closeout.outcome} onChange={(event) => setCloseout({ ...closeout, outcome: event.target.value as AppointmentOutcome })}><option>Order placed</option><option>Follow-up scheduled</option><option>Placement verified</option><option>No decision</option><option>Closed lost</option><option>Delivery completed</option></select></Field>
           <Field label="Next-action date"><input type="date" required value={closeout.nextActionDate} onChange={(event) => setCloseout({ ...closeout, nextActionDate: event.target.value })} /></Field>
@@ -333,6 +403,11 @@ export function DispatchPage() {
           <Field label="Next action" className="field--full"><input required value={closeout.nextAction} onChange={(event) => setCloseout({ ...closeout, nextAction: event.target.value })} /></Field>
           {error && <p className="form-error field--full" role="alert">{error}</p>}
         </form>
+      </Modal>
+
+      <Modal open={offsiteOpen} title="Continue customer meeting offsite" description="The geofence departure stays in history. Document why the meeting legitimately continues away from the customer location." onClose={() => setOffsiteOpen(false)} footer={<><Button variant="ghost" onClick={() => setOffsiteOpen(false)}>Cancel</Button><Button onClick={saveOffsiteContinuation}>Continue appointment</Button></>}>
+        <Field label="Offsite continuation reason"><textarea rows={4} required value={offsiteReason} onChange={(event) => setOffsiteReason(event.target.value)} placeholder="Example: Customer invited rep to continue the meeting over lunch nearby." /></Field>
+        {error && <p className="form-error" role="alert">{error}</p>}
       </Modal>
     </div>
   );
