@@ -16,6 +16,18 @@ export function resolveNotificationRecipients(event: AuditEvent, data: Workspace
   if (!recipients.size || event.sensitivity === "admin") for (const admin of data.users.filter((user) => user.role === "Administrator")) recipients.add(admin.id);
   recipients.delete(event.actorId); if (!recipients.size) recipients.add(event.actorId); return [...recipients];
 }
-export function notificationCopy(event: AuditEvent) { const high = ["approvals", "payroll", "journals", "inventory"].some((token) => `${event.collection} ${event.entityType}`.toLowerCase().includes(token)); return { title: `${event.label}: ${event.action.toLowerCase()}`, detail: event.summary, tone: high ? "warning" as const : "info" as const }; }
+
+export function auditEventCreatesNotification(event: AuditEvent) {
+  if (event.module !== "Field tracking") return true;
+  return event.collection === "departureAlerts" && event.action === "Created";
+}
+
+export function notificationCopy(event: AuditEvent) {
+  if (event.module === "Field tracking" && event.collection === "departureAlerts") {
+    return { title: "Customer-radius departure", detail: "A tracked sales-rep appointment left its 2-mile customer radius. Open Dispatch to review the closeout or documented offsite continuation.", tone: "warning" as const };
+  }
+  const high = ["approvals", "payroll", "journals", "inventory"].some((token) => `${event.collection} ${event.entityType}`.toLowerCase().includes(token));
+  return { title: `${event.label}: ${event.action.toLowerCase()}`, detail: event.summary, tone: high ? "warning" as const : "info" as const };
+}
 export function enabledChannels(preference: NotificationPreference): NotificationChannel[] { return [preference.inApp ? "In app" : null, preference.email ? "Email" : null, preference.sms ? "SMS" : null].filter((item): item is NotificationChannel => Boolean(item)); }
 export const deliveryKey = (eventId: string, userId: string, channel: NotificationChannel) => `${eventId}:${userId}:${channel}`;
