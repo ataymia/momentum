@@ -42,6 +42,9 @@ export type Appointment = {
   outcome?: AppointmentOutcome; closeoutNote?: string; nextAction?: string; nextActionDate?: string;
   customerId?:string; priority?:"Normal"|"High"|"Urgent"; tags?:string[]; requiredSkills?:string[];
   confirmed?:boolean; arrivalWindow?:string; assignedBy?:string; assignedAt?:string;
+  arrivalVerifiedAt?:string; arrivalLatitude?:number; arrivalLongitude?:number; arrivalAccuracyMeters?:number; arrivalDistanceMiles?:number;
+  geofenceDepartureAt?:string; geofenceDepartureLatitude?:number; geofenceDepartureLongitude?:number; geofenceDepartureAccuracyMeters?:number; geofenceDepartureDistanceMiles?:number;
+  geofenceExceptionAt?:string; geofenceExceptionBy?:string; geofenceExceptionReason?:string;
 };
 
 export type OrderStatus = "Draft" | "Awaiting approval" | "Approved" | "Allocated" | "Out for delivery" | "Delivered" | "Paid";
