@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { DailyWorkReport, ManagerWeeklyReport, PERFORMANCE_STORAGE_KEY, PerformanceGoal, PerformanceState, WorkReport, ReportNote, canViewPerformanceRecord, createPerformanceSeed, managerWeeklyMetrics, normalizePerformanceState, userCommercialMetrics } from "./performance-engine";
+import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
 const now=()=>new Date().toISOString();
@@ -20,7 +21,7 @@ const PerformanceContext=createContext<PerformanceContextValue|null>(null);
 const readState=()=>{if(typeof window==="undefined")return createPerformanceSeed();try{return normalizePerformanceState(JSON.parse(window.localStorage.getItem(PERFORMANCE_STORAGE_KEY)??"null"));}catch{return createPerformanceSeed();}};
 
 export function PerformanceProvider({children}:{children:ReactNode}){
-  const {currentUser,data}=useWorkspace();const[performance,setPerformance]=useState<PerformanceState>(()=>readState());
+  const {currentUser,data}=useWorkspace();const runtime=useRuntimeMode();const[performance,setPerformance]=useState<PerformanceState>(()=>readState());
   useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(PERFORMANCE_STORAGE_KEY,JSON.stringify(performance));},[performance]);
   const createGoal=(goal:NewGoal)=>{if(!currentUser||goal.userId!==currentUser.id||!Number.isFinite(goal.target)||goal.target<0||goal.periodEnd<goal.periodStart)return null;const id=uid("goal");setPerformance((state)=>({...state,goals:[{...goal,id,createdAt:now(),updatedAt:now()},...state.goals]}));return id;};
   const updateManualGoal=(goalId:string,value:number,note?:string)=>{if(!currentUser||!Number.isFinite(value))return false;const goal=performance.goals.find((item)=>item.id===goalId);if(!goal||goal.userId!==currentUser.id||goal.metric!=="Manual"||goal.status==="Cancelled")return false;setPerformance((state)=>({...state,goals:state.goals.map((item)=>item.id===goalId?{...item,manualValue:Math.max(0,value),note:note??item.note,updatedAt:now()}:item)}));return true;};
@@ -40,7 +41,7 @@ export function PerformanceProvider({children}:{children:ReactNode}){
   };
   const reviewReport=(reportId:string,note:string)=>{if(!currentUser||!["Sales Manager","Administrator"].includes(currentUser.role))return false;const report=performance.reports.find((item)=>item.id===reportId);if(!report||report.userId===currentUser.id||!canViewPerformanceRecord(currentUser,report.userId,data))return false;setPerformance((state)=>({...state,reports:state.reports.map((item)=>item.id===reportId?{...item,status:"Reviewed",reviewerId:currentUser.id,reviewedAt:now(),reviewerNotes:note.trim()||undefined}:item)}));return true;};
   const addReportNote=(reportId:string,note:string)=>{if(!currentUser||!["Sales Manager","Administrator"].includes(currentUser.role)||!note.trim())return false;const report=performance.reports.find((item)=>item.id===reportId);if(!report||report.userId===currentUser.id||!canViewPerformanceRecord(currentUser,report.userId,data))return false;const record:ReportNote={id:uid("report-note"),reportId,authorId:currentUser.id,note:note.trim(),createdAt:now()};setPerformance((state)=>({...state,notes:[record,...state.notes]}));return true;};
-  const resetPerformance=()=>{if(currentUser?.role!=="Administrator")return false;setPerformance(createPerformanceSeed());return true;};
+  const resetPerformance=()=>{if(!runtime.isDemo||currentUser?.role!=="Administrator")return false;setPerformance(createPerformanceSeed());return true;};
   const value:PerformanceContextValue={performance,createGoal,updateManualGoal,cancelGoal,submitReport,reviewReport,addReportNote,resetPerformance};
   return <PerformanceContext.Provider value={value}>{children}</PerformanceContext.Provider>;
 }
