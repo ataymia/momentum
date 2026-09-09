@@ -52,7 +52,7 @@ export function canViewEmployeeManagementDetail(actor: WorkspaceUser | null | un
 }
 
 export function employeePresence(data: WorkspaceData, userId: string, date = arizonaDateKey()): EmployeePresence {
-  const activeField = data.appointments.some((appointment) => appointment.ownerId === userId && fieldStatuses.has(appointment.status));
+  const activeField = data.appointments.some((appointment) => appointment.ownerId === userId && appointment.date === date && fieldStatuses.has(appointment.status));
   if (activeField) return "In field appointment";
   const activeTime = data.timeEntries.some((entry) => entry.userId === userId && entry.date === date && !entry.clockOut);
   if (activeTime) return "On the clock";
@@ -62,7 +62,7 @@ export function employeePresence(data: WorkspaceData, userId: string, date = ari
 
 function entryTimestamp(entry: TimeEntry, time: string | undefined) {
   if (!time) return undefined;
-  return `${entry.date}T${time.slice(0, 5)}:00`;
+  return new Date(`${entry.date}T${time.slice(0, 5)}:00-07:00`).toISOString();
 }
 
 export function lastRecordedEmployeeActivity(data: WorkspaceData, tracking: FieldTrackingState, audit: AuditEvent[], userId: string) {
@@ -76,7 +76,7 @@ export function lastRecordedEmployeeActivity(data: WorkspaceData, tracking: Fiel
     const value = entryTimestamp(entry, entry.clockOut ?? entry.clockIn);
     if (value) candidates.push({ at: value, label: entry.clockOut ? "Clocked out" : "Clocked in" });
   });
-  return candidates.sort((a, b) => b.at.localeCompare(a.at))[0];
+  return candidates.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())[0];
 }
 
 export function currentOrNextShift(hcm: HCMState, userId: string, asOf = arizonaDateKey()): Shift | undefined {
