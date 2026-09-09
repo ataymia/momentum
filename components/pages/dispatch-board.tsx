@@ -16,6 +16,7 @@ import {
 import { DragEvent, FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import { canCreateScheduleItem, canManageSchedule } from "../../lib/access";
 import { customerForLocation, customerLocations, customersForLocations, locationLabel } from "../../lib/crm-hierarchy";
+import { addCalendarDays, arizonaDateKey, arizonaTimeKey, COMPANY_TIME_ZONE } from "../../lib/date-time";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import type { Appointment, AppointmentOutcome, AppointmentStatus } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -26,12 +27,8 @@ const BOARD_END = 20 * 60;
 const BOARD_SPAN = BOARD_END - BOARD_START;
 const SNAP = 15;
 const HOUR_LABELS = Array.from({ length: 14 }, (_, index) => 7 + index);
-const dateOffset = (offset: number) => {
-  const date = new Date();
-  date.setDate(date.getDate() + offset);
-  return date.toISOString().slice(0, 10);
-};
-const todayKey = () => new Date().toISOString().slice(0, 10);
+const dateOffset = (offset: number) => addCalendarDays(arizonaDateKey(), offset);
+const todayKey = () => arizonaDateKey();
 const timeToMinutes = (value: string) => {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
@@ -113,6 +110,10 @@ export function DispatchPage() {
   }, []);
 
   useEffect(() => {
+    if (focus && (focusAppointment || focusLocation)) window.sessionStorage.removeItem("momentum-focus-record");
+  }, [focus, focusAppointment, focusLocation]);
+
+  useEffect(() => {
     const close = () => setContextMenu(null);
     window.addEventListener("click", close);
     window.addEventListener("scroll", close, true);
@@ -154,7 +155,7 @@ export function DispatchPage() {
   const canOperate = salesRepOwnWork || operationsOwnWork;
   const formLocations = customerLocations(data, appointmentForm.customerId, scope.accounts);
   const workTypes: Appointment["type"][] = operationsMode ? ["Delivery"] : ["First visit", "Sample drop", "Placement check", "Reorder", "Delivery"];
-  const currentMinutes = clock.getHours() * 60 + clock.getMinutes();
+  const currentMinutes = timeToMinutes(arizonaTimeKey(clock));
   const currentLineVisible = selectedDate === todayKey() && currentMinutes >= BOARD_START && currentMinutes <= BOARD_END;
   const currentLineLeft = `${((currentMinutes - BOARD_START) / BOARD_SPAN) * 100}%`;
   const visibleTrackedReps = data.users.filter((user) => user.role === "Sales Representative" && tracking.canViewUserTracking(user.id));
@@ -339,7 +340,7 @@ export function DispatchPage() {
         <header className="dispatch-board-heading"><div><strong>Daily schedule</strong><span>{formatDate(selectedDate, { weekday: "long", month: "long", day: "numeric" })}</span></div><p>Drag scheduled work to an employee and time. Right-click for quick assignment. Active work stays locked.</p></header>
         <div className="dispatch-timeline-scroll"><div className="dispatch-timeline-board">
           <div className="dispatch-time-header"><div className="dispatch-tech-header">Field employee</div><div className="dispatch-time-axis">{HOUR_LABELS.map((hour) => <span key={hour} style={{ left: `${((hour * 60 - BOARD_START) / BOARD_SPAN) * 100}%` }}>{hour === 12 ? "12 PM" : hour > 12 ? `${hour - 12} PM` : `${hour} AM`}</span>)}</div></div>
-          {technicians.map((tech) => <div className="dispatch-tech-row" key={tech.id}><div className="dispatch-tech-cell"><Avatar initials={tech.initials} color={tech.accent} size="sm" /><div><strong>{tech.name}</strong><small>{tech.title}</small></div></div><div className="dispatch-tech-timeline" onDragOver={(event) => { if (canManage) event.preventDefault(); }} onDrop={(event) => dropOnTechnician(event, tech.id)}>{HOUR_LABELS.map((hour) => <i className="dispatch-hour-gridline" key={hour} style={{ left: `${((hour * 60 - BOARD_START) / BOARD_SPAN) * 100}%` }} />)}{currentLineVisible && <span className="dispatch-now-line" style={{ left: currentLineLeft }}><b>{clock.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</b></span>}{filteredForDate.filter((item) => item.ownerId === tech.id).map(appointmentCard)}</div></div>)}
+          {technicians.map((tech) => <div className="dispatch-tech-row" key={tech.id}><div className="dispatch-tech-cell"><Avatar initials={tech.initials} color={tech.accent} size="sm" /><div><strong>{tech.name}</strong><small>{tech.title}</small></div></div><div className="dispatch-tech-timeline" onDragOver={(event) => { if (canManage) event.preventDefault(); }} onDrop={(event) => dropOnTechnician(event, tech.id)}>{HOUR_LABELS.map((hour) => <i className="dispatch-hour-gridline" key={hour} style={{ left: `${((hour * 60 - BOARD_START) / BOARD_SPAN) * 100}%` }} />)}{currentLineVisible && <span className="dispatch-now-line" style={{ left: currentLineLeft }}><b>{clock.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: COMPANY_TIME_ZONE })}</b></span>}{filteredForDate.filter((item) => item.ownerId === tech.id).map(appointmentCard)}</div></div>)}
           {technicians.length === 0 && <div className="dispatch-board-empty"><UsersRound size={24} /><strong>No field employees in this filter</strong><p>Change the employee filter or role scope.</p></div>}
         </div></div>
       </section>
