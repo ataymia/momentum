@@ -1,3 +1,4 @@
+import { arizonaDateKey } from "./date-time";
 import type { Disbursement, TaxLiability } from "./payroll-engine";
 
 export type TaxLiabilityRecord = TaxLiability & {
@@ -18,7 +19,7 @@ export type DisbursementRecord = Disbursement & {
 };
 
 const dateKey = /^\d{4}-\d{2}-\d{2}$/;
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => arizonaDateKey();
 
 export function validSettlementDate(value: string, asOf = today()) {
   return dateKey.test(value) && value <= asOf;
