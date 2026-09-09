@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createDemoData } from "../lib/demo-data";
-import { canViewPerformanceRecord, userCommercialMetrics } from "../lib/performance-engine";
+import { canViewPerformanceRecord, periodRange, userCommercialMetrics } from "../lib/performance-engine";
 import type { Order, WorkspaceUser } from "../lib/types";
 
 const paidOrder = (overrides: Partial<Order> = {}): Order => ({
@@ -52,6 +52,21 @@ test("customer-entered orders can still credit the responsible rep when credited
   assert.equal(metrics.collectedRevenue, 240);
 });
 
+test("completed appointment metrics use the appointment business date rather than UTC completion timestamp date", () => {
+  const base=createDemoData();
+  const rep=base.users.find((user)=>user.id==="usr-jordan")!;
+  const appointment={...base.appointments[0],id:"apt-midnight",ownerId:rep.id,date:"2026-09-09",status:"Completed" as const,completedAt:"2026-09-10T01:30:00.000Z"};
+  const data={...base,appointments:[appointment]};
+  assert.equal(userCommercialMetrics(data,rep.id,"2026-09-09","2026-09-09").completedAppointments,1);
+  assert.equal(userCommercialMetrics(data,rep.id,"2026-09-10","2026-09-10").completedAppointments,0);
+});
+
+test("performance calendar ranges stay correct without host timezone arithmetic", () => {
+  assert.deepEqual(periodRange("Weekly","2026-09-09"),{start:"2026-09-07",end:"2026-09-13"});
+  assert.deepEqual(periodRange("Monthly","2028-02-12"),{start:"2028-02-01",end:"2028-02-29"});
+  assert.deepEqual(periodRange("Quarterly","2026-11-01"),{start:"2026-10-01",end:"2026-12-31"});
+});
+
 test("sales-manager performance visibility follows direct reports or explicitly managed teams, not loose peer team membership", () => {
   const base = createDemoData();
   const manager = base.users.find((user) => user.role === "Sales Manager")!;
@@ -68,18 +83,21 @@ test("sales-manager performance visibility follows direct reports or explicitly 
   assert.equal(canViewPerformanceRecord(scopedManager, unrelatedRep.id, managedTeamData), true);
 });
 
-test("performance context enforces self-service creation, scoped management review, duplicate reports, and admin-only reset", () => {
+test("performance context derives report numbers from source records instead of trusting submitted KPI values", () => {
   const source = readFileSync(new URL("../lib/performance-context.tsx", import.meta.url), "utf8");
   assert.match(source, /goal\.userId!==currentUser\.id/);
   assert.match(source, /report\.userId!==currentUser\.id/);
   assert.match(source, /const duplicate=performance\.reports\.some/);
+  assert.match(source, /userCommercialMetrics\(data,currentUser\.id,report\.workDate,report\.workDate\)/);
+  assert.match(source, /managerWeeklyMetrics\(performance,data,currentUser\.id,report\.weekStart,report\.weekEnd\)/);
+  assert.match(source, /\.\.\.sourceMetrics/);
   assert.match(source, /report\.userId===currentUser\.id\|\|!canViewPerformanceRecord/);
   assert.match(source, /currentUser\?\.role!=="Administrator"/);
 });
 
-test("reporting UI uses local calendar dates, blocks duplicate submissions visibly, and hides management notes from non-reviewers", () => {
+test("reporting UI uses the Arizona business calendar, blocks duplicate submissions visibly, and hides management notes from non-reviewers", () => {
   const source = readFileSync(new URL("../components/performance/reporting-center.tsx", import.meta.url), "utf8");
-  assert.match(source, /date\.getFullYear\(\)/);
+  assert.match(source, /arizonaDateKey/);
   assert.doesNotMatch(source, /const today=\(\)=>new Date\(\)\.toISOString\(\)\.slice\(0,10\)/);
   assert.match(source, /dailyDuplicate/);
   assert.match(source, /weeklyDuplicate/);
