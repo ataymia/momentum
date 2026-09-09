@@ -56,7 +56,7 @@ test("a reversed cleared payment stays visible to accounting on the reversal dat
   const event = sourceEvents({ ...baseCommerce(), payments: [payment] }, inventory).find((item) => item.type === "Payment reversed" && item.sourceId === payment.id);
   assert.equal(event?.date, "2026-09-03");
   assert.equal(event?.amount, 240);
-  assert.match(event?.blockedReason ?? "", /approved treatment/i);
+  assert.equal(event?.blockedReason, undefined);
 });
 
 test("accounting dates an applied credit when it is applied, not when it was approved", () => {
