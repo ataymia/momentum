@@ -15,6 +15,7 @@ import {
   normalizeOpportunityTransition,
   opportunityOwnerForLocation,
 } from "./crm-engine";
+import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
 const now = () => new Date().toISOString();
@@ -39,6 +40,7 @@ const CrmContext = createContext<CrmContextValue | null>(null);
 
 export function CrmProvider({ children }: { children: ReactNode }) {
   const { data, scope, currentUser } = useWorkspace();
+  const runtime = useRuntimeMode();
   const read = () => {
     if (typeof window === "undefined") return createCrmSeed(data);
     try {
@@ -144,7 +146,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   };
 
   const resetCrm = () => {
-    if (currentUser?.role === "Administrator") setCrm(createCrmSeed(data));
+    if (runtime.isDemo && currentUser?.role === "Administrator") setCrm(createCrmSeed(data));
   };
   const value: CrmContextValue = { crm, addContact, addInteraction, addOpportunity, updateOpportunity, recordResponsibility, resetCrm };
   return <CrmContext.Provider value={value}>{children}</CrmContext.Provider>;
