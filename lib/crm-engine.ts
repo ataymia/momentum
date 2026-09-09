@@ -64,7 +64,15 @@ export function opportunityOwnerForLocation(data:WorkspaceData,locationId:string
 }
 
 export function normalizeOpportunityTransition(existing:Opportunity,patch:OpportunityUpdate,updatedAt=now()):OpportunityTransitionResult{
-  const next:Opportunity={...existing,...patch,updatedAt};
+  const next:Opportunity={...existing,updatedAt};
+  if(patch.name!==undefined)next.name=patch.name;
+  if(patch.stage!==undefined)next.stage=patch.stage;
+  if(patch.estimatedCases!==undefined)next.estimatedCases=patch.estimatedCases;
+  if(patch.expectedCloseDate!==undefined)next.expectedCloseDate=patch.expectedCloseDate;
+  if(patch.nextAction!==undefined)next.nextAction=patch.nextAction;
+  if(patch.nextActionDate!==undefined)next.nextActionDate=patch.nextActionDate;
+  if(patch.status!==undefined)next.status=patch.status;
+  if(patch.lossReason!==undefined)next.lossReason=patch.lossReason;
   next.name=next.name.trim();
   next.nextAction=next.nextAction.trim();
   next.lossReason=next.lossReason?.trim()||undefined;
