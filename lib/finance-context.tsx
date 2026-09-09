@@ -1,8 +1,8 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
+import { canManageUser } from "./access";
 import { Expense, FINANCE_STORAGE_KEY, FinanceState, createFinanceSeed, normalizeFinanceState } from "./finance-engine";
-import { canManageEmployee } from "./hcm-engine";
 import { useWorkspace } from "./workspace-context";
 
 const now = () => new Date().toISOString();
@@ -49,7 +49,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     if (!currentUser || expense.requesterId === currentUser.id) return false;
     if (currentUser.role === "Administrator") return true;
     if (currentUser.role !== "Sales Manager") return false;
-    return canManageEmployee(currentUser, expense.requesterId, data);
+    return canManageUser(data, currentUser, expense.requesterId, false);
   };
 
   const managerDecision = (id: string, status: "Manager approved" | "Returned", reason?: string) => {
