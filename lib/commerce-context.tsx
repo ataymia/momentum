@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
+import { accountIsVisible } from "./access";
 import {
   COMMERCE_STORAGE_KEY,
   CommerceState,
@@ -29,6 +30,7 @@ import {
   refundCanSend,
   refundCanSettle,
 } from "./commerce-engine";
+import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
 const now = () => new Date().toISOString();
@@ -59,7 +61,8 @@ const CommerceContext = createContext<CommerceContextValue | null>(null);
 
 export function CommerceProvider({ children }: { children: ReactNode }) {
   const { data, currentUser, reconcileOrderPayment } = useWorkspace();
-  const canManageCash = currentUser?.role === "Administrator" || currentUser?.role === "Operations";
+  const runtime = useRuntimeMode();
+  const canManageCash = currentUser?.role === "Administrator";
   const read = () => {
     if (typeof window === "undefined") return createCommerceSeed(data);
     try {
@@ -232,7 +235,10 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   };
 
   const addNote = (invoiceId: string, note: string) => {
-    if (!currentUser || currentUser.role === "Customer" || !commerce.invoices.some((invoice) => invoice.id === invoiceId) || !note.trim()) return;
+    if (!currentUser || currentUser.role === "Customer" || !note.trim()) return;
+    const invoice = commerce.invoices.find((item) => item.id === invoiceId);
+    const account = invoice ? data.accounts.find((item) => item.id === invoice.accountId) : undefined;
+    if (!invoice || !account || !accountIsVisible(data, currentUser, account)) return;
     const record: ReceivableNote = { id: uid("ar-note"), invoiceId, authorId: currentUser.id, note: note.trim(), createdAt: now() };
     setCommerce((state) => ({ ...state, notes: [record, ...state.notes] }));
   };
@@ -244,7 +250,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   };
 
   const resetCommerce = () => {
-    if (currentUser?.role === "Administrator") setCommerce(createCommerceSeed(data));
+    if (runtime.isDemo && currentUser?.role === "Administrator") setCommerce(createCommerceSeed(data));
   };
   const value: CommerceContextValue = { commerce, setInvoiceTerms, recordPayment, setPaymentStatus, failPayment, reversePayment, createCredit, approveCredit, applyCredit, requestRefund, approveRefund, markRefundSent, settleRefund, failRefund, addNote, voidInvoice, resetCommerce };
   return <CommerceContext.Provider value={value}>{children}</CommerceContext.Provider>;
