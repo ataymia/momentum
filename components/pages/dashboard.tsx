@@ -3,6 +3,7 @@
 import { AlertTriangle, BellRing, Check, CheckCircle2, Clock3, Megaphone, PackageCheck, PackagePlus, Route, Store, UsersRound } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { canAccessPage, canPostBulletin, isCustomer } from "../../lib/access";
+import { arizonaDateKey, arizonaEndOfDayIso, arizonaHour } from "../../lib/date-time";
 import type { Bulletin, PageKey, Team } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Avatar, Button, Field, MetricCard, Modal, PageHeader, Section, StatusPill, TextButton, formatDate, formatMoney } from "../ui";
@@ -30,7 +31,7 @@ export function DashboardPage() {
   const defaultTeam = currentUser?.role === "Sales Manager" ? currentUser.managedTeams?.[0] ?? "Sales" : "Sales";
   const [bulletinOpen,setBulletinOpen] = useState(false);
   const [form,setForm] = useState<{title:string;body:string;audience:Bulletin["audience"];team:Team;priority:Bulletin["priority"];expiresAt:string}>({ title:"", body:"", audience: currentUser?.role === "Sales Manager" ? "Team" : "Company", team: defaultTeam, priority:"Update", expiresAt:"" });
-  const today = new Date().toISOString().slice(0,10);
+  const today = arizonaDateKey();
   const appointments = scope.appointments.filter(item => item.date === today).sort((a,b) => a.startTime.localeCompare(b.startTime));
   const placements = scope.placements.filter(item => item.status !== "Healthy");
   const orders = scope.orders.filter(item => !["Delivered","Paid"].includes(item.status));
@@ -38,7 +39,7 @@ export function DashboardPage() {
   const available = scope.inventory.reduce((sum,lot) => sum + lot.available,0);
   const held = scope.inventory.filter(lot => lot.status === "Quality hold").reduce((sum,lot) => sum + lot.onHand,0);
   const actions = scope.accounts.filter(account => account.nextAction && account.nextActionDate).sort((a,b) => a.nextActionDate.localeCompare(b.nextActionDate)).slice(0,3);
-  const hour = new Date().getHours(); const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const hour = arizonaHour(); const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const openAccount = (accountId: string) => { window.sessionStorage.setItem("momentum-focus-record", accountId); navigate("accounts"); };
   const openAppointment = (appointmentId: string) => { window.sessionStorage.setItem("momentum-focus-record", appointmentId); navigate("dispatch"); };
 
@@ -56,7 +57,7 @@ export function DashboardPage() {
   }, [actions.length,appointments,approvals,available,currentUser,held,orders.length,placements.length,scope.placements.length]);
   if (isCustomer(currentUser)) return <CustomerDashboard/>;
 
-  const submit = (event: FormEvent) => { event.preventDefault(); const ok = createBulletin({ title:form.title, body:form.body, audience:form.audience, team:form.audience === "Team" ? form.team : undefined, priority:form.priority, expiresAt: form.expiresAt ? new Date(`${form.expiresAt}T23:59:59`).toISOString() : undefined }); if (ok) { setBulletinOpen(false); setForm(current => ({...current,title:"",body:""})); } };
+  const submit = (event: FormEvent) => { event.preventDefault(); const ok = createBulletin({ title:form.title, body:form.body, audience:form.audience, team:form.audience === "Team" ? form.team : undefined, priority:form.priority, expiresAt: form.expiresAt ? arizonaEndOfDayIso(form.expiresAt) : undefined }); if (ok) { setBulletinOpen(false); setForm(current => ({...current,title:"",body:""})); } };
 
   return <div className="page page--dashboard">
     <PageHeader eyebrow={`${formatDate(today,{weekday:"long",month:"long",day:"numeric"})} · Arizona market`} title={`${greeting}, ${currentUser?.firstName}.`} description={currentUser?.role === "Sales Manager" ? "Your team’s work, decisions, and account follow-ups in one place." : "Workload, exceptions, customer follow-ups, and company updates in one place."} actions={<Button variant="secondary" onClick={() => navigate("work")}>Review my work</Button>}/>
