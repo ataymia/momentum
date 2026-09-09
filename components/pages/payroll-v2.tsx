@@ -2,6 +2,7 @@
 
 import { BadgeDollarSign, Calculator, Check, FileText, Landmark, LockKeyhole, Play, RefreshCcw, ShieldCheck, WalletCards, X } from "lucide-react";
 import { FormEvent, useState } from "react";
+import { arizonaDateKey } from "../../lib/date-time";
 import { activeCompensation, benefitDeductionPerPayPeriod } from "../../lib/hcm-engine";
 import { useHcm } from "../../lib/hcm-context";
 import { activePayrollEmployee, activeWithholding, type PayFrequency, type PayrollEmployee } from "../../lib/payroll-engine";
@@ -10,7 +11,7 @@ import { usePayroll } from "../../lib/payroll-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, PageHeader, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => arizonaDateKey();
 const monthKey = () => today().slice(0, 7);
 const runTone = (status: string) => status === "Released" ? "success" as const : status === "Approved" ? "gold" as const : status === "Voided" ? "danger" as const : "info" as const;
 
