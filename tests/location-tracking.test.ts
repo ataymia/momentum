@@ -6,10 +6,12 @@ import {
   DEFAULT_GEOFENCE_RADIUS_MILES,
   DEPARTURE_CONFIRM_SECONDS,
   MAX_VERIFICATION_ACCURACY_METERS,
+  createFieldTrackingSeed,
   departureConfirmed,
   distanceMiles,
   geofenceDecision,
   roleIsTracked,
+  samplesForUserDay,
   shouldPersistRouteSample,
   type GeoPoint,
   type GeofenceProfile,
@@ -71,6 +73,16 @@ test("passive route sampling retains meaningful time or distance changes without
   assert.equal(shouldPersistRouteSample(previous, point(33.44841, -112.07401, 15, "2026-09-08T13:00:30Z")), false);
   assert.equal(shouldPersistRouteSample(previous, point(33.44841, -112.07401, 15, "2026-09-08T13:01:00Z")), true);
   assert.equal(shouldPersistRouteSample(previous, point(33.451, -112.074, 15, "2026-09-08T13:00:20Z")), true);
+});
+
+test("field tracking day views use Arizona business dates instead of UTC date slices", () => {
+  const state = createFieldTrackingSeed();
+  state.samples = [
+    { id:"late-evening", sessionId:"session-1", userId:"usr-rep", source:"Route", latitude:33.4484, longitude:-112.074, accuracyMeters:15, at:"2026-09-10T05:30:00Z" },
+    { id:"next-day", sessionId:"session-1", userId:"usr-rep", source:"Route", latitude:33.4484, longitude:-112.074, accuracyMeters:15, at:"2026-09-10T08:30:00Z" },
+  ];
+  assert.deepEqual(samplesForUserDay(state,"usr-rep","2026-09-09").map((sample)=>sample.id),["late-evening"]);
+  assert.deepEqual(samplesForUserDay(state,"usr-rep","2026-09-10").map((sample)=>sample.id),["next-day"]);
 });
 
 test("departure needs sustained outside-radius evidence instead of one GPS wobble", () => {
