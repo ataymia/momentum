@@ -1,4 +1,5 @@
 export const COMPANY_TIME_ZONE = "America/Phoenix";
+const PHOENIX_UTC_OFFSET = "-07:00";
 
 export function localDateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -26,6 +27,15 @@ export function arizonaTimeKey(value: Date | string = new Date()) {
   }).formatToParts(date);
   const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
   return `${get("hour")}:${get("minute")}`;
+}
+
+export function arizonaHour(value: Date | string = new Date()) {
+  return Number(arizonaTimeKey(value).slice(0, 2));
+}
+
+export function arizonaEndOfDayIso(dateKey: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) throw new Error("Arizona business date must use YYYY-MM-DD.");
+  return new Date(`${dateKey}T23:59:59.999${PHOENIX_UTC_OFFSET}`).toISOString();
 }
 
 export function dateKeyFromLocalCalendarDate(date: Date) {
