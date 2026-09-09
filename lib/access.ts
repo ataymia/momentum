@@ -23,6 +23,15 @@ const managedUserIds = (data: WorkspaceData, user: WorkspaceUser) => {
   return new Set(data.users.filter(candidate => candidate.id === user.id || candidate.managerId === user.id || teams.has(candidate.team)).map(candidate => candidate.id));
 };
 
+export const canManageUser = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string, includeSelf = true) => {
+  if (!actor) return false;
+  if (actor.role === "Administrator") return true;
+  if (includeSelf && actor.id === targetUserId) return true;
+  if (actor.role !== "Sales Manager") return false;
+  if (actor.id === targetUserId) return false;
+  return managedUserIds(data, actor).has(targetUserId);
+};
+
 export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, account: Account) => {
   if (["Administrator","Operations","Warehouse"].includes(user.role)) return true;
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
