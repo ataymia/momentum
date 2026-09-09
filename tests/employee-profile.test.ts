@@ -3,13 +3,19 @@ import test from "node:test";
 import { createDemoData } from "../lib/demo-data";
 import { createFieldTrackingSeed } from "../lib/location-tracking-engine";
 import { createHcmSeed } from "../lib/hcm-engine";
-import { appointmentPunctualityEvidence, averageRecordedVariance, canViewEmployeeManagementDetail, employeePresence, shiftClockInEvidence } from "../lib/employee-profile";
+import { appointmentPunctualityEvidence, averageRecordedVariance, canViewEmployeeManagementDetail, employeePresence, lastRecordedEmployeeActivity, shiftClockInEvidence } from "../lib/employee-profile";
 import type { WorkspaceUser } from "../lib/types";
 
 test("employee presence distinguishes active field work from ordinary clock state", () => {
   const base=createDemoData();const rep=base.users.find((user)=>user.role==="Sales Representative")!;
-  const data={...base,appointments:base.appointments.map((appointment,index)=>index===0?{...appointment,ownerId:rep.id,status:"Arrived" as const}:appointment)};
-  assert.equal(employeePresence(data,rep.id),"In field appointment");
+  const data={...base,appointments:base.appointments.map((appointment,index)=>index===0?{...appointment,ownerId:rep.id,date:"2026-09-09",status:"Arrived" as const}:appointment)};
+  assert.equal(employeePresence(data,rep.id,"2026-09-09"),"In field appointment");
+});
+
+test("stale in-field appointment state from an earlier day does not make a rep look active today", () => {
+  const base=createDemoData();const rep=base.users.find((user)=>user.role==="Sales Representative")!;
+  const data={...base,timeEntries:[],appointments:[{...base.appointments[0],ownerId:rep.id,date:"2026-09-08",status:"Arrived" as const}],activities:[]};
+  assert.equal(employeePresence(data,rep.id,"2026-09-09"),"Off clock");
 });
 
 test("manager profile detail follows direct-report or explicitly managed-team scope", () => {
@@ -40,4 +46,12 @@ test("shift clock-in evidence compares first daily punch to published shift star
   const base=createDemoData();const rep=base.users.find((user)=>user.role==="Sales Representative")!;const hcm=createHcmSeed(base);hcm.shifts=[{id:"shift-1",userId:rep.id,date:"2026-09-09",startTime:"08:00",endTime:"17:00",role:"Sales Rep",location:"Field",status:"Published",createdBy:"admin",createdAt:"2026-09-01T12:00:00Z"}];
   const data={...base,timeEntries:[{id:"te-1",userId:rep.id,date:"2026-09-09",clockIn:"08:04",clockOut:"17:00",breakMinutes:30,source:"Demo mobile" as const}]};
   const rows=shiftClockInEvidence(data,hcm,rep.id,"2026-09-01","2026-09-30");assert.equal(rows[0].varianceMinutes,4);assert.equal(rows[0].actualTime,"08:04");
+});
+
+test("last recorded activity compares normalized instants instead of mixed local and ISO strings", () => {
+  const base=createDemoData();const rep=base.users.find((user)=>user.role==="Sales Representative")!;
+  const data={...base,timeEntries:[{id:"te-last",userId:rep.id,date:"2026-09-09",clockIn:"08:00",clockOut:"17:00",breakMinutes:0,source:"Demo mobile" as const}],activities:[{id:"activity-older",userId:rep.id,type:"note" as const,title:"Earlier event",detail:"",at:"2026-09-09T23:30:00.000Z"}],appointments:[]};
+  const result=lastRecordedEmployeeActivity(data,createFieldTrackingSeed(),[],rep.id);
+  assert.equal(result?.label,"Clocked out");
+  assert.equal(result?.at,"2026-09-10T00:00:00.000Z");
 });
