@@ -2,12 +2,13 @@
 
 import { ClipboardCheck, FileText, MessageSquareText, Send, ShieldCheck, UsersRound } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import { arizonaDateKey } from "../../lib/date-time";
 import { DailyWorkReport, ManagerWeeklyReport, canViewPerformanceRecord, managerWeeklyMetrics, reportVisibleTo, userCommercialMetrics, weekRange, workedOnDate } from "../../lib/performance-engine";
 import { usePerformance } from "../../lib/performance-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Modal, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
-const today=()=>{const date=new Date();return`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;};
+const today=()=>arizonaDateKey();
 const reportTone=(status:string)=>status==="Reviewed"?"success" as const:"warning" as const;
 
 export function ReportingCenter(){
