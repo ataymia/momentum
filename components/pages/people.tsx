@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenCheck, FileText, UserRound, UsersRound } from "lucide-react";
+import { BookOpenCheck, FileText, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useHcm } from "../../lib/hcm-context";
 import { useWorkspace } from "../../lib/workspace-context";
