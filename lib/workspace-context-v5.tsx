@@ -13,6 +13,7 @@ import {
   canReviewApproval,
   getWorkspaceScope,
 } from "./access";
+import { addCalendarDays, arizonaDateKey, arizonaTimeKey, startOfLocalWeek } from "./date-time";
 import { createDemoData } from "./demo-data";
 import type {
   Account,
@@ -32,9 +33,9 @@ const DATA_KEY = "momentum-demo-workspace-v5";
 const SESSION_KEY = "momentum-demo-session-v2";
 const SIDEBAR_KEY = "momentum-sidebar-collapsed-v1";
 const nowStamp = () => new Date().toISOString();
-const todayKey = () => new Date().toISOString().slice(0, 10);
+const todayKey = () => arizonaDateKey();
 const plusHours = (hours: number) => { const date = new Date(); date.setHours(date.getHours() + hours); return date.toISOString(); };
-const localTime = () => new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+const localTime = () => arizonaTimeKey();
 const minutesBetween = (start: string, end: string) => {
   const [startHours, startMinutes] = start.split(":").map(Number);
   const [endHours, endMinutes] = end.split(":").map(Number);
@@ -45,19 +46,15 @@ const minuteOfDay = (value: string) => { const [hours, minutes] = value.split(":
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const parentCustomerName = (name: string) => name.replace(/\s+#\d+\s*$/, "").trim() || name;
 const customerIdFor = (name: string) => `cust-${slug(parentCustomerName(name))}`;
-const dateKeyFrom = (date: Date) => date.toISOString().slice(0, 10);
 
 const previousWeekRange = () => {
-  const current = new Date();
-  const mondayDistance = (current.getDay() + 6) % 7;
-  const start = new Date(current);
-  start.setDate(current.getDate() - mondayDistance - 7);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
+  const currentWeekStart = startOfLocalWeek(arizonaDateKey());
+  const start = addCalendarDays(currentWeekStart, -7);
+  const end = addCalendarDays(start, 6);
   return {
-    start: dateKeyFrom(start),
-    end: dateKeyFrom(end),
-    day: (offset: number) => { const date = new Date(start); date.setDate(start.getDate() + offset); return dateKeyFrom(date); },
+    start,
+    end,
+    day: (offset: number) => addCalendarDays(start, offset),
   };
 };
 
