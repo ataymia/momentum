@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { collectAuditableRecords, diffAuditableRecords, visibleAuditEvents, type AuditEvent } from "../lib/audit-engine";
 import { createDemoData } from "../lib/demo-data";
 import { findAccountDuplicate } from "../lib/duplicate-engine";
@@ -20,3 +21,10 @@ test("manager audit history excludes unlinked company records and admin-sensitiv
 test("notification routing reaches responsible sales chain for account changes", () => { const data = { users:[{id:"usr-admin",name:"Admin",firstName:"Admin",email:"admin@example.com",initials:"AD",title:"Admin",role:"Administrator",team:"Leadership",accent:"#000"},{id:"usr-manager",name:"Manager",firstName:"Manager",email:"manager@example.com",initials:"MA",title:"Manager",role:"Sales Manager",team:"Sales",accent:"#000"},{id:"usr-rep",name:"Rep",firstName:"Rep",email:"rep@example.com",initials:"RE",title:"Rep",role:"Sales Representative",team:"Sales",managerId:"usr-manager",accent:"#000"}], accounts:[{id:"acc-1",name:"Market",location:"Phoenix, AZ",channel:"Independent retail",stage:"Prospect",ownerId:"usr-rep",accountManagerId:"usr-manager",contactName:"",contactRole:"",phone:"",email:"",lastActivity:"",nextAction:"",nextActionDate:"2026-08-28",health:"New",lifetimeCases:0,reorderCount:0,notes:""}], activities:[],appointments:[],orders:[],placements:[],inventory:[],approvals:[],timeEntries:[],timecards:[],notifications:[],bulletins:[] } as unknown as WorkspaceData; const event = { id:"audit-1",at:"2026-08-28T12:00:00Z",actorId:"usr-admin",actorRole:"Administrator",action:"Updated",module:"Workspace",collection:"accounts",entityType:"Workspace.accounts",entityId:"acc-1",label:"Market",summary:"Market updated",sensitivity:"operational",relatedAccountId:"acc-1",changes:[] } as AuditEvent; const recipients = resolveNotificationRecipients(event,data); assert.ok(recipients.includes("usr-rep")); assert.ok(recipients.includes("usr-manager")); });
 
 test("workspace notifications are not recursively audited", () => { const records = collectAuditableRecords("Workspace",{notifications:[{id:"note-1",title:"Hello"}],orders:[{id:"ord-1",number:"GE-1"}]}); assert.equal([...records.keys()].some((key)=>key.includes("notifications")),false); assert.equal([...records.keys()].some((key)=>key.includes("orders")),true); });
+
+test("Administration reset clears field tracking and data health uses Arizona business dates", () => {
+  const source = readFileSync(new URL("../components/pages/settings-v3.tsx", import.meta.url), "utf8");
+  assert.match(source, /FIELD_TRACKING_STORAGE_KEY/);
+  assert.match(source, /const today=arizonaDateKey\(\)/);
+  assert.doesNotMatch(source, /const today=new Date\(\)\.toISOString\(\)\.slice\(0,10\)/);
+});
