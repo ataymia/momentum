@@ -54,7 +54,7 @@ export type Order = {
   firstSettledAt?: string;
   priceBasis: string;
   paymentStatus: "Not invoiced" | "Open" | "Partially paid" | "Paid";
-  product?:string; creditedRepId?:string; inventoryAvailableAtOrder?:number; lowStockApprovalRequired?:boolean;
+  product?:string; creditedRepId?:string; sourcePlacementId?:string; inventoryAvailableAtOrder?:number; lowStockApprovalRequired?:boolean;
 };
 
 export type Placement = {
