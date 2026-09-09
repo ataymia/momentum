@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { disbursementCanRecordFailure, disbursementCanRecordSettlement, disbursementCanRetry, disbursementRecord, liabilityCanRecordPaid, liabilityCanSchedule, taxLiabilityRecord, validSettlementDate } from "../lib/payroll-settlement-controls";
 import type { Disbursement, TaxLiability } from "../lib/payroll-engine";
@@ -11,6 +12,15 @@ test("settlement evidence dates cannot be future dates", () => {
   assert.equal(validSettlementDate("2026-09-08", "2026-09-09"), true);
   assert.equal(validSettlementDate("2026-09-10", "2026-09-09"), false);
   assert.equal(validSettlementDate("09/09/2026", "2026-09-09"), false);
+});
+
+test("payroll settlement and payroll UI default business dates to Arizona", () => {
+  const controls = readFileSync(new URL("../lib/payroll-settlement-controls.ts", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../components/pages/payroll-v2.tsx", import.meta.url), "utf8");
+  assert.match(controls, /const today = \(\) => arizonaDateKey\(\)/);
+  assert.doesNotMatch(controls, /new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
+  assert.match(page, /const today = \(\) => arizonaDateKey\(\)/);
+  assert.doesNotMatch(page, /new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
 });
 
 test("tax liability follows accrued to scheduled to paid and paid evidence is mandatory", () => {
