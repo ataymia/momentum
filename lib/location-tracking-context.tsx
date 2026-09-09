@@ -37,7 +37,10 @@ import { useWorkspace } from "./workspace-context";
 const DEVICE_KEY = "momentum-managed-device-id-v1";
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const now = () => new Date().toISOString();
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
 const FRESH_EVENT_SAMPLE_MS = 20_000;
 
 type Workspace = ReturnType<typeof useWorkspace>;
@@ -115,7 +118,7 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
   const todayEntries = useMemo(() => currentUser ? data.timeEntries.filter((entry) => entry.userId === currentUser.id && entry.date === today()) : [], [currentUser, data.timeEntries]);
   const hasActiveClock = todayEntries.some((entry) => !entry.clockOut);
   const clockedOutToday = todayEntries.some((entry) => Boolean(entry.clockOut)) && !hasActiveClock;
-  const shouldTrack = Boolean(ready && currentUser && roleIsTracked(currentUser.role) && !clockedOutToday);
+  const shouldTrack = Boolean(ready && currentUser && roleIsTracked(currentUser.role) && hasActiveClock);
   const currentSession = currentUser ? activeTrackingSession(state, currentUser.id) : undefined;
   const currentSample = currentUser ? latestUserSample(state, currentUser.id) : undefined;
 
@@ -203,10 +206,15 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
         setPermission("Stopped");
         return;
       }
+      if (!hasActiveClock) {
+        closeActiveSessions(userId, "Clock out");
+        setPermission("Stopped");
+        return;
+      }
       if (shouldTrack) ensureSession(userId);
     }, 0);
     return () => window.clearTimeout(handle);
-  }, [clockedOutToday, closeActiveSessions, currentUser, ensureSession, ready, shouldTrack]);
+  }, [clockedOutToday, closeActiveSessions, currentUser, ensureSession, hasActiveClock, ready, shouldTrack]);
 
   useEffect(() => {
     if (!shouldTrack || !currentUser) {
@@ -271,6 +279,7 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
   const transitionAppointment = async (appointmentId: string): Promise<ActionResult> => {
     const appointment = data.appointments.find((item) => item.id === appointmentId);
     if (!currentUser || !appointment || appointment.ownerId !== currentUser.id || currentUser.role !== "Sales Representative") return { ok: false, message: "Only the assigned sales rep can record field status from the tracked device." };
+    if (!hasActiveClock) return { ok: false, message: "Clock in before recording tracked field activity." };
     if (!["Scheduled", "Dispatched", "En route"].includes(appointment.status)) return { ok: false, message: "This appointment is not ready for another field status." };
     let point: GeoPoint;
     try { point = await getEventPoint(); }
@@ -295,15 +304,18 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
 
   const completeTrackedAppointment = async (appointmentId: string, closeout: AppointmentCloseout): Promise<ActionResult> => {
     const appointment = data.appointments.find((item) => item.id === appointmentId);
-    if (!currentUser || !appointment || appointment.ownerId !== currentUser.id) return { ok: false, message: "Only the assigned field rep can submit this closeout." };
-    let point: GeoPoint | undefined;
-    try { point = await getEventPoint(); } catch { point = undefined; }
+    if (!currentUser || currentUser.role !== "Sales Representative" || !appointment || appointment.ownerId !== currentUser.id) return { ok: false, message: "Only the assigned sales rep can submit this tracked closeout." };
+    if (!hasActiveClock) return { ok: false, message: "Clock in before closing tracked field work." };
+    let point: GeoPoint;
+    try { point = await getEventPoint(); }
+    catch (error) {
+      const detail = error instanceof Error ? error.message : "Could not verify the device location.";
+      return { ok: false, message: `${detail} Location verification is required before a tracked sales appointment can close.` };
+    }
     const ok = completeAppointment(appointment.id, closeout);
     if (!ok) return { ok: false, message: "Outcome, note, next action, and next-action date are required before this appointment can close." };
-    if (point) {
-      const decision = geofenceDecision(currentGeofence(stateRef.current, appointment.accountId), point);
-      recordAppointmentEvent(appointment, "Closeout recorded", "Closeout", point, decision.configured ? decision : undefined);
-    }
+    const decision = geofenceDecision(currentGeofence(stateRef.current, appointment.accountId), point);
+    recordAppointmentEvent(appointment, "Closeout recorded", "Closeout", point, decision.configured ? decision : undefined);
     const resolvedAt = now();
     setState((current) => ({ ...current, departureAlerts: current.departureAlerts.map((alert) => alert.appointmentId === appointment.id && alert.status === "Open" ? { ...alert, status: "Closeout completed", resolvedAt } : alert) }));
     return { ok: true };
