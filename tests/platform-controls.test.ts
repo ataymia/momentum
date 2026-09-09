@@ -22,9 +22,18 @@ test("notification routing reaches responsible sales chain for account changes",
 
 test("workspace notifications are not recursively audited", () => { const records = collectAuditableRecords("Workspace",{notifications:[{id:"note-1",title:"Hello"}],orders:[{id:"ord-1",number:"GE-1"}]}); assert.equal([...records.keys()].some((key)=>key.includes("notifications")),false); assert.equal([...records.keys()].some((key)=>key.includes("orders")),true); });
 
-test("Administration reset clears field tracking and data health uses Arizona business dates", () => {
+test("Administration reset clears field tracking, enhanced commercial stores, and transient workflow intents", () => {
   const source = readFileSync(new URL("../components/pages/settings-v3.tsx", import.meta.url), "utf8");
   assert.match(source, /FIELD_TRACKING_STORAGE_KEY/);
+  assert.match(source, /momentum-commercial-controls-v1/);
+  assert.match(source, /momentum-warehouse-session-v1/);
+  assert.match(source, /const resetSessionKeys =/);
+  assert.match(source, /momentum-order-source-placement/);
+  assert.match(source, /window\.sessionStorage\.removeItem/);
+});
+
+test("Administration data health uses Arizona business dates", () => {
+  const source = readFileSync(new URL("../components/pages/settings-v3.tsx", import.meta.url), "utf8");
   assert.match(source, /const today=arizonaDateKey\(\)/);
   assert.doesNotMatch(source, /const today=new Date\(\)\.toISOString\(\)\.slice\(0,10\)/);
 });
