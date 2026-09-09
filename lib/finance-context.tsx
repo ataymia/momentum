@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { Expense, FINANCE_STORAGE_KEY, FinanceState, createFinanceSeed, normalizeFinanceState } from "./finance-engine";
+import { canManageEmployee } from "./hcm-engine";
 import { useWorkspace } from "./workspace-context";
 
 const now = () => new Date().toISOString();
@@ -37,6 +38,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
 
   const submitExpense = (input: NewExpense) => {
     if (!currentUser || currentUser.role === "Customer" || !input.merchant.trim() || !input.businessPurpose.trim() || input.amount <= 0) return null;
+    if (input.accountId && !data.accounts.some((account) => account.id === input.accountId)) return null;
     const id = uid("expense");
     const expense: Expense = { ...input, id, requesterId: currentUser.id, submittedAt: now(), merchant: input.merchant.trim(), businessPurpose: input.businessPurpose.trim(), status: "Submitted" };
     setFinance((state) => ({ ...state, expenses: [expense, ...state.expenses] }));
@@ -47,8 +49,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     if (!currentUser || expense.requesterId === currentUser.id) return false;
     if (currentUser.role === "Administrator") return true;
     if (currentUser.role !== "Sales Manager") return false;
-    const requester = data.users.find((user) => user.id === expense.requesterId);
-    return requester?.managerId === currentUser.id || requester?.team === currentUser.team;
+    return canManageEmployee(currentUser, expense.requesterId, data);
   };
 
   const managerDecision = (id: string, status: "Manager approved" | "Returned", reason?: string) => {
