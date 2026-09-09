@@ -2,13 +2,14 @@
 
 import { CalendarCheck, ClipboardCheck, FileText, Network, RefreshCcw, Send, ShieldCheck, UserRoundSearch, WalletCards } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { arizonaDateKey } from "../../lib/date-time";
 import { useHcm } from "../../lib/hcm-context";
 import { BenefitEvent, CompensationRecord, HCMState, PerformanceReview, ProfileChangeRequest, ReviewCycle, WorkflowRequest, appendAudit, canManageEmployee } from "../../lib/hcm-engine";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const now=()=>new Date().toISOString();
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>arizonaDateKey();
 const uid=(prefix:string)=>`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 const tone=(status:string)=>["Approved","Accepted","Acknowledged","Complete","Active"].includes(status)?"success" as const:["Returned","Declined","Rejected","Cancelled","Withdrawn"].includes(status)?"danger" as const:["Submitted","Sent","Scheduled","Employee submitted","Manager submitted","Pending"].includes(status)?"warning" as const:"neutral" as const;
 
@@ -38,11 +39,11 @@ export function AdvancedHcmPanel(){
 
   const [lifeType,setLifeType]=useState<BenefitEvent["type"]>("Marriage");const[lifeDate,setLifeDate]=useState(today());const[lifeEvidence,setLifeEvidence]=useState("");
   const submitLifeEvent=(event:FormEvent)=>{event.preventDefault();if(!currentUser||!lifeDate)return;const record:BenefitEvent={id:uid("benefit-event"),userId:currentUser.id,type:lifeType,eventDate:lifeDate,submittedAt:now(),status:"Submitted",evidenceFileName:lifeEvidence||undefined};setHcm((state)=>audit({...state,benefitEvents:[record,...state.benefitEvents]},"Benefit life event submitted","BenefitEvent",record.id,undefined,JSON.stringify(record)));setLifeEvidence("");setNotice("Life event submitted");};
-  const decideLifeEvent=(record:BenefitEvent,status:"Approved"|"Returned")=>{if(!manager||!currentUser)return;setHcm((state)=>audit({...state,benefitEvents:state.benefitEvents.map((event)=>event.id===record.id?{...event,status,reviewerId:currentUser.id}:event)},`Benefit life event ${status.toLowerCase()}`,"BenefitEvent",record.id,record.status,status));};
+  const decideLifeEvent=(record:BenefitEvent,status:"Approved"|"Returned")=>{if(!manager||!currentUser||record.userId===currentUser.id||!canManageEmployee(currentUser,record.userId,data))return;setHcm((state)=>audit({...state,benefitEvents:state.benefitEvents.map((event)=>event.id===record.id?{...event,status,reviewerId:currentUser.id}:event)},`Benefit life event ${status.toLowerCase()}`,"BenefitEvent",record.id,record.status,status));};
 
   const [workflowType,setWorkflowType]=useState<WorkflowRequest["type"]>("Other");const[workflowTitle,setWorkflowTitle]=useState("");const[workflowDetail,setWorkflowDetail]=useState("");
   const submitWorkflow=(event:FormEvent)=>{event.preventDefault();if(!currentUser||!workflowTitle.trim()||!workflowDetail.trim())return;const request:WorkflowRequest={id:uid("hr-request"),userId:currentUser.id,type:workflowType,title:workflowTitle.trim(),detail:workflowDetail.trim(),submittedAt:now(),status:"Submitted"};setHcm((state)=>audit({...state,workflows:[request,...state.workflows]},"HR workflow submitted","WorkflowRequest",request.id,undefined,JSON.stringify(request)));setWorkflowTitle("");setWorkflowDetail("");setNotice("HR request submitted");};
-  const decideWorkflow=(request:WorkflowRequest,status:"Approved"|"Returned")=>{if(!manager||!currentUser)return;setHcm((state)=>audit({...state,workflows:state.workflows.map((item)=>item.id===request.id?{...item,status,reviewerId:currentUser.id,decidedAt:now()}:item)},`HR workflow ${status.toLowerCase()}`,"WorkflowRequest",request.id,request.status,status));};
+  const decideWorkflow=(request:WorkflowRequest,status:"Approved"|"Returned")=>{if(!manager||!currentUser||request.userId===currentUser.id||!canManageEmployee(currentUser,request.userId,data))return;setHcm((state)=>audit({...state,workflows:state.workflows.map((item)=>item.id===request.id?{...item,status,reviewerId:currentUser.id,decidedAt:now()}:item)},`HR workflow ${status.toLowerCase()}`,"WorkflowRequest",request.id,request.status,status));};
 
   const [interviewCandidate,setInterviewCandidate]=useState("");const[interviewAt,setInterviewAt]=useState("");const[interviewDuration,setInterviewDuration]=useState("30");
   const scheduleInterview=(event:FormEvent)=>{event.preventDefault();if(!manager||!currentUser||!interviewCandidate||!interviewAt)return;const record={id:uid("interview"),candidateId:interviewCandidate,interviewerIds:[currentUser.id],scheduledAt:interviewAt,durationMinutes:Number(interviewDuration||30),status:"Scheduled" as const};setHcm((state)=>audit({...state,interviews:[record,...state.interviews],candidates:state.candidates.map((candidate)=>candidate.id===interviewCandidate&&candidate.stage==="Applied"?{...candidate,stage:"Interview"}:candidate)},"Interview scheduled","Interview",record.id,undefined,JSON.stringify(record)));setInterviewAt("");setNotice("Interview scheduled");};
