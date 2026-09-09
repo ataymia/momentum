@@ -31,7 +31,7 @@ const varianceLabel = (value: number | undefined) => value === undefined ? "No c
 const presenceTone = (status: string) => status === "In field appointment" || status === "On the clock" ? "success" as const : status === "Off clock" ? "neutral" as const : "warning" as const;
 
 export function EmployeeDirectory() {
-  const { data, currentUser } = useWorkspace();
+  const { data, currentUser, navigate } = useWorkspace();
   const { hcm } = useHcm();
   const tracking = useFieldTracking();
   const { audit } = useAudit();
@@ -115,7 +115,7 @@ export function EmployeeDirectory() {
               const definition = managementKpiDefinition(key); const result = calculateManagementKpi(key, data, period, [selected.id], tracking.state);
               return <article key={key}><small>{definition.shortLabel}</small><strong>{formatKpiValue(result, definition.format)}</strong><span>{result.denominator === undefined ? `${result.sourceRecordIds.length} evidence records` : `${result.numerator}/${result.denominator} source records`}</span></article>;
             })}</div>
-            <Button size="sm" variant="secondary" icon={<BarChart3 size={15}/>} onClick={() => { window.sessionStorage.setItem("momentum-kpi-user", selected.id); window.sessionStorage.setItem("momentum-kpi-period", "30d"); }}>Profile KPI evidence is also available in Reports</Button>
+            <Button size="sm" variant="secondary" icon={<BarChart3 size={15}/>} onClick={() => navigate("reports")}>Open Reports KPI center</Button>
           </Section>}
 
           <Section title="Attendance & punctuality evidence" description="Clock-in and appointment arrival timing are recorded as factual variances. Momentum does not invent a late threshold or scorecard weight." className="employee-punctuality">
