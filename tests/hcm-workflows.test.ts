@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDemoData } from "../lib/demo-data";
+import { leaveBalanceImpact, validateHcmTransition } from "../lib/hcm-controls";
 import {
   activeBenefitEnrollments,
   activeCompensation,
@@ -30,6 +31,41 @@ test("PTO balance is derived from immutable-style ledger entries",()=>{
   ];
   assert.equal(ptoBalance(hcm,"usr-jordan","policy-1","2026-03-02"),34);
   assert.equal(ptoBalance(hcm,"usr-jordan","policy-1","2026-01-15"),40);
+});
+
+test("approved PTO request requires exactly one matching Used ledger entry",()=>{
+  const data=createDemoData();
+  const current=createHcmSeed(data);
+  current.ptoPolicies=[{id:"policy-1",name:"Test PTO",active:true,method:"Manual",accrualHoursPerPayPeriod:0,frontLoadHours:0,waitingDays:0,minimumRequestHours:1,effectiveDate:"2026-01-01"}];
+  current.ptoAssignments=[{id:"assign-1",userId:"usr-jordan",policyId:"policy-1",effectiveDate:"2026-01-01"}];
+  current.ptoLedger=[{id:"pto-opening",userId:"usr-jordan",policyId:"policy-1",date:"2026-01-01",type:"Front load",hours:40,note:"opening",createdBy:"usr-mia",createdAt:"2026-01-01T12:00:00Z"}];
+  current.leaveRequests=[{id:"leave-1",userId:"usr-jordan",policyId:"policy-1",startDate:"2026-09-20",endDate:"2026-09-20",requestedHours:8,reason:"Personal",submittedAt:"2026-09-08T12:00:00Z",status:"Submitted"}];
+  const approved={
+    ...current,
+    leaveRequests:current.leaveRequests.map((request)=>({...request,status:"Approved" as const,reviewerId:"usr-avery",decidedAt:"2026-09-09T12:00:00Z"})),
+    ptoLedger:[{id:"pto-leave-1",userId:"usr-jordan",policyId:"policy-1",date:"2026-09-20",type:"Used" as const,hours:-8,requestId:"leave-1",note:"Approved leave",createdBy:"usr-avery",createdAt:"2026-09-09T12:00:00Z"},...current.ptoLedger],
+  };
+  assert.equal(validateHcmTransition(current,approved).ok,true);
+
+  const missingLedger={...approved,ptoLedger:[...current.ptoLedger]};
+  assert.equal(validateHcmTransition(current,missingLedger).ok,false);
+
+  const duplicateLedger={...approved,ptoLedger:[{...approved.ptoLedger[0],id:"pto-leave-duplicate"},...approved.ptoLedger]};
+  assert.equal(validateHcmTransition(current,duplicateLedger).ok,false);
+
+  const wrongHours={...approved,ptoLedger:approved.ptoLedger.map((entry)=>entry.id==="pto-leave-1"?{...entry,hours:-4}:entry)};
+  assert.equal(validateHcmTransition(current,wrongHours).ok,false);
+});
+
+test("insufficient PTO balance is surfaced as a warning input without inventing a negative-balance policy",()=>{
+  const data=createDemoData();
+  const hcm=createHcmSeed(data);
+  hcm.ptoLedger=[{id:"pto-opening",userId:"usr-jordan",policyId:"policy-1",date:"2026-01-01",type:"Front load",hours:4,note:"opening",createdBy:"usr-mia",createdAt:"2026-01-01T12:00:00Z"}];
+  const request={id:"leave-low-balance",userId:"usr-jordan",policyId:"policy-1",startDate:"2026-09-20",endDate:"2026-09-20",requestedHours:8,reason:"Personal",submittedAt:"2026-09-08T12:00:00Z",status:"Submitted" as const};
+  const impact=leaveBalanceImpact(hcm,request);
+  assert.equal(impact?.balanceBefore,4);
+  assert.equal(impact?.balanceAfter,-4);
+  assert.equal(impact?.insufficientAvailableBalance,true);
 });
 
 test("benefit deduction is calculated from active enrollment tier, not an editable total",()=>{
