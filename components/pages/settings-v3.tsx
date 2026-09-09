@@ -2,10 +2,19 @@
 
 import { AlertTriangle, BellRing, Check, Cloud, CreditCard, Database, HardDrive, KeyRound, LockKeyhole, Mail, RefreshCcw, SearchCheck, ShieldCheck, WalletCards } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ACCOUNTING_STORAGE_KEY } from "../../lib/accounting-engine";
 import { AUDIT_STORAGE_KEY } from "../../lib/audit-engine";
+import { COMMERCE_STORAGE_KEY } from "../../lib/commerce-engine";
+import { CRM_STORAGE_KEY } from "../../lib/crm-engine";
 import { arizonaDateKey } from "../../lib/date-time";
+import { FINANCE_STORAGE_KEY } from "../../lib/finance-engine";
+import { HCM_STORAGE_KEY } from "../../lib/hcm-engine";
+import { INVENTORY_LEDGER_STORAGE_KEY } from "../../lib/inventory-ledger";
 import { FIELD_TRACKING_STORAGE_KEY } from "../../lib/location-tracking-engine";
+import { MARKETING_STORAGE_KEY } from "../../lib/marketing-engine";
 import { NOTIFICATION_STORAGE_KEY } from "../../lib/notification-engine";
+import { PAYROLL_STORAGE_KEY } from "../../lib/payroll-engine";
+import { PERFORMANCE_STORAGE_KEY } from "../../lib/performance-engine";
 import { PERIOD_LOCK_STORAGE_KEY } from "../../lib/period-lock-engine";
 import { useRuntimeMode } from "../../lib/runtime-mode";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -26,15 +35,15 @@ const resetKeys = [
   "momentum-demo-workspace-v5",
   "momentum-commercial-controls-v1",
   "momentum-warehouse-session-v1",
-  "momentum-crm-v1",
-  "momentum-hcm-v4",
-  "momentum-performance-v1",
-  "momentum-commerce-v1",
-  "momentum-inventory-ledger-v1",
-  "momentum-finance-v3",
-  "momentum-accounting-v1",
-  "momentum-marketing-v1",
-  "momentum-payroll-v5",
+  CRM_STORAGE_KEY,
+  HCM_STORAGE_KEY,
+  PERFORMANCE_STORAGE_KEY,
+  COMMERCE_STORAGE_KEY,
+  INVENTORY_LEDGER_STORAGE_KEY,
+  FINANCE_STORAGE_KEY,
+  ACCOUNTING_STORAGE_KEY,
+  MARKETING_STORAGE_KEY,
+  PAYROLL_STORAGE_KEY,
   FIELD_TRACKING_STORAGE_KEY,
   AUDIT_STORAGE_KEY,
   NOTIFICATION_STORAGE_KEY,
