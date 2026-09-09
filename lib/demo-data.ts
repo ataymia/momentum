@@ -1,10 +1,7 @@
+import { addCalendarDays, arizonaDateKey, endOfLocalWeek, startOfLocalWeek } from "./date-time";
 import type { WorkspaceData } from "./types";
 
-const dateKey = (offset = 0) => {
-  const date = new Date();
-  date.setDate(date.getDate() + offset);
-  return date.toISOString().slice(0, 10);
-};
+const dateKey = (offset = 0) => addCalendarDays(arizonaDateKey(), offset);
 
 const stamp = (offsetHours = 0) => {
   const date = new Date();
@@ -12,19 +9,8 @@ const stamp = (offsetHours = 0) => {
   return date.toISOString();
 };
 
-const startOfWeek = () => {
-  const date = new Date();
-  const day = date.getDay();
-  const distance = day === 0 ? -6 : 1 - day;
-  date.setDate(date.getDate() + distance);
-  return date.toISOString().slice(0, 10);
-};
-
-const endOfWeek = () => {
-  const date = new Date(`${startOfWeek()}T12:00:00`);
-  date.setDate(date.getDate() + 6);
-  return date.toISOString().slice(0, 10);
-};
+const startOfWeek = () => startOfLocalWeek(arizonaDateKey());
+const endOfWeek = () => endOfLocalWeek(arizonaDateKey());
 
 export function createDemoData(): WorkspaceData {
   return {
