@@ -89,3 +89,24 @@ export function payrollRunControlIssues(state: PayrollState, data: WorkspaceData
   for (const employeeId of payrollRunDrift(state, data, hcm, run)) issues.push({ code: "stale-calculation", employeeId, detail: `Payroll math for ${employeeId} no longer matches current approved source records and configuration.` });
   return issues;
 }
+
+export function payrollCorrectionBlockers(state: PayrollState, run: PayRun) {
+  const blockers: string[] = [];
+  if (run.status === "Voided") blockers.push("Payroll run is already voided.");
+  if (run.status === "Released") {
+    if (state.disbursements.some((item) => item.payRunId === run.id && item.status === "Settled")) blockers.push("A payroll disbursement has already settled.");
+    if (state.liabilities.some((item) => item.payRunId === run.id && item.status === "Paid")) blockers.push("A payroll tax liability has already been paid.");
+  }
+  return blockers;
+}
+
+export function voidPayrollRunForCorrection(state: PayrollState, runId: string, actorId: string, reason: string, at = new Date().toISOString()): PayrollState | null {
+  const run = state.runs.find((item) => item.id === runId);
+  if (!run || !actorId || !reason.trim() || payrollCorrectionBlockers(state, run).length > 0) return null;
+  return {
+    ...state,
+    runs: state.runs.map((item): PayRun => item.id === runId ? { ...item, status: "Voided", voidedAt: at, voidedBy: actorId, voidReason: reason.trim() } : item),
+    liabilities: state.liabilities.map((item) => item.payRunId === runId && item.status !== "Paid" ? { ...item, status: "Reversed" as const } : item),
+    disbursements: state.disbursements.map((item) => item.payRunId === runId && item.status !== "Settled" ? { ...item, status: "Voided" as const } : item),
+  };
+}
