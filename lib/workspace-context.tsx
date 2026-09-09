@@ -53,7 +53,7 @@ type CommercialState = {
   inventoryLots: InventoryLot[];
 };
 
-type EnhancedOrderInput = { accountId: string; cases: number; pricePerCase?: number; product?: string; inventoryAvailableAtOrder?: number };
+type EnhancedOrderInput = { accountId: string; cases: number; pricePerCase?: number; product?: string; inventoryAvailableAtOrder?: number; sourcePlacementId?: string };
 type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string; categoryReviewDate?: string; pricingTier?: PricingTier };
 type BaseWorkspace = ReturnType<typeof useBaseWorkspace>;
 type NewAppointmentInput = Parameters<BaseWorkspace["createAppointment"]>[0];
@@ -342,11 +342,13 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const createOrder = ({ accountId, cases, product, inventoryAvailableAtOrder }: EnhancedOrderInput) => {
+  const createOrder = ({ accountId, cases, product, inventoryAvailableAtOrder, sourcePlacementId }: EnhancedOrderInput) => {
     if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role) || cases < 1) return null;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
     const selectedProduct = product || data.inventory[0]?.product || "Golden Eagle";
+    const sourcePlacement = sourcePlacementId ? data.placements.find((placement) => placement.id === sourcePlacementId) : undefined;
+    if (sourcePlacementId && (!sourcePlacement || sourcePlacement.accountId !== accountId || sourcePlacement.product !== selectedProduct)) return null;
     const pricing = evaluatePartnerPricing(data, accountId);
     const price = pricing.currentPricePerCase;
     if (!price || price <= 0) return null;
@@ -356,9 +358,9 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const number = `GE-${data.orders.length + 1050}`;
     const creditedRepId = currentUser.role === "Sales Representative" ? currentUser.id : undefined;
     const priceBasis = pricing.effectiveTier ? `Tier ${pricing.effectiveTier} · ${pricing.status}` : pricing.status;
-    const order: Order = { id, number, accountId, cases, pricePerCase: price, amount: cases * price, status: "Awaiting approval", placedAt: today(), ownerId: currentUser.id, creditedRepId, product: selectedProduct, inventoryAvailableAtOrder: available, lowStockApprovalRequired: lowStock, priceBasis, paymentStatus: "Not invoiced" };
+    const order: Order = { id, number, accountId, cases, pricePerCase: price, amount: cases * price, status: "Awaiting approval", placedAt: today(), ownerId: currentUser.id, creditedRepId, sourcePlacementId: sourcePlacement?.id, product: selectedProduct, inventoryAvailableAtOrder: available, lowStockApprovalRequired: lowStock, priceBasis, paymentStatus: "Not invoiced" };
     const approval: Approval = { id: uid("apr"), type: lowStock ? "Low stock sale" : "Order", title: lowStock ? `Low-stock approval · ${number}` : `Review order ${number}`, detail: `${selectedProduct} · ${cases} cases · ${available} available sellable cases · ${account.locationName ?? account.name}`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.role === "Customer" ? "Sales" : currentUser.team, submittedAt: now(), dueAt: new Date(Date.now() + 86400000).toISOString(), priority: lowStock ? "Urgent" : "High", status: "Pending" };
-    setCommercial((state) => ({ ...state, orders: [order, ...state.orders], approvals: [approval, ...state.approvals], accountPatches: { ...state.accountPatches, [accountId]: { ...(state.accountPatches[accountId] ?? {}), stage: "Opening order", lastActivity: `Order request ${number} submitted` } }, activities: [{ id: uid("act-order"), accountId, type: "order", title: lowStock ? "Low-stock order submitted" : "Order submitted", detail: `${number} · ${selectedProduct} · ${cases} cases · Tier ${pricing.effectiveTier ?? "unassigned"} · ${price.toFixed(2)}/case · ${available} available at submission.`, at: now(), userId: currentUser.id }, ...state.activities] }));
+    setCommercial((state) => ({ ...state, orders: [order, ...state.orders], approvals: [approval, ...state.approvals], accountPatches: { ...state.accountPatches, [accountId]: { ...(state.accountPatches[accountId] ?? {}), stage: "Opening order", lastActivity: `Order request ${number} submitted` } }, activities: [{ id: uid("act-order"), accountId, type: "order", title: lowStock ? "Low-stock order submitted" : "Order submitted", detail: `${number} · ${selectedProduct} · ${cases} cases · Tier ${pricing.effectiveTier ?? "unassigned"} · ${price.toFixed(2)}/case · ${available} available at submission${sourcePlacement ? ` · source placement ${sourcePlacement.id}` : ""}.`, at: now(), userId: currentUser.id }, ...state.activities] }));
     return id;
   };
 
