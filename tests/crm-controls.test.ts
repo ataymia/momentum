@@ -3,6 +3,7 @@ import test from "node:test";
 import { createDemoData } from "../lib/demo-data";
 import {
   contactMatchesLocation,
+  normalizeCrmState,
   normalizeOpportunityTransition,
   opportunityOwnerForLocation,
   type CrmState,
@@ -120,4 +121,31 @@ test("open opportunities require actionable follow-up and nonnegative case estim
   const negativeCases = normalizeOpportunityTransition(baseOpportunity(), { estimatedCases: -1 }, "2026-09-08T20:00:00Z");
   assert.equal(negativeCases.ok, false);
   assert.match(negativeCases.message ?? "", /cannot be negative/i);
+});
+
+test("CRM responsibility history reconciles to a later canonical account owner change", () => {
+  const data = dataWithCustomers();
+  const transferredAt = "2026-09-08T18:00:00Z";
+  const transferred: WorkspaceData = {
+    ...data,
+    accounts: data.accounts.map((account) => account.id === "acc-101" ? { ...account, ownerId: "usr-avery", accountManagerId: "usr-avery", responsibilityStartedAt: transferredAt } : account),
+    activities: [
+      { id: "act-transfer-test", accountId: "acc-101", type: "note", title: "Sales responsibility transferred", detail: "Sales Rep Demo → Sales Manager Demo. Territory reassignment. Historical order attribution remains unchanged.", at: transferredAt, userId: "usr-mia" },
+      ...data.activities,
+    ],
+  };
+  const initialState: CrmState = {
+    version: 1,
+    contacts: [],
+    interactions: [],
+    opportunities: [],
+    responsibilityHistory: [{ id: "responsibility-acc-101-initial", locationId: "acc-101", toUserId: "usr-jordan", effectiveAt: "2026-09-01T12:00:00Z", reason: "Initial location responsibility", changedBy: "usr-jordan", acceptedAt: "2026-09-01T12:00:00Z" }],
+  };
+  const normalized = normalizeCrmState(initialState, transferred);
+  const history = normalized.responsibilityHistory.filter((event) => event.locationId === "acc-101").sort((a, b) => a.effectiveAt.localeCompare(b.effectiveAt));
+  const latest = history.at(-1);
+  assert.equal(latest?.fromUserId, "usr-jordan");
+  assert.equal(latest?.toUserId, "usr-avery");
+  assert.equal(latest?.changedBy, "usr-mia");
+  assert.equal(latest?.effectiveAt, transferredAt);
 });
