@@ -67,9 +67,11 @@ test("pending payment allocations reserve receivable capacity without pretending
   assert.equal(invoiceRecordableAmount(withPending, invoice), invoice.total - 100);
 });
 
-test("settlement evidence uses the actual settlement date rather than the entry timestamp", () => {
+test("settlement evidence uses the actual Arizona business date rather than the entry timestamp or UTC date", () => {
   const cleared = payment("cleared", "acc-101", 240, "Cleared", "2026-08-30");
   assert.equal(paymentSettlementDate(cleared), "2026-08-30");
+  const latePhoenix = payment("cleared-late-phoenix", "acc-101", 240, "Cleared", "2026-09-04T05:30:00Z");
+  assert.equal(paymentSettlementDate(latePhoenix), "2026-09-03");
   assert.equal(canRecordSettlementDate("2020-01-01"), true);
   assert.equal(canRecordSettlementDate("2099-01-01"), false);
   assert.equal(canRecordSettlementDate(undefined), false);
@@ -144,6 +146,8 @@ test("refund approval, send, settlement, and failure each require their own evid
   assert.equal(refundCanSettle(sent, "2026-09-02"), false);
   assert.equal(refundCanSettle(sent, "2026-09-03"), true);
   assert.equal(refundCanSettle(sent, "2099-01-01"), false);
+  const sentLatePhoenix: Refund = { ...sent, id:"refund-late-phoenix", sentAt:"2026-09-04T05:30:00Z" };
+  assert.equal(refundCanSettle(sentLatePhoenix, "2026-09-03"), true);
   assert.equal(refundCanFail(sent, ""), false);
   assert.equal(refundCanFail(sent, "Bank return"), true);
 });
