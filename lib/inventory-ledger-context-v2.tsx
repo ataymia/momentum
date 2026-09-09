@@ -1,11 +1,12 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
+import { arizonaDateKey } from "./date-time";
 import { INVENTORY_LEDGER_STORAGE_KEY, InventoryCount, InventoryLedgerState, InventoryMovement, InventoryReservation, MovementType, activeReservedForOrder, createInventoryLedgerSeed, holdNodeId, movementCanPost, nodeLotBalance, normalizeInventoryLedger, orderCanAdvanceInventory, orderDeliveryQuantity, orderLotWarehouseNetOutbound, reservationCanCreate, warehouseNodeId } from "./inventory-ledger";
 import { usePeriodLocks } from "./period-lock-context";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
-const now=()=>new Date().toISOString();const today=()=>new Date().toISOString().slice(0,10);const uid=(prefix:string)=>`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+const now=()=>new Date().toISOString();const today=()=>arizonaDateKey();const uid=(prefix:string)=>`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 type FulfillmentStatus="Allocated"|"Out for delivery"|"Delivered";
 type InventoryLedgerContextValue={ledger:InventoryLedgerState;postMovement:(input:{lotId:string;quantity:number;type:MovementType;fromNodeId?:string;toNodeId?:string;relatedOrderId?:string;reason:string})=>string|null;reserve:(orderId:string,lotId:string,quantity:number)=>string|null;releaseReservation:(id:string)=>boolean;fulfillReservation:(id:string)=>boolean;advanceOrderFulfillment:(orderId:string,status:FulfillmentStatus)=>boolean;resolveQualityHold:(lotId:string,decision:"Release"|"Retain",reason:string)=>boolean;recordCount:(nodeId:string,lotId:string,countedQty:number)=>string|null;reconcileCount:(id:string,reason:string)=>boolean;resetLedger:()=>void};
 const InventoryLedgerContext=createContext<InventoryLedgerContextValue|null>(null);
