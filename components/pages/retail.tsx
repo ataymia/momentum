@@ -38,6 +38,8 @@ export function RetailPage() {
     if (!selected) return;
     window.sessionStorage.setItem("momentum-focus-record", selected.accountId);
     window.sessionStorage.setItem("momentum-order-intent", "new-order");
+    window.sessionStorage.setItem("momentum-order-product", selected.product);
+    window.sessionStorage.setItem("momentum-order-source-placement", selected.id);
     setDetailOpen(false);
     navigate("orders");
   };
