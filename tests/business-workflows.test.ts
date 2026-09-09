@@ -27,17 +27,24 @@ test("an unpaid qualifying opening order waits for payment instead of earning th
   assert.equal(opening?.status,"Awaiting payment");
 });
 
-test("a sub-10 opening order does not earn the first bonus but can still reach the independent 40-case milestone", () => {
-  const data=account101Scenario([paidOrder("small-opening",8,"2026-01-01"),paidOrder("growth",32,"2026-02-01")]);
+test("a sub-10 opening order does not earn the first bonus but the independent milestone can earn after 40 additional paid cases", () => {
+  const data=account101Scenario([paidOrder("small-opening",8,"2026-01-01"),paidOrder("growth",40,"2026-02-01")]);
   const signals=evaluateSalesRepAccountBonuses(data,new Date("2026-02-05T12:00:00"));
   assert.equal(signals.find((signal)=>signal.id==="bonus-acc-101-opening")?.status,"Not qualified");
-  assert.equal(signals.find((signal)=>signal.id==="bonus-acc-101-sustained")?.status,"Earned");
+  const sustained=signals.find((signal)=>signal.id==="bonus-acc-101-sustained");
+  assert.equal(sustained?.observedCases,40);
+  assert.deepEqual(sustained?.evidenceOrderIds,["growth"]);
+  assert.equal(sustained?.status,"Earned");
 });
 
-test("sustained bonus requires 40 cumulative paid cases inside 90 days from the first order", () => {
-  const data=account101Scenario([paidOrder("opening",10,"2026-01-01"),paidOrder("growth",30,"2026-03-15")]);
-  const sustained=evaluateSalesRepAccountBonuses(data,new Date("2026-03-16T12:00:00")).find((signal)=>signal.id==="bonus-acc-101-sustained");
-  assert.ok(sustained);assert.equal(sustained.observedCases,40);assert.equal(sustained.amount,25);assert.equal(sustained.status,"Earned");
+test("sustained bonus requires 40 additional paid cases after the opening order inside 90 days", () => {
+  const shortData=account101Scenario([paidOrder("opening",10,"2026-01-01"),paidOrder("growth-30",30,"2026-03-15")]);
+  const short=evaluateSalesRepAccountBonuses(shortData,new Date("2026-03-16T12:00:00")).find((signal)=>signal.id==="bonus-acc-101-sustained");
+  assert.ok(short);assert.equal(short.observedCases,30);assert.equal(short.amount,25);assert.equal(short.status,"Tracking");assert.deepEqual(short.evidenceOrderIds,["growth-30"]);
+
+  const qualifiedData=account101Scenario([paidOrder("opening",10,"2026-01-01"),paidOrder("growth-30",30,"2026-03-15"),paidOrder("growth-10",10,"2026-03-16")]);
+  const qualified=evaluateSalesRepAccountBonuses(qualifiedData,new Date("2026-03-17T12:00:00")).find((signal)=>signal.id==="bonus-acc-101-sustained");
+  assert.ok(qualified);assert.equal(qualified.observedCases,40);assert.equal(qualified.status,"Earned");assert.deepEqual(qualified.evidenceOrderIds,["growth-30","growth-10"]);
 });
 
 test("every new ordering account starts at Tier A Partner Pricing for the 60-day introductory window", () => {
