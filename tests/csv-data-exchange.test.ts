@@ -18,11 +18,13 @@ test("account import requires complete contact and location fields", () => {
   assert.equal(invalid.records.length,0);assert.ok(invalid.errors[0].includes("missing"));
 });
 
-test("inventory import validates dates, quantities, status, and reservation bounds", () => {
-  const valid=parseInventoryImport([{id:"",lotCode:"LOT-1",product:"Golden Eagle",receivedAt:"2026-09-01",bestBy:"2027-09-01",onHand:"100",reserved:"20",status:"Available",location:"Phoenix",holdReason:""}]);
-  assert.equal(valid.records[0].available,80);assert.deepEqual(valid.errors,[]);
-  const invalid=parseInventoryImport([{id:"",lotCode:"LOT-2",product:"Golden Eagle",receivedAt:"9/1/26",bestBy:"2027-09-01",onHand:"10",reserved:"11",status:"Available",location:"Phoenix",holdReason:""}]);
-  assert.equal(invalid.records.length,0);assert.ok(invalid.errors.length>=1);
+test("new inventory lot import cannot fabricate reservations outside the order reservation ledger", () => {
+  const valid=parseInventoryImport([{id:"",lotCode:"LOT-1",product:"Golden Eagle",receivedAt:"2026-09-01",bestBy:"2027-09-01",onHand:"100",reserved:"0",status:"Available",location:"Phoenix",holdReason:""}]);
+  assert.equal(valid.records[0].available,100);assert.equal(valid.records[0].reserved,0);assert.deepEqual(valid.errors,[]);
+  const fabricatedReservation=parseInventoryImport([{id:"",lotCode:"LOT-2",product:"Golden Eagle",receivedAt:"2026-09-01",bestBy:"2027-09-01",onHand:"100",reserved:"20",status:"Available",location:"Phoenix",holdReason:""}]);
+  assert.equal(fabricatedReservation.records.length,0);assert.ok(fabricatedReservation.errors.some((error)=>error.includes("Reservations must be created from approved orders")));
+  const invalidDate=parseInventoryImport([{id:"",lotCode:"LOT-3",product:"Golden Eagle",receivedAt:"9/1/26",bestBy:"2027-09-01",onHand:"10",reserved:"0",status:"Available",location:"Phoenix",holdReason:""}]);
+  assert.equal(invalidDate.records.length,0);assert.ok(invalidDate.errors.length>=1);
 });
 
 test("appointment import enforces known enum formats and 24-hour time", () => {
@@ -32,10 +34,11 @@ test("appointment import enforces known enum formats and 24-hour time", () => {
   assert.equal(invalid.records.length,0);assert.ok(invalid.errors.length>=2);
 });
 
-test("order import never accepts paid state because import schema only carries account, cases, price and product", () => {
-  const result=parseOrderImport([{accountId:"acc-1",cases:"10",pricePerCase:"24",product:"Golden Eagle",paymentStatus:"Paid"}]);
+test("order import cannot carry paid state or override source pricing", () => {
+  const result=parseOrderImport([{accountId:"acc-1",cases:"10",pricePerCase:"1",product:"Golden Eagle",paymentStatus:"Paid"}]);
   assert.equal(result.records.length,1);
   assert.equal("paymentStatus" in result.records[0],false);
+  assert.equal("pricePerCase" in result.records[0],false);
 });
 
 test("shift import rejects impossible times and accepts existing shift status values", () => {
