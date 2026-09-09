@@ -1,3 +1,5 @@
+import { canManageUser } from "./access";
+import { arizonaDateKey } from "./date-time";
 import type { WorkspaceData, WorkspaceUser } from "./types";
 
 export const HCM_STORAGE_KEY = "momentum-hcm-v4";
@@ -70,7 +72,7 @@ export type HCMState = {
   workflows:WorkflowRequest[]; tasks:HcmTask[]; audit:HcmAuditEvent[];
 };
 
-const today = () => new Date().toISOString().slice(0,10);
+const today = () => arizonaDateKey();
 const now = () => new Date().toISOString();
 const id = (prefix:string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 const nonCustomers = (data:WorkspaceData) => data.users.filter((user)=>user.role!=="Customer");
@@ -112,8 +114,7 @@ export function appendAudit(state:HCMState,event:Omit<HcmAuditEvent,"id"|"at">):
 }
 
 export function canManageEmployee(actor:WorkspaceUser|null|undefined,targetUserId:string,data:WorkspaceData){
-  if(!actor)return false;if(actor.role==="Administrator")return true;if(actor.id===targetUserId)return true;if(actor.role!=="Sales Manager")return false;
-  const target=data.users.find((u)=>u.id===targetUserId);return target?.managerId===actor.id||target?.team===actor.team;
+  return canManageUser(data,actor,targetUserId,true);
 }
 
 export function ptoBalance(state:HCMState,userId:string,policyId?:string,asOf=today()){
