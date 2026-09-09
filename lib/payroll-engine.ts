@@ -38,8 +38,10 @@ export type TaxLiability = { id: string; payRunId: string; type: TaxLiabilityTyp
 export type DisbursementStatus = "Released" | "Settled" | "Failed" | "Voided";
 export type Disbursement = { id: string; payRunId: string; userId: string; amount: number; method: PayrollEmployee["paymentMethod"]; tokenLabel: string; status: DisbursementStatus; createdAt: string; settledAt?: string };
 export type PayrollState = { version: 5; payGroups: PayGroup[]; employees: PayrollEmployee[]; withholdingProfiles: WithholdingProfile[]; employerTaxRules: EmployerTaxRule[]; runs: PayRun[]; liabilities: TaxLiability[]; disbursements: Disbursement[] };
+export type RegularPayrollSource = { timecardIds: string[]; entries: TimeEntry[] };
 
 const today = () => new Date().toISOString().slice(0, 10);
+const payrollReadyTimecard = (status: string) => ["Manager approved", "Payroll ready"].includes(status);
 
 export function createPayrollSeed(): PayrollState {
   return { version: 5, payGroups: [], employees: [], withholdingProfiles: [], employerTaxRules: [], runs: [], liabilities: [], disbursements: [] };
@@ -90,6 +92,31 @@ export function consumedBonuses(state: PayrollState) {
   return new Set(state.runs.filter((run) => run.status !== "Voided").flatMap((run) => run.lines.flatMap((line) => line.sourceBonusIds)));
 }
 
+export function regularPayrollSource(data: WorkspaceData, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[]): RegularPayrollSource | null {
+  const timecardIds = [...new Set(sourceTimecardIds)];
+  if (!timecardIds.length || !periodStart || !periodEnd || periodEnd < periodStart) return null;
+  const cards = timecardIds.map((id) => data.timecards.find((card) => card.id === id));
+  if (cards.some((card) => !card)) return null;
+  const resolved = cards.filter((card): card is WorkspaceData["timecards"][number] => Boolean(card));
+  if (resolved.some((card) => card.userId !== employeeId || !payrollReadyTimecard(card.status) || card.weekStart < periodStart || card.weekEnd > periodEnd)) return null;
+  const entries = data.timeEntries.filter((entry) => entry.userId === employeeId && resolved.some((card) => entry.date >= card.weekStart && entry.date <= card.weekEnd));
+  const seen = new Set<string>();
+  return { timecardIds, entries: entries.filter((entry) => seen.has(entry.id) ? false : (seen.add(entry.id), true)) };
+}
+
+export function invalidTimecardSourcesForRun(run: PayRun, data: WorkspaceData) {
+  if (run.kind !== "Regular") return [] as string[];
+  const invalid = new Set<string>();
+  for (const line of run.lines) {
+    const source = regularPayrollSource(data, line.employeeId, run.periodStart, run.periodEnd, line.sourceTimecardIds);
+    if (!source) {
+      for (const id of line.sourceTimecardIds) invalid.add(id);
+      if (!line.sourceTimecardIds.length) invalid.add(`${line.employeeId}:missing-source-timecard`);
+    }
+  }
+  return [...invalid];
+}
+
 export function invalidBonusSourcesForRun(run: PayRun, data: WorkspaceData) {
   if (run.kind !== "Monthly bonus") return [] as string[];
   const currentlyEarned = new Set(evaluateSalesRepAccountBonuses(data).filter((signal) => signal.status === "Earned").map((signal) => signal.id));
@@ -123,13 +150,14 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
   const withholding = activeWithholding(state, employeeId, periodEnd);
   const compensation = activeCompensation(hcm, employeeId, periodEnd);
   const group = employee ? state.payGroups.find((item) => item.id === employee.payGroupId && item.active) : undefined;
-  if (!employee || !withholding || !compensation || !group) return null;
-  const hours = data.timeEntries.filter((entry) => entry.userId === employeeId && entry.date >= periodStart && entry.date <= periodEnd).reduce((sum, entry) => sum + timeEntryHours(entry), 0);
+  const source = regularPayrollSource(data, employeeId, periodStart, periodEnd, sourceTimecardIds);
+  if (!employee || !withholding || !compensation || !group || !source) return null;
+  const hours = source.entries.reduce((sum, entry) => sum + timeEntryHours(entry), 0);
   const overtimeHours = compensation.basis === "Hourly" ? Math.max(0, hours - group.overtimeThresholdHours) : 0;
   const regularHours = compensation.basis === "Hourly" ? Math.max(0, hours - overtimeHours) : hours;
   const regularPay = compensation.basis === "Hourly" ? regularHours * compensation.rate : compensation.rate;
   const overtimePay = compensation.basis === "Hourly" ? overtimeHours * compensation.rate * 1.5 : 0;
-  return calculateNet(state, hcm, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, 0, sourceTimecardIds, [], withholding);
+  return calculateNet(state, hcm, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, 0, source.timecardIds, [], withholding);
 }
 
 export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeId: string, payDate: string, bonusAmount: number, bonusIds: string[]): PayLine | null {
