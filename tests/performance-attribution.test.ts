@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createDemoData } from "../lib/demo-data";
-import { userCommercialMetrics } from "../lib/performance-engine";
+import { canViewPerformanceRecord, userCommercialMetrics } from "../lib/performance-engine";
 import type { Order, WorkspaceUser } from "../lib/types";
 
 const paidOrder = (overrides: Partial<Order> = {}): Order => ({
@@ -49,4 +50,38 @@ test("customer-entered orders can still credit the responsible rep when credited
   assert.equal(metrics.paidOrders, 1);
   assert.equal(metrics.paidCases, 10);
   assert.equal(metrics.collectedRevenue, 240);
+});
+
+test("sales-manager performance visibility follows direct reports or explicitly managed teams, not loose peer team membership", () => {
+  const base = createDemoData();
+  const manager = base.users.find((user) => user.role === "Sales Manager")!;
+  const direct = base.users.find((user) => user.role === "Sales Representative")!;
+  assert.equal(canViewPerformanceRecord(manager, direct.id, base), true);
+
+  const peerManager: WorkspaceUser = { ...manager, id: "mgr-peer", name: "Peer Manager", firstName: "Peer", email: "peer@example.test", initials: "PM", managerId: undefined, managedTeams: [] };
+  const unrelatedRep: WorkspaceUser = { ...direct, id: "rep-unrelated", name: "Unrelated Rep", firstName: "Unrelated", email: "unrelated@example.test", initials: "UR", managerId: "someone-else", team: manager.team };
+  const looseTeamData = { ...base, users: [...base.users, peerManager, unrelatedRep] };
+  assert.equal(canViewPerformanceRecord(peerManager, unrelatedRep.id, looseTeamData), false);
+
+  const scopedManager = { ...peerManager, managedTeams: [unrelatedRep.team] };
+  const managedTeamData = { ...looseTeamData, users: looseTeamData.users.map((user) => user.id === scopedManager.id ? scopedManager : user) };
+  assert.equal(canViewPerformanceRecord(scopedManager, unrelatedRep.id, managedTeamData), true);
+});
+
+test("performance context enforces self-service creation, scoped management review, duplicate reports, and admin-only reset", () => {
+  const source = readFileSync(new URL("../lib/performance-context.tsx", import.meta.url), "utf8");
+  assert.match(source, /goal\.userId!==currentUser\.id/);
+  assert.match(source, /report\.userId!==currentUser\.id/);
+  assert.match(source, /const duplicate=performance\.reports\.some/);
+  assert.match(source, /report\.userId===currentUser\.id\|\|!canViewPerformanceRecord/);
+  assert.match(source, /currentUser\?\.role!=="Administrator"/);
+});
+
+test("reporting UI uses local calendar dates, blocks duplicate submissions visibly, and hides management notes from non-reviewers", () => {
+  const source = readFileSync(new URL("../components/performance/reporting-center.tsx", import.meta.url), "utf8");
+  assert.match(source, /date\.getFullYear\(\)/);
+  assert.doesNotMatch(source, /const today=\(\)=>new Date\(\)\.toISOString\(\)\.slice\(0,10\)/);
+  assert.match(source, /dailyDuplicate/);
+  assert.match(source, /weeklyDuplicate/);
+  assert.match(source, /canReviewSelected&&<>/);
 });
