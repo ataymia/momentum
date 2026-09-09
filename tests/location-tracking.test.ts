@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { AuditEvent } from "../lib/audit-engine";
 import {
@@ -86,6 +87,15 @@ test("continuous work-device tracking is scoped to sales representatives", () =>
   assert.equal(roleIsTracked("Operations"), false);
   assert.equal(roleIsTracked("Warehouse"), false);
   assert.equal(roleIsTracked("Customer"), false);
+});
+
+test("tracked field context requires an active clock and a location-verified closeout", () => {
+  const source = readFileSync(new URL("../lib/location-tracking-context.tsx", import.meta.url), "utf8");
+  assert.match(source, /roleIsTracked\(currentUser\.role\) && hasActiveClock/);
+  assert.match(source, /Clock in before recording tracked field activity/);
+  assert.match(source, /Location verification is required before a tracked sales appointment can close/);
+  assert.match(source, /recordAppointmentEvent\(appointment, "Closeout recorded", "Closeout", point/);
+  assert.doesNotMatch(source, /catch \{ point = undefined; \}/);
 });
 
 test("field tracking notifications interrupt managers only for a newly confirmed departure", () => {
