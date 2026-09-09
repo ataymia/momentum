@@ -39,6 +39,7 @@ export type DisbursementStatus = "Released" | "Settled" | "Failed" | "Voided";
 export type Disbursement = { id: string; payRunId: string; userId: string; amount: number; method: PayrollEmployee["paymentMethod"]; tokenLabel: string; status: DisbursementStatus; createdAt: string; settledAt?: string };
 export type PayrollState = { version: 5; payGroups: PayGroup[]; employees: PayrollEmployee[]; withholdingProfiles: WithholdingProfile[]; employerTaxRules: EmployerTaxRule[]; runs: PayRun[]; liabilities: TaxLiability[]; disbursements: Disbursement[] };
 export type RegularPayrollSource = { timecardIds: string[]; entries: TimeEntry[] };
+export type PayrollHourBreakdown = { totalHours: number; regularHours: number; overtimeHours: number };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const payrollReadyTimecard = (status: string) => ["Manager approved", "Payroll ready"].includes(status);
@@ -99,9 +100,29 @@ export function regularPayrollSource(data: WorkspaceData, employeeId: string, pe
   if (cards.some((card) => !card)) return null;
   const resolved = cards.filter((card): card is WorkspaceData["timecards"][number] => Boolean(card));
   if (resolved.some((card) => card.userId !== employeeId || !payrollReadyTimecard(card.status) || card.weekStart < periodStart || card.weekEnd > periodEnd)) return null;
+  const ordered = [...resolved].sort((left, right) => left.weekStart.localeCompare(right.weekStart));
+  if (ordered.some((card, index) => index > 0 && card.weekStart <= ordered[index - 1].weekEnd)) return null;
   const entries = data.timeEntries.filter((entry) => entry.userId === employeeId && resolved.some((card) => entry.date >= card.weekStart && entry.date <= card.weekEnd));
   const seen = new Set<string>();
   return { timecardIds, entries: entries.filter((entry) => seen.has(entry.id) ? false : (seen.add(entry.id), true)) };
+}
+
+export function payrollHourBreakdown(data: WorkspaceData, employeeId: string, source: RegularPayrollSource, overtimeThresholdHours: number): PayrollHourBreakdown | null {
+  if (!Number.isFinite(overtimeThresholdHours) || overtimeThresholdHours < 0) return null;
+  const cards = source.timecardIds.map((id) => data.timecards.find((card) => card.id === id));
+  if (cards.some((card) => !card)) return null;
+  let totalHours = 0;
+  let regularHours = 0;
+  let overtimeHours = 0;
+  for (const card of cards.filter((item): item is WorkspaceData["timecards"][number] => Boolean(item))) {
+    if (card.userId !== employeeId) return null;
+    const weekHours = source.entries.filter((entry) => entry.date >= card.weekStart && entry.date <= card.weekEnd).reduce((sum, entry) => sum + timeEntryHours(entry), 0);
+    const weekOvertime = Math.max(0, weekHours - overtimeThresholdHours);
+    totalHours += weekHours;
+    overtimeHours += weekOvertime;
+    regularHours += weekHours - weekOvertime;
+  }
+  return { totalHours, regularHours, overtimeHours };
 }
 
 export function invalidTimecardSourcesForRun(run: PayRun, data: WorkspaceData) {
@@ -152,9 +173,11 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
   const group = employee ? state.payGroups.find((item) => item.id === employee.payGroupId && item.active) : undefined;
   const source = regularPayrollSource(data, employeeId, periodStart, periodEnd, sourceTimecardIds);
   if (!employee || !withholding || !compensation || !group || !source) return null;
-  const hours = source.entries.reduce((sum, entry) => sum + timeEntryHours(entry), 0);
-  const overtimeHours = compensation.basis === "Hourly" ? Math.max(0, hours - group.overtimeThresholdHours) : 0;
-  const regularHours = compensation.basis === "Hourly" ? Math.max(0, hours - overtimeHours) : hours;
+  const totalHours = source.entries.reduce((sum, entry) => sum + timeEntryHours(entry), 0);
+  const breakdown = compensation.basis === "Hourly" ? payrollHourBreakdown(data, employeeId, source, group.overtimeThresholdHours) : null;
+  if (compensation.basis === "Hourly" && !breakdown) return null;
+  const overtimeHours = compensation.basis === "Hourly" ? breakdown!.overtimeHours : 0;
+  const regularHours = compensation.basis === "Hourly" ? breakdown!.regularHours : totalHours;
   const regularPay = compensation.basis === "Hourly" ? regularHours * compensation.rate : compensation.rate;
   const overtimePay = compensation.basis === "Hourly" ? overtimeHours * compensation.rate * 1.5 : 0;
   return calculateNet(state, hcm, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, 0, source.timecardIds, [], withholding);
