@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDemoData } from "../lib/demo-data";
-import { leaveBalanceImpact, validateHcmTransition } from "../lib/hcm-controls";
+import { activeBenefitEnrollmentConflicts, leaveBalanceImpact, validateHcmTransition } from "../lib/hcm-controls";
 import {
   activeBenefitEnrollments,
   activeCompensation,
@@ -11,6 +11,7 @@ import {
   canManageEmployee,
   createHcmSeed,
   ptoBalance,
+  type BenefitEnrollment,
 } from "../lib/hcm-engine";
 
 test("HCM seed creates workforce records only for non-customer users",()=>{
@@ -75,6 +76,32 @@ test("benefit deduction is calculated from active enrollment tier, not an editab
   hcm.benefitEnrollments=[{id:"enroll-1",userId:"usr-jordan",planId:"plan-1",tierId:"tier-1",dependentIds:[],election:"Enroll",status:"Active",effectiveDate:"2026-01-01",event:"Open enrollment",submittedAt:"2025-12-01T12:00:00Z"}];
   assert.equal(activeBenefitEnrollments(hcm,"usr-jordan","2026-06-01").length,1);
   assert.equal(benefitDeductionPerPayPeriod(hcm,"usr-jordan","2026-06-01"),55);
+});
+
+test("overlapping active enrollments in the same benefit plan are rejected before they can double payroll deductions",()=>{
+  const data=createDemoData();
+  const current=createHcmSeed(data);
+  current.benefitPlans=[{id:"plan-med",name:"Medical",category:"Medical",planYear:"2026",startDate:"2026-01-01",endDate:"2026-12-31",active:true,eligibilityNote:"Test",tiers:[{id:"tier-self",name:"Employee",employeeContributionPerPayPeriod:50,employerContributionPerPayPeriod:100}]}];
+  const first:BenefitEnrollment={id:"enroll-first",userId:"usr-jordan",planId:"plan-med",tierId:"tier-self",dependentIds:[],election:"Enroll",status:"Active",effectiveDate:"2026-01-01",endDate:"2026-06-30",event:"Open enrollment",submittedAt:"2025-12-01T12:00:00Z"};
+  current.benefitEnrollments=[first];
+  const overlapping:BenefitEnrollment={...first,id:"enroll-overlap",effectiveDate:"2026-06-15",endDate:undefined,event:"Admin correction"};
+  const next={...current,benefitEnrollments:[overlapping,...current.benefitEnrollments]};
+  assert.equal(activeBenefitEnrollmentConflicts(next,overlapping).length,1);
+  assert.equal(validateHcmTransition(current,next).ok,false);
+
+  const nonOverlapping:BenefitEnrollment={...overlapping,id:"enroll-next",effectiveDate:"2026-07-01"};
+  assert.equal(validateHcmTransition(current,{...current,benefitEnrollments:[nonOverlapping,...current.benefitEnrollments]}).ok,true);
+});
+
+test("benefit enrollment references and dependent ownership are validated at the HCM state boundary",()=>{
+  const data=createDemoData();
+  const current=createHcmSeed(data);
+  current.benefitPlans=[{id:"plan-med",name:"Medical",category:"Medical",planYear:"2026",startDate:"2026-01-01",endDate:"2026-12-31",active:true,eligibilityNote:"Test",tiers:[{id:"tier-self",name:"Employee",employeeContributionPerPayPeriod:50,employerContributionPerPayPeriod:100}]}];
+  current.dependents=[{id:"dep-elena",userId:"usr-elena",name:"Dependent",relationship:"Child"}];
+  const base:BenefitEnrollment={id:"enroll-test",userId:"usr-jordan",planId:"plan-med",tierId:"tier-self",dependentIds:[],election:"Enroll",status:"Pending",effectiveDate:"2026-01-01",event:"Open enrollment",submittedAt:"2025-12-01T12:00:00Z"};
+  assert.equal(validateHcmTransition(current,{...current,benefitEnrollments:[{...base,tierId:"missing"}]}).ok,false);
+  assert.equal(validateHcmTransition(current,{...current,benefitEnrollments:[{...base,dependentIds:["dep-elena"]}]}).ok,false);
+  assert.equal(validateHcmTransition(current,{...current,benefitEnrollments:[base]}).ok,true);
 });
 
 test("effective-dated compensation selects the applicable active record",()=>{
