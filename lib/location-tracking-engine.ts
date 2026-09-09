@@ -1,3 +1,4 @@
+import { arizonaDateKey } from "./date-time";
 import type { Role } from "./types";
 
 export const FIELD_TRACKING_STORAGE_KEY = "momentum-field-tracking-v1";
@@ -180,5 +181,5 @@ export function openDepartureAlert(state: FieldTrackingState, appointmentId: str
 }
 
 export function samplesForUserDay(state: FieldTrackingState, userId: string, dateKey: string) {
-  return state.samples.filter((sample) => sample.userId === userId && sample.at.slice(0, 10) === dateKey).sort((a, b) => a.at.localeCompare(b.at));
+  return state.samples.filter((sample) => sample.userId === userId && arizonaDateKey(sample.at) === dateKey).sort((a, b) => a.at.localeCompare(b.at));
 }
