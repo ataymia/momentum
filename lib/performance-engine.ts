@@ -31,10 +31,11 @@ export type WorkReport = DailyWorkReport | ManagerWeeklyReport;
 export type ReportNote = { id:string; reportId:string; authorId:string; note:string; createdAt:string };
 export type PerformanceState = { version:1; goals:PerformanceGoal[]; reports:WorkReport[]; notes:ReportNote[] };
 
-const today=()=>new Date().toISOString().slice(0,10);
+const dateKey=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+const today=()=>dateKey(new Date());
 const asDate=(value:string)=>new Date(`${value}T12:00:00`);
-const dateKey=(date:Date)=>date.toISOString().slice(0,10);
 const orderDate=(order:WorkspaceData["orders"][number])=>(order.paidAt??order.placedAt).slice(0,10);
+const orderCreditUser=(order:WorkspaceData["orders"][number])=>order.creditedRepId??order.ownerId;
 const inRange=(value:string,start:string,end:string)=>value>=start&&value<=end;
 
 export function createPerformanceSeed():PerformanceState{return{version:1,goals:[],reports:[],notes:[]};}
@@ -57,15 +58,14 @@ export function periodRange(period:GoalPeriod,anchor=today()){
 export function weekRange(anchor=today()){return periodRange("Weekly",anchor);}
 
 export function userCommercialMetrics(data:WorkspaceData,userId:string,start:string,end:string){
-  const ownedOrders=data.orders.filter((order)=>order.ownerId===userId&&inRange(orderDate(order),start,end));
-  const paidOrders=ownedOrders.filter((order)=>order.paymentStatus==="Paid");
+  const creditedOrders=data.orders.filter((order)=>orderCreditUser(order)===userId&&inRange(orderDate(order),start,end));
+  const paidOrders=creditedOrders.filter((order)=>order.paymentStatus==="Paid");
   const paidCases=paidOrders.reduce((sum,order)=>sum+order.cases,0);
   const collectedRevenue=paidOrders.reduce((sum,order)=>sum+order.amount,0);
-  const appointments=data.appointments.filter((appointment)=>appointment.ownerId===userId&&appointment.status==="Completed"&&inRange(appointment.date,start,end));
-  const accountFirstPaid=new Map<string,string>();
-  for(const order of data.orders.filter((item)=>item.paymentStatus==="Paid").sort((a,b)=>orderDate(a).localeCompare(orderDate(b)))) if(!accountFirstPaid.has(order.accountId))accountFirstPaid.set(order.accountId,orderDate(order));
-  const ownedAccountIds=new Set(data.accounts.filter((account)=>account.ownerId===userId).map((account)=>account.id));
-  const ownedNewPaidAccounts=[...accountFirstPaid.entries()].filter(([accountId,date])=>ownedAccountIds.has(accountId)&&inRange(date,start,end)).length;
+  const appointments=data.appointments.filter((appointment)=>appointment.ownerId===userId&&appointment.status==="Completed"&&inRange(appointment.completedAt?.slice(0,10)??appointment.date,start,end));
+  const accountFirstPaid=new Map<string,WorkspaceData["orders"][number]>();
+  for(const order of data.orders.filter((item)=>item.paymentStatus==="Paid").sort((a,b)=>orderDate(a).localeCompare(orderDate(b))||a.id.localeCompare(b.id))) if(!accountFirstPaid.has(order.accountId))accountFirstPaid.set(order.accountId,order);
+  const ownedNewPaidAccounts=[...accountFirstPaid.values()].filter((order)=>orderCreditUser(order)===userId&&inRange(orderDate(order),start,end)).length;
   return{paidCases,paidOrders:paidOrders.length,collectedRevenue,completedAppointments:appointments.length,newPaidAccounts:ownedNewPaidAccounts,
     sourceOrderIds:paidOrders.map((order)=>order.id),sourceAppointmentIds:appointments.map((appointment)=>appointment.id)};
 }
@@ -97,14 +97,14 @@ export function reportVisibleTo(actor:WorkspaceUser|null|undefined,report:WorkRe
 }
 
 export function workedOnDate(data:WorkspaceData,userId:string,date:string){
-  return data.timeEntries.some((entry)=>entry.userId===userId&&entry.date===date)||data.appointments.some((item)=>item.ownerId===userId&&item.date===date)||data.orders.some((order)=>order.ownerId===userId&&order.placedAt.slice(0,10)===date);
+  return data.timeEntries.some((entry)=>entry.userId===userId&&entry.date===date)||data.appointments.some((item)=>item.ownerId===userId&&item.date===date)||data.orders.some((order)=>orderCreditUser(order)===userId&&order.placedAt.slice(0,10)===date);
 }
 
 export function expectedDailyReportDates(data:WorkspaceData,userId:string,start:string,end:string){
   const dates=new Set<string>();
   data.timeEntries.filter((entry)=>entry.userId===userId&&inRange(entry.date,start,end)).forEach((entry)=>dates.add(entry.date));
   data.appointments.filter((item)=>item.ownerId===userId&&inRange(item.date,start,end)).forEach((item)=>dates.add(item.date));
-  data.orders.filter((order)=>order.ownerId===userId&&inRange(order.placedAt.slice(0,10),start,end)).forEach((order)=>dates.add(order.placedAt.slice(0,10)));
+  data.orders.filter((order)=>orderCreditUser(order)===userId&&inRange(order.placedAt.slice(0,10),start,end)).forEach((order)=>dates.add(order.placedAt.slice(0,10)));
   return[...dates].sort();
 }
 
