@@ -24,6 +24,8 @@ const integrations = [
 
 const resetKeys = [
   "momentum-demo-workspace-v5",
+  "momentum-commercial-controls-v1",
+  "momentum-warehouse-session-v1",
   "momentum-crm-v1",
   "momentum-hcm-v4",
   "momentum-performance-v1",
@@ -37,6 +39,13 @@ const resetKeys = [
   AUDIT_STORAGE_KEY,
   NOTIFICATION_STORAGE_KEY,
   PERIOD_LOCK_STORAGE_KEY,
+];
+const resetSessionKeys = [
+  "momentum-focus-record",
+  "momentum-order-intent",
+  "momentum-order-product",
+  "momentum-order-source-placement",
+  "momentum-people-tab",
 ];
 
 export function SettingsPage() {
@@ -67,6 +76,7 @@ export function SettingsPage() {
   const performReset=()=>{
     if(!runtime.isDemo)return;
     resetKeys.forEach((key)=>window.localStorage.removeItem(key));
+    resetSessionKeys.forEach((key)=>window.sessionStorage.removeItem(key));
     setResetOpen(false);setResetDone(true);
     window.setTimeout(()=>window.location.reload(),120);
   };
@@ -88,7 +98,7 @@ export function SettingsPage() {
 
     <Section title="Role & permission model" description="Navigation, record queries and actions enforce scope; Firebase rules must repeat these boundaries server-side" className="permission-panel"><div className="permission-table permission-table--head"><span>Capability</span><span>Administrator</span><span>Manager</span><span>Sales rep</span><span>Operations</span><span>Customer</span></div>{[["Company and team reporting","All","Managed team","Own","Assigned",false],["Customer/location CRM","All","Managed team","Responsible",false,"Linked locations"],["Dispatch and closeout","All","Managed team","Assigned work","Delivery work",false],["Orders & billing","Create / approve","Team approval","Create / own","Fulfill","Create / own"],["Inventory custody & holds","All",false,false,"Manage",false],["Human Resources","All","Team approvals + own","Own","Own",false],["Payroll","Company process + own","Own","Own","Own",false],["Finance / reimbursements","Company + own","Team review + own","Own","Own",false],["Marketing","Manage + request","Request / view","Request / view","Request / view",false],["Audit history","All","Managed scope","Relevant operational","Relevant operational",false],["Notifications","Policy + own","Own","Own","Own","Customer events"],["Users, roles, integrations","All",false,false,false,false]].map(([capability,admin,manager,rep,operations,customer])=><div className="permission-table" key={capability as string}><span><strong>{capability as string}</strong></span>{[admin,manager,rep,operations,customer].map((value,index)=><span key={index}>{value===true?<i className="permission-check"><Check size={14}/></i>:value===false?<i className="permission-none">—</i>:<small>{value as string}</small>}</span>)}</div>)}</Section>
 
-    <div className="settings-bottom-grid"><Section title="Security baseline" description="Required before live customer, employee, inventory, payroll or financial records" className="security-checklist">{[[LockKeyhole,"Firebase-enforced authorization","Every record and mutation"],[ShieldCheck,"Server-immutable audit storage","Native audit engine is built; production storage must make it tamper-resistant"],[BellRing,"Server-side notification delivery","Native rules are built; provider delivery, retries and background escalation remain"],[RefreshCcw,"Backup and restore tests","Demonstrated recovery, not assumptions"]].map(([Icon,title,detail])=>{const ItemIcon=Icon as typeof ShieldCheck;return <div key={title as string}><span><ItemIcon size={17}/></span><div><strong>{title as string}</strong><p>{detail as string}</p></div><StatusPill tone="warning" dot={false}>Integration gate</StatusPill></div>;})}</Section>{runtime.isDemo?<Section title="Demo data" description="Reset all browser-local engines together" className="demo-settings"><Database size={30}/><h3>Reset the interactive tour</h3><p>Clears CRM, HCM, performance, order-to-cash, inventory custody, field tracking, Finance, accounting, Marketing, payroll, audit, notifications, period locks, and the core workspace.</p><Button variant="danger" icon={<RefreshCcw size={16}/>} onClick={()=>setResetOpen(true)}>Reset entire demo</Button></Section>:<Section title="Production data protection" description="There is intentionally no production reset action" className="demo-settings"><ShieldCheck size={30}/><h3>Reset is unavailable</h3><p>Production mode never renders a reset button. Corrections must happen through source-record workflows and remain auditable.</p><StatusPill tone="success">Protected</StatusPill></Section>}</div>
+    <div className="settings-bottom-grid"><Section title="Security baseline" description="Required before live customer, employee, inventory, payroll or financial records" className="security-checklist">{[[LockKeyhole,"Firebase-enforced authorization","Every record and mutation"],[ShieldCheck,"Server-immutable audit storage","Native audit engine is built; production storage must make it tamper-resistant"],[BellRing,"Server-side notification delivery","Native rules are built; provider delivery, retries and background escalation remain"],[RefreshCcw,"Backup and restore tests","Demonstrated recovery, not assumptions"]].map(([Icon,title,detail])=>{const ItemIcon=Icon as typeof ShieldCheck;return <div key={title as string}><span><ItemIcon size={17}/></span><div><strong>{title as string}</strong><p>{detail as string}</p></div><StatusPill tone="warning" dot={false}>Integration gate</StatusPill></div>;})}</Section>{runtime.isDemo?<Section title="Demo data" description="Reset all browser-local engines together" className="demo-settings"><Database size={30}/><h3>Reset the interactive tour</h3><p>Clears CRM, HCM, performance, commercial controls, order-to-cash, inventory custody, field tracking, Finance, accounting, Marketing, payroll, audit, notifications, period locks, and transient workflow intents.</p><Button variant="danger" icon={<RefreshCcw size={16}/>} onClick={()=>setResetOpen(true)}>Reset entire demo</Button></Section>:<Section title="Production data protection" description="There is intentionally no production reset action" className="demo-settings"><ShieldCheck size={30}/><h3>Reset is unavailable</h3><p>Production mode never renders a reset button. Corrections must happen through source-record workflows and remain auditable.</p><StatusPill tone="success">Protected</StatusPill></Section>}</div>
 
     {runtime.isDemo&&<Modal open={resetOpen} title="Reset the entire demo workspace?" description="Every local demo engine will be cleared and rebuilt from the current sample scenario." onClose={()=>setResetOpen(false)} footer={<><Button variant="ghost" onClick={()=>setResetOpen(false)}>Keep my changes</Button><Button variant="danger" onClick={performReset}>Reset all demo data</Button></>}><div className="reset-confirmation"><RefreshCcw size={24}/><p>Only local fictional data is affected. No Firebase tenancy or money rail is connected.</p></div></Modal>}
     {resetDone&&<StatusPill tone="success">Resetting…</StatusPill>}
