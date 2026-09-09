@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canAccessPage,
+  canManageUser,
   canPublishBulletinTo,
   canReviewApproval,
   getWorkspaceScope,
@@ -116,4 +117,20 @@ test("approval and bulletin authority follows the hierarchy", () => {
   assert.equal(canPublishBulletinTo(manager, "Company"), false);
   assert.equal(canPublishBulletinTo(manager, "Team", "Operations"), false);
   assert.equal(canPublishBulletinTo(rep, "Team", "Sales"), false);
+});
+
+test("central management scope does not grant a manager access merely because another employee shares the same team", () => {
+  const manager = user("usr-avery");
+  const rep = user("usr-jordan");
+  assert.equal(canManageUser(data, manager, rep.id, false), true);
+  assert.equal(canManageUser(data, manager, manager.id, true), true);
+  assert.equal(canManageUser(data, manager, manager.id, false), false);
+
+  const peerManager: WorkspaceUser = { ...manager, id:"usr-peer-manager",name:"Peer Manager",firstName:"Peer",email:"peer-manager@test",initials:"PM",managedTeams:[] };
+  const unrelatedRep: WorkspaceUser = { ...rep, id:"usr-unrelated-rep",name:"Unrelated Rep",firstName:"Unrelated",email:"unrelated-rep@test",initials:"UR",managerId:"someone-else",team:manager.team };
+  const strictData = { ...data, users:[...data.users, peerManager, unrelatedRep] };
+  assert.equal(canManageUser(strictData, peerManager, unrelatedRep.id, false), false);
+  const explicitManager = { ...peerManager, managedTeams:[unrelatedRep.team] };
+  const managedData = { ...strictData, users: strictData.users.map((item)=>item.id===explicitManager.id?explicitManager:item) };
+  assert.equal(canManageUser(managedData, explicitManager, unrelatedRep.id, false), true);
 });
