@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
+import { validateHcmTransition } from "./hcm-controls";
 import { HCM_STORAGE_KEY, HCMState, createHcmSeed, normalizeHcmState } from "./hcm-engine";
 import { useWorkspace } from "./workspace-context";
 
@@ -17,7 +18,10 @@ export function HcmProvider({children}:{children:ReactNode}){
   const {data}=useWorkspace();
   const [hcm,setState]=useState<HCMState>(()=>readState(data));
   useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(HCM_STORAGE_KEY,JSON.stringify(hcm));},[hcm]);
-  const setHcm=(mutation:HcmMutation)=>setState((current)=>normalizeHcmState(typeof mutation==="function"?mutation(current):mutation,data));
+  const setHcm=(mutation:HcmMutation)=>setState((current)=>{
+    const candidate=normalizeHcmState(typeof mutation==="function"?mutation(current):mutation,data);
+    return validateHcmTransition(current,candidate).ok?candidate:current;
+  });
   const resetHcm=()=>setState(createHcmSeed(data));
   const reloadHcm=()=>setState(readState(data));
   return <HcmContext.Provider value={{hcm,setHcm,resetHcm,reloadHcm}}>{children}</HcmContext.Provider>;
