@@ -3,6 +3,7 @@
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { canManageUser } from "./access";
 import { Expense, FINANCE_STORAGE_KEY, FinanceState, createFinanceSeed, normalizeFinanceState } from "./finance-engine";
+import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
 const now = () => new Date().toISOString();
@@ -22,6 +23,7 @@ const FinanceContext = createContext<FinanceContextValue | null>(null);
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
   const { data, currentUser } = useWorkspace();
+  const runtime = useRuntimeMode();
   const read = () => {
     if (typeof window === "undefined") return createFinanceSeed();
     try {
@@ -75,7 +77,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const resetFinance = () => { if (currentUser?.role === "Administrator") setFinance(createFinanceSeed()); };
+  const resetFinance = () => { if (runtime.isDemo && currentUser?.role === "Administrator") setFinance(createFinanceSeed()); };
   const value: FinanceContextValue = { finance, submitExpense, managerDecision, financeDecision, markExpensePaid, resetFinance };
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 }
