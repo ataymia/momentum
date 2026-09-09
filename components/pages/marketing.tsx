@@ -30,7 +30,7 @@ export function MarketingPage(){
   const[attribution,setAttribution]=useState({campaignId:"",accountId:"",relation:"Supported" as AttributionRelation,sourceType:"Order" as "Order"|"Placement"|"Account opening"|"Reorder",sourceId:"",note:""});
   const[partnership,setPartnership]=useState({name:"",type:"Retail / community",contact:"",startDate:"",endDate:"",status:"Prospect" as const,campaignId:"",notes:""});
 
-  useEffect(()=>{if(!focus||!focusTab)return;setTab(focusTab);const handle=window.setTimeout(()=>document.getElementById(`marketing-${focus}`)?.scrollIntoView({behavior:"smooth",block:"center"}),20);window.sessionStorage.removeItem("momentum-focus-record");return()=>window.clearTimeout(handle);},[focus,focusTab]);
+  useEffect(()=>{if(!focus||!focusTab)return;const handle=window.setTimeout(()=>document.getElementById(`marketing-${focus}`)?.scrollIntoView({behavior:"smooth",block:"center"}),20);window.sessionStorage.removeItem("momentum-focus-record");return()=>window.clearTimeout(handle);},[focus,focusTab]);
   useEffect(()=>{if(!notice)return;const handle=window.setTimeout(()=>setNotice(""),3200);return()=>window.clearTimeout(handle);},[notice]);
 
   const visibleRequests=useMemo(()=>admin?state.requests:state.requests.filter((item)=>item.requesterId===currentUser?.id),[admin,currentUser?.id,state.requests]);
