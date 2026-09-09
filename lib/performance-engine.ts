@@ -1,4 +1,5 @@
 import { evaluateSalesRepAccountBonuses } from "./bonus-engine";
+import { arizonaDateKey, endOfLocalWeek, startOfLocalWeek } from "./date-time";
 import type { WorkspaceData, WorkspaceUser } from "./types";
 
 export const PERFORMANCE_STORAGE_KEY = "momentum-performance-v1";
@@ -31,12 +32,11 @@ export type WorkReport = DailyWorkReport | ManagerWeeklyReport;
 export type ReportNote = { id:string; reportId:string; authorId:string; note:string; createdAt:string };
 export type PerformanceState = { version:1; goals:PerformanceGoal[]; reports:WorkReport[]; notes:ReportNote[] };
 
-const dateKey=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
-const today=()=>dateKey(new Date());
-const asDate=(value:string)=>new Date(`${value}T12:00:00`);
+const today=()=>arizonaDateKey();
 const orderDate=(order:WorkspaceData["orders"][number])=>(order.paidAt??order.placedAt).slice(0,10);
 const orderCreditUser=(order:WorkspaceData["orders"][number])=>order.creditedRepId??order.ownerId;
 const inRange=(value:string,start:string,end:string)=>value>=start&&value<=end;
+const monthEnd=(year:number,monthOneBased:number)=>String(new Date(Date.UTC(year,monthOneBased,0)).getUTCDate()).padStart(2,"0");
 
 export function createPerformanceSeed():PerformanceState{return{version:1,goals:[],reports:[],notes:[]};}
 export function normalizePerformanceState(input:unknown):PerformanceState{
@@ -45,14 +45,11 @@ export function normalizePerformanceState(input:unknown):PerformanceState{
 }
 
 export function periodRange(period:GoalPeriod,anchor=today()){
-  const d=asDate(anchor);
-  if(period==="Weekly"){
-    const mondayDistance=(d.getDay()+6)%7;const start=new Date(d);start.setDate(d.getDate()-mondayDistance);const end=new Date(start);end.setDate(start.getDate()+6);
-    return{start:dateKey(start),end:dateKey(end)};
-  }
-  if(period==="Monthly")return{start:`${anchor.slice(0,7)}-01`,end:dateKey(new Date(d.getFullYear(),d.getMonth()+1,0,12))};
-  const quarter=Math.floor(d.getMonth()/3);const start=new Date(d.getFullYear(),quarter*3,1,12);const end=new Date(d.getFullYear(),quarter*3+3,0,12);
-  return{start:dateKey(start),end:dateKey(end)};
+  if(period==="Weekly")return{start:startOfLocalWeek(anchor),end:endOfLocalWeek(anchor)};
+  const year=Number(anchor.slice(0,4));const month=Number(anchor.slice(5,7));
+  if(period==="Monthly")return{start:`${anchor.slice(0,7)}-01`,end:`${anchor.slice(0,7)}-${monthEnd(year,month)}`};
+  const quarterStartMonth=Math.floor((month-1)/3)*3+1;const quarterEndMonth=quarterStartMonth+2;
+  return{start:`${year}-${String(quarterStartMonth).padStart(2,"0")}-01`,end:`${year}-${String(quarterEndMonth).padStart(2,"0")}-${monthEnd(year,quarterEndMonth)}`};
 }
 
 export function weekRange(anchor=today()){return periodRange("Weekly",anchor);}
@@ -62,7 +59,7 @@ export function userCommercialMetrics(data:WorkspaceData,userId:string,start:str
   const paidOrders=creditedOrders.filter((order)=>order.paymentStatus==="Paid");
   const paidCases=paidOrders.reduce((sum,order)=>sum+order.cases,0);
   const collectedRevenue=paidOrders.reduce((sum,order)=>sum+order.amount,0);
-  const appointments=data.appointments.filter((appointment)=>appointment.ownerId===userId&&appointment.status==="Completed"&&inRange(appointment.completedAt?.slice(0,10)??appointment.date,start,end));
+  const appointments=data.appointments.filter((appointment)=>appointment.ownerId===userId&&appointment.status==="Completed"&&inRange(appointment.date,start,end));
   const accountFirstPaid=new Map<string,WorkspaceData["orders"][number]>();
   for(const order of data.orders.filter((item)=>item.paymentStatus==="Paid").sort((a,b)=>orderDate(a).localeCompare(orderDate(b))||a.id.localeCompare(b.id))) if(!accountFirstPaid.has(order.accountId))accountFirstPaid.set(order.accountId,order);
   const ownedNewPaidAccounts=[...accountFirstPaid.values()].filter((order)=>orderCreditUser(order)===userId&&inRange(orderDate(order),start,end)).length;
