@@ -2,6 +2,7 @@
 
 import { AlertTriangle, BookOpenCheck, CalendarClock, CheckCircle2, Clock3, FileText, HeartHandshake, ShieldCheck, UserRound, UsersRound } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { arizonaDateKey } from "../../lib/date-time";
 import { useHcm } from "../../lib/hcm-context";
 import { activeBenefitEnrollments, activePtoAssignment, appendAudit, benefitDeductionPerPayPeriod, canManageEmployee, ptoBalance, type BenefitEnrollment, type BenefitEvent, type HCMState, type LeaveRequest, type ProfileChangeRequest, type WorkflowRequest } from "../../lib/hcm-engine";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -11,7 +12,7 @@ import { Avatar, Button, Field, PageHeader, Section, StatusPill, formatDate, for
 
 type HcmTab="overview"|"time"|"leave"|"benefits"|"training"|"documents"|"review"|"admin";
 const now=()=>new Date().toISOString();
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>arizonaDateKey();
 const uid=(prefix:string)=>`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 const tone=(status:string)=>["Active","Approved","Complete","Completed","Manager approved","Payroll ready","Acknowledged"].includes(status)?"success" as const:["Returned","Missing","Rejected","Declined"].includes(status)?"danger" as const:["Submitted","Pending","Assigned","In progress"].includes(status)?"warning" as const:"neutral" as const;
 
