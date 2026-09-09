@@ -25,6 +25,8 @@ const numericFields: (keyof PayLine)[] = [
   "bonusPay",
   "grossPay",
   "benefitDeduction",
+  "preTaxBenefitDeduction",
+  "postTaxBenefitDeduction",
   "taxableWages",
   "federalTax",
   "stateTax",
@@ -36,7 +38,8 @@ const numericFields: (keyof PayLine)[] = [
   "netPay",
 ];
 
-const sameNumber = (left: number, right: number) => Math.abs(left - right) < 0.005;
+const numericValue = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : 0;
+const sameNumber = (left: unknown, right: unknown) => Math.abs(numericValue(left) - numericValue(right)) < 0.005;
 const sameIds = (left: string[], right: string[]) => {
   if (left.length !== right.length) return false;
   const a = [...left].sort();
@@ -48,7 +51,7 @@ export function payLinesMatch(recorded: PayLine, expected: PayLine) {
   if (recorded.employeeId !== expected.employeeId) return false;
   if (!sameIds(recorded.sourceTimecardIds, expected.sourceTimecardIds)) return false;
   if (!sameIds(recorded.sourceBonusIds, expected.sourceBonusIds)) return false;
-  return numericFields.every((field) => sameNumber(recorded[field] as number, expected[field] as number));
+  return numericFields.every((field) => sameNumber(recorded[field], expected[field]));
 }
 
 function expectedLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, run: PayRun, line: PayLine) {
