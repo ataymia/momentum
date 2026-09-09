@@ -1,4 +1,6 @@
 import type { AuditEvent } from "./audit-engine";
+import { canManageUser } from "./access";
+import { arizonaDateKey } from "./date-time";
 import type { HCMState, Shift } from "./hcm-engine";
 import type { FieldTrackingState } from "./location-tracking-engine";
 import type { Appointment, TimeEntry, WorkspaceData, WorkspaceUser } from "./types";
@@ -20,10 +22,6 @@ export type PunctualityEvidence = {
 const fieldStatuses = new Set<Appointment["status"]>(["Dispatched", "En route", "Arrived"]);
 const salesAppointmentTypes = new Set<Appointment["type"]>(["First visit", "Sample drop", "Placement check", "Reorder"]);
 
-function localDateKey(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
 function minutes(value: string) {
   const [hours, minute] = value.slice(0, 5).split(":").map(Number);
   return hours * 60 + minute;
@@ -43,15 +41,17 @@ function phoenixParts(value: string) {
   return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
 }
 
-export function canViewEmployeeManagementDetail(actor: WorkspaceUser | null | undefined, target: WorkspaceUser) {
+export function canViewEmployeeManagementDetail(actor: WorkspaceUser | null | undefined, target: WorkspaceUser, data?: WorkspaceData) {
   if (!actor) return false;
   if (actor.role === "Administrator") return true;
-  if (actor.role !== "Sales Manager") return false;
-  if (target.id === actor.id) return true;
-  return target.managerId === actor.id || (actor.managedTeams ?? []).includes(target.team);
+  if (!data) {
+    if (actor.role !== "Sales Manager") return false;
+    return target.id === actor.id || target.managerId === actor.id || (actor.managedTeams ?? []).includes(target.team);
+  }
+  return canManageUser(data, actor, target.id, true);
 }
 
-export function employeePresence(data: WorkspaceData, userId: string, date = localDateKey()): EmployeePresence {
+export function employeePresence(data: WorkspaceData, userId: string, date = arizonaDateKey()): EmployeePresence {
   const activeField = data.appointments.some((appointment) => appointment.ownerId === userId && fieldStatuses.has(appointment.status));
   if (activeField) return "In field appointment";
   const activeTime = data.timeEntries.some((entry) => entry.userId === userId && entry.date === date && !entry.clockOut);
@@ -79,7 +79,7 @@ export function lastRecordedEmployeeActivity(data: WorkspaceData, tracking: Fiel
   return candidates.sort((a, b) => b.at.localeCompare(a.at))[0];
 }
 
-export function currentOrNextShift(hcm: HCMState, userId: string, asOf = localDateKey()): Shift | undefined {
+export function currentOrNextShift(hcm: HCMState, userId: string, asOf = arizonaDateKey()): Shift | undefined {
   return hcm.shifts
     .filter((shift) => shift.userId === userId && ["Published", "Completed"].includes(shift.status) && shift.date >= asOf)
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))[0];
