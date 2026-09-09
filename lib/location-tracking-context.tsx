@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { arizonaDateKey } from "./date-time";
 import {
   DEFAULT_GEOFENCE_RADIUS_MILES,
   FIELD_TRACKING_STORAGE_KEY,
@@ -37,10 +38,7 @@ import { useWorkspace } from "./workspace-context";
 const DEVICE_KEY = "momentum-managed-device-id-v1";
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const now = () => new Date().toISOString();
-const today = () => {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-};
+const today = () => arizonaDateKey();
 const FRESH_EVENT_SAMPLE_MS = 20_000;
 
 type Workspace = ReturnType<typeof useWorkspace>;
@@ -207,7 +205,7 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (!hasActiveClock) {
-        closeActiveSessions(userId, "Clock out");
+        closeActiveSessions(userId, "No active clock");
         setPermission("Stopped");
         return;
       }
