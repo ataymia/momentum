@@ -23,17 +23,43 @@ export function createCrmSeed(data:WorkspaceData):CrmState{
   return{version:1,contacts,interactions,opportunities:[],responsibilityHistory};
 }
 
+export function reconcileResponsibilityHistory(history:ResponsibilityEvent[],data:WorkspaceData){
+  const events=[...history];
+  for(const location of data.accounts){
+    const locationEvents=events.filter((event)=>event.locationId===location.id).sort((a,b)=>a.effectiveAt.localeCompare(b.effectiveAt));
+    const latest=locationEvents.at(-1);
+    if(!latest){
+      events.push({id:`responsibility-${location.id}-initial`,locationId:location.id,toUserId:location.ownerId,effectiveAt:location.responsibilityStartedAt??now(),reason:"Initial location responsibility",changedBy:location.originatorId??location.ownerId,acceptedAt:location.responsibilityStartedAt??now()});
+      continue;
+    }
+    if(latest.toUserId===location.ownerId)continue;
+    const transferActivity=data.activities.filter((activity)=>activity.accountId===location.id&&activity.title==="Sales responsibility transferred").sort((a,b)=>b.at.localeCompare(a.at))[0];
+    const effectiveAt=location.responsibilityStartedAt??transferActivity?.at??now();
+    const eventId=`responsibility-${location.id}-${effectiveAt}`;
+    if(events.some((event)=>event.id===eventId))continue;
+    events.push({
+      id:eventId,
+      locationId:location.id,
+      fromUserId:latest.toUserId,
+      toUserId:location.ownerId,
+      effectiveAt,
+      reason:transferActivity?.detail||"Account responsibility changed in the canonical account record.",
+      changedBy:transferActivity?.userId??location.ownerId,
+    });
+  }
+  return events;
+}
+
 export function normalizeCrmState(input:unknown,data:WorkspaceData):CrmState{
   const seed=createCrmSeed(data);
   if(!input||typeof input!=="object")return seed;
   const state=input as Partial<CrmState>;
-  const contacts=Array.isArray(state.contacts)?state.contacts:seed.contacts;
+  const contacts=Array.isArray(state.contacts)?[...state.contacts]:[...seed.contacts];
   const existingContactLocations=new Set(contacts.filter((c)=>c.locationId).map((c)=>c.locationId));
   for(const contact of seed.contacts)if(contact.locationId&&!existingContactLocations.has(contact.locationId))contacts.push(contact);
-  const responsibilityHistory=Array.isArray(state.responsibilityHistory)?state.responsibilityHistory:seed.responsibilityHistory;
-  const existingResponsibility=new Set(responsibilityHistory.map((item)=>item.locationId));
-  for(const event of seed.responsibilityHistory)if(!existingResponsibility.has(event.locationId))responsibilityHistory.push(event);
-  return{version:1,contacts,interactions:Array.isArray(state.interactions)?state.interactions:seed.interactions,opportunities:Array.isArray(state.opportunities)?state.opportunities:[],responsibilityHistory};
+  const storedResponsibility=Array.isArray(state.responsibilityHistory)?[...state.responsibilityHistory]:[...seed.responsibilityHistory];
+  const responsibilityHistory=reconcileResponsibilityHistory(storedResponsibility,data);
+  return{version:1,contacts,interactions:Array.isArray(state.interactions)?[...state.interactions]:[...seed.interactions],opportunities:Array.isArray(state.opportunities)?[...state.opportunities]:[],responsibilityHistory};
 }
 
 export function crmRecordVisible(actor:WorkspaceUser|null|undefined,locationId:string,data:WorkspaceData){
