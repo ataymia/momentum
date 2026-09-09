@@ -101,13 +101,22 @@ test("continuous work-device tracking is scoped to sales representatives", () =>
   assert.equal(roleIsTracked("Customer"), false);
 });
 
-test("tracked field context requires an active clock and a location-verified closeout", () => {
+test("tracked field context requires an active Arizona-day clock and a location-verified closeout", () => {
   const source = readFileSync(new URL("../lib/location-tracking-context.tsx", import.meta.url), "utf8");
+  assert.match(source, /const today = \(\) => arizonaDateKey\(\)/);
   assert.match(source, /roleIsTracked\(currentUser\.role\) && hasActiveClock/);
   assert.match(source, /Clock in before recording tracked field activity/);
   assert.match(source, /Location verification is required before a tracked sales appointment can close/);
   assert.match(source, /recordAppointmentEvent\(appointment, "Closeout recorded", "Closeout", point/);
   assert.doesNotMatch(source, /catch \{ point = undefined; \}/);
+});
+
+test("an inactive tracked user is not falsely recorded as having clocked out", () => {
+  const context = readFileSync(new URL("../lib/location-tracking-context.tsx", import.meta.url), "utf8");
+  const engine = readFileSync(new URL("../lib/location-tracking-engine.ts", import.meta.url), "utf8");
+  assert.match(engine, /"No active clock"/);
+  assert.match(context, /closeActiveSessions\(userId, "No active clock"\)/);
+  assert.match(context, /if \(clockedOutToday\)[\s\S]*closeActiveSessions\(userId, "Clock out"\)/);
 });
 
 test("field tracking notifications interrupt managers only for a newly confirmed departure", () => {
