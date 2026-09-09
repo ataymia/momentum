@@ -3,6 +3,7 @@
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { accountIsVisible, canAdvanceFulfillment, canManageSchedule, canReviewApproval, getWorkspaceScope } from "./access";
 import { findAccountDuplicate } from "./duplicate-engine";
+import { activeFieldAppointmentForUser } from "./field-work-session";
 import { evaluatePartnerPricing } from "./pricing-engine";
 import type { Account, Activity, Appointment, AppointmentStatus, Approval, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, WorkspaceData, WorkspaceUser } from "./types";
 import { WorkspaceProvider as BaseWorkspaceProvider, useWorkspace as useBaseWorkspace } from "./workspace-context-v5";
@@ -56,12 +57,13 @@ type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string
 type BaseWorkspace = ReturnType<typeof useBaseWorkspace>;
 type NewAppointmentInput = Parameters<BaseWorkspace["createAppointment"]>[0];
 type AppointmentCloseout = Parameters<BaseWorkspace["completeAppointment"]>[1];
-type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | "login" | "logout" | "switchUser" | "createAccount" | "createOrder" | "createAppointment" | "advanceAppointment" | "completeAppointment" | "reassignAppointment" | "moveAppointment" | "decideApproval" | "setOrderStatus" | "reconcileOrderPayment" | "resetDemo"> & {
+type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | "login" | "logout" | "toggleClock" | "switchUser" | "createAccount" | "createOrder" | "createAppointment" | "advanceAppointment" | "completeAppointment" | "reassignAppointment" | "moveAppointment" | "decideApproval" | "setOrderStatus" | "reconcileOrderPayment" | "resetDemo"> & {
   data: WorkspaceData;
   scope: ReturnType<typeof getWorkspaceScope>;
   currentUser: WorkspaceUser | null;
   login: (email: string, password: string) => { ok: boolean; message?: string };
-  logout: () => void;
+  logout: () => boolean;
+  toggleClock: () => boolean;
   switchUser: (userId: string) => void;
   createAccount: BaseWorkspace["createAccount"];
   createOrder: (order: EnhancedOrderInput) => string | null;
@@ -165,6 +167,11 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const currentUser = useMemo(() => warehouseSession ? data.users.find((user) => user.id === warehouseUser.id) ?? null : base.currentUser ? data.users.find((user) => user.id === base.currentUser?.id) ?? base.currentUser : null, [base.currentUser, data.users, warehouseSession]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
 
+  const focusActiveFieldWork = (appointment: Appointment) => {
+    if (typeof window !== "undefined") window.sessionStorage.setItem("momentum-focus-record", appointment.id);
+    base.navigate("dispatch");
+  };
+
   const login = (email: string, password: string) => {
     if (email.trim().toLowerCase() === warehouseUser.email && password === "admin") {
       base.logout();
@@ -178,9 +185,25 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    if (currentUser?.role === "Sales Representative") {
+      const active = activeFieldAppointmentForUser(data, currentUser.id);
+      if (active) { focusActiveFieldWork(active); return false; }
+    }
     setWarehouseSession(false);
     window.localStorage.removeItem(WAREHOUSE_SESSION_KEY);
     base.logout();
+    return true;
+  };
+
+  const toggleClock = () => {
+    if (!currentUser) return false;
+    const openEntry = data.timeEntries.find((entry) => entry.userId === currentUser.id && !entry.clockOut);
+    if (openEntry && currentUser.role === "Sales Representative") {
+      const active = activeFieldAppointmentForUser(data, currentUser.id);
+      if (active) { focusActiveFieldWork(active); return false; }
+    }
+    base.toggleClock();
+    return true;
   };
 
   const switchUser = (userId: string) => {
@@ -415,7 +438,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, switchUser, createAccount, createOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, decideApproval, setOrderStatus, reconcileOrderPayment, updateAccountCommercial, transferAccountResponsibility, importInventoryLots, resetDemo };
+  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, decideApproval, setOrderStatus, reconcileOrderPayment, updateAccountCommercial, transferAccountResponsibility, importInventoryLots, resetDemo };
   return <EnhancedWorkspaceContext.Provider value={value}>{children}</EnhancedWorkspaceContext.Provider>;
 }
 
