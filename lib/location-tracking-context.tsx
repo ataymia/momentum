@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_GEOFENCE_RADIUS_MILES,
   FIELD_TRACKING_STORAGE_KEY,
@@ -89,7 +89,11 @@ function pointFromPosition(position: GeolocationPosition): GeoPoint {
 function requestBrowserPoint(): Promise<GeoPoint> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) { reject(new Error("Location services are not available in this browser.")); return; }
-    navigator.geolocation.getCurrentPosition((position) => resolve(pointFromPosition(position)), (error) => reject(new Error(error.code === error.PERMISSION_DENIED ? "Location permission is required for field work." : "Could not verify the device location. Try again.")), { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 });
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve(pointFromPosition(position)),
+      (error) => reject(new Error(error.code === error.PERMISSION_DENIED ? "Location permission is required for field work." : "Could not verify the device location. Try again.")),
+      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 },
+    );
   });
 }
 
@@ -103,7 +107,10 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
   const watchRef = useRef<number | null>(null);
   const previousUserRef = useRef<string | null>(null);
 
-  useEffect(() => { stateRef.current = state; if (typeof window !== "undefined") window.localStorage.setItem(FIELD_TRACKING_STORAGE_KEY, JSON.stringify(state)); }, [state]);
+  useEffect(() => {
+    stateRef.current = state;
+    if (typeof window !== "undefined") window.localStorage.setItem(FIELD_TRACKING_STORAGE_KEY, JSON.stringify(state));
+  }, [state]);
 
   const todayEntries = useMemo(() => currentUser ? data.timeEntries.filter((entry) => entry.userId === currentUser.id && entry.date === today()) : [], [currentUser, data.timeEntries]);
   const hasActiveClock = todayEntries.some((entry) => !entry.clockOut);
@@ -112,19 +119,19 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
   const currentSession = currentUser ? activeTrackingSession(state, currentUser.id) : undefined;
   const currentSample = currentUser ? latestUserSample(state, currentUser.id) : undefined;
 
-  const closeActiveSessions = (userId: string, reason: TrackingSessionEndReason) => {
+  const closeActiveSessions = useCallback((userId: string, reason: TrackingSessionEndReason) => {
     const at = now();
     setState((current) => ({ ...current, sessions: current.sessions.map((session) => session.userId === userId && !session.endedAt ? { ...session, endedAt: at, endReason: reason } : session) }));
-  };
+  }, []);
 
-  const ensureSession = (userId: string) => {
+  const ensureSession = useCallback((userId: string) => {
     const existing = activeTrackingSession(stateRef.current, userId);
     if (existing) return existing.id;
     const session: TrackingSession = { id: uid("track-session"), userId, deviceId: managedDeviceId(), startedAt: now() };
     setState((current) => ({ ...current, sessions: [session, ...current.sessions] }));
     stateRef.current = { ...stateRef.current, sessions: [session, ...stateRef.current.sessions] };
     return session.id;
-  };
+  }, []);
 
   const visibleUserIds = useMemo(() => {
     if (!currentUser) return new Set<string>();
@@ -136,7 +143,7 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
 
   const canViewUserTracking = (userId: string) => visibleUserIds.has(userId);
 
-  const appendRouteSample = (userId: string, point: GeoPoint, source: LocationSampleSource, appointment?: Appointment, force = false) => {
+  const appendRouteSample = useCallback((userId: string, point: GeoPoint, source: LocationSampleSource, appointment?: Appointment, force = false) => {
     const sessionId = ensureSession(userId);
     const previous = latestUserSample(stateRef.current, userId);
     if (!force && !shouldPersistRouteSample(previous, point)) return previous;
@@ -144,9 +151,9 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
     setState((current) => ({ ...current, samples: [sample, ...current.samples].slice(0, MAX_ROUTE_SAMPLES) }));
     stateRef.current = { ...stateRef.current, samples: [sample, ...stateRef.current.samples].slice(0, MAX_ROUTE_SAMPLES) };
     return sample;
-  };
+  }, [ensureSession]);
 
-  const recordAppointmentEvent = (appointment: Appointment, event: AppointmentLocationEventType, source: LocationSampleSource, point: GeoPoint, decision?: GeofenceDecision, exceptionId?: string) => {
+  const recordAppointmentEvent = useCallback((appointment: Appointment, event: AppointmentLocationEventType, source: LocationSampleSource, point: GeoPoint, decision?: GeofenceDecision, exceptionId?: string) => {
     if (!currentUser) return undefined;
     const sample = appendRouteSample(currentUser.id, point, source, appointment, true);
     if (!sample) return undefined;
@@ -154,31 +161,52 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
     setState((current) => ({ ...current, appointmentEvents: [record, ...current.appointmentEvents] }));
     stateRef.current = { ...stateRef.current, appointmentEvents: [record, ...stateRef.current.appointmentEvents] };
     return record;
-  };
+  }, [appendRouteSample, currentUser]);
 
-  const getEventPoint = async () => {
+  const getEventPoint = useCallback(async () => {
     if (!currentUser) throw new Error("Sign in before recording field activity.");
     const latest = latestUserSample(stateRef.current, currentUser.id);
     if (latest && Date.now() - new Date(latest.at).getTime() <= FRESH_EVENT_SAMPLE_MS) return { latitude: latest.latitude, longitude: latest.longitude, accuracyMeters: latest.accuracyMeters, at: latest.at };
     setPermission("Requesting");
-    try { const point = await requestBrowserPoint(); setPermission("Active"); return point; }
-    catch (error) { setPermission(error instanceof Error && error.message.includes("permission") ? "Denied" : "Unavailable"); throw error; }
-  };
+    try {
+      const point = await requestBrowserPoint();
+      setPermission("Active");
+      return point;
+    } catch (error) {
+      setPermission(error instanceof Error && error.message.includes("permission") ? "Denied" : "Unavailable");
+      throw error;
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     if (!ready) return;
     const previous = previousUserRef.current;
     const next = currentUser?.id ?? null;
-    if (previous && previous !== next) closeActiveSessions(previous, "Logout");
     previousUserRef.current = next;
-  }, [currentUser?.id, ready]);
+    if (!previous || previous === next) return;
+    const handle = window.setTimeout(() => closeActiveSessions(previous, "Logout"), 0);
+    return () => window.clearTimeout(handle);
+  }, [closeActiveSessions, currentUser?.id, ready]);
 
   useEffect(() => {
     if (!ready || !currentUser) return;
-    if (clockedOutToday) { closeActiveSessions(currentUser.id, "Clock out"); setPermission("Stopped"); return; }
-    if (!roleIsTracked(currentUser.role)) { closeActiveSessions(currentUser.id, "Role not tracked"); setPermission("Stopped"); return; }
-    if (shouldTrack) ensureSession(currentUser.id);
-  }, [clockedOutToday, currentUser, ready, shouldTrack]);
+    const userId = currentUser.id;
+    const role = currentUser.role;
+    const handle = window.setTimeout(() => {
+      if (clockedOutToday) {
+        closeActiveSessions(userId, "Clock out");
+        setPermission("Stopped");
+        return;
+      }
+      if (!roleIsTracked(role)) {
+        closeActiveSessions(userId, "Role not tracked");
+        setPermission("Stopped");
+        return;
+      }
+      if (shouldTrack) ensureSession(userId);
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [clockedOutToday, closeActiveSessions, currentUser, ensureSession, ready, shouldTrack]);
 
   useEffect(() => {
     if (!shouldTrack || !currentUser) {
@@ -186,9 +214,17 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
       watchRef.current = null;
       return;
     }
-    if (typeof navigator === "undefined" || !navigator.geolocation) { setPermission("Unavailable"); closeActiveSessions(currentUser.id, "Browser unavailable"); return; }
-    setPermission("Requesting");
+
     const userId = currentUser.id;
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      const handle = window.setTimeout(() => {
+        setPermission("Unavailable");
+        closeActiveSessions(userId, "Browser unavailable");
+      }, 0);
+      return () => window.clearTimeout(handle);
+    }
+
+    const requestHandle = window.setTimeout(() => setPermission("Requesting"), 0);
     watchRef.current = navigator.geolocation.watchPosition((position) => {
       setPermission("Active");
       const point = pointFromPosition(position);
@@ -199,9 +235,15 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
         const profile = currentGeofence(snapshot, appointment.accountId);
         const decision = geofenceDecision(profile, point);
         if (!decision.configured || !decision.accuracyOk) continue;
-        if (decision.within) { delete outsideSinceRef.current[appointment.id]; continue; }
+        if (decision.within) {
+          delete outsideSinceRef.current[appointment.id];
+          continue;
+        }
         const firstOutside = outsideSinceRef.current[appointment.id];
-        if (!firstOutside) { outsideSinceRef.current[appointment.id] = point.at; continue; }
+        if (!firstOutside) {
+          outsideSinceRef.current[appointment.id] = point.at;
+          continue;
+        }
         if (!departureConfirmed(firstOutside, point.at)) continue;
         const event = recordAppointmentEvent(appointment, "Departure detected", "Departure", point, decision);
         if (!event) continue;
@@ -211,11 +253,20 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
         delete outsideSinceRef.current[appointment.id];
       }
     }, (error) => {
-      if (error.code === error.PERMISSION_DENIED) { setPermission("Denied"); closeActiveSessions(userId, "Permission denied"); }
-      else setPermission("Unavailable");
+      if (error.code === error.PERMISSION_DENIED) {
+        setPermission("Denied");
+        closeActiveSessions(userId, "Permission denied");
+      } else {
+        setPermission("Unavailable");
+      }
     }, { enableHighAccuracy: true, maximumAge: 30_000, timeout: 20_000 });
-    return () => { if (watchRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchRef.current); watchRef.current = null; };
-  }, [currentUser, data.appointments, shouldTrack]);
+
+    return () => {
+      window.clearTimeout(requestHandle);
+      if (watchRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchRef.current);
+      watchRef.current = null;
+    };
+  }, [appendRouteSample, closeActiveSessions, currentUser, data.appointments, recordAppointmentEvent, shouldTrack]);
 
   const transitionAppointment = async (appointmentId: string): Promise<ActionResult> => {
     const appointment = data.appointments.find((item) => item.id === appointmentId);
