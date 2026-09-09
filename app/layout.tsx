@@ -4,6 +4,7 @@ import "./final-pass.css";
 import "./departments.css";
 import "./performance-dispatch.css";
 import "./management-kpi.css";
+import "./employee-directory.css";
 import "./platform-controls.css";
 import "./owner-feedback.css";
 import "./account-health.css";
