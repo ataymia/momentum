@@ -34,11 +34,15 @@ test("appointment import enforces known enum formats and 24-hour time", () => {
   assert.equal(invalid.records.length,0);assert.ok(invalid.errors.length>=2);
 });
 
-test("order import cannot carry paid state or override source pricing", () => {
+test("order import requires an explicit product and cannot carry paid state or override source pricing", () => {
   const result=parseOrderImport([{accountId:"acc-1",cases:"10",pricePerCase:"1",product:"Golden Eagle",paymentStatus:"Paid"}]);
   assert.equal(result.records.length,1);
+  assert.equal(result.records[0].product,"Golden Eagle");
   assert.equal("paymentStatus" in result.records[0],false);
   assert.equal("pricePerCase" in result.records[0],false);
+  const missingProduct=parseOrderImport([{accountId:"acc-1",cases:"10",product:""}]);
+  assert.equal(missingProduct.records.length,0);
+  assert.ok(missingProduct.errors.some((error)=>error.includes("product")));
 });
 
 test("shift import rejects impossible times and accepts existing shift status values", () => {
