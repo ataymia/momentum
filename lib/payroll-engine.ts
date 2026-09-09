@@ -49,6 +49,11 @@ export type PayrollBenefitDeductions = { preTax: number; postTax: number; total:
 const today = () => new Date().toISOString().slice(0, 10);
 const payrollReadyTimecard = (status: string) => ["Manager approved", "Payroll ready"].includes(status);
 const zeroBenefits = (): PayrollBenefitDeductions => ({ preTax: 0, postTax: 0, total: 0, unconfigured: [] });
+const finiteNonNegative = (value: number) => Number.isFinite(value) && value >= 0;
+
+export function withholdingProfileValid(profile: WithholdingProfile | undefined) {
+  return Boolean(profile && [profile.federalPercent, profile.statePercent, profile.localPercent, profile.additionalWithholding, profile.postTaxDeduction].every(finiteNonNegative));
+}
 
 export function createPayrollSeed(): PayrollState {
   return { version: 5, payGroups: [], employees: [], withholdingProfiles: [], employerTaxRules: [], benefitTaxRules: [], runs: [], liabilities: [], disbursements: [] };
@@ -141,7 +146,7 @@ export function regularPayrollSource(data: WorkspaceData, employeeId: string, pe
 }
 
 export function payrollHourBreakdown(data: WorkspaceData, employeeId: string, source: RegularPayrollSource, overtimeThresholdHours: number): PayrollHourBreakdown | null {
-  if (!Number.isFinite(overtimeThresholdHours) || overtimeThresholdHours < 0) return null;
+  if (!finiteNonNegative(overtimeThresholdHours)) return null;
   const cards = source.timecardIds.map((id) => data.timecards.find((card) => card.id === id));
   if (cards.some((card) => !card)) return null;
   let totalHours = 0;
@@ -206,7 +211,9 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
   const group = employee ? state.payGroups.find((item) => item.id === employee.payGroupId && item.active) : undefined;
   const source = regularPayrollSource(data, employeeId, periodStart, periodEnd, sourceTimecardIds);
   const benefits = payrollBenefitDeductions(state, hcm, employeeId, periodEnd);
-  if (!employee || !withholding || !compensation || !group || !source || benefits.unconfigured.length > 0) return null;
+  if (!employee || !withholdingProfileValid(withholding) || !compensation || !finiteNonNegative(compensation.rate) || !group || !source || benefits.unconfigured.length > 0) return null;
+  const employerTaxRules = activeEmployerTaxes(state, periodEnd);
+  if (employerTaxRules.some((rule) => !finiteNonNegative(rule.percent))) return null;
   const totalHours = source.entries.reduce((sum, entry) => sum + timeEntryHours(entry), 0);
   const breakdown = compensation.basis === "Hourly" ? payrollHourBreakdown(data, employeeId, source, group.overtimeThresholdHours) : null;
   if (compensation.basis === "Hourly" && !breakdown) return null;
@@ -214,25 +221,34 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
   const regularHours = compensation.basis === "Hourly" ? breakdown!.regularHours : totalHours;
   const regularPay = compensation.basis === "Hourly" ? regularHours * compensation.rate : compensation.rate;
   const overtimePay = compensation.basis === "Hourly" ? overtimeHours * compensation.rate * 1.5 : 0;
-  return calculateNet(state, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, 0, source.timecardIds, [], withholding, benefits);
+  return calculateNet(state, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, 0, source.timecardIds, [], withholding!, benefits);
 }
 
 export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeId: string, payDate: string, bonusAmount: number, bonusIds: string[]): PayLine | null {
+  void hcm;
   const employee = activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, payDate);
-  if (!employee || !withholding || bonusAmount <= 0) return null;
-  return calculateNet(state, employeeId, payDate, 0, 0, 0, 0, bonusAmount, [], bonusIds, withholding, zeroBenefits());
+  if (!employee || !withholdingProfileValid(withholding) || !finiteNonNegative(bonusAmount) || bonusAmount <= 0) return null;
+  const employerTaxRules = activeEmployerTaxes(state, payDate);
+  if (employerTaxRules.some((rule) => !finiteNonNegative(rule.percent))) return null;
+  return calculateNet(state, employeeId, payDate, 0, 0, 0, 0, bonusAmount, [], bonusIds, withholding!, zeroBenefits());
 }
 
-function calculateNet(state: PayrollState, employeeId: string, asOf: string, regularHours: number, overtimeHours: number, regularPay: number, overtimePay: number, bonusPay: number, sourceTimecardIds: string[], sourceBonusIds: string[], withholding: WithholdingProfile, benefits: PayrollBenefitDeductions): PayLine {
+function calculateNet(state: PayrollState, employeeId: string, asOf: string, regularHours: number, overtimeHours: number, regularPay: number, overtimePay: number, bonusPay: number, sourceTimecardIds: string[], sourceBonusIds: string[], withholding: WithholdingProfile, benefits: PayrollBenefitDeductions): PayLine | null {
   const grossPay = regularPay + overtimePay + bonusPay;
-  const benefitDeduction = benefits.total;
-  const taxableWages = Math.max(0, grossPay - benefits.preTax);
+  if (!finiteNonNegative(grossPay) || !finiteNonNegative(benefits.preTax) || !finiteNonNegative(benefits.postTax)) return null;
+  const rawTaxableWages = grossPay - benefits.preTax;
+  if (rawTaxableWages < -0.005) return null;
+  const taxableWages = Math.max(0, rawTaxableWages);
   const federalTax = taxableWages * (withholding.federalPercent / 100);
   const stateTax = taxableWages * (withholding.statePercent / 100);
   const localTax = taxableWages * (withholding.localPercent / 100);
   const employeeTaxes = federalTax + stateTax + localTax + withholding.additionalWithholding;
   const employerTaxes = activeEmployerTaxes(state, asOf).reduce((sum, rule) => sum + taxableWages * (rule.percent / 100), 0);
-  const netPay = Math.max(0, grossPay - benefits.preTax - benefits.postTax - employeeTaxes - withholding.postTaxDeduction);
+  if (![federalTax, stateTax, localTax, employeeTaxes, employerTaxes].every(finiteNonNegative)) return null;
+  const rawNetPay = grossPay - benefits.preTax - benefits.postTax - employeeTaxes - withholding.postTaxDeduction;
+  if (rawNetPay < -0.005) return null;
+  const netPay = Math.max(0, rawNetPay);
+  const benefitDeduction = benefits.total;
   return { employeeId, regularHours, overtimeHours, regularPay, overtimePay, bonusPay, grossPay, benefitDeduction, preTaxBenefitDeduction: benefits.preTax, postTaxBenefitDeduction: benefits.postTax, taxableWages, federalTax, stateTax, localTax, additionalWithholding: withholding.additionalWithholding, postTaxDeduction: withholding.postTaxDeduction, employeeTaxes, employerTaxes, netPay, sourceTimecardIds, sourceBonusIds };
 }
