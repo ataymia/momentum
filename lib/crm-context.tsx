@@ -23,7 +23,7 @@ const validDateKey = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 type NewContact = Omit<CrmContact, "id" | "createdAt" | "createdBy">;
 type NewInteraction = Omit<CrmInteraction, "id" | "userId" | "occurredAt"> & { occurredAt?: string };
-type NewOpportunity = Omit<Opportunity, "id" | "ownerId" | "status" | "lossReason" | "createdAt" | "createdBy" | "updatedAt">;
+type NewOpportunity = Omit<Opportunity, "id" | "createdAt" | "createdBy" | "updatedAt">;
 type MutationResult = { ok: boolean; message?: string };
 type CrmContextValue = {
   crm: CrmState;
@@ -117,7 +117,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     if (!ownerId) return "";
     const id = uid("opportunity");
     const stamp = now();
-    const initial: Opportunity = { ...input, id, name: input.name.trim(), ownerId, status: "Open", createdAt: stamp, createdBy: currentUser?.id ?? "system", updatedAt: stamp };
+    const initial: Opportunity = { ...input, id, name: input.name.trim(), ownerId, status: "Open", lossReason: undefined, createdAt: stamp, createdBy: currentUser?.id ?? "system", updatedAt: stamp };
     const normalized = normalizeOpportunityTransition(initial, {}, stamp);
     if (!normalized.ok || !normalized.opportunity) return "";
     setCrm((current) => ({ ...current, opportunities: [normalized.opportunity!, ...current.opportunities] }));
