@@ -6,6 +6,8 @@ import { appendAudit } from "../../lib/hcm-engine";
 import { findAccountDuplicate } from "../../lib/duplicate-engine";
 import { parseAccountImport, parseAppointmentImport, parseCsv, parseInventoryImport, parseOrderImport, parseShiftImport, rowsToCsv, type CsvRow } from "../../lib/csv-data-exchange";
 import { useHcm } from "../../lib/hcm-context";
+import { productInventoryStatus } from "../../lib/inventory-ledger";
+import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import type { Account, InventoryLot } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Section, StatusPill } from "../ui";
@@ -16,7 +18,7 @@ const datasets:DatasetDefinition[]=[
   {key:"accounts",label:"Customer locations / accounts",description:"Bulk-create CRM locations through the same duplicate and ownership rules used by the interface.",importMode:"create",template:["name","location","channel","contactName","contactRole","phone","email","customerName","locationName","streetAddress"]},
   {key:"inventory",label:"Inventory lots",description:"Bulk-create lot master records. Custody receipts are normalized into the inventory ledger after the lot records are accepted.",importMode:"create",template:["lotCode","product","receivedAt","bestBy","onHand","reserved","status","location","holdReason"]},
   {key:"appointments",label:"Appointments",description:"Bulk-create scheduled work. Account and assignee IDs must already exist.",importMode:"create",template:["accountId","ownerId","date","startTime","duration","type","priority","arrivalWindow","objective","tags"]},
-  {key:"orders",label:"Orders",description:"Bulk-create orders through Momentum pricing and approval logic. CSV cannot declare an order paid or bypass pricing controls.",importMode:"create",template:["accountId","cases","product"]},
+  {key:"orders",label:"Orders",description:"Bulk-create orders through Momentum pricing and approval logic. CSV requires an explicit tracked product and cannot declare an order paid or bypass pricing or custody-ledger stock controls.",importMode:"create",template:["accountId","cases","product"]},
   {key:"placements",label:"Placement observations",description:"Bulk-update existing placement observations by placement ID. Unknown IDs are rejected rather than silently creating records.",importMode:"existing",template:["id","observedStock","facings","cold","shelfPrice"]},
   {key:"employees",label:"Employee employment profiles",description:"Bulk-update existing employee HR profile fields. User identities must already exist and are never created by CSV.",importMode:"existing",template:["userId","jobTitle","department","location","managerId","classification","payGroup","standardWeeklyHours","status"]},
   {key:"shifts",label:"Employee shifts",description:"Bulk-create scheduled shifts for existing employee IDs.",importMode:"create",template:["userId","date","startTime","endTime","role","location","status","note"]},
@@ -30,6 +32,7 @@ const accountFileKey=(row:{name:string;locationName?:string;streetAddress?:strin
 export function DataExchangeCenter(){
   const {data,currentUser,createAccount,createAppointment,createOrder,updatePlacement,importInventoryLots}=useWorkspace();
   const{hcm,setHcm}=useHcm();
+  const{ledger}=useInventoryLedger();
   const[selected,setSelected]=useState<DatasetKey>("accounts");const[fileName,setFileName]=useState("");const[rawRows,setRawRows]=useState<CsvRow[]>([]);const[parseErrors,setParseErrors]=useState<string[]>([]);const[notice,setNotice]=useState("");const inputRef=useRef<HTMLInputElement|null>(null);
   const definition=datasets.find((item)=>item.key===selected)!;
   const exportRows=useMemo(()=>{
@@ -73,9 +76,10 @@ export function DataExchangeCenter(){
       if(errors.length){fail(errors);return;}
       for(const record of parsed.records){const id=createAppointment(record);if(!id){errors.push(`Momentum rejected an appointment for ${record.accountId} on ${record.date}. No further rows were attempted.`);break;}imported+=1;}
     } else if(selected==="orders"){
-      const parsed=parseOrderImport(rawRows);errors.push(...parsed.errors);parsed.records.forEach((record,index)=>{if(!data.accounts.some((account)=>account.id===record.accountId))errors.push(`Row ${index+2}: unknown accountId ${record.accountId}.`);});
+      const parsed=parseOrderImport(rawRows);errors.push(...parsed.errors);
+      parsed.records.forEach((record,index)=>{if(!data.accounts.some((account)=>account.id===record.accountId))errors.push(`Row ${index+2}: unknown accountId ${record.accountId}.`);if(!data.inventory.some((lot)=>lot.product===record.product))errors.push(`Row ${index+2}: product ${record.product} is not a tracked inventory product.`);});
       if(errors.length){fail(errors);return;}
-      for(const record of parsed.records){const id=createOrder({accountId:record.accountId,cases:record.cases,product:record.product});if(!id){errors.push(`Momentum rejected an order for account ${record.accountId}. No further rows were attempted.`);break;}imported+=1;}
+      for(const record of parsed.records){const available=productInventoryStatus(ledger,data,record.product).available;const id=createOrder({accountId:record.accountId,cases:record.cases,product:record.product,inventoryAvailableAtOrder:available});if(!id){errors.push(`Momentum rejected an order for account ${record.accountId}. No further rows were attempted.`);break;}imported+=1;}
     } else if(selected==="placements"){
       const seen=new Set<string>();const updates:{id:string;stock:number;facings:number;cold:boolean;price:number}[]=[];
       rawRows.forEach((row,index)=>{const rowNumber=index+2;const placement=data.placements.find((item)=>item.id===row.id);if(!row.id||!placement){errors.push(`Row ${rowNumber}: placement id must match an existing record.`);return;}if(seen.has(row.id)){errors.push(`Row ${rowNumber}: duplicate placement id ${row.id}.`);return;}seen.add(row.id);const stock=Number(row.observedStock),facings=Number(row.facings),price=Number(row.shelfPrice);if(!Number.isFinite(stock)||stock<0||!Number.isFinite(facings)||facings<0||!Number.isFinite(price)||price<0){errors.push(`Row ${rowNumber}: observedStock, facings, and shelfPrice must be non-negative numbers.`);return;}updates.push({id:row.id,stock,facings,cold:booleanValue(row.cold),price});});
