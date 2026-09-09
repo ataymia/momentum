@@ -46,7 +46,8 @@ function phoenixParts(value: string) {
 export function canViewEmployeeManagementDetail(actor: WorkspaceUser | null | undefined, target: WorkspaceUser) {
   if (!actor) return false;
   if (actor.role === "Administrator") return true;
-  if (actor.role !== "Sales Manager" || target.id === actor.id) return false;
+  if (actor.role !== "Sales Manager") return false;
+  if (target.id === actor.id) return true;
   return target.managerId === actor.id || (actor.managedTeams ?? []).includes(target.team);
 }
 
