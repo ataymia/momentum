@@ -1,23 +1,25 @@
 "use client";
 
 import { AlertTriangle } from "lucide-react";
-import { invalidBonusSourcesForRun } from "../../lib/payroll-engine";
+import { useHcm } from "../../lib/hcm-context";
+import { payrollRunControlIssues } from "../../lib/payroll-controls";
 import { usePayroll } from "../../lib/payroll-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import { PayrollPage as PayrollPageV2 } from "./payroll-v2";
 
 export function PayrollPage() {
   const { data, currentUser } = useWorkspace();
+  const { hcm } = useHcm();
   const { payroll } = usePayroll();
   const sourceExceptions = currentUser?.role === "Administrator"
     ? payroll.runs
         .filter((run) => run.status !== "Voided")
-        .map((run) => ({ run, invalidBonusIds: invalidBonusSourcesForRun(run, data) }))
-        .filter((item) => item.invalidBonusIds.length > 0)
+        .map((run) => ({ run, issues: payrollRunControlIssues(payroll, data, hcm, run) }))
+        .filter((item) => item.issues.length > 0)
     : [];
 
   return <>
-    {sourceExceptions.length > 0 && <div className="report-integrity-banner"><AlertTriangle size={20}/><div><strong>Payroll source correction required.</strong><p>{sourceExceptions.map(({run,invalidBonusIds})=>`${run.id}: ${invalidBonusIds.length} bonus source${invalidBonusIds.length===1?"":"s"} no longer qualifies`).join(" · ")}. Approval, release, and unsettled disbursement actions are blocked until the changed customer-payment source is corrected through the payroll exception path.</p></div></div>}
+    {sourceExceptions.length > 0 && <div className="report-integrity-banner"><AlertTriangle size={20}/><div><strong>Payroll source correction required.</strong><p>{sourceExceptions.map(({run,issues})=>`${run.id}: ${issues.map((issue)=>issue.detail).join(" ")}`).join(" · ")}</p><small>Approval, release, reissue, unsettled disbursement, and tax-liability actions remain blocked until the current source records are reconciled and a corrected payroll draft is built where required.</small></div></div>}
     <PayrollPageV2/>
   </>;
 }
