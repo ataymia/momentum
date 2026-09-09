@@ -49,6 +49,16 @@ function payrollFixture() {
   return { data: { ...base, timecards: [approved, open], timeEntries: [approvedEntry, openEntry] }, approved, open };
 }
 
+function configuredPayroll(data: ReturnType<typeof createDemoData>) {
+  const payroll = createPayrollSeed();
+  payroll.payGroups = [{ id: "group-1", name: "Configured", frequency: "Biweekly", overtimeThresholdHours: 40, active: true }];
+  payroll.employees = [{ userId: "usr-jordan", payGroupId: "group-1", paymentMethod: "Manual", paymentTokenLabel: "", active: true }];
+  payroll.withholdingProfiles = [{ userId: "usr-jordan", federalPercent: 0, statePercent: 0, localPercent: 0, additionalWithholding: 0, postTaxDeduction: 0, effectiveDate: "2026-01-01" }];
+  const hcm = createHcmSeed(data);
+  hcm.compensation = [{ id: "comp-1", userId: "usr-jordan", basis: "Hourly", rate: 20, effectiveDate: "2026-01-01", reason: "Test", status: "Active", approvedBy: "usr-mia", createdAt: "2026-01-01T12:00:00Z" }];
+  return { payroll, hcm };
+}
+
 function runWithSource(timecardId: string): PayRun {
   return {
     id: "run-regular",
@@ -99,18 +109,36 @@ test("open, returned, missing, wrong-employee, and out-of-period timecards canno
   assert.equal(regularPayrollSource(returnedData, "usr-jordan", "2026-08-01", "2026-08-14", ["tc-approved"]), null);
 });
 
+test("overlapping source timecards are rejected instead of double-counting the same work date", () => {
+  const { data, approved } = payrollFixture();
+  const overlap = { ...approved, id: "tc-overlap", weekStart: "2026-08-07", weekEnd: "2026-08-13" };
+  const overlapped = { ...data, timecards: [approved, overlap] };
+  assert.equal(regularPayrollSource(overlapped, "usr-jordan", "2026-08-01", "2026-08-14", [approved.id, overlap.id]), null);
+});
+
 test("regular payroll calculation cannot leak hours from an unapproved week in the same pay-period range", () => {
   const { data } = payrollFixture();
-  const payroll = createPayrollSeed();
-  payroll.payGroups = [{ id: "group-1", name: "Weekly", frequency: "Weekly", overtimeThresholdHours: 40, active: true }];
-  payroll.employees = [{ userId: "usr-jordan", payGroupId: "group-1", paymentMethod: "Manual", paymentTokenLabel: "", active: true }];
-  payroll.withholdingProfiles = [{ userId: "usr-jordan", federalPercent: 0, statePercent: 0, localPercent: 0, additionalWithholding: 0, postTaxDeduction: 0, effectiveDate: "2026-01-01" }];
-  const hcm = createHcmSeed(data);
-  hcm.compensation = [{ id: "comp-1", userId: "usr-jordan", basis: "Hourly", rate: 20, effectiveDate: "2026-01-01", reason: "Test", status: "Active", approvedBy: "usr-mia", createdAt: "2026-01-01T12:00:00Z" }];
+  const { payroll, hcm } = configuredPayroll(data);
   const line = calculateRegularLine(payroll, data, hcm, "usr-jordan", "2026-08-01", "2026-08-14", ["tc-approved"]);
   assert.equal(line?.regularHours, 8);
   assert.equal(line?.grossPay, 160);
   assert.deepEqual(line?.sourceTimecardIds, ["tc-approved"]);
+});
+
+test("biweekly payroll applies the configured overtime threshold separately to each approved workweek", () => {
+  const base = createDemoData();
+  const timecardSeed = base.timecards[0];
+  const entrySeed = base.timeEntries[0];
+  const first = { ...timecardSeed, id: "tc-week-1", userId: "usr-jordan", weekStart: "2026-08-01", weekEnd: "2026-08-07", status: "Manager approved" as const, attested: true, approverId: "usr-avery" };
+  const second = { ...timecardSeed, id: "tc-week-2", userId: "usr-jordan", weekStart: "2026-08-08", weekEnd: "2026-08-14", status: "Manager approved" as const, attested: true, approverId: "usr-avery" };
+  const dates = ["2026-08-01", "2026-08-02", "2026-08-03", "2026-08-04", "2026-08-05", "2026-08-08", "2026-08-09", "2026-08-10", "2026-08-11", "2026-08-12"];
+  const entries = dates.map((date, index) => ({ ...entrySeed, id: `te-${index + 1}`, userId: "usr-jordan", date, clockIn: "09:00", clockOut: "17:00", breakMinutes: 0 }));
+  const data = { ...base, timecards: [first, second], timeEntries: entries };
+  const { payroll, hcm } = configuredPayroll(data);
+  const line = calculateRegularLine(payroll, data, hcm, "usr-jordan", "2026-08-01", "2026-08-14", [first.id, second.id]);
+  assert.equal(line?.regularHours, 80);
+  assert.equal(line?.overtimeHours, 0);
+  assert.equal(line?.grossPay, 1600);
 });
 
 test("a regular run is blocked if its source timecard later leaves payroll-ready status", () => {
