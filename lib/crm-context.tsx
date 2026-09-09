@@ -7,25 +7,31 @@ import {
   CrmInteraction,
   CrmState,
   Opportunity,
+  OpportunityUpdate,
   ResponsibilityEvent,
+  contactMatchesLocation,
   createCrmSeed,
   normalizeCrmState,
+  normalizeOpportunityTransition,
+  opportunityOwnerForLocation,
 } from "./crm-engine";
 import { useWorkspace } from "./workspace-context";
 
 const now = () => new Date().toISOString();
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const validDateKey = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 type NewContact = Omit<CrmContact, "id" | "createdAt" | "createdBy">;
 type NewInteraction = Omit<CrmInteraction, "id" | "userId" | "occurredAt"> & { occurredAt?: string };
-type NewOpportunity = Omit<Opportunity, "id" | "createdAt" | "createdBy" | "updatedAt">;
+type NewOpportunity = Omit<Opportunity, "id" | "ownerId" | "status" | "lossReason" | "createdAt" | "createdBy" | "updatedAt">;
+type MutationResult = { ok: boolean; message?: string };
 type CrmContextValue = {
   crm: CrmState;
   addContact: (input: NewContact) => string;
   addInteraction: (input: NewInteraction) => string;
   addOpportunity: (input: NewOpportunity) => string;
-  updateOpportunity: (id: string, patch: Partial<Opportunity>) => void;
-  recordResponsibility: (input: Omit<ResponsibilityEvent, "id" | "effectiveAt" | "changedBy"> & { effectiveAt?: string }) => void;
+  updateOpportunity: (id: string, patch: OpportunityUpdate) => MutationResult;
+  recordResponsibility: (input: Omit<ResponsibilityEvent, "id" | "effectiveAt" | "changedBy"> & { effectiveAt?: string }) => boolean;
   resetCrm: () => void;
 };
 
@@ -73,15 +79,18 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   }, [currentUser?.role, customerIds, locationIds, salesRole, state]);
 
   const addContact = (input: NewContact) => {
-    if (!salesRole || !customerInScope(input.customerId) || (input.locationId && !locationInScope(input.locationId))) return "";
+    if (!salesRole || !customerInScope(input.customerId) || !input.name.trim() || !input.role.trim()) return "";
+    const location = input.locationId ? data.accounts.find((item) => item.id === input.locationId) : undefined;
+    if (input.scope === "Location" && (!location || !locationInScope(location.id) || location.customerId !== input.customerId)) return "";
+    if (input.scope === "Customer" && input.locationId) return "";
     const id = uid("contact");
-    const record: CrmContact = { ...input, id, createdAt: now(), createdBy: currentUser?.id ?? "system" };
+    const record: CrmContact = { ...input, id, name: input.name.trim(), role: input.role.trim(), email: input.email?.trim() || undefined, phone: input.phone?.trim() || undefined, locationId: input.scope === "Location" ? input.locationId : undefined, createdAt: now(), createdBy: currentUser?.id ?? "system" };
     setCrm((current) => ({
       ...current,
       contacts: [
         record,
         ...(input.primary
-          ? current.contacts.map((item) => item.scope === input.scope && item.customerId === input.customerId && item.locationId === input.locationId ? { ...item, primary: false } : item)
+          ? current.contacts.map((item) => item.scope === record.scope && item.customerId === record.customerId && item.locationId === record.locationId ? { ...item, primary: false } : item)
           : current.contacts),
       ],
     }));
@@ -89,32 +98,49 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   };
 
   const addInteraction = (input: NewInteraction) => {
-    if (!salesRole || !locationInScope(input.locationId)) return "";
+    if (!salesRole || !locationInScope(input.locationId) || !input.summary.trim()) return "";
+    if (input.contactId && !contactMatchesLocation(state, input.contactId, input.locationId, data)) return "";
+    const hasNextAction = Boolean(input.nextAction?.trim());
+    const hasNextDate = Boolean(input.nextActionDate);
+    if (hasNextAction !== hasNextDate || (input.nextActionDate && !validDateKey(input.nextActionDate))) return "";
     const id = uid("interaction");
-    const record: CrmInteraction = { ...input, id, userId: currentUser?.id ?? "system", occurredAt: input.occurredAt ?? now() };
+    const record: CrmInteraction = { ...input, id, summary: input.summary.trim(), outcome: input.outcome?.trim() || undefined, nextAction: input.nextAction?.trim() || undefined, nextActionDate: input.nextActionDate || undefined, contactId: input.contactId || undefined, userId: currentUser?.id ?? "system", occurredAt: input.occurredAt ?? now() };
     setCrm((current) => ({ ...current, interactions: [record, ...current.interactions] }));
     return id;
   };
 
   const addOpportunity = (input: NewOpportunity) => {
     if (!salesRole || !locationInScope(input.locationId) || !customerInScope(input.customerId)) return "";
+    const location = data.accounts.find((item) => item.id === input.locationId);
+    if (!location || location.customerId !== input.customerId || input.stage === "Won" || input.stage === "Lost") return "";
+    const ownerId = opportunityOwnerForLocation(data, input.locationId);
+    if (!ownerId) return "";
     const id = uid("opportunity");
     const stamp = now();
-    const record: Opportunity = { ...input, id, createdAt: stamp, createdBy: currentUser?.id ?? "system", updatedAt: stamp };
-    setCrm((current) => ({ ...current, opportunities: [record, ...current.opportunities] }));
+    const initial: Opportunity = { ...input, id, name: input.name.trim(), ownerId, status: "Open", createdAt: stamp, createdBy: currentUser?.id ?? "system", updatedAt: stamp };
+    const normalized = normalizeOpportunityTransition(initial, {}, stamp);
+    if (!normalized.ok || !normalized.opportunity) return "";
+    setCrm((current) => ({ ...current, opportunities: [normalized.opportunity!, ...current.opportunities] }));
     return id;
   };
 
-  const updateOpportunity = (id: string, patch: Partial<Opportunity>) => {
+  const updateOpportunity = (id: string, patch: OpportunityUpdate): MutationResult => {
     const existing = state.opportunities.find((item) => item.id === id);
-    if (!salesRole || !existing || !locationInScope(existing.locationId)) return;
-    setCrm((current) => ({ ...current, opportunities: current.opportunities.map((item) => item.id === id ? { ...item, ...patch, updatedAt: now() } : item) }));
+    if (!salesRole || !existing || !locationInScope(existing.locationId)) return { ok: false, message: "Opportunity is outside your CRM scope." };
+    const normalized = normalizeOpportunityTransition(existing, patch);
+    if (!normalized.ok || !normalized.opportunity) return { ok: false, message: normalized.message ?? "Opportunity update is invalid." };
+    setCrm((current) => ({ ...current, opportunities: current.opportunities.map((item) => item.id === id ? normalized.opportunity! : item) }));
+    return { ok: true };
   };
 
   const recordResponsibility = (input: Omit<ResponsibilityEvent, "id" | "effectiveAt" | "changedBy"> & { effectiveAt?: string }) => {
-    if (!currentUser || !["Administrator", "Sales Manager"].includes(currentUser.role) || !locationInScope(input.locationId)) return;
-    const record: ResponsibilityEvent = { ...input, id: uid("responsibility"), effectiveAt: input.effectiveAt ?? now(), changedBy: currentUser.id };
+    if (!currentUser || !["Administrator", "Sales Manager"].includes(currentUser.role) || !locationInScope(input.locationId) || input.reason.trim().length < 3) return false;
+    const target = data.users.find((user) => user.id === input.toUserId && ["Sales Representative", "Sales Manager", "Administrator"].includes(user.role));
+    if (!target) return false;
+    if (input.fromUserId && !data.users.some((user) => user.id === input.fromUserId)) return false;
+    const record: ResponsibilityEvent = { ...input, reason: input.reason.trim(), id: uid("responsibility"), effectiveAt: input.effectiveAt ?? now(), changedBy: currentUser.id };
     setCrm((current) => ({ ...current, responsibilityHistory: [record, ...current.responsibilityHistory] }));
+    return true;
   };
 
   const resetCrm = () => {
