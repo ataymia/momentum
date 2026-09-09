@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
-import { DailyWorkReport, ManagerWeeklyReport, PERFORMANCE_STORAGE_KEY, PerformanceGoal, PerformanceState, WorkReport, ReportNote, createPerformanceSeed, normalizePerformanceState } from "./performance-engine";
+import { DailyWorkReport, ManagerWeeklyReport, PERFORMANCE_STORAGE_KEY, PerformanceGoal, PerformanceState, WorkReport, ReportNote, canViewPerformanceRecord, createPerformanceSeed, normalizePerformanceState } from "./performance-engine";
 import { useWorkspace } from "./workspace-context";
 
 const now=()=>new Date().toISOString();
@@ -12,23 +12,23 @@ type NewDailyReport=Omit<DailyWorkReport,"id"|"submittedAt"|"status"|"reviewerId
 type NewManagerReport=Omit<ManagerWeeklyReport,"id"|"submittedAt"|"status"|"reviewerId"|"reviewedAt"|"reviewerNotes">;
 type NewReport=NewDailyReport|NewManagerReport;
 type PerformanceContextValue={
-  performance:PerformanceState; createGoal:(goal:NewGoal)=>string; updateManualGoal:(goalId:string,value:number,note?:string)=>void; cancelGoal:(goalId:string)=>void;
-  submitReport:(report:NewReport)=>string; reviewReport:(reportId:string,note:string)=>void; addReportNote:(reportId:string,note:string)=>void; resetPerformance:()=>void;
+  performance:PerformanceState; createGoal:(goal:NewGoal)=>string|null; updateManualGoal:(goalId:string,value:number,note?:string)=>boolean; cancelGoal:(goalId:string)=>boolean;
+  submitReport:(report:NewReport)=>string|null; reviewReport:(reportId:string,note:string)=>boolean; addReportNote:(reportId:string,note:string)=>boolean; resetPerformance:()=>boolean;
 };
 const PerformanceContext=createContext<PerformanceContextValue|null>(null);
 
 const readState=()=>{if(typeof window==="undefined")return createPerformanceSeed();try{return normalizePerformanceState(JSON.parse(window.localStorage.getItem(PERFORMANCE_STORAGE_KEY)??"null"));}catch{return createPerformanceSeed();}};
 
 export function PerformanceProvider({children}:{children:ReactNode}){
-  const {currentUser}=useWorkspace();const[performance,setPerformance]=useState<PerformanceState>(()=>readState());
+  const {currentUser,data}=useWorkspace();const[performance,setPerformance]=useState<PerformanceState>(()=>readState());
   useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(PERFORMANCE_STORAGE_KEY,JSON.stringify(performance));},[performance]);
-  const createGoal=(goal:NewGoal)=>{const id=uid("goal");setPerformance((state)=>({...state,goals:[{...goal,id,createdAt:now(),updatedAt:now()},...state.goals]}));return id;};
-  const updateManualGoal=(goalId:string,value:number,note?:string)=>setPerformance((state)=>({...state,goals:state.goals.map((goal)=>goal.id===goalId?{...goal,manualValue:Math.max(0,value),note:note??goal.note,updatedAt:now()}:goal)}));
-  const cancelGoal=(goalId:string)=>setPerformance((state)=>({...state,goals:state.goals.map((goal)=>goal.id===goalId?{...goal,status:"Cancelled",updatedAt:now()}:goal)}));
-  const submitReport=(report:NewReport)=>{const id=uid("report");setPerformance((state)=>({...state,reports:[{...report,id,submittedAt:now(),status:"Submitted"} as WorkReport,...state.reports]}));return id;};
-  const reviewReport=(reportId:string,note:string)=>{if(!currentUser)return;setPerformance((state)=>({...state,reports:state.reports.map((report)=>report.id===reportId?{...report,status:"Reviewed",reviewerId:currentUser.id,reviewedAt:now(),reviewerNotes:note.trim()||undefined}:report)}));};
-  const addReportNote=(reportId:string,note:string)=>{if(!currentUser||!note.trim())return;const record:ReportNote={id:uid("report-note"),reportId,authorId:currentUser.id,note:note.trim(),createdAt:now()};setPerformance((state)=>({...state,notes:[record,...state.notes]}));};
-  const resetPerformance=()=>setPerformance(createPerformanceSeed());
+  const createGoal=(goal:NewGoal)=>{if(!currentUser||goal.userId!==currentUser.id)return null;const id=uid("goal");setPerformance((state)=>({...state,goals:[{...goal,id,createdAt:now(),updatedAt:now()},...state.goals]}));return id;};
+  const updateManualGoal=(goalId:string,value:number,note?:string)=>{if(!currentUser)return false;const goal=performance.goals.find((item)=>item.id===goalId);if(!goal||goal.userId!==currentUser.id||goal.metric!=="Manual"||goal.status==="Cancelled")return false;setPerformance((state)=>({...state,goals:state.goals.map((item)=>item.id===goalId?{...item,manualValue:Math.max(0,value),note:note??item.note,updatedAt:now()}:item)}));return true;};
+  const cancelGoal=(goalId:string)=>{if(!currentUser)return false;const goal=performance.goals.find((item)=>item.id===goalId);if(!goal||goal.userId!==currentUser.id)return false;setPerformance((state)=>({...state,goals:state.goals.map((item)=>item.id===goalId?{...item,status:"Cancelled",updatedAt:now()}:item)}));return true;};
+  const submitReport=(report:NewReport)=>{if(!currentUser||report.userId!==currentUser.id)return null;if(report.type==="Manager weekly"&&!(["Sales Manager","Administrator"].includes(currentUser.role)))return null;const duplicate=performance.reports.some((existing)=>existing.userId===currentUser.id&&(report.type==="Daily"?existing.type==="Daily"&&existing.workDate===report.workDate:existing.type==="Manager weekly"&&existing.weekStart===report.weekStart&&existing.weekEnd===report.weekEnd));if(duplicate)return null;const id=uid("report");setPerformance((state)=>({...state,reports:[{...report,id,submittedAt:now(),status:"Submitted"} as WorkReport,...state.reports]}));return id;};
+  const reviewReport=(reportId:string,note:string)=>{if(!currentUser||!["Sales Manager","Administrator"].includes(currentUser.role))return false;const report=performance.reports.find((item)=>item.id===reportId);if(!report||report.userId===currentUser.id||!canViewPerformanceRecord(currentUser,report.userId,data))return false;setPerformance((state)=>({...state,reports:state.reports.map((item)=>item.id===reportId?{...item,status:"Reviewed",reviewerId:currentUser.id,reviewedAt:now(),reviewerNotes:note.trim()||undefined}:item)}));return true;};
+  const addReportNote=(reportId:string,note:string)=>{if(!currentUser||!["Sales Manager","Administrator"].includes(currentUser.role)||!note.trim())return false;const report=performance.reports.find((item)=>item.id===reportId);if(!report||report.userId===currentUser.id||!canViewPerformanceRecord(currentUser,report.userId,data))return false;const record:ReportNote={id:uid("report-note"),reportId,authorId:currentUser.id,note:note.trim(),createdAt:now()};setPerformance((state)=>({...state,notes:[record,...state.notes]}));return true;};
+  const resetPerformance=()=>{if(currentUser?.role!=="Administrator")return false;setPerformance(createPerformanceSeed());return true;};
   const value:PerformanceContextValue={performance,createGoal,updateManualGoal,cancelGoal,submitReport,reviewReport,addReportNote,resetPerformance};
   return <PerformanceContext.Provider value={value}>{children}</PerformanceContext.Provider>;
 }
