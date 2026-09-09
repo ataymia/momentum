@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { MARKETING_STORAGE_KEY, Asset, Campaign, MarketingAttribution, MarketingRequest, MarketingSpend, MarketingState, MarketingTouch, MaterialItem, MaterialMovement, Partnership, createMarketingSeed, materialBalance, normalizeMarketingState } from "./marketing-engine";
+import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
 const now=()=>new Date().toISOString();
@@ -10,7 +11,7 @@ type MarketingContextValue={state:MarketingState;submitRequest:(input:Omit<Marke
 const MarketingContext=createContext<MarketingContextValue|null>(null);
 
 export function MarketingProvider({children}:{children:ReactNode}){
-  const{data,scope,currentUser}=useWorkspace();
+  const{data,scope,currentUser}=useWorkspace();const runtime=useRuntimeMode();
   const read=()=>{if(typeof window==="undefined")return createMarketingSeed();try{return normalizeMarketingState(JSON.parse(window.localStorage.getItem(MARKETING_STORAGE_KEY)??"null"));}catch{return createMarketingSeed();}};
   const[state,setState]=useState<MarketingState>(()=>read());
   useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(MARKETING_STORAGE_KEY,JSON.stringify(state));},[state]);
@@ -53,7 +54,7 @@ export function MarketingProvider({children}:{children:ReactNode}){
   const addAttribution=(input:Omit<MarketingAttribution,"id"|"createdAt"|"createdBy"|"reviewed">)=>{if(!isEmployee||!currentUser||!campaignExists(input.campaignId)||!accountInScope(input.accountId)||!input.note.trim()||!sourceExists(input))return"";const id=uid("attribution");setState((s)=>({...s,attributions:[{...input,note:input.note.trim(),id,createdAt:now(),createdBy:currentUser.id,reviewed:false},...s.attributions]}));return id;};
   const reviewAttribution=(id:string)=>{if(!isAdmin)return;setState((s)=>({...s,attributions:s.attributions.map((item)=>item.id===id&&!item.reviewed&&sourceExists(item)?{...item,reviewed:true,reviewedBy:currentUser?.id,reviewedAt:now()}:item)}));};
   const addPartnership=(input:Omit<Partnership,"id"|"createdAt"|"ownerId">)=>{if(!isEmployee||!currentUser||!input.name.trim()||!input.type.trim()||!input.notes.trim()||!campaignExists(input.campaignId))return"";const id=uid("partnership");setState((s)=>({...s,partnerships:[{...input,name:input.name.trim(),type:input.type.trim(),notes:input.notes.trim(),id,createdAt:now(),ownerId:currentUser.id},...s.partnerships]}));return id;};
-  const resetMarketing=()=>{if(isAdmin)setState(createMarketingSeed());};
+  const resetMarketing=()=>{if(runtime.isDemo&&isAdmin)setState(createMarketingSeed());};
   const value:MarketingContextValue={state,submitRequest,decideRequest,fulfillRequest,createCampaign,decideCampaign,setCampaignStatus,recordSpend,decideSpend,reconcileSpend,addAsset,setAssetStatus,addMaterial,moveMaterial,addTouch,addAttribution,reviewAttribution,addPartnership,resetMarketing};
   return <MarketingContext.Provider value={value}>{children}</MarketingContext.Provider>;
 }
