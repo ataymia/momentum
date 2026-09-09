@@ -10,7 +10,7 @@ export const DEPARTURE_CONFIRM_SECONDS = 30;
 export const MAX_ROUTE_SAMPLES = 10000;
 
 export type TrackingPermission = "Idle" | "Requesting" | "Active" | "Denied" | "Unavailable" | "Stopped";
-export type TrackingSessionEndReason = "Logout" | "Clock out" | "Role not tracked" | "Permission denied" | "Browser unavailable" | "Manual stop";
+export type TrackingSessionEndReason = "Logout" | "Clock out" | "No active clock" | "Role not tracked" | "Permission denied" | "Browser unavailable" | "Manual stop";
 export type LocationSampleSource = "Route" | "Dispatch" | "Route start" | "Arrival" | "Departure" | "Closeout" | "Geofence setup";
 export type AppointmentLocationEventType = "Dispatched" | "Route started" | "Arrival verified" | "Departure detected" | "Closeout recorded" | "Offsite continuation";
 
