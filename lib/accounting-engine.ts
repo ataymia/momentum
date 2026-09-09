@@ -1,4 +1,4 @@
-import { paymentSettlementDate, type CommerceState } from "./commerce-engine";
+import { paymentSettlementDate, type CommerceState, type Payment } from "./commerce-engine";
 import type { FinanceState } from "./finance-engine";
 import type { InventoryLedgerState } from "./inventory-ledger";
 import type { PayRun, PayrollState } from "./payroll-engine";
@@ -21,6 +21,7 @@ export type PayrollJournalTotals={grossWages:number;employerTaxes:number;employe
 const now=()=>new Date().toISOString();
 const date=(value:string)=>value.slice(0,10);
 const finiteNonNegative=(value:number)=>Number.isFinite(value)&&value>=0;
+export const systemBuiltEventType=(type:SourceEventType)=>["Payment reversed","Payroll released","Payroll voided"].includes(type);
 export function createAccountingSeed():AccountingState{return{version:1,settings:{basis:"Not configured",inventoryValuation:"Not configured",fiscalYearStartMonth:1},accounts:[
   {id:"acct-cash",code:"1000",name:"Cash / clearing",type:"Asset",active:true,systemRole:"Cash"},
   {id:"acct-ar",code:"1100",name:"Accounts receivable",type:"Asset",active:true,systemRole:"Accounts receivable"},
@@ -80,10 +81,20 @@ export function buildPayrollVoidJournal(state:AccountingState,run:PayRun,actorId
   return journalBalanced(entry)?entry:null;
 }
 
+export function buildPaymentReversalJournal(state:AccountingState,payment:Payment,actorId:string):JournalEntry|null{
+  if(payment.status!=="Reversed"||!payment.reversedAt||!actorId)return null;
+  const original=state.journals.find((entry)=>entry.sourceType==="Payment cleared"&&entry.sourceId===payment.id&&entry.status==="Posted");
+  if(!original)return null;
+  const number=`JE-${String(state.journals.length+1).padStart(5,"0")}`;
+  const lines:JournalLine[]=original.lines.map((line,index)=>({id:`line-${number}-payment-reversal-${index+1}`,accountId:line.accountId,debit:line.credit,credit:line.debit,memo:`Reversal of ${original.number}${line.memo?` · ${line.memo}`:""}`}));
+  const entry:JournalEntry={id:`journal-payment-reversal-${payment.id}`,number,date:date(payment.reversedAt),memo:`Payment reversal · ${payment.id} · ${payment.reversalReason??"reversed payment"}`,status:"Draft",sourceType:"Payment reversed",sourceId:payment.id,lines,createdAt:now(),createdBy:actorId};
+  return journalBalanced(entry)?entry:null;
+}
+
 export function sourceEvents(commerce:CommerceState,inventory:InventoryLedgerState,payroll?:PayrollState,finance?:FinanceState):AccountingSourceEvent[]{const events:AccountingSourceEvent[]=[];
   for(const invoice of commerce.invoices.filter((item)=>item.status!=="Void"))events.push({id:`invoice:${invoice.id}`,type:"Invoice issued",date:date(invoice.issuedAt),amount:invoice.total,description:`Invoice ${invoice.number}`,sourceId:invoice.id});
   for(const payment of commerce.payments.filter((item)=>item.status==="Cleared"))events.push({id:`payment:${payment.id}`,type:"Payment cleared",date:paymentSettlementDate(payment)??date(payment.receivedAt),amount:payment.amount,description:`Cleared ${payment.method} payment`,sourceId:payment.id});
-  for(const payment of commerce.payments.filter((item)=>item.status==="Reversed"))events.push({id:`payment-reversal:${payment.id}`,type:"Payment reversed",date:date(payment.reversedAt??payment.receivedAt),amount:payment.amount,description:`Reversed ${payment.method} payment`,sourceId:payment.id,blockedReason:"Payment reversal accounting requires approved treatment and linkage to the original posted payment journal before posting."});
+  for(const payment of commerce.payments.filter((item)=>item.status==="Reversed"))events.push({id:`payment-reversal:${payment.id}`,type:"Payment reversed",date:date(payment.reversedAt??payment.receivedAt),amount:payment.amount,description:`Reversed ${payment.method} payment${payment.reversalReason?` · ${payment.reversalReason}`:""}`,sourceId:payment.id});
   for(const credit of commerce.credits.filter((item)=>item.status==="Applied")){const invoice=commerce.invoices.find((item)=>item.id===credit.invoiceId);events.push({id:`credit:${credit.id}`,type:"Credit applied",date:date(credit.appliedAt??credit.approvedAt??credit.createdAt),amount:credit.amount,description:`Credit applied to ${invoice?.number??credit.invoiceId}`,sourceId:credit.id});}
   for(const refund of commerce.refunds.filter((item)=>item.status==="Settled"))events.push({id:`refund:${refund.id}`,type:"Refund settled",date:date(refund.settledAt??refund.createdAt),amount:refund.amount,description:"Customer refund settled",sourceId:refund.id});
   for(const movement of inventory.movements){if(movement.type==="Receipt")events.push({id:`movement:${movement.id}`,type:"Inventory receipt",date:date(movement.at),description:`${movement.quantity} case receipt · ${movement.product}`,sourceId:movement.id,blockedReason:"Inventory dollar value requires the approved valuation method and unit cost."});else if(movement.type==="Delivery")events.push({id:`movement:${movement.id}`,type:"Inventory delivered",date:date(movement.at),description:`${movement.quantity} case delivery · ${movement.product}`,sourceId:movement.id,blockedReason:"COGS requires the approved inventory valuation method and cost record."});else if(["Adjustment","Damage","Shrink","Disposal"].includes(movement.type))events.push({id:`movement:${movement.id}`,type:"Inventory adjustment",date:date(movement.at),description:`${movement.type} · ${movement.quantity} cases · ${movement.product}`,sourceId:movement.id,blockedReason:"Inventory adjustment value requires the approved valuation method and cost record."});}
@@ -92,4 +103,4 @@ export function sourceEvents(commerce:CommerceState,inventory:InventoryLedgerSta
   return events.sort((a,b)=>b.date.localeCompare(a.date));}
 export function unprocessedSourceEvents(state:AccountingState,events:AccountingSourceEvent[]){const processed=new Set(state.journals.filter((entry)=>entry.status!=="Voided").map((entry)=>`${entry.sourceType}:${entry.sourceId}`));return events.filter((event)=>!processed.has(`${event.type}:${event.sourceId}`));}
 export function ruleForEvent(state:AccountingState,event:AccountingSourceEvent){return state.rules.filter((rule)=>rule.active&&rule.eventType===event.type&&rule.effectiveDate<=event.date).sort((a,b)=>b.effectiveDate.localeCompare(a.effectiveDate))[0];}
-export function buildJournalFromEvent(state:AccountingState,event:AccountingSourceEvent,actorId:string):JournalEntry|null{if(["Payroll released","Payroll voided"].includes(event.type)||!event.amount||event.amount<=0||event.blockedReason)return null;const rule=ruleForEvent(state,event);if(!rule||rule.debitAccountId===rule.creditAccountId)return null;const number=`JE-${String(state.journals.length+1).padStart(5,"0")}`;return{id:`journal-${event.id.replace(/[^a-z0-9]/gi,"-")}`,number,date:event.date,memo:rule.memoTemplate.replace("{description}",event.description),status:"Draft",sourceType:event.type,sourceId:event.sourceId,lines:[{id:`line-${number}-d`,accountId:rule.debitAccountId,debit:event.amount,credit:0},{id:`line-${number}-c`,accountId:rule.creditAccountId,debit:0,credit:event.amount}],createdAt:now(),createdBy:actorId};}
+export function buildJournalFromEvent(state:AccountingState,event:AccountingSourceEvent,actorId:string):JournalEntry|null{if(systemBuiltEventType(event.type)||!event.amount||event.amount<=0||event.blockedReason)return null;const rule=ruleForEvent(state,event);if(!rule||rule.debitAccountId===rule.creditAccountId)return null;const number=`JE-${String(state.journals.length+1).padStart(5,"0")}`;return{id:`journal-${event.id.replace(/[^a-z0-9]/gi,"-")}`,number,date:event.date,memo:rule.memoTemplate.replace("{description}",event.description),status:"Draft",sourceType:event.type,sourceId:event.sourceId,lines:[{id:`line-${number}-d`,accountId:rule.debitAccountId,debit:event.amount,credit:0},{id:`line-${number}-c`,accountId:rule.creditAccountId,debit:0,credit:event.amount}],createdAt:now(),createdBy:actorId};}
