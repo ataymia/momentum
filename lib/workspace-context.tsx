@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { accountIsVisible, canAdvanceFulfillment, canManageSchedule, canReviewApproval, getWorkspaceScope } from "./access";
+import { addCalendarDays, arizonaDateKey } from "./date-time";
 import { findAccountDuplicate } from "./duplicate-engine";
 import { activeFieldAppointmentForUser } from "./field-work-session";
 import { evaluatePartnerPricing } from "./pricing-engine";
@@ -10,9 +11,9 @@ import { WorkspaceProvider as BaseWorkspaceProvider, useWorkspace as useBaseWork
 
 const COMMERCIAL_KEY = "momentum-commercial-controls-v1";
 const WAREHOUSE_SESSION_KEY = "momentum-warehouse-session-v1";
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => arizonaDateKey();
 const now = () => new Date().toISOString();
-const plusDays = (value: string, days: number) => { const date = new Date(`${value}T12:00:00`); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); };
+const plusDays = (value: string, days: number) => addCalendarDays(value, days);
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
 const warehouseUser: WorkspaceUser = {
@@ -418,10 +419,9 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const valid: InventoryLot[] = [];
     for (const lot of lots) {
       const code = lot.lotCode.trim().toLowerCase();
-      if (!code || !lot.product.trim() || lot.onHand < 0 || seenCodes.has(code)) continue;
+      if (!code || !lot.product.trim() || lot.onHand < 0 || lot.reserved !== 0 || seenCodes.has(code)) continue;
       seenCodes.add(code);
-      const reserved = Math.max(0, lot.reserved || 0);
-      valid.push({ ...lot, id: lot.id || uid("lot-import"), reserved, available: Math.max(0, lot.onHand - reserved) });
+      valid.push({ ...lot, id: lot.id || uid("lot-import"), reserved: 0, available: lot.onHand });
     }
     if (!valid.length) return 0;
     setCommercial((state) => ({ ...state, inventoryLots: [...valid, ...state.inventoryLots] }));
