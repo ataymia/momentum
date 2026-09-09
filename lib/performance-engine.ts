@@ -86,8 +86,8 @@ export function resolvedGoalStatus(goal:PerformanceGoal,data:WorkspaceData,asOf=
 
 export function canViewPerformanceRecord(actor:WorkspaceUser|null|undefined,targetUserId:string,data:WorkspaceData){
   if(!actor)return false;if(actor.role==="Administrator")return true;if(actor.id===targetUserId)return true;
-  if(actor.role!=="Sales Manager")return false;const target=data.users.find((user)=>user.id===targetUserId);
-  return target?.managerId===actor.id||target?.team===actor.team;
+  if(actor.role!=="Sales Manager")return false;const target=data.users.find((user)=>user.id===targetUserId);if(!target)return false;
+  return target.managerId===actor.id||(actor.managedTeams??[]).includes(target.team);
 }
 
 export function reportVisibleTo(actor:WorkspaceUser|null|undefined,report:WorkReport,data:WorkspaceData){
@@ -109,7 +109,7 @@ export function expectedDailyReportDates(data:WorkspaceData,userId:string,start:
 }
 
 export function managerWeeklyMetrics(state:PerformanceState,data:WorkspaceData,managerId:string,start:string,end:string){
-  const manager=data.users.find((user)=>user.id===managerId);const teamUsers=data.users.filter((user)=>user.role!=="Customer"&&user.id!==managerId&&(user.managerId===managerId||(manager?.role==="Administrator"&&user.team!=="Customer")));
+  const manager=data.users.find((user)=>user.id===managerId);const teamUsers=data.users.filter((user)=>user.role!=="Customer"&&user.id!==managerId&&(user.managerId===managerId||(manager?.managedTeams??[]).includes(user.team)||(manager?.role==="Administrator"&&user.team!=="Customer")));
   const sourceUserIds=teamUsers.map((user)=>user.id);const totals=sourceUserIds.map((userId)=>userCommercialMetrics(data,userId,start,end));
   const expected=sourceUserIds.reduce((sum,userId)=>sum+expectedDailyReportDates(data,userId,start,end).length,0);
   const submitted=state.reports.filter((report)=>report.type==="Daily"&&sourceUserIds.includes(report.userId)&&inRange(report.workDate,start,end)).length;
