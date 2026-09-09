@@ -1,5 +1,5 @@
 import { evaluateSalesRepAccountBonuses, orderFirstSettlementDate, type BonusMilestone } from "./bonus-engine";
-import { activeCompensation, benefitDeductionPerPayPeriod, type HCMState } from "./hcm-engine";
+import { activeBenefitEnrollments, activeCompensation, type HCMState } from "./hcm-engine";
 import type { TimeEntry, WorkspaceData } from "./types";
 
 export const PAYROLL_STORAGE_KEY = "momentum-payroll-v5";
@@ -9,6 +9,8 @@ export type PayGroup = { id: string; name: string; frequency: PayFrequency; over
 export type PayrollEmployee = { userId: string; payGroupId: string; paymentMethod: "ACH" | "Check" | "Manual"; paymentTokenLabel: string; active: boolean };
 export type WithholdingProfile = { userId: string; federalPercent: number; statePercent: number; localPercent: number; additionalWithholding: number; postTaxDeduction: number; effectiveDate: string };
 export type EmployerTaxRule = { id: string; name: string; percent: number; effectiveDate: string; active: boolean };
+export type BenefitTaxTreatment = "Pre-tax" | "Post-tax";
+export type BenefitTaxRule = { id: string; planId: string; tierId: string; treatment: BenefitTaxTreatment; effectiveDate: string; active: boolean };
 export type PayLine = {
   employeeId: string;
   regularHours: number;
@@ -18,6 +20,8 @@ export type PayLine = {
   bonusPay: number;
   grossPay: number;
   benefitDeduction: number;
+  preTaxBenefitDeduction?: number;
+  postTaxBenefitDeduction?: number;
   taxableWages: number;
   federalTax: number;
   stateTax: number;
@@ -37,15 +41,17 @@ export type TaxLiabilityStatus = "Accrued" | "Scheduled" | "Paid" | "Reversed";
 export type TaxLiability = { id: string; payRunId: string; type: TaxLiabilityType; amount: number; status: TaxLiabilityStatus; createdAt: string; dueDate?: string };
 export type DisbursementStatus = "Released" | "Settled" | "Failed" | "Voided";
 export type Disbursement = { id: string; payRunId: string; userId: string; amount: number; method: PayrollEmployee["paymentMethod"]; tokenLabel: string; status: DisbursementStatus; createdAt: string; settledAt?: string };
-export type PayrollState = { version: 5; payGroups: PayGroup[]; employees: PayrollEmployee[]; withholdingProfiles: WithholdingProfile[]; employerTaxRules: EmployerTaxRule[]; runs: PayRun[]; liabilities: TaxLiability[]; disbursements: Disbursement[] };
+export type PayrollState = { version: 5; payGroups: PayGroup[]; employees: PayrollEmployee[]; withholdingProfiles: WithholdingProfile[]; employerTaxRules: EmployerTaxRule[]; benefitTaxRules: BenefitTaxRule[]; runs: PayRun[]; liabilities: TaxLiability[]; disbursements: Disbursement[] };
 export type RegularPayrollSource = { timecardIds: string[]; entries: TimeEntry[] };
 export type PayrollHourBreakdown = { totalHours: number; regularHours: number; overtimeHours: number };
+export type PayrollBenefitDeductions = { preTax: number; postTax: number; total: number; unconfigured: { enrollmentId: string; planId: string; tierId: string }[] };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const payrollReadyTimecard = (status: string) => ["Manager approved", "Payroll ready"].includes(status);
+const zeroBenefits = (): PayrollBenefitDeductions => ({ preTax: 0, postTax: 0, total: 0, unconfigured: [] });
 
 export function createPayrollSeed(): PayrollState {
-  return { version: 5, payGroups: [], employees: [], withholdingProfiles: [], employerTaxRules: [], runs: [], liabilities: [], disbursements: [] };
+  return { version: 5, payGroups: [], employees: [], withholdingProfiles: [], employerTaxRules: [], benefitTaxRules: [], runs: [], liabilities: [], disbursements: [] };
 }
 
 export function normalizePayrollState(input: unknown): PayrollState {
@@ -58,6 +64,7 @@ export function normalizePayrollState(input: unknown): PayrollState {
     employees: Array.isArray(state.employees) ? state.employees : [],
     withholdingProfiles: Array.isArray(state.withholdingProfiles) ? state.withholdingProfiles : [],
     employerTaxRules: Array.isArray(state.employerTaxRules) ? state.employerTaxRules : [],
+    benefitTaxRules: Array.isArray(state.benefitTaxRules) ? state.benefitTaxRules : [],
     runs: Array.isArray(state.runs) ? state.runs : [],
     liabilities: Array.isArray(state.liabilities) ? state.liabilities : [],
     disbursements: Array.isArray(state.disbursements) ? state.disbursements : [],
@@ -83,6 +90,32 @@ export function activeWithholding(state: PayrollState, userId: string, asOf = to
 
 export function activeEmployerTaxes(state: PayrollState, asOf = today()) {
   return state.employerTaxRules.filter((rule) => rule.active && rule.effectiveDate <= asOf);
+}
+
+export function activeBenefitTaxRule(state: PayrollState, planId: string, tierId: string, asOf = today()) {
+  return state.benefitTaxRules
+    .filter((rule) => rule.active && rule.planId === planId && rule.tierId === tierId && rule.effectiveDate <= asOf)
+    .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))[0];
+}
+
+export function payrollBenefitDeductions(state: PayrollState, hcm: HCMState, userId: string, asOf = today()): PayrollBenefitDeductions {
+  const result = zeroBenefits();
+  for (const enrollment of activeBenefitEnrollments(hcm, userId, asOf)) {
+    const plan = hcm.benefitPlans.find((item) => item.id === enrollment.planId);
+    const tier = plan?.tiers.find((item) => item.id === enrollment.tierId);
+    const amount = tier?.employeeContributionPerPayPeriod ?? 0;
+    if (amount <= 0) continue;
+    const planValid = Boolean(plan?.active && plan.startDate <= asOf && plan.endDate >= asOf && tier);
+    const rule = planValid ? activeBenefitTaxRule(state, enrollment.planId, enrollment.tierId, asOf) : undefined;
+    if (!rule) {
+      result.unconfigured.push({ enrollmentId: enrollment.id, planId: enrollment.planId, tierId: enrollment.tierId });
+      continue;
+    }
+    if (rule.treatment === "Pre-tax") result.preTax += amount;
+    else result.postTax += amount;
+  }
+  result.total = result.preTax + result.postTax;
+  return result;
 }
 
 export function consumedTimecards(state: PayrollState) {
@@ -172,7 +205,8 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
   const compensation = activeCompensation(hcm, employeeId, periodEnd);
   const group = employee ? state.payGroups.find((item) => item.id === employee.payGroupId && item.active) : undefined;
   const source = regularPayrollSource(data, employeeId, periodStart, periodEnd, sourceTimecardIds);
-  if (!employee || !withholding || !compensation || !group || !source) return null;
+  const benefits = payrollBenefitDeductions(state, hcm, employeeId, periodEnd);
+  if (!employee || !withholding || !compensation || !group || !source || benefits.unconfigured.length > 0) return null;
   const totalHours = source.entries.reduce((sum, entry) => sum + timeEntryHours(entry), 0);
   const breakdown = compensation.basis === "Hourly" ? payrollHourBreakdown(data, employeeId, source, group.overtimeThresholdHours) : null;
   if (compensation.basis === "Hourly" && !breakdown) return null;
@@ -180,25 +214,25 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
   const regularHours = compensation.basis === "Hourly" ? breakdown!.regularHours : totalHours;
   const regularPay = compensation.basis === "Hourly" ? regularHours * compensation.rate : compensation.rate;
   const overtimePay = compensation.basis === "Hourly" ? overtimeHours * compensation.rate * 1.5 : 0;
-  return calculateNet(state, hcm, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, 0, source.timecardIds, [], withholding);
+  return calculateNet(state, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, 0, source.timecardIds, [], withholding, benefits);
 }
 
 export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeId: string, payDate: string, bonusAmount: number, bonusIds: string[]): PayLine | null {
   const employee = activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, payDate);
   if (!employee || !withholding || bonusAmount <= 0) return null;
-  return calculateNet(state, hcm, employeeId, payDate, 0, 0, 0, 0, bonusAmount, [], bonusIds, withholding);
+  return calculateNet(state, employeeId, payDate, 0, 0, 0, 0, bonusAmount, [], bonusIds, withholding, zeroBenefits());
 }
 
-function calculateNet(state: PayrollState, hcm: HCMState, employeeId: string, asOf: string, regularHours: number, overtimeHours: number, regularPay: number, overtimePay: number, bonusPay: number, sourceTimecardIds: string[], sourceBonusIds: string[], withholding: WithholdingProfile): PayLine {
+function calculateNet(state: PayrollState, employeeId: string, asOf: string, regularHours: number, overtimeHours: number, regularPay: number, overtimePay: number, bonusPay: number, sourceTimecardIds: string[], sourceBonusIds: string[], withholding: WithholdingProfile, benefits: PayrollBenefitDeductions): PayLine {
   const grossPay = regularPay + overtimePay + bonusPay;
-  const benefitDeduction = bonusPay > 0 && regularPay === 0 ? 0 : benefitDeductionPerPayPeriod(hcm, employeeId, asOf);
-  const taxableWages = Math.max(0, grossPay - benefitDeduction);
+  const benefitDeduction = benefits.total;
+  const taxableWages = Math.max(0, grossPay - benefits.preTax);
   const federalTax = taxableWages * (withholding.federalPercent / 100);
   const stateTax = taxableWages * (withholding.statePercent / 100);
   const localTax = taxableWages * (withholding.localPercent / 100);
   const employeeTaxes = federalTax + stateTax + localTax + withholding.additionalWithholding;
   const employerTaxes = activeEmployerTaxes(state, asOf).reduce((sum, rule) => sum + taxableWages * (rule.percent / 100), 0);
-  const netPay = Math.max(0, grossPay - benefitDeduction - employeeTaxes - withholding.postTaxDeduction);
-  return { employeeId, regularHours, overtimeHours, regularPay, overtimePay, bonusPay, grossPay, benefitDeduction, taxableWages, federalTax, stateTax, localTax, additionalWithholding: withholding.additionalWithholding, postTaxDeduction: withholding.postTaxDeduction, employeeTaxes, employerTaxes, netPay, sourceTimecardIds, sourceBonusIds };
+  const netPay = Math.max(0, grossPay - benefits.preTax - benefits.postTax - employeeTaxes - withholding.postTaxDeduction);
+  return { employeeId, regularHours, overtimeHours, regularPay, overtimePay, bonusPay, grossPay, benefitDeduction, preTaxBenefitDeduction: benefits.preTax, postTaxBenefitDeduction: benefits.postTax, taxableWages, federalTax, stateTax, localTax, additionalWithholding: withholding.additionalWithholding, postTaxDeduction: withholding.postTaxDeduction, employeeTaxes, employerTaxes, netPay, sourceTimecardIds, sourceBonusIds };
 }
