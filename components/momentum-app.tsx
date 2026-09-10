@@ -4,6 +4,7 @@ import { AccountingProvider } from "../lib/accounting-context";
 import { AuditProvider } from "../lib/audit-context";
 import { CommerceProvider } from "../lib/commerce-context";
 import { CrmProvider } from "../lib/crm-context";
+import { DOCUMENT_TEMPLATE_STORAGE_KEY } from "../lib/document-template-engine";
 import { FinanceProvider } from "../lib/finance-context";
 import { HcmProvider } from "../lib/hcm-context";
 import { IDENTITY_PROVISIONING_STORAGE_KEY } from "../lib/identity-provisioning";
@@ -31,6 +32,7 @@ const PRESENTATION_RESET_KEYS = [
   "momentum-notification-rules-v1",
   "momentum-field-tracking-v1",
   IDENTITY_PROVISIONING_STORAGE_KEY,
+  DOCUMENT_TEMPLATE_STORAGE_KEY,
 ];
 
 function ensurePresentationSeed() {
