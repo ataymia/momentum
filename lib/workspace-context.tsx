@@ -2,10 +2,11 @@
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { accountIsVisible, canAdvanceFulfillment, canAssignScheduleUser, canManageSchedule, canReconcileOrderPayment, canReviewApproval, canTransferSalesResponsibility, getWorkspaceScope } from "./access";
-import { addCalendarDays, arizonaDateKey } from "./date-time";
+import { addCalendarDays, arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import { findAccountDuplicate } from "./duplicate-engine";
 import { activeFieldAppointmentForUser } from "./field-work-session";
 import { evaluatePartnerPricing } from "./pricing-engine";
+import { useRuntimeModeValue } from "./runtime-mode-store";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import type { Account, Activity, Appointment, AppointmentStatus, Approval, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, WorkspaceData, WorkspaceUser } from "./types";
 import { WorkspaceProvider as BaseWorkspaceProvider, useWorkspace as useBaseWorkspace } from "./workspace-context-v5";
@@ -16,6 +17,7 @@ const today = () => arizonaDateKey();
 const now = () => new Date().toISOString();
 const plusDays = (value: string, days: number) => addCalendarDays(value, days);
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const validTime = (value: string) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 
 const warehouseUser: WorkspaceUser = {
   id: "usr-warehouse",
@@ -54,7 +56,7 @@ type CommercialState = {
   inventoryLots: InventoryLot[];
 };
 
-type EnhancedOrderInput = { accountId: string; cases: number; pricePerCase?: number; product?: string; inventoryAvailableAtOrder?: number; sourcePlacementId?: string };
+type EnhancedOrderInput = { accountId: string; cases: number; pricePerCase?: number; product?: string; inventoryAvailableAtOrder: number; sourcePlacementId?: string };
 type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string; categoryReviewDate?: string; pricingTier?: PricingTier };
 type BaseWorkspace = ReturnType<typeof useBaseWorkspace>;
 type NewAppointmentInput = Parameters<BaseWorkspace["createAppointment"]>[0];
@@ -88,7 +90,7 @@ const nextAppointment: Record<AppointmentStatus, AppointmentStatus> = { Schedule
 const nextFulfillment: Partial<Record<OrderStatus, OrderStatus>> = { Approved: "Allocated", Allocated: "Out for delivery", "Out for delivery": "Delivered" };
 
 function inferredTier(data: WorkspaceData, accountId: string): PricingTier | undefined {
-  const price = data.orders.filter((order) => order.accountId === accountId && order.pricePerCase > 0).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0]?.pricePerCase;
+  const price = data.orders.filter((order) => Number.isFinite(order.pricePerCase) && order.pricePerCase > 0).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0]?.pricePerCase;
   return price === 24 ? "A" : price === 27 ? "B" : price === 30 ? "C" : undefined;
 }
 
@@ -126,6 +128,8 @@ function readCommercial(data: WorkspaceData): CommercialState {
 
 function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const base = useBaseWorkspace();
+  const runtimeMode = useRuntimeModeValue();
+  const demoMode = runtimeMode === "demo";
   const [commercial, setCommercial] = useState<CommercialState>(() => readCommercial(base.data));
   const [warehouseSession, setWarehouseSession] = useState(false);
 
@@ -135,16 +139,22 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!demoMode) {
+      setWarehouseSession(false);
+      window.localStorage.removeItem(WAREHOUSE_SESSION_KEY);
+      return;
+    }
     const handle = window.setTimeout(() => setWarehouseSession(window.localStorage.getItem(WAREHOUSE_SESSION_KEY) === "true"), 0);
     return () => window.clearTimeout(handle);
-  }, []);
+  }, [demoMode]);
 
   const data = useMemo<WorkspaceData>(() => {
-    const users = base.data.users.some((user) => user.id === warehouseUser.id) ? base.data.users : [...base.data.users, warehouseUser];
-    const extraLots = [...commercial.inventoryLots];
-    if (!base.data.inventory.some((lot) => lot.id === tropicalLot.id) && !extraLots.some((lot) => lot.id === tropicalLot.id)) extraLots.push(tropicalLot);
+    const cleanBaseUsers = demoMode ? base.data.users : base.data.users.filter((user) => user.id !== warehouseUser.id);
+    const users = demoMode && !cleanBaseUsers.some((user) => user.id === warehouseUser.id) ? [...cleanBaseUsers, warehouseUser] : cleanBaseUsers;
+    const extraLots = commercial.inventoryLots.filter((lot) => demoMode || lot.id !== tropicalLot.id);
+    if (demoMode && !base.data.inventory.some((lot) => lot.id === tropicalLot.id) && !extraLots.some((lot) => lot.id === tropicalLot.id)) extraLots.push(tropicalLot);
     const extraLotIds = new Set(extraLots.map((lot) => lot.id));
-    const inventory = [...extraLots, ...base.data.inventory.filter((lot) => !extraLotIds.has(lot.id))];
+    const inventory = [...extraLots, ...base.data.inventory.filter((lot) => !extraLotIds.has(lot.id) && (demoMode || lot.id !== tropicalLot.id))];
     const accounts = base.data.accounts.map((account) => ({ ...account, ...(commercial.accountPatches[account.id] ?? {}) }));
     const salesRepIds = new Set(users.filter((user) => user.role === "Sales Representative").map((user) => user.id));
     const baseOrders = base.data.orders.map((order) => ({
@@ -164,9 +174,9 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       approvals: [...commercial.approvals, ...base.data.approvals.filter((approval) => !commercial.approvals.some((entry) => entry.id === approval.id))],
       activities: [...commercial.activities, ...base.data.activities],
     };
-  }, [base.data, commercial]);
+  }, [base.data, commercial, demoMode]);
 
-  const currentUser = useMemo(() => warehouseSession ? data.users.find((user) => user.id === warehouseUser.id) ?? null : base.currentUser ? data.users.find((user) => user.id === base.currentUser?.id) ?? base.currentUser : null, [base.currentUser, data.users, warehouseSession]);
+  const currentUser = useMemo(() => demoMode && warehouseSession ? data.users.find((user) => user.id === warehouseUser.id) ?? null : base.currentUser ? data.users.find((user) => user.id === base.currentUser?.id) ?? base.currentUser : null, [base.currentUser, data.users, demoMode, warehouseSession]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
 
   const focusActiveFieldWork = (appointment: Appointment) => {
@@ -175,7 +185,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const login = (email: string, password: string) => {
-    if (email.trim().toLowerCase() === warehouseUser.email && password === "admin") {
+    if (demoMode && email.trim().toLowerCase() === warehouseUser.email && password === "admin") {
       base.logout();
       setWarehouseSession(true);
       window.localStorage.setItem(WAREHOUSE_SESSION_KEY, "true");
@@ -209,7 +219,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const switchUser = (userId: string) => {
-    if (userId === warehouseUser.id) {
+    if (demoMode && userId === warehouseUser.id) {
       base.logout();
       setWarehouseSession(true);
       window.localStorage.setItem(WAREHOUSE_SESSION_KEY, "true");
@@ -231,15 +241,18 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative"].includes(currentUser.role)) return false;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return false;
+    if (patch.categoryReviewDate !== undefined && patch.categoryReviewDate !== "" && !isValidCalendarDateKey(patch.categoryReviewDate)) return false;
+    if (patch.businessType !== undefined && !patch.businessType.trim()) return false;
     const pricingChanged = patch.pricingTier !== undefined && patch.pricingTier !== account.pricingTier;
     if (pricingChanged && currentUser.role === "Sales Representative") return false;
+    const cleanPatch: CommercialAccountInput = { ...patch, ...(patch.businessType !== undefined ? { businessType: patch.businessType.trim() } : {}) };
     setCommercial((state) => ({
       ...state,
       accountPatches: {
         ...state.accountPatches,
         [accountId]: {
           ...(state.accountPatches[accountId] ?? {}),
-          ...patch,
+          ...cleanPatch,
           ...(pricingChanged ? { pricingUpdatedAt: now(), pricingUpdatedBy: currentUser.id } : {}),
         },
       },
@@ -273,13 +286,14 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
 
   const createAppointment = (appointment: NewAppointmentInput) => {
     if (!currentUser || ["Customer", "Warehouse"].includes(currentUser.role)) return null;
+    if (!isValidCalendarDateKey(appointment.date) || !validTime(appointment.startTime) || !Number.isInteger(appointment.duration) || appointment.duration < 1 || !appointment.objective.trim()) return null;
     const account = data.accounts.find((item) => item.id === appointment.accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
     const ownerId = currentUser.role === "Sales Representative" ? currentUser.id : appointment.ownerId || undefined;
     if (ownerId && !canAssignScheduleUser(data, currentUser, ownerId)) return null;
     const owner = data.users.find((user) => user.id === ownerId);
     const id = uid("apt");
-    const record: Appointment = { ...appointment, id, ownerId, customerId: account.customerId, status: "Scheduled", location: account.streetAddress || account.location, priority: appointment.priority ?? "Normal", tags: appointment.tags ?? [], assignedBy: ownerId ? currentUser.id : undefined, assignedAt: ownerId ? now() : undefined };
+    const record: Appointment = { ...appointment, objective: appointment.objective.trim(), id, ownerId, customerId: account.customerId, status: "Scheduled", location: account.streetAddress || account.location, priority: appointment.priority ?? "Normal", tags: appointment.tags ?? [], assignedBy: ownerId ? currentUser.id : undefined, assignedAt: ownerId ? now() : undefined };
     setCommercial((state) => ({ ...state, appointments: [record, ...state.appointments], activities: [{ id: uid("act-appt"), accountId: account.id, type: "visit", title: `${appointment.type} scheduled`, detail: `${appointment.date} at ${appointment.startTime} · ${owner ? `assigned to ${owner.name}` : "left unassigned"}.`, at: now(), userId: currentUser.id }, ...state.activities] }));
     return id;
   };
@@ -299,7 +313,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const completeAppointment = (id: string, closeout: AppointmentCloseout) => {
     const enhanced = commercial.appointments.find((item) => item.id === id);
     if (!enhanced) return base.completeAppointment(id, closeout);
-    if (!currentUser || !closeout.closeoutNote.trim() || !closeout.nextAction.trim() || !closeout.nextActionDate || enhanced.status !== "Arrived" || (enhanced.ownerId !== currentUser.id && !canManageSchedule(currentUser))) return false;
+    if (!currentUser || !closeout.closeoutNote.trim() || !closeout.nextAction.trim() || !isValidCalendarDateKey(closeout.nextActionDate) || enhanced.status !== "Arrived" || (enhanced.ownerId !== currentUser.id && !canManageSchedule(currentUser))) return false;
     setCommercial((state) => ({
       ...state,
       appointments: state.appointments.map((item) => item.id === id ? { ...item, status: "Completed", completedAt: now(), ...closeout, closeoutNote: closeout.closeoutNote.trim(), nextAction: closeout.nextAction.trim() } : item),
@@ -335,7 +349,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const moveAppointment = (id: string, ownerId: string | undefined, date: string, startTime: string) => {
     const enhanced = commercial.appointments.find((item) => item.id === id);
     if (!enhanced) return base.moveAppointment(id, ownerId, date, startTime);
-    if (!currentUser || !canManageSchedule(currentUser) || enhanced.status !== "Scheduled") return false;
+    if (!currentUser || !canManageSchedule(currentUser) || enhanced.status !== "Scheduled" || !isValidCalendarDateKey(date) || !validTime(startTime)) return false;
     if (ownerId && !canAssignScheduleUser(data, currentUser, ownerId)) return false;
     const before = `${enhanced.ownerId ?? "Unassigned"} · ${enhanced.date} ${enhanced.startTime}`;
     const after = `${ownerId ?? "Unassigned"} · ${date} ${startTime}`;
@@ -344,16 +358,17 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const createOrder = ({ accountId, cases, product, inventoryAvailableAtOrder, sourcePlacementId }: EnhancedOrderInput) => {
-    if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role) || cases < 1) return null;
+    if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role) || !Number.isInteger(cases) || cases < 1 || !Number.isFinite(inventoryAvailableAtOrder) || inventoryAvailableAtOrder < 0) return null;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
-    const selectedProduct = product || data.inventory[0]?.product || "Golden Eagle";
+    const selectedProduct = product?.trim() || data.inventory[0]?.product || "Golden Eagle";
+    if (!data.inventory.some((lot) => lot.product === selectedProduct)) return null;
     const sourcePlacement = sourcePlacementId ? data.placements.find((placement) => placement.id === sourcePlacementId) : undefined;
     if (sourcePlacementId && (!sourcePlacement || sourcePlacement.accountId !== accountId || sourcePlacement.product !== selectedProduct)) return null;
     const pricing = evaluatePartnerPricing(data, accountId);
     const price = pricing.currentPricePerCase;
-    if (!price || price <= 0) return null;
-    const available = inventoryAvailableAtOrder ?? data.inventory.filter((lot) => lot.product === selectedProduct).reduce((sum, lot) => sum + lot.available, 0);
+    if (!Number.isFinite(price) || !price || price <= 0) return null;
+    const available = inventoryAvailableAtOrder;
     const lowStock = available < 50;
     const id = uid("ord");
     const number = `GE-${data.orders.length + 1050}`;
@@ -387,6 +402,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
 
   const reconcileOrderPayment = (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => {
     if (!canReconcileOrderPayment(currentUser)) return;
+    if (status === "Paid" && paidAt !== undefined && !isValidCalendarDateKey(paidAt)) return;
     const order = commercial.orders.find((item) => item.id === id);
     if (!order) {
       base.reconcileOrderPayment(id, status, paidAt);
@@ -419,9 +435,9 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const valid: InventoryLot[] = [];
     for (const lot of lots) {
       const code = lot.lotCode.trim().toLowerCase();
-      if (!code || !lot.product.trim() || lot.onHand < 0 || lot.reserved !== 0 || seenCodes.has(code)) continue;
+      if (!code || !lot.product.trim() || !Number.isInteger(lot.onHand) || lot.onHand < 0 || !Number.isFinite(lot.reserved) || lot.reserved !== 0 || !isValidCalendarDateKey(lot.receivedAt) || !isValidCalendarDateKey(lot.bestBy) || seenCodes.has(code)) continue;
       seenCodes.add(code);
-      valid.push({ ...lot, id: lot.id || uid("lot-import"), reserved: 0, available: lot.onHand });
+      valid.push({ ...lot, id: lot.id || uid("lot-import"), product: lot.product.trim(), reserved: 0, available: lot.onHand });
     }
     if (!valid.length) return 0;
     setCommercial((state) => ({ ...state, inventoryLots: [...valid, ...state.inventoryLots] }));
