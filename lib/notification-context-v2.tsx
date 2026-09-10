@@ -14,7 +14,7 @@ const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toStrin
 function readState(users: ReturnType<typeof useWorkspace>["data"]["users"]) { if (typeof window === "undefined") return createNotificationSeed(users); try { return normalizeNotificationState(JSON.parse(window.localStorage.getItem(NOTIFICATION_STORAGE_KEY) ?? "null"), users); } catch { return createNotificationSeed(users); } }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { data, currentUser } = useWorkspace(); const { audit } = useAudit(); const { ledger } = useInventoryLedger(); const runtime = useRuntimeMode(); const [state, setState] = useState<NotificationState>(() => readState(data.users));
+  const { data, currentUser } = useWorkspace(); const { audit, recordManualAudit } = useAudit(); const { ledger } = useInventoryLedger(); const runtime = useRuntimeMode(); const [state, setState] = useState<NotificationState>(() => readState(data.users));
   useEffect(() => { const handle = window.setTimeout(() => setState((current) => normalizeNotificationState(current, data.users)), 0); return () => window.clearTimeout(handle); }, [data.users]);
   useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(state)); }, [state]);
   useEffect(() => { const handle = window.setTimeout(() => setState((current) => { const existing = new Set(current.deliveries.map((item) => deliveryKey(item.sourceEventId, item.recipientUserId, item.channel))); const additions: NotificationDelivery[] = []; for (const event of audit.events.slice(0, 500)) { if (!auditEventCreatesNotification(event)) continue; const copy = notificationCopy(event); for (const userId of resolveNotificationRecipients(event, data)) { const preference = current.preferences.find((item) => item.userId === userId); if (!preference) continue; for (const channel of enabledChannels(preference)) { const key = deliveryKey(event.id, userId, channel); if (existing.has(key)) continue; existing.add(key); additions.push({ id: uid("notice"), sourceEventId: event.id, recipientUserId: userId, channel, title: copy.title, detail: copy.detail, tone: copy.tone, createdAt: event.at, status: channel === "In app" ? "Unread" : "Awaiting integration" }); } } } return additions.length ? { ...current, deliveries: [...additions, ...current.deliveries].slice(0, 12000) } : current; }), 0); return () => window.clearTimeout(handle); }, [audit.events, data]);
@@ -73,9 +73,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (target.role === "Customer" && merged.inApp) return false;
     if (merged.email && !(merged.emailAddress || target.email)?.trim()) return false;
     if (merged.sms && !merged.smsNumber?.trim()) return false;
-    setState((current) => ({ ...current, preferences: current.preferences.map((item) => item.userId === userId ? merged : item) })); return true;
+    setState((current) => ({ ...current, preferences: current.preferences.map((item) => item.userId === userId ? merged : item) }));
+    recordManualAudit({module:"Notifications",collection:"preferences",entityType:"Notifications.preferences",entityId:userId,label:`Notification preferences · ${target.name}`,summary:`Notification delivery preferences updated for ${target.name}.`,sensitivity:"admin",relatedUserId:userId,changes:[{field:"inApp",before:String(existing.inApp),after:String(merged.inApp)},{field:"email",before:String(existing.email),after:String(merged.email)},{field:"sms",before:String(existing.sms),after:String(merged.sms)},{field:"emailDestinationConfigured",before:String(Boolean(existing.emailAddress)),after:String(Boolean(merged.emailAddress))},{field:"smsDestinationConfigured",before:String(Boolean(existing.smsNumber)),after:String(Boolean(merged.smsNumber))}]});
+    return true;
   };
-  const setEscalationHours = (hours: number) => { if (currentUser?.role !== "Administrator" || !Number.isFinite(hours) || hours < 1 || hours > 168) return false; setState((current) => ({ ...current, escalationHours: Math.round(hours) })); return true; };
+  const setEscalationHours = (hours: number) => {
+    if (currentUser?.role !== "Administrator" || !Number.isFinite(hours) || hours < 1 || hours > 168) return false;
+    const rounded=Math.round(hours);const before=state.escalationHours;
+    setState((current) => ({ ...current, escalationHours: rounded }));
+    if(before!==rounded)recordManualAudit({module:"Notifications",collection:"settings",entityType:"Notifications.settings",entityId:"notification-policy",label:"Notification escalation policy",summary:`Unread notification escalation window changed from ${before} to ${rounded} hours.`,sensitivity:"admin",changes:[{field:"escalationHours",before:String(before),after:String(rounded)}]});
+    return true;
+  };
   const markAllRead = () => { if (!currentUser) return; const at = new Date().toISOString(); setState((current) => ({ ...current, deliveries: current.deliveries.map((item) => item.recipientUserId === currentUser.id && item.channel === "In app" && item.status === "Unread" ? { ...item, status: "Read", readAt: at } : item) })); };
   const resetNotifications = () => { if (!runtime.isDemo || currentUser?.role !== "Administrator") return false; setState(createNotificationSeed(data.users)); return true; };
   return <NotificationContext.Provider value={{ state, currentUserItems, unreadCount, updatePreference, setEscalationHours, markAllRead, resetNotifications }}>{children}</NotificationContext.Provider>;
