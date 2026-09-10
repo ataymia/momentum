@@ -1,4 +1,4 @@
-import { arizonaDateKey } from "./date-time";
+import { arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import type { Disbursement, TaxLiability } from "./payroll-engine";
 
 export type TaxLiabilityRecord = TaxLiability & {
@@ -18,23 +18,26 @@ export type DisbursementRecord = Disbursement & {
   replacedBy?: string;
 };
 
-const dateKey = /^\d{4}-\d{2}-\d{2}$/;
 const today = () => arizonaDateKey();
+const businessDateFromInstant = (value?: string) => value && !Number.isNaN(new Date(value).getTime()) ? arizonaDateKey(value) : undefined;
 
 export function validSettlementDate(value: string, asOf = today()) {
-  return dateKey.test(value) && value <= asOf;
+  return isValidCalendarDateKey(value) && isValidCalendarDateKey(asOf) && value <= asOf;
 }
 
 export function liabilityCanSchedule(liability: TaxLiability) {
-  return liability.status === "Accrued";
+  return liability.status === "Accrued" && Number.isFinite(liability.amount) && liability.amount > 0;
 }
 
 export function liabilityCanRecordPaid(liability: TaxLiability, reference: string, paidDate: string, asOf = today()) {
-  return liability.status === "Scheduled" && Boolean(reference.trim()) && validSettlementDate(paidDate, asOf);
+  const record = liability as TaxLiabilityRecord;
+  const notBefore = businessDateFromInstant(record.scheduledAt) ?? businessDateFromInstant(record.createdAt);
+  return liability.status === "Scheduled" && Number.isFinite(liability.amount) && liability.amount > 0 && Boolean(reference.trim()) && validSettlementDate(paidDate, asOf) && Boolean(notBefore && paidDate >= notBefore);
 }
 
 export function disbursementCanRecordSettlement(disbursement: Disbursement, reference: string, settlementDate: string, asOf = today()) {
-  return disbursement.status === "Released" && Boolean(reference.trim()) && validSettlementDate(settlementDate, asOf);
+  const notBefore = businessDateFromInstant(disbursement.createdAt);
+  return disbursement.status === "Released" && Number.isFinite(disbursement.amount) && disbursement.amount >= 0 && Boolean(reference.trim()) && validSettlementDate(settlementDate, asOf) && Boolean(notBefore && settlementDate >= notBefore);
 }
 
 export function disbursementCanRecordFailure(disbursement: Disbursement, reason: string) {
