@@ -18,6 +18,7 @@ export const canManageSchedule = (user: WorkspaceUser | null) => Boolean(user &&
 export const canCreateScheduleItem = (user: WorkspaceUser | null) => Boolean(user && !["Customer","Warehouse"].includes(user.role));
 export const canPostBulletin = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager"].includes(user.role));
 export const canReconcileOrderPayment = (user: WorkspaceUser | null | undefined) => user?.role === "Administrator";
+export const canManageMarketing = (user: WorkspaceUser | null | undefined) => user?.role === "Administrator";
 
 const managedUserIds = (data: WorkspaceData, user: WorkspaceUser) => {
   const teams = new Set(user.managedTeams ?? []);
