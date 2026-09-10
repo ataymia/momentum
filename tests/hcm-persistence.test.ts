@@ -104,7 +104,7 @@ test("HCM hydration refuses PTO usage without an approved source request", () =>
 test("HCM hydration removes audit entries attributed to nonexistent actors", () => {
   const { data, seed } = storedSeed();
   const stored = clone(seed);
-  stored.audit.push({ id: "audit-forged", at: "2026-09-01T15:00:00Z", actorId: "usr-forged", action: "Changed compensation", entityType: "Compensation", entityId: "comp-1", detail: "Forged" });
+  stored.audit.push({ id: "audit-forged", at: "2026-09-01T15:00:00Z", actorId: "usr-forged", action: "Changed compensation", entityType: "Compensation", entityId: "comp-1", reason: "Forged" });
   const normalized = normalizePersistedHcmState(stored, data, seed);
   assert.equal(normalized.audit.some((record) => record.id === "audit-forged"), false);
 });
