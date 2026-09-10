@@ -19,6 +19,7 @@ const now = () => new Date().toISOString();
 const plusDays = (value: string, days: number) => addCalendarDays(value, days);
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const validTime = (value: string) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+const isDemoIdentity = (user: WorkspaceUser) => user.email.toLowerCase().endsWith("@momentum.demo");
 
 const warehouseUser: WorkspaceUser = {
   id: "usr-warehouse",
@@ -144,12 +145,31 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   }, [demoMode]);
 
   const data = useMemo<WorkspaceData>(() => {
-    const cleanBaseUsers = demoMode ? base.data.users : base.data.users.filter((user) => user.id !== warehouseUser.id);
-    const users = demoMode && !cleanBaseUsers.some((user) => user.id === warehouseUser.id) ? [...cleanBaseUsers, warehouseUser] : cleanBaseUsers;
-    const extraLots = commercial.inventoryLots.filter((lot) => demoMode || lot.id !== tropicalLot.id);
-    if (demoMode && !base.data.inventory.some((lot) => lot.id === tropicalLot.id) && !extraLots.some((lot) => lot.id === tropicalLot.id)) extraLots.push(tropicalLot);
+    if (!demoMode) {
+      const productionUsers = base.data.users.filter((user) => !isDemoIdentity(user));
+      return {
+        ...base.data,
+        users: productionUsers,
+        customers: [],
+        accounts: [],
+        activities: [],
+        appointments: [],
+        orders: [],
+        placements: [],
+        inventory: [],
+        approvals: [],
+        timeEntries: [],
+        timecards: [],
+        notifications: [],
+        bulletins: [],
+      };
+    }
+    const cleanBaseUsers = base.data.users;
+    const users = !cleanBaseUsers.some((user) => user.id === warehouseUser.id) ? [...cleanBaseUsers, warehouseUser] : cleanBaseUsers;
+    const extraLots = commercial.inventoryLots;
+    if (!base.data.inventory.some((lot) => lot.id === tropicalLot.id) && !extraLots.some((lot) => lot.id === tropicalLot.id)) extraLots.push(tropicalLot);
     const extraLotIds = new Set(extraLots.map((lot) => lot.id));
-    const inventory = [...extraLots, ...base.data.inventory.filter((lot) => !extraLotIds.has(lot.id) && (demoMode || lot.id !== tropicalLot.id))];
+    const inventory = [...extraLots, ...base.data.inventory.filter((lot) => !extraLotIds.has(lot.id))];
     const accounts = base.data.accounts.map((account) => ({ ...account, ...(commercial.accountPatches[account.id] ?? {}) }));
     const salesRepIds = new Set(users.filter((user) => user.role === "Sales Representative").map((user) => user.id));
     const baseOrders = base.data.orders.map((order) => ({
@@ -171,7 +191,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     };
   }, [base.data, commercial, demoMode]);
 
-  const currentUser = useMemo(() => demoMode && warehouseSession ? data.users.find((user) => user.id === warehouseUser.id) ?? null : base.currentUser ? data.users.find((user) => user.id === base.currentUser?.id) ?? base.currentUser : null, [base.currentUser, data.users, demoMode, warehouseSession]);
+  const currentUser = useMemo(() => demoMode && warehouseSession ? data.users.find((user) => user.id === warehouseUser.id) ?? null : base.currentUser ? data.users.find((user) => user.id === base.currentUser?.id) ?? null : null, [base.currentUser, data.users, demoMode, warehouseSession]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
 
   const focusActiveFieldWork = (appointment: Appointment) => {
@@ -180,7 +200,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const login = (email: string, password: string) => {
-    if (demoMode && email.trim().toLowerCase() === warehouseUser.email && password === "admin") {
+    if (!demoMode) return { ok: false, message: "Sign-in will be available when Firebase Authentication is connected." };
+    if (email.trim().toLowerCase() === warehouseUser.email && password === "admin") {
       base.logout();
       setWarehouseSession(true);
       window.localStorage.setItem(WAREHOUSE_SESSION_KEY, "true");
@@ -222,7 +243,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
     setWarehouseSession(false);
     window.localStorage.removeItem(WAREHOUSE_SESSION_KEY);
-    base.switchUser(userId);
+    if (demoMode) base.switchUser(userId);
   };
 
   const createAccount: BaseWorkspace["createAccount"] = (account) => {
@@ -453,6 +474,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const resetDemo = () => {
+    if (!demoMode) return;
     base.resetDemo();
     setCommercial(seedCommercial(base.data));
     setWarehouseSession(false);
