@@ -68,7 +68,7 @@ const allNavLabels = ["Home","Account overview","My work","CRM & sales","My acco
 
 async function resetSession() {
   await navigate(BASE_URL);
-  await execute(`localStorage.removeItem('momentum-demo-session-v2'); localStorage.removeItem('momentum-warehouse-session-v1'); location.reload();`);
+  await execute(`localStorage.setItem('momentum-runtime-mode-v1', JSON.stringify({version:1,mode:'demo'})); localStorage.removeItem('momentum-demo-session-v2'); localStorage.removeItem('momentum-warehouse-session-v1'); location.reload();`);
   await waitExists(".login-form");
 }
 async function login(role) {
