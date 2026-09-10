@@ -17,6 +17,7 @@ import {
 } from "./access";
 import { addCalendarDays, arizonaDateKey, arizonaTimeKey, startOfLocalWeek } from "./date-time";
 import { createDemoData } from "./demo-data";
+import { normalizeWorkspaceData } from "./workspace-normalization";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import type {
   Account,
@@ -181,8 +182,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const timer = window.setTimeout(() => {
       try {
         const saved = localStorage.getItem(DATA_KEY);
-        if (saved) setData(normalizeCustomerHierarchy(JSON.parse(saved) as WorkspaceData));
-        setCurrentUserId(localStorage.getItem(SESSION_KEY));
+        const fallback = createNormalizedDemoData();
+        const hydrated = saved ? normalizeCustomerHierarchy(normalizeWorkspaceData(JSON.parse(saved), fallback)) : fallback;
+        if (saved) setData(hydrated);
+        const storedSession = localStorage.getItem(SESSION_KEY);
+        if (storedSession && hydrated.users.some((user) => user.id === storedSession)) setCurrentUserId(storedSession);
+        else {
+          setCurrentUserId(null);
+          if (storedSession) localStorage.removeItem(SESSION_KEY);
+        }
         setSidebarCollapsedState(localStorage.getItem(SIDEBAR_KEY) === "true");
       } catch {
         localStorage.removeItem(DATA_KEY);
