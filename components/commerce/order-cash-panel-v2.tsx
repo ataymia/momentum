@@ -1,18 +1,18 @@
 "use client";
 
 import { BadgeDollarSign, FileText, Landmark, ReceiptText, RotateCcw, ShieldCheck } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { InvoiceTerms, PaymentMethod, arAgingBucket, computedInvoiceStatus, creditCanApprove, invoiceBalance, invoicePaidAmount, invoicePendingAmount, invoiceRecordableAmount, openReceivables, paymentSettlementDate, refundCanApprove, refundRemainingAmount } from "../../lib/commerce-engine";
 import { useCommerce } from "../../lib/commerce-context";
 import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
-import { addCalendarDays, arizonaDateKey } from "../../lib/date-time";
+import { addCalendarDays, arizonaDateKey, isValidCalendarDateKey } from "../../lib/date-time";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Modal, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const invoiceTone = (status: string) => status === "Paid" ? "success" as const : status === "Partially paid" ? "warning" as const : status === "Void" ? "danger" as const : "info" as const;
 const paymentTone = (status: string) => status === "Cleared" ? "success" as const : status === "Failed" || status === "Reversed" ? "danger" as const : "warning" as const;
 const todayKey = () => arizonaDateKey();
-const businessDateKey = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : arizonaDateKey(value);
+const businessDateKey = (value: string) => isValidCalendarDateKey(value) ? value : !Number.isNaN(new Date(value).getTime()) ? arizonaDateKey(value) : todayKey();
 
 export function OrderCashPanel() {
   const { data, scope, currentUser } = useWorkspace();
@@ -20,8 +20,10 @@ export function OrderCashPanel() {
   const orderIds = new Set(scope.orders.map((order) => order.id));
   const invoices = commerce.invoices.filter((invoice) => orderIds.has(invoice.orderId)).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
   const receivables = openReceivables(commerce).filter((item) => orderIds.has(item.invoice.orderId));
+  const focusId = typeof window !== "undefined" ? window.sessionStorage.getItem("momentum-focus-record") : null;
+  const focusedInvoice = focusId ? invoices.find((invoice) => invoice.id === focusId || invoice.orderId === focusId) : undefined;
 
-  const [selectedId, setSelectedId] = useState(invoices[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(focusedInvoice?.id ?? invoices[0]?.id ?? "");
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [creditOpen, setCreditOpen] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
@@ -42,6 +44,16 @@ export function OrderCashPanel() {
   const [paymentForm, setPaymentForm] = useState({ amount: "", method: "ACH" as PaymentMethod, status: "Cleared" as "Pending" | "Cleared", settlementDate: todayKey(), reference: "", note: "" });
   const [creditForm, setCreditForm] = useState({ amount: "", reason: "" });
   const [refundForm, setRefundForm] = useState({ paymentId: "", amount: "", reason: "", evidence: "" });
+
+  useEffect(() => {
+    if (!focusId || !focusedInvoice) return;
+    const handle = window.setTimeout(() => {
+      setSelectedId(focusedInvoice.id);
+      document.getElementById(`commerce-${focusedInvoice.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (window.sessionStorage.getItem("momentum-focus-record") === focusId) window.sessionStorage.removeItem("momentum-focus-record");
+    }, 20);
+    return () => window.clearTimeout(handle);
+  }, [focusId, focusedInvoice]);
 
   if (!currentUser || currentUser.role === "Customer") return null;
 
@@ -125,8 +137,13 @@ export function OrderCashPanel() {
     if (!selected) return;
     const issuedDate = businessDateKey(selected.issuedAt);
     const days = terms === "Net 7" ? 7 : terms === "Net 15" ? 15 : terms === "Net 30" ? 30 : 0;
-    const dueDate = terms === "Custom" ? selected.dueDate : addCalendarDays(issuedDate, days);
-    setInvoiceTerms(selected.id, terms, dueDate);
+    if (terms === "Custom") {
+      const dueDate = window.prompt("Enter the custom due date as YYYY-MM-DD.", selected.dueDate ?? todayKey());
+      if (!dueDate || !isValidCalendarDateKey(dueDate)) return;
+      setInvoiceTerms(selected.id, terms, dueDate);
+      return;
+    }
+    setInvoiceTerms(selected.id, terms, addCalendarDays(issuedDate, days));
   };
 
   return (
@@ -143,7 +160,7 @@ export function OrderCashPanel() {
               const location = data.accounts.find((item) => item.id === invoice.accountId);
               const status = computedInvoiceStatus(commerce, invoice);
               const open = invoiceBalance(commerce, invoice);
-              return <button key={invoice.id} className={`account-table ${selected?.id === invoice.id ? "is-selected" : ""}`} onClick={() => setSelectedId(invoice.id)}><span className="account-name-cell"><i><FileText size={17} /></i><span><strong>{invoice.number}</strong><small>{location ? locationLabel(location) : "Location"} · {order?.number}</small></span></span><span><StatusPill tone={invoiceTone(status)}>{status}</StatusPill></span><span>{formatMoney(invoice.total)}</span><span>{open > 0 ? `${formatMoney(open)} due` : "Settled"}</span></button>;
+              return <button id={`commerce-${invoice.id}`} key={invoice.id} className={`account-table ${selected?.id === invoice.id ? "is-selected" : ""} ${focusedInvoice?.id === invoice.id ? "is-focused" : ""}`} onClick={() => setSelectedId(invoice.id)}><span className="account-name-cell"><i><FileText size={17} /></i><span><strong>{invoice.number}</strong><small>{location ? locationLabel(location) : "Location"} · {order?.number}</small></span></span><span><StatusPill tone={invoiceTone(status)}>{status}</StatusPill></span><span>{formatMoney(invoice.total)}</span><span>{open > 0 ? `${formatMoney(open)} due` : "Settled"}</span></button>;
             })}
             {invoices.length === 0 && <div className="review-empty"><ReceiptText size={24} /><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}
           </div>
@@ -158,7 +175,7 @@ export function OrderCashPanel() {
             {payments.map(({ allocation, payment }) => {
               if (!payment) return null;
               const refundable = refundRemainingAmount(commerce, payment.id);
-              const hasLiveRefund = refundable < payment.amount;
+              const hasLiveRefund = commerce.refunds.some((refund) => refund.paymentId === payment.id && refund.status !== "Failed");
               return <article key={allocation.id}><span><Landmark size={17} /></span><div><strong>{formatMoney(allocation.amount)} · {payment.method}</strong><p>{payment.processorReference ?? "No processor reference"} · allocated to {selected.number}</p><small>Recorded {formatDate(payment.receivedAt, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}{paymentSettlementDate(payment) ? ` · settled ${formatDate(paymentSettlementDate(payment)!, { month: "short", day: "numeric", year: "numeric" })}${payment.settledBy ? ` by ${userName(payment.settledBy)}` : ""}` : " · not settled"}{payment.failureReason ? ` · failed: ${payment.failureReason}` : ""}{payment.reversalReason ? ` · reversed: ${payment.reversalReason}${payment.reversalReference ? ` (${payment.reversalReference})` : ""}` : ""}</small></div><StatusPill tone={paymentTone(payment.status)}>{payment.status}</StatusPill>{canFinance && payment.status === "Pending" && <><Button size="sm" onClick={() => { setClearPaymentId(payment.id); setClearSettlementDate(todayKey()); }}>Record settlement</Button><Button size="sm" variant="ghost" onClick={() => { setPaymentFailId(payment.id); setPaymentFailureReason(""); }}>Mark failed</Button></>}{canFinance && payment.status === "Cleared" && refundable > 0 && <Button size="sm" variant="ghost" onClick={() => { setRefundForm({ paymentId: payment.id, amount: String(refundable), reason: "", evidence: "" }); setRefundOpen(true); }}>Quality refund</Button>}{canFinance && payment.status === "Cleared" && !hasLiveRefund && <Button size="sm" variant="secondary" onClick={() => { setPaymentReverseId(payment.id); setPaymentReversalReason(""); setPaymentReversalReference(""); }}>Record reversal</Button>}{canFinance && payment.status === "Cleared" && hasLiveRefund && <small>Resolve refund lifecycle before payment reversal</small>}</article>;
             })}
             {credits.map((credit) => {
@@ -167,7 +184,7 @@ export function OrderCashPanel() {
             })}
             {refunds.filter((refund) => payments.some(({ payment }) => payment?.id === refund.paymentId)).map((refund) => {
               const canApprove = canFinance && refundCanApprove(refund, currentUser.id);
-              return <article key={refund.id}><span><RotateCcw size={17} /></span><div><strong>{formatMoney(refund.amount)} quality refund</strong><p>{refund.reason}</p><small>{refund.basis ?? "Verified quality issue"} · Evidence: {refund.evidence ?? "Legacy evidence record"}</small><small>Requested by {userName(refund.createdBy)}{refund.approvedBy ? ` · approved by ${userName(refund.approvedBy)}` : ""}{refund.sentReference ? ` · sent ref ${refund.sentReference}` : ""}{refund.settledAt ? ` · settled ${formatDate(refund.settledAt, { month: "short", day: "numeric", year: "numeric" })}${refund.settledBy ? ` by ${userName(refund.settledBy)}` : ""}` : ""}{refund.failureReason ? ` · failed: ${refund.failureReason}` : ""}</small></div><StatusPill tone={refund.status === "Settled" ? "success" : refund.status === "Failed" ? "danger" : "warning"}>{refund.status}</StatusPill>{refund.status === "Requested" && canApprove && <Button size="sm" onClick={() => approveRefund(refund.id)}>Approve</Button>}{refund.status === "Requested" && canFinance && !canApprove && <small>Independent approval required</small>}{canFinance && refund.status === "Approved" && <Button size="sm" onClick={() => { setRefundSendId(refund.id); setRefundSendReference(""); }}>Record sent</Button>}{canFinance && refund.status === "Sent" && <Button size="sm" onClick={() => { setRefundSettleId(refund.id); setRefundSettlementDate(todayKey()); }}>Record settled</Button>}{canFinance && ["Requested", "Approved", "Sent"].includes(refund.status) && <Button size="sm" variant="ghost" onClick={() => { setRefundFailId(refund.id); setRefundFailureReason(""); }}>Mark failed</Button>}</article>;
+              return <article key={refund.id}><span><RotateCcw size={17} /></span><div><strong>{formatMoney(refund.amount)} quality refund</strong><p>{refund.reason}</p><small>{refund.basis} · Evidence: {refund.evidence}</small><small>Requested by {userName(refund.createdBy)}{refund.approvedBy ? ` · approved by ${userName(refund.approvedBy)}` : ""}{refund.sentReference ? ` · sent ref ${refund.sentReference}` : ""}{refund.settledAt ? ` · settled ${formatDate(refund.settledAt, { month: "short", day: "numeric", year: "numeric" })}${refund.settledBy ? ` by ${userName(refund.settledBy)}` : ""}` : ""}{refund.failureReason ? ` · failed: ${refund.failureReason}` : ""}</small></div><StatusPill tone={refund.status === "Settled" ? "success" : refund.status === "Failed" ? "danger" : "warning"}>{refund.status}</StatusPill>{refund.status === "Requested" && canApprove && <Button size="sm" onClick={() => approveRefund(refund.id)}>Approve</Button>}{refund.status === "Requested" && canFinance && !canApprove && <small>Independent approval required</small>}{canFinance && refund.status === "Approved" && <Button size="sm" onClick={() => { setRefundSendId(refund.id); setRefundSendReference(""); }}>Record sent</Button>}{canFinance && refund.status === "Sent" && <Button size="sm" onClick={() => { setRefundSettleId(refund.id); setRefundSettlementDate(todayKey()); }}>Record settled</Button>}{canFinance && ["Requested", "Approved", "Sent"].includes(refund.status) && <Button size="sm" variant="ghost" onClick={() => { setRefundFailId(refund.id); setRefundFailureReason(""); }}>Mark failed</Button>}</article>;
             })}
           </div>
 
