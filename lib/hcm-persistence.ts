@@ -94,7 +94,7 @@ export function normalizePersistedHcmState(input: unknown, data: WorkspaceData, 
   if (!object(input) || Number(input.version) !== 4) return seed;
   const root = input;
   const userIds = new Set(data.users.filter((user) => user.role !== "Customer").map((user) => user.id));
-  const teamNames = new Set(data.users.map((user) => user.team));
+  const teamNames = new Set<string>(data.users.map((user) => user.team));
 
   const employees = uniqueBy(records(root, "employees").flatMap((raw): EmploymentRecord[] => {
     if (!object(raw)) return [];
