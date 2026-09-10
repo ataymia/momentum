@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canAccessPage,
+  canAssignScheduleUser,
   canManageUser,
   canPublishBulletinTo,
+  canReconcileOrderPayment,
   canReviewApproval,
+  canTransferSalesResponsibility,
   getWorkspaceScope,
 } from "../lib/access";
 import { createDemoData } from "../lib/demo-data";
@@ -133,4 +136,49 @@ test("central management scope does not grant a manager access merely because an
   const explicitManager = { ...peerManager, managedTeams:[unrelatedRep.team] };
   const managedData = { ...strictData, users: strictData.users.map((item)=>item.id===explicitManager.id?explicitManager:item) };
   assert.equal(canManageUser(managedData, explicitManager, unrelatedRep.id, false), true);
+});
+
+test("schedule assignment authority matches dispatch role and management scope", () => {
+  const admin = user("usr-mia");
+  const manager = user("usr-avery");
+  const rep = user("usr-jordan");
+  const operations = user("usr-elena");
+  const strictManager: WorkspaceUser = { ...manager, managedTeams: [] };
+  const unrelatedRep: WorkspaceUser = { ...rep, id:"usr-schedule-unmanaged",name:"Unmanaged Sales Rep",firstName:"Unmanaged",email:"schedule-unmanaged@test",initials:"US",managerId:"usr-someone-else" };
+  const warehouse: WorkspaceUser = { ...operations, id:"usr-schedule-warehouse",name:"Warehouse",firstName:"Warehouse",email:"schedule-warehouse@test",initials:"WH",role:"Warehouse" };
+  const scopedData = { ...data, users:[...data.users, unrelatedRep, warehouse] };
+
+  assert.equal(canAssignScheduleUser(scopedData, strictManager, rep.id), true);
+  assert.equal(canAssignScheduleUser(scopedData, strictManager, unrelatedRep.id), false);
+  assert.equal(canAssignScheduleUser(scopedData, strictManager, operations.id), false);
+  assert.equal(canAssignScheduleUser(scopedData, operations, operations.id), true);
+  assert.equal(canAssignScheduleUser(scopedData, operations, rep.id), false);
+  assert.equal(canAssignScheduleUser(scopedData, rep, rep.id), true);
+  assert.equal(canAssignScheduleUser(scopedData, rep, manager.id), false);
+  assert.equal(canAssignScheduleUser(scopedData, admin, rep.id), true);
+  assert.equal(canAssignScheduleUser(scopedData, admin, operations.id), true);
+  assert.equal(canAssignScheduleUser(scopedData, admin, warehouse.id), false);
+});
+
+test("sales responsibility transfers cannot target unmanaged sales users", () => {
+  const admin = user("usr-mia");
+  const manager = user("usr-avery");
+  const rep = user("usr-jordan");
+  const strictManager: WorkspaceUser = { ...manager, managedTeams: [] };
+  const unrelatedRep: WorkspaceUser = { ...rep, id:"usr-transfer-unmanaged",name:"Unmanaged Sales Rep",firstName:"Unmanaged",email:"transfer-unmanaged@test",initials:"TU",managerId:"usr-someone-else" };
+  const scopedData = { ...data, users:[...data.users, unrelatedRep] };
+  const account = scopedData.accounts.find((item) => item.ownerId === rep.id)!;
+
+  assert.equal(canTransferSalesResponsibility(scopedData, strictManager, account, rep.id), true);
+  assert.equal(canTransferSalesResponsibility(scopedData, strictManager, account, strictManager.id), true);
+  assert.equal(canTransferSalesResponsibility(scopedData, strictManager, account, unrelatedRep.id), false);
+  assert.equal(canTransferSalesResponsibility(scopedData, admin, account, unrelatedRep.id), true);
+});
+
+test("order payment reconciliation authority follows the existing cash-control owner", () => {
+  assert.equal(canReconcileOrderPayment(user("usr-mia")), true);
+  assert.equal(canReconcileOrderPayment(user("usr-avery")), false);
+  assert.equal(canReconcileOrderPayment(user("usr-jordan")), false);
+  assert.equal(canReconcileOrderPayment(user("usr-elena")), false);
+  assert.equal(canReconcileOrderPayment(user("usr-customer")), false);
 });
