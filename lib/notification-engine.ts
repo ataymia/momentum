@@ -39,13 +39,15 @@ export function normalizeNotificationState(input: unknown, users: WorkspaceUser[
 
 export function resolveNotificationRecipients(event: AuditEvent, data: WorkspaceData): string[] {
   if (event.sensitivity === "admin") {
-    const admins = data.users.filter((user) => user.role === "Administrator").map((user) => user.id).filter((id) => id !== event.actorId);
-    return admins.length ? admins : [event.actorId];
+    const admins = data.users.filter((user) => user.role === "Administrator").map((user) => user.id);
+    const otherAdmins = admins.filter((id) => id !== event.actorId);
+    if (otherAdmins.length) return otherAdmins;
+    return admins.includes(event.actorId) ? [event.actorId] : [];
   }
   const recipients = new Set<string>(); if (event.relatedUserId) recipients.add(event.relatedUserId);
   if (event.relatedAccountId) { const account = data.accounts.find((item) => item.id === event.relatedAccountId); if (account) { recipients.add(account.ownerId); if (account.accountManagerId) recipients.add(account.accountManagerId); const owner = data.users.find((item) => item.id === account.ownerId); if (owner?.managerId) recipients.add(owner.managerId); for (const user of data.users.filter((item) => item.role === "Customer" && (item.accountIds ?? []).includes(account.id))) if (["orders", "appointments"].includes(event.collection)) recipients.add(user.id); } }
   if (!recipients.size) for (const admin of data.users.filter((user) => user.role === "Administrator")) recipients.add(admin.id);
-  recipients.delete(event.actorId); if (!recipients.size) recipients.add(event.actorId); return [...recipients].filter((id) => data.users.some((user) => user.id === id));
+  recipients.delete(event.actorId); if (!recipients.size && data.users.some((user) => user.id === event.actorId)) recipients.add(event.actorId); return [...recipients].filter((id) => data.users.some((user) => user.id === id));
 }
 
 export function auditEventCreatesNotification(event: AuditEvent) {
