@@ -30,7 +30,7 @@ const object = (value: unknown): value is Record<string, unknown> => Boolean(val
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 const optionalText = (value: unknown) => text(value) || undefined;
 const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value);
-const nonnegative = (value: unknown) => finite(value) && value >= 0;
+const nonnegative = (value: unknown) => finite(value) && Number(value) >= 0;
 const wholeNonnegative = (value: unknown) => Number.isInteger(value) && Number(value) >= 0;
 const wholePositive = (value: unknown) => Number.isInteger(value) && Number(value) > 0;
 const validTime = (value: unknown) => typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
@@ -40,6 +40,7 @@ const validDateOrInstant = (value: unknown) => validDate(value) || validInstant(
 const optionalValidDate = (value: unknown) => value === undefined || value === null || value === "" || validDate(value);
 const optionalValidInstant = (value: unknown) => value === undefined || value === null || value === "" || validInstant(value);
 const optionalFinite = (value: unknown) => value === undefined || value === null || finite(value);
+const optionalTime = (value: unknown) => value === undefined || value === null || value === "" || validTime(value);
 const uniqueById = <T extends { id: string }>(records: T[]) => { const seen = new Set<string>(); return records.filter((record) => !seen.has(record.id) && (seen.add(record.id), true)); };
 const list = (root: Record<string, unknown>, key: string, fallback: unknown[]) => Array.isArray(root[key]) ? root[key] as unknown[] : fallback;
 const stringList = (value: unknown, allowed?: Set<string>) => Array.isArray(value) ? [...new Set(value.filter((item): item is string => typeof item === "string" && (!allowed || allowed.has(item))))] : [];
@@ -57,17 +58,13 @@ function normalizeUsers(raw: unknown[], fallback: WorkspaceUser[]) {
 }
 
 function normalizeCustomers(raw: unknown[], fallback: CustomerAccount[]) {
-  return uniqueById(raw.flatMap((value): CustomerAccount[] => {
+  const normalized = uniqueById(raw.flatMap((value): CustomerAccount[] => {
     if (!object(value)) return [];
     const id = text(value.id); const name = text(value.name); const accountType = text(value.accountType); const createdAt = text(value.createdAt);
     if (!id || !name || !accountTypes.has(accountType) || !validInstant(createdAt)) return [];
     return [{ id, name, accountType: accountType as CustomerAccount["accountType"], billingContactName: optionalText(value.billingContactName), billingEmail: optionalText(value.billingEmail), billingPhone: optionalText(value.billingPhone), notes: optionalText(value.notes), createdAt }];
-  })).length ? uniqueById(raw.flatMap((value): CustomerAccount[] => {
-    if (!object(value)) return [];
-    const id = text(value.id); const name = text(value.name); const accountType = text(value.accountType); const createdAt = text(value.createdAt);
-    if (!id || !name || !accountTypes.has(accountType) || !validInstant(createdAt)) return [];
-    return [{ id, name, accountType: accountType as CustomerAccount["accountType"], billingContactName: optionalText(value.billingContactName), billingEmail: optionalText(value.billingEmail), billingPhone: optionalText(value.billingPhone), notes: optionalText(value.notes), createdAt }];
-  })) : fallback;
+  }));
+  return normalized.length ? normalized : fallback;
 }
 
 function normalizeCorrection(value: unknown, userIds: Set<string>) {
@@ -76,7 +73,6 @@ function normalizeCorrection(value: unknown, userIds: Set<string>) {
   if (!validTime(before.clockIn) || !optionalTime(before.mealStart) || !optionalTime(before.mealEnd) || !optionalTime(before.clockOut) || !nonnegative(before.breakMinutes)) return undefined;
   return { at: text(value.at), by: text(value.by), reason: text(value.reason), before: { clockIn: text(before.clockIn), mealStart: optionalText(before.mealStart), mealEnd: optionalText(before.mealEnd), clockOut: optionalText(before.clockOut), breakMinutes: Number(before.breakMinutes) } };
 }
-const optionalTime = (value: unknown) => value === undefined || value === null || value === "" || validTime(value);
 
 export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData): WorkspaceData {
   if (!object(input)) return fallback;
