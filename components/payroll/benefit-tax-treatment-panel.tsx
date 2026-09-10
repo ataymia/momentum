@@ -1,13 +1,14 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { arizonaDateKey } from "../../lib/date-time";
 import { useHcm } from "../../lib/hcm-context";
 import { activeBenefitTaxRule, payrollBenefitDeductions, type BenefitTaxTreatment } from "../../lib/payroll-engine";
 import { usePayroll } from "../../lib/payroll-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Section, StatusPill, formatMoney } from "../ui";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => arizonaDateKey();
 
 export function BenefitTaxTreatmentPanel() {
   const { data, currentUser } = useWorkspace();
