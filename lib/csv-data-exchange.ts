@@ -1,5 +1,6 @@
 import type { Appointment, InventoryLot } from "./types";
 import type { Shift } from "./hcm-engine";
+import { isValidCalendarDateKey } from "./date-time";
 
 export type CsvRow = Record<string, string>;
 export type CsvParseResult = { headers: string[]; rows: CsvRow[]; errors: string[] };
@@ -68,7 +69,7 @@ const numberValue = (value: string, label: string, rowNumber: number, errors: st
   return parsed;
 };
 const dateValue = (value: string, label: string, rowNumber: number, errors: string[]) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) { errors.push(`Row ${rowNumber}: ${label} must use YYYY-MM-DD.`); return undefined; }
+  if (!isValidCalendarDateKey(value)) { errors.push(`Row ${rowNumber}: ${label} must be a valid YYYY-MM-DD calendar date.`); return undefined; }
   return value;
 };
 const timeValue = (value: string, label: string, rowNumber: number, errors: string[]) => {
