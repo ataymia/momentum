@@ -1,3 +1,4 @@
+import { accountIsVisible } from "./access";
 import type { WorkspaceData, WorkspaceUser } from "./types";
 import { customerForLocation } from "./crm-hierarchy";
 
@@ -63,14 +64,11 @@ export function normalizeCrmState(input:unknown,data:WorkspaceData):CrmState{
 }
 
 export function crmRecordVisible(actor:WorkspaceUser|null|undefined,locationId:string,data:WorkspaceData){
-  if(!actor)return false;
-  if(actor.role==="Administrator"||actor.role==="Operations")return true;
-  if(actor.role==="Customer")return(actor.accountIds??[]).includes(locationId);
+  if(!actor||actor.role==="Warehouse")return false;
   const location=data.accounts.find((item)=>item.id===locationId);
   if(!location)return false;
-  if(actor.role==="Sales Representative")return location.ownerId===actor.id;
-  if(actor.role==="Sales Manager"){const owner=data.users.find((item)=>item.id===location.ownerId);return owner?.managerId===actor.id||owner?.team===actor.team;}
-  return false;
+  if(actor.role==="Operations")return true;
+  return accountIsVisible(data,actor,location);
 }
 
 export function contactMatchesLocation(state:CrmState,contactId:string,locationId:string,data:WorkspaceData){
