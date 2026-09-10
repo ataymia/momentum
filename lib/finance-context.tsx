@@ -15,7 +15,7 @@ type FinanceContextValue = {
   submitExpense: (input: NewExpense) => string | null;
   managerDecision: (id: string, status: "Manager approved" | "Returned", reason?: string) => boolean;
   financeDecision: (id: string, status: "Finance approved" | "Returned", reason?: string) => boolean;
-  markExpensePaid: (id: string) => boolean;
+  markExpensePaid: (id: string, paymentReference: string) => boolean;
   resetFinance: () => void;
 };
 
@@ -39,13 +39,13 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   }, [finance]);
 
   const submitExpense = (input: NewExpense) => {
-    if (!currentUser || currentUser.role === "Customer" || !input.merchant.trim() || !input.businessPurpose.trim() || !Number.isFinite(input.amount) || input.amount <= 0) return null;
+    if (!currentUser || currentUser.role === "Customer" || !input.merchant.trim() || !input.category.trim() || !input.businessPurpose.trim() || !Number.isFinite(input.amount) || input.amount <= 0) return null;
     if (input.accountId) {
       const account = data.accounts.find((item) => item.id === input.accountId);
       if (!account || !accountIsVisible(data, currentUser, account)) return null;
     }
     const id = uid("expense");
-    const expense: Expense = { ...input, id, requesterId: currentUser.id, submittedAt: now(), merchant: input.merchant.trim(), businessPurpose: input.businessPurpose.trim(), status: "Submitted" };
+    const expense: Expense = { ...input, id, requesterId: currentUser.id, submittedAt: now(), merchant: input.merchant.trim(), category: input.category.trim(), businessPurpose: input.businessPurpose.trim(), receiptName: input.receiptName?.trim() || undefined, status: "Submitted" };
     setFinance((state) => ({ ...state, expenses: [expense, ...state.expenses] }));
     return id;
   };
@@ -72,11 +72,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const markExpensePaid = (id: string) => {
-    if (currentUser?.role !== "Administrator") return false;
+  const markExpensePaid = (id: string, paymentReference: string) => {
+    if (currentUser?.role !== "Administrator" || !paymentReference.trim()) return false;
     const expense = finance.expenses.find((item) => item.id === id && item.status === "Finance approved");
     if (!expense) return false;
-    setFinance((state) => ({ ...state, expenses: state.expenses.map((item) => item.id === id ? { ...item, status: "Paid", paidAt: now(), paidBy: currentUser.id } : item) }));
+    setFinance((state) => ({ ...state, expenses: state.expenses.map((item) => item.id === id && item.status === "Finance approved" ? { ...item, status: "Paid", paidAt: now(), paidBy: currentUser.id, paymentReference: paymentReference.trim() } : item) }));
     return true;
   };
 
