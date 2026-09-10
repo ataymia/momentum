@@ -25,7 +25,8 @@ test("browser-engine reset actions stay demo-only and administrator-controlled",
   assert.match(sources.commerce, /resetCommerce[\s\S]{0,180}runtime\.isDemo[\s\S]{0,120}Administrator/);
   assert.match(sources.payroll, /resetPayroll[\s\S]{0,180}runtime\.isDemo[\s\S]{0,120}isAdmin/);
   assert.match(sources.inventory, /resetLedger[\s\S]{0,180}runtime\.isDemo[\s\S]{0,120}Administrator/);
-  assert.match(sources.accounting, /resetAccounting[\s\S]{0,180}runtime\.isDemo[\s\S]{0,120}Administrator/);
+  assert.match(sources.accounting, /const canManageAccounting=currentUser\?\.role==="Administrator"/);
+  assert.match(sources.accounting, /const resetAccounting=\(\)=>\{if\(!runtime\.isDemo\|\|!canManageAccounting\)return false;/);
 });
 
 test("payroll setup mutations are authorization-checked in the context, not only hidden in the UI", () => {
