@@ -1,4 +1,4 @@
-import type { WorkerClassification } from "./hcm-engine";
+import type { PayBasis, WorkerClassification } from "./hcm-engine";
 import type { Role, Team, WorkspaceData } from "./types";
 
 export const IDENTITY_PROVISIONING_STORAGE_KEY = "momentum-identity-provisioning-v1";
@@ -22,6 +22,8 @@ export type ProvisioningDraft = {
   managerId: string;
   workLocation: string;
   classification: WorkerClassification;
+  payBasis: PayBasis;
+  payRate?: number;
   payGroup: string;
   standardWeeklyHours?: number;
   startDate: string;
@@ -35,6 +37,7 @@ export type ProvisioningDraft = {
 };
 
 export type IdentityProvisioningRecord = {
+  id: string;
   userId: string;
   state: AccountAccessState;
   source: ProvisioningSource;
@@ -63,6 +66,7 @@ const validDraftStatuses = new Set<ProvisioningDraftStatus>(["Draft", "Ready to 
 const validRoles = new Set<ProvisionableRole>(["Sales Manager", "Sales Representative", "Operations", "Warehouse"]);
 const validTeams = new Set<Exclude<Team, "Customer">>(["Leadership", "Sales", "Operations"]);
 const validClassifications = new Set<WorkerClassification>(["Hourly", "Salary", "Contractor", "Not configured"]);
+const validPayBasis = new Set<PayBasis>(["Hourly", "Salary per pay period", "Not configured"]);
 const validInstant = (value?: string) => Boolean(value && !Number.isNaN(new Date(value).getTime()));
 const validDate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 
@@ -72,6 +76,7 @@ export function createIdentityProvisioningSeed(data: WorkspaceData): IdentityPro
     version: 1,
     drafts: [],
     records: data.users.filter((user) => user.role !== "Customer").map((user) => ({
+      id: `access-${user.id}`,
       userId: user.id,
       state: "Active" as const,
       source: user.role === "Administrator" ? "Bootstrap admin" as const : "Direct hire" as const,
@@ -97,6 +102,7 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
     if (record.onboardingSubmittedAt && !validInstant(record.onboardingSubmittedAt)) return false;
     if (record.activatedAt && !validInstant(record.activatedAt)) return false;
     if (record.returnedAt && !validInstant(record.returnedAt)) return false;
+    record.id = record.id || `access-${record.userId}`;
     seen.add(record.userId);
     return true;
   });
@@ -104,7 +110,10 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
 
   const draftIds = new Set<string>();
   const drafts = (Array.isArray(raw.drafts) ? raw.drafts : []).filter((draft): draft is ProvisioningDraft => {
-    if (!draft || typeof draft !== "object" || !draft.id || draftIds.has(draft.id) || !validDraftSources.has(draft.source) || !draft.legalName?.trim() || !draft.workEmail?.trim().includes("@") || !draft.jobTitle?.trim() || !validRoles.has(draft.role) || !validTeams.has(draft.team) || !managerIds.has(draft.managerId) || !draft.workLocation?.trim() || !validClassifications.has(draft.classification) || !draft.payGroup?.trim() || !validDate(draft.startDate) || !Array.isArray(draft.courseIds) || new Set(draft.courseIds).size !== draft.courseIds.length || !validDraftStatuses.has(draft.status) || !draft.createdBy || !validInstant(draft.createdAt) || !validInstant(draft.updatedAt)) return false;
+    if (!draft || typeof draft !== "object" || !draft.id || draftIds.has(draft.id) || !validDraftSources.has(draft.source) || !draft.legalName?.trim() || !draft.workEmail?.trim().includes("@") || !draft.jobTitle?.trim() || !validRoles.has(draft.role) || !validTeams.has(draft.team) || !managerIds.has(draft.managerId) || !draft.workLocation?.trim() || !validClassifications.has(draft.classification) || !validPayBasis.has(draft.payBasis) || !draft.payGroup?.trim() || !validDate(draft.startDate) || !Array.isArray(draft.courseIds) || new Set(draft.courseIds).size !== draft.courseIds.length || !validDraftStatuses.has(draft.status) || !draft.createdBy || !validInstant(draft.createdAt) || !validInstant(draft.updatedAt)) return false;
+    if (draft.payRate !== undefined && (!Number.isFinite(draft.payRate) || draft.payRate < 0)) return false;
+    if (draft.payBasis === "Not configured" && draft.payRate !== undefined) return false;
+    if (draft.payBasis !== "Not configured" && (!Number.isFinite(draft.payRate) || Number(draft.payRate) <= 0)) return false;
     if (draft.standardWeeklyHours !== undefined && (!Number.isFinite(draft.standardWeeklyHours) || draft.standardWeeklyHours < 0 || draft.standardWeeklyHours > 168)) return false;
     if (draft.linkedUserId && !userIds.has(draft.linkedUserId)) return false;
     if (draft.inviteSentAt && !validInstant(draft.inviteSentAt)) return false;
