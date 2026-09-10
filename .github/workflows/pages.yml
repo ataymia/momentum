@@ -47,6 +47,37 @@ jobs:
         run: npm run verify:pages
         env:
           NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+      - name: Run six-role browser launch acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v google-chrome >/dev/null
+          command -v chromedriver >/dev/null
+          BASE_PATH="${{ steps.pages.outputs.base_path }}"
+          rm -rf .launch-site
+          mkdir -p ".launch-site${BASE_PATH}"
+          cp -R out/. ".launch-site${BASE_PATH}/"
+          python3 -m http.server 4173 --directory .launch-site >/tmp/momentum-http.log 2>&1 &
+          HTTP_PID=$!
+          chromedriver --port=9515 >/tmp/momentum-chromedriver.log 2>&1 &
+          DRIVER_PID=$!
+          cleanup() {
+            kill "$HTTP_PID" "$DRIVER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:9515/status >/dev/null && curl --fail --silent "http://127.0.0.1:4173${BASE_PATH}/" >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Browser acceptance services did not become ready."
+              cat /tmp/momentum-http.log || true
+              cat /tmp/momentum-chromedriver.log || true
+              exit 1
+            fi
+            sleep 1
+          done
+          BASE_URL="http://127.0.0.1:4173${BASE_PATH}/" node scripts/launch-browser-smoke.mjs
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
