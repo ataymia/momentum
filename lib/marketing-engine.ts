@@ -13,7 +13,7 @@ export type MaterialMovement={id:string;itemId:string;type:"Receipt"|"Issue"|"Ad
 export type MarketingTouchType="Ad"|"Event"|"Sample"|"Collateral"|"Partnership"|"Creator / PR"|"Retail activation"|"Other";
 export type MarketingTouch={id:string;campaignId:string;accountId?:string;type:MarketingTouchType;occurredAt:string;summary:string;evidence?:string;createdBy:string};
 export type AttributionRelation="Sourced"|"Influenced"|"Supported";
-export type MarketingAttribution={id:string;campaignId:string;accountId:string;relation:AttributionRelation;sourceType:"Order"|"Opportunity"|"Placement"|"Account opening"|"Reorder";sourceId:string;note:string;createdAt:string;createdBy:string;reviewed:boolean;reviewedBy?:string;reviewedAt?:string};
+export type MarketingAttribution={id:string;campaignId:string;accountId:string;relation:AttributionRelation;sourceType:"Order"|"Placement"|"Account opening"|"Reorder";sourceId:string;note:string;createdAt:string;createdBy:string;reviewed:boolean;reviewedBy?:string;reviewedAt?:string};
 export type Partnership={id:string;name:string;type:string;contact?:string;startDate?:string;endDate?:string;status:"Prospect"|"Active"|"Complete"|"Declined";campaignId?:string;notes:string;ownerId:string;createdAt:string};
 export type MarketingState={version:3;requests:MarketingRequest[];campaigns:Campaign[];spend:MarketingSpend[];assets:Asset[];materials:MaterialItem[];materialMovements:MaterialMovement[];touches:MarketingTouch[];attributions:MarketingAttribution[];partnerships:Partnership[]};
 
