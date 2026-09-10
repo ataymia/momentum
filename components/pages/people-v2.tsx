@@ -1,14 +1,14 @@
 "use client";
 
-import { AlertTriangle, BookOpenCheck, CalendarClock, CheckCircle2, Clock3, FileText, HeartHandshake, ShieldCheck, UserRound, UsersRound } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { BookOpenCheck, CalendarClock, CheckCircle2, Clock3, FileText, HeartHandshake, ShieldCheck, UsersRound } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
 import { useHcm } from "../../lib/hcm-context";
 import { activeBenefitEnrollments, activePtoAssignment, appendAudit, benefitDeductionPerPayPeriod, canManageEmployee, ptoBalance, type BenefitEnrollment, type BenefitEvent, type HCMState, type LeaveRequest, type ProfileChangeRequest, type WorkflowRequest } from "../../lib/hcm-engine";
 import { useWorkspace } from "../../lib/workspace-context";
 import { AdvancedHcmPanel } from "../hcm/advanced-hcm";
 import { TimecardRecord } from "../hcm/timecard-record";
-import { Avatar, Button, Field, PageHeader, Section, StatusPill, formatDate, formatMoney, hoursBetween } from "../ui";
+import { Button, Field, PageHeader, Section, StatusPill, formatDate, formatMoney, hoursBetween } from "../ui";
 
 type HcmTab="overview"|"time"|"leave"|"benefits"|"training"|"documents"|"review"|"admin";
 const now=()=>new Date().toISOString();
@@ -20,7 +20,6 @@ export function PeoplePage(){
   const {data,scope,currentUser,toggleClock,startMeal,endMeal,submitTimecard,decideTimecard}=useWorkspace();
   const {hcm,setHcm}=useHcm();
   const manager=Boolean(currentUser&&["Administrator","Sales Manager"].includes(currentUser.role));
-  const admin=currentUser?.role==="Administrator";
   const storedFocus=typeof window!=="undefined"?window.sessionStorage.getItem("momentum-focus-record"):null;
   const storedTab=typeof window!=="undefined"?window.sessionStorage.getItem("momentum-people-tab") as HcmTab|null:null;
   const focusedFromStorage=storedFocus&&data.timecards.some((card)=>card.id===storedFocus)?storedFocus:null;
@@ -79,7 +78,7 @@ export function PeoplePage(){
   const completeTraining=(id:string)=>setHcm((state)=>audit({...state,training:state.training.map((item)=>item.id===id?{...item,status:"Complete",completedAt:now()}:item)},"Training completed","TrainingAssignment",id));
   const acknowledgeDocument=(id:string)=>setHcm((state)=>audit({...state,documents:state.documents.map((item)=>item.id===id?{...item,status:"Available",acknowledgedAt:now(),acknowledgedVersion:item.version}:item)},"Employee document acknowledged","EmployeeDocument",id));
   const acknowledgePolicy=(policyId:string)=>{const policy=hcm.policies.find((item)=>item.id===policyId);if(!policy)return;setHcm((state)=>state.acknowledgments.some((item)=>item.policyId===policyId&&item.userId===currentUser.id&&item.version===policy.version)?state:audit({...state,acknowledgments:[{id:uid("policy-ack"),policyId,userId:currentUser.id,version:policy.version,acknowledgedAt:now()},...state.acknowledgments]},"Policy acknowledged","PolicyRecord",policyId));};
-  const decideProfile=(item:ProfileChangeRequest,status:"Approved"|"Returned")=>setHcm((state)=>audit({...state,profileChangeRequests:state.profileChangeRequests.map((request)=>request.id===item.id?{...request,status,reviewerId:currentUser.id,decidedAt:now()}:request)},`Profile change ${status.toLowerCase()}`,"ProfileChangeRequest",item.id));
+  const decideProfile=(item:ProfileChangeRequest,status:"Approved"|"Returned")=>setHcm((state)=>{let next={...state,profileChangeRequests:state.profileChangeRequests.map((request)=>request.id===item.id?{...request,status,reviewerId:currentUser.id,decidedAt:now()}:request)};if(status==="Approved"&&item.field!=="email"){const prior=next.privateProfiles.find((profile)=>profile.userId===item.userId)??{userId:item.userId,updatedAt:now()};next={...next,privateProfiles:[{...prior,[item.field]:item.requestedValue,updatedAt:now()},...next.privateProfiles.filter((profile)=>profile.userId!==item.userId)]};}return audit(next,`Profile change ${status.toLowerCase()}`,"ProfileChangeRequest",item.id);});
   const decideLife=(item:BenefitEvent,status:"Approved"|"Returned")=>setHcm((state)=>audit({...state,benefitEvents:state.benefitEvents.map((event)=>event.id===item.id?{...event,status,reviewerId:currentUser.id}:event)},`Benefit life event ${status.toLowerCase()}`,"BenefitEvent",item.id));
   const decideWorkflow=(item:WorkflowRequest,status:"Approved"|"Returned")=>setHcm((state)=>audit({...state,workflows:state.workflows.map((request)=>request.id===item.id?{...request,status,reviewerId:currentUser.id,decidedAt:now()}:request)},`HR request ${status.toLowerCase()}`,"WorkflowRequest",item.id));
 
