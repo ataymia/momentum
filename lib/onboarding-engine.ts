@@ -1,4 +1,4 @@
-import { appendAudit, type EmployeeDocument, type HCMState, type LifecycleCase, type TrainingAssignment } from "./hcm-engine";
+import { appendAudit, type EmployeeDocument, type HCMState, type LifecycleCase, type TrainingAssignment, type WorkerClassification } from "./hcm-engine";
 import type { IdentityProvisioningRecord, ProvisioningDraft } from "./identity-provisioning";
 import type { WorkspaceData } from "./types";
 
@@ -14,13 +14,13 @@ export type OnboardingReadiness = {
 
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-export function requiredOnboardingDocumentTemplates(draft: ProvisioningDraft) {
+export function requiredOnboardingDocumentTemplates(classification: WorkerClassification) {
   const common: Array<Pick<EmployeeDocument, "title" | "category">> = [
-    { title: draft.classification === "Contractor" ? "Contractor agreement" : "Employment agreement / offer", category: "Employment" },
+    { title: classification === "Contractor" ? "Contractor agreement" : "Employment agreement", category: "Employment" },
     { title: "Compensation plan / pay notice", category: "Compensation" },
   ];
-  if (draft.classification === "Contractor") return [...common, { title: "Form W-9", category: "Tax" as const }];
-  if (["Hourly", "Salary"].includes(draft.classification)) return [
+  if (classification === "Contractor") return [...common, { title: "Form W-9", category: "Tax" as const }];
+  if (["Hourly", "Salary"].includes(classification)) return [
     ...common,
     { title: "Form I-9", category: "Employment" as const },
     { title: "Form W-4", category: "Tax" as const },
@@ -50,7 +50,7 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
     updatedAt: at,
   } : item);
 
-  const templates = requiredOnboardingDocumentTemplates(draft);
+  const templates = requiredOnboardingDocumentTemplates(draft.classification);
   const existingTitles = new Set(state.documents.filter((doc) => doc.userId === userId).map((doc) => doc.title.toLowerCase()));
   const addedDocuments: EmployeeDocument[] = templates.filter((template) => !existingTitles.has(template.title.toLowerCase())).map((template) => ({
     id: uid("onboard-doc"), userId, title: template.title, category: template.category, version: 1, status: "Missing", uploadedAt: at, uploadedBy: actorId,
@@ -94,8 +94,10 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
 
 export function onboardingReadiness(state: HCMState, record: IdentityProvisioningRecord | undefined, userId: string): OnboardingReadiness {
   const employee = state.employees.find((item) => item.userId === userId);
+  const profile = state.privateProfiles.find((item) => item.userId === userId);
   const lifecycle = state.lifecycleCases.find((item) => item.type === "Onboarding" && item.userId === userId && item.status === "Open");
-  const documents = state.documents.filter((item) => item.userId === userId && ["Employment", "Compensation", "Tax"].includes(item.category));
+  const requiredTitles = new Set(requiredOnboardingDocumentTemplates(employee?.classification ?? "Not configured").map((item) => item.title.toLowerCase()));
+  const documents = state.documents.filter((item) => item.userId === userId && requiredTitles.has(item.title.toLowerCase()));
   const training = state.training.filter((item) => item.userId === userId);
   const requiredDocumentIds = documents.map((item) => item.id);
   const requiredTrainingIds = training.map((item) => item.id);
@@ -110,11 +112,15 @@ export function onboardingReadiness(state: HCMState, record: IdentityProvisionin
   checks.push(employmentConfigured);
   if (!employmentConfigured) blockers.push("Employment profile, reporting line, classification, location, or pay group is incomplete.");
 
+  const profileComplete = Boolean(profile?.phone?.trim() && profile.address?.trim() && profile.emergencyContact?.trim());
+  checks.push(profileComplete);
+  if (!profileComplete) blockers.push("Employee phone, address, and emergency contact are incomplete.");
+
   const compensationConfigured = state.compensation.some((item) => item.userId === userId && item.status !== "Ended" && item.rate > 0 && item.basis !== "Not configured");
   checks.push(compensationConfigured);
   if (!compensationConfigured) blockers.push("Approved compensation is not configured.");
 
-  const documentsComplete = documents.length > 0 && documents.every((item) => item.status === "Available");
+  const documentsComplete = requiredTitles.size > 0 && documents.length === requiredTitles.size && documents.every((item) => item.status === "Available");
   checks.push(documentsComplete);
   if (!documentsComplete) blockers.push("Required employment/tax documents are incomplete or awaiting secure file/e-sign evidence.");
 
@@ -126,7 +132,7 @@ export function onboardingReadiness(state: HCMState, record: IdentityProvisionin
   checks.push(lifecycleExists);
   if (!lifecycleExists) blockers.push("Onboarding case has not been prepared.");
 
-  const readyForEmployeeSubmission = passwordComplete && employmentConfigured && compensationConfigured && documentsComplete && trainingComplete && lifecycleExists;
+  const readyForEmployeeSubmission = passwordComplete && employmentConfigured && profileComplete && compensationConfigured && documentsComplete && trainingComplete && lifecycleExists;
   const readyForActivation = readyForEmployeeSubmission && record?.state === "Pending approval";
   return { readyForEmployeeSubmission, readyForActivation, completed: checks.filter(Boolean).length, total: checks.length, blockers, requiredDocumentIds, requiredTrainingIds };
 }
