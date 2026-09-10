@@ -102,9 +102,14 @@ export function normalizeCrmState(input:unknown,data:WorkspaceData):CrmState{
     return true;
   }));
 
-  const seedResponsibilityIds=new Set(seed.responsibilityHistory.map((event)=>event.id));
-  const storedResponsibility=uniqueById((Array.isArray(state.responsibilityHistory)?state.responsibilityHistory:[]).filter((event):event is ResponsibilityEvent=>Boolean(event?.id&&!seedResponsibilityIds.has(event.id)&&locationById.has(event.locationId)&&responsibilityUsers.has(event.toUserId)&&(!event.fromUserId||responsibilityUsers.has(event.fromUserId))&&event.fromUserId!==event.toUserId&&validTimestamp(event.effectiveAt)&&event.reason?.trim()&&(event.changedBy==="system"||employeeIds.has(event.changedBy))&&(!event.acceptedAt||validTimestamp(event.acceptedAt)))));
-  const responsibilityHistory=reconcileResponsibilityHistory([...seed.responsibilityHistory,...storedResponsibility],data);
+  const storedResponsibility=uniqueById((Array.isArray(state.responsibilityHistory)?state.responsibilityHistory:[]).filter((event):event is ResponsibilityEvent=>Boolean(event?.id&&locationById.has(event.locationId)&&responsibilityUsers.has(event.toUserId)&&(!event.fromUserId||responsibilityUsers.has(event.fromUserId))&&event.fromUserId!==event.toUserId&&validTimestamp(event.effectiveAt)&&event.reason?.trim()&&(event.changedBy==="system"||employeeIds.has(event.changedBy))&&(!event.acceptedAt||validTimestamp(event.acceptedAt)))));
+  const responsibilityBase=[...seed.responsibilityHistory];
+  for(const storedEvent of storedResponsibility){
+    const existingIndex=responsibilityBase.findIndex((event)=>event.id===storedEvent.id);
+    if(existingIndex<0){responsibilityBase.push(storedEvent);continue;}
+    if(storedEvent.effectiveAt<=responsibilityBase[existingIndex].effectiveAt)responsibilityBase[existingIndex]=storedEvent;
+  }
+  const responsibilityHistory=reconcileResponsibilityHistory(responsibilityBase,data);
   return{version:1,contacts:normalizedContacts,interactions,opportunities,responsibilityHistory};
 }
 
