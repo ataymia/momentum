@@ -287,7 +287,7 @@ function validateRecruiting(current: HCMState, next: HCMState, actor: WorkspaceU
     if (!managerOwnsCandidate(next, actor, interview.candidateId) || !interview.interviewerIds.includes(actor.id) || interview.status !== "Scheduled") return fail("Managers may schedule interviews only for candidates in their assigned requisitions.");
   }
   for (const { before, after } of interviewDiff.updated) {
-    if (before.candidateId !== after.candidateId || !managerOwnsCandidate(next, actor, after.candidateId) || !onlyFieldsChanged(before, after, ["status","score","recommendation","notes"])) return fail("Managers may update interview outcomes only within their assigned requisitions.");
+    if (before.candidateId !== after.candidateId || !managerOwnsCandidate(next, actor, after.candidateId) || before.status !== "Scheduled" || after.status !== "Completed" || !onlyFieldsChanged(before, after, ["status","score","recommendation","notes"])) return fail("Managers may complete scheduled interview outcomes only within their assigned requisitions.");
   }
   for (const offer of offerDiff.added) {
     if (!managerOwnsCandidate(next, actor, offer.candidateId) || offer.status !== "Draft" || offer.approvedBy) return fail("Managers may create draft offers only for candidates in their assigned requisitions.");
@@ -314,6 +314,7 @@ export function validateHcmActorTransition(current: HCMState, next: HCMState, ac
   if (!audit.ok) return audit;
 
   const businessChanged = HCM_ARRAY_KEYS.filter((key) => key !== "audit").some((key) => collectionChanged(current[key] as unknown[], next[key] as unknown[], (record) => String((record as Record<string, unknown>).id ?? (record as Record<string, unknown>).userId ?? "")));
+  if (businessChanged && next.audit.length === current.audit.length) return fail("Every HCM business mutation must append an audit event for the authenticated actor.");
   if (actor.role === "Customer") return businessChanged || !sameRecord(current.audit, next.audit) ? fail("Customers cannot mutate employee HCM records.") : { ok: true };
   if (actor.role === "Administrator") return { ok: true };
 
