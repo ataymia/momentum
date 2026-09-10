@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
-import { canManageUser } from "./access";
+import { accountIsVisible, canManageUser } from "./access";
 import { Expense, FINANCE_STORAGE_KEY, FinanceState, createFinanceSeed, normalizeFinanceState } from "./finance-engine";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
@@ -39,8 +39,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   }, [finance]);
 
   const submitExpense = (input: NewExpense) => {
-    if (!currentUser || currentUser.role === "Customer" || !input.merchant.trim() || !input.businessPurpose.trim() || input.amount <= 0) return null;
-    if (input.accountId && !data.accounts.some((account) => account.id === input.accountId)) return null;
+    if (!currentUser || currentUser.role === "Customer" || !input.merchant.trim() || !input.businessPurpose.trim() || !Number.isFinite(input.amount) || input.amount <= 0) return null;
+    if (input.accountId) {
+      const account = data.accounts.find((item) => item.id === input.accountId);
+      if (!account || !accountIsVisible(data, currentUser, account)) return null;
+    }
     const id = uid("expense");
     const expense: Expense = { ...input, id, requesterId: currentUser.id, submittedAt: now(), merchant: input.merchant.trim(), businessPurpose: input.businessPurpose.trim(), status: "Submitted" };
     setFinance((state) => ({ ...state, expenses: [expense, ...state.expenses] }));
