@@ -115,6 +115,16 @@ export function activeEmployerTaxes(state: PayrollState, asOf = today()) {
   return state.employerTaxRules.filter((rule) => rule.active && percentValid(rule.percent) && isValidCalendarDateKey(rule.effectiveDate) && rule.effectiveDate <= asOf);
 }
 
+function activeEmployerTaxConfigurationValid(state: PayrollState, asOf: string) {
+  if (!isValidCalendarDateKey(asOf)) return false;
+  return state.employerTaxRules.every((rule) => {
+    if (!rule.active) return true;
+    if (!rule.id?.trim() || !rule.name?.trim() || !isValidCalendarDateKey(rule.effectiveDate)) return false;
+    if (rule.effectiveDate > asOf) return true;
+    return percentValid(rule.percent);
+  });
+}
+
 export function activeBenefitTaxRule(state: PayrollState, planId: string, tierId: string, asOf = today()) {
   if (!isValidCalendarDateKey(asOf)) return undefined;
   return state.benefitTaxRules
@@ -229,7 +239,7 @@ export function earnedBonusesForMonth(state: PayrollState, data: WorkspaceData, 
 }
 
 export function calculateRegularLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[]): PayLine | null {
-  if (!isValidCalendarDateKey(periodStart) || !isValidCalendarDateKey(periodEnd) || periodEnd < periodStart) return null;
+  if (!isValidCalendarDateKey(periodStart) || !isValidCalendarDateKey(periodEnd) || periodEnd < periodStart || !activeEmployerTaxConfigurationValid(state, periodEnd)) return null;
   const employee = activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, periodEnd);
   const compensation = activeCompensation(hcm, employeeId, periodEnd);
@@ -252,7 +262,7 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
 
 export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeId: string, payDate: string, bonusAmount: number, bonusIds: string[]): PayLine | null {
   void hcm;
-  if (!isValidCalendarDateKey(payDate) || !bonusIds.length || new Set(bonusIds).size !== bonusIds.length) return null;
+  if (!isValidCalendarDateKey(payDate) || !bonusIds.length || new Set(bonusIds).size !== bonusIds.length || !activeEmployerTaxConfigurationValid(state, payDate)) return null;
   const employee = activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, payDate);
   if (!employee || !withholdingProfileValid(withholding) || !finiteNonNegative(bonusAmount) || bonusAmount <= 0) return null;
@@ -262,7 +272,7 @@ export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeI
 }
 
 function calculateNet(state: PayrollState, employeeId: string, asOf: string, regularHours: number, overtimeHours: number, regularPay: number, overtimePay: number, bonusPay: number, sourceTimecardIds: string[], sourceBonusIds: string[], withholding: WithholdingProfile, benefits: PayrollBenefitDeductions): PayLine | null {
-  if (!isValidCalendarDateKey(asOf) || ![regularHours,overtimeHours,regularPay,overtimePay,bonusPay].every(finiteNonNegative) || !withholdingProfileValid(withholding)) return null;
+  if (!isValidCalendarDateKey(asOf) || !activeEmployerTaxConfigurationValid(state, asOf) || ![regularHours,overtimeHours,regularPay,overtimePay,bonusPay].every(finiteNonNegative) || !withholdingProfileValid(withholding)) return null;
   const grossPay = regularPay + overtimePay + bonusPay;
   if (!finiteNonNegative(grossPay) || !finiteNonNegative(benefits.preTax) || !finiteNonNegative(benefits.postTax)) return null;
   const rawTaxableWages = grossPay - benefits.preTax;
