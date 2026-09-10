@@ -8,6 +8,7 @@ import {
   normalizeDocumentTemplateState,
   requiredTemplateKinds,
 } from "../lib/document-template-engine";
+import { onboardingFormPolicy } from "../lib/onboarding-form-policy";
 
 test("employee and contractor tax-form packages route to the correct reusable templates", () => {
   assert.deepEqual(requiredTemplateKinds("Hourly"), ["Employment agreement", "Compensation notice", "Form I-9", "Form W-4", "Arizona Form A-4"]);
@@ -39,4 +40,19 @@ test("typed and drawn signatures require signer identity and valid signature evi
   assert.match(drawn?.drawnDataUrl ?? "", /^data:image\//);
   assert.equal(createSignatureEvidence("Typed", "", "Jamie Employee"), null);
   assert.equal(createSignatureEvidence("Drawn", "Jamie Employee", "not-an-image"), null);
+});
+
+test("official tax and I-9 forms retain form-specific electronic submission controls", () => {
+  const w4 = onboardingFormPolicy("Form W-4");
+  const w9 = onboardingFormPolicy("Form W-9");
+  const i9 = onboardingFormPolicy("Form I-9");
+  const a4 = onboardingFormPolicy("Arizona Form A-4");
+  assert.equal(w4.signatureMustBeFinalSubmissionStep, true);
+  assert.equal(w9.signatureMustBeFinalSubmissionStep, true);
+  assert.equal(w4.hardCopyExportRequired, true);
+  assert.equal(w9.accessSubmissionAuditRequired, true);
+  assert.equal(i9.administratorCompletionRequired, true);
+  assert.match(i9.timingNote ?? "", /three business days/i);
+  assert.match(a4.timingNote ?? "", /five days/i);
+  for (const policy of [w4, w9, i9, a4]) assert.equal(policy.preserveOfficialContent, true);
 });
