@@ -36,7 +36,9 @@ export function EmployeeDirectory() {
   const tracking = useFieldTracking();
   const { audit } = useAudit();
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState(currentUser?.id ?? "");
+  const focusId = typeof window !== "undefined" ? window.sessionStorage.getItem("momentum-focus-record") : null;
+  const focusedEmployee = focusId ? data.users.find((user) => user.id === focusId && user.role !== "Customer") : undefined;
+  const [selectedId, setSelectedId] = useState(focusedEmployee?.id ?? currentUser?.id ?? "");
   const employees = useMemo(() => data.users.filter((user) => user.role !== "Customer").sort((a, b) => a.name.localeCompare(b.name)), [data.users]);
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
