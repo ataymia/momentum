@@ -61,7 +61,7 @@ type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string
 type BaseWorkspace = ReturnType<typeof useBaseWorkspace>;
 type NewAppointmentInput = Parameters<BaseWorkspace["createAppointment"]>[0];
 type AppointmentCloseout = Parameters<BaseWorkspace["completeAppointment"]>[1];
-type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | "login" | "logout" | "toggleClock" | "switchUser" | "createAccount" | "createOrder" | "createAppointment" | "advanceAppointment" | "completeAppointment" | "reassignAppointment" | "moveAppointment" | "decideApproval" | "setOrderStatus" | "reconcileOrderPayment" | "resetDemo"> & {
+type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | "login" | "logout" | "toggleClock" | "switchUser" | "createAccount" | "createOrder" | "createAppointment" | "advanceAppointment" | "completeAppointment" | "reassignAppointment" | "moveAppointment" | "updatePlacement" | "correctTimeEntry" | "decideApproval" | "setOrderStatus" | "reconcileOrderPayment" | "resetDemo"> & {
   data: WorkspaceData;
   scope: ReturnType<typeof getWorkspaceScope>;
   currentUser: WorkspaceUser | null;
@@ -76,6 +76,8 @@ type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | 
   completeAppointment: (id: string, closeout: AppointmentCloseout) => boolean;
   reassignAppointment: (id: string, ownerId: string) => void;
   moveAppointment: (id: string, ownerId: string | undefined, date: string, startTime: string) => boolean;
+  updatePlacement: BaseWorkspace["updatePlacement"];
+  correctTimeEntry: BaseWorkspace["correctTimeEntry"];
   decideApproval: (id: string, decision: "Approved" | "Returned") => void;
   setOrderStatus: (id: string, status: OrderStatus) => void;
   reconcileOrderPayment: (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => void;
@@ -227,9 +229,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const createAccount: BaseWorkspace["createAccount"] = (account) => {
+    if ([account.name, account.location, account.channel, account.contactName, account.contactRole, account.phone, account.email].some((value) => !value.trim())) return null;
     if (findAccountDuplicate(data.accounts, account)) return null;
     const id = base.createAccount(account);
-    if (id) setCommercial((state) => ({ ...state, accountPatches: { ...state.accountPatches, [id]: { premiseType: "Unclassified", businessType: account.channel, categoryReviewDate: plusDays(today(), 90) } } }));
+    if (id) setCommercial((state) => ({ ...state, accountPatches: { ...state.accountPatches, [id]: { premiseType: "Unclassified", businessType: account.channel.trim(), categoryReviewDate: plusDays(today(), 90) } } }));
     return id;
   };
 
@@ -307,9 +310,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const completeAppointment = (id: string, closeout: AppointmentCloseout) => {
+    if (!isValidCalendarDateKey(closeout.nextActionDate)) return false;
     const enhanced = commercial.appointments.find((item) => item.id === id);
     if (!enhanced) return base.completeAppointment(id, closeout);
-    if (!currentUser || !closeout.closeoutNote.trim() || !closeout.nextAction.trim() || !isValidCalendarDateKey(closeout.nextActionDate) || enhanced.status !== "Arrived" || (enhanced.ownerId !== currentUser.id && !canManageSchedule(currentUser))) return false;
+    if (!currentUser || !closeout.closeoutNote.trim() || !closeout.nextAction.trim() || enhanced.status !== "Arrived" || (enhanced.ownerId !== currentUser.id && !canManageSchedule(currentUser))) return false;
     setCommercial((state) => ({
       ...state,
       appointments: state.appointments.map((item) => item.id === id ? { ...item, status: "Completed", completedAt: now(), ...closeout, closeoutNote: closeout.closeoutNote.trim(), nextAction: closeout.nextAction.trim() } : item),
@@ -343,14 +347,25 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const moveAppointment = (id: string, ownerId: string | undefined, date: string, startTime: string) => {
+    if (!isValidCalendarDateKey(date) || !validTime(startTime)) return false;
     const enhanced = commercial.appointments.find((item) => item.id === id);
     if (!enhanced) return base.moveAppointment(id, ownerId, date, startTime);
-    if (!currentUser || !canManageSchedule(currentUser) || enhanced.status !== "Scheduled" || !isValidCalendarDateKey(date) || !validTime(startTime)) return false;
+    if (!currentUser || !canManageSchedule(currentUser) || enhanced.status !== "Scheduled") return false;
     if (ownerId && !canAssignScheduleUser(data, currentUser, ownerId)) return false;
     const before = `${enhanced.ownerId ?? "Unassigned"} · ${enhanced.date} ${enhanced.startTime}`;
     const after = `${ownerId ?? "Unassigned"} · ${date} ${startTime}`;
     setCommercial((state) => ({ ...state, appointments: state.appointments.map((item) => item.id === id ? { ...item, ownerId, date, startTime, assignedBy: ownerId ? currentUser.id : undefined, assignedAt: ownerId ? now() : undefined } : item), activities: [{ id: uid("act-move"), accountId: enhanced.accountId, type: "note", title: "Dispatch schedule changed", detail: `${before} → ${after}.`, at: now(), userId: currentUser.id }, ...state.activities] }));
     return true;
+  };
+
+  const updatePlacement: BaseWorkspace["updatePlacement"] = (id, observedStock, facings, cold, shelfPrice) => {
+    if (!Number.isInteger(observedStock) || observedStock < 0 || !Number.isInteger(facings) || facings < 0 || !Number.isFinite(shelfPrice) || shelfPrice < 0) return;
+    base.updatePlacement(id, observedStock, facings, cold, shelfPrice);
+  };
+
+  const correctTimeEntry: BaseWorkspace["correctTimeEntry"] = (id, values, reason) => {
+    if (!Number.isFinite(values.breakMinutes) || values.breakMinutes < 0) return false;
+    return base.correctTimeEntry(id, values, reason);
   };
 
   const createOrder = ({ accountId, cases, product, inventoryAvailableAtOrder, sourcePlacementId }: EnhancedOrderInput) => {
@@ -450,7 +465,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, decideApproval, setOrderStatus, reconcileOrderPayment, updateAccountCommercial, transferAccountResponsibility, importInventoryLots, resetDemo };
+  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, updateAccountCommercial, transferAccountResponsibility, importInventoryLots, resetDemo };
   return <EnhancedWorkspaceContext.Provider value={value}>{children}</EnhancedWorkspaceContext.Provider>;
 }
 
