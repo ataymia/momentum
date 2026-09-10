@@ -75,8 +75,17 @@ test("public login has no demo account picker, demo credentials, or create-accou
 
 test("public runtime defaults to production and only localhost can enable demo mode", () => {
   const source = readFileSync(new URL("../lib/runtime-mode-store.ts", import.meta.url), "utf8");
+  const controls = readFileSync(new URL("../components/settings/platform-controls.tsx", import.meta.url), "utf8");
   assert.match(source, /RUNTIME_MODE_SEED[^\n]+mode:\s*"production"/);
   assert.match(source, /hostname === "localhost"/);
   assert.match(source, /hostname === "127\.0\.0\.1"/);
   assert.match(source, /state\.mode === "demo" && !demoCapabilityEnabled\(\)/);
+  assert.match(controls, /demoAvailable&&<Button/);
+});
+
+test("production workspace filters demo identities and refuses the legacy demo credential path", () => {
+  const source = readFileSync(new URL("../lib/workspace-context.tsx", import.meta.url), "utf8");
+  assert.match(source, /base\.data\.users\.filter\(\(user\) => !isDemoIdentity\(user\)\)/);
+  assert.match(source, /if \(!demoMode\) return \{ ok: false, message: "Sign-in will be available when Firebase Authentication is connected\." \}/);
+  assert.match(source, /if \(demoMode\) base\.switchUser\(userId\)/);
 });
