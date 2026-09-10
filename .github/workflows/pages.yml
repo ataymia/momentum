@@ -36,6 +36,8 @@ jobs:
         run: npm run typecheck
       - name: Run expanded logic tests
         run: npm run test:logic
+      - name: Report launch readiness
+        run: npm run readiness
       - name: Export static site
         run: npm run build:pages
         env:
