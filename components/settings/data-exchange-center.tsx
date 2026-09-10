@@ -8,7 +8,7 @@ import { parseAccountImport, parseAppointmentImport, parseCsv, parseInventoryImp
 import { useHcm } from "../../lib/hcm-context";
 import { productInventoryStatus } from "../../lib/inventory-ledger";
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
-import type { Account, InventoryLot } from "../../lib/types";
+import type { InventoryLot } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Section, StatusPill } from "../ui";
 
