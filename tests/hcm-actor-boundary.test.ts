@@ -171,6 +171,24 @@ test("manager recruiting authority follows explicit requisition ownership", () =
   assert.equal(validateHcmActorTransition(current, denied, otherManager, otherData).ok, false);
 });
 
+test("completed interview evidence cannot be silently rewritten by a manager", () => {
+  const requisition = { id: "req-complete", title: "Sales Rep", department: "Sales", location: "Phoenix", hiringManagerId: manager.id, openings: 1, status: "Open" as const, openedAt: "2026-09-01", createdAt: "2026-09-01T12:00:00Z", createdBy: admin.id };
+  const candidate = { id: "candidate-complete", requisitionId: requisition.id, name: "Candidate", email: "candidate2@example.com", source: "Direct", stage: "Interview" as const, appliedAt: "2026-09-09T12:00:00Z", notes: "" };
+  const interview = { id: "interview-complete", candidateId: candidate.id, interviewerIds: [manager.id], scheduledAt: "2026-09-12T15:00:00", durationMinutes: 30, status: "Completed" as const, recommendation: "Advance" as const };
+  const current = { ...createHcmSeed(data), requisitions: [requisition], candidates: [candidate], interviews: [interview] };
+  const changed = audit({ ...current, interviews: [{ ...interview, recommendation: "Pass" as const }] }, manager, "Interview", interview.id);
+  assert.equal(validateHcmActorTransition(current, changed, manager, data).ok, false);
+});
+
+test("every HCM business mutation requires an actor-linked audit event", () => {
+  const current = createHcmSeed(data);
+  const request = leave(rep.id, "leave-no-audit");
+  const noAudit = { ...current, leaveRequests: [request] };
+  const result = validateHcmActorTransition(current, noAudit, rep, data);
+  assert.equal(result.ok, false);
+  assert.match(result.message ?? "", /audit event/);
+});
+
 test("audit history cannot be rewritten and a new audit event cannot impersonate another actor", () => {
   const base = audit(createHcmSeed(data), rep, "WorkflowRequest", "seed-audit");
   const rewritten = { ...base, audit: base.audit.map((event) => ({ ...event, actorId: manager.id })) };
