@@ -1,9 +1,38 @@
-import type { WorkspaceData } from "./types";
+import type { WorkerClassification } from "./hcm-engine";
+import type { Role, Team, WorkspaceData } from "./types";
 
 export const IDENTITY_PROVISIONING_STORAGE_KEY = "momentum-identity-provisioning-v1";
 
 export type AccountAccessState = "Password change required" | "Onboarding" | "Pending approval" | "Active" | "Suspended" | "Separated";
 export type ProvisioningSource = "Direct hire" | "Accepted offer" | "Bootstrap admin";
+export type ProvisionableRole = Exclude<Role, "Administrator" | "Customer">;
+export type ProvisioningDraftStatus = "Draft" | "Ready to invite" | "Invite sent" | "Auth linked" | "Cancelled";
+
+export type ProvisioningDraft = {
+  id: string;
+  source: Exclude<ProvisioningSource, "Bootstrap admin">;
+  candidateId?: string;
+  offerId?: string;
+  legalName: string;
+  preferredName?: string;
+  workEmail: string;
+  jobTitle: string;
+  role: ProvisionableRole;
+  team: Exclude<Team, "Customer">;
+  managerId: string;
+  workLocation: string;
+  classification: WorkerClassification;
+  payGroup: string;
+  standardWeeklyHours?: number;
+  startDate: string;
+  courseIds: string[];
+  status: ProvisioningDraftStatus;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  linkedUserId?: string;
+  inviteSentAt?: string;
+};
 
 export type IdentityProvisioningRecord = {
   userId: string;
@@ -13,6 +42,7 @@ export type IdentityProvisioningRecord = {
   provisionedAt: string;
   candidateId?: string;
   offerId?: string;
+  draftId?: string;
   firstLoginAt?: string;
   passwordChangedAt?: string;
   passwordChangeEvidence?: string;
@@ -24,16 +54,23 @@ export type IdentityProvisioningRecord = {
   returnReason?: string;
 };
 
-export type IdentityProvisioningState = { version: 1; records: IdentityProvisioningRecord[] };
+export type IdentityProvisioningState = { version: 1; records: IdentityProvisioningRecord[]; drafts: ProvisioningDraft[] };
 
 const validStates = new Set<AccountAccessState>(["Password change required", "Onboarding", "Pending approval", "Active", "Suspended", "Separated"]);
 const validSources = new Set<ProvisioningSource>(["Direct hire", "Accepted offer", "Bootstrap admin"]);
+const validDraftSources = new Set<ProvisioningDraft["source"]>(["Direct hire", "Accepted offer"]);
+const validDraftStatuses = new Set<ProvisioningDraftStatus>(["Draft", "Ready to invite", "Invite sent", "Auth linked", "Cancelled"]);
+const validRoles = new Set<ProvisionableRole>(["Sales Manager", "Sales Representative", "Operations", "Warehouse"]);
+const validTeams = new Set<Exclude<Team, "Customer">>(["Leadership", "Sales", "Operations"]);
+const validClassifications = new Set<WorkerClassification>(["Hourly", "Salary", "Contractor", "Not configured"]);
 const validInstant = (value?: string) => Boolean(value && !Number.isNaN(new Date(value).getTime()));
+const validDate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 
 export function createIdentityProvisioningSeed(data: WorkspaceData): IdentityProvisioningState {
   const now = new Date().toISOString();
   return {
     version: 1,
+    drafts: [],
     records: data.users.filter((user) => user.role !== "Customer").map((user) => ({
       userId: user.id,
       state: "Active" as const,
@@ -51,6 +88,7 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
   if (!input || typeof input !== "object") return seed;
   const raw = input as Partial<IdentityProvisioningState>;
   const userIds = new Set(data.users.filter((user) => user.role !== "Customer").map((user) => user.id));
+  const managerIds = new Set(data.users.filter((user) => ["Administrator", "Sales Manager"].includes(user.role)).map((user) => user.id));
   const seen = new Set<string>();
   const records = (Array.isArray(raw.records) ? raw.records : []).filter((record): record is IdentityProvisioningRecord => {
     if (!record || typeof record !== "object" || !userIds.has(record.userId) || seen.has(record.userId) || !validStates.has(record.state) || !validSources.has(record.source) || !record.provisionedBy || !validInstant(record.provisionedAt)) return false;
@@ -63,7 +101,17 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
     return true;
   });
   for (const fallback of seed.records) if (!seen.has(fallback.userId)) records.push(fallback);
-  return { version: 1, records };
+
+  const draftIds = new Set<string>();
+  const drafts = (Array.isArray(raw.drafts) ? raw.drafts : []).filter((draft): draft is ProvisioningDraft => {
+    if (!draft || typeof draft !== "object" || !draft.id || draftIds.has(draft.id) || !validDraftSources.has(draft.source) || !draft.legalName?.trim() || !draft.workEmail?.trim().includes("@") || !draft.jobTitle?.trim() || !validRoles.has(draft.role) || !validTeams.has(draft.team) || !managerIds.has(draft.managerId) || !draft.workLocation?.trim() || !validClassifications.has(draft.classification) || !draft.payGroup?.trim() || !validDate(draft.startDate) || !Array.isArray(draft.courseIds) || new Set(draft.courseIds).size !== draft.courseIds.length || !validDraftStatuses.has(draft.status) || !draft.createdBy || !validInstant(draft.createdAt) || !validInstant(draft.updatedAt)) return false;
+    if (draft.standardWeeklyHours !== undefined && (!Number.isFinite(draft.standardWeeklyHours) || draft.standardWeeklyHours < 0 || draft.standardWeeklyHours > 168)) return false;
+    if (draft.linkedUserId && !userIds.has(draft.linkedUserId)) return false;
+    if (draft.inviteSentAt && !validInstant(draft.inviteSentAt)) return false;
+    draftIds.add(draft.id);
+    return true;
+  });
+  return { version: 1, records, drafts };
 }
 
 export const accountAccessFor = (state: IdentityProvisioningState, userId: string) => state.records.find((record) => record.userId === userId);
