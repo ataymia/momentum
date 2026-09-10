@@ -66,7 +66,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [data.users]);
   const currentUserItems = useMemo(() => currentUser ? state.deliveries.filter((item) => item.recipientUserId === currentUser.id && item.channel === "In app").sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [], [currentUser, state.deliveries]);
   const unreadCount = currentUserItems.filter((item) => item.status === "Unread").length;
-  const updatePreference = (userId: string, patch: Partial<NotificationPreference>) => { if (!currentUser || (currentUser.role !== "Administrator" && currentUser.id !== userId)) return false; setState((current) => ({ ...current, preferences: current.preferences.map((item) => item.userId === userId ? { ...item, ...patch, userId } : item) })); return true; };
+  const updatePreference = (userId: string, patch: Partial<NotificationPreference>) => {
+    if (!currentUser || (currentUser.role !== "Administrator" && currentUser.id !== userId)) return false;
+    const target = data.users.find((user) => user.id === userId); const existing = state.preferences.find((item) => item.userId === userId); if (!target || !existing) return false;
+    const merged: NotificationPreference = { ...existing, ...patch, userId, emailAddress: patch.emailAddress !== undefined ? patch.emailAddress.trim() || undefined : existing.emailAddress, smsNumber: patch.smsNumber !== undefined ? patch.smsNumber.trim() || undefined : existing.smsNumber };
+    if (target.role === "Customer" && merged.inApp) return false;
+    if (merged.email && !(merged.emailAddress || target.email)?.trim()) return false;
+    if (merged.sms && !merged.smsNumber?.trim()) return false;
+    setState((current) => ({ ...current, preferences: current.preferences.map((item) => item.userId === userId ? merged : item) })); return true;
+  };
   const setEscalationHours = (hours: number) => { if (currentUser?.role !== "Administrator" || !Number.isFinite(hours) || hours < 1 || hours > 168) return false; setState((current) => ({ ...current, escalationHours: Math.round(hours) })); return true; };
   const markAllRead = () => { if (!currentUser) return; const at = new Date().toISOString(); setState((current) => ({ ...current, deliveries: current.deliveries.map((item) => item.recipientUserId === currentUser.id && item.channel === "In app" && item.status === "Unread" ? { ...item, status: "Read", readAt: at } : item) })); };
   const resetNotifications = () => { if (!runtime.isDemo || currentUser?.role !== "Administrator") return false; setState(createNotificationSeed(data.users)); return true; };
