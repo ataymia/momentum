@@ -12,7 +12,7 @@ const text = (value: unknown) => typeof value === "string" ? value : undefined;
 const validInstant = (value: unknown) => typeof value === "string" && !Number.isNaN(new Date(value).getTime());
 const auditActions = new Set<AuditEvent["action"]>(["Created", "Updated", "Deleted"]);
 const display = (value: unknown) => { if (value === undefined) return undefined; if (value === null) return "null"; if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value).slice(0, 180); try { return JSON.stringify(value).slice(0, 180); } catch { return "[unavailable]"; } };
-function sensitivityFor(module: string, collection: string): AuditSensitivity { if (["Payroll", "Accounting", "HCM"].includes(module)) return "admin"; if (["Finance", "Performance", "Period locks", "Field tracking"].includes(module) || ["approvals", "timecards"].includes(collection)) return "manager"; if (module === "Commerce" && ["payments", "allocations", "credits", "refunds", "notes"].includes(collection)) return "manager"; return "operational"; }
+function sensitivityFor(module: string, collection: string): AuditSensitivity { if (["Payroll", "Accounting", "HCM", "Identity"].includes(module)) return "admin"; if (["Finance", "Performance", "Period locks", "Field tracking"].includes(module) || ["approvals", "timecards"].includes(collection)) return "manager"; if (module === "Commerce" && ["payments", "allocations", "credits", "refunds", "notes"].includes(collection)) return "manager"; return "operational"; }
 export function normalizeAuditState(input: unknown): AuditState {
   if (!input || typeof input !== "object") return createAuditSeed();
   const state = input as Partial<AuditState>; const seen = new Set<string>(); const events: AuditEvent[] = [];
@@ -26,9 +26,9 @@ export function normalizeAuditState(input: unknown): AuditState {
   }
   return { version: 1, events: events.slice(0, 10000) };
 }
-function recordLabel(record: Record<string, unknown>, id: string) { return text(record.number) || text(record.name) || text(record.title) || text(record.lotCode) || text(record.email) || id; }
+function recordLabel(record: Record<string, unknown>, id: string) { return text(record.number) || text(record.name) || text(record.title) || text(record.legalName) || text(record.lotCode) || text(record.email) || text(record.workEmail) || id; }
 function relatedAccount(record: Record<string, unknown>, module: string, collection: string, id: string) { if (module === "Workspace" && collection === "accounts") return id; return text(record.accountId) || text(record.locationId); }
-function relatedUser(record: Record<string, unknown>, module: string, collection: string, id: string) { if (module === "Workspace" && collection === "users") return id; return text(record.userId) || text(record.employeeId) || text(record.requesterId) || text(record.ownerId); }
+function relatedUser(record: Record<string, unknown>, module: string, collection: string, id: string) { if (module === "Workspace" && collection === "users") return id; return text(record.userId) || text(record.employeeId) || text(record.requesterId) || text(record.ownerId) || text(record.linkedUserId); }
 
 function commerceRelatedAccount(state: Record<string, unknown>, collection: string, record: Record<string, unknown>) {
   const invoices = Array.isArray(state.invoices) ? state.invoices as Record<string, unknown>[] : [];
