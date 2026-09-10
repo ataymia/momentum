@@ -69,22 +69,27 @@ const validClassifications = new Set<WorkerClassification>(["Hourly", "Salary", 
 const validPayBasis = new Set<PayBasis>(["Hourly", "Salary per pay period", "Not configured"]);
 const validInstant = (value?: string) => Boolean(value && !Number.isNaN(new Date(value).getTime()));
 const validDate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+const isDemoIdentity = (email: string) => email.toLowerCase().endsWith("@momentum.demo");
 
 export function createIdentityProvisioningSeed(data: WorkspaceData): IdentityProvisioningState {
   const now = new Date().toISOString();
   return {
     version: 1,
     drafts: [],
-    records: data.users.filter((user) => user.role !== "Customer").map((user) => ({
-      id: `access-${user.id}`,
-      userId: user.id,
-      state: "Active" as const,
-      source: user.role === "Administrator" ? "Bootstrap admin" as const : "Direct hire" as const,
-      provisionedBy: "system",
-      provisionedAt: now,
-      activatedAt: now,
-      activatedBy: "system",
-    })),
+    records: data.users.filter((user) => user.role !== "Customer").map((user) => {
+      const demo = isDemoIdentity(user.email);
+      return {
+        id: `access-${user.id}`,
+        userId: user.id,
+        state: demo ? "Active" as const : "Suspended" as const,
+        source: user.role === "Administrator" ? "Bootstrap admin" as const : "Direct hire" as const,
+        provisionedBy: demo ? "demo-seed" : "system-fail-closed",
+        provisionedAt: now,
+        activatedAt: demo ? now : undefined,
+        activatedBy: demo ? "demo-seed" : undefined,
+        returnReason: demo ? undefined : "Identity has no trusted provisioning record. Administrator review is required.",
+      };
+    }),
   };
 }
 
@@ -102,10 +107,9 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
     if (record.onboardingSubmittedAt && !validInstant(record.onboardingSubmittedAt)) return false;
     if (record.activatedAt && !validInstant(record.activatedAt)) return false;
     if (record.returnedAt && !validInstant(record.returnedAt)) return false;
-    record.id = record.id || `access-${record.userId}`;
     seen.add(record.userId);
     return true;
-  });
+  }).map((record) => ({ ...record, id: record.id || `access-${record.userId}` }));
   for (const fallback of seed.records) if (!seen.has(fallback.userId)) records.push(fallback);
 
   const draftIds = new Set<string>();
@@ -124,8 +128,8 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
 }
 
 export const accountAccessFor = (state: IdentityProvisioningState, userId: string) => state.records.find((record) => record.userId === userId);
-export const isOnboardingRestricted = (record?: IdentityProvisioningRecord) => Boolean(record && record.state !== "Active");
-export const canUseOperationalPlatform = (record?: IdentityProvisioningRecord) => !record || record.state === "Active";
+export const isOnboardingRestricted = (record?: IdentityProvisioningRecord) => !record || record.state !== "Active";
+export const canUseOperationalPlatform = (record?: IdentityProvisioningRecord) => Boolean(record && record.state === "Active");
 
 export function nextEmployeeNumber(data: WorkspaceData) {
   const internalCount = data.users.filter((user) => user.role !== "Customer").length;
