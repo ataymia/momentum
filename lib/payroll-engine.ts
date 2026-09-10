@@ -1,4 +1,5 @@
 import { evaluateSalesRepAccountBonuses, orderFirstSettlementDate, type BonusMilestone } from "./bonus-engine";
+import { arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import { activeBenefitEnrollments, activeCompensation, type HCMState } from "./hcm-engine";
 import type { TimeEntry, WorkspaceData } from "./types";
 
@@ -46,13 +47,27 @@ export type RegularPayrollSource = { timecardIds: string[]; entries: TimeEntry[]
 export type PayrollHourBreakdown = { totalHours: number; regularHours: number; overtimeHours: number };
 export type PayrollBenefitDeductions = { preTax: number; postTax: number; total: number; unconfigured: { enrollmentId: string; planId: string; tierId: string }[] };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => arizonaDateKey();
 const payrollReadyTimecard = (status: string) => ["Manager approved", "Payroll ready"].includes(status);
 const zeroBenefits = (): PayrollBenefitDeductions => ({ preTax: 0, postTax: 0, total: 0, unconfigured: [] });
 const finiteNonNegative = (value: number) => Number.isFinite(value) && value >= 0;
+const percentValid = (value: number) => Number.isFinite(value) && value >= 0 && value <= 100;
+const validInstant = (value?: string) => Boolean(value && !Number.isNaN(new Date(value).getTime()));
+const validTime = (value?: string) => Boolean(value && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value));
+const payFrequencies = new Set<PayFrequency>(["Weekly", "Biweekly", "Semimonthly", "Monthly"]);
+const paymentMethods = new Set<PayrollEmployee["paymentMethod"]>(["ACH", "Check", "Manual"]);
+const runKinds = new Set<PayrollRunKind>(["Regular", "Monthly bonus"]);
+const runStatuses = new Set<PayRunStatus>(["Draft", "Approved", "Released", "Voided"]);
+const liabilityTypes = new Set<TaxLiabilityType>(["Federal employee", "State employee", "Local employee", "Employer"]);
+const liabilityStatuses = new Set<TaxLiabilityStatus>(["Accrued", "Scheduled", "Paid", "Reversed"]);
+const disbursementStatuses = new Set<DisbursementStatus>(["Released", "Settled", "Failed", "Voided"]);
+const benefitTreatments = new Set<BenefitTaxTreatment>(["Pre-tax", "Post-tax"]);
+const uniqueBy = <T>(records: T[], key: (record: T) => string) => { const seen = new Set<string>(); return records.filter((record) => { const value = key(record); return Boolean(value) && !seen.has(value) && (seen.add(value), true); }); };
+const payLineNumeric = (line: PayLine) => [line.regularHours,line.overtimeHours,line.regularPay,line.overtimePay,line.bonusPay,line.grossPay,line.benefitDeduction,line.preTaxBenefitDeduction??0,line.postTaxBenefitDeduction??0,line.taxableWages,line.federalTax,line.stateTax,line.localTax,line.additionalWithholding,line.postTaxDeduction,line.employeeTaxes,line.employerTaxes,line.netPay];
+const payLineValid = (line: PayLine) => Boolean(line?.employeeId && Array.isArray(line.sourceTimecardIds) && Array.isArray(line.sourceBonusIds) && new Set(line.sourceTimecardIds).size === line.sourceTimecardIds.length && new Set(line.sourceBonusIds).size === line.sourceBonusIds.length && payLineNumeric(line).every(finiteNonNegative) && Math.abs(line.grossPay-(line.regularPay+line.overtimePay+line.bonusPay))<0.005 && Math.abs(line.employeeTaxes-(line.federalTax+line.stateTax+line.localTax+line.additionalWithholding))<0.005 && Math.abs(line.benefitDeduction-((line.preTaxBenefitDeduction??0)+(line.postTaxBenefitDeduction??0)))<0.005 && Math.abs(line.netPay-(line.grossPay-(line.preTaxBenefitDeduction??0)-(line.postTaxBenefitDeduction??0)-line.employeeTaxes-line.postTaxDeduction))<0.005);
 
 export function withholdingProfileValid(profile: WithholdingProfile | undefined) {
-  return Boolean(profile && [profile.federalPercent, profile.statePercent, profile.localPercent, profile.additionalWithholding, profile.postTaxDeduction].every(finiteNonNegative));
+  return Boolean(profile && [profile.federalPercent, profile.statePercent, profile.localPercent].every(percentValid) && [profile.additionalWithholding, profile.postTaxDeduction].every(finiteNonNegative) && isValidCalendarDateKey(profile.effectiveDate));
 }
 
 export function createPayrollSeed(): PayrollState {
@@ -63,26 +78,27 @@ export function normalizePayrollState(input: unknown): PayrollState {
   const seed = createPayrollSeed();
   if (!input || typeof input !== "object") return seed;
   const state = input as Partial<PayrollState>;
-  return {
-    version: 5,
-    payGroups: Array.isArray(state.payGroups) ? state.payGroups : [],
-    employees: Array.isArray(state.employees) ? state.employees : [],
-    withholdingProfiles: Array.isArray(state.withholdingProfiles) ? state.withholdingProfiles : [],
-    employerTaxRules: Array.isArray(state.employerTaxRules) ? state.employerTaxRules : [],
-    benefitTaxRules: Array.isArray(state.benefitTaxRules) ? state.benefitTaxRules : [],
-    runs: Array.isArray(state.runs) ? state.runs : [],
-    liabilities: Array.isArray(state.liabilities) ? state.liabilities : [],
-    disbursements: Array.isArray(state.disbursements) ? state.disbursements : [],
-  };
+  const payGroups = uniqueBy((Array.isArray(state.payGroups) ? state.payGroups : []).filter((group): group is PayGroup => Boolean(group?.id && group.name?.trim() && payFrequencies.has(group.frequency) && finiteNonNegative(group.overtimeThresholdHours) && typeof group.active === "boolean")), (group) => group.id);
+  const payGroupIds = new Set(payGroups.map((group) => group.id));
+  const employees = uniqueBy((Array.isArray(state.employees) ? state.employees : []).filter((employee): employee is PayrollEmployee => Boolean(employee?.userId && payGroupIds.has(employee.payGroupId) && paymentMethods.has(employee.paymentMethod) && typeof employee.paymentTokenLabel === "string" && typeof employee.active === "boolean")), (employee) => employee.userId);
+  const withholdingProfiles = uniqueBy((Array.isArray(state.withholdingProfiles) ? state.withholdingProfiles : []).filter((profile): profile is WithholdingProfile => withholdingProfileValid(profile)), (profile) => `${profile.userId}:${profile.effectiveDate}`);
+  const employerTaxRules = uniqueBy((Array.isArray(state.employerTaxRules) ? state.employerTaxRules : []).filter((rule): rule is EmployerTaxRule => Boolean(rule?.id && rule.name?.trim() && percentValid(rule.percent) && isValidCalendarDateKey(rule.effectiveDate) && typeof rule.active === "boolean")), (rule) => rule.id);
+  const benefitTaxRules = uniqueBy((Array.isArray(state.benefitTaxRules) ? state.benefitTaxRules : []).filter((rule): rule is BenefitTaxRule => Boolean(rule?.id && rule.planId && rule.tierId && benefitTreatments.has(rule.treatment) && isValidCalendarDateKey(rule.effectiveDate) && typeof rule.active === "boolean")), (rule) => rule.id);
+  const runs = uniqueBy((Array.isArray(state.runs) ? state.runs : []).filter((run): run is PayRun => Boolean(run?.id && runKinds.has(run.kind) && runStatuses.has(run.status) && validInstant(run.createdAt) && isValidCalendarDateKey(run.periodStart) && isValidCalendarDateKey(run.periodEnd) && run.periodEnd >= run.periodStart && isValidCalendarDateKey(run.payDate) && Array.isArray(run.lines) && run.lines.length > 0 && run.lines.every(payLineValid) && new Set(run.lines.map((line) => line.employeeId)).size === run.lines.length && (!run.approvedAt || validInstant(run.approvedAt)) && (!run.releasedAt || validInstant(run.releasedAt)) && (!run.voidedAt || validInstant(run.voidedAt)) && (run.status !== "Approved" || Boolean(run.approvedAt && run.approvedBy)) && (run.status !== "Released" || Boolean(run.approvedAt && run.approvedBy && run.releasedAt && run.releasedBy)) && (run.status !== "Voided" || Boolean(run.voidedAt && run.voidedBy && run.voidReason?.trim())))), (run) => run.id);
+  const runIds = new Set(runs.map((run) => run.id));
+  const liabilities = uniqueBy((Array.isArray(state.liabilities) ? state.liabilities : []).filter((liability): liability is TaxLiability => Boolean(liability?.id && runIds.has(liability.payRunId) && liabilityTypes.has(liability.type) && liabilityStatuses.has(liability.status) && Number.isFinite(liability.amount) && liability.amount > 0 && validInstant(liability.createdAt) && (!liability.dueDate || isValidCalendarDateKey(liability.dueDate)))), (liability) => liability.id);
+  const disbursements = uniqueBy((Array.isArray(state.disbursements) ? state.disbursements : []).filter((entry): entry is Disbursement => Boolean(entry?.id && runIds.has(entry.payRunId) && entry.userId && finiteNonNegative(entry.amount) && paymentMethods.has(entry.method) && typeof entry.tokenLabel === "string" && disbursementStatuses.has(entry.status) && validInstant(entry.createdAt) && (!entry.settledAt || isValidCalendarDateKey(entry.settledAt)))), (entry) => entry.id);
+  return { version: 5, payGroups, employees, withholdingProfiles, employerTaxRules, benefitTaxRules, runs, liabilities, disbursements };
 }
 
 export function timeEntryHours(entry: TimeEntry) {
-  if (!entry.clockOut) return 0;
+  if (!entry.clockOut || !validTime(entry.clockIn) || !validTime(entry.clockOut) || !finiteNonNegative(entry.breakMinutes)) return 0;
   const minutes = (value: string) => {
     const [hours, mins] = value.split(":").map(Number);
     return hours * 60 + mins;
   };
-  return Math.max(0, (minutes(entry.clockOut) - minutes(entry.clockIn) - Math.max(0, entry.breakMinutes)) / 60);
+  const worked = minutes(entry.clockOut) - minutes(entry.clockIn) - entry.breakMinutes;
+  return Number.isFinite(worked) && worked > 0 ? worked / 60 : 0;
 }
 
 export function activePayrollEmployee(state: PayrollState, userId: string) {
@@ -90,27 +106,32 @@ export function activePayrollEmployee(state: PayrollState, userId: string) {
 }
 
 export function activeWithholding(state: PayrollState, userId: string, asOf = today()) {
-  return state.withholdingProfiles.filter((profile) => profile.userId === userId && profile.effectiveDate <= asOf).sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))[0];
+  if (!isValidCalendarDateKey(asOf)) return undefined;
+  return state.withholdingProfiles.filter((profile) => profile.userId === userId && withholdingProfileValid(profile) && profile.effectiveDate <= asOf).sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))[0];
 }
 
 export function activeEmployerTaxes(state: PayrollState, asOf = today()) {
-  return state.employerTaxRules.filter((rule) => rule.active && rule.effectiveDate <= asOf);
+  if (!isValidCalendarDateKey(asOf)) return [];
+  return state.employerTaxRules.filter((rule) => rule.active && percentValid(rule.percent) && isValidCalendarDateKey(rule.effectiveDate) && rule.effectiveDate <= asOf);
 }
 
 export function activeBenefitTaxRule(state: PayrollState, planId: string, tierId: string, asOf = today()) {
+  if (!isValidCalendarDateKey(asOf)) return undefined;
   return state.benefitTaxRules
-    .filter((rule) => rule.active && rule.planId === planId && rule.tierId === tierId && rule.effectiveDate <= asOf)
+    .filter((rule) => rule.active && benefitTreatments.has(rule.treatment) && isValidCalendarDateKey(rule.effectiveDate) && rule.planId === planId && rule.tierId === tierId && rule.effectiveDate <= asOf)
     .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))[0];
 }
 
 export function payrollBenefitDeductions(state: PayrollState, hcm: HCMState, userId: string, asOf = today()): PayrollBenefitDeductions {
   const result = zeroBenefits();
+  if (!isValidCalendarDateKey(asOf)) return result;
   for (const enrollment of activeBenefitEnrollments(hcm, userId, asOf)) {
     const plan = hcm.benefitPlans.find((item) => item.id === enrollment.planId);
     const tier = plan?.tiers.find((item) => item.id === enrollment.tierId);
     const amount = tier?.employeeContributionPerPayPeriod ?? 0;
-    if (amount <= 0) continue;
-    const planValid = Boolean(plan?.active && plan.startDate <= asOf && plan.endDate >= asOf && tier);
+    if (!Number.isFinite(amount) || amount < 0) { result.unconfigured.push({ enrollmentId: enrollment.id, planId: enrollment.planId, tierId: enrollment.tierId }); continue; }
+    if (amount === 0) continue;
+    const planValid = Boolean(plan?.active && isValidCalendarDateKey(plan.startDate) && isValidCalendarDateKey(plan.endDate) && plan.startDate <= asOf && plan.endDate >= asOf && tier);
     const rule = planValid ? activeBenefitTaxRule(state, enrollment.planId, enrollment.tierId, asOf) : undefined;
     if (!rule) {
       result.unconfigured.push({ enrollmentId: enrollment.id, planId: enrollment.planId, tierId: enrollment.tierId });
@@ -133,14 +154,14 @@ export function consumedBonuses(state: PayrollState) {
 
 export function regularPayrollSource(data: WorkspaceData, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[]): RegularPayrollSource | null {
   const timecardIds = [...new Set(sourceTimecardIds)];
-  if (!timecardIds.length || !periodStart || !periodEnd || periodEnd < periodStart) return null;
+  if (!timecardIds.length || !isValidCalendarDateKey(periodStart) || !isValidCalendarDateKey(periodEnd) || periodEnd < periodStart) return null;
   const cards = timecardIds.map((id) => data.timecards.find((card) => card.id === id));
   if (cards.some((card) => !card)) return null;
   const resolved = cards.filter((card): card is WorkspaceData["timecards"][number] => Boolean(card));
-  if (resolved.some((card) => card.userId !== employeeId || !payrollReadyTimecard(card.status) || card.weekStart < periodStart || card.weekEnd > periodEnd)) return null;
+  if (resolved.some((card) => card.userId !== employeeId || !payrollReadyTimecard(card.status) || !isValidCalendarDateKey(card.weekStart) || !isValidCalendarDateKey(card.weekEnd) || card.weekStart < periodStart || card.weekEnd > periodEnd)) return null;
   const ordered = [...resolved].sort((left, right) => left.weekStart.localeCompare(right.weekStart));
   if (ordered.some((card, index) => index > 0 && card.weekStart <= ordered[index - 1].weekEnd)) return null;
-  const entries = data.timeEntries.filter((entry) => entry.userId === employeeId && resolved.some((card) => entry.date >= card.weekStart && entry.date <= card.weekEnd));
+  const entries = data.timeEntries.filter((entry) => entry.userId === employeeId && isValidCalendarDateKey(entry.date) && resolved.some((card) => entry.date >= card.weekStart && entry.date <= card.weekEnd));
   const seen = new Set<string>();
   return { timecardIds, entries: entries.filter((entry) => seen.has(entry.id) ? false : (seen.add(entry.id), true)) };
 }
@@ -155,12 +176,13 @@ export function payrollHourBreakdown(data: WorkspaceData, employeeId: string, so
   for (const card of cards.filter((item): item is WorkspaceData["timecards"][number] => Boolean(item))) {
     if (card.userId !== employeeId) return null;
     const weekHours = source.entries.filter((entry) => entry.date >= card.weekStart && entry.date <= card.weekEnd).reduce((sum, entry) => sum + timeEntryHours(entry), 0);
+    if (!finiteNonNegative(weekHours)) return null;
     const weekOvertime = Math.max(0, weekHours - overtimeThresholdHours);
     totalHours += weekHours;
     overtimeHours += weekOvertime;
     regularHours += weekHours - weekOvertime;
   }
-  return { totalHours, regularHours, overtimeHours };
+  return [totalHours,regularHours,overtimeHours].every(finiteNonNegative) ? { totalHours, regularHours, overtimeHours } : null;
 }
 
 export function invalidTimecardSourcesForRun(run: PayRun, data: WorkspaceData) {
@@ -191,6 +213,7 @@ export function bonusEarnedDate(data: WorkspaceData, signal: BonusMilestone) {
   if (signal.milestone === "Opening order") return evidence[0] ? orderFirstSettlementDate(data, evidence[0]) : undefined;
   let cases = 0;
   for (const order of evidence) {
+    if (!Number.isFinite(order.cases) || order.cases <= 0) continue;
     cases += order.cases;
     if (cases >= signal.thresholdCases) return orderFirstSettlementDate(data, order);
   }
@@ -198,6 +221,7 @@ export function bonusEarnedDate(data: WorkspaceData, signal: BonusMilestone) {
 }
 
 export function earnedBonusesForMonth(state: PayrollState, data: WorkspaceData, month: string) {
+  if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)) return [];
   const used = consumedBonuses(state);
   return evaluateSalesRepAccountBonuses(data)
     .map((signal) => ({ signal, earnedAt: bonusEarnedDate(data, signal) }))
@@ -205,16 +229,18 @@ export function earnedBonusesForMonth(state: PayrollState, data: WorkspaceData, 
 }
 
 export function calculateRegularLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[]): PayLine | null {
+  if (!isValidCalendarDateKey(periodStart) || !isValidCalendarDateKey(periodEnd) || periodEnd < periodStart) return null;
   const employee = activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, periodEnd);
   const compensation = activeCompensation(hcm, employeeId, periodEnd);
   const group = employee ? state.payGroups.find((item) => item.id === employee.payGroupId && item.active) : undefined;
   const source = regularPayrollSource(data, employeeId, periodStart, periodEnd, sourceTimecardIds);
   const benefits = payrollBenefitDeductions(state, hcm, employeeId, periodEnd);
-  if (!employee || !withholdingProfileValid(withholding) || !compensation || !finiteNonNegative(compensation.rate) || !group || !source || benefits.unconfigured.length > 0) return null;
+  if (!employee || !withholdingProfileValid(withholding) || !compensation || !finiteNonNegative(compensation.rate) || !group || !finiteNonNegative(group.overtimeThresholdHours) || !source || benefits.unconfigured.length > 0) return null;
   const employerTaxRules = activeEmployerTaxes(state, periodEnd);
-  if (employerTaxRules.some((rule) => !finiteNonNegative(rule.percent))) return null;
+  if (employerTaxRules.some((rule) => !percentValid(rule.percent))) return null;
   const totalHours = source.entries.reduce((sum, entry) => sum + timeEntryHours(entry), 0);
+  if (!finiteNonNegative(totalHours)) return null;
   const breakdown = compensation.basis === "Hourly" ? payrollHourBreakdown(data, employeeId, source, group.overtimeThresholdHours) : null;
   if (compensation.basis === "Hourly" && !breakdown) return null;
   const overtimeHours = compensation.basis === "Hourly" ? breakdown!.overtimeHours : 0;
@@ -226,19 +252,21 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
 
 export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeId: string, payDate: string, bonusAmount: number, bonusIds: string[]): PayLine | null {
   void hcm;
+  if (!isValidCalendarDateKey(payDate) || !bonusIds.length || new Set(bonusIds).size !== bonusIds.length) return null;
   const employee = activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, payDate);
   if (!employee || !withholdingProfileValid(withholding) || !finiteNonNegative(bonusAmount) || bonusAmount <= 0) return null;
   const employerTaxRules = activeEmployerTaxes(state, payDate);
-  if (employerTaxRules.some((rule) => !finiteNonNegative(rule.percent))) return null;
+  if (employerTaxRules.some((rule) => !percentValid(rule.percent))) return null;
   return calculateNet(state, employeeId, payDate, 0, 0, 0, 0, bonusAmount, [], bonusIds, withholding!, zeroBenefits());
 }
 
 function calculateNet(state: PayrollState, employeeId: string, asOf: string, regularHours: number, overtimeHours: number, regularPay: number, overtimePay: number, bonusPay: number, sourceTimecardIds: string[], sourceBonusIds: string[], withholding: WithholdingProfile, benefits: PayrollBenefitDeductions): PayLine | null {
+  if (!isValidCalendarDateKey(asOf) || ![regularHours,overtimeHours,regularPay,overtimePay,bonusPay].every(finiteNonNegative) || !withholdingProfileValid(withholding)) return null;
   const grossPay = regularPay + overtimePay + bonusPay;
   if (!finiteNonNegative(grossPay) || !finiteNonNegative(benefits.preTax) || !finiteNonNegative(benefits.postTax)) return null;
   const rawTaxableWages = grossPay - benefits.preTax;
-  if (rawTaxableWages < -0.005) return null;
+  if (!Number.isFinite(rawTaxableWages) || rawTaxableWages < -0.005) return null;
   const taxableWages = Math.max(0, rawTaxableWages);
   const federalTax = taxableWages * (withholding.federalPercent / 100);
   const stateTax = taxableWages * (withholding.statePercent / 100);
@@ -247,8 +275,9 @@ function calculateNet(state: PayrollState, employeeId: string, asOf: string, reg
   const employerTaxes = activeEmployerTaxes(state, asOf).reduce((sum, rule) => sum + taxableWages * (rule.percent / 100), 0);
   if (![federalTax, stateTax, localTax, employeeTaxes, employerTaxes].every(finiteNonNegative)) return null;
   const rawNetPay = grossPay - benefits.preTax - benefits.postTax - employeeTaxes - withholding.postTaxDeduction;
-  if (rawNetPay < -0.005) return null;
+  if (!Number.isFinite(rawNetPay) || rawNetPay < -0.005) return null;
   const netPay = Math.max(0, rawNetPay);
   const benefitDeduction = benefits.total;
-  return { employeeId, regularHours, overtimeHours, regularPay, overtimePay, bonusPay, grossPay, benefitDeduction, preTaxBenefitDeduction: benefits.preTax, postTaxBenefitDeduction: benefits.postTax, taxableWages, federalTax, stateTax, localTax, additionalWithholding: withholding.additionalWithholding, postTaxDeduction: withholding.postTaxDeduction, employeeTaxes, employerTaxes, netPay, sourceTimecardIds, sourceBonusIds };
+  const line = { employeeId, regularHours, overtimeHours, regularPay, overtimePay, bonusPay, grossPay, benefitDeduction, preTaxBenefitDeduction: benefits.preTax, postTaxBenefitDeduction: benefits.postTax, taxableWages, federalTax, stateTax, localTax, additionalWithholding: withholding.additionalWithholding, postTaxDeduction: withholding.postTaxDeduction, employeeTaxes, employerTaxes, netPay, sourceTimecardIds, sourceBonusIds };
+  return payLineValid(line) ? line : null;
 }
