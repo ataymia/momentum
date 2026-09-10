@@ -53,7 +53,7 @@ export function EmployeeDirectory() {
   const presence = employeePresence(data, selected.id);
   const lastActivity = lastRecordedEmployeeActivity(data, tracking.state, audit.events, selected.id);
   const nextShift = currentOrNextShift(hcm, selected.id);
-  const managementDetail = canViewEmployeeManagementDetail(currentUser, selected);
+  const managementDetail = canViewEmployeeManagementDetail(currentUser, selected, data);
   const period = kpiPresetPeriod("30d");
   const appointmentEvidence = appointmentPunctualityEvidence(data, tracking.state, selected.id, period.start, period.end);
   const shiftEvidence = shiftClockInEvidence(data, hcm, selected.id, period.start, period.end);
