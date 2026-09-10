@@ -56,7 +56,6 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
   const baseInventoryIds = new Set(data.inventory.map((record) => record.id));
   const baseLotCodes = new Set(data.inventory.map((record) => record.lotCode.trim().toLowerCase()));
   const placementById = new Map(data.placements.map((placement) => [placement.id, placement]));
-  const productNames = new Set(data.inventory.map((lot) => lot.product));
 
   const accountPatches: Record<string, CommercialAccountPatch> = { ...seed.accountPatches };
   if (object(input.accountPatches)) for (const [accountId, raw] of Object.entries(input.accountPatches)) {
@@ -86,7 +85,7 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     if (!object(raw)) return [];
     const id = text(raw.id); const accountId = text(raw.accountId); const ownerId = text(raw.ownerId); const status = text(raw.status); const paymentStatus = text(raw.paymentStatus); const product = text(raw.product); const cases = Number(raw.cases); const price = Number(raw.pricePerCase); const amount = Number(raw.amount);
     const owner = userById.get(ownerId);
-    if (!id || baseOrderIds.has(id) || !text(raw.number) || !accountIds.has(accountId) || !owner || (owner.role === "Customer" && !(owner.accountIds ?? []).includes(accountId)) || !wholePositive(cases) || !finite(price) || price <= 0 || !finite(amount) || amount < 0 || Math.abs(amount - cases * price) > 0.01 || !orderStatuses.has(status) || !paymentStatuses.has(paymentStatus) || !validDateOrInstant(raw.placedAt) || !text(raw.priceBasis) || !product || !productNames.has(product) || !finite(raw.inventoryAvailableAtOrder) || Number(raw.inventoryAvailableAtOrder) < 0) return [];
+    if (!id || baseOrderIds.has(id) || !text(raw.number) || !accountIds.has(accountId) || !owner || (owner.role === "Customer" && !(owner.accountIds ?? []).includes(accountId)) || !wholePositive(cases) || !finite(price) || price <= 0 || !finite(amount) || amount < 0 || Math.abs(amount - cases * price) > 0.01 || !orderStatuses.has(status) || !paymentStatuses.has(paymentStatus) || !validDateOrInstant(raw.placedAt) || !text(raw.priceBasis) || !product || !finite(raw.inventoryAvailableAtOrder) || Number(raw.inventoryAvailableAtOrder) < 0) return [];
     if (!optionalValidDate(raw.paidAt) || !optionalValidDate(raw.firstSettledAt)) return [];
     const creditedRepId = optionalText(raw.creditedRepId); if (creditedRepId && !salesRepIds.has(creditedRepId)) return [];
     const sourcePlacementId = optionalText(raw.sourcePlacementId); const placement = sourcePlacementId ? placementById.get(sourcePlacementId) : undefined;
