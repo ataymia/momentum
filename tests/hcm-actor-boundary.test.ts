@@ -197,3 +197,20 @@ test("HCM context enforces actor authorization before structural normalization a
   assert.match(source, /if\(!actorCheck\.ok\)return current/);
   assert.match(source, /reloadHcm=\(\)=>\{if\(runtime\.isDemo&&currentUser\?\.role==="Administrator"\)/);
 });
+
+test("manager HCM surfaces hide recruiting records outside explicit requisition ownership", () => {
+  const source = readFileSync(new URL("../components/hcm/advanced-hcm.tsx", import.meta.url), "utf8");
+  assert.match(source, /recruitingCandidateInScope/);
+  assert.match(source, /requisition\?\.hiringManagerId===currentUser\.id/);
+  assert.match(source, /visibleRecruitingCandidates/);
+  assert.match(source, /visibleInterviews/);
+  assert.match(source, /visibleOffers/);
+  assert.match(source, /hrUserInScope/);
+});
+
+test("People manager approval applies the exact requested non-email profile value", () => {
+  const source = readFileSync(new URL("../components/pages/people-v2.tsx", import.meta.url), "utf8");
+  assert.match(source, /status==="Approved"&&item\.field!=="email"/);
+  assert.match(source, /\[item\.field\]:item\.requestedValue/);
+  assert.match(source, /privateProfiles:/);
+});
