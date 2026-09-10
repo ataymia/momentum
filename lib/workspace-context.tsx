@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { accountIsVisible, canAdvanceFulfillment, canAssignScheduleUser, canManageSchedule, canReconcileOrderPayment, canReviewApproval, canTransferSalesResponsibility, getWorkspaceScope } from "./access";
+import { normalizeCommercialState } from "./commercial-state";
 import { addCalendarDays, arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import { findAccountDuplicate } from "./duplicate-engine";
 import { activeFieldAppointmentForUser } from "./field-work-session";
@@ -56,7 +57,7 @@ type CommercialState = {
   inventoryLots: InventoryLot[];
 };
 
-type EnhancedOrderInput = { accountId: string; cases: number; pricePerCase?: number; product?: string; inventoryAvailableAtOrder: number; sourcePlacementId?: string };
+type EnhancedOrderInput = { accountId: string; cases: number; pricePerCase?: number; product?: string; inventoryAvailableAtOrder?: number; sourcePlacementId?: string };
 type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string; categoryReviewDate?: string; pricingTier?: PricingTier };
 type BaseWorkspace = ReturnType<typeof useBaseWorkspace>;
 type NewAppointmentInput = Parameters<BaseWorkspace["createAppointment"]>[0];
@@ -112,17 +113,8 @@ function seedCommercial(data: WorkspaceData): CommercialState {
 function readCommercial(data: WorkspaceData): CommercialState {
   if (typeof window === "undefined") return seedCommercial(data);
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(COMMERCIAL_KEY) ?? "null") as Partial<CommercialState> | null;
-    if (!parsed || parsed.version !== 1) return seedCommercial(data);
-    return {
-      version: 1,
-      accountPatches: { ...seedCommercial(data).accountPatches, ...(parsed.accountPatches ?? {}) },
-      orders: Array.isArray(parsed.orders) ? parsed.orders : [],
-      appointments: Array.isArray(parsed.appointments) ? parsed.appointments : [],
-      approvals: Array.isArray(parsed.approvals) ? parsed.approvals : [],
-      activities: Array.isArray(parsed.activities) ? parsed.activities : [],
-      inventoryLots: Array.isArray(parsed.inventoryLots) ? parsed.inventoryLots : [],
-    };
+    const parsed = JSON.parse(window.localStorage.getItem(COMMERCIAL_KEY) ?? "null") as unknown;
+    return normalizeCommercialState(parsed, data, today());
   } catch {
     return seedCommercial(data);
   }
@@ -138,6 +130,11 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem(COMMERCIAL_KEY, JSON.stringify(commercial));
   }, [commercial]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setCommercial((state) => normalizeCommercialState(state, base.data, today())), 0);
+    return () => window.clearTimeout(handle);
+  }, [base.data]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -369,7 +366,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const createOrder = ({ accountId, cases, product, inventoryAvailableAtOrder, sourcePlacementId }: EnhancedOrderInput) => {
-    if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role) || !Number.isInteger(cases) || cases < 1 || !Number.isFinite(inventoryAvailableAtOrder) || inventoryAvailableAtOrder < 0) return null;
+    if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role) || !Number.isInteger(cases) || cases < 1 || typeof inventoryAvailableAtOrder !== "number" || !Number.isFinite(inventoryAvailableAtOrder) || inventoryAvailableAtOrder < 0) return null;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
     const selectedProduct = product?.trim() || data.inventory[0]?.product || "Golden Eagle";
@@ -446,9 +443,9 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const valid: InventoryLot[] = [];
     for (const lot of lots) {
       const code = lot.lotCode.trim().toLowerCase();
-      if (!code || !lot.product.trim() || !Number.isInteger(lot.onHand) || lot.onHand < 0 || !Number.isFinite(lot.reserved) || lot.reserved !== 0 || !isValidCalendarDateKey(lot.receivedAt) || !isValidCalendarDateKey(lot.bestBy) || seenCodes.has(code)) continue;
+      if (!code || !lot.product.trim() || !lot.location.trim() || !Number.isInteger(lot.onHand) || lot.onHand < 0 || !Number.isFinite(lot.reserved) || lot.reserved !== 0 || !["Available", "Quality hold", "Low stock"].includes(lot.status) || !isValidCalendarDateKey(lot.receivedAt) || !isValidCalendarDateKey(lot.bestBy) || seenCodes.has(code)) continue;
       seenCodes.add(code);
-      valid.push({ ...lot, id: lot.id || uid("lot-import"), product: lot.product.trim(), reserved: 0, available: lot.onHand });
+      valid.push({ ...lot, id: lot.id || uid("lot-import"), product: lot.product.trim(), location: lot.location.trim(), reserved: 0, available: lot.status === "Quality hold" ? 0 : lot.onHand });
     }
     if (!valid.length) return 0;
     setCommercial((state) => ({ ...state, inventoryLots: [...valid, ...state.inventoryLots] }));
