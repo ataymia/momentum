@@ -28,6 +28,25 @@ const paymentMethods=new Set<PaymentMethod>(["Card","ACH","Wire","Cash","Other"]
 const creditStatuses=new Set<CreditMemo["status"]>(["Draft","Approved","Applied","Void"]);
 const refundStatuses=new Set<Refund["status"]>(["Requested","Approved","Sent","Settled","Failed"]);
 const uniqueById=<T extends {id:string}>(records:T[])=>{const seen=new Set<string>();return records.filter((record)=>Boolean(record?.id)&&!seen.has(record.id)&&(seen.add(record.id),true));};
+const paymentEvidenceValid=(payment:Payment)=>{
+  if(payment.status==="Cleared")return Boolean(payment.settledAt&&payment.settledBy&&validDateOrInstant(payment.settledAt));
+  if(payment.status==="Failed")return Boolean(payment.failedAt&&payment.failedBy&&payment.failureReason?.trim()&&validDateOrInstant(payment.failedAt));
+  if(payment.status==="Reversed")return Boolean(payment.settledAt&&payment.settledBy&&payment.reversedAt&&payment.reversedBy&&payment.reversalReason?.trim()&&validDateOrInstant(payment.settledAt)&&validDateOrInstant(payment.reversedAt));
+  return true;
+};
+const creditEvidenceValid=(credit:CreditMemo)=>{
+  if(["Approved","Applied"].includes(credit.status)&&(!credit.approvedAt||!credit.approvedBy||!validDateOrInstant(credit.approvedAt)))return false;
+  if(credit.status==="Applied"&&(!credit.appliedAt||!credit.appliedBy||!validDateOrInstant(credit.appliedAt)))return false;
+  return true;
+};
+const refundEvidenceValid=(refund:Refund)=>{
+  if(refund.basis!=="Verified quality issue"||!refund.evidence?.trim())return false;
+  if(["Approved","Sent","Settled"].includes(refund.status)&&(!refund.approvedAt||!refund.approvedBy||!validDateOrInstant(refund.approvedAt)))return false;
+  if(["Sent","Settled"].includes(refund.status)&&(!refund.sentReference?.trim()||!refund.sentAt||!refund.sentBy||!validDateOrInstant(refund.sentAt)))return false;
+  if(refund.status==="Settled"&&(!refund.settledAt||!refund.settledBy||!validDateOrInstant(refund.settledAt)))return false;
+  if(refund.status==="Failed"&&(!refund.failedAt||!refund.failedBy||!refund.failureReason?.trim()||!validDateOrInstant(refund.failedAt)))return false;
+  return true;
+};
 
 export function createCommerceSeed(data:WorkspaceData):CommerceState{
   const invoices:Invoice[]=data.orders.filter((order)=>eligibleForInvoice(order.status)||order.paymentStatus!=="Not invoiced").filter((order)=>finiteNonNegative(order.amount)).map((order)=>{const createdAt=now();return{id:`invoice-${order.id}`,number:invoiceNumber(order.number),orderId:order.id,accountId:order.accountId,issuedAt:createdAt,terms:"Prepaid",total:order.amount,status:order.paymentStatus==="Paid"?"Paid":order.paymentStatus==="Partially paid"?"Partially paid":"Open",createdAt};});
@@ -40,22 +59,23 @@ export function normalizeCommerceState(input:unknown,data:WorkspaceData):Commerc
   const seed=createCommerceSeed(data);if(!input||typeof input!=="object")return seed;const state=input as Partial<CommerceState>;
   const orderById=new Map(data.orders.map((order)=>[order.id,order]));
   const accountIds=new Set(data.accounts.map((account)=>account.id));
-  const storedInvoices=uniqueById((Array.isArray(state.invoices)?state.invoices:[]).filter((invoice):invoice is Invoice=>{const order=invoice&&orderById.get(invoice.orderId);return Boolean(order&&invoice.accountId===order.accountId&&accountIds.has(invoice.accountId)&&invoice.number?.trim()&&validDateOrInstant(invoice.issuedAt)&&validDateOrInstant(invoice.createdAt)&&(!invoice.dueDate||isValidCalendarDateKey(invoice.dueDate))&&invoiceTerms.has(invoice.terms)&&invoiceStatuses.has(invoice.status)&&finiteNonNegative(invoice.total));}));
+  const storedInvoices=uniqueById((Array.isArray(state.invoices)?state.invoices:[]).filter((invoice):invoice is Invoice=>{const order=invoice&&orderById.get(invoice.orderId);return Boolean(order&&invoice.accountId===order.accountId&&accountIds.has(invoice.accountId)&&invoice.number?.trim()&&validDateOrInstant(invoice.issuedAt)&&validDateOrInstant(invoice.createdAt)&&(!invoice.dueDate||isValidCalendarDateKey(invoice.dueDate))&&invoiceTerms.has(invoice.terms)&&invoiceStatuses.has(invoice.status)&&finiteNonNegative(invoice.total)&&finiteNonNegative(order.amount)&&Math.abs(invoice.total-order.amount)<0.005&&(invoice.status!=="Void"||invoice.voidReason?.trim()));}));
   const invoiceIds=new Set(storedInvoices.map((invoice)=>invoice.id));
   const invoices=[...storedInvoices];for(const invoice of seed.invoices)if(!invoiceIds.has(invoice.id)&&!invoices.some((item)=>item.orderId===invoice.orderId))invoices.push(invoice);
   const invoiceById=new Map(invoices.map((invoice)=>[invoice.id,invoice]));
 
-  const storedPayments=uniqueById((Array.isArray(state.payments)?state.payments:[]).filter((payment):payment is Payment=>Boolean(payment&&accountIds.has(payment.accountId)&&finitePositive(payment.amount)&&paymentMethods.has(payment.method)&&paymentStatuses.has(payment.status)&&validDateOrInstant(payment.receivedAt)&&validDateOrInstant(payment.createdAt)&&(!payment.settledAt||validDateOrInstant(payment.settledAt))&&(!payment.failedAt||validDateOrInstant(payment.failedAt))&&(!payment.reversedAt||validDateOrInstant(payment.reversedAt))))).map((payment)=>payment.status==="Cleared"&&!payment.settledAt?{...payment,settledAt:payment.receivedAt,settledBy:payment.settledBy??payment.createdBy}:payment);
+  const storedPayments=uniqueById((Array.isArray(state.payments)?state.payments:[]).filter((payment):payment is Payment=>Boolean(payment&&accountIds.has(payment.accountId)&&finitePositive(payment.amount)&&paymentMethods.has(payment.method)&&paymentStatuses.has(payment.status)&&payment.createdBy&&validDateOrInstant(payment.receivedAt)&&validDateOrInstant(payment.createdAt)&&paymentEvidenceValid(payment))));
   const paymentIds=new Set(storedPayments.map((payment)=>payment.id));
   const payments=[...storedPayments];for(const payment of seed.payments)if(!paymentIds.has(payment.id)){payments.push(payment);paymentIds.add(payment.id);}
   const paymentById=new Map(payments.map((payment)=>[payment.id,payment]));
 
   const rawAllocations=uniqueById([...(Array.isArray(state.allocations)?state.allocations:[]),...seed.allocations]);
   const allocations:PaymentAllocation[]=[];const paymentInvoice=new Map<string,string>();const allocatedAmount=new Map<string,number>();
-  for(const allocation of rawAllocations){const payment=paymentById.get(allocation.paymentId);const invoice=invoiceById.get(allocation.invoiceId);if(!payment||!invoice||payment.accountId!==invoice.accountId||!finitePositive(allocation.amount)||!validDateOrInstant(allocation.createdAt))continue;const linkedInvoice=paymentInvoice.get(payment.id);if(linkedInvoice&&linkedInvoice!==invoice.id)continue;const used=allocatedAmount.get(payment.id)??0;if(used+allocation.amount>payment.amount+0.005)continue;paymentInvoice.set(payment.id,invoice.id);allocatedAmount.set(payment.id,used+allocation.amount);allocations.push(allocation);}
+  for(const allocation of rawAllocations){const payment=paymentById.get(allocation.paymentId);const invoice=invoiceById.get(allocation.invoiceId);if(!payment||!invoice||payment.accountId!==invoice.accountId||!finitePositive(allocation.amount)||!allocation.createdBy||!validDateOrInstant(allocation.createdAt))continue;const linkedInvoice=paymentInvoice.get(payment.id);if(linkedInvoice&&linkedInvoice!==invoice.id)continue;const used=allocatedAmount.get(payment.id)??0;if(used+allocation.amount>payment.amount+0.005)continue;paymentInvoice.set(payment.id,invoice.id);allocatedAmount.set(payment.id,used+allocation.amount);allocations.push(allocation);}
 
-  const credits=uniqueById((Array.isArray(state.credits)?state.credits:[]).filter((credit):credit is CreditMemo=>Boolean(credit&&invoiceById.has(credit.invoiceId)&&finitePositive(credit.amount)&&credit.reason?.trim()&&creditStatuses.has(credit.status)&&validDateOrInstant(credit.createdAt)&&(!credit.approvedAt||validDateOrInstant(credit.approvedAt))&&(!credit.appliedAt||validDateOrInstant(credit.appliedAt)))));
-  const refunds=uniqueById((Array.isArray(state.refunds)?state.refunds:[]).filter((refund):refund is Refund=>{const payment=refund&&paymentById.get(refund.paymentId);return Boolean(payment&&finitePositive(refund.amount)&&refund.amount<=payment.amount+0.005&&refund.reason?.trim()&&refundStatuses.has(refund.status)&&validDateOrInstant(refund.createdAt)&&(!refund.approvedAt||validDateOrInstant(refund.approvedAt))&&(!refund.sentAt||validDateOrInstant(refund.sentAt))&&(!refund.settledAt||validDateOrInstant(refund.settledAt))&&(!refund.failedAt||validDateOrInstant(refund.failedAt)));})).map((refund)=>({...refund,basis:"Verified quality issue" as const,evidence:refund.evidence?.trim()||refund.reason.trim()}));
+  const credits=uniqueById((Array.isArray(state.credits)?state.credits:[]).filter((credit):credit is CreditMemo=>{const invoice=credit&&invoiceById.get(credit.invoiceId);return Boolean(invoice&&finitePositive(credit.amount)&&credit.amount<=invoice.total+0.005&&credit.reason?.trim()&&credit.createdBy&&creditStatuses.has(credit.status)&&validDateOrInstant(credit.createdAt)&&creditEvidenceValid(credit));}));
+  const allocatedByPayment=new Map<string,number>();for(const allocation of allocations)allocatedByPayment.set(allocation.paymentId,(allocatedByPayment.get(allocation.paymentId)??0)+allocation.amount);
+  const refunds=uniqueById((Array.isArray(state.refunds)?state.refunds:[]).filter((refund):refund is Refund=>{const payment=refund&&paymentById.get(refund.paymentId);const allocated=refund?allocatedByPayment.get(refund.paymentId)??0:0;return Boolean(payment&&payment.status!=="Pending"&&finitePositive(refund.amount)&&refund.amount<=Math.min(payment.amount,allocated)+0.005&&refund.reason?.trim()&&refund.createdBy&&refundStatuses.has(refund.status)&&validDateOrInstant(refund.createdAt)&&refundEvidenceValid(refund));})).map((refund)=>({...refund,evidence:refund.evidence!.trim()}));
   const notes=uniqueById((Array.isArray(state.notes)?state.notes:[]).filter((note):note is ReceivableNote=>Boolean(note&&invoiceById.has(note.invoiceId)&&note.authorId&&note.note?.trim()&&validDateOrInstant(note.createdAt))));
   return{version:1,invoices,payments,allocations,credits,refunds,notes};
 }
