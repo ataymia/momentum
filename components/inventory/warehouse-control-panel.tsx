@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, Download, PackageSearch, ShieldAlert, Warehouse } from "lucide-react";
+import { arizonaDateKey } from "../../lib/date-time";
 import { holdNodeId, inventoryProductStatuses, LOW_STOCK_MANAGER_APPROVAL_THRESHOLD_CASES, nodeLotBalance, reservedQuantity, warehouseAvailable, WAREHOUSE_REORDER_THRESHOLD_CASES, warehouseNodeId } from "../../lib/inventory-ledger";
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -20,7 +21,7 @@ export function WarehouseControlPanel(){
   const urgent=statuses.filter((item)=>item.requiresManagerApproval);
   const reorder=statuses.filter((item)=>item.reorderNeeded);
   const companyNodeTypes=new Set(["Warehouse","Bin","Vehicle","Employee custody","Quality hold"]);
-  const exportInventory=()=>downloadCsv(`momentum-inventory-${new Date().toISOString().slice(0,10)}.csv`,[
+  const exportInventory=()=>downloadCsv(`momentum-inventory-${arizonaDateKey()}.csv`,[
     ["Product","Lot","Company custody","Warehouse custody","Quality hold","Reserved","Warehouse available","Status","Best by"],
     ...data.inventory.map((lot)=>{
       const companyCustody=ledger.nodes.filter((node)=>companyNodeTypes.has(node.type)).reduce((sum,node)=>sum+nodeLotBalance(ledger,node.id,lot.id),0);
