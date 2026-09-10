@@ -7,10 +7,24 @@ export type AuditEvent = { id: string; at: string; actorId: string; actorRole: s
 export type AuditState = { version: 1; events: AuditEvent[] };
 export type AuditSnapshot = { key: string; module: string; collection: string; entityType: string; entityId: string; label: string; sensitivity: AuditSensitivity; relatedAccountId?: string; relatedUserId?: string; payload: Record<string, unknown> };
 export const createAuditSeed = (): AuditState => ({ version: 1, events: [] });
-export function normalizeAuditState(input: unknown): AuditState { if (!input || typeof input !== "object") return createAuditSeed(); const state = input as Partial<AuditState>; return { version: 1, events: Array.isArray(state.events) ? state.events : [] }; }
 const text = (value: unknown) => typeof value === "string" ? value : undefined;
+const validInstant = (value: unknown) => typeof value === "string" && !Number.isNaN(new Date(value).getTime());
+const auditActions = new Set<AuditEvent["action"]>(["Created", "Updated", "Deleted"]);
 const display = (value: unknown) => { if (value === undefined) return undefined; if (value === null) return "null"; if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value).slice(0, 180); try { return JSON.stringify(value).slice(0, 180); } catch { return "[unavailable]"; } };
 function sensitivityFor(module: string, collection: string): AuditSensitivity { if (["Payroll", "Accounting", "HCM"].includes(module)) return "admin"; if (["Finance", "Performance", "Period locks", "Field tracking"].includes(module) || ["approvals", "timecards"].includes(collection)) return "manager"; if (module === "Commerce" && ["payments", "allocations", "credits", "refunds", "notes"].includes(collection)) return "manager"; return "operational"; }
+export function normalizeAuditState(input: unknown): AuditState {
+  if (!input || typeof input !== "object") return createAuditSeed();
+  const state = input as Partial<AuditState>; const seen = new Set<string>(); const events: AuditEvent[] = [];
+  for (const candidate of Array.isArray(state.events) ? state.events : []) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const event = candidate as Partial<AuditEvent>;
+    if (!event.id || seen.has(event.id) || !validInstant(event.at) || !event.actorId || !event.actorRole || !event.action || !auditActions.has(event.action) || !event.module || !event.collection || !event.entityType || !event.entityId || !event.label || !event.summary || !Array.isArray(event.changes)) continue;
+    const changes = event.changes.filter((change): change is AuditChange => Boolean(change && typeof change.field === "string" && change.field.trim() && (change.before === undefined || typeof change.before === "string") && (change.after === undefined || typeof change.after === "string"))).slice(0, 20);
+    events.push({ id: event.id, at: event.at!, actorId: event.actorId, actorRole: event.actorRole, action: event.action, module: event.module, collection: event.collection, entityType: event.entityType, entityId: event.entityId, label: event.label, summary: event.summary, sensitivity: sensitivityFor(event.module, event.collection), relatedAccountId: typeof event.relatedAccountId === "string" ? event.relatedAccountId : undefined, relatedUserId: typeof event.relatedUserId === "string" ? event.relatedUserId : undefined, changes });
+    seen.add(event.id);
+  }
+  return { version: 1, events: events.slice(0, 10000) };
+}
 function recordLabel(record: Record<string, unknown>, id: string) { return text(record.number) || text(record.name) || text(record.title) || text(record.lotCode) || text(record.email) || id; }
 function relatedAccount(record: Record<string, unknown>, module: string, collection: string, id: string) { if (module === "Workspace" && collection === "accounts") return id; return text(record.accountId) || text(record.locationId); }
 function relatedUser(record: Record<string, unknown>, module: string, collection: string, id: string) { if (module === "Workspace" && collection === "users") return id; return text(record.userId) || text(record.employeeId) || text(record.requesterId) || text(record.ownerId); }
