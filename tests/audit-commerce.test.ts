@@ -3,6 +3,7 @@ import test from "node:test";
 import { collectAuditableRecords, visibleAuditEvents, type AuditEvent } from "../lib/audit-engine";
 import type { CommerceState } from "../lib/commerce-engine";
 import { createDemoData } from "../lib/demo-data";
+import type { WorkspaceUser } from "../lib/types";
 
 const commerce: CommerceState = {
   version: 1,
@@ -50,4 +51,22 @@ test("sales reps cannot see detailed cash audit history but Operations can", () 
   assert.equal(visibleAuditEvents(rep, data, [event]).length, 0);
   assert.equal(visibleAuditEvents(operations, data, [event]).length, 1);
   assert.equal(visibleAuditEvents(manager, data, [event]).length, 1);
+});
+
+test("sales manager audit visibility follows centralized management scope, not same-team membership", () => {
+  const data = createDemoData();
+  const templateManager = data.users.find((user) => user.role === "Sales Manager")!;
+  const templateRep = data.users.find((user) => user.role === "Sales Representative")!;
+  const peerManager: WorkspaceUser = { ...templateManager, id:"usr-audit-manager", name:"Audit Manager", firstName:"Audit", email:"audit-manager@test", initials:"AM", managedTeams:[] };
+  const unrelatedRep: WorkspaceUser = { ...templateRep, id:"usr-audit-peer", name:"Audit Peer", firstName:"Peer", email:"audit-peer@test", initials:"AP", managerId:"usr-someone-else", team:"Sales" };
+  const strictData = { ...data, users:[...data.users, peerManager, unrelatedRep] };
+  const event: AuditEvent = {
+    id:"audit-peer-event", at:"2026-09-03T12:00:00Z", actorId:unrelatedRep.id, actorRole:unrelatedRep.role, action:"Updated",
+    module:"Workspace", collection:"activities", entityType:"Workspace.activities", entityId:"activity-peer", label:"Peer activity",
+    summary:"Peer activity updated", sensitivity:"operational", relatedUserId:unrelatedRep.id, changes:[{field:"detail",after:"Updated"}],
+  };
+  assert.equal(visibleAuditEvents(peerManager, strictData, [event]).length, 0);
+  const explicitManager: WorkspaceUser = { ...peerManager, managedTeams:["Sales"] };
+  const explicitData = { ...strictData, users:strictData.users.map((user)=>user.id===peerManager.id?explicitManager:user) };
+  assert.equal(visibleAuditEvents(explicitManager, explicitData, [event]).length, 1);
 });
