@@ -1,3 +1,4 @@
+import { canManageUser } from "./access";
 import type { WorkspaceData, WorkspaceUser } from "./types";
 
 export const AUDIT_STORAGE_KEY = "momentum-audit-v1";
@@ -66,7 +67,7 @@ export function diffAuditableRecords(previous: Map<string, AuditSnapshot>, curre
 export function visibleAuditEvents(user: WorkspaceUser | null, data: WorkspaceData, events: AuditEvent[]) {
   if (!user || user.role === "Customer") return [];
   if (user.role === "Administrator") return events;
-  const managedIds = new Set(data.users.filter((candidate) => candidate.id === user.id || candidate.managerId === user.id || (user.managedTeams ?? []).includes(candidate.team)).map((candidate) => candidate.id));
+  const managedIds = new Set(data.users.filter((candidate) => canManageUser(data, user, candidate.id, true)).map((candidate) => candidate.id));
   const accountIds = new Set(data.accounts.filter((account) => user.role === "Sales Manager" ? managedIds.has(account.ownerId) : user.role === "Sales Representative" ? account.ownerId === user.id : false).map((account) => account.id));
   return events.filter((event) => {
     if (user.role === "Sales Manager") {
