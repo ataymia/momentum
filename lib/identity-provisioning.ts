@@ -4,7 +4,7 @@ import type { Role, Team, WorkspaceData } from "./types";
 export const IDENTITY_PROVISIONING_STORAGE_KEY = "momentum-identity-provisioning-v1";
 
 export type AccountAccessState = "Password change required" | "Onboarding" | "Pending approval" | "Active" | "Suspended" | "Separated";
-export type ProvisioningSource = "Direct hire" | "Accepted offer" | "Bootstrap admin";
+export type ProvisioningSource = "Direct hire" | "Accepted offer" | "Referral" | "Bootstrap admin";
 export type ProvisionableRole = Exclude<Role, "Administrator" | "Customer">;
 export type ProvisioningDraftStatus = "Draft" | "Ready to invite" | "Invite sent" | "Auth linked" | "Cancelled";
 
@@ -60,8 +60,8 @@ export type IdentityProvisioningRecord = {
 export type IdentityProvisioningState = { version: 1; records: IdentityProvisioningRecord[]; drafts: ProvisioningDraft[] };
 
 const validStates = new Set<AccountAccessState>(["Password change required", "Onboarding", "Pending approval", "Active", "Suspended", "Separated"]);
-const validSources = new Set<ProvisioningSource>(["Direct hire", "Accepted offer", "Bootstrap admin"]);
-const validDraftSources = new Set<ProvisioningDraft["source"]>(["Direct hire", "Accepted offer"]);
+const validSources = new Set<ProvisioningSource>(["Direct hire", "Accepted offer", "Referral", "Bootstrap admin"]);
+const validDraftSources = new Set<ProvisioningDraft["source"]>(["Direct hire", "Accepted offer", "Referral"]);
 const validDraftStatuses = new Set<ProvisioningDraftStatus>(["Draft", "Ready to invite", "Invite sent", "Auth linked", "Cancelled"]);
 const validRoles = new Set<ProvisionableRole>(["Sales Manager", "Sales Representative", "Operations", "Warehouse"]);
 const validTeams = new Set<Exclude<Team, "Customer">>(["Leadership", "Sales", "Operations"]);
