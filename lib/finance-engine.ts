@@ -18,6 +18,7 @@ export type Expense = {
   financeReviewerId?: string;
   paidAt?: string;
   paidBy?: string;
+  paymentReference?: string;
   returnReason?: string;
 };
 export type FinanceState = { version: 3; expenses: Expense[] };
@@ -43,7 +44,7 @@ export function normalizeFinanceState(input: unknown): FinanceState {
     if (expense.paidAt && !validInstant(expense.paidAt)) return false;
     if (expense.status === "Manager approved" && (!expense.managerReviewerId || !expense.managerDecisionAt)) return false;
     if (expense.status === "Finance approved" && (!expense.managerReviewerId || !expense.managerDecisionAt || !expense.financeReviewerId || !expense.financeDecisionAt)) return false;
-    if (expense.status === "Paid" && (!expense.managerReviewerId || !expense.managerDecisionAt || !expense.financeReviewerId || !expense.financeDecisionAt || !expense.paidBy || !expense.paidAt)) return false;
+    if (expense.status === "Paid" && (!expense.managerReviewerId || !expense.managerDecisionAt || !expense.financeReviewerId || !expense.financeDecisionAt || !expense.paidBy || !expense.paidAt || !expense.paymentReference?.trim())) return false;
     if (expense.status === "Returned" && !expense.returnReason?.trim()) return false;
     return true;
   }));
