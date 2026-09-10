@@ -7,6 +7,7 @@ import { useCommerce } from "./commerce-context";
 import { useCrm } from "./crm-context";
 import { useFinance } from "./finance-context";
 import { useHcm } from "./hcm-context";
+import { useIdentityProvisioning } from "./identity-provisioning-context";
 import { useInventoryLedger } from "./inventory-ledger-context";
 import { useFieldTracking } from "./location-tracking-context";
 import { useMarketing } from "./marketing-context";
@@ -26,6 +27,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
   const { data, currentUser } = useWorkspace();
   const { crm } = useCrm();
   const { hcm } = useHcm();
+  const { state: identity } = useIdentityProvisioning();
   const { payroll } = usePayroll();
   const { performance } = usePerformance();
   const { commerce } = useCommerce();
@@ -53,6 +55,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
     collectAuditableRecords("Workspace", data),
     collectAuditableRecords("CRM", crm),
     collectAuditableRecords("HCM", hcm),
+    collectAuditableRecords("Identity", identity),
     collectAuditableRecords("Payroll", payroll),
     collectAuditableRecords("Performance", performance),
     collectAuditableRecords("Commerce", commerce),
@@ -62,7 +65,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
     collectAuditableRecords("Marketing", marketing),
     collectAuditableRecords("Period locks", periodLocks),
     collectAuditableRecords("Field tracking", auditableFieldTracking),
-  ), [data, crm, hcm, payroll, performance, commerce, ledger, finance, accounting, marketing, periodLocks, auditableFieldTracking]);
+  ), [data, crm, hcm, identity, payroll, performance, commerce, ledger, finance, accounting, marketing, periodLocks, auditableFieldTracking]);
 
   useEffect(() => {
     if (!previous.current) { previous.current = snapshots; return; }
