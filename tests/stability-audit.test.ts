@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createDemoData } from "../lib/demo-data";
 import { createHcmSeed } from "../lib/hcm-engine";
-import { createInventoryLedgerSeed, holdNodeId, lotSystemQuantity, nodeLotBalance, warehouseAvailable, warehouseNodeId } from "../lib/inventory-ledger";
+import { createInventoryLedgerSeed, holdNodeId, lotSystemQuantity, movementCanPost, nodeLotBalance, normalizeInventoryLedger, reservationCanCreate, warehouseAvailable, warehouseNodeId } from "../lib/inventory-ledger";
 import { createNotificationSeed, deliveryKey } from "../lib/notification-engine";
 
 const data = createDemoData();
@@ -92,6 +92,27 @@ test("custody ledger is the operational inventory quantity source of truth", () 
       assert.equal(nodeLotBalance(ledger,warehouseNodeId,lot.id),lot.onHand,`${lot.id} available opening balance must start in warehouse custody`);
     }
   }
+});
+
+test("inventory mutations reject non-finite quantities before custody math", () => {
+  const ledger = createInventoryLedgerSeed(data);
+  const lot = data.inventory.find((item)=>item.status!=="Quality hold")!;
+  const order = data.orders.find((item)=>item.product===lot.product&&["Approved","Allocated"].includes(item.status));
+  assert.equal(movementCanPost(ledger,{lotId:lot.id,quantity:Number.NaN,type:"Transfer",fromNodeId:warehouseNodeId,toNodeId:holdNodeId}),false);
+  assert.equal(movementCanPost(ledger,{lotId:lot.id,quantity:Number.POSITIVE_INFINITY,type:"Transfer",fromNodeId:warehouseNodeId,toNodeId:holdNodeId}),false);
+  if(order){
+    assert.equal(reservationCanCreate(ledger,data,order.id,lot.id,Number.NaN),false);
+    assert.equal(reservationCanCreate(ledger,data,order.id,lot.id,Number.POSITIVE_INFINITY),false);
+  }
+});
+
+test("inventory normalization drops corrupted numeric ledger rows", () => {
+  const seed=createInventoryLedgerSeed(data);
+  const lot=data.inventory[0];
+  const normalized=normalizeInventoryLedger({version:1,nodes:seed.nodes,movements:[...seed.movements,{id:"bad-movement",lotId:lot.id,product:lot.product,quantity:null,type:"Transfer",fromNodeId:warehouseNodeId,toNodeId:holdNodeId,reason:"corrupt",at:"2026-09-10T12:00:00Z",actorId:"system"}],reservations:[{id:"bad-reservation",orderId:"ord-x",lotId:lot.id,quantity:null,status:"Active",createdAt:"2026-09-10T12:00:00Z",createdBy:"system"}],counts:[{id:"bad-count",nodeId:warehouseNodeId,lotId:lot.id,countedQty:null,systemQty:0,variance:0,countedAt:"2026-09-10T12:00:00Z",countedBy:"system",status:"Open"}]} as unknown,data);
+  assert.equal(normalized.movements.some((item)=>item.id==="bad-movement"),false);
+  assert.equal(normalized.reservations.some((item)=>item.id==="bad-reservation"),false);
+  assert.equal(normalized.counts.some((item)=>item.id==="bad-count"),false);
 });
 
 test("approval records resolve to source records and compatible states", () => {
