@@ -5,16 +5,19 @@ import {
   accountIsVisible,
   canAccessPage,
   canAdvanceFulfillment,
+  canAssignScheduleUser,
   canCreateAccount,
   canCreateOrder,
   canCreateScheduleItem,
   canManageSchedule,
   canPublishBulletinTo,
+  canReconcileOrderPayment,
   canReviewApproval,
   getWorkspaceScope,
 } from "./access";
 import { addCalendarDays, arizonaDateKey, arizonaTimeKey, startOfLocalWeek } from "./date-time";
 import { createDemoData } from "./demo-data";
+import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import type {
   Account,
   Appointment,
@@ -230,7 +233,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const account = data.accounts.find((item) => item.id === appointment.accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
     const ownerId = currentUser.role === "Sales Representative" ? currentUser.id : appointment.ownerId || undefined;
-    if (ownerId && !data.users.some((user) => user.id === ownerId && user.role !== "Customer")) return null;
+    if (ownerId && !canAssignScheduleUser(data, currentUser, ownerId)) return null;
     const owner = data.users.find((user) => user.id === ownerId);
     const id = `apt-${Date.now()}`;
     setData((current) => ({
@@ -270,8 +273,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData((current) => {
       const appointment = current.appointments.find((item) => item.id === id);
       if (!appointment || appointment.status !== "Scheduled") return current;
-      const owner = ownerId ? current.users.find((user) => user.id === ownerId && user.role !== "Customer") : undefined;
-      if (ownerId && !owner) return current;
+      if (ownerId && !canAssignScheduleUser(current, currentUser, ownerId)) return current;
+      const owner = ownerId ? current.users.find((user) => user.id === ownerId) : undefined;
       const prior = current.users.find((user) => user.id === appointment.ownerId);
       return {
         ...current,
@@ -287,7 +290,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData((current) => {
       const appointment = current.appointments.find((item) => item.id === id);
       if (!appointment || appointment.status !== "Scheduled") return current;
-      if (ownerId && !current.users.some((user) => user.id === ownerId && user.role !== "Customer")) return current;
+      if (ownerId && !canAssignScheduleUser(current, currentUser, ownerId)) return current;
       moved = true;
       const before = `${appointment.ownerId ?? "Unassigned"} · ${appointment.date} ${appointment.startTime}`;
       const after = `${ownerId ?? "Unassigned"} · ${date} ${startTime}`;
@@ -306,16 +309,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser]);
 
   const reconcileOrderPayment = useCallback((id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => {
+    if (!canReconcileOrderPayment(currentUser)) return;
     setData((current) => {
       const order = current.orders.find((item) => item.id === id);
       if (!order) return current;
       const account = current.accounts.find((item) => item.id === order.accountId);
       const becamePaid = status === "Paid" && order.paymentStatus !== "Paid";
+      const lostPaid = order.paymentStatus === "Paid" && status !== "Paid";
+      const paidStatusChanged = becamePaid || lostPaid;
+      const rollup = paidStatusChanged ? paidAccountRollupAfterPayment(current, order.accountId, order.id, status) : undefined;
       return {
         ...current,
         orders: current.orders.map((item) => item.id === id ? { ...item, paymentStatus: status, paidAt: status === "Paid" ? paidAt ?? todayKey() : undefined } : item),
-        accounts: becamePaid && account ? current.accounts.map((item) => item.id === account.id ? { ...item, lastActivity: `Payment cleared for ${order.number}`, lifetimeCases: item.lifetimeCases + order.cases, reorderCount: item.lifetimeCases > 0 ? item.reorderCount + 1 : item.reorderCount } : item) : current.accounts,
-        activities: becamePaid ? [{ id: `act-${Date.now()}`, accountId: order.accountId, type: "order", title: "Payment cleared", detail: `${order.number} settled. Payment is now eligible for compensation, pricing, and collected-sales logic.`, at: nowStamp(), userId: currentUser?.id ?? "system" }, ...current.activities] : current.activities,
+        accounts: paidStatusChanged && account && rollup ? current.accounts.map((item) => item.id === account.id ? { ...item, lastActivity: becamePaid ? `Payment cleared for ${order.number}` : `Payment status changed for ${order.number}: ${status}`, lifetimeCases: rollup.lifetimeCases, reorderCount: rollup.reorderCount } : item) : current.accounts,
+        activities: paidStatusChanged ? [{ id: `act-${Date.now()}`, accountId: order.accountId, type: "order", title: becamePaid ? "Payment cleared" : "Cleared payment reduced or reversed", detail: becamePaid ? `${order.number} settled. Payment is now eligible for compensation, pricing, and collected-sales logic.` : `${order.number} changed from Paid to ${status}. Paid-case and reorder totals were recomputed from currently paid source orders.`, at: nowStamp(), userId: currentUser!.id }, ...current.activities] : current.activities,
       };
     });
   }, [currentUser]);
