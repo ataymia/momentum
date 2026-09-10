@@ -17,6 +17,7 @@ export const canAdvanceFulfillment = (user: WorkspaceUser | null) => Boolean(use
 export const canManageSchedule = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager","Operations"].includes(user.role));
 export const canCreateScheduleItem = (user: WorkspaceUser | null) => Boolean(user && !["Customer","Warehouse"].includes(user.role));
 export const canPostBulletin = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager"].includes(user.role));
+export const canReconcileOrderPayment = (user: WorkspaceUser | null | undefined) => user?.role === "Administrator";
 
 const managedUserIds = (data: WorkspaceData, user: WorkspaceUser) => {
   const teams = new Set(user.managedTeams ?? []);
@@ -32,11 +33,30 @@ export const canManageUser = (data: WorkspaceData, actor: WorkspaceUser | null |
   return managedUserIds(data, actor).has(targetUserId);
 };
 
+export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
+  if (!actor) return false;
+  const target = data.users.find((user) => user.id === targetUserId);
+  if (!target || target.role === "Customer" || target.role === "Warehouse") return false;
+  if (actor.role === "Administrator") return ["Sales", "Operations", "Leadership"].includes(target.team);
+  if (actor.role === "Operations") return target.team === "Operations";
+  if (actor.role === "Sales Manager") return target.team === "Sales" && canManageUser(data, actor, target.id, true);
+  if (actor.role === "Sales Representative") return target.id === actor.id;
+  return false;
+};
+
 export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, account: Account) => {
   if (["Administrator","Operations","Warehouse"].includes(user.role)) return true;
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
   if (user.role === "Sales Representative") return account.ownerId === user.id;
   return managedUserIds(data, user).has(account.ownerId);
+};
+
+export const canTransferSalesResponsibility = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, account: Account, targetUserId: string) => {
+  if (!actor || !["Administrator", "Sales Manager"].includes(actor.role) || !accountIsVisible(data, actor, account)) return false;
+  const target = data.users.find((user) => user.id === targetUserId && ["Sales Representative", "Sales Manager"].includes(user.role));
+  if (!target) return false;
+  if (actor.role === "Administrator") return true;
+  return target.team === "Sales" && canManageUser(data, actor, target.id, true);
 };
 
 export const canReviewApproval = (data: WorkspaceData, user: WorkspaceUser | null, approval: Approval) => {
