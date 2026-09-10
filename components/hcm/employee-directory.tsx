@@ -54,6 +54,7 @@ export function EmployeeDirectory() {
   const lastActivity = lastRecordedEmployeeActivity(data, tracking.state, audit.events, selected.id);
   const nextShift = currentOrNextShift(hcm, selected.id);
   const managementDetail = canViewEmployeeManagementDetail(currentUser, selected, data);
+  const adminPrivate = currentUser.role === "Administrator";
   const period = kpiPresetPeriod("30d");
   const appointmentEvidence = appointmentPunctualityEvidence(data, tracking.state, selected.id, period.start, period.end);
   const shiftEvidence = shiftClockInEvidence(data, hcm, selected.id, period.start, period.end);
@@ -63,13 +64,13 @@ export function EmployeeDirectory() {
   const currentWeekHours = currentWeekEntries.reduce((sum, entry) => sum + hoursBetween(entry.clockIn, entry.clockOut, entry.breakMinutes), 0);
   const openAppointments = data.appointments.filter((appointment) => appointment.ownerId === selected.id && appointment.status !== "Completed").length;
   const ownedAccounts = data.accounts.filter((account) => account.ownerId === selected.id).length;
-  const openTraining = hcm.training.filter((assignment) => assignment.userId === selected.id && assignment.status !== "Complete").length;
-  const missingDocuments = hcm.documents.filter((document) => document.userId === selected.id && ["Missing", "Acknowledgment required"].includes(document.status)).length;
+  const openTraining = adminPrivate ? hcm.training.filter((assignment) => assignment.userId === selected.id && assignment.status !== "Complete").length : 0;
+  const missingDocuments = adminPrivate ? hcm.documents.filter((document) => document.userId === selected.id && ["Missing", "Acknowledgment required"].includes(document.status)).length : 0;
   const isSales = selected.role === "Sales Representative" || selected.role === "Sales Manager";
 
   return <section className="employee-directory-shell" aria-label="Employee directory and profiles">
     <div className="employee-directory-heading">
-      <div><span><UsersRound size={20}/></span><div><small>Company directory</small><h2>Employee profiles</h2><p>Find coworkers quickly. Managers can open source-linked operational detail for employees inside their management scope.</p></div></div>
+      <div><span><UsersRound size={20}/></span><div><small>Company directory</small><h2>Employee profiles</h2><p>Find coworkers by name, position, department, manager, and work setup.</p></div></div>
       <StatusPill tone="info">{employees.length} employee{employees.length === 1 ? "" : "s"}</StatusPill>
     </div>
 
@@ -97,19 +98,19 @@ export function EmployeeDirectory() {
           <article><BriefcaseBusiness size={17}/><div><small>Manager</small><strong>{manager?.name ?? "Not configured"}</strong></div></article>
           <article><MapPin size={17}/><div><small>Work location</small><strong>{employment?.location || "Not configured"}</strong></div></article>
           <article><CalendarClock size={17}/><div><small>Work hours</small><strong>{employment?.standardWeeklyHours ? `${employment.standardWeeklyHours} hrs / week` : nextShift ? `${nextShift.startTime}–${nextShift.endTime} next shift` : "Not configured"}</strong></div></article>
-          <article><Clock3 size={17}/><div><small>Last recorded activity</small><strong>{lastActivity ? formatDate(lastActivity.at, { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }) : "No recorded activity"}</strong><span>{lastActivity?.label ?? "Presence will use authenticated session events after backend integration."}</span></div></article>
+          <article><Clock3 size={17}/><div><small>Last recorded activity</small><strong>{lastActivity ? formatDate(lastActivity.at, { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }) : "No recorded activity"}</strong><span>{lastActivity?.label ?? "No recorded work activity yet."}</span></div></article>
         </div>
 
-        {!managementDetail && <div className="employee-profile-public-note"><UserRound size={17}/><p>This is the coworker directory view. Personal HR records, performance details, location trails, and management records are not exposed to peers.</p></div>}
+        {!managementDetail && <div className="employee-profile-public-note"><UserRound size={17}/><p>Private HR, pay, training, documents, location trails, and performance records are not shown in the coworker directory.</p></div>}
 
         {managementDetail && <>
-          <div className="employee-manager-banner"><ShieldCheck size={18}/><div><strong>Manager view</strong><p>Operational detail below is source-linked. It is not an automatically calculated performance scorecard.</p></div><StatusPill tone="gold">Last 30 days</StatusPill></div>
+          <div className="employee-manager-banner"><ShieldCheck size={18}/><div><strong>{adminPrivate ? "Administrator view" : "Manager view"}</strong><p>Operational detail is source-linked. Private HR and pay records remain Administrator-only.</p></div><StatusPill tone="gold">Last 30 days</StatusPill></div>
 
           <div className="employee-manager-summary">
             <article><small>Recent hours recorded</small><strong>{currentWeekHours.toFixed(2)}</strong><span>Last 7 calendar days</span></article>
             <article><small>Open appointments</small><strong>{openAppointments}</strong><span>Assigned work not completed</span></article>
             <article><small>Responsible accounts</small><strong>{ownedAccounts}</strong><span>Current CRM responsibility</span></article>
-            <article><small>HR action items</small><strong>{openTraining + missingDocuments}</strong><span>{openTraining} training · {missingDocuments} documents</span></article>
+            {adminPrivate && <article><small>Private HR action items</small><strong>{openTraining + missingDocuments}</strong><span>{openTraining} training · {missingDocuments} documents</span></article>}
           </div>
 
           {isSales && <Section title="Source-linked sales KPIs" description="Management reference data only. Scorecard weighting and final performance judgment remain a manager responsibility." className="employee-profile-kpis">
