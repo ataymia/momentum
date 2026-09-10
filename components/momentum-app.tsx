@@ -14,6 +14,7 @@ import { PayrollProvider } from "../lib/payroll-context";
 import { PerformanceProvider } from "../lib/performance-context";
 import { PeriodLockProvider } from "../lib/period-lock-context";
 import { RuntimeModeProvider } from "../lib/runtime-mode";
+import { currentRuntimeMode } from "../lib/runtime-mode-store";
 import { WorkspaceProvider, useWorkspace } from "../lib/workspace-context";
 import { AppShell } from "./app-shell";
 import { DeparturePrompt } from "./field-tracking/departure-prompt";
@@ -29,7 +30,7 @@ const PRESENTATION_RESET_KEYS = [
 ];
 
 function ensurePresentationSeed() {
-  if (typeof window === "undefined" || window.localStorage.getItem(PRESENTATION_SEED_KEY) === "ready") return;
+  if (typeof window === "undefined" || currentRuntimeMode() !== "demo" || window.localStorage.getItem(PRESENTATION_SEED_KEY) === "ready") return;
   PRESENTATION_RESET_KEYS.forEach((key) => window.localStorage.removeItem(key));
   window.localStorage.setItem(PRESENTATION_SEED_KEY, "ready");
 }
