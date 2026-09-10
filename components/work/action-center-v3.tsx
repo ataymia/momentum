@@ -4,6 +4,7 @@ import { AlertTriangle, BadgeDollarSign, BookOpenCheck, Boxes, CalendarClock, Fi
 import { canAccessPage } from "../../lib/access";
 import { useAccounting } from "../../lib/accounting-context";
 import { unprocessedSourceEvents } from "../../lib/accounting-engine";
+import { arizonaDateKey } from "../../lib/date-time";
 import { useFinance } from "../../lib/finance-context";
 import { useHcm } from "../../lib/hcm-context";
 import { canManageEmployee } from "../../lib/hcm-engine";
@@ -24,7 +25,7 @@ const rank:Record<Urgency,number>={Blocking:0,Due:1,Review:2,Watch:3};
 export function ActionCenter(){
   const {data,scope,currentUser,navigate}=useWorkspace();const{hcm}=useHcm();const{performance}=usePerformance();const{finance}=useFinance();const{state:marketing}=useMarketing();const{accounting,events}=useAccounting();const{ledger}=useInventoryLedger();
   if(!currentUser||currentUser.role==="Customer")return null;
-  const admin=currentUser.role==="Administrator";const manager=currentUser.role==="Sales Manager";const warehouse=currentUser.role==="Warehouse";const operations=currentUser.role==="Operations";const actions:ActionItem[]=[];const today=new Date().toISOString().slice(0,10);
+  const admin=currentUser.role==="Administrator";const manager=currentUser.role==="Sales Manager";const warehouse=currentUser.role==="Warehouse";const operations=currentUser.role==="Operations";const actions:ActionItem[]=[];const today=arizonaDateKey();
   for(const task of hcm.tasks.filter((task)=>task.status==="Open"&&(task.ownerId===currentUser.id||admin)))actions.push({id:`hcm:${task.id}`,title:task.title,detail:task.detail,category:"Human Resources",page:"people",urgency:task.dueDate&&task.dueDate<today?"Due":"Review",icon:UsersRound});
   if(admin||manager)for(const request of hcm.workflows.filter((request)=>request.status==="Submitted"&&request.userId!==currentUser.id&&canManageEmployee(currentUser,request.userId,data)))actions.push({id:`hr:${request.id}`,title:request.title,detail:`${data.users.find((user)=>user.id===request.userId)?.name??"Employee"} · ${request.type}`,category:"Human Resources",page:"people",urgency:"Review",icon:UsersRound});
   if(admin||manager)for(const report of performance.reports.filter((report)=>report.status==="Submitted"&&report.userId!==currentUser.id&&reportVisibleTo(currentUser,report,data))){const author=data.users.find((user)=>user.id===report.userId);actions.push({id:`report:${report.id}`,title:`Review ${report.type.toLowerCase()} report`,detail:`${author?.name??"Employee"} · submitted ${formatDate(report.submittedAt,{month:"short",day:"numeric"})}`,category:"Performance",page:"reports",urgency:"Review",icon:FileText});}
