@@ -1,9 +1,10 @@
 "use client";
 
 import { BookOpenCheck, Check, FileClock, Landmark, Plus, RefreshCcw, Scale, ShieldAlert, WalletCards } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { AccountingBasis, InventoryValuation, LedgerAccount, SourceEventType, accountBalance, journalBalanced, ruleForEvent, systemBuiltEventType, trialBalance, unprocessedSourceEvents } from "../../lib/accounting-engine";
 import { useAccounting } from "../../lib/accounting-context";
+import { arizonaDateKey } from "../../lib/date-time";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Modal, Section, StatusPill, formatMoney } from "../ui";
 
@@ -20,14 +21,27 @@ export function AccountingPanel() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
   const [reconOpen, setReconOpen] = useState(false);
-  const [rule, setRule] = useState({ eventType: "Payment cleared" as SourceEventType, debitAccountId: "acct-cash", creditAccountId: "acct-ar", effectiveDate: new Date().toISOString().slice(0, 10), memoTemplate: "{description}" });
+  const [rule, setRule] = useState({ eventType: "Payment cleared" as SourceEventType, debitAccountId: "acct-cash", creditAccountId: "acct-ar", effectiveDate: arizonaDateKey(), memoTemplate: "{description}" });
   const [account, setAccount] = useState({ code: "", name: "", type: "Expense" as LedgerAccount["type"] });
-  const [manual, setManual] = useState({ date: new Date().toISOString().slice(0, 10), memo: "", debitAccountId: "", creditAccountId: "", amount: "" });
-  const [recon, setRecon] = useState({ accountId: "acct-cash", periodEnd: new Date().toISOString().slice(0, 10), statementEndingBalance: "" });
+  const [manual, setManual] = useState({ date: arizonaDateKey(), memo: "", debitAccountId: "", creditAccountId: "", amount: "" });
+  const [recon, setRecon] = useState({ accountId: "acct-cash", periodEnd: arizonaDateKey(), statementEndingBalance: "" });
+  const pending = unprocessedSourceEvents(accounting, events);
+  const focus = typeof window !== "undefined" ? window.sessionStorage.getItem("momentum-focus-record") : null;
+  const focusTab = !focus ? undefined : pending.some((entry) => entry.id === focus) ? "inbox" as const : accounting.journals.some((entry) => entry.id === focus) ? "journals" as const : accounting.reconciliations.some((entry) => entry.id === focus) ? "reconcile" as const : accounting.rules.some((entry) => entry.id === focus) || accounting.accounts.some((entry) => entry.id === focus) ? "coa" as const : undefined;
+
+  useEffect(() => {
+    if (!focus || !focusTab) return;
+    const handle = window.setTimeout(() => {
+      setTab(focusTab);
+      const scrollHandle = window.setTimeout(() => document.getElementById(`accounting-${focus}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 20);
+      window.sessionStorage.removeItem("momentum-focus-record");
+      return () => window.clearTimeout(scrollHandle);
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [focus, focusTab]);
 
   if (currentUser?.role !== "Administrator") return null;
 
-  const pending = unprocessedSourceEvents(accounting, events);
   const eventReady = (event: (typeof pending)[number]) => !event.blockedReason && (systemBuiltEventType(event.type) || Boolean(ruleForEvent(accounting, event)));
   const blocked = pending.filter((event) => !eventReady(event));
   const automatable = pending.filter(eventReady);
@@ -38,28 +52,30 @@ export function AccountingPanel() {
 
   const saveRule = (event: FormEvent) => {
     event.preventDefault();
-    addRule({ ...rule, active: true });
+    const id = addRule({ ...rule, active: true });
+    if (!id) { setNotice("Accounting rule was not accepted. Check the effective date and account mapping."); return; }
     setRuleOpen(false);
     setNotice("Accounting rule added");
   };
   const saveAccount = (event: FormEvent) => {
     event.preventDefault();
     if (!account.code.trim() || !account.name.trim()) return;
-    addAccount({ code: account.code.trim(), name: account.name.trim(), type: account.type, active: true });
+    const id = addAccount({ code: account.code.trim(), name: account.name.trim(), type: account.type, active: true });
+    if (!id) { setNotice("Ledger account was not accepted. Check for a duplicate code."); return; }
     setAccountOpen(false);
     setAccount({ code: "", name: "", type: "Expense" });
   };
   const saveJournal = (event: FormEvent) => {
     event.preventDefault();
     const id = addManualJournal({ ...manual, amount: Number(manual.amount) });
-    if (!id) return;
+    if (!id) { setNotice("Manual journal was not accepted. Check the date, amount, accounts, and period lock."); return; }
     setJournalOpen(false);
     setManual((current) => ({ ...current, memo: "", amount: "" }));
   };
   const saveReconciliation = (event: FormEvent) => {
     event.preventDefault();
     const id = createReconciliation(recon.accountId, recon.periodEnd, Number(recon.statementEndingBalance));
-    if (!id) return;
+    if (!id) { setNotice("Reconciliation was not accepted. Check the period end, account, balance, and period lock."); return; }
     setReconOpen(false);
     setRecon((current) => ({ ...current, statementEndingBalance: "" }));
   };
@@ -84,7 +100,7 @@ export function AccountingPanel() {
             const sourceControlled = systemBuiltEventType(entry.type);
             const reason = entry.blockedReason ?? (!sourceControlled && !configured ? "No active accounting rule for this event type." : undefined);
             const detail = reason ?? (sourceControlled ? "Source-controlled accounting action. Debit and credit treatment comes from the linked source record and its original posted journal." : `Rule: ${configured?.memoTemplate}`);
-            return <article key={entry.id}><span>{reason ? <ShieldAlert size={17} /> : <FileClock size={17} />}</span><div><small>{entry.type} · {entry.date}</small><strong>{entry.description}{entry.amount ? ` · ${formatMoney(entry.amount)}` : ""}</strong><p>{detail}</p></div><StatusPill tone={reason ? "warning" : "success"}>{reason ? "Needs policy" : "Ready"}</StatusPill></article>;
+            return <article id={`accounting-${entry.id}`} className={focus === entry.id ? "is-focused" : undefined} key={entry.id}><span>{reason ? <ShieldAlert size={17} /> : <FileClock size={17} />}</span><div><small>{entry.type} · {entry.date}</small><strong>{entry.description}{entry.amount ? ` · ${formatMoney(entry.amount)}` : ""}</strong><p>{detail}</p></div><StatusPill tone={reason ? "warning" : "success"}>{reason ? "Needs policy" : "Ready"}</StatusPill></article>;
           })}
           {pending.length === 0 && <div className="review-empty"><Check size={23} /><h3>Source-event inbox is clear</h3><p>Every eligible source event has a journal record or there are no new events.</p></div>}
         </div>
@@ -92,21 +108,21 @@ export function AccountingPanel() {
 
       {tab === "journals" && <Section title="Journal ledger" description="Drafts must balance before posting. Source-linked cash and payroll corrections reverse from their original source records instead of being manually erased." action={<Button size="sm" variant="secondary" icon={<Plus size={14} />} onClick={() => setJournalOpen(true)}>Manual journal</Button>}>
         <div className="company-request-list">
-          {accounting.journals.map((entry) => <article key={entry.id}><span><BookOpenCheck size={17} /></span><div><small>{entry.number} · {entry.date} · {entry.sourceType}</small><strong>{entry.memo}</strong><p>{entry.lines.map((line) => { const ledgerAccount = accounting.accounts.find((item) => item.id === line.accountId); return `${ledgerAccount?.code ?? "?"} ${ledgerAccount?.name ?? "Unknown"}: ${line.debit ? `${formatMoney(line.debit)} Dr` : `${formatMoney(line.credit)} Cr`}`; }).join(" · ")}</p></div><StatusPill tone={journalTone(entry.status)}>{entry.status}</StatusPill>{entry.status === "Draft" && <Button size="sm" onClick={() => postJournal(entry.id)} disabled={!journalBalanced(entry)}>Post</Button>}{entry.status === "Posted" && !sourceControlledJournal(entry.sourceType) && <Button size="sm" variant="ghost" onClick={() => { const reason = window.prompt("Reason for voiding this posted journal"); if (reason) voidJournal(entry.id, reason); }}>Void</Button>}</article>)}
+          {accounting.journals.map((entry) => <article id={`accounting-${entry.id}`} className={focus === entry.id ? "is-focused" : undefined} key={entry.id}><span><BookOpenCheck size={17} /></span><div><small>{entry.number} · {entry.date} · {entry.sourceType}</small><strong>{entry.memo}</strong><p>{entry.lines.map((line) => { const ledgerAccount = accounting.accounts.find((item) => item.id === line.accountId); return `${ledgerAccount?.code ?? "?"} ${ledgerAccount?.name ?? "Unknown"}: ${line.debit ? `${formatMoney(line.debit)} Dr` : `${formatMoney(line.credit)} Cr`}`; }).join(" · ")}</p></div><StatusPill tone={journalTone(entry.status)}>{entry.status}</StatusPill>{entry.status === "Draft" && <Button size="sm" onClick={() => postJournal(entry.id)} disabled={!journalBalanced(entry)}>Post</Button>}{entry.status === "Posted" && !sourceControlledJournal(entry.sourceType) && <Button size="sm" variant="ghost" onClick={() => { const reason = window.prompt("Reason for voiding this posted journal"); if (reason) voidJournal(entry.id, reason); }}>Void</Button>}</article>)}
           {accounting.journals.length === 0 && <div className="review-empty"><BookOpenCheck size={23} /><p>No journals yet.</p></div>}
         </div>
       </Section>}
 
       {tab === "coa" && <div className="company-grid company-grid--two">
         <Section title="Chart of accounts" description="Starter accounts are structural until company accounting policy is approved" action={<Button size="sm" variant="secondary" icon={<Plus size={14} />} onClick={() => setAccountOpen(true)}>Add account</Button>}>
-          <div className="company-request-list">{[...accounting.accounts].sort((a, b) => a.code.localeCompare(b.code)).map((entry) => <article key={entry.id}><span><Landmark size={17} /></span><div><small>{entry.code} · {entry.type}</small><strong>{entry.name}</strong><p>Posted balance {formatMoney(accountBalance(accounting, entry.id))}{entry.systemRole ? ` · role ${entry.systemRole}` : ""}</p></div><StatusPill tone={entry.active ? "success" : "neutral"}>{entry.active ? "Active" : "Inactive"}</StatusPill></article>)}</div>
+          <div className="company-request-list">{[...accounting.accounts].sort((a, b) => a.code.localeCompare(b.code)).map((entry) => <article id={`accounting-${entry.id}`} className={focus === entry.id ? "is-focused" : undefined} key={entry.id}><span><Landmark size={17} /></span><div><small>{entry.code} · {entry.type}</small><strong>{entry.name}</strong><p>Posted balance {formatMoney(accountBalance(accounting, entry.id))}{entry.systemRole ? ` · role ${entry.systemRole}` : ""}</p></div><StatusPill tone={entry.active ? "success" : "neutral"}>{entry.active ? "Active" : "Inactive"}</StatusPill></article>)}</div>
         </Section>
         <Section title="Effective-dated accounting rules" description="Rules translate policy-driven source events into balanced journal drafts. Payment reversals and payroll release/correction journals are source-controlled and are not configured here." action={<Button size="sm" variant="secondary" icon={<Plus size={14} />} onClick={() => setRuleOpen(true)}>Add rule</Button>}>
-          <div className="company-request-list">{accounting.rules.map((entry) => { const debit = accounting.accounts.find((item) => item.id === entry.debitAccountId); const credit = accounting.accounts.find((item) => item.id === entry.creditAccountId); return <article key={entry.id}><span><Scale size={17} /></span><div><small>{entry.eventType} · effective {entry.effectiveDate}</small><strong>{debit?.code} {debit?.name} → {credit?.code} {credit?.name}</strong><p>{entry.memoTemplate}</p></div><button className="request-state-button" onClick={() => toggleRule(entry.id, !entry.active)}><StatusPill tone={entry.active ? "success" : "neutral"}>{entry.active ? "Active" : "Inactive"}</StatusPill></button></article>; })}{accounting.rules.length === 0 && <div className="review-empty"><Scale size={23} /><h3>No automation rules configured</h3><p>Policy-driven source events remain in the inbox until the company approves debit and credit mapping.</p></div>}</div>
+          <div className="company-request-list">{accounting.rules.map((entry) => { const debit = accounting.accounts.find((item) => item.id === entry.debitAccountId); const credit = accounting.accounts.find((item) => item.id === entry.creditAccountId); return <article id={`accounting-${entry.id}`} className={focus === entry.id ? "is-focused" : undefined} key={entry.id}><span><Scale size={17} /></span><div><small>{entry.eventType} · effective {entry.effectiveDate}</small><strong>{debit?.code} {debit?.name} → {credit?.code} {credit?.name}</strong><p>{entry.memoTemplate}</p></div><button className="request-state-button" onClick={() => toggleRule(entry.id, !entry.active)}><StatusPill tone={entry.active ? "success" : "neutral"}>{entry.active ? "Active" : "Inactive"}</StatusPill></button></article>; })}{accounting.rules.length === 0 && <div className="review-empty"><Scale size={23} /><h3>No automation rules configured</h3><p>Policy-driven source events remain in the inbox until the company approves debit and credit mapping.</p></div>}</div>
         </Section>
       </div>}
 
-      {tab === "reconcile" && <><Section title="Trial balance" description="Posted journals only"><div className="finance-order-list"><div className="finance-order-row finance-order-row--head"><span>Account</span><span>Type</span><span>Balance</span><span>Status</span><span /></div>{trial.map(({ account: entry, balance }) => <div className="finance-order-row" key={entry.id}><span><strong>{entry.code} · {entry.name}</strong></span><span>{entry.type}</span><span>{formatMoney(balance)}</span><span><StatusPill tone="success">Posted</StatusPill></span><span /></div>)}</div></Section><Section title="Account reconciliation" description="Compare the external statement balance with posted Momentum ledger balance" action={<Button size="sm" variant="secondary" icon={<Plus size={14} />} onClick={() => setReconOpen(true)}>New reconciliation</Button>}><div className="company-request-list">{accounting.reconciliations.map((entry) => { const ledgerAccount = accounting.accounts.find((item) => item.id === entry.accountId); return <article key={entry.id}><span><WalletCards size={17} /></span><div><small>{ledgerAccount?.code} {ledgerAccount?.name} · {entry.periodEnd}</small><strong>Statement {formatMoney(entry.statementEndingBalance)} · ledger {formatMoney(entry.ledgerEndingBalance)}</strong><p>Difference {formatMoney(entry.difference)}{entry.note ? ` · ${entry.note}` : ""}</p></div><StatusPill tone={entry.status === "Reconciled" ? "success" : "warning"}>{entry.status}</StatusPill>{entry.status === "Open" && Math.abs(entry.difference) < 0.005 && <Button size="sm" onClick={() => reconcile(entry.id, "Balances agree")}>Reconcile</Button>}</article>; })}</div></Section></>}
+      {tab === "reconcile" && <><Section title="Trial balance" description="Posted journals only"><div className="finance-order-list"><div className="finance-order-row finance-order-row--head"><span>Account</span><span>Type</span><span>Balance</span><span>Status</span><span /></div>{trial.map(({ account: entry, balance }) => <div className="finance-order-row" key={entry.id}><span><strong>{entry.code} · {entry.name}</strong></span><span>{entry.type}</span><span>{formatMoney(balance)}</span><span><StatusPill tone="success">Posted</StatusPill></span><span /></div>)}</div></Section><Section title="Account reconciliation" description="Compare the external statement balance with posted Momentum ledger balance" action={<Button size="sm" variant="secondary" icon={<Plus size={14} />} onClick={() => setReconOpen(true)}>New reconciliation</Button>}><div className="company-request-list">{accounting.reconciliations.map((entry) => { const ledgerAccount = accounting.accounts.find((item) => item.id === entry.accountId); return <article id={`accounting-${entry.id}`} className={focus === entry.id ? "is-focused" : undefined} key={entry.id}><span><WalletCards size={17} /></span><div><small>{ledgerAccount?.code} {ledgerAccount?.name} · {entry.periodEnd}</small><strong>Statement {formatMoney(entry.statementEndingBalance)} · ledger {formatMoney(entry.ledgerEndingBalance)}</strong><p>Difference {formatMoney(entry.difference)}{entry.note ? ` · ${entry.note}` : ""}</p></div><StatusPill tone={entry.status === "Reconciled" ? "success" : "warning"}>{entry.status}</StatusPill>{entry.status === "Open" && Math.abs(entry.difference) < 0.005 && <Button size="sm" onClick={() => reconcile(entry.id, "Balances agree")}>Reconcile</Button>}</article>; })}</div></Section></>}
 
       <Modal open={ruleOpen} title="Add accounting rule" description="Rules only apply from their effective date forward. Source-controlled payment reversal and payroll journals are intentionally excluded." onClose={() => setRuleOpen(false)} footer={<><Button variant="ghost" onClick={() => setRuleOpen(false)}>Cancel</Button><Button type="submit" form="accounting-rule-form">Save rule</Button></>}><form id="accounting-rule-form" className="form-grid" onSubmit={saveRule}><Field label="Source event"><select value={rule.eventType} onChange={(event) => setRule({ ...rule, eventType: event.target.value as SourceEventType })}>{sourceTypes.map((type) => <option key={type}>{type}</option>)}</select></Field><Field label="Effective date"><input type="date" required value={rule.effectiveDate} onChange={(event) => setRule({ ...rule, effectiveDate: event.target.value })} /></Field><Field label="Debit account"><select value={rule.debitAccountId} onChange={(event) => setRule({ ...rule, debitAccountId: event.target.value })}>{accounting.accounts.filter((item) => item.active).map((entry) => <option key={entry.id} value={entry.id}>{entry.code} · {entry.name}</option>)}</select></Field><Field label="Credit account"><select value={rule.creditAccountId} onChange={(event) => setRule({ ...rule, creditAccountId: event.target.value })}>{accounting.accounts.filter((item) => item.active).map((entry) => <option key={entry.id} value={entry.id}>{entry.code} · {entry.name}</option>)}</select></Field><Field label="Memo template" className="field--full"><input value={rule.memoTemplate} onChange={(event) => setRule({ ...rule, memoTemplate: event.target.value })} /></Field></form></Modal>
       <Modal open={accountOpen} title="Add ledger account" description="Add an account to the native chart." onClose={() => setAccountOpen(false)} footer={<><Button variant="ghost" onClick={() => setAccountOpen(false)}>Cancel</Button><Button type="submit" form="ledger-account-form">Add account</Button></>}><form id="ledger-account-form" className="form-grid" onSubmit={saveAccount}><Field label="Code"><input required value={account.code} onChange={(event) => setAccount({ ...account, code: event.target.value })} /></Field><Field label="Name"><input required value={account.name} onChange={(event) => setAccount({ ...account, name: event.target.value })} /></Field><Field label="Type"><select value={account.type} onChange={(event) => setAccount({ ...account, type: event.target.value as LedgerAccount["type"] })}><option>Asset</option><option>Liability</option><option>Equity</option><option>Revenue</option><option>Expense</option></select></Field></form></Modal>
