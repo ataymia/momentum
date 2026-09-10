@@ -52,3 +52,39 @@ test("base and enhanced workspace mutations consume centralized actor controls",
   assert.match(enhancedWorkspace, /if \(!canReconcileOrderPayment\(currentUser\)\) return;/);
   assert.match(enhancedWorkspace, /paidAccountRollupAfterPayment\(data, order\.accountId, order\.id, status\)/);
 });
+
+test("enhanced workspace keeps demo-only warehouse identity and SKU behind runtime mode", () => {
+  const source = readFileSync(new URL("../lib/workspace-context.tsx", import.meta.url), "utf8");
+  assert.match(source, /const runtimeMode = useRuntimeModeValue\(\)/);
+  assert.match(source, /const demoMode = runtimeMode === "demo"/);
+  assert.match(source, /if \(!demoMode\) \{[\s\S]*?removeItem\(WAREHOUSE_SESSION_KEY\)/);
+  assert.match(source, /demoMode && !cleanBaseUsers\.some/);
+  assert.match(source, /if \(demoMode && !base\.data\.inventory\.some/);
+  assert.match(source, /if \(demoMode && email\.trim\(\)\.toLowerCase\(\) === warehouseUser\.email/);
+  assert.match(source, /if \(demoMode && userId === warehouseUser\.id\)/);
+});
+
+test("enhanced order creation requires canonical custody availability and finite whole-case input", () => {
+  const source = readFileSync(new URL("../lib/workspace-context.tsx", import.meta.url), "utf8");
+  assert.match(source, /inventoryAvailableAtOrder: number/);
+  assert.match(source, /!Number\.isInteger\(cases\) \|\| cases < 1/);
+  assert.match(source, /!Number\.isFinite\(inventoryAvailableAtOrder\) \|\| inventoryAvailableAtOrder < 0/);
+  assert.match(source, /const available = inventoryAvailableAtOrder;/);
+  assert.doesNotMatch(source, /inventoryAvailableAtOrder \?\? data\.inventory/);
+  assert.match(source, /data\.inventory\.some\(\(lot\) => lot\.product === selectedProduct\)/);
+});
+
+test("enhanced workspace rejects malformed business dates and times at mutation boundaries", () => {
+  const source = readFileSync(new URL("../lib/workspace-context.tsx", import.meta.url), "utf8");
+  assert.match(source, /isValidCalendarDateKey\(appointment\.date\)/);
+  assert.match(source, /validTime\(appointment\.startTime\)/);
+  assert.match(source, /isValidCalendarDateKey\(closeout\.nextActionDate\)/);
+  assert.match(source, /isValidCalendarDateKey\(date\) \|\| !validTime\(startTime\)/);
+  assert.match(source, /isValidCalendarDateKey\(lot\.receivedAt\)/);
+  assert.match(source, /isValidCalendarDateKey\(lot\.bestBy\)/);
+});
+
+test("presentation seed cannot clear persisted records outside demo mode", () => {
+  const source = readFileSync(new URL("../components/momentum-app.tsx", import.meta.url), "utf8");
+  assert.match(source, /currentRuntimeMode\(\) !== "demo"/);
+});
