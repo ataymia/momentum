@@ -1,4 +1,5 @@
 import { ACCOUNT_PRICING_TIERS } from "./account-health";
+import { addCalendarDays, arizonaDateKey } from "./date-time";
 import type { PricingTier, WorkspaceData } from "./types";
 
 export const PARTNER_PRICING_RULE = {
@@ -29,13 +30,6 @@ export type PartnerPricingEvaluation = {
   evidenceOrderIds: string[];
 };
 
-const dateAtNoon = (value: string) => new Date(`${value}T12:00:00`);
-const dateKey = (date: Date) => date.toISOString().slice(0, 10);
-const addDays = (value: string, days: number) => {
-  const date = dateAtNoon(value);
-  date.setDate(date.getDate() + days);
-  return dateKey(date);
-};
 const isPaid = (order: WorkspaceData["orders"][number]) => order.paymentStatus === "Paid";
 
 export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, asOf = new Date()): PartnerPricingEvaluation {
@@ -46,7 +40,7 @@ export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, a
   const paidOrders = orders.filter(isPaid);
   const firstOrder = orders[0];
   const rule = PARTNER_PRICING_RULE;
-  const asOfKey = dateKey(asOf);
+  const asOfKey = arizonaDateKey(asOf);
   const outsidePartnerTier = account?.pricingTier === "B" || account?.pricingTier === "C" ? account.pricingTier : undefined;
   const outsidePartnerPrice = outsidePartnerTier ? ACCOUNT_PRICING_TIERS[outsidePartnerTier].pricePerCase : undefined;
   const paidBetween = (start: string, end: string, includeStart = false) => paidOrders.filter((order) => (includeStart ? order.placedAt >= start : order.placedAt > start) && order.placedAt <= end);
@@ -68,7 +62,7 @@ export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, a
   }
 
   const firstOrderDate = firstOrder.placedAt;
-  const introEnd = addDays(firstOrderDate, rule.introDays);
+  const introEnd = addCalendarDays(firstOrderDate, rule.introDays);
   const introOrders = paidBetween(firstOrderDate, introEnd, true);
   const introCases = cases(introOrders);
 
@@ -97,7 +91,7 @@ export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, a
   const findReentry = (inactiveSince: string, through: string) => {
     const candidates = paidOrders.filter((order) => order.placedAt > inactiveSince && order.placedAt <= through);
     for (const order of candidates) {
-      const trailingStart = addDays(order.placedAt, -rule.rollingWindowDays);
+      const trailingStart = addCalendarDays(order.placedAt, -rule.rollingWindowDays);
       const trailing = paidOrders.filter((candidate) => candidate.placedAt > trailingStart && candidate.placedAt <= order.placedAt);
       if (cases(trailing) >= rule.rollingQualificationCases) return { date: order.placedAt, evidence: trailing };
     }
@@ -106,7 +100,7 @@ export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, a
 
   while (periodStart <= asOfKey) {
     if (partnerActive) {
-      const periodEnd = addDays(periodStart, rule.rollingWindowDays);
+      const periodEnd = addCalendarDays(periodStart, rule.rollingWindowDays);
       const periodOrders = paidBetween(periodStart, periodEnd);
       const periodCases = cases(periodOrders);
       if (asOfKey <= periodEnd) {
@@ -138,7 +132,7 @@ export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, a
 
     const reentry = findReentry(periodStart, asOfKey);
     if (!reentry) {
-      const trailingStart = addDays(asOfKey, -rule.rollingWindowDays);
+      const trailingStart = addCalendarDays(asOfKey, -rule.rollingWindowDays);
       const trailingOrders = paidOrders.filter((order) => order.placedAt > trailingStart && order.placedAt <= asOfKey);
       const trailingCases = cases(trailingOrders);
       return {
@@ -171,7 +165,7 @@ export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, a
     outsidePartnerTier,
     firstOrderDate,
     currentWindowStart: periodStart,
-    currentWindowEnd: partnerActive ? addDays(periodStart, rule.rollingWindowDays) : asOfKey,
+    currentWindowEnd: partnerActive ? addCalendarDays(periodStart, rule.rollingWindowDays) : asOfKey,
     countedCases: 0,
     thresholdCases: rule.rollingQualificationCases,
     partnerPricePerCase: rule.partnerPricePerCase,
@@ -179,7 +173,7 @@ export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, a
     reason: partnerActive
       ? `The account requalified for Tier A / Partner Pricing on ${periodStart}. The requalification order starts the new ${rule.rollingWindowDays}-day period and is not counted again toward the next continuation threshold.`
       : "Partner Pricing is inactive.",
-    nextReviewDate: partnerActive ? addDays(periodStart, rule.rollingWindowDays) : undefined,
+    nextReviewDate: partnerActive ? addCalendarDays(periodStart, rule.rollingWindowDays) : undefined,
     evidenceOrderIds: [],
   };
 }
