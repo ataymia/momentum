@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createDemoData } from "../lib/demo-data";
 import {
@@ -71,12 +72,8 @@ test("inventory custody survives receive, reserve, outbound, delivery, return, a
 });
 
 test("inventory UI boundary keeps reservation release blocked after outbound custody begins", () => {
-  const source = String(requireSource(new URL("../lib/inventory-ledger-context-v2.tsx", import.meta.url)));
+  const source = readFileSync(new URL("../lib/inventory-ledger-context-v2.tsx", import.meta.url), "utf8");
   assert.match(source, /orderLotWarehouseNetOutbound\(ledger,existing\.orderId,existing\.lotId\)>0\)return false/);
   assert.match(source, /input\.type===\"Return\"&&order/);
   assert.match(source, /input\.fromNodeId!==expectedCustomerNode/);
 });
-
-function requireSource(url: URL) {
-  return require("node:fs").readFileSync(url, "utf8");
-}
