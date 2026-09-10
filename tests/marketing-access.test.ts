@@ -19,7 +19,7 @@ test("marketing context keeps employee support requests separate from administra
   const source=readFileSync(new URL("../lib/marketing-context.tsx",import.meta.url),"utf8");
   assert.match(source,/const isEmployee=Boolean\(currentUser&&currentUser\.role!=="Customer"\)/);
   assert.match(source,/const isAdmin=canManageMarketing\(currentUser\)/);
-  assert.match(source,/const submitRequest=.*if\(!isEmployee\|\|!currentUser/);
+  assert.match(source,/const submitRequest=[\s\S]*?if\(!isEmployee\|\|!currentUser/);
   assert.match(source,/const createCampaign=[\s\S]*?if\(!isAdmin\|\|!currentUser/);
   assert.match(source,/const recordSpend=[\s\S]*?if\(!isAdmin\|\|!currentUser/);
   assert.match(source,/const addTouch=[\s\S]*?if\(!isAdmin\|\|!currentUser/);
