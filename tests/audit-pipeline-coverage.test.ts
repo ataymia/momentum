@@ -10,6 +10,7 @@ test("AuditProvider snapshots every material record engine upstream of notificat
     ["Workspace", "data"],
     ["CRM", "crm"],
     ["HCM", "hcm"],
+    ["Identity", "identity"],
     ["Payroll", "payroll"],
     ["Performance", "performance"],
     ["Commerce", "commerce"],
@@ -23,6 +24,13 @@ test("AuditProvider snapshots every material record engine upstream of notificat
   for (const [module, variable] of expected) {
     assert.match(audit, new RegExp(`collectAuditableRecords\\(\\"${module.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\",\\s*${variable}\\)`), `${module} is missing from common audit snapshots`);
   }
+});
+
+test("identity provisioning and onboarding audit records are administrator-sensitive", () => {
+  const engine = source("../lib/audit-engine.ts");
+  assert.match(engine, /\["Payroll", "Accounting", "HCM", "Identity"\]\.includes\(module\)/);
+  const provider = source("../lib/audit-context.tsx");
+  assert.match(provider, /useIdentityProvisioning\(\)/);
 });
 
 test("material field-control events are audited while high-frequency route samples remain source telemetry", () => {
