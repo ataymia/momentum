@@ -57,7 +57,7 @@ test("enhanced workspace keeps demo-only warehouse identity and SKU behind runti
   const source = readFileSync(new URL("../lib/workspace-context.tsx", import.meta.url), "utf8");
   assert.match(source, /const runtimeMode = useRuntimeModeValue\(\)/);
   assert.match(source, /const demoMode = runtimeMode === "demo"/);
-  assert.match(source, /if \(!demoMode\) \{[\s\S]*?removeItem\(WAREHOUSE_SESSION_KEY\)/);
+  assert.match(source, /if \(!demoMode\)[\s\S]{0,100}?removeItem\(WAREHOUSE_SESSION_KEY\)/);
   assert.match(source, /demoMode && !cleanBaseUsers\.some/);
   assert.match(source, /if \(demoMode && !base\.data\.inventory\.some/);
   assert.match(source, /if \(demoMode && email\.trim\(\)\.toLowerCase\(\) === warehouseUser\.email/);
@@ -66,8 +66,9 @@ test("enhanced workspace keeps demo-only warehouse identity and SKU behind runti
 
 test("enhanced order creation requires canonical custody availability and finite whole-case input", () => {
   const source = readFileSync(new URL("../lib/workspace-context.tsx", import.meta.url), "utf8");
-  assert.match(source, /inventoryAvailableAtOrder: number/);
+  assert.match(source, /inventoryAvailableAtOrder\??: number/);
   assert.match(source, /!Number\.isInteger\(cases\) \|\| cases < 1/);
+  assert.match(source, /typeof inventoryAvailableAtOrder !== "number"/);
   assert.match(source, /!Number\.isFinite\(inventoryAvailableAtOrder\) \|\| inventoryAvailableAtOrder < 0/);
   assert.match(source, /const available = inventoryAvailableAtOrder;/);
   assert.doesNotMatch(source, /inventoryAvailableAtOrder \?\? data\.inventory/);
