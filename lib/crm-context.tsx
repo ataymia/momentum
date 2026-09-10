@@ -8,7 +8,6 @@ import {
   CrmState,
   Opportunity,
   OpportunityUpdate,
-  ResponsibilityEvent,
   contactMatchesLocation,
   createCrmSeed,
   normalizeCrmState,
@@ -32,7 +31,6 @@ type CrmContextValue = {
   addInteraction: (input: NewInteraction) => string;
   addOpportunity: (input: NewOpportunity) => string;
   updateOpportunity: (id: string, patch: OpportunityUpdate) => MutationResult;
-  recordResponsibility: (input: Omit<ResponsibilityEvent, "id" | "effectiveAt" | "changedBy"> & { effectiveAt?: string }) => boolean;
   resetCrm: () => void;
 };
 
@@ -135,20 +133,10 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
-  const recordResponsibility = (input: Omit<ResponsibilityEvent, "id" | "effectiveAt" | "changedBy"> & { effectiveAt?: string }) => {
-    if (!currentUser || !["Administrator", "Sales Manager"].includes(currentUser.role) || !locationInScope(input.locationId) || input.reason.trim().length < 3) return false;
-    const target = data.users.find((user) => user.id === input.toUserId && ["Sales Representative", "Sales Manager", "Administrator"].includes(user.role));
-    if (!target) return false;
-    if (input.fromUserId && !data.users.some((user) => user.id === input.fromUserId)) return false;
-    const record: ResponsibilityEvent = { ...input, reason: input.reason.trim(), id: uid("responsibility"), effectiveAt: input.effectiveAt ?? now(), changedBy: currentUser.id };
-    setCrm((current) => ({ ...current, responsibilityHistory: [record, ...current.responsibilityHistory] }));
-    return true;
-  };
-
   const resetCrm = () => {
     if (runtime.isDemo && currentUser?.role === "Administrator") setCrm(createCrmSeed(data));
   };
-  const value: CrmContextValue = { crm, addContact, addInteraction, addOpportunity, updateOpportunity, recordResponsibility, resetCrm };
+  const value: CrmContextValue = { crm, addContact, addInteraction, addOpportunity, updateOpportunity, resetCrm };
   return <CrmContext.Provider value={value}>{children}</CrmContext.Provider>;
 }
 
