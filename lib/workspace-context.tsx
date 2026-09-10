@@ -1,11 +1,12 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
-import { accountIsVisible, canAdvanceFulfillment, canManageSchedule, canReviewApproval, getWorkspaceScope } from "./access";
+import { accountIsVisible, canAdvanceFulfillment, canAssignScheduleUser, canManageSchedule, canReconcileOrderPayment, canReviewApproval, canTransferSalesResponsibility, getWorkspaceScope } from "./access";
 import { addCalendarDays, arizonaDateKey } from "./date-time";
 import { findAccountDuplicate } from "./duplicate-engine";
 import { activeFieldAppointmentForUser } from "./field-work-session";
 import { evaluatePartnerPricing } from "./pricing-engine";
+import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import type { Account, Activity, Appointment, AppointmentStatus, Approval, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, WorkspaceData, WorkspaceUser } from "./types";
 import { WorkspaceProvider as BaseWorkspaceProvider, useWorkspace as useBaseWorkspace } from "./workspace-context-v5";
 
@@ -250,8 +251,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const transferAccountResponsibility = (accountId: string, toUserId: string, reason: string) => {
     if (!currentUser || !["Administrator", "Sales Manager"].includes(currentUser.role) || reason.trim().length < 3) return false;
     const account = data.accounts.find((item) => item.id === accountId);
-    const target = data.users.find((user) => user.id === toUserId && ["Sales Representative", "Sales Manager"].includes(user.role));
-    if (!account || !target || !accountIsVisible(data, currentUser, account)) return false;
+    if (!account || !canTransferSalesResponsibility(data, currentUser, account, toUserId)) return false;
+    const target = data.users.find((user) => user.id === toUserId)!;
     const from = data.users.find((user) => user.id === account.ownerId);
     setCommercial((state) => ({
       ...state,
@@ -275,7 +276,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const account = data.accounts.find((item) => item.id === appointment.accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
     const ownerId = currentUser.role === "Sales Representative" ? currentUser.id : appointment.ownerId || undefined;
-    if (ownerId && !data.users.some((user) => user.id === ownerId && user.role !== "Customer" && user.role !== "Warehouse")) return null;
+    if (ownerId && !canAssignScheduleUser(data, currentUser, ownerId)) return null;
     const owner = data.users.find((user) => user.id === ownerId);
     const id = uid("apt");
     const record: Appointment = { ...appointment, id, ownerId, customerId: account.customerId, status: "Scheduled", location: account.streetAddress || account.location, priority: appointment.priority ?? "Normal", tags: appointment.tags ?? [], assignedBy: ownerId ? currentUser.id : undefined, assignedAt: ownerId ? now() : undefined };
@@ -325,8 +326,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!currentUser || !canManageSchedule(currentUser) || enhanced.status !== "Scheduled") return;
-    const owner = ownerId ? data.users.find((user) => user.id === ownerId && user.role !== "Customer" && user.role !== "Warehouse") : undefined;
-    if (ownerId && !owner) return;
+    if (ownerId && !canAssignScheduleUser(data, currentUser, ownerId)) return;
+    const owner = ownerId ? data.users.find((user) => user.id === ownerId) : undefined;
     const prior = data.users.find((user) => user.id === enhanced.ownerId);
     setCommercial((state) => ({ ...state, appointments: state.appointments.map((item) => item.id === id ? { ...item, ownerId: ownerId || undefined, assignedBy: ownerId ? currentUser.id : undefined, assignedAt: ownerId ? now() : undefined } : item), activities: [{ id: uid("act-assign"), accountId: enhanced.accountId, type: "note", title: ownerId ? "Appointment assigned" : "Appointment unassigned", detail: `${prior?.name ?? "Unassigned"} → ${owner?.name ?? "Holding area"}.`, at: now(), userId: currentUser.id }, ...state.activities] }));
   };
@@ -335,7 +336,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const enhanced = commercial.appointments.find((item) => item.id === id);
     if (!enhanced) return base.moveAppointment(id, ownerId, date, startTime);
     if (!currentUser || !canManageSchedule(currentUser) || enhanced.status !== "Scheduled") return false;
-    if (ownerId && !data.users.some((user) => user.id === ownerId && user.role !== "Customer" && user.role !== "Warehouse")) return false;
+    if (ownerId && !canAssignScheduleUser(data, currentUser, ownerId)) return false;
     const before = `${enhanced.ownerId ?? "Unassigned"} · ${enhanced.date} ${enhanced.startTime}`;
     const after = `${ownerId ?? "Unassigned"} · ${date} ${startTime}`;
     setCommercial((state) => ({ ...state, appointments: state.appointments.map((item) => item.id === id ? { ...item, ownerId, date, startTime, assignedBy: ownerId ? currentUser.id : undefined, assignedAt: ownerId ? now() : undefined } : item), activities: [{ id: uid("act-move"), accountId: enhanced.accountId, type: "note", title: "Dispatch schedule changed", detail: `${before} → ${after}.`, at: now(), userId: currentUser.id }, ...state.activities] }));
@@ -385,6 +386,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const reconcileOrderPayment = (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => {
+    if (!canReconcileOrderPayment(currentUser)) return;
     const order = commercial.orders.find((item) => item.id === id);
     if (!order) {
       base.reconcileOrderPayment(id, status, paidAt);
@@ -393,24 +395,20 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const becamePaid = status === "Paid" && order.paymentStatus !== "Paid";
     const lostPaid = order.paymentStatus === "Paid" && status !== "Paid";
     const paidStatusChanged = becamePaid || lostPaid;
-    const paidOrdersAfter = data.orders
-      .filter((item) => item.accountId === order.accountId && item.id !== order.id && item.paymentStatus === "Paid")
-      .concat(status === "Paid" ? [{ ...order, paymentStatus: "Paid" as const, paidAt: paidAt ?? today() }] : []);
-    const lifetimeCasesAfter = paidOrdersAfter.reduce((sum, item) => sum + item.cases, 0);
-    const reorderCountAfter = Math.max(0, paidOrdersAfter.length - 1);
+    const rollup = paidStatusChanged ? paidAccountRollupAfterPayment(data, order.accountId, order.id, status) : undefined;
     setCommercial((state) => ({
       ...state,
       orders: state.orders.map((item) => item.id === id ? { ...item, paymentStatus: status, paidAt: status === "Paid" ? paidAt ?? today() : undefined } : item),
-      accountPatches: paidStatusChanged ? {
+      accountPatches: paidStatusChanged && rollup ? {
         ...state.accountPatches,
         [order.accountId]: {
           ...(state.accountPatches[order.accountId] ?? {}),
           lastActivity: becamePaid ? `Payment cleared for ${order.number}` : `Payment status changed for ${order.number}: ${status}`,
-          lifetimeCases: lifetimeCasesAfter,
-          reorderCount: reorderCountAfter,
+          lifetimeCases: rollup.lifetimeCases,
+          reorderCount: rollup.reorderCount,
         },
       } : state.accountPatches,
-      activities: paidStatusChanged ? [{ id: uid(becamePaid ? "act-paid" : "act-payment-reversal"), accountId: order.accountId, type: "order", title: becamePaid ? "Payment cleared" : "Cleared payment reduced or reversed", detail: becamePaid ? `${order.number} settled. Credit remains with ${order.creditedRepId ? data.users.find((user) => user.id === order.creditedRepId)?.name ?? "the creating rep" : "the recorded order source"}.` : `${order.number} changed from Paid to ${status}. Paid-case totals, pricing eligibility, sales incentives, and downstream payroll must revalidate from the revised source state.`, at: now(), userId: currentUser?.id ?? "system" }, ...state.activities] : state.activities,
+      activities: paidStatusChanged ? [{ id: uid(becamePaid ? "act-paid" : "act-payment-reversal"), accountId: order.accountId, type: "order", title: becamePaid ? "Payment cleared" : "Cleared payment reduced or reversed", detail: becamePaid ? `${order.number} settled. Credit remains with ${order.creditedRepId ? data.users.find((user) => user.id === order.creditedRepId)?.name ?? "the creating rep" : "the recorded order source"}.` : `${order.number} changed from Paid to ${status}. Paid-case totals, pricing eligibility, sales incentives, and downstream payroll must revalidate from the revised source state.`, at: now(), userId: currentUser!.id }, ...state.activities] : state.activities,
     }));
   };
 
