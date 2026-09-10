@@ -5,10 +5,27 @@ import { collectAuditableRecords, diffAuditableRecords, visibleAuditEvents, type
 import { createDemoData } from "../lib/demo-data";
 import { findAccountDuplicate } from "../lib/duplicate-engine";
 import { resolveNotificationRecipients } from "../lib/notification-engine";
-import { isDateLocked, isRangeLocked, type PeriodLockState } from "../lib/period-lock-engine";
+import { isDateLocked, isRangeLocked, isValidPeriodLockRange, normalizePeriodLockState, type PeriodLockState } from "../lib/period-lock-engine";
 import type { Account, WorkspaceData } from "../lib/types";
 
 test("period locks block dates and overlapping ranges only while active", () => { const state: PeriodLockState = { version: 1, locks: [{ id:"lock-1",domain:"Payroll",startDate:"2026-08-01",endDate:"2026-08-31",reason:"Month close",lockedAt:"2026-09-01T00:00:00Z",lockedBy:"admin" }] }; assert.equal(isDateLocked(state,"Payroll","2026-08-15"),true); assert.equal(isDateLocked(state,"Payroll","2026-09-01"),false); assert.equal(isRangeLocked(state,"Payroll","2026-07-25","2026-08-02"),true); assert.equal(isRangeLocked(state,"Accounting","2026-08-01","2026-08-31"),false); state.locks[0].releasedAt="2026-09-02T00:00:00Z"; assert.equal(isDateLocked(state,"Payroll","2026-08-15"),false); });
+
+test("period lock ranges reject malformed and impossible calendar dates", () => {
+  assert.equal(isValidPeriodLockRange("2026-08-01", "2026-08-31"), true);
+  assert.equal(isValidPeriodLockRange("2026-08-31", "2026-08-01"), false);
+  assert.equal(isValidPeriodLockRange("2026-02-30", "2026-03-01"), false);
+  assert.equal(isDateLocked({version:1,locks:[]}, "Payroll", "2026-02-30"), false);
+  assert.equal(isRangeLocked({version:1,locks:[]}, "Payroll", "2026-02-30", "2026-03-01"), false);
+});
+
+test("period lock normalization drops invalid stored lock records", () => {
+  const normalized = normalizePeriodLockState({version:1,locks:[
+    {id:"good",domain:"Payroll",startDate:"2026-08-01",endDate:"2026-08-31",reason:"Month close",lockedAt:"2026-09-01T00:00:00Z",lockedBy:"admin"},
+    {id:"bad-date",domain:"Payroll",startDate:"2026-02-30",endDate:"2026-03-01",reason:"Bad date",lockedAt:"2026-03-01T00:00:00Z",lockedBy:"admin"},
+    {id:"bad-domain",domain:"Sales",startDate:"2026-08-01",endDate:"2026-08-31",reason:"Bad domain",lockedAt:"2026-09-01T00:00:00Z",lockedBy:"admin"},
+  ]});
+  assert.deepEqual(normalized.locks.map((lock)=>lock.id), ["good"]);
+});
 
 test("duplicate blocker catches exact normalized street address", () => { const existing = [{ id:"acc-1",name:"Corner Market",location:"Phoenix, AZ",streetAddress:"123 W. Main Street, Ste 100",phone:"602-555-0100",email:"buyer@example.com" }] as Account[]; const duplicate = findAccountDuplicate(existing,{ name:"Different label",location:"Phoenix, AZ",streetAddress:"123 West Main St Suite 100",phone:"",email:"" }); assert.ok(duplicate); assert.equal(duplicate?.account.id,"acc-1"); assert.equal(duplicate?.confidence,"Exact"); });
 
