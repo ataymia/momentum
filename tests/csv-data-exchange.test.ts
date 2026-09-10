@@ -25,6 +25,8 @@ test("new inventory lot import cannot fabricate reservations outside the order r
   assert.equal(fabricatedReservation.records.length,0);assert.ok(fabricatedReservation.errors.some((error)=>error.includes("Reservations must be created from approved orders")));
   const invalidDate=parseInventoryImport([{id:"",lotCode:"LOT-3",product:"Golden Eagle",receivedAt:"9/1/26",bestBy:"2027-09-01",onHand:"10",reserved:"0",status:"Available",location:"Phoenix",holdReason:""}]);
   assert.equal(invalidDate.records.length,0);assert.ok(invalidDate.errors.length>=1);
+  const impossibleDate=parseInventoryImport([{id:"",lotCode:"LOT-4",product:"Golden Eagle",receivedAt:"2026-02-30",bestBy:"2027-09-01",onHand:"10",reserved:"0",status:"Available",location:"Phoenix",holdReason:""}]);
+  assert.equal(impossibleDate.records.length,0);assert.ok(impossibleDate.errors.some((error)=>error.includes("valid YYYY-MM-DD")));
 });
 
 test("appointment import enforces known enum formats and 24-hour time", () => {
@@ -32,6 +34,8 @@ test("appointment import enforces known enum formats and 24-hour time", () => {
   assert.equal(valid.records.length,1);assert.deepEqual(valid.records[0].tags,["new","priority"]);
   const invalid=parseAppointmentImport([{accountId:"acc-1",ownerId:"",date:"2026-09-09",startTime:"2:30 PM",duration:"30",type:"Meeting",priority:"",arrivalWindow:"",objective:"Pitch",tags:""}]);
   assert.equal(invalid.records.length,0);assert.ok(invalid.errors.length>=2);
+  const impossibleDate=parseAppointmentImport([{accountId:"acc-1",ownerId:"",date:"2026-02-30",startTime:"14:30",duration:"30",type:"First visit",priority:"",arrivalWindow:"",objective:"Pitch",tags:""}]);
+  assert.equal(impossibleDate.records.length,0);assert.ok(impossibleDate.errors.some((error)=>error.includes("valid YYYY-MM-DD")));
 });
 
 test("order import requires an explicit product and cannot carry paid state or override source pricing", () => {
