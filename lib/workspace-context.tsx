@@ -90,7 +90,7 @@ const nextAppointment: Record<AppointmentStatus, AppointmentStatus> = { Schedule
 const nextFulfillment: Partial<Record<OrderStatus, OrderStatus>> = { Approved: "Allocated", Allocated: "Out for delivery", "Out for delivery": "Delivered" };
 
 function inferredTier(data: WorkspaceData, accountId: string): PricingTier | undefined {
-  const price = data.orders.filter((order) => Number.isFinite(order.pricePerCase) && order.pricePerCase > 0).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0]?.pricePerCase;
+  const price = data.orders.filter((order) => order.accountId === accountId && Number.isFinite(order.pricePerCase) && order.pricePerCase > 0).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0]?.pricePerCase;
   return price === 24 ? "A" : price === 27 ? "B" : price === 30 ? "C" : undefined;
 }
 
@@ -139,12 +139,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!demoMode) {
-      setWarehouseSession(false);
-      window.localStorage.removeItem(WAREHOUSE_SESSION_KEY);
-      return;
-    }
-    const handle = window.setTimeout(() => setWarehouseSession(window.localStorage.getItem(WAREHOUSE_SESSION_KEY) === "true"), 0);
+    if (!demoMode) window.localStorage.removeItem(WAREHOUSE_SESSION_KEY);
+    const handle = window.setTimeout(() => setWarehouseSession(demoMode && window.localStorage.getItem(WAREHOUSE_SESSION_KEY) === "true"), 0);
     return () => window.clearTimeout(handle);
   }, [demoMode]);
 
