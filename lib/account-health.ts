@@ -1,3 +1,4 @@
+import { addCalendarDays, arizonaDateKey } from "./date-time";
 import type { Account, PricingTier, WorkspaceData } from "./types";
 
 export const ACCOUNT_PRICING_TIERS: Record<PricingTier, { pricePerCase: number; label: string }> = {
@@ -6,10 +7,11 @@ export const ACCOUNT_PRICING_TIERS: Record<PricingTier, { pricePerCase: number; 
   C: { pricePerCase: 30, label: "C · $30/case" },
 };
 
-const dateKey = (date: Date) => date.toISOString().slice(0, 10);
-const atNoon = (value: string) => new Date(`${value}T12:00:00`);
-const daysBetween = (from: string, through: string) => Math.max(0, Math.floor((atNoon(through).getTime() - atNoon(from).getTime()) / 86_400_000));
-const addDays = (value: string, days: number) => { const date = atNoon(value); date.setDate(date.getDate() + days); return dateKey(date); };
+const dayNumber = (value: string) => {
+  const [year, month, day] = value.split("-").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+};
+const daysBetween = (from: string, through: string) => Math.max(0, dayNumber(through) - dayNumber(from));
 
 export type AccountHealthSnapshot = {
   accountId: string;
@@ -27,12 +29,12 @@ export type AccountHealthSnapshot = {
 };
 
 export function accountHealthSnapshot(data: WorkspaceData, account: Account, asOf = new Date()): AccountHealthSnapshot {
-  const asOfKey = dateKey(asOf);
+  const asOfKey = arizonaDateKey(asOf);
   const orders = data.orders.filter((order) => order.accountId === account.id).sort((a, b) => a.placedAt.localeCompare(b.placedAt) || a.id.localeCompare(b.id));
   const paid = orders.filter((order) => order.paymentStatus === "Paid");
   const lastOrderDate = orders.at(-1)?.placedAt;
   const lastPaidOrderDate = paid.at(-1)?.paidAt ?? paid.at(-1)?.placedAt;
-  const rollingStart = addDays(asOfKey, -90);
+  const rollingStart = addCalendarDays(asOfKey, -90);
   const rollingPaid = paid.filter((order) => {
     const settled = order.paidAt ?? order.placedAt;
     return settled > rollingStart && settled <= asOfKey;
