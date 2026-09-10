@@ -18,14 +18,17 @@ test("stale in-field appointment state from an earlier day does not make a rep l
   assert.equal(employeePresence(data,rep.id,"2026-09-09"),"Off clock");
 });
 
-test("manager profile detail follows direct-report or explicitly managed-team scope", () => {
+test("manager profile detail follows canonical direct-report or explicitly managed-team scope", () => {
   const base=createDemoData();const manager=base.users.find((user)=>user.role==="Sales Manager")!;const rep=base.users.find((user)=>user.role==="Sales Representative")!;
-  assert.equal(canViewEmployeeManagementDetail(manager,rep),true);
-  assert.equal(canViewEmployeeManagementDetail(manager,manager),true);
+  assert.equal(canViewEmployeeManagementDetail(manager,rep,base),true);
+  assert.equal(canViewEmployeeManagementDetail(manager,manager,base),true);
   const peer:WorkspaceUser={...rep,id:"peer",name:"Peer",firstName:"Peer",email:"peer@test",initials:"P",managerId:"someone-else"};
   const strictManager={...manager,managedTeams:[]};
-  assert.equal(canViewEmployeeManagementDetail(strictManager,peer),false);
-  assert.equal(canViewEmployeeManagementDetail({...strictManager,managedTeams:[peer.team]},peer),true);
+  const withPeer={...base,users:[...base.users.map((user)=>user.id===manager.id?strictManager:user),peer]};
+  assert.equal(canViewEmployeeManagementDetail(strictManager,peer,withPeer),false);
+  const teamManager={...strictManager,managedTeams:[peer.team]};
+  const withTeamManager={...withPeer,users:withPeer.users.map((user)=>user.id===manager.id?teamManager:user)};
+  assert.equal(canViewEmployeeManagementDetail(teamManager,peer,withTeamManager),true);
 });
 
 test("appointment punctuality is raw Arizona-time variance, not an invented late score", () => {
