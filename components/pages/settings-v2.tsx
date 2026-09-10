@@ -2,6 +2,7 @@
 
 import { AlertTriangle, BellRing, Check, Cloud, CreditCard, Database, HardDrive, KeyRound, LockKeyhole, Mail, RefreshCcw, SearchCheck, ShieldCheck, WalletCards } from "lucide-react";
 import { useMemo, useState } from "react";
+import { arizonaDateKey } from "../../lib/date-time";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Avatar, Button, Modal, PageHeader, Section, StatusPill } from "../ui";
 
@@ -33,7 +34,7 @@ export function SettingsPage() {
   const [resetOpen,setResetOpen]=useState(false);
   const [resetDone,setResetDone]=useState(false);
   const health = useMemo(() => {
-    const today=new Date().toISOString().slice(0,10);
+    const today=arizonaDateKey();
     const customerIds=new Set((data.customers??[]).map((customer)=>customer.id));
     const missingHierarchy=data.accounts.filter((location)=>!location.customerId||!customerIds.has(location.customerId)||!location.locationName);
     const unassigned=data.appointments.filter((appointment)=>appointment.status==="Scheduled"&&!appointment.ownerId&&appointment.date<=today);
