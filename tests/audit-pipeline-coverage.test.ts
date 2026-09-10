@@ -45,7 +45,11 @@ test("notification policy and runtime-mode mutations create actor-bound manual a
 
 test("manual audit callers cannot supply their own actor identity or timestamp", () => {
   const audit = source("../lib/audit-context.tsx");
-  assert.doesNotMatch(audit, /type ManualAuditInput\s*=\s*\{[^}]*actorId/s);
+  const inputStart = audit.indexOf("type ManualAuditInput");
+  const inputEnd = audit.indexOf(";", inputStart);
+  const inputDefinition = inputStart >= 0 && inputEnd > inputStart ? audit.slice(inputStart, inputEnd + 1) : "";
+  assert.ok(inputDefinition, "ManualAuditInput type definition must exist");
+  assert.doesNotMatch(inputDefinition, /actorId|actorRole|\bat\s*:/);
   assert.match(audit, /actorId:currentUser\.id/);
   assert.match(audit, /actorRole:currentUser\.role/);
   assert.match(audit, /at:new Date\(\)\.toISOString\(\)/);
