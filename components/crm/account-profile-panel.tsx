@@ -2,6 +2,7 @@
 
 import { ChevronDown, History, MapPin, PackageCheck, RefreshCcw, Store, UserRoundCheck } from "lucide-react";
 import { useState } from "react";
+import { canTransferSalesResponsibility } from "../../lib/access";
 import { ACCOUNT_PRICING_TIERS, accountHealthSnapshot } from "../../lib/account-health";
 import { useCrm } from "../../lib/crm-context";
 import type { Account, PremiseType, PricingTier } from "../../lib/types";
@@ -14,7 +15,7 @@ const tierTone = (tier?: PricingTier) => tier === "A" ? "success" as const : tie
 
 function AccountProfile({ account }: { account: Account }) {
   const { data, currentUser, updateAccountCommercial, transferAccountResponsibility } = useWorkspace();
-  const { crm, recordResponsibility } = useCrm();
+  const { crm } = useCrm();
   const snapshot = accountHealthSnapshot(data, account);
   const [premiseType, setPremiseType] = useState<PremiseType>(account.premiseType ?? "Unclassified");
   const [businessType, setBusinessType] = useState(account.businessType ?? account.channel);
@@ -26,17 +27,15 @@ function AccountProfile({ account }: { account: Account }) {
   const closer = data.users.find((user) => user.id === account.closerId);
   const orders = data.orders.filter((order) => order.accountId === account.id).sort((a, b) => b.placedAt.localeCompare(a.placedAt));
   const contacts = crm.contacts.filter((contact) => contact.locationId === account.id || (!contact.locationId && contact.customerId === account.customerId));
-  const salesUsers = data.users.filter((user) => ["Sales Representative", "Sales Manager"].includes(user.role));
+  const salesUsers = data.users.filter((user) => ["Sales Representative", "Sales Manager"].includes(user.role) && canTransferSalesResponsibility(data, currentUser, account, user.id));
   const canEdit = Boolean(currentUser && ["Administrator", "Sales Manager", "Sales Representative"].includes(currentUser.role));
-  const canTransfer = Boolean(currentUser && ["Administrator", "Sales Manager"].includes(currentUser.role));
+  const canTransfer = salesUsers.some((user) => user.id !== account.ownerId);
 
   const saveClassification = () => updateAccountCommercial(account.id, { premiseType, businessType: businessType.trim() || account.channel, categoryReviewDate: categoryReviewDate || undefined });
   const setTier = (tier: PricingTier) => updateAccountCommercial(account.id, { pricingTier: tier });
   const transfer = () => {
     if (!handoffTo || handoffTo === account.ownerId || !handoffReason.trim()) return;
-    const priorOwner = account.ownerId;
     if (!transferAccountResponsibility(account.id, handoffTo, handoffReason.trim())) return;
-    recordResponsibility({ locationId: account.id, fromUserId: priorOwner, toUserId: handoffTo, reason: handoffReason.trim() });
     setHandoffReason("");
   };
 
