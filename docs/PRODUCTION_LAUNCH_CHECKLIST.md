@@ -4,11 +4,17 @@
 
 This is the authoritative running checklist for the product-layer launch audit. `INT-*` items are the internal 90% that can be completed before external production services are connected. `EXT-*` items are the reserved final 10% for production integrations.
 
-Current baseline after audit pass: **256/272 internal items checked = 84.7% of the 90-point internal layer. External: 0/13 = 0.0%. Overall production readiness: 84.7%.**
+Current baseline after audit pass: **257/272 internal items checked = 85.0% of total production readiness. External: 0/13 = 0.0%.**
 
 A checked item means the capability has current code/evidence and has passed its most recent applicable static/unit/control review. The release-candidate gate stays unchecked until one exact frozen SHA passes lint, TypeScript, all logic tests, static export, artifact verification, and final acceptance smoke tests.
 
 Run `npm run readiness` for the machine-counted score. Business/legal configuration gates are tracked separately because they are not software integrations and must not be guessed.
+
+## Audit pass log
+
+| Pass | Date | Result | Internal score | Newly checked / fixed |
+| --- | --- | --- | ---: | --- |
+| 1 | 2026-09-10 | Audit implementation SHA `53a8fd171d0bee27ef139bc252ae36fe1c934024` passed lint, TypeScript, expanded logic tests, static export, artifact verification and Pages deploy. This is not the frozen final launch candidate because the audit is continuing. | 257/272 = 85.0% overall | CRM responsibility-chain preservation, payroll malformed-tax fail-closed behavior, centralized Sales Manager audit scope and regression coverage. |
 
 ## Release, build, and runtime
 - [x] INT-REL-001 Node/runtime version is pinned for the supported build.
@@ -298,7 +304,7 @@ Run `npm run readiness` for the machine-counted score. Business/legal configurat
 - [x] INT-AUD-003 Sensitive HCM/payroll/accounting audit categories are classified as admin-sensitive.
 - [x] INT-AUD-004 Sales Representative audit visibility is limited to own operational records/accounts.
 - [x] INT-AUD-005 Operations/Warehouse audit visibility is limited to operational custody/order scope.
-- [ ] INT-AUD-006 Sales Manager audit visibility consumes centralized canManageUser scope with regression coverage.
+- [x] INT-AUD-006 Sales Manager audit visibility consumes centralized canManageUser scope with regression coverage.
 - [x] INT-AUD-007 HCM audit history is immutable at the client mutation boundary.
 - [ ] INT-AUD-008 Final audit confirms no material module bypasses the common audit snapshot/event pipeline.
 
