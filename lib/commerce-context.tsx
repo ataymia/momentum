@@ -30,6 +30,7 @@ import {
   refundCanSend,
   refundCanSettle,
 } from "./commerce-engine";
+import { isValidCalendarDateKey } from "./date-time";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
@@ -106,20 +107,20 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   }, [commerce, data.orders, reconcileOrderPayment]);
 
   const setInvoiceTerms = (invoiceId: string, terms: InvoiceTerms, dueDate?: string) => {
-    if (!canManageCash) return;
+    if (!canManageCash || (dueDate !== undefined && dueDate !== "" && !isValidCalendarDateKey(dueDate))) return;
     setCommerce((state) => ({
       ...state,
       invoices: state.invoices.map((invoice) => {
         if (invoice.id !== invoiceId) return invoice;
         const status = computedInvoiceStatus(state, invoice);
         if (status === "Paid" || status === "Void") return invoice;
-        return { ...invoice, terms, dueDate };
+        return { ...invoice, terms, dueDate: dueDate || undefined };
       }),
     }));
   };
 
   const recordPayment = (input: NewPaymentInput) => {
-    if (!canManageCash || !currentUser) return null;
+    if (!canManageCash || !currentUser || !Number.isFinite(input.amount)) return null;
     const invoice = commerce.invoices.find((item) => item.id === input.invoiceId);
     if (!invoice || computedInvoiceStatus(commerce, invoice) === "Void" || input.amount <= 0 || input.amount > invoiceRecordableAmount(commerce, invoice)) return null;
     if (input.status === "Cleared" && !canRecordSettlementDate(input.settlementDate)) return null;
@@ -160,7 +161,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   };
 
   const createCredit = (invoiceId: string, amount: number, reason: string) => {
-    if (!canManageCash || !currentUser) return null;
+    if (!canManageCash || !currentUser || !Number.isFinite(amount)) return null;
     const invoice = commerce.invoices.find((item) => item.id === invoiceId);
     if (!invoice || computedInvoiceStatus(commerce, invoice) === "Void" || amount <= 0 || amount > invoiceRecordableAmount(commerce, invoice) || !reason.trim()) return null;
     const id = uid("credit");
