@@ -41,13 +41,7 @@ function phoenixParts(value: string) {
   return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
 }
 
-export function canViewEmployeeManagementDetail(actor: WorkspaceUser | null | undefined, target: WorkspaceUser, data?: WorkspaceData) {
-  if (!actor) return false;
-  if (actor.role === "Administrator") return true;
-  if (!data) {
-    if (actor.role !== "Sales Manager") return false;
-    return target.id === actor.id || target.managerId === actor.id || (actor.managedTeams ?? []).includes(target.team);
-  }
+export function canViewEmployeeManagementDetail(actor: WorkspaceUser | null | undefined, target: WorkspaceUser, data: WorkspaceData) {
   return canManageUser(data, actor, target.id, true);
 }
 
