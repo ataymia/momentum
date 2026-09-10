@@ -1,8 +1,10 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
-import { useWorkspace } from "./workspace-context";
+import { useHcm } from "./hcm-context";
 import { AccountAccessState, IDENTITY_PROVISIONING_STORAGE_KEY, IdentityProvisioningRecord, IdentityProvisioningState, ProvisioningDraft, ProvisioningSource, accountAccessFor, createIdentityProvisioningSeed, normalizeIdentityProvisioningState } from "./identity-provisioning";
+import { activateEmploymentAfterOnboarding, onboardingReadiness, prepareOnboardingPackage } from "./onboarding-engine";
+import { useWorkspace } from "./workspace-context";
 
 export type BeginOnboardingInput = { userId: string; source?: ProvisioningSource; candidateId?: string; offerId?: string; draftId?: string };
 export type NewProvisioningDraftInput = Omit<ProvisioningDraft, "id" | "status" | "createdBy" | "createdAt" | "updatedAt" | "linkedUserId" | "inviteSentAt">;
@@ -34,6 +36,7 @@ function readState(data: ReturnType<typeof useWorkspace>["data"]) {
 
 export function IdentityProvisioningProvider({ children }: { children: ReactNode }) {
   const { data, currentUser } = useWorkspace();
+  const { hcm, setHcm } = useHcm();
   const [state, setState] = useState<IdentityProvisioningState>(() => readState(data));
 
   useEffect(() => {
@@ -59,7 +62,11 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const email = input.workEmail.trim().toLowerCase();
     const manager = data.users.find((user) => user.id === input.managerId && user.role !== "Customer");
     if (input.legalName.trim().length < 2 || !email.includes("@") || input.jobTitle.trim().length < 2 || input.team !== expectedTeam[input.role] || !manager || input.workLocation.trim().length < 2 || input.payGroup.trim().length < 2 || !/^\d{4}-\d{2}-\d{2}$/.test(input.startDate) || !Array.isArray(input.courseIds) || new Set(input.courseIds).size !== input.courseIds.length) return null;
+    if (input.payRate !== undefined && (!Number.isFinite(input.payRate) || input.payRate <= 0)) return null;
+    if (input.payBasis === "Not configured" && input.payRate !== undefined) return null;
+    if (input.payBasis !== "Not configured" && input.payRate === undefined) return null;
     if (input.standardWeeklyHours !== undefined && (!Number.isFinite(input.standardWeeklyHours) || input.standardWeeklyHours < 0 || input.standardWeeklyHours > 168)) return null;
+    if (input.courseIds.some((courseId) => !hcm.courses.some((course) => course.id === courseId && course.active))) return null;
     if (data.users.some((user) => user.email.toLowerCase() === email) || state.drafts.some((draft) => draft.status !== "Cancelled" && draft.workEmail.toLowerCase() === email)) return null;
     if (input.role === "Sales Manager" && manager.role !== "Administrator") return null;
     if (input.role === "Sales Representative" && !["Administrator", "Sales Manager"].includes(manager.role)) return null;
@@ -102,18 +109,20 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (currentUser?.role !== "Administrator") return false;
     const target = data.users.find((user) => user.id === input.userId && user.role !== "Customer");
     if (!target || target.role === "Administrator") return false;
-    const draft = input.draftId ? state.drafts.find((item) => item.id === input.draftId && item.linkedUserId === target.id) : undefined;
-    if (input.draftId && !draft) return false;
+    const draft = input.draftId ? state.drafts.find((item) => item.id === input.draftId && item.linkedUserId === target.id && item.status === "Auth linked") : undefined;
+    if (!draft) return false;
     const record: IdentityProvisioningRecord = {
+      id: `access-${target.id}`,
       userId: target.id,
       state: "Password change required",
-      source: input.source ?? draft?.source ?? "Direct hire",
+      source: input.source ?? draft.source,
       provisionedBy: currentUser.id,
       provisionedAt: new Date().toISOString(),
-      candidateId: input.candidateId ?? draft?.candidateId,
-      offerId: input.offerId ?? draft?.offerId,
-      draftId: draft?.id,
+      candidateId: input.candidateId ?? draft.candidateId,
+      offerId: input.offerId ?? draft.offerId,
+      draftId: draft.id,
     };
+    setHcm((current) => prepareOnboardingPackage(current, data, draft, target.id, currentUser.id));
     setState((current) => ({ ...current, records: [record, ...current.records.filter((item) => item.userId !== target.id)] }));
     return true;
   };
@@ -130,7 +139,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   const submitOnboarding = () => {
     if (!currentUser) return false;
     const record = accountAccessFor(state, currentUser.id);
-    if (!record || record.state !== "Onboarding") return false;
+    if (!record || record.state !== "Onboarding" || !onboardingReadiness(hcm, record, currentUser.id).readyForEmployeeSubmission) return false;
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === currentUser.id ? { ...item, state: "Pending approval", onboardingSubmittedAt: at } : item) }));
     return true;
@@ -139,8 +148,9 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   const activateUser = (userId: string) => {
     if (currentUser?.role !== "Administrator") return false;
     const record = accountAccessFor(state, userId);
-    if (!record || record.state !== "Pending approval") return false;
+    if (!record || !onboardingReadiness(hcm, record, userId).readyForActivation) return false;
     const at = new Date().toISOString();
+    setHcm((current) => activateEmploymentAfterOnboarding(current, userId, currentUser.id));
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Active", activatedAt: at, activatedBy: currentUser.id, returnReason: undefined } : item) }));
     return true;
   };
