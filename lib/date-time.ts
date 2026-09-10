@@ -5,6 +5,13 @@ export function localDateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+export function isValidCalendarDateKey(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 export function arizonaDateKey(value: Date | string = new Date()) {
   const date = typeof value === "string" ? new Date(value) : value;
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -34,7 +41,7 @@ export function arizonaHour(value: Date | string = new Date()) {
 }
 
 export function arizonaEndOfDayIso(dateKey: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) throw new Error("Arizona business date must use YYYY-MM-DD.");
+  if (!isValidCalendarDateKey(dateKey)) throw new Error("Arizona business date must use a valid YYYY-MM-DD calendar date.");
   return new Date(`${dateKey}T23:59:59.999${PHOENIX_UTC_OFFSET}`).toISOString();
 }
 
