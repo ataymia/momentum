@@ -120,7 +120,7 @@ const createNormalizedDemoData = (): WorkspaceData => {
   };
 };
 
-type NewAccount = Pick<Account, "name" | "location" | "channel" | "contactName" | "contactRole" | "phone" | "email"> & { customerName?: string; locationName?: string; streetAddress?: string };
+type NewAccount = Pick<Account, "name" | "location" | "channel" | "contactName" | "contactRole" | "phone" | "email"> & { customerName?: string; locationName?: string; streetAddress?: string; postalCode?:string };
 type NewOrder = { accountId: string; cases: number; pricePerCase?: number };
 type NewAppointment = Pick<Appointment, "accountId" | "date" | "startTime" | "duration" | "type" | "objective"> & { ownerId?: string; priority?: Appointment["priority"]; tags?: string[]; arrivalWindow?: string };
 type AppointmentCloseout = { outcome: AppointmentOutcome; closeoutNote: string; nextAction: string; nextActionDate: string };
