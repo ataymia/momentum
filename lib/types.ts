@@ -4,11 +4,17 @@ export type Role = "Administrator" | "Sales Manager" | "Sales Representative" | 
 export type Team = "Leadership" | "Sales" | "Operations" | "Customer";
 export type PricingTier = "A" | "B" | "C";
 export type PremiseType = "On-premise" | "Off-premise" | "Hybrid" | "Unclassified";
+export type TerritoryStatus = "Draft" | "Active" | "Suspended";
 
 export type WorkspaceUser = {
   id: string; name: string; firstName: string; email: string; initials: string;
   title: string; role: Role; team: Team; managerId?: string; managedTeams?: Team[];
   accountIds?: string[]; accent: string;
+};
+
+export type SalesTerritory = {
+  id:string; name:string; ownerId?:string; postalCodes:string[]; status:TerritoryStatus;
+  notes?:string; createdAt:string; createdBy:string; updatedAt:string; updatedBy:string;
 };
 
 export type CustomerAccount = {
@@ -22,7 +28,7 @@ export type Account = {
   ownerId: string; contactName: string; contactRole: string; phone: string; email: string;
   lastActivity: string; nextAction: string; nextActionDate: string;
   health: "Strong" | "Watch" | "New" | "At risk"; lifetimeCases: number; reorderCount: number; notes: string;
-  customerId?:string; locationName?:string; streetAddress?:string; city?:string; state?:string; postalCode?:string;
+  customerId?:string; locationName?:string; streetAddress?:string; city?:string; state?:string; postalCode?:string; territoryId?:string;
   originatorId?:string; accountManagerId?:string; closerId?:string; responsibilityStartedAt?:string;
   premiseType?:PremiseType; businessType?:string; categoryReviewDate?:string;
   pricingTier?:PricingTier; pricingUpdatedAt?:string; pricingUpdatedBy?:string;
@@ -109,4 +115,5 @@ export type WorkspaceData = {
   users: WorkspaceUser[]; customers?:CustomerAccount[]; accounts: Account[]; activities: Activity[]; appointments: Appointment[];
   orders: Order[]; placements: Placement[]; inventory: InventoryLot[]; approvals: Approval[];
   timeEntries: TimeEntry[]; timecards: Timecard[]; notifications: Notification[]; bulletins: Bulletin[];
+  territories?:SalesTerritory[];
 };
