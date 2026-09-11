@@ -35,6 +35,7 @@ async function element(selector) { const rows = await elements(selector); if (!r
 async function click(selector) { const id = await element(selector); await wd(endpoint(`/element/${id}/click`), "POST", {}); }
 async function clearAndType(selector, value) { const id = await element(selector); await wd(endpoint(`/element/${id}/clear`), "POST", {}); await wd(endpoint(`/element/${id}/value`), "POST", { text: value }); }
 async function text(selector) { const id = await element(selector); return wd(endpoint(`/element/${id}/text`)); }
+async function rawText(selector) { return execute(`return document.querySelector(${JSON.stringify(selector)})?.textContent?.trim() ?? '';`); }
 async function waitFor(predicate, label, timeoutMs = 8000) {
   const started = Date.now();
   let lastError;
@@ -68,8 +69,9 @@ const allNavLabels = ["Home","Account overview","My work","CRM & sales","My acco
 
 async function resetSession() {
   await navigate(BASE_URL);
-  await execute(`localStorage.setItem('momentum-runtime-mode-v1', JSON.stringify({version:1,mode:'demo'})); localStorage.removeItem('momentum-demo-session-v2'); localStorage.removeItem('momentum-warehouse-session-v1'); location.reload();`);
+  await execute(`localStorage.setItem('momentum-runtime-mode-v1', JSON.stringify({version:1,mode:'demo'})); localStorage.removeItem('momentum-demo-session-v2'); localStorage.removeItem('momentum-warehouse-session-v1'); sessionStorage.clear(); location.reload();`);
   await waitExists(".login-form");
+  await waitFor(() => execute(`try{return JSON.parse(localStorage.getItem('momentum-runtime-mode-v1')||'{}').mode==='demo'&&!localStorage.getItem('momentum-demo-session-v2')&&!localStorage.getItem('momentum-warehouse-session-v1')}catch{return false}`), "clean demo login state");
 }
 async function login(role) {
   await resetSession();
@@ -77,7 +79,8 @@ async function login(role) {
   await clearAndType('input[autocomplete="current-password"]', "admin");
   await click('.login-form button[type="submit"]');
   await waitExists(".user-button");
-  await waitFor(async () => (await text(".user-button small")) === role.role, `${role.role} role label`);
+  // WebDriver's element text is empty for responsive labels hidden by CSS. Verify DOM identity text instead so mobile role checks remain strict.
+  await waitFor(async () => (await rawText(".user-button small")) === role.role, `${role.role} role label`);
 }
 async function navLabels() {
   return execute(`return [...document.querySelectorAll('.sidebar__nav .nav-item')].map((node)=>node.getAttribute('title') || node.textContent.trim()).filter(Boolean);`);
@@ -134,7 +137,7 @@ try {
   await waitFor(() => execute(`return document.querySelector('.app-layout')?.classList.contains('is-sidebar-collapsed')===true;`), "collapsed sidebar state");
   await navigate(BASE_URL);
   await waitExists(".user-button");
-  assert.equal(await text(".user-button small"), "Administrator", "Authenticated demo session did not survive reload");
+  assert.equal(await rawText(".user-button small"), "Administrator", "Authenticated demo session did not survive reload");
   assert.equal(await execute(`return localStorage.getItem('momentum-sidebar-collapsed-v1');`), "true", "Sidebar preference did not survive reload");
   const afterKeys = await execute(`return Object.keys(localStorage).filter((key)=>key.startsWith('momentum-')).sort();`);
   for (const keyName of businessKeys) assert.ok(afterKeys.includes(keyName), `Persistence store disappeared after reload: ${keyName}`);
