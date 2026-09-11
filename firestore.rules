@@ -35,19 +35,25 @@ service cloud.firestore {
     }
 
     match /employeeDirectory/{uid} {
-      allow read: if activeEmployee();
+      allow read: if signedIn() && (uid == request.auth.uid || activeEmployee());
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName','profilePhotoPath','lastActivityAt']));
+      allow update: if isAdmin() || (signedIn() && uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName','profilePhotoPath','lastActivityAt']));
     }
 
     match /employeePrivate/{uid} {
       allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
-      allow write: if isAdmin();
+      allow create: if isAdmin() || (signedIn() && uid == request.auth.uid && request.resource.data.keys().hasOnly(['phone','address','emergencyContact','preferredName','updatedAt']));
+      allow update: if isAdmin() || (signedIn() && uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone','address','emergencyContact','preferredName','updatedAt']));
+      allow delete: if isAdmin();
     }
 
     match /identityAccess/{uid} {
       allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (signedIn() && uid == request.auth.uid && (
+        (resource.data.state == 'Password change required' && request.resource.data.state == 'Onboarding' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state','passwordChangedAt','passwordChangeEvidence']))
+        || (resource.data.state == 'Onboarding' && request.resource.data.state == 'Pending approval' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state','onboardingSubmittedAt']))
+      ));
     }
 
     match /provisioningDrafts/{draftId} {
