@@ -1,0 +1,145 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function accessPath(uid) { return /databases/$(database)/documents/userAccess/$(uid); }
+    function hasAccess(uid) { return signedIn() && exists(accessPath(uid)); }
+    function myAccess() { return get(accessPath(request.auth.uid)).data; }
+    function roleIs(role) { return hasAccess(request.auth.uid) && myAccess().role == role; }
+    function isAdmin() { return roleIs('Administrator'); }
+    function isSalesManager() { return roleIs('Sales Manager'); }
+    function isSalesRep() { return roleIs('Sales Representative'); }
+    function isOperations() { return roleIs('Operations'); }
+    function isWarehouse() { return roleIs('Warehouse'); }
+    function manages(uid) {
+      return isAdmin() || (isSalesManager() && uid != request.auth.uid && hasAccess(uid) && get(accessPath(uid)).data.managerId == request.auth.uid);
+    }
+    function activeEmployee() { return hasAccess(request.auth.uid) && myAccess().accountState == 'Active'; }
+    function territoryPath(id) { return /databases/$(database)/documents/territories/$(id); }
+    function territoryMatches(data) {
+      return data.territoryId is string
+        && data.postalCode is string
+        && exists(territoryPath(data.territoryId))
+        && get(territoryPath(data.territoryId)).data.status == 'Active'
+        && get(territoryPath(data.territoryId)).data.ownerId == data.ownerId
+        && get(territoryPath(data.territoryId)).data.postalCodes.hasAny([data.postalCode]);
+    }
+    function accountPath(id) { return /databases/$(database)/documents/accounts/$(id); }
+    function canReadAccount(data) {
+      return activeEmployee() && (isAdmin() || data.ownerId == request.auth.uid || manages(data.ownerId) || isOperations() || isWarehouse());
+    }
+
+    match /userAccess/{uid} {
+      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
+      allow create, update, delete: if isAdmin() && uid != request.auth.uid;
+    }
+
+    match /employeeDirectory/{uid} {
+      allow read: if activeEmployee();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName','profilePhotoPath','lastActivityAt']));
+    }
+
+    match /employeePrivate/{uid} {
+      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /identityAccess/{uid} {
+      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /provisioningDrafts/{draftId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /territories/{territoryId} {
+      allow read: if activeEmployee() && (isAdmin() || isSalesManager() || resource.data.ownerId == request.auth.uid);
+      allow create: if activeEmployee() && (isAdmin() || (isSalesManager() && request.resource.data.ownerId is string && manages(request.resource.data.ownerId)));
+      allow update: if activeEmployee() && (isAdmin() || (isSalesManager() && resource.data.ownerId is string && manages(resource.data.ownerId) && request.resource.data.ownerId is string && manages(request.resource.data.ownerId)));
+      allow delete: if isAdmin();
+    }
+
+    match /accounts/{accountId} {
+      allow read: if canReadAccount(resource.data);
+      allow create: if activeEmployee() && territoryMatches(request.resource.data) && (isAdmin() || manages(request.resource.data.ownerId) || (isSalesRep() && request.resource.data.ownerId == request.auth.uid));
+      allow update: if activeEmployee() && canReadAccount(resource.data) && territoryMatches(request.resource.data) && (isAdmin() || manages(request.resource.data.ownerId) || (isSalesRep() && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == request.auth.uid && request.resource.data.territoryId == resource.data.territoryId && request.resource.data.postalCode == resource.data.postalCode));
+      allow delete: if isAdmin();
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if activeEmployee() && (isAdmin() || resource.data.ownerId == request.auth.uid || manages(resource.data.ownerId) || (isOperations() && resource.data.type == 'Delivery'));
+      allow create: if activeEmployee() && exists(accountPath(request.resource.data.accountId)) && canReadAccount(get(accountPath(request.resource.data.accountId)).data) && request.resource.data.ownerId == get(accountPath(request.resource.data.accountId)).data.ownerId && (isAdmin() || manages(request.resource.data.ownerId) || request.resource.data.ownerId == request.auth.uid);
+      allow update: if activeEmployee() && (isAdmin() || manages(resource.data.ownerId) || resource.data.ownerId == request.auth.uid) && request.resource.data.accountId == resource.data.accountId;
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if activeEmployee() && exists(accountPath(resource.data.accountId)) && canReadAccount(get(accountPath(resource.data.accountId)).data);
+      allow create: if activeEmployee() && exists(accountPath(request.resource.data.accountId)) && canReadAccount(get(accountPath(request.resource.data.accountId)).data) && (isAdmin() || manages(get(accountPath(request.resource.data.accountId)).data.ownerId) || get(accountPath(request.resource.data.accountId)).data.ownerId == request.auth.uid);
+      allow update: if activeEmployee() && isAdmin();
+      allow delete: if false;
+    }
+
+    match /placements/{placementId} {
+      allow read: if activeEmployee() && exists(accountPath(resource.data.accountId)) && canReadAccount(get(accountPath(resource.data.accountId)).data);
+      allow create, update: if activeEmployee() && exists(accountPath(request.resource.data.accountId)) && canReadAccount(get(accountPath(request.resource.data.accountId)).data) && (isAdmin() || manages(get(accountPath(request.resource.data.accountId)).data.ownerId) || get(accountPath(request.resource.data.accountId)).data.ownerId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /activities/{activityId} {
+      allow read: if activeEmployee() && (!('accountId' in resource.data) || resource.data.accountId == null || (exists(accountPath(resource.data.accountId)) && canReadAccount(get(accountPath(resource.data.accountId)).data)));
+      allow create: if activeEmployee() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /fieldTracking/{uid}/events/{eventId} {
+      allow read: if activeEmployee() && (uid == request.auth.uid || manages(uid));
+      allow create: if activeEmployee() && uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /timeEntries/{entryId} {
+      allow read: if activeEmployee() && (resource.data.userId == request.auth.uid || manages(resource.data.userId));
+      allow create: if activeEmployee() && request.resource.data.userId == request.auth.uid;
+      allow update: if activeEmployee() && (resource.data.userId == request.auth.uid || manages(resource.data.userId)) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isAdmin();
+    }
+
+    match /timecards/{cardId} {
+      allow read: if activeEmployee() && (resource.data.userId == request.auth.uid || manages(resource.data.userId));
+      allow create: if activeEmployee() && request.resource.data.userId == request.auth.uid;
+      allow update: if activeEmployee() && (resource.data.userId == request.auth.uid || manages(resource.data.userId)) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isAdmin();
+    }
+
+    match /hcmPrivate/{uid}/{document=**} {
+      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /payroll/{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    match /finance/{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    match /inventory/{document=**} {
+      allow read: if activeEmployee() && (isAdmin() || isOperations() || isWarehouse());
+      allow write: if activeEmployee() && (isAdmin() || isOperations());
+    }
+
+    match /auditEvents/{eventId} {
+      allow read: if isAdmin();
+      allow create: if activeEmployee() && request.resource.data.actorId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
