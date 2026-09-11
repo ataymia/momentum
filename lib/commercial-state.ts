@@ -1,8 +1,9 @@
 import { addCalendarDays, isValidCalendarDateKey } from "./date-time";
-import type { Account, Activity, Appointment, Approval, InventoryLot, Order, PricingTier, WorkspaceData } from "./types";
+import { normalizePostalCode, normalizeTerritories } from "./territory-engine";
+import type { Account, Activity, Appointment, Approval, InventoryLot, Order, PricingTier, SalesTerritory, WorkspaceData } from "./types";
 
-export type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount">>;
-export type CommercialState = { version: 1; accountPatches: Record<string, CommercialAccountPatch>; orders: Order[]; appointments: Appointment[]; approvals: Approval[]; activities: Activity[]; inventoryLots: InventoryLot[] };
+export type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "postalCode">>;
+export type CommercialState = { version: 1; accountPatches: Record<string, CommercialAccountPatch>; orders: Order[]; appointments: Appointment[]; approvals: Approval[]; activities: Activity[]; inventoryLots: InventoryLot[]; territories: SalesTerritory[] };
 
 const premiseTypes = new Set(["On-premise", "Off-premise", "Hybrid", "Unclassified"]);
 const pricingTiers = new Set(["A", "B", "C"]);
@@ -38,8 +39,8 @@ function inferredTier(data: WorkspaceData, accountId: string): PricingTier | und
 
 export function seedCommercialState(data: WorkspaceData, todayKey: string): CommercialState {
   const accountPatches: Record<string, CommercialAccountPatch> = {};
-  for (const account of data.accounts) accountPatches[account.id] = { premiseType: account.premiseType ?? "Unclassified", businessType: account.businessType ?? account.channel, categoryReviewDate: account.categoryReviewDate ?? addCalendarDays(todayKey, 90), pricingTier: account.pricingTier ?? inferredTier(data, account.id) };
-  return { version: 1, accountPatches, orders: [], appointments: [], approvals: [], activities: [], inventoryLots: [] };
+  for (const account of data.accounts) accountPatches[account.id] = { premiseType: account.premiseType ?? "Unclassified", businessType: account.businessType ?? account.channel, categoryReviewDate: account.categoryReviewDate ?? addCalendarDays(todayKey, 90), pricingTier: account.pricingTier ?? inferredTier(data, account.id), postalCode: normalizePostalCode(account.postalCode) || undefined };
+  return { version: 1, accountPatches, orders: [], appointments: [], approvals: [], activities: [], inventoryLots: [], territories: normalizeTerritories(data.territories??[],data.users) };
 }
 
 export function normalizeCommercialState(input: unknown, data: WorkspaceData, todayKey: string): CommercialState {
@@ -77,6 +78,7 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     const closerId = optionalText(raw.closerId); if (closerId && internalSalesIds.has(closerId)) patch.closerId = closerId;
     if (wholeNonnegative(raw.lifetimeCases)) patch.lifetimeCases = Number(raw.lifetimeCases);
     if (wholeNonnegative(raw.reorderCount)) patch.reorderCount = Number(raw.reorderCount);
+    const postalCode=normalizePostalCode(optionalText(raw.postalCode)); if(postalCode)patch.postalCode=postalCode;
     accountPatches[accountId] = { ...accountPatches[accountId], ...patch };
   }
 
@@ -132,5 +134,6 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     return [{ id, lotCode, product: text(raw.product), receivedAt: text(raw.receivedAt), bestBy: text(raw.bestBy), onHand, reserved: 0, available: status === "Quality hold" ? 0 : onHand, status: status as InventoryLot["status"], location: text(raw.location), holdReason: optionalText(raw.holdReason) }];
   }));
 
-  return { version: 1, accountPatches, orders, appointments, approvals, activities, inventoryLots };
+  const territories=normalizeTerritories(input.territories??seed.territories,data.users);
+  return { version: 1, accountPatches, orders, appointments, approvals, activities, inventoryLots, territories };
 }
