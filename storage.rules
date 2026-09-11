@@ -1,0 +1,29 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function accessPath(uid) { return /databases/(default)/documents/userAccess/$(uid); }
+    function hasAccess(uid) { return signedIn() && firestore.exists(accessPath(uid)); }
+    function isAdmin() { return hasAccess(request.auth.uid) && firestore.get(accessPath(request.auth.uid)).data.role == 'Administrator'; }
+    function safeDocumentUpload() { return request.resource.size < 10 * 1024 * 1024 && request.resource.contentType.matches('(application/pdf|image/.*)'); }
+
+    match /onboardingTemplates/{allPaths=**} {
+      allow read: if hasAccess(request.auth.uid);
+      allow write: if isAdmin() && safeDocumentUpload();
+    }
+
+    match /employeeDocuments/{uid}/{allPaths=**} {
+      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
+      allow write: if signedIn() && (uid == request.auth.uid || isAdmin()) && safeDocumentUpload();
+    }
+
+    match /profilePhotos/{uid}/{fileName} {
+      allow read: if hasAccess(request.auth.uid);
+      allow write: if signedIn() && uid == request.auth.uid && request.resource.size < 5 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
