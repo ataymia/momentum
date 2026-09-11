@@ -1,7 +1,7 @@
 "use client";
 
 import { MapPinned, Pencil, Plus, ShieldCheck } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { canManageUser } from "../../lib/access";
 import { accountTerritoryState, normalizePostalCode, territoryAccounts, territoryForPostalCode } from "../../lib/territory-engine";
 import type { SalesTerritory, TerritoryStatus } from "../../lib/types";
@@ -23,7 +23,7 @@ export function TerritoryPanel(){
   const reps=data.users.filter((user)=>user.role==="Sales Representative"&&(currentUser.role==="Administrator"||canManageUser(data,currentUser,user.id,true)));
   const visibleTerritories=(data.territories??[]).filter((territory)=>currentUser.role==="Administrator"||territory.ownerId===currentUser.id||(currentUser.role==="Sales Manager"&&(territory.createdBy===currentUser.id||Boolean(territory.ownerId&&canManageUser(data,currentUser,territory.ownerId,true)))));
   const active=visibleTerritories.filter((territory)=>territory.status==="Active");
-  const unresolved=useMemo(()=>scope.accounts.filter((account)=>accountTerritoryState(data,account)!=="Owned"),[data,scope.accounts]);
+  const unresolved=scope.accounts.filter((account)=>accountTerritoryState(data,account)!=="Owned");
   const missingZip=unresolved.filter((account)=>!normalizePostalCode(account.postalCode)).length;
   const uncovered=unresolved.filter((account)=>normalizePostalCode(account.postalCode)&&!territoryForPostalCode(data,account.postalCode)).length;
 
