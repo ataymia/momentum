@@ -58,21 +58,21 @@ export function FirebaseAccessPanel() {
   const administrators = firebase.directory.filter((user) => user.role === "Administrator");
 
   return <>
-    <Section title="Firebase identities & access" description="Every sign-in is a Firebase Authentication user; every role decision is a Firestore access record that Security Rules enforce." action={<StatusPill tone={sync.lastError ? "danger" : "success"}><ShieldCheck size={14} /> {firebase.projectId}</StatusPill>}>
-      <div className="form-grid">
-        <div><strong>Signed in as</strong><p>{firebase.session?.email}</p></div>
-        <div><strong>Administrators</strong><p>{administrators.length} ({administrators.map((user) => user.name).join(", ") || "none"})</p></div>
-        <div><strong>Firestore sync</strong><p>{sync.flushing ? "Saving…" : sync.pending ? `${sync.pending} pending` : sync.lastSyncedAt ? `Synced ${new Date(sync.lastSyncedAt).toLocaleString()}` : "Connected"}{sync.conflicts ? ` · ${sync.conflicts} merged conflict${sync.conflicts === 1 ? "" : "s"}` : ""}</p></div>
-        <div><strong>Rules denials</strong><p>{sync.deniedDocuments.length ? sync.deniedDocuments.join(", ") : "None"}</p></div>
+    <Section className="firebase-access-section" title="Firebase identities & access" description="Authentication, roles, and account status for the production workspace." action={<StatusPill tone={sync.lastError ? "danger" : "success"}><ShieldCheck size={14} /> {firebase.projectId}</StatusPill>}>
+      <div className="firebase-access-summary">
+        <div><span>Signed in</span><strong>{currentUser.name}</strong><small>{firebase.session?.email}</small></div>
+        <div><span>Administrators</span><strong>{administrators.length}</strong><small>{administrators.map((user) => user.name).join(" · ") || "None"}</small></div>
+        <div><span>Firestore sync</span><strong>{sync.flushing ? "Saving…" : sync.pending ? `${sync.pending} pending` : "Synced"}</strong><small>{sync.lastSyncedAt ? new Date(sync.lastSyncedAt).toLocaleString() : "Connected"}{sync.conflicts ? ` · ${sync.conflicts} merged conflict${sync.conflicts === 1 ? "" : "s"}` : ""}</small></div>
+        <div><span>Rules denials</span><strong>{sync.deniedDocuments.length ? sync.deniedDocuments.length : "None"}</strong><small>{sync.deniedDocuments.length ? sync.deniedDocuments.join(", ") : "No blocked writes detected"}</small></div>
       </div>
       {sync.lastError && <p className="form-error" role="alert">{sync.lastError}</p>}
-      <div className="provisioning-queue">{firebase.directory.slice().sort((a, b) => a.name.localeCompare(b.name)).map((user) => {
+      <div className="provisioning-queue firebase-admin-list">{firebase.directory.slice().sort((a, b) => a.name.localeCompare(b.name)).map((user) => {
         const access = firebase.accessRecords[user.id];
-        return <article key={user.id}><span className="provisioning-avatar">{user.initials}</span><div><strong>{user.name}</strong><p>{user.title} · {user.role} · {user.team}</p><small>{user.email}{access ? ` · updated ${new Date(access.updatedAt).toLocaleDateString()}` : " · access record missing"}</small></div><StatusPill tone={access?.accountState === "Active" ? "success" : access?.accountState === "Suspended" || access?.accountState === "Separated" ? "danger" : "warning"}>{access?.accountState ?? "Unknown"}</StatusPill><div className="provisioning-row-actions">{user.role !== "Administrator" && access?.accountState === "Active" && <Button size="sm" variant="secondary" disabled={busy} icon={<KeyRound size={14} />} onClick={() => void run(() => firebase.grantAdministrator(user.id), `${user.name} is now an Administrator.`)}>Grant Administrator</Button>}<Button size="sm" variant="ghost" disabled={busy} icon={<MailCheck size={14} />} onClick={() => void run(() => firebase.sendPasswordReset(user.email), "Password reset e-mail sent.")}>Reset password</Button></div></article>;
+        return <article key={user.id}><span className="provisioning-avatar">{user.initials}</span><div className="firebase-admin-identity"><strong>{user.name}</strong><p>{user.title} · {user.role} · {user.team}</p><small>{user.email}{access ? ` · Updated ${new Date(access.updatedAt).toLocaleDateString()}` : " · Access record missing"}</small></div><StatusPill tone={access?.accountState === "Active" ? "success" : access?.accountState === "Suspended" || access?.accountState === "Separated" ? "danger" : "warning"}>{access?.accountState ?? "Unknown"}</StatusPill><div className="provisioning-row-actions">{user.role !== "Administrator" && access?.accountState === "Active" && <Button size="sm" variant="secondary" disabled={busy} icon={<KeyRound size={14} />} onClick={() => void run(() => firebase.grantAdministrator(user.id), `${user.name} is now an Administrator.`)}>Grant Administrator</Button>}<Button size="sm" variant="ghost" disabled={busy} icon={<MailCheck size={14} />} onClick={() => void run(() => firebase.sendPasswordReset(user.email), "Password reset e-mail sent.")}>Reset password</Button></div></article>;
       })}</div>
     </Section>
 
-    <Section title="Create Administrator account" description="Use this once for the second all-powerful Administrator (the owner). Regular employees go through Human Resources → New hire setup so onboarding controls apply.">
+    <Section title="Create Administrator account" description="Use this only for the second founding Administrator. Regular employees belong in Human Resources → New hire setup.">
       {issued && <div className="temp-password" role="status"><strong>{issued.email}</strong><span>Temporary password (shown once). Ask them to change it after first sign-in.</span><code>{issued.password}</code><div className="provisioning-row-actions"><Button size="sm" variant="secondary" icon={<Copy size={14} />} onClick={() => void navigator.clipboard?.writeText(issued.password)}>Copy</Button><Button size="sm" variant="ghost" onClick={() => setIssued(null)}>Dismiss</Button></div></div>}
       <form className="provisioning-form" onSubmit={createAdministrator}>
         <div className="form-grid">
