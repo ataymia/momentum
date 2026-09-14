@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // Targets the EXISTING Worker (account 825607df750f42607439c105a946242c). Do not rename.
+  "name": "momentum",
+  "compatibility_date": "2026-09-14",
+
+  // Assets-only Worker: Momentum is a static export (next.config.ts -> output: "export"),
+  // so there is no server code and no "main" entry point. Every engine runs in the browser
+  // and talks to Firebase Auth/Firestore over REST.
+  "assets": {
+    "directory": "./out",
+    // Serves out/404.html with a 404 status. Not "single-page-application": the app renders
+    // one route ("/") and navigates by state, not by URL, so there are no deep links to rewrite.
+    "not_found_handling": "404-page"
+  }
+}

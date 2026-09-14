@@ -16,7 +16,8 @@
     "test:rules": "npm run rules:build && firebase emulators:exec --only firestore --project momentum-rules-test \"node --import tsx --test tests/firestore-rules.test.ts\"",
     "test": "npm run typecheck && npm run lint && npm run test:rules",
     "deploy": "next build && firebase deploy --only hosting",
-    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage"
+    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage",
+    "deploy:worker": "next build && wrangler deploy"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
@@ -36,6 +37,16 @@
     "postcss": "8.5.14",
     "tailwindcss": "4.2.1",
     "tsx": "^4.22.1",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wrangler": "^4.131.2"
+  },
+  "allowScripts": {
+    "@firebase/util@1.15.3": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.28.1": true,
+    "protobufjs@7.6.6": true,
+    "sharp": true,
+    "unrs-resolver": true,
+    "workerd@1.20260911.1": true
   }
 }
