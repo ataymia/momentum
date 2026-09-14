@@ -5,7 +5,7 @@ const pageAccess: Record<WorkspaceUser["role"], PageKey[]> = {
   "Sales Manager": ["home","work","actions","accounts","accountHealth","crmTools","dispatch","retail","orders","orderCash","marketing","people","employees","payroll","finance","reports","performance","reportingCenter","help"],
   "Sales Representative": ["home","work","actions","accounts","accountHealth","crmTools","dispatch","retail","orders","orderCash","marketing","people","employees","payroll","finance","reports","performance","reportingCenter","help"],
   Operations: ["home","work","actions","dispatch","orders","orderCash","inventory","inventoryLedger","marketing","people","employees","payroll","finance","help"],
-  Warehouse: ["home","work","actions","orders","orderCash","inventory","inventoryLedger","people","employees","payroll","help"],
+  Warehouse: ["home","work","actions","orders","inventory","inventoryLedger","people","employees","payroll","help"],
   Customer: ["home","accounts","orders","help"],
 };
 
