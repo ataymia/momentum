@@ -79,7 +79,6 @@ async function login(role) {
   await clearAndType('input[autocomplete="current-password"]', "admin");
   await click('.login-form button[type="submit"]');
   await waitExists(".user-button");
-  // WebDriver's element text is empty for responsive labels hidden by CSS. Verify DOM identity text instead so mobile role checks remain strict.
   await waitFor(async () => (await rawText(".user-button small")) === role.role, `${role.role} role label`);
 }
 async function navLabels() {
@@ -101,8 +100,18 @@ async function accessibilityViolations() {
   `);
 }
 async function assertNoDocumentOverflow(context) {
-  const metrics = await execute(`return {width:window.innerWidth,scroll:Math.max(document.documentElement.scrollWidth,document.body?.scrollWidth||0)};`);
-  assert.ok(metrics.scroll <= metrics.width + 2, `${context} overflows viewport: ${metrics.scroll}px > ${metrics.width}px`);
+  const metrics = await execute(`
+    const viewport=window.innerWidth;
+    const scroll=Math.max(document.documentElement.scrollWidth,document.body?.scrollWidth||0);
+    const offenders=[...document.querySelectorAll('body *')]
+      .filter((el)=>el instanceof HTMLElement && el.offsetParent!==null)
+      .map((el)=>{const rect=el.getBoundingClientRect();const style=getComputedStyle(el);return{tag:el.tagName.toLowerCase(),id:el.id||'',cls:typeof el.className==='string'?el.className:'',left:Math.round(rect.left),right:Math.round(rect.right),width:Math.round(rect.width),scrollWidth:el.scrollWidth,overflowX:style.overflowX,minWidth:style.minWidth,widthStyle:style.width,maxWidth:style.maxWidth};})
+      .filter((row)=>row.right>viewport+2||row.width>viewport+2||row.scrollWidth>viewport+2)
+      .sort((a,b)=>Math.max(b.right,b.width,b.scrollWidth)-Math.max(a.right,a.width,a.scrollWidth))
+      .slice(0,12);
+    return {width:viewport,scroll,offenders};
+  `);
+  assert.ok(metrics.scroll <= metrics.width + 2, `${context} overflows viewport: ${metrics.scroll}px > ${metrics.width}px; offenders=${JSON.stringify(metrics.offenders)}`);
 }
 async function clickNav(label, { dom = false } = {}) {
   const selector = `.sidebar__nav .nav-item[title="${label.replaceAll('"','\\"')}"]`;
@@ -155,8 +164,6 @@ try {
   for (const role of [roles[0], roles[5]]) {
     await login(role);
     for (const label of role.nav) {
-      // Desktop acceptance above proves the nav controls are interactable. At mobile width the collapsed sidebar is intentionally off-canvas,
-      // so invoke the same React button through the DOM while this section focuses on responsive render/overflow health.
       await clickNav(label, { dom: true });
       await assertNoDocumentOverflow(`${role.role}/${label}`);
     }
