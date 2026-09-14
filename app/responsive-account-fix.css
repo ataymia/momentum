@@ -84,14 +84,17 @@
     overflow-wrap: anywhere;
   }
 
-  .page--orders .orders-layout,
+  .page--orders .orders-layout {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .page--orders .orders-list {
     min-width: 0;
     width: 100%;
     max-width: 100%;
-  }
-
-  .page--orders .orders-list {
     overflow-x: auto;
     overscroll-behavior-x: contain;
   }
