@@ -8,11 +8,14 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test, { describe } from "node:test";
 
 import {
+  FOUNDER_BOOTSTRAP_EMAILS,
   PROVISIONABLE_ROLES,
   TEAM_FOR_ROLE,
+  isFounderBootstrapEmail,
   isProvisionableRole,
   temporaryPasswordProblem,
   validateProvisionRequest,
@@ -159,6 +162,29 @@ describe("onboarding package", () => {
     const readiness = onboardingReadiness(prepared, record, HIRE_ID);
     assert.equal(readiness.readyForActivation, false);
     assert.ok(readiness.blockers.length > 0, "incomplete onboarding must explain what is missing");
+  });
+});
+
+describe("founding Administrator bootstrap", () => {
+  test("only the two approved addresses may bootstrap themselves", () => {
+    assert.deepEqual([...FOUNDER_BOOTSTRAP_EMAILS], ["vixarynholdings@gmail.com", "momentumdistributioninc@gmail.com"]);
+    for (const email of FOUNDER_BOOTSTRAP_EMAILS) assert.equal(isFounderBootstrapEmail(email), true);
+    assert.equal(isFounderBootstrapEmail("  VixarynHoldings@Gmail.com  "), true, "matching is case- and space-insensitive");
+  });
+
+  test("look-alike and unrelated addresses are refused", () => {
+    // The production Auth identity carried exactly this typo; it must never satisfy the allow-list.
+    assert.equal(isFounderBootstrapEmail("momentumdistrubutioninc@gmail.com"), false);
+    assert.equal(isFounderBootstrapEmail("attacker@example.com"), false);
+    assert.equal(isFounderBootstrapEmail("vixarynholdings@gmail.com.evil.com"), false);
+    assert.equal(isFounderBootstrapEmail(""), false);
+  });
+
+  test("the browser allow-list matches the one the rules enforce", () => {
+    const rules = readFileSync("firestore.rules", "utf8");
+    for (const email of FOUNDER_BOOTSTRAP_EMAILS) {
+      assert.ok(rules.includes(`'${email}'`), `${email} must also be allow-listed in firestore.rules`);
+    }
   });
 });
 

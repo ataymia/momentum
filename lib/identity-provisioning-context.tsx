@@ -21,7 +21,7 @@ type IdentityProvisioningContextValue = {
   beginOnboarding: (input: BeginOnboardingInput) => boolean;
   completePasswordChange: (evidence: string) => boolean;
   submitOnboarding: () => boolean;
-  activateUser: (userId: string) => boolean;
+  activateUser: (userId: string) => Promise<boolean>;
   returnForCorrections: (userId: string, reason: string) => boolean;
   setAccountState: (userId: string, state: Extract<AccountAccessState, "Suspended" | "Separated">, reason: string) => boolean;
 };
@@ -29,6 +29,7 @@ type IdentityProvisioningContextValue = {
 const Context = createContext<IdentityProvisioningContextValue | null>(null);
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const expectedTeam: Record<ProvisioningDraft["role"], ProvisioningDraft["team"]> = { "Sales Manager": "Sales", "Sales Representative": "Sales", Operations: "Operations", Warehouse: "Operations" };
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function readState(data: ReturnType<typeof useWorkspace>["data"]) {
   if (typeof window === "undefined") return createIdentityProvisioningSeed(data);
@@ -41,7 +42,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   const { hcm, setHcm } = useHcm();
   const firebase = useFirebaseSessionOptional();
   const [state, setState] = useState<IdentityProvisioningState>(() => readState(data));
-  // Security Rules read `userAccess.accountState`; only Administrators may write it, so mirror admin transitions there.
+  // Intermediate account-state mirrors are best-effort; final activation below is fail-closed and awaited.
   const syncAccountState = (userId: string, nextState: AccountAccessState) => { if (firebase) void firebase.setAccountState(userId, nextState); };
 
   useEffect(() => {
@@ -70,16 +71,18 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (currentUser?.role !== "Administrator") return null;
     const email = input.workEmail.trim().toLowerCase();
     const manager = data.users.find((user) => user.id === input.managerId && user.role !== "Customer");
-    if (input.legalName.trim().length < 2 || !email.includes("@") || input.jobTitle.trim().length < 2 || input.team !== expectedTeam[input.role] || !manager || input.workLocation.trim().length < 2 || input.payGroup.trim().length < 2 || !/^\d{4}-\d{2}-\d{2}$/.test(input.startDate) || !Array.isArray(input.courseIds) || new Set(input.courseIds).size !== input.courseIds.length) return null;
-    if (input.payRate !== undefined && (!Number.isFinite(input.payRate) || input.payRate <= 0)) return null;
-    if (input.payBasis === "Not configured" && input.payRate !== undefined) return null;
-    if (input.payBasis !== "Not configured" && input.payRate === undefined) return null;
+    if (input.legalName.trim().length < 2 || !emailPattern.test(email) || input.jobTitle.trim().length < 2 || input.team !== expectedTeam[input.role] || !manager || input.workLocation.trim().length < 2 || !/^\d{4}-\d{2}-\d{2}$/.test(input.startDate) || !Array.isArray(input.courseIds) || input.courseIds.length === 0 || new Set(input.courseIds).size !== input.courseIds.length) return null;
+    if (input.classification === "Not configured" || input.payBasis === "Not configured" || !Number.isFinite(input.payRate) || Number(input.payRate) <= 0 || input.payGroup.trim().length < 2 || input.payGroup.trim().toLowerCase() === "not configured") return null;
     if (input.standardWeeklyHours !== undefined && (!Number.isFinite(input.standardWeeklyHours) || input.standardWeeklyHours < 0 || input.standardWeeklyHours > 168)) return null;
     if (input.courseIds.some((courseId) => !hcm.courses.some((course) => course.id === courseId && course.active))) return null;
     if (data.users.some((user) => user.email.toLowerCase() === email) || state.drafts.some((draft) => draft.status !== "Cancelled" && draft.workEmail.toLowerCase() === email)) return null;
     if (input.role === "Sales Manager" && manager.role !== "Administrator") return null;
     if (input.role === "Sales Representative" && !["Administrator", "Sales Manager"].includes(manager.role)) return null;
     if (["Operations", "Warehouse"].includes(input.role) && manager.role !== "Administrator") return null;
+    if (input.source === "Accepted offer") {
+      const offer = hcm.offers.find((item) => item.id === input.offerId && item.status === "Accepted");
+      if (!offer || offer.candidateId !== input.candidateId) return null;
+    } else if (input.offerId || input.candidateId) return null;
     const at = new Date().toISOString();
     const id = uid("prehire");
     const draft: ProvisioningDraft = { ...input, legalName: input.legalName.trim(), preferredName: input.preferredName?.trim() || undefined, workEmail: email, jobTitle: input.jobTitle.trim(), workLocation: input.workLocation.trim(), payGroup: input.payGroup.trim(), courseIds: [...input.courseIds], id, status: "Ready to invite", createdBy: currentUser.id, createdAt: at, updatedAt: at };
@@ -108,7 +111,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (currentUser?.role !== "Administrator") return false;
     const draft = state.drafts.find((item) => item.id === draftId);
     const user = data.users.find((item) => item.id === userId && item.role !== "Customer" && item.role !== "Administrator");
-    if (!draft || !user || draft.status === "Cancelled" || user.email.toLowerCase() !== draft.workEmail.toLowerCase()) return false;
+    if (!draft || !user || draft.status === "Cancelled" || user.email.toLowerCase() !== draft.workEmail.toLowerCase() || user.role !== draft.role || user.team !== draft.team || user.managerId !== draft.managerId) return false;
     // Never re-point a draft at a second identity: that is how one employee silently inherits another's account.
     if (draft.linkedUserId && draft.linkedUserId !== userId) return false;
     const at = new Date().toISOString();
@@ -132,6 +135,8 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
       ? state.drafts.find((item) => item.id === input.draftId && item.status !== "Cancelled" && item.workEmail.toLowerCase() === target.email.toLowerCase())
       : undefined;
     if (!draft || (draft.linkedUserId && draft.linkedUserId !== target.id)) return false;
+    // The draft and the identity must still describe the same job, or onboarding would prepare the wrong package.
+    if (target.role !== draft.role || target.team !== draft.team || target.managerId !== draft.managerId) return false;
 
     const at = new Date().toISOString();
     const linked: ProvisioningDraft = { ...draft, status: "Auth linked", linkedUserId: target.id, updatedAt: at };
@@ -168,6 +173,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (!record || record.state !== "Password change required") return false;
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === currentUser.id ? { ...item, state: "Onboarding", passwordChangedAt: at, passwordChangeEvidence: evidence.trim(), returnReason: undefined } : item) }));
+    syncAccountState(currentUser.id, "Onboarding");
     return true;
   };
 
@@ -177,17 +183,21 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (!record || record.state !== "Onboarding" || !onboardingReadiness(hcm, record, currentUser.id).readyForEmployeeSubmission) return false;
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === currentUser.id ? { ...item, state: "Pending approval", onboardingSubmittedAt: at } : item) }));
+    syncAccountState(currentUser.id, "Pending approval");
     return true;
   };
 
-  const activateUser = (userId: string) => {
+  const activateUser = async (userId: string) => {
     if (currentUser?.role !== "Administrator") return false;
     const record = accountAccessFor(state, userId);
     if (!record || !onboardingReadiness(hcm, record, userId).readyForActivation) return false;
+    if (firebase) {
+      const persisted = await firebase.setAccountState(userId, "Active");
+      if (!persisted.ok) return false;
+    }
     const at = new Date().toISOString();
     setHcm((current) => activateEmploymentAfterOnboarding(current, userId, currentUser.id));
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Active", activatedAt: at, activatedBy: currentUser.id, returnReason: undefined } : item) }));
-    syncAccountState(userId, "Active");
     return true;
   };
 

@@ -1,20 +1,22 @@
 "use client";
 
-import { CheckCircle2, Copy, KeyRound, MailCheck, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
+import { CheckCircle2, Copy, FileCheck2, KeyRound, MailCheck, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
 import { generateTemporaryPassword, validateTemporaryPassword } from "../../lib/firebase-admin-provisioning";
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { useHcm } from "../../lib/hcm-context";
-import type { PayBasis, WorkerClassification } from "../../lib/hcm-engine";
+import { appendAudit, type PayBasis, type WorkerClassification } from "../../lib/hcm-engine";
 import { useIdentityProvisioning, type NewProvisioningDraftInput } from "../../lib/identity-provisioning-context";
 import type { ProvisionableRole, ProvisioningDraft } from "../../lib/identity-provisioning";
 import { isFailClosedPlaceholder } from "../../lib/identity-provisioning";
+import { onboardingReadiness, requiredOnboardingDocumentTemplates } from "../../lib/onboarding-engine";
 import { buildProvisionedWorkspaceUser, managerOptionsForProvisioning, validateInternalUserProvisioning } from "../../lib/workspace-user-provisioning";
 import { useWorkspace } from "../../lib/workspace-context";
-import { Button, Field, Section, StatusPill, formatMoney } from "../ui";
+import { Button, Field, PageHeader, Section, StatusPill, formatMoney } from "../ui";
 
 type WorkerType = "Employee" | "Contractor";
+type NewHireView = "create" | "queue";
 type FormState = {
   source: ProvisioningDraft["source"];
   offerId: string;
@@ -36,19 +38,24 @@ type FormState = {
 
 const teamForRole = (role: ProvisionableRole): "Sales" | "Operations" => ["Sales Manager", "Sales Representative"].includes(role) ? "Sales" : "Operations";
 const roleOptions: ProvisionableRole[] = ["Sales Representative", "Sales Manager", "Operations", "Warehouse"];
-const payBasisOptions: PayBasis[] = ["Hourly", "Salary per pay period", "Not configured"];
+const payBasisOptions: PayBasis[] = ["Hourly", "Salary per pay period"];
 const classificationFor = (workerType: WorkerType, payBasis: PayBasis): WorkerClassification => workerType === "Contractor" ? "Contractor" : payBasis === "Hourly" ? "Hourly" : payBasis === "Salary per pay period" ? "Salary" : "Not configured";
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function NewHireProvisioning() {
-  const { data, currentUser } = useWorkspace();
-  const { hcm } = useHcm();
+export function NewHireProvisioning({ view }: { view: NewHireView }) {
+  const { data, currentUser, navigate } = useWorkspace();
+  const { hcm, setHcm } = useHcm();
   const provisioning = useIdentityProvisioning();
   const firebase = useFirebaseSessionOptional();
   const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const [step, setStep] = useState(1);
   const [identityDraft, setIdentityDraft] = useState<{ draftId: string; password: string; busy: boolean; error: string } | null>(null);
   const [issued, setIssued] = useState<{ draftId: string; email: string; password: string; name: string } | null>(null);
   const [pendingLink, setPendingLink] = useState<{ draftId: string; uid: string } | null>(null);
-  const [form, setForm] = useState<FormState>(() => ({
+  const [activationBusy,setActivationBusy]=useState<string|null>(null);
+  const defaultCourses = hcm.courses.filter((course) => course.active && course.requiredForTeams.includes("Sales")).map((course) => course.id);
+  const emptyForm = (): FormState => ({
     source: "Direct hire",
     offerId: "",
     legalName: "",
@@ -56,21 +63,23 @@ export function NewHireProvisioning() {
     workEmail: "",
     jobTitle: "Sales Representative",
     role: "Sales Representative",
-    managerId: data.users.find((user) => user.role === "Sales Manager")?.id ?? data.users.find((user) => user.role === "Administrator")?.id ?? "",
-    workLocation: "Phoenix, AZ",
+    managerId: "",
+    workLocation: "",
     workerType: "Employee",
     payBasis: "Not configured",
     payRate: "",
-    payGroup: "Not configured",
+    payGroup: "",
     standardWeeklyHours: "",
     startDate: arizonaDateKey(),
-    courseIds: hcm.courses.filter((course) => course.active && course.requiredForTeams.includes("Sales")).map((course) => course.id),
-  }));
+    courseIds: defaultCourses,
+  });
+  const [form, setForm] = useState<FormState>(emptyForm);
 
   const acceptedOffers = useMemo(() => hcm.offers.filter((offer) => offer.status === "Accepted").map((offer) => ({ offer, candidate: hcm.candidates.find((candidate) => candidate.id === offer.candidateId) })).filter((item) => item.candidate), [hcm.candidates, hcm.offers]);
   const team = teamForRole(form.role);
   const managers = managerOptionsForProvisioning(data, form.role);
   const activeCourses = hcm.courses.filter((course) => course.active);
+  const activeDrafts = provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled");
   const pendingApprovals = provisioning.state.records.filter((record) => record.state === "Pending approval");
 
   // Once the new identity reaches the directory, link the draft and open onboarding.
@@ -79,16 +88,58 @@ export function NewHireProvisioning() {
     const user = data.users.find((item) => item.id === pendingLink.uid);
     if (!user) return;
     const handle = window.setTimeout(() => {
-      const linked = provisioning.beginOnboarding({ userId: user.id, draftId: pendingLink.draftId });
-      setNotice(linked
-        ? `${user.name} now has a Firebase identity and is ready to begin onboarding.`
-        : "The identity exists but onboarding could not be opened. Use “Link & start onboarding” on this hire.");
+      // One call: linking and opening onboarding must happen in a single state transition, or the
+      // second half reads a draft status the first half has only queued.
+      const started = provisioning.beginOnboarding({ userId: user.id, draftId: pendingLink.draftId });
+      setNotice(started
+        ? `${user.name} is ready for first sign-in and onboarding.`
+        : "The Firebase account exists, but Momentum could not finish the onboarding link. Review the queue before trying again.");
       setPendingLink(null);
     }, 0);
     return () => window.clearTimeout(handle);
   }, [data.users, pendingLink, provisioning]);
 
   if (currentUser?.role !== "Administrator") return null;
+
+  const validateStep = (targetStep: number) => {
+    if (targetStep >= 1) {
+      if (form.legalName.trim().length < 2) return "Enter the employee's legal name.";
+      if (!emailPattern.test(form.workEmail.trim())) return "Enter a valid work email address.";
+      const normalized = form.workEmail.trim().toLowerCase();
+      const existingDraft = activeDrafts.find((draft) => draft.workEmail.toLowerCase() === normalized);
+      if (data.users.some((user) => user.email.toLowerCase() === normalized)) return "That work email already belongs to a Momentum account.";
+      if (existingDraft) return "That work email already has an open new-hire setup. Use the onboarding queue instead of creating another one.";
+      if (!form.startDate) return "Choose a start date.";
+    }
+    if (targetStep >= 2) {
+      const input = { name: form.legalName, email: form.workEmail, title: form.jobTitle, role: form.role, team, managerId: form.managerId };
+      const validation = validateInternalUserProvisioning(data, input);
+      if (validation) return validation;
+      if (form.workLocation.trim().length < 2) return "Enter the work location.";
+    }
+    if (targetStep >= 3) {
+      if (form.payBasis === "Not configured") return "Choose the approved pay basis before issuing credentials.";
+      const payRate = Number(form.payRate);
+      if (!Number.isFinite(payRate) || payRate <= 0) return "Enter the approved pay rate before issuing credentials.";
+      if (form.payGroup.trim().length < 2 || form.payGroup.trim().toLowerCase() === "not configured") return "Choose the actual pay group before issuing credentials.";
+      if (form.standardWeeklyHours.trim()) {
+        const hours = Number(form.standardWeeklyHours);
+        if (!Number.isFinite(hours) || hours < 0 || hours > 168) return "Standard weekly hours must be between 0 and 168.";
+      }
+    }
+    if (targetStep >= 4) {
+      if (!form.courseIds.length) return "Assign at least one active onboarding course before issuing credentials.";
+      if (form.courseIds.some((id) => !activeCourses.some((course) => course.id === id))) return "One or more selected training courses are no longer active.";
+    }
+    return null;
+  };
+
+  const nextStep = () => {
+    const validation = validateStep(step);
+    if (validation) { setError(validation); return; }
+    setError("");
+    setStep((current) => Math.min(4, current + 1));
+  };
 
   const startIdentityCreation = (draft: ProvisioningDraft) => { setIssued(null); setIdentityDraft({ draftId: draft.id, password: generateTemporaryPassword(), busy: false, error: "" }); };
 
@@ -105,7 +156,7 @@ export function NewHireProvisioning() {
     if (!result.ok || !result.uid) {
       // Naming the failing stage matters: a Firestore rejection means recover the hire, never recreate it.
       const guidance = result.stage === "firestore-access"
-        ? " The Firebase identity survived — reopen this hire here to finish it instead of creating it again."
+        ? " The Firebase identity survived on purpose — reopen this hire here to finish it. Do not create the account again."
         : result.stage === "authorization" ? " Ask an active Administrator to provision this account." : "";
       setIdentityDraft({ ...identityDraft, busy: false, error: `${result.message ?? "Identity creation failed."}${guidance}` });
       return;
@@ -119,7 +170,7 @@ export function NewHireProvisioning() {
   };
 
   const copyPassword = async () => { if (issued && typeof navigator !== "undefined" && navigator.clipboard) { await navigator.clipboard.writeText(issued.password).catch(() => undefined); setNotice("Temporary password copied. Share it through a secure channel only."); } };
-  const sendResetInstead = async () => { if (!firebase || !issued) return; const result = await firebase.sendPasswordReset(issued.email); setNotice(result.message ?? (result.ok ? "Password setup e-mail sent." : "Could not send the e-mail.")); };
+  const sendResetInstead = async () => { if (!firebase || !issued) return; const result = await firebase.sendPasswordReset(issued.email); setNotice(result.message ?? (result.ok ? "Password setup email sent." : "Could not send the email.")); };
 
   const setRole = (role: ProvisionableRole) => {
     const nextTeam = teamForRole(role);
@@ -128,17 +179,14 @@ export function NewHireProvisioning() {
       ...current,
       role,
       jobTitle: current.jobTitle === "Sales Representative" || current.jobTitle === "Sales Manager" || current.jobTitle === "Operations" || current.jobTitle === "Warehouse" ? role : current.jobTitle,
-      managerId: nextManagers.some((manager) => manager.id === current.managerId) ? current.managerId : nextManagers[0]?.id ?? "",
+      managerId: nextManagers.some((manager) => manager.id === current.managerId) ? current.managerId : "",
       courseIds: hcm.courses.filter((course) => course.active && course.requiredForTeams.includes(nextTeam)).map((course) => course.id),
     }));
   };
 
   const selectOffer = (offerId: string) => {
     const match = acceptedOffers.find((item) => item.offer.id === offerId);
-    if (!match) {
-      setForm((current) => ({ ...current, source: "Direct hire", offerId: "" }));
-      return;
-    }
+    if (!match) { setForm((current) => ({ ...current, source: "Direct hire", offerId: "" })); return; }
     setForm((current) => ({
       ...current,
       source: "Accepted offer",
@@ -156,7 +204,9 @@ export function NewHireProvisioning() {
 
   const save = (event: FormEvent) => {
     event.preventDefault();
-    const payRate = form.payRate.trim() ? Number(form.payRate) : undefined;
+    const validation = validateStep(4);
+    if (validation) { setError(validation); return; }
+    const payRate = Number(form.payRate);
     const hours = form.standardWeeklyHours.trim() ? Number(form.standardWeeklyHours) : undefined;
     const input: NewProvisioningDraftInput = {
       source: form.source,
@@ -179,67 +229,100 @@ export function NewHireProvisioning() {
       courseIds: form.courseIds,
     };
     const id = provisioning.saveDraft(input);
-    setNotice(id ? "New-hire setup saved. Ready for identity provisioning." : "Setup was not saved. Check the required fields, reporting line, pay setup, dates, and duplicate email.");
+    if (!id) { setError("Momentum did not save this setup. Check for a duplicate email, invalid reporting line, inactive training, or incomplete pay information."); return; }
+    setError("");
+    setNotice("New-hire setup saved. The employee is now waiting in the onboarding queue for account creation.");
+    setForm(emptyForm());
+    setStep(1);
   };
 
   const startExistingOnboarding = (draft: ProvisioningDraft) => {
     const matchingUser = data.users.find((user) => user.email.toLowerCase() === draft.workEmail.toLowerCase() && user.role !== "Administrator" && user.role !== "Customer");
-    if (!matchingUser) { setNotice("No linked identity exists yet. Create the Firebase identity for this hire first."); return; }
+    if (!matchingUser) { setNotice("No linked Momentum identity exists yet. Create the Firebase account from this queue first."); return; }
     if (!provisioning.beginOnboarding({ userId: matchingUser.id, draftId: draft.id })) {
       const record = provisioning.state.records.find((item) => item.userId === matchingUser.id);
       const started = record && !isFailClosedPlaceholder(record) && record.state !== "Password change required";
       setNotice(started
         ? `${matchingUser.name} is already past the password change (${record!.state}). Nothing to restart.`
-        : "The identity could not be linked to this onboarding setup. Confirm the work e-mail matches the Firebase account.");
+        : "The identity could not be linked to this onboarding setup. Confirm the work e-mail, role, team and manager still match the draft.");
       return;
     }
     setNotice(`${matchingUser.name} is ready to begin onboarding.`);
   };
 
-  return <div className="new-hire-provisioning">
-    <Section title="New hire account setup" description="Configure the employee before credentials are issued." action={<StatusPill tone="gold"><ShieldCheck size={14}/> Admin controlled</StatusPill>}>
-      <div className="provisioning-banner"><KeyRound size={22}/><div><strong>Administrator accounts are bootstrap-only</strong><p>Normal employee setup cannot create an Administrator account.</p></div></div>
-      <form className="provisioning-form" onSubmit={save}>
-        <div className="provisioning-section"><h3>1. Identity</h3><div className="form-grid">
-          {acceptedOffers.length > 0 && <Field label="Prefill from accepted offer (optional)"><select value={form.offerId} onChange={(event) => selectOffer(event.target.value)}><option value="">Enter manually</option>{acceptedOffers.map(({ offer, candidate }) => <option key={offer.id} value={offer.id}>{candidate!.name} · {offer.title}</option>)}</select></Field>}
-          <Field label="Legal name"><input required value={form.legalName} onChange={(event) => setForm((current) => ({ ...current, legalName: event.target.value }))}/></Field>
-          <Field label="Preferred name"><input value={form.preferredName} onChange={(event) => setForm((current) => ({ ...current, preferredName: event.target.value }))}/></Field>
-          <Field label="Work email"><input type="email" required value={form.workEmail} onChange={(event) => setForm((current) => ({ ...current, workEmail: event.target.value }))}/></Field>
-          <Field label="Start date"><input type="date" required value={form.startDate} onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))}/></Field>
-        </div></div>
+  const verifyDocumentExternally = (documentId: string) => {
+    const document = hcm.documents.find((item) => item.id === documentId);
+    if (!document || document.status === "Available") return;
+    const at = new Date().toISOString();
+    setHcm((state) => appendAudit({ ...state, documents: state.documents.map((item) => item.id === documentId ? { ...item, status: "Available", fileName: "Verified externally (manual attestation)", uploadedAt: at, uploadedBy: currentUser.id } : item) }, { actorId: currentUser.id, action: "Verified onboarding document outside Momentum", entityType: "EmployeeDocument", entityId: documentId, before: document.status, after: "Available", reason: "Manual Administrator attestation while secure file/e-sign transport is not connected" }));
+    setNotice(`${document.title} marked verified externally. No file was stored in Momentum.`);
+  };
 
-        <div className="provisioning-section"><h3>2. Position and chain of command</h3><div className="form-grid">
-          <Field label="Platform role"><select value={form.role} onChange={(event) => setRole(event.target.value as ProvisionableRole)}>{roleOptions.map((role) => <option key={role}>{role}</option>)}</select></Field>
+  const activatePendingUser=async(userId:string,name:string)=>{
+    if(activationBusy)return;
+    setActivationBusy(userId);
+    const ok=await provisioning.activateUser(userId);
+    setActivationBusy(null);
+    setNotice(ok?`${name} activated.`:"Activation could not be persisted. Access remains blocked; recheck the listed controls and Firestore access before retrying.");
+  };
+
+  if (view === "create") return <div className="page page--new-hire">
+    <PageHeader eyebrow="Human Resources" title="Create new hire" description="Create one complete employee setup before any login credentials are issued." actions={<Button variant="secondary" onClick={() => navigate("onboarding")}>Open onboarding queue</Button>}/>
+    <div className="new-hire-stepper" aria-label="New hire setup steps">{["Identity","Position","Pay","Training & review"].map((label,index)=><button type="button" key={label} className={step===index+1?"is-active":step>index+1?"is-complete":""} onClick={()=>{if(index+1<step)setStep(index+1)}}><span>{index+1}</span><strong>{label}</strong></button>)}</div>
+    <Section title={`Step ${step} of 4`} description={step===1?"Who is joining and when?":step===2?"What job are they doing and who owns their work?":step===3?"Confirm classification and approved pay before access exists.":"Assign required training and review the setup before moving it to the queue."} action={<StatusPill tone="gold"><ShieldCheck size={14}/> Administrator only</StatusPill>}>
+      <form className="provisioning-form new-hire-wizard" onSubmit={save}>
+        {step===1&&<div className="provisioning-section"><div className="form-grid">
+          {acceptedOffers.length>0&&<Field label="Prefill from accepted offer (optional)"><select value={form.offerId} onChange={(event)=>selectOffer(event.target.value)}><option value="">Enter manually</option>{acceptedOffers.map(({offer,candidate})=><option key={offer.id} value={offer.id}>{candidate!.name} · {offer.title}</option>)}</select></Field>}
+          <Field label="Legal name"><input required value={form.legalName} onChange={(event)=>setForm((current)=>({...current,legalName:event.target.value}))}/></Field>
+          <Field label="Preferred name"><input value={form.preferredName} onChange={(event)=>setForm((current)=>({...current,preferredName:event.target.value}))}/></Field>
+          <Field label="Work email"><input type="email" required value={form.workEmail} onChange={(event)=>setForm((current)=>({...current,workEmail:event.target.value}))}/></Field>
+          <Field label="Start date"><input type="date" required value={form.startDate} onChange={(event)=>setForm((current)=>({...current,startDate:event.target.value}))}/></Field>
+        </div></div>}
+        {step===2&&<div className="provisioning-section"><div className="form-grid">
+          <Field label="Platform role"><select value={form.role} onChange={(event)=>setRole(event.target.value as ProvisionableRole)}>{roleOptions.map((role)=><option key={role}>{role}</option>)}</select></Field>
           <Field label="Department"><input value={team} readOnly aria-readonly="true"/></Field>
-          <Field label="Position title"><input required value={form.jobTitle} onChange={(event) => setForm((current) => ({ ...current, jobTitle: event.target.value }))}/></Field>
-          <Field label="Reports to"><select required value={form.managerId} onChange={(event) => setForm((current) => ({ ...current, managerId: event.target.value }))}><option value="">Choose manager</option>{managers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} · {manager.title}</option>)}</select></Field>
-          <Field label="Work location"><input required value={form.workLocation} onChange={(event) => setForm((current) => ({ ...current, workLocation: event.target.value }))}/></Field>
-          <Field label="Standard weekly hours"><input type="number" min="0" max="168" step="0.25" value={form.standardWeeklyHours} onChange={(event) => setForm((current) => ({ ...current, standardWeeklyHours: event.target.value }))} placeholder="If applicable"/></Field>
-        </div></div>
-
-        <div className="provisioning-section"><h3>3. Pay and tax setup</h3><div className="form-grid">
-          <Field label="Worker type (tax forms)"><select value={form.workerType} onChange={(event) => setForm((current) => ({ ...current, workerType: event.target.value as WorkerType }))}><option>Employee</option><option>Contractor</option></select></Field>
-          <Field label="Pay basis"><select value={form.payBasis} onChange={(event) => setForm((current) => ({ ...current, payBasis: event.target.value as PayBasis, payRate: event.target.value === "Not configured" ? "" : current.payRate }))}>{payBasisOptions.map((item) => <option key={item}>{item}</option>)}</select></Field>
-          <Field label={form.payBasis === "Hourly" ? "Hourly rate" : form.payBasis === "Salary per pay period" ? "Salary per pay period" : "Pay rate"}><input type="number" min="0" step="0.01" disabled={form.payBasis === "Not configured"} required={form.payBasis !== "Not configured"} value={form.payRate} onChange={(event) => setForm((current) => ({ ...current, payRate: event.target.value }))}/></Field>
-          <Field label="Pay group"><input required value={form.payGroup} onChange={(event) => setForm((current) => ({ ...current, payGroup: event.target.value }))} placeholder="Weekly, biweekly, etc."/></Field>
-        </div></div>
-
-        <div className="provisioning-section"><h3>4. Required training</h3><p className="provisioning-help">Choose the courses this employee needs. Training deadlines can be added after company policy is confirmed.</p><div className="training-picker">{activeCourses.map((course) => <label key={course.id}><input type="checkbox" checked={form.courseIds.includes(course.id)} onChange={() => toggleCourse(course.id)}/><span><strong>{course.title}</strong><small>{course.description}</small></span></label>)}</div></div>
-        {notice && <div className="form-callout"><p>{notice}</p></div>}
-        <div className="provisioning-actions"><Button type="submit" icon={<UserPlus size={16}/>}>Save new-hire setup</Button></div>
+          <Field label="Position title"><input required value={form.jobTitle} onChange={(event)=>setForm((current)=>({...current,jobTitle:event.target.value}))}/></Field>
+          <Field label="Reports to"><select required value={form.managerId} onChange={(event)=>setForm((current)=>({...current,managerId:event.target.value}))}><option value="">Choose manager</option>{managers.map((manager)=><option key={manager.id} value={manager.id}>{manager.name} · {manager.title}</option>)}</select></Field>
+          <Field label="Work location"><input required value={form.workLocation} onChange={(event)=>setForm((current)=>({...current,workLocation:event.target.value}))} placeholder="Enter the actual work location"/></Field>
+          <Field label="Standard weekly hours"><input type="number" min="0" max="168" step="0.25" value={form.standardWeeklyHours} onChange={(event)=>setForm((current)=>({...current,standardWeeklyHours:event.target.value}))} placeholder="If applicable"/></Field>
+        </div></div>}
+        {step===3&&<div className="provisioning-section"><div className="form-grid">
+          <Field label="Worker type"><select value={form.workerType} onChange={(event)=>setForm((current)=>({...current,workerType:event.target.value as WorkerType}))}><option>Employee</option><option>Contractor</option></select></Field>
+          <Field label="Pay basis"><select value={form.payBasis} onChange={(event)=>setForm((current)=>({...current,payBasis:event.target.value as PayBasis}))}><option value="Not configured" disabled>Choose pay basis</option>{payBasisOptions.map((item)=><option key={item}>{item}</option>)}</select></Field>
+          <Field label={form.payBasis==="Hourly"?"Hourly rate":form.payBasis==="Salary per pay period"?"Salary per pay period":"Pay rate"}><input type="number" min="0.01" step="0.01" required value={form.payRate} onChange={(event)=>setForm((current)=>({...current,payRate:event.target.value}))}/></Field>
+          <Field label="Pay group"><input required value={form.payGroup} onChange={(event)=>setForm((current)=>({...current,payGroup:event.target.value}))} placeholder="Weekly, biweekly, etc."/></Field>
+        </div><div className="provisioning-banner"><ShieldCheck size={20}/><div><strong>Credentials wait until the employment setup is real.</strong><p>Momentum will not create a login with placeholder compensation, an unresolved manager, or an unconfigured pay group.</p></div></div></div>}
+        {step===4&&<div className="provisioning-section"><div className="training-picker">{activeCourses.map((course)=><label key={course.id}><input type="checkbox" checked={form.courseIds.includes(course.id)} onChange={()=>toggleCourse(course.id)}/><span><strong>{course.title}</strong><small>{course.description}</small></span></label>)}</div><div className="new-hire-review-grid"><div><small>Employee</small><strong>{form.legalName}</strong><span>{form.workEmail}</span></div><div><small>Position</small><strong>{form.jobTitle}</strong><span>{form.role} · {team}</span></div><div><small>Manager</small><strong>{data.users.find((user)=>user.id===form.managerId)?.name??"Not selected"}</strong><span>{form.workLocation||"Work location missing"}</span></div><div><small>Pay</small><strong>{form.payRate?formatMoney(Number(form.payRate)):"Missing"}</strong><span>{form.payBasis} · {form.payGroup||"pay group missing"}</span></div><div><small>Start</small><strong>{form.startDate}</strong><span>{form.courseIds.length} training assignment{form.courseIds.length===1?"":"s"}</span></div></div></div>}
+        {error&&<p className="form-error" role="alert">{error}</p>}
+        {notice&&<div className="form-callout"><p>{notice}</p><Button type="button" size="sm" variant="secondary" onClick={()=>navigate("onboarding")}>Continue to onboarding queue</Button></div>}
+        <div className="provisioning-actions new-hire-wizard-actions">{step>1&&<Button type="button" variant="ghost" onClick={()=>{setError("");setStep((current)=>Math.max(1,current-1))}}>Back</Button>}{step<4?<Button type="button" onClick={nextStep}>Continue</Button>:<Button type="submit" icon={<UserPlus size={16}/>}>Save new-hire setup</Button>}</div>
       </form>
     </Section>
+  </div>;
 
-    <Section title="Provisioning queue" description={firebase ? "Prepared employee accounts. Create the Firebase identity here; the employee signs in with a temporary password and must change it before onboarding." : "Prepared employee accounts waiting for identity or onboarding steps."} action={<StatusPill tone="neutral">{provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled").length} setup{provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled").length === 1 ? "" : "s"}</StatusPill>}>
-      {issued && <div className="temp-password" role="status"><strong>{issued.name} · {issued.email}</strong><span>Temporary password (shown once). The employee must change it at first sign-in.</span><code>{issued.password}</code><div className="provisioning-row-actions"><Button size="sm" variant="secondary" icon={<Copy size={14}/>} onClick={() => void copyPassword()}>Copy</Button><Button size="sm" variant="ghost" icon={<MailCheck size={14}/>} onClick={() => void sendResetInstead()}>E-mail a password setup link instead</Button><Button size="sm" variant="ghost" onClick={() => setIssued(null)}>Dismiss</Button></div></div>}
-      <div className="provisioning-queue">{provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled").map((draft) => {
-        const manager = data.users.find((user) => user.id === draft.managerId);
-        const matchingUser = data.users.find((user) => user.email.toLowerCase() === draft.workEmail.toLowerCase() && user.role !== "Administrator" && user.role !== "Customer");
-        const creating = identityDraft?.draftId === draft.id;
-        return <article key={draft.id}><span className="provisioning-avatar"><UsersRound size={18}/></span><div><strong>{draft.legalName}</strong><p>{draft.jobTitle} · {draft.team} · reports to {manager?.name ?? "Unresolved manager"}</p><small>{draft.workEmail} · starts {draft.startDate}{draft.payRate ? ` · ${draft.payBasis} ${formatMoney(draft.payRate)}` : " · compensation pending"}</small>{creating && identityDraft && <form className="access-gate-form" onSubmit={(event) => { event.preventDefault(); void createIdentity(draft); }}><label><span>Temporary password</span><input value={identityDraft.password} onChange={(event) => setIdentityDraft({ ...identityDraft, password: event.target.value, error: "" })} autoComplete="off"/></label>{identityDraft.error && <p className="form-error" role="alert">{identityDraft.error}</p>}<div className="provisioning-row-actions"><Button size="sm" type="submit" disabled={identityDraft.busy} icon={<KeyRound size={14}/>}>{identityDraft.busy ? "Creating…" : "Create identity & access record"}</Button><Button size="sm" variant="ghost" type="button" onClick={() => setIdentityDraft(null)}>Cancel</Button></div></form>}</div><StatusPill tone={draft.status === "Auth linked" ? "success" : draft.status === "Invite sent" ? "info" : "warning"}>{draft.status}</StatusPill><div className="provisioning-row-actions">{matchingUser ? <Button size="sm" variant="secondary" onClick={() => startExistingOnboarding(draft)}>Link & start onboarding</Button> : firebase ? <Button size="sm" variant="secondary" disabled={creating} icon={<KeyRound size={14}/>} onClick={() => startIdentityCreation(draft)}>Create Firebase identity</Button> : <Button size="sm" variant="secondary" disabled title="Available in production mode with Firebase connected">Firebase identity required</Button>}<Button size="sm" variant="ghost" onClick={() => provisioning.cancelDraft(draft.id)}>Cancel</Button></div></article>;
-      })}{provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled").length === 0 && <div className="review-empty"><UserPlus size={24}/><h3>No new-hire setups yet</h3><p>Create an employee setup before issuing credentials.</p></div>}</div>
+  return <div className="page page--onboarding-queue">
+    <PageHeader eyebrow="Human Resources" title="Onboarding queue" description="Create employee login credentials only from an approved setup, monitor first-login onboarding, verify external documents, and activate access when controls are complete." actions={<Button variant="secondary" icon={<UserPlus size={16}/>} onClick={()=>navigate("newHire")}>Create new hire</Button>}/>
+    <Section title="Account provisioning" description={firebase?"Prepared hires waiting for a Firebase identity, first sign-in, or onboarding progression.":"Prepared hires waiting for identity provisioning."} action={<StatusPill tone="neutral">{activeDrafts.length} setup{activeDrafts.length===1?"":"s"}</StatusPill>}>
+      {issued&&<div className="temp-password" role="status"><strong>{issued.name} · {issued.email}</strong><span>Temporary password shown once. The employee must replace it at first sign-in.</span><code>{issued.password}</code><div className="provisioning-row-actions"><Button size="sm" variant="secondary" icon={<Copy size={14}/>} onClick={()=>void copyPassword()}>Copy</Button><Button size="sm" variant="ghost" icon={<MailCheck size={14}/>} onClick={()=>void sendResetInstead()}>Email password setup link</Button><Button size="sm" variant="ghost" onClick={()=>setIssued(null)}>Dismiss</Button></div></div>}
+      {notice&&<div className="form-callout"><p>{notice}</p></div>}
+      <div className="provisioning-queue">{activeDrafts.map((draft)=>{
+        const manager=data.users.find((user)=>user.id===draft.managerId);
+        const matchingUser=data.users.find((user)=>user.email.toLowerCase()===draft.workEmail.toLowerCase()&&user.role!=="Administrator"&&user.role!=="Customer");
+        const creating=identityDraft?.draftId===draft.id;
+        const record=matchingUser?provisioning.state.records.find((item)=>item.userId===matchingUser.id):undefined;
+        return <article key={draft.id}><span className="provisioning-avatar"><UsersRound size={18}/></span><div><strong>{draft.legalName}</strong><p>{draft.jobTitle} · {draft.team} · reports to {manager?.name??"Unresolved manager"}</p><small>{draft.workEmail} · starts {draft.startDate} · {draft.payBasis} {draft.payRate?formatMoney(draft.payRate):"missing pay"}</small>{record&&<small>Access: {record.state}</small>}{creating&&identityDraft&&<form className="access-gate-form" onSubmit={(event)=>{event.preventDefault();void createIdentity(draft)}}><label><span>Temporary password</span><input value={identityDraft.password} onChange={(event)=>setIdentityDraft({...identityDraft,password:event.target.value,error:""})} autoComplete="off"/></label>{identityDraft.error&&<p className="form-error" role="alert">{identityDraft.error}</p>}<div className="provisioning-row-actions"><Button size="sm" type="submit" disabled={identityDraft.busy} icon={<KeyRound size={14}/>}>{identityDraft.busy?"Creating…":"Create account"}</Button><Button size="sm" variant="ghost" type="button" onClick={()=>setIdentityDraft(null)}>Cancel</Button></div></form>}</div><StatusPill tone={draft.status==="Auth linked"?"success":draft.status==="Invite sent"?"info":"warning"}>{draft.status}</StatusPill><div className="provisioning-row-actions">{matchingUser&&!record?<Button size="sm" variant="secondary" onClick={()=>startExistingOnboarding(draft)}>Link & start onboarding</Button>:!matchingUser&&firebase?<Button size="sm" variant="secondary" disabled={creating} icon={<KeyRound size={14}/>} onClick={()=>startIdentityCreation(draft)}>Create Firebase account</Button>:!firebase?<Button size="sm" variant="secondary" disabled title="Firebase Authentication is required">Firebase required</Button>:null}{draft.status!=="Auth linked"&&!record&&<Button size="sm" variant="ghost" onClick={()=>provisioning.cancelDraft(draft.id)}>Cancel setup</Button>}</div></article>;
+      })}{activeDrafts.length===0&&<div className="review-empty"><UserPlus size={24}/><h3>No hires waiting for account creation</h3><p>Create a new-hire setup first.</p></div>}</div>
     </Section>
 
-    {pendingApprovals.length > 0 && <Section title="Onboarding approval queue" description="Review completed onboarding before activating access."><div className="provisioning-queue">{pendingApprovals.map((record) => { const user = data.users.find((item) => item.id === record.userId); return <article key={record.id}><span className="provisioning-avatar"><CheckCircle2 size={18}/></span><div><strong>{user?.name ?? record.userId}</strong><p>Onboarding submitted for final review.</p></div><StatusPill tone="warning">Pending approval</StatusPill><Button size="sm" onClick={() => provisioning.activateUser(record.userId)}>Verify & activate</Button></article>; })}</div></Section>}
+    <Section title="Final onboarding review" description="Employees may submit after completing the work they control. Administrators verify required paperwork before activating production access." action={<StatusPill tone={pendingApprovals.length?"warning":"success"}>{pendingApprovals.length} pending</StatusPill>}>
+      <div className="provisioning-queue onboarding-approval-list">{pendingApprovals.map((record)=>{
+        const user=data.users.find((item)=>item.id===record.userId);
+        const readiness=onboardingReadiness(hcm,record,record.userId);
+        const employee=hcm.employees.find((item)=>item.userId===record.userId);
+        const requiredTitles=new Set(requiredOnboardingDocumentTemplates(employee?.classification??"Not configured").map((item)=>item.title.toLowerCase()));
+        const documents=hcm.documents.filter((item)=>item.userId===record.userId&&requiredTitles.has(item.title.toLowerCase()));
+        return <article key={record.id} className="onboarding-review-card"><span className="provisioning-avatar"><CheckCircle2 size={18}/></span><div className="onboarding-review-body"><strong>{user?.name??record.userId}</strong><p>{readiness.readyForActivation?"All activation controls are complete.":`${readiness.activationBlockers.length} activation blocker${readiness.activationBlockers.length===1?"":"s"} remain.`}</p><div className="onboarding-doc-review">{documents.map((document)=><div key={document.id}><span><FileCheck2 size={15}/><span><strong>{document.title}</strong><small>{document.status==="Available"?document.fileName??"Verified":"Awaiting Administrator verification"}</small></span></span>{document.status==="Available"?<StatusPill tone="success">Verified</StatusPill>:<Button size="sm" variant="secondary" onClick={()=>verifyDocumentExternally(document.id)}>Verify externally</Button>}</div>)}</div>{readiness.activationBlockers.length>0&&<ul className="onboarding-activation-blockers">{readiness.activationBlockers.map((blocker)=><li key={blocker}>{blocker}</li>)}</ul>}</div><StatusPill tone={readiness.readyForActivation?"success":"warning"}>{readiness.readyForActivation?"Ready":"Review"}</StatusPill><Button size="sm" disabled={!readiness.readyForActivation||activationBusy===record.userId} onClick={()=>void activatePendingUser(record.userId,user?.name??"Employee")}>{activationBusy===record.userId?"Activating…":"Activate access"}</Button></article>;
+      })}{pendingApprovals.length===0&&<div className="review-empty"><CheckCircle2 size={24}/><h3>No onboarding approvals waiting</h3><p>Employees appear here after they complete and submit their onboarding work.</p></div>}</div>
+    </Section>
   </div>;
 }

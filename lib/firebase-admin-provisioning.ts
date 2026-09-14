@@ -1,8 +1,10 @@
 import type { FirebaseAuthSession } from "./firebase-auth-rest";
 import {
+  BOOTSTRAP_FOUNDER_PATH,
   PROVISIONING_STATUS_PATH,
   PROVISION_EMPLOYEE_PATH,
   temporaryPasswordProblem,
+  type BootstrapFounderResponse,
   type ProvisionEmployeeRequest,
   type ProvisionEmployeeSuccess,
   type ProvisioningStage,
@@ -82,4 +84,24 @@ export async function createFirebaseIdentityAsAdministrator(session:FirebaseAuth
 /** Lets the provisioning queue show whether a stuck hire can be recovered before anything is created. */
 export async function lookupProvisioningStatus(session:FirebaseAuthSession,email:string):Promise<ProvisioningStatusSuccess>{
   return callAdminEndpoint<ProvisioningStatusSuccess>(PROVISIONING_STATUS_PATH,session,{email});
+}
+
+/**
+ * Creates the sign-in identity for a founding Administrator.
+ *
+ * Unauthenticated by necessity — there is nobody to authenticate as yet — so the Worker enforces the
+ * two-address allow-list itself and refuses to touch an address that already has an identity. Returns
+ * whether an identity was actually created.
+ */
+export async function bootstrapFounderIdentity(email:string,password:string):Promise<boolean>{
+  let response:Response;
+  try{
+    response=await fetch(BOOTSTRAP_FOUNDER_PATH,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})});
+  }catch{
+    throw new ProvisioningError("service","Could not reach the provisioning service. Check your connection and try again.");
+  }
+  const payload=await response.json().catch(()=>null) as BootstrapFounderResponse|null;
+  if(!payload)throw new ProvisioningError("service",`The provisioning service returned an unreadable response (${response.status}).`);
+  if(payload.ok!==true)throw new ProvisioningError(payload.stage,payload.message);
+  return payload.created;
 }

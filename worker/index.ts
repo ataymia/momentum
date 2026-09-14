@@ -16,9 +16,13 @@
  */
 
 import {
+  BOOTSTRAP_FOUNDER_PATH,
   PROVISIONING_STATUS_PATH,
   PROVISION_EMPLOYEE_PATH,
+  isFounderBootstrapEmail,
+  temporaryPasswordProblem,
   validateProvisionRequest,
+  type BootstrapFounderResponse,
   type ProvisionEmployeeResponse,
   type ProvisioningStage,
   type ProvisioningStatusResponse,
@@ -183,6 +187,36 @@ async function handleStatus(request: Request, admin: FirebaseAdmin): Promise<Res
   }
 }
 
+/**
+ * The one unauthenticated endpoint: it lets a founding Administrator create their own sign-in identity.
+ *
+ * The allow-list is enforced here, on the server, rather than in the browser where it would be decoration.
+ * Creating the identity grants nothing on its own — `bootstrapEmails()` in firestore.rules still requires a
+ * verified e-mail before the Administrator claim is allowed — and an address that already has an identity
+ * is never touched, so this can never be used to take over an existing founder account.
+ */
+async function handleBootstrapFounder(request: Request, admin: FirebaseAdmin): Promise<Response> {
+  const body = await request.json().catch(() => null) as { email?: unknown; password?: unknown } | null;
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  const password = typeof body?.password === "string" ? body.password : "";
+
+  if (!isFounderBootstrapEmail(email)) return fail("authorization", "Founding account creation is limited to the approved Momentum Distribution Inc. Administrator e-mails.", 403);
+  const weak = temporaryPasswordProblem(password);
+  if (weak) return fail("request", weak, 400);
+
+  try {
+    const existing = await admin.findUserByEmail(email);
+    if (existing) {
+      // Never reset an existing founder's password from an unauthenticated endpoint.
+      return json({ ok: true, email, created: false } satisfies BootstrapFounderResponse, 200);
+    }
+    await admin.createUser(email, password);
+    return json({ ok: true, email, created: true } satisfies BootstrapFounderResponse, 201);
+  } catch (error) {
+    return fail("firebase-auth", safeAuthMessage(error), 502);
+  }
+}
+
 const handler = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -203,6 +237,7 @@ const handler = {
 
     if (url.pathname === PROVISION_EMPLOYEE_PATH) return handleProvision(request, admin);
     if (url.pathname === PROVISIONING_STATUS_PATH) return handleStatus(request, admin);
+    if (url.pathname === BOOTSTRAP_FOUNDER_PATH) return handleBootstrapFounder(request, admin);
     return fail("request", "Unknown endpoint.", 404);
   },
 };

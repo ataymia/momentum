@@ -16,12 +16,12 @@ export function Avatar({ initials, color, size = "md" }: { initials: string; col
   return <span className={`avatar avatar--${size}`} style={{ "--avatar-accent": color ?? "#e49e13" } as React.CSSProperties} aria-hidden="true">{initials}</span>;
 }
 
-export function PageHeader({ title, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode; }) {
-  return <header className="page-header"><div><h1>{title}</h1></div>{actions && <div className="page-header__actions">{actions}</div>}</header>;
+export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode; }) {
+  return <header className="page-header"><div className="page-header__copy">{eyebrow && <span className="page-header__eyebrow">{eyebrow}</span>}<h1>{title}</h1>{description && <p className="page-header__description">{description}</p>}</div>{actions && <div className="page-header__actions">{actions}</div>}</header>;
 }
 
-export function Section({ title, action, children, className = "" }: { title?: string; description?: string; action?: ReactNode; children: ReactNode; className?: string; }) {
-  return <section className={`panel ${className}`.trim()}>{(title || action) && <div className="panel__header"><div>{title && <h2>{title}</h2>}</div>{action}</div>}{children}</section>;
+export function Section({ title, description, action, children, className = "" }: { title?: string; description?: string; action?: ReactNode; children: ReactNode; className?: string; }) {
+  return <section className={`panel ${className}`.trim()}>{(title || description || action) && <div className="panel__header"><div className="panel__heading">{title && <h2>{title}</h2>}{description && <p className="panel__description">{description}</p>}</div>{action && <div className="panel__action">{action}</div>}</div>}{children}</section>;
 }
 
 export function StatusPill({ children, tone = "neutral", dot = true }: { children: ReactNode; tone?: "neutral" | "success" | "warning" | "danger" | "info" | "gold"; dot?: boolean; }) {

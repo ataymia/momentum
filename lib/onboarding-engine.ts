@@ -8,6 +8,7 @@ export type OnboardingReadiness = {
   completed: number;
   total: number;
   blockers: string[];
+  activationBlockers: string[];
   requiredDocumentIds: string[];
   requiredTrainingIds: string[];
 };
@@ -33,14 +34,21 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
   const user = data.users.find((item) => item.id === userId && item.role !== "Customer");
   if (!user || draft.linkedUserId !== userId || user.email.toLowerCase() !== draft.workEmail.toLowerCase()) return state;
   const at = new Date().toISOString();
-  const existing = state.employees.find((item) => item.userId === userId);
-  // A hire provisioned through the admin endpoint has no employment record yet. Creating one here keeps
-  // onboarding from silently producing an empty package (no documents, no training, no lifecycle case).
-  const employeeNumber = existing?.employeeNumber ?? `MD-${String(state.employees.length + 1).padStart(4, "0")}`;
-  const employee: EmploymentRecord = {
-    ...(existing ?? { userId, employeeNumber, status: "Prehire" as const, classification: draft.classification, payGroup: draft.payGroup, updatedAt: at }),
-    employeeNumber,
-    status: "Prehire" as const,
+  const existingEmployee = state.employees.find((item) => item.userId === userId);
+  const employeeNumber = existingEmployee?.employeeNumber ?? `MD-${String(state.employees.length + 1).padStart(4, "0")}`;
+  const preparedEmployee: EmploymentRecord = {
+    ...(existingEmployee ?? {
+      userId,
+      employeeNumber,
+      status: "Prehire",
+      jobTitle: draft.jobTitle,
+      department: draft.team,
+      location: draft.workLocation,
+      classification: draft.classification,
+      payGroup: draft.payGroup,
+      updatedAt: at,
+    }),
+    status: "Prehire",
     hireDate: draft.startDate,
     jobTitle: draft.jobTitle,
     department: draft.team,
@@ -51,9 +59,8 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
     standardWeeklyHours: draft.standardWeeklyHours,
     updatedAt: at,
   };
-  const employees = existing
-    ? state.employees.map((item) => item.userId === userId ? employee : item)
-    : [employee, ...state.employees];
+  const employees = existingEmployee ? state.employees.map((item) => item.userId === userId ? preparedEmployee : item) : [preparedEmployee, ...state.employees];
+  const privateProfiles = state.privateProfiles.some((item) => item.userId === userId) ? state.privateProfiles : [{ userId, updatedAt: at }, ...state.privateProfiles];
 
   const templates = requiredOnboardingDocumentTemplates(draft.classification);
   const existingTitles = new Set(state.documents.filter((doc) => doc.userId === userId).map((doc) => doc.title.toLowerCase()));
@@ -82,6 +89,7 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
   let next: HCMState = {
     ...state,
     employees,
+    privateProfiles,
     documents: [...addedDocuments, ...state.documents],
     training: [...addedTraining, ...state.training],
     lifecycleCases: existingCase ? state.lifecycleCases : [lifecycleCase, ...state.lifecycleCases],
@@ -94,7 +102,7 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
     };
   }
 
-  return appendAudit(next, { actorId, action: "Prepared employee onboarding package", entityType: "LifecycleCase", entityId: lifecycleCase.id, before: existing?.status ?? "None", after: "Prehire", reason: `Provisioning draft ${draft.id}` });
+  return appendAudit(next, { actorId, action: "Prepared employee onboarding package", entityType: "LifecycleCase", entityId: lifecycleCase.id, before: existingEmployee?.status ?? "Not present", after: "Prehire", reason: `Provisioning draft ${draft.id}` });
 }
 
 export function onboardingReadiness(state: HCMState, record: IdentityProvisioningRecord | undefined, userId: string): OnboardingReadiness {
@@ -107,39 +115,51 @@ export function onboardingReadiness(state: HCMState, record: IdentityProvisionin
   const requiredDocumentIds = documents.map((item) => item.id);
   const requiredTrainingIds = training.map((item) => item.id);
   const blockers: string[] = [];
-  const checks: boolean[] = [];
+  const activationBlockers: string[] = [];
+  const employeeChecks: boolean[] = [];
 
   const passwordComplete = Boolean(record?.passwordChangedAt);
-  checks.push(passwordComplete);
-  if (!passwordComplete) blockers.push("First-login password change is not verified.");
+  employeeChecks.push(passwordComplete);
+  if (!passwordComplete) blockers.push("Change the temporary password.");
 
   const employmentConfigured = Boolean(employee && employee.status === "Prehire" && employee.jobTitle.trim() && employee.department.trim() && employee.location.trim() && employee.managerId && employee.classification !== "Not configured" && employee.payGroup !== "Not configured");
-  checks.push(employmentConfigured);
-  if (!employmentConfigured) blockers.push("Employment profile, reporting line, classification, location, or pay group is incomplete.");
+  employeeChecks.push(employmentConfigured);
+  if (!employmentConfigured) blockers.push("HR must finish the employment profile, reporting line, classification, location, and pay group.");
 
   const profileComplete = Boolean(profile?.phone?.trim() && profile.address?.trim() && profile.emergencyContact?.trim());
-  checks.push(profileComplete);
-  if (!profileComplete) blockers.push("Employee phone, address, and emergency contact are incomplete.");
+  employeeChecks.push(profileComplete);
+  if (!profileComplete) blockers.push("Add your phone number, home address, and emergency contact.");
 
   const compensationConfigured = state.compensation.some((item) => item.userId === userId && item.status !== "Ended" && item.rate > 0 && item.basis !== "Not configured");
-  checks.push(compensationConfigured);
-  if (!compensationConfigured) blockers.push("Approved compensation is not configured.");
-
-  const documentsComplete = requiredTitles.size > 0 && documents.length === requiredTitles.size && documents.every((item) => item.status === "Available");
-  checks.push(documentsComplete);
-  if (!documentsComplete) blockers.push("Required employment/tax documents are incomplete or awaiting secure file/e-sign evidence.");
+  employeeChecks.push(compensationConfigured);
+  if (!compensationConfigured) blockers.push("HR must finish approved compensation before onboarding can be submitted.");
 
   const trainingComplete = training.length > 0 && training.every((item) => item.status === "Complete");
-  checks.push(trainingComplete);
-  if (!trainingComplete) blockers.push("Assigned onboarding training is incomplete.");
+  employeeChecks.push(trainingComplete);
+  if (!trainingComplete) blockers.push("Complete all assigned onboarding training.");
 
   const lifecycleExists = Boolean(lifecycle);
-  checks.push(lifecycleExists);
-  if (!lifecycleExists) blockers.push("Onboarding case has not been prepared.");
+  employeeChecks.push(lifecycleExists);
+  if (!lifecycleExists) blockers.push("HR has not prepared the onboarding case yet.");
 
-  const readyForEmployeeSubmission = passwordComplete && employmentConfigured && profileComplete && compensationConfigured && documentsComplete && trainingComplete && lifecycleExists;
-  const readyForActivation = readyForEmployeeSubmission && record?.state === "Pending approval";
-  return { readyForEmployeeSubmission, readyForActivation, completed: checks.filter(Boolean).length, total: checks.length, blockers, requiredDocumentIds, requiredTrainingIds };
+  const documentsComplete = requiredTitles.size > 0 && documents.length === requiredTitles.size && documents.every((item) => item.status === "Available");
+  if (!documentsComplete) activationBlockers.push("Administrator must verify every required employment and tax document before activation.");
+
+  const readyForEmployeeSubmission = passwordComplete && employmentConfigured && profileComplete && compensationConfigured && trainingComplete && lifecycleExists;
+  if (!readyForEmployeeSubmission) activationBlockers.push("Employee onboarding has not been completed and submitted.");
+  if (record?.state !== "Pending approval") activationBlockers.push("Employee onboarding must be in Pending approval status.");
+  const readyForActivation = readyForEmployeeSubmission && documentsComplete && record?.state === "Pending approval";
+
+  return {
+    readyForEmployeeSubmission,
+    readyForActivation,
+    completed: employeeChecks.filter(Boolean).length,
+    total: employeeChecks.length,
+    blockers,
+    activationBlockers,
+    requiredDocumentIds,
+    requiredTrainingIds,
+  };
 }
 
 export function activateEmploymentAfterOnboarding(state: HCMState, userId: string, actorId: string) {
