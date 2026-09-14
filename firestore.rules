@@ -87,7 +87,7 @@ service cloud.firestore {
     // allow-list below. Trim this list once real Administrators exist.
 
     function bootstrapEmails() {
-      return ['vixarynholdings@gmail.com', 'ataymia.murray@allstarservicesnow.com'];
+      return ['vixarynholdings@gmail.com', 'momentumdistributioninc@gmail.com'];
     }
 
     function bootstrapClaimant() {

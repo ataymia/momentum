@@ -12,13 +12,14 @@ import { writeFileSync } from "node:fs";
 import { DOMAIN_SPECS, ROOT_FIELD, type DomainSpec, type RoleRule } from "../lib/firestore-domains";
 
 /**
- * Work e-mails permitted to claim the very first Administrator. Momentum has no public signup: the account
- * must already exist in Firebase Authentication AND have a verified e-mail. Once real Administrators exist,
- * trim this list — it is the only path that bypasses Administrator provisioning.
+ * The two founding Administrator bootstrap identities for Momentum Distribution Inc. Momentum has no
+ * public signup: the account must already exist in Firebase Authentication AND have a verified e-mail.
+ * Once real Administrators exist, trim this list — it is the only path that bypasses Administrator
+ * provisioning, so every entry is a standing privilege-escalation route.
  */
 const BOOTSTRAP_ADMIN_EMAILS = [
   "vixarynholdings@gmail.com",
-  "ataymia.murray@allstarservicesnow.com",
+  "momentumdistributioninc@gmail.com",
 ];
 
 const list = (values: readonly string[]) => `[${values.map((value) => `'${value}'`).join(", ")}]`;

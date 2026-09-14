@@ -43,11 +43,17 @@ firebase apps:sdkconfig WEB 1:491976021038:web:40525e54b9f28bd0983bbf --project 
 
 ## 3. Claiming the first Administrator
 
-There is no seeded admin account and no self-signup. The first Administrator bootstraps themselves:
+There is no seeded admin account and no self-signup. The two founding Administrator bootstrap identities
+for Momentum Distribution Inc are:
 
-1. Create a Firebase Authentication user for the owner's work e-mail (Firebase console → Authentication →
-   Add user), or sign in once so Momentum can offer the verification e-mail.
-2. Sign in at <https://momentumdis.web.app>. Momentum finds no `userAccess/{uid}` document and shows the
+- `vixarynholdings@gmail.com`
+- `momentumdistributioninc@gmail.com`
+
+No other address may claim Administrator. The first Administrator bootstraps themselves:
+
+1. Create a Firebase Authentication user for one of the two addresses above (Firebase console →
+   Authentication → Add user), or sign in once so Momentum can offer the verification e-mail.
+2. Sign in to the app. Momentum finds no `userAccess/{uid}` document and shows the
    **"Signed in, awaiting access"** gate.
 3. Click **Send verification e-mail**, open the link, then click **I have verified**.
 4. Enter a full name and title, then **Claim Administrator access**.
@@ -64,12 +70,13 @@ The allow-list lives at the top of `scripts/generate-firestore-rules.ts`:
 ```ts
 const BOOTSTRAP_ADMIN_EMAILS = [
   "vixarynholdings@gmail.com",
-  "ataymia.murray@allstarservicesnow.com",
+  "momentumdistributioninc@gmail.com",
 ];
 ```
 
 **Trim this list once real Administrators exist.** It is the only path that bypasses Administrator
-provisioning. After editing, run `npm run rules:build && npm run test:rules` and redeploy.
+provisioning, so every entry is a standing privilege-escalation route. After editing, run
+`npm run rules:build && npm run test:rules` and redeploy.
 
 ## 4. Provisioning everybody else
 

@@ -38,7 +38,11 @@ import {
 import type { WorkspaceUser } from "../lib/types";
 
 const PROJECT_ID = "momentum-rules-test";
-const BOOTSTRAP_EMAIL = "vixarynholdings@gmail.com";
+/** Must match BOOTSTRAP_ADMIN_EMAILS in scripts/generate-firestore-rules.ts. */
+const BOOTSTRAP_EMAILS = ["vixarynholdings@gmail.com", "momentumdistributioninc@gmail.com"];
+const BOOTSTRAP_EMAIL = BOOTSTRAP_EMAILS[0];
+/** Removed from the allow-list; kept here so its removal stays regression-tested. */
+const REVOKED_BOOTSTRAP_EMAIL = "ataymia.murray@allstarservicesnow.com";
 
 const ADMIN = "uid-admin";
 const MANAGER = "uid-manager";
@@ -232,28 +236,56 @@ describe("first-Administrator bootstrap", () => {
       .firestore();
 
   test("an allow-listed, verified e-mail may claim Administrator for itself", async () => {
-    const db = claim("uid-bootstrap", BOOTSTRAP_EMAIL, true);
-    await assertSucceeds(
-      setDoc(doc(db, PLATFORM_BOOTSTRAP_DOCUMENT), { claimedBy: "uid-bootstrap", email: BOOTSTRAP_EMAIL, claimedAt: at }),
+    for (const [index, email] of BOOTSTRAP_EMAILS.entries()) {
+      const uid = `uid-bootstrap-${index}`;
+      const db = claim(uid, email, true);
+      await assertSucceeds(
+        setDoc(doc(db, PLATFORM_BOOTSTRAP_DOCUMENT), { claimedBy: uid, email, claimedAt: at }),
+      );
+      await assertSucceeds(
+        setDoc(doc(db, USER_ACCESS_COLLECTION, uid), {
+          email,
+          role: "Administrator",
+          team: "Leadership",
+          managerId: null,
+          managedTeams: [],
+          accountState: "Active",
+          updatedAt: at,
+          updatedBy: uid,
+        }),
+      );
+      await assertSucceeds(
+        setDoc(doc(db, EMPLOYEE_DIRECTORY_COLLECTION, uid), { name: "Owner", updatedAt: at }),
+      );
+      await assertSucceeds(setDoc(doc(db, `userDomains/${uid}/identity/records`), { items: [] }));
+    }
+  });
+
+  test("the revoked All-Star e-mail can no longer claim Administrator", async () => {
+    const db = claim("uid-revoked", REVOKED_BOOTSTRAP_EMAIL, true);
+    await assertFails(
+      setDoc(doc(db, PLATFORM_BOOTSTRAP_DOCUMENT), { claimedBy: "uid-revoked", email: REVOKED_BOOTSTRAP_EMAIL, claimedAt: at }),
     );
-    await assertSucceeds(
-      setDoc(doc(db, USER_ACCESS_COLLECTION, "uid-bootstrap"), {
-        email: BOOTSTRAP_EMAIL,
+    await assertFails(
+      setDoc(doc(db, USER_ACCESS_COLLECTION, "uid-revoked"), {
+        email: REVOKED_BOOTSTRAP_EMAIL,
         role: "Administrator",
         team: "Leadership",
-        managerId: null,
-        managedTeams: [],
         accountState: "Active",
         updatedAt: at,
-        updatedBy: "uid-bootstrap",
+        updatedBy: "uid-revoked",
       }),
     );
-    await assertSucceeds(
-      setDoc(doc(db, EMPLOYEE_DIRECTORY_COLLECTION, "uid-bootstrap"), { name: "Owner", updatedAt: at }),
+    await assertFails(
+      setDoc(doc(db, EMPLOYEE_DIRECTORY_COLLECTION, "uid-revoked"), { name: "Revoked", updatedAt: at }),
     );
-    await assertSucceeds(
-      setDoc(doc(db, "userDomains/uid-bootstrap/identity/records"), { items: [] }),
-    );
+  });
+
+  test("the generated rules contain exactly the allow-listed e-mails", () => {
+    const rules = readFileSync("firestore.rules", "utf8");
+    const listed = [...rules.matchAll(/'([^']+@[^']+)'/g)].map((match) => match[1]);
+    assert.deepEqual(listed.sort(), [...BOOTSTRAP_EMAILS].sort());
+    assert.ok(!rules.includes(REVOKED_BOOTSTRAP_EMAIL), "revoked e-mail is still present in firestore.rules");
   });
 
   test("an unverified e-mail may not claim Administrator", async () => {
