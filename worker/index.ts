@@ -16,13 +16,11 @@
  */
 
 import {
-  BOOTSTRAP_FOUNDER_PATH,
+  DELETE_EMPLOYEE_PATH,
   PROVISIONING_STATUS_PATH,
   PROVISION_EMPLOYEE_PATH,
-  isFounderBootstrapEmail,
-  temporaryPasswordProblem,
   validateProvisionRequest,
-  type BootstrapFounderResponse,
+  type DeleteEmployeeResponse,
   type ProvisionEmployeeResponse,
   type ProvisioningStage,
   type ProvisioningStatusResponse,
@@ -188,32 +186,37 @@ async function handleStatus(request: Request, admin: FirebaseAdmin): Promise<Res
 }
 
 /**
- * The one unauthenticated endpoint: it lets a founding Administrator create their own sign-in identity.
+ * Permanently removes an employee: the Firebase sign-in identity and every Firestore document that
+ * grants or describes their access.
  *
- * The allow-list is enforced here, on the server, rather than in the browser where it would be decoration.
- * Creating the identity grants nothing on its own — `bootstrapEmails()` in firestore.rules still requires a
- * verified e-mail before the Administrator claim is allowed — and an address that already has an identity
- * is never touched, so this can never be used to take over an existing founder account.
+ * Deleting the identity is what frees the work e-mail for re-use, which is the whole point — a half-
+ * deleted account would leave the address taken and the hire unrecreatable. Self-deletion is refused so
+ * an Administrator cannot lock the workspace out of its own administration.
  */
-async function handleBootstrapFounder(request: Request, admin: FirebaseAdmin): Promise<Response> {
-  const body = await request.json().catch(() => null) as { email?: unknown; password?: unknown } | null;
-  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
-  const password = typeof body?.password === "string" ? body.password : "";
+async function handleDelete(request: Request, admin: FirebaseAdmin): Promise<Response> {
+  const caller = await requireAdministrator(request, admin);
+  if (caller instanceof Response) return caller;
 
-  if (!isFounderBootstrapEmail(email)) return fail("authorization", "Founding account creation is limited to the approved Momentum Distribution Inc. Administrator e-mails.", 403);
-  const weak = temporaryPasswordProblem(password);
-  if (weak) return fail("request", weak, 400);
+  const body = await request.json().catch(() => null) as { uid?: unknown } | null;
+  const uid = typeof body?.uid === "string" ? body.uid.trim() : "";
+  if (!uid) return fail("request", "Choose an account to delete.", 400);
+  if (uid === caller.uid) return fail("request", "You cannot delete your own Administrator account.", 400);
 
   try {
-    const existing = await admin.findUserByEmail(email);
-    if (existing) {
-      // Never reset an existing founder's password from an unauthenticated endpoint.
-      return json({ ok: true, email, created: false } satisfies BootstrapFounderResponse, 200);
-    }
-    await admin.createUser(email, password);
-    return json({ ok: true, email, created: true } satisfies BootstrapFounderResponse, 201);
-  } catch (error) {
-    return fail("firebase-auth", safeAuthMessage(error), 502);
+    const access = await admin.getDocument(`${USER_ACCESS}/${uid}`);
+    const directory = await admin.getDocument(`${EMPLOYEE_DIRECTORY}/${uid}`);
+    const email = String(access?.email ?? directory?.email ?? "");
+
+    // Remove the identity first: while it exists the address stays taken.
+    const authIdentityDeleted = await admin.deleteUser(uid);
+
+    const paths = [`${USER_ACCESS}/${uid}`, `${EMPLOYEE_DIRECTORY}/${uid}`, ...await admin.userShardPaths(uid)];
+    await admin.deleteDocuments(paths);
+    await admin.stampMeta(["employeeDirectory", `userDomains_${uid}_identity_records`]);
+
+    return json({ ok: true, uid, email, authIdentityDeleted, documentsDeleted: paths.length } satisfies DeleteEmployeeResponse, 200);
+  } catch {
+    return fail("service", "The account could not be fully deleted. Check Firebase Authentication before retrying.", 502);
   }
 }
 
@@ -237,7 +240,7 @@ const handler = {
 
     if (url.pathname === PROVISION_EMPLOYEE_PATH) return handleProvision(request, admin);
     if (url.pathname === PROVISIONING_STATUS_PATH) return handleStatus(request, admin);
-    if (url.pathname === BOOTSTRAP_FOUNDER_PATH) return handleBootstrapFounder(request, admin);
+    if (url.pathname === DELETE_EMPLOYEE_PATH) return handleDelete(request, admin);
     return fail("request", "Unknown endpoint.", 404);
   },
 };

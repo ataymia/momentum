@@ -10,22 +10,18 @@ import type { Role, Team } from "./types";
 
 export const PROVISION_EMPLOYEE_PATH = "/api/admin/provision-employee";
 export const PROVISIONING_STATUS_PATH = "/api/admin/provisioning-status";
-export const BOOTSTRAP_FOUNDER_PATH = "/api/admin/bootstrap-founder";
+export const DELETE_EMPLOYEE_PATH = "/api/admin/delete-employee";
 
-/**
- * The only two addresses that may ever bootstrap themselves into Momentum.
- *
- * This list is enforced *server-side* by the Worker and again by `bootstrapEmails()` in `firestore.rules`.
- * The browser copy only drives the form; it is not a control. Creating the identity still grants nothing:
- * the claimant must prove they own the mailbox before Security Rules let them claim Administrator.
- */
-export const FOUNDER_BOOTSTRAP_EMAILS = ["vixarynholdings@gmail.com", "momentumdistributioninc@gmail.com"] as const;
-
-export const isFounderBootstrapEmail = (email: string) => (FOUNDER_BOOTSTRAP_EMAILS as readonly string[]).includes(email.trim().toLowerCase());
-
-export type BootstrapFounderRequest = { email: string; password: string };
-export type BootstrapFounderSuccess = { ok: true; email: string; created: boolean };
-export type BootstrapFounderResponse = BootstrapFounderSuccess | ProvisioningFailure;
+export type DeleteEmployeeRequest = { uid: string };
+export type DeleteEmployeeSuccess = {
+  ok: true;
+  uid: string;
+  email: string;
+  /** False when there was no Firebase identity left to remove, so the caller knows it was already gone. */
+  authIdentityDeleted: boolean;
+  documentsDeleted: number;
+};
+export type DeleteEmployeeResponse = DeleteEmployeeSuccess | ProvisioningFailure;
 
 /**
  * Which part of the pipeline failed. Administrators need to know whether to retry, recover, or escalate,

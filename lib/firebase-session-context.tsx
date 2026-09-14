@@ -2,8 +2,8 @@
 
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { EMPLOYEE_DIRECTORY_COLLECTION, PLATFORM_BOOTSTRAP_DOCUMENT, PLATFORM_META_DOCUMENT, USER_ACCESS_COLLECTION, buildPersistenceScope, directoryDocument, normalizeDirectoryEntry, normalizeUserAccess, userAccessDocument, type UserAccessRecord } from "./firebase-access";
-import { ProvisioningError, bootstrapFounderIdentity, createFirebaseIdentityAsAdministrator, lookupProvisioningStatus, type CreatedFirebaseIdentity } from "./firebase-admin-provisioning";
-import { isFounderBootstrapEmail, isProvisionableRole, type ProvisionEmployeeProfile, type ProvisioningStage, type ProvisioningStatusSuccess } from "./provisioning-contract";
+import { ProvisioningError, createFirebaseIdentityAsAdministrator, deleteEmployeeIdentity, lookupProvisioningStatus, type CreatedFirebaseIdentity } from "./firebase-admin-provisioning";
+import { isProvisionableRole, type ProvisionEmployeeProfile, type ProvisioningStage, type ProvisioningStatusSuccess } from "./provisioning-contract";
 import { FirebaseAuthSession, currentFirebaseSession, lookupFirebaseAccount, refreshFirebaseSession, sendFirebaseEmailVerification, sendFirebasePasswordReset, signInWithFirebasePassword, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
 import { firebaseConfigurationStatus } from "./firebase-config";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, listFirestoreSnapshots, type FirestoreWrite } from "./firebase-firestore-rest";
@@ -31,7 +31,6 @@ export type FirebaseSessionValue={
   /** Administrator-only: every access record, keyed by uid. */
   accessRecords:Record<string,UserAccessRecord>;
   signIn:(email:string,password:string)=>Promise<ActionResult>;
-  createFounderAccount:(email:string,password:string)=>Promise<ActionResult>;
   signOut:()=>Promise<void>;
   retry:()=>Promise<void>;
   changePassword:(newPassword:string)=>Promise<ActionResult>;
@@ -42,6 +41,8 @@ export type FirebaseSessionValue={
   createEmployeeAccount:(input:CreateEmployeeAccountInput)=>Promise<CreateEmployeeAccountResult>;
   /** Administrator-only: is there an orphan Firebase identity for this address that can be recovered? */
   provisioningStatus:(email:string)=>Promise<ProvisioningStatusSuccess|null>;
+  /** Administrator-only: permanently remove an identity and free its work e-mail for re-use. */
+  deleteEmployeeAccount:(uid:string)=>Promise<ActionResult>;
   setAccountState:(uid:string,state:AccountAccessState)=>Promise<ActionResult>;
   updateUserAccess:(uid:string,patch:UserAccessPatch)=>Promise<ActionResult>;
   grantAdministrator:(uid:string)=>Promise<ActionResult>;
@@ -161,19 +162,6 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     }
   },[configuration.configured,loadWorkspace]);
 
-  const createFounderAccount=useCallback(async(email:string,password:string):Promise<ActionResult>=>{
-    if(!configuration.configured)return{ok:false,message:"Firebase is not configured for this deployment."};
-    const normalized=email.trim().toLowerCase();
-    // Checked here only to give immediate feedback; the Worker enforces the same allow-list server-side.
-    if(!isFounderBootstrapEmail(normalized))return{ok:false,message:"Founding account creation is limited to the two approved Momentum Distribution Inc. Administrator e-mails."};
-    try{
-      const created=await bootstrapFounderIdentity(normalized,password);
-      const result=await signIn(normalized,password);
-      if(!result.ok)return created?result:{ok:false,message:"That founding e-mail already has an identity, and the password did not match. Use “Forgot password” instead."};
-      return{ok:true,message:created?"Account created. Verify the e-mail, then claim Administrator access.":"Signed in to the existing founding account. Verify the e-mail, then claim Administrator access."};
-    }catch(caught){return{ok:false,message:message(caught,"Could not create the founding account.")};}
-  },[configuration.configured,signIn]);
-
   const signOut=useCallback(async()=>{await momentumStorage.flush().catch(()=>undefined);await resetToSignedOut();},[resetToSignedOut]);
 
   const changePassword=useCallback(async(newPassword:string):Promise<ActionResult>=>{
@@ -281,6 +269,19 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     return lookupProvisioningStatus(session,email).catch(()=>null);
   },[requireAdministrator,session]);
 
+  const deleteEmployeeAccount=useCallback(async(uid:string):Promise<ActionResult>=>{
+    const denied=requireAdministrator();if(denied)return denied;
+    if(uid===session!.uid)return{ok:false,message:"You cannot delete your own Administrator account."};
+    let result;
+    try{result=await deleteEmployeeIdentity(session!,uid);}
+    catch(caught){return{ok:false,message:message(caught,"The account could not be deleted.")};}
+    const nextDirectory=directory.filter((item)=>item.id!==uid);
+    setDirectory(nextDirectory);
+    setAccessRecords((current)=>{const next={...current};delete next[uid];return next;});
+    if(access)await updateFirestoreScope(buildPersistenceScope(access,nextDirectory)).catch(()=>undefined);
+    return{ok:true,message:`${result.email||"The account"} was deleted${result.authIdentityDeleted?"":" (its Firebase identity was already gone)"}. The work e-mail is free to use again.`};
+  },[access,directory,requireAdministrator,session]);
+
   const writeAccess=useCallback(async(uid:string,accessPatch:Record<string,unknown>,directoryPatch:Record<string,unknown>|null):Promise<ActionResult>=>{
     const denied=requireAdministrator();if(denied)return denied;
     if(uid===session!.uid&&("role" in accessPatch||"accountState" in accessPatch))return{ok:false,message:"Administrators cannot change their own role or account state."};
@@ -314,8 +315,8 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
 
   const value=useMemo<FirebaseSessionValue>(()=>({
     configured:configuration.configured,projectId:configuration.projectId,status,error,session,access,emailVerified,directory,accessRecords,
-    signIn,createFounderAccount,signOut,retry:boot,changePassword,sendPasswordReset,sendVerificationEmail,refreshVerification,claimAdministrator,createEmployeeAccount,provisioningStatus,setAccountState,updateUserAccess,grantAdministrator,
-  }),[access,accessRecords,boot,changePassword,claimAdministrator,configuration.configured,configuration.projectId,createEmployeeAccount,createFounderAccount,directory,emailVerified,error,grantAdministrator,provisioningStatus,refreshVerification,sendPasswordReset,sendVerificationEmail,session,setAccountState,signIn,signOut,status,updateUserAccess]);
+    signIn,signOut,retry:boot,changePassword,sendPasswordReset,sendVerificationEmail,refreshVerification,claimAdministrator,createEmployeeAccount,provisioningStatus,deleteEmployeeAccount,setAccountState,updateUserAccess,grantAdministrator,
+  }),[access,accessRecords,boot,changePassword,claimAdministrator,configuration.configured,configuration.projectId,createEmployeeAccount,deleteEmployeeAccount,directory,emailVerified,error,grantAdministrator,provisioningStatus,refreshVerification,sendPasswordReset,sendVerificationEmail,session,setAccountState,signIn,signOut,status,updateUserAccess]);
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

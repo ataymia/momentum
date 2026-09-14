@@ -90,6 +90,17 @@ export class FirebaseAdmin {
     await this.identity("accounts:update", { localId: uid, password });
   }
 
+  /** Removes the sign-in identity. Returns false when there was nothing left to delete. */
+  async deleteUser(uid: string): Promise<boolean> {
+    try {
+      await this.identity("accounts:delete", { localId: uid });
+      return true;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("USER_NOT_FOUND")) return false;
+      throw error;
+    }
+  }
+
   async getDocument(path: string): Promise<Record<string, unknown> | null> {
     const response = await fetch(`${FIRESTORE_BASE}/${this.projectId}/databases/(default)/documents/${path}`, { headers: this.headers() });
     if (response.status === 404) return null;
@@ -128,6 +139,54 @@ export class FirebaseAdmin {
         }],
       }),
     }).catch(() => undefined);
+  }
+
+  private async listCollectionIds(parent: string): Promise<string[]> {
+    const base = `${FIRESTORE_BASE}/${this.projectId}/databases/(default)/documents`;
+    const response = await fetch(`${base}${parent ? `/${parent}` : ""}:listCollectionIds`, { method: "POST", headers: this.headers(), body: "{}" });
+    if (!response.ok) return [];
+    const payload = await response.json().catch(() => null) as { collectionIds?: string[] } | null;
+    return payload?.collectionIds ?? [];
+  }
+
+  private async listDocumentPaths(collectionPath: string): Promise<string[]> {
+    const base = `${FIRESTORE_BASE}/${this.projectId}/databases/(default)/documents`;
+    const response = await fetch(`${base}/${collectionPath}?pageSize=300&mask.fieldPaths=__name__`, { headers: this.headers() });
+    if (!response.ok) return [];
+    const payload = await response.json().catch(() => null) as { documents?: FirestoreDocument[] } | null;
+    const root = `projects/${this.projectId}/databases/(default)/documents/`;
+    return (payload?.documents ?? []).map((document) => (document.name ?? "").slice(root.length)).filter(Boolean);
+  }
+
+  /**
+   * Every per-user shard beneath `userDomains/{uid}`.
+   *
+   * Firestore has no server-side recursive delete over REST, and deleting the parent would orphan the
+   * subcollections rather than remove them, so the tree is walked explicitly.
+   */
+  async userShardPaths(uid: string): Promise<string[]> {
+    const paths: string[] = [];
+    for (const domainId of await this.listCollectionIds(`userDomains/${uid}`)) {
+      paths.push(...await this.listDocumentPaths(`userDomains/${uid}/${domainId}`));
+    }
+    return paths;
+  }
+
+  async deleteDocuments(paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const root = `projects/${this.projectId}/databases/(default)/documents`;
+    for (let index = 0; index < paths.length; index += 200) {
+      const chunk = paths.slice(index, index + 200);
+      const response = await fetch(`${FIRESTORE_BASE}/${this.projectId}/databases/(default)/documents:commit`, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify({ writes: chunk.map((path) => ({ delete: `${root}/${path}` })) }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        throw new Error(payload?.error?.message ?? `Firestore delete failed (${response.status}).`);
+      }
+    }
   }
 
   /** Never used for provisioning; kept so callers can avoid re-minting a token per request. */

@@ -124,10 +124,14 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
     if (!draft || typeof draft !== "object" || !draft.id || draftIds.has(draft.id) || !validDraftSources.has(draft.source) || !draft.legalName?.trim() || !draft.workEmail?.trim().includes("@") || !draft.jobTitle?.trim() || !validRoles.has(draft.role) || !validTeams.has(draft.team) || !managerIds.has(draft.managerId) || !draft.workLocation?.trim() || !validClassifications.has(draft.classification) || draft.classification === "Not configured" || !validPayBasis.has(draft.payBasis) || draft.payBasis === "Not configured" || !draft.payGroup?.trim() || draft.payGroup.trim().toLowerCase() === "not configured" || !validDate(draft.startDate) || !Array.isArray(draft.courseIds) || draft.courseIds.length === 0 || new Set(draft.courseIds).size !== draft.courseIds.length || !validDraftStatuses.has(draft.status) || !draft.createdBy || !validInstant(draft.createdAt) || !validInstant(draft.updatedAt)) return false;
     if (!Number.isFinite(draft.payRate) || Number(draft.payRate) <= 0) return false;
     if (draft.standardWeeklyHours !== undefined && (!Number.isFinite(draft.standardWeeklyHours) || draft.standardWeeklyHours < 0 || draft.standardWeeklyHours > 168)) return false;
-    if (draft.linkedUserId && !userIds.has(draft.linkedUserId)) return false;
     if (draft.inviteSentAt && !validInstant(draft.inviteSentAt)) return false;
     draftIds.add(draft.id);
     return true;
+  }).map((draft) => {
+    // The identity this draft pointed at is gone (deleted account). Keep the new-hire setup and return it
+    // to the queue rather than discarding the work, so the same hire can simply be issued credentials again.
+    if (!draft.linkedUserId || userIds.has(draft.linkedUserId)) return draft;
+    return { ...draft, linkedUserId: undefined, inviteSentAt: undefined, status: "Ready to invite" as const };
   });
   return { version: 1, records, drafts };
 }

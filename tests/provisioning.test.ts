@@ -8,14 +8,11 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test, { describe } from "node:test";
 
 import {
-  FOUNDER_BOOTSTRAP_EMAILS,
   PROVISIONABLE_ROLES,
   TEAM_FOR_ROLE,
-  isFounderBootstrapEmail,
   isProvisionableRole,
   temporaryPasswordProblem,
   validateProvisionRequest,
@@ -23,7 +20,7 @@ import {
 import { createHcmSeed } from "../lib/hcm-engine";
 import { onboardingReadiness, prepareOnboardingPackage } from "../lib/onboarding-engine";
 import type { IdentityProvisioningRecord, ProvisioningDraft } from "../lib/identity-provisioning";
-import { FAIL_CLOSED_PROVISIONER, createIdentityProvisioningSeed, isFailClosedPlaceholder } from "../lib/identity-provisioning";
+import { FAIL_CLOSED_PROVISIONER, createIdentityProvisioningSeed, isFailClosedPlaceholder, normalizeIdentityProvisioningState } from "../lib/identity-provisioning";
 import type { WorkspaceData, WorkspaceUser } from "../lib/types";
 
 const ADMIN_ID = "uid-admin";
@@ -165,26 +162,45 @@ describe("onboarding package", () => {
   });
 });
 
-describe("founding Administrator bootstrap", () => {
-  test("only the two approved addresses may bootstrap themselves", () => {
-    assert.deepEqual([...FOUNDER_BOOTSTRAP_EMAILS], ["vixarynholdings@gmail.com", "momentumdistributioninc@gmail.com"]);
-    for (const email of FOUNDER_BOOTSTRAP_EMAILS) assert.equal(isFounderBootstrapEmail(email), true);
-    assert.equal(isFounderBootstrapEmail("  VixarynHoldings@Gmail.com  "), true, "matching is case- and space-insensitive");
+describe("deleting an account frees the hire to be recreated", () => {
+  const draftFor = (linkedUserId?: string): ProvisioningDraft => ({
+    id: "prehire-1", source: "Direct hire", legalName: "Megan Van Lewen", workEmail: "megan.vl@momentum.test",
+    jobTitle: "Sales Representative", role: "Sales Representative", team: "Sales", managerId: ADMIN_ID,
+    workLocation: "Phoenix, AZ", classification: "Hourly", payBasis: "Hourly", payRate: 22, payGroup: "Weekly",
+    startDate: "2026-10-01", courseIds: ["course-company-onboarding"],
+    status: linkedUserId ? "Auth linked" : "Ready to invite", linkedUserId,
+    inviteSentAt: linkedUserId ? "2026-09-14T00:00:00.000Z" : undefined,
+    createdBy: ADMIN_ID, createdAt: "2026-09-14T00:00:00.000Z", updatedAt: "2026-09-14T00:00:00.000Z",
   });
 
-  test("look-alike and unrelated addresses are refused", () => {
-    // The production Auth identity carried exactly this typo; it must never satisfy the allow-list.
-    assert.equal(isFounderBootstrapEmail("momentumdistrubutioninc@gmail.com"), false);
-    assert.equal(isFounderBootstrapEmail("attacker@example.com"), false);
-    assert.equal(isFounderBootstrapEmail("vixarynholdings@gmail.com.evil.com"), false);
-    assert.equal(isFounderBootstrapEmail(""), false);
+  const admin = () => user(ADMIN_ID, { role: "Administrator", team: "Leadership", email: "admin@momentum.test" });
+
+  test("a draft whose identity was deleted returns to the queue instead of being discarded", () => {
+    // The hire's account is gone, so HIRE_ID is no longer in the directory.
+    const data = workspace([admin()]);
+    const state = normalizeIdentityProvisioningState({ version: 1, records: [], drafts: [draftFor(HIRE_ID)] }, data);
+    assert.equal(state.drafts.length, 1, "the new-hire setup must survive the deletion");
+    assert.equal(state.drafts[0].status, "Ready to invite");
+    assert.equal(state.drafts[0].linkedUserId, undefined, "the dangling link must be cleared");
+    assert.equal(state.drafts[0].inviteSentAt, undefined, "the old invite must not look current");
+    assert.equal(state.drafts[0].workEmail, "megan.vl@momentum.test", "the setup itself is preserved");
   });
 
-  test("the browser allow-list matches the one the rules enforce", () => {
-    const rules = readFileSync("firestore.rules", "utf8");
-    for (const email of FOUNDER_BOOTSTRAP_EMAILS) {
-      assert.ok(rules.includes(`'${email}'`), `${email} must also be allow-listed in firestore.rules`);
-    }
+  test("a draft with a live identity keeps its linkage", () => {
+    const data = workspace([admin(), user(HIRE_ID, { email: "megan.vl@momentum.test" })]);
+    const state = normalizeIdentityProvisioningState({ version: 1, records: [], drafts: [draftFor(HIRE_ID)] }, data);
+    assert.equal(state.drafts[0].status, "Auth linked");
+    assert.equal(state.drafts[0].linkedUserId, HIRE_ID);
+  });
+
+  test("records for a deleted user are dropped", () => {
+    const data = workspace([admin()]);
+    const record: IdentityProvisioningRecord = {
+      id: `access-${HIRE_ID}`, userId: HIRE_ID, state: "Password change required", source: "Direct hire",
+      provisionedBy: ADMIN_ID, provisionedAt: "2026-09-14T00:00:00.000Z",
+    };
+    const state = normalizeIdentityProvisioningState({ version: 1, records: [record], drafts: [] }, data);
+    assert.equal(state.records.some((item) => item.userId === HIRE_ID), false);
   });
 });
 
