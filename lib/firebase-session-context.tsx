@@ -2,7 +2,8 @@
 
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { EMPLOYEE_DIRECTORY_COLLECTION, PLATFORM_BOOTSTRAP_DOCUMENT, PLATFORM_META_DOCUMENT, USER_ACCESS_COLLECTION, buildPersistenceScope, directoryDocument, normalizeDirectoryEntry, normalizeUserAccess, userAccessDocument, type UserAccessRecord } from "./firebase-access";
-import { createFirebaseIdentityAsAdministrator } from "./firebase-admin-provisioning";
+import { ProvisioningError, createFirebaseIdentityAsAdministrator, lookupProvisioningStatus, type CreatedFirebaseIdentity } from "./firebase-admin-provisioning";
+import { isProvisionableRole, type ProvisionEmployeeProfile, type ProvisioningStage, type ProvisioningStatusSuccess } from "./provisioning-contract";
 import { FirebaseAuthSession, currentFirebaseSession, lookupFirebaseAccount, refreshFirebaseSession, sendFirebaseEmailVerification, sendFirebasePasswordReset, signInWithFirebasePassword, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
 import { firebaseConfigurationStatus } from "./firebase-config";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, listFirestoreSnapshots, type FirestoreWrite } from "./firebase-firestore-rest";
@@ -13,8 +14,9 @@ import type { Role, Team, WorkspaceUser } from "./types";
 
 export type FirebaseSessionStatus="unconfigured"|"initializing"|"signed-out"|"no-access"|"loading-workspace"|"ready"|"error";
 export type ActionResult={ok:boolean;message?:string};
-export type CreateEmployeeAccountInput={user:Omit<WorkspaceUser,"id">;temporaryPassword:string;/** Skip onboarding and activate at once (used for the second Administrator). */activateImmediately?:boolean};
-export type CreateEmployeeAccountResult=ActionResult&{uid?:string};
+export type CreateEmployeeAccountInput={user:Omit<WorkspaceUser,"id">;temporaryPassword:string};
+/** `stage` tells the Administrator which step failed; `outcome` distinguishes a new hire from a recovered one. */
+export type CreateEmployeeAccountResult=ActionResult&{uid?:string;stage?:ProvisioningStage;outcome?:CreatedFirebaseIdentity["outcome"]};
 export type UserAccessPatch=Partial<Pick<UserAccessRecord,"role"|"team"|"managerId"|"managedTeams">>&{title?:string};
 
 export type FirebaseSessionValue={
@@ -37,6 +39,8 @@ export type FirebaseSessionValue={
   refreshVerification:()=>Promise<boolean>;
   claimAdministrator:(profile:{name:string;title:string})=>Promise<ActionResult>;
   createEmployeeAccount:(input:CreateEmployeeAccountInput)=>Promise<CreateEmployeeAccountResult>;
+  /** Administrator-only: is there an orphan Firebase identity for this address that can be recovered? */
+  provisioningStatus:(email:string)=>Promise<ProvisioningStatusSuccess|null>;
   setAccountState:(uid:string,state:AccountAccessState)=>Promise<ActionResult>;
   updateUserAccess:(uid:string,patch:UserAccessPatch)=>Promise<ActionResult>;
   grantAdministrator:(uid:string)=>Promise<ActionResult>;
@@ -220,31 +224,37 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     const denied=requireAdministrator();if(denied)return denied;
     const email=input.user.email.trim().toLowerCase();
     if(directory.some((user)=>user.email.toLowerCase()===email))return{ok:false,message:"That work e-mail already has a Momentum account."};
-    if(input.user.role==="Customer")return{ok:false,message:"Customer identities are provisioned separately."};
-    let identity;
-    try{identity=await createFirebaseIdentityAsAdministrator(email,input.temporaryPassword);}
-    catch(caught){return{ok:false,message:message(caught,"Identity creation failed.")};}
+    if(!isProvisionableRole(input.user.role))return{ok:false,message:"That role cannot be provisioned here. Administrator access is granted separately."};
+    // The Worker creates the identity AND writes userAccess/employeeDirectory/identity records atomically,
+    // so there is no window where an Auth identity exists without its access record.
+    let identity:CreatedFirebaseIdentity;
+    try{
+      identity=await createFirebaseIdentityAsAdministrator(session!,{
+        email,
+        temporaryPassword:input.temporaryPassword,
+        profile:{
+          name:input.user.name,firstName:input.user.firstName,initials:input.user.initials,title:input.user.title,
+          role:input.user.role,team:input.user.team as ProvisionEmployeeProfile["team"],managerId:input.user.managerId,accent:input.user.accent,
+        },
+      });
+    }catch(caught){
+      const stage=caught instanceof ProvisioningError?caught.stage:"service";
+      return{ok:false,stage,message:message(caught,"Identity creation failed.")};
+    }
     const at=now();
     const user:WorkspaceUser={...input.user,id:identity.uid,email};
-    const activate=Boolean(input.activateImmediately);
-    const accessRecord:UserAccessRecord={uid:identity.uid,email,role:user.role,team:user.team,managerId:user.managerId,managedTeams:user.managedTeams,accountState:activate?"Active":"Password change required",updatedAt:at,updatedBy:session!.uid};
-    const writes:FirestoreWrite[]=[
-      {kind:"set",path:`${USER_ACCESS_COLLECTION}/${identity.uid}`,data:userAccessDocument(accessRecord),create:true},
-      {kind:"set",path:`${EMPLOYEE_DIRECTORY_COLLECTION}/${identity.uid}`,data:directoryDocument(user,at),create:true},
-      directoryMetaWrite(...(activate?[identityRecordsPath(identity.uid)]:[])),
-    ];
-    if(activate){
-      const record:IdentityProvisioningRecord={id:`access-${identity.uid}`,userId:identity.uid,state:"Active",source:user.role==="Administrator"?"Bootstrap admin":"Direct hire",provisionedBy:session!.uid,provisionedAt:at,activatedAt:at,activatedBy:session!.uid};
-      writes.push({kind:"set",path:identityRecordsPath(identity.uid),data:{items:[record]},create:true});
-    }
-    const result=await commitFirestoreWrites(writes);
-    if(!result.ok)return{ok:false,uid:identity.uid,message:`The Firebase identity was created but the access record was rejected (${result.message}). Retry from the provisioning queue.`};
+    const accessRecord:UserAccessRecord={uid:identity.uid,email,role:user.role,team:user.team,managerId:user.managerId,managedTeams:user.managedTeams,accountState:"Password change required",updatedAt:at,updatedBy:session!.uid};
     const nextDirectory=[...directory.filter((item)=>item.id!==user.id),user];
     setDirectory(nextDirectory);
     setAccessRecords((current)=>({...current,[identity.uid]:accessRecord}));
     if(access)await updateFirestoreScope(buildPersistenceScope(access,nextDirectory)).catch(()=>undefined);
-    return{ok:true,uid:identity.uid};
+    return{ok:true,uid:identity.uid,outcome:identity.outcome};
   },[access,directory,requireAdministrator,session]);
+
+  const provisioningStatus=useCallback(async(email:string):Promise<ProvisioningStatusSuccess|null>=>{
+    if(requireAdministrator()||!session)return null;
+    return lookupProvisioningStatus(session,email).catch(()=>null);
+  },[requireAdministrator,session]);
 
   const writeAccess=useCallback(async(uid:string,accessPatch:Record<string,unknown>,directoryPatch:Record<string,unknown>|null):Promise<ActionResult>=>{
     const denied=requireAdministrator();if(denied)return denied;
@@ -279,8 +289,8 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
 
   const value=useMemo<FirebaseSessionValue>(()=>({
     configured:configuration.configured,projectId:configuration.projectId,status,error,session,access,emailVerified,directory,accessRecords,
-    signIn,signOut,retry:boot,changePassword,sendPasswordReset,sendVerificationEmail,refreshVerification,claimAdministrator,createEmployeeAccount,setAccountState,updateUserAccess,grantAdministrator,
-  }),[access,accessRecords,boot,changePassword,claimAdministrator,configuration.configured,configuration.projectId,createEmployeeAccount,directory,emailVerified,error,grantAdministrator,refreshVerification,sendPasswordReset,sendVerificationEmail,session,setAccountState,signIn,signOut,status,updateUserAccess]);
+    signIn,signOut,retry:boot,changePassword,sendPasswordReset,sendVerificationEmail,refreshVerification,claimAdministrator,createEmployeeAccount,provisioningStatus,setAccountState,updateUserAccess,grantAdministrator,
+  }),[access,accessRecords,boot,changePassword,claimAdministrator,configuration.configured,configuration.projectId,createEmployeeAccount,directory,emailVerified,error,grantAdministrator,provisioningStatus,refreshVerification,sendPasswordReset,sendVerificationEmail,session,setAccountState,signIn,signOut,status,updateUserAccess]);
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

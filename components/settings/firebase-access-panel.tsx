@@ -45,13 +45,21 @@ export function FirebaseAccessPanel() {
     const name = adminForm.name.trim();
     if (name.length < 2) { setError("Enter the Administrator's full name."); return; }
     void run(async () => {
-      const result = await firebase.createEmployeeAccount({
-        user: { name, firstName: name.split(/\s+/)[0], email: adminForm.email, initials: initialsFor(name), title: adminForm.title.trim() || "Administrator", role: "Administrator", team: "Leadership", accent: "#e49e13" },
+      // The provisioning endpoint deliberately refuses to mint Administrators, so this is a normal
+      // provision followed by the same rules-governed promotion used on the list above. Role elevation
+      // therefore always flows through `userAccess`, where Security Rules can see and police it.
+      const created = await firebase.createEmployeeAccount({
+        user: { name, firstName: name.split(/\s+/)[0], email: adminForm.email, initials: initialsFor(name), title: adminForm.title.trim() || "Administrator", role: "Operations", team: "Operations", accent: "#e49e13" },
         temporaryPassword: adminForm.password,
-        activateImmediately: true,
       });
-      if (result.ok) { setIssued({ email: adminForm.email.trim().toLowerCase(), password: adminForm.password }); setAdminForm({ name: "", email: "", title: "Owner", password: generateTemporaryPassword() }); }
-      return result;
+      if (!created.ok || !created.uid) return created;
+      const promoted = await firebase.grantAdministrator(created.uid);
+      if (!promoted.ok) return { ok: false, message: `The account was created but could not be promoted to Administrator (${promoted.message ?? "rejected"}). Promote it from the list above.` };
+      const activated = await firebase.setAccountState(created.uid, "Active");
+      if (!activated.ok) return { ok: false, message: `${name} is an Administrator but is not active yet (${activated.message ?? "rejected"}). Activate them from the list above.` };
+      setIssued({ email: adminForm.email.trim().toLowerCase(), password: adminForm.password });
+      setAdminForm({ name: "", email: "", title: "Owner", password: generateTemporaryPassword() });
+      return { ok: true };
     }, "Administrator account created. Share the temporary password through a secure channel.");
   };
 

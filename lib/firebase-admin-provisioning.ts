@@ -1,17 +1,37 @@
-import { firebaseWebConfig } from "./firebase-config";
+import type { FirebaseAuthSession } from "./firebase-auth-rest";
+import {
+  PROVISIONING_STATUS_PATH,
+  PROVISION_EMPLOYEE_PATH,
+  temporaryPasswordProblem,
+  type ProvisionEmployeeRequest,
+  type ProvisionEmployeeSuccess,
+  type ProvisioningStage,
+  type ProvisioningStatusSuccess,
+} from "./provisioning-contract";
 
 /**
  * Administrator-only identity creation.
  *
- * Momentum never exposes public self-signup. An Administrator, already signed in, creates the Firebase
- * Authentication account for a prepared new hire. The response token belongs to the new employee and is
- * discarded immediately: it is never persisted, so the Administrator's own session is untouched.
+ * Momentum never exposes public self-signup, and the browser can no longer create Firebase identities at
+ * all. It asks the Cloudflare Worker at `/api/admin/*`, which verifies the Administrator's Firebase ID
+ * token, confirms `userAccess/{caller}` is an Active Administrator, and only then uses the Firebase
+ * service account to create the account and write its access records atomically.
  *
- * A freshly created Authentication user has no `userAccess/{uid}` document, so Security Rules deny it
- * everything until the Administrator writes the access record in the same provisioning step.
+ * A freshly created Authentication user has no `userAccess/{uid}` document until that same privileged step
+ * writes it, so Security Rules deny it everything in the meantime.
  */
 
-export type CreatedFirebaseIdentity={uid:string;email:string};
+export type CreatedFirebaseIdentity = { uid: string; email: string; outcome: ProvisionEmployeeSuccess["outcome"] };
+
+/** Carries the failing stage so the UI can tell an Administrator whether to retry, recover, or escalate. */
+export class ProvisioningError extends Error {
+  readonly stage: ProvisioningStage;
+  constructor(stage: ProvisioningStage, message: string) {
+    super(message);
+    this.name = "ProvisioningError";
+    this.stage = stage;
+  }
+}
 
 const TEMP_PASSWORD_ALPHABET="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
 
@@ -25,31 +45,41 @@ export function generateTemporaryPassword(length=14){
 }
 
 export function validateTemporaryPassword(password:string){
-  if(password.length<10)return"Temporary password must be at least 10 characters.";
-  if(!/[a-z]/.test(password)||!/[A-Z]/.test(password)||!/\d/.test(password))return"Temporary password needs upper-case, lower-case, and a digit.";
-  return null;
+  return temporaryPasswordProblem(password);
 }
 
-function provisioningErrorMessage(payload:unknown){
-  const message=(payload as {error?:{message?:string}}|null)?.error?.message??"";
-  if(message.includes("EMAIL_EXISTS"))return"A Firebase identity already exists for that work e-mail.";
-  if(message.includes("WEAK_PASSWORD"))return"Firebase rejected the temporary password as too weak.";
-  if(message.includes("INVALID_EMAIL"))return"Firebase rejected the work e-mail address.";
-  if(message.includes("OPERATION_NOT_ALLOWED")||message.includes("ADMIN_ONLY_OPERATION"))return"Identity creation is disabled for this Firebase project. Enable Email/Password sign-in (including account creation) in the Firebase console.";
-  return message?`Firebase Authentication: ${message.replaceAll("_"," ").toLowerCase()}`:"Identity creation failed.";
+async function callAdminEndpoint<T extends {ok:true}>(path:string,session:FirebaseAuthSession,body:unknown):Promise<T>{
+  let response:Response;
+  try{
+    response=await fetch(path,{
+      method:"POST",
+      headers:{"content-type":"application/json",authorization:`Bearer ${session.idToken}`},
+      body:JSON.stringify(body),
+    });
+  }catch{
+    throw new ProvisioningError("service","Could not reach the provisioning service. Check your connection and try again.");
+  }
+  const payload=await response.json().catch(()=>null) as (T|{ok:false;stage:ProvisioningStage;message:string})|null;
+  if(!payload)throw new ProvisioningError("service",`The provisioning service returned an unreadable response (${response.status}).`);
+  if(payload.ok!==true)throw new ProvisioningError(payload.stage,payload.message);
+  return payload;
 }
 
-export async function createFirebaseIdentityAsAdministrator(email:string,temporaryPassword:string):Promise<CreatedFirebaseIdentity>{
-  const config=firebaseWebConfig();
-  if(!config)throw new Error("Firebase web app configuration is missing.");
-  const invalid=validateTemporaryPassword(temporaryPassword);
-  if(invalid)throw new Error(invalid);
-  const response=await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(config.apiKey)}`,{
-    method:"POST",
-    headers:{"content-type":"application/json"},
-    body:JSON.stringify({email:email.trim().toLowerCase(),password:temporaryPassword,returnSecureToken:false}),
-  });
-  const payload=await response.json().catch(()=>null) as {localId?:string;email?:string}|null;
-  if(!response.ok||!payload?.localId)throw new Error(provisioningErrorMessage(payload));
-  return{uid:payload.localId,email:(payload.email??email).trim().toLowerCase()};
+/**
+ * Creates the Firebase identity *and* its Momentum access records in one privileged, atomic step.
+ *
+ * Re-running this for the same address is safe: the Worker adopts an orphan identity left by a previous
+ * partial attempt rather than creating a duplicate, and reports `already-provisioned` when there is
+ * nothing left to do.
+ */
+export async function createFirebaseIdentityAsAdministrator(session:FirebaseAuthSession,request:ProvisionEmployeeRequest):Promise<CreatedFirebaseIdentity>{
+  const invalid=validateTemporaryPassword(request.temporaryPassword);
+  if(invalid)throw new ProvisioningError("request",invalid);
+  const result=await callAdminEndpoint<ProvisionEmployeeSuccess>(PROVISION_EMPLOYEE_PATH,session,request);
+  return{uid:result.uid,email:result.email,outcome:result.outcome};
+}
+
+/** Lets the provisioning queue show whether a stuck hire can be recovered before anything is created. */
+export async function lookupProvisioningStatus(session:FirebaseAuthSession,email:string):Promise<ProvisioningStatusSuccess>{
+  return callAdminEndpoint<ProvisioningStatusSuccess>(PROVISIONING_STATUS_PATH,session,{email});
 }
