@@ -113,7 +113,11 @@ service cloud.firestore {
       // An Administrator may never change their own role or account state; that requires a second Administrator.
       allow create: if bootstrapSelfAccess(uid)
         || (isAdmin() && uid != request.auth.uid);
+      // The e-mail is written once, from the Firebase identity itself, and is never editable afterwards.
+      // Production drifted exactly here: an access record was edited to an address the Auth identity did
+      // not own, which silently pointed an Administrator grant at the wrong mailbox.
       allow update: if isAdmin()
+        && request.resource.data.email == resource.data.email
         && (
           uid != request.auth.uid
           || (

@@ -34,10 +34,11 @@ firebase apps:sdkconfig WEB 1:491976021038:web:40525e54b9f28bd0983bbf --project 
 ## 2. Firebase console prerequisites
 
 1. **Authentication → Sign-in method → Email/Password: enabled.**
-   Momentum has no public signup screen, but it calls `accounts:signUp` while an Administrator provisions a
-   new hire, so account creation must stay enabled for that provider.
+   Momentum has no public signup screen and the browser never creates identities. Accounts are minted by
+   the Cloudflare Worker with the Admin API, but the provider itself must stay enabled so employees can
+   sign in and change their password.
 2. **Authentication → Settings → Authorized domains** must include `momentumdis.web.app`,
-   `momentumdis.firebaseapp.com`, and any custom domain.
+   `momentumdis.firebaseapp.com`, and the production custom domain `momentum-dci.com`.
 3. **Firestore** must exist. It does; re-create with
    `firebase firestore:databases:create "(default)" --location nam5`.
 
@@ -80,18 +81,38 @@ provisioning, so every entry is a standing privilege-escalation route. After edi
 
 ## 4. Provisioning everybody else
 
-The Administrator adds staff from **Human Resources → New hire setup**. For each hire Momentum:
+The Administrator adds staff from **Human Resources → New hire setup**. The browser cannot create Firebase
+identities: it calls `POST /api/admin/provision-employee` on the Cloudflare Worker, which
 
-1. calls `accounts:signUp` to mint the Firebase identity (the returned token is discarded immediately, so
-   the Administrator's own session is untouched);
-2. writes `userAccess/{uid}` — the authority Security Rules consult for role, reporting line, and account
-   state;
-3. writes `employeeDirectory/{uid}` — the workspace-facing profile every employee may read;
-4. stamps `platform/meta` so other open sessions pick the change up on their next poll.
+1. verifies the Administrator's Firebase ID token against Google's JWKS (signature, `aud`, `iss`, `exp`);
+2. confirms `userAccess/{caller}` is `role: Administrator` **and** `accountState: Active` — Firestore stays
+   the authority, so an Auth identity alone proves nothing;
+3. re-validates the request server-side, refusing any attempt to mint an `Administrator` or to put a role
+   on the wrong team;
+4. creates the Firebase identity with the Admin API, or **adopts an orphan identity** left by a previous
+   partial attempt instead of creating a duplicate;
+5. writes `userAccess/{uid}`, `employeeDirectory/{uid}` and `userDomains/{uid}/identity/records` in a single
+   atomic commit, so provisioning can never half-succeed;
+6. stamps `platform/meta` so other open sessions pick the change up on their next poll.
 
-A brand-new identity has no `userAccess` document, so the rules deny it everything until step 2 lands.
+The service-account key lives only in the `FIREBASE_SERVICE_ACCOUNT` Worker secret. It is never in the
+repository, never in a `NEXT_PUBLIC_*` variable, and never sent to a browser:
+
+```bash
+npx wrangler secret put FIREBASE_SERVICE_ACCOUNT --name momentum   # paste the service-account JSON
+```
+
+Administrator access is deliberately **not** obtainable from this endpoint. It is either bootstrapped
+(section 3) or granted to an existing employee from **Settings → Firebase identities & access**, which goes
+through `userAccess` where Security Rules can police it.
+
+A brand-new identity has no `userAccess` document, so the rules deny it everything until step 5 lands.
 New hires start at `accountState: "Password change required"` and move through the onboarding portal;
 the shared, `activeEmployee`-gated workspace stays closed until an Administrator marks them `Active`.
+
+If step 5 ever fails, the Firebase identity is **kept on purpose**. Reopen the hire in the provisioning
+queue and run it again: `POST /api/admin/provisioning-status` reports whether an address is `recoverable`,
+and re-running provisioning adopts the existing uid rather than creating a second account.
 
 ## 5. Data layout
 

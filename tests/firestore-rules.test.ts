@@ -50,6 +50,10 @@ const REP = "uid-rep";
 const OTHER_REP = "uid-other-rep";
 const OPS = "uid-ops";
 const ONBOARDING = "uid-onboarding";
+/** A hire who has signed in with the temporary password but has not changed it yet. */
+const PASSWORD_CHANGE = "uid-password-change";
+/** Never seeded: stands in for the brand-new uid an Administrator provisions. */
+const NEW_HIRE = "uid-new-hire";
 
 const at = "2026-01-01T00:00:00.000Z";
 
@@ -78,6 +82,10 @@ const ACCESS: UserAccessRecord[] = [
   accessRecord(ONBOARDING, "Sales Representative", "Sales", {
     managerId: MANAGER,
     accountState: "Onboarding",
+  }),
+  accessRecord(PASSWORD_CHANGE, "Sales Representative", "Sales", {
+    managerId: MANAGER,
+    accountState: "Password change required",
   }),
 ];
 
@@ -226,6 +234,115 @@ describe("identity documents", () => {
     await assertFails(
       setDoc(doc(dbFor(null), PLATFORM_META_DOCUMENT), { versions: { a: "2" } }, { merge: true }),
     );
+  });
+});
+
+/**
+ * The provisioning path an Administrator drives from Human Resources → New hire setup, and the recovery
+ * path used when a previous attempt left an Auth identity without access records.
+ */
+describe("Administrator employee provisioning", () => {
+  const newHireAccess = {
+    email: "new.hire@momentum.test",
+    role: "Sales Representative",
+    team: "Sales",
+    managerId: MANAGER,
+    managedTeams: [],
+    accountState: "Password change required",
+    updatedAt: at,
+    updatedBy: ADMIN,
+  };
+
+  test("an Administrator provisions access, directory, and onboarding records for a new uid", async () => {
+    const db = dbFor(ADMIN);
+    await assertSucceeds(setDoc(doc(db, USER_ACCESS_COLLECTION, NEW_HIRE), newHireAccess));
+    await assertSucceeds(setDoc(doc(db, EMPLOYEE_DIRECTORY_COLLECTION, NEW_HIRE), { name: "New Hire", email: newHireAccess.email, role: "Sales Representative", team: "Sales", updatedAt: at }));
+    await assertSucceeds(setDoc(doc(db, `userDomains/${NEW_HIRE}/identity/records`), { items: [{ id: `access-${NEW_HIRE}`, userId: NEW_HIRE, state: "Password change required" }] }));
+  });
+
+  test("re-running provisioning for the same hire is idempotent, not a duplicate", async () => {
+    const db = dbFor(ADMIN);
+    await assertSucceeds(setDoc(doc(db, USER_ACCESS_COLLECTION, NEW_HIRE), { ...newHireAccess, updatedAt: "2026-01-02T00:00:00.000Z" }));
+  });
+
+  test("a non-Administrator cannot provision anybody", async () => {
+    for (const uid of [MANAGER, REP, OPS, ONBOARDING]) {
+      await assertFails(setDoc(doc(dbFor(uid), USER_ACCESS_COLLECTION, "uid-victim"), newHireAccess));
+      await assertFails(setDoc(doc(dbFor(uid), EMPLOYEE_DIRECTORY_COLLECTION, "uid-victim"), { name: "Victim", updatedAt: at }));
+    }
+  });
+
+  test("a suspended Administrator cannot provision", async () => {
+    const suspended = "uid-suspended-admin";
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), USER_ACCESS_COLLECTION, suspended), userAccessDocument(accessRecord(suspended, "Administrator", "Leadership", { accountState: "Suspended" })));
+    });
+    await assertFails(setDoc(doc(dbFor(suspended), USER_ACCESS_COLLECTION, "uid-victim2"), newHireAccess));
+  });
+
+  test("an access record's e-mail can never be repointed at another mailbox", async () => {
+    await assertFails(
+      setDoc(doc(dbFor(ADMIN), USER_ACCESS_COLLECTION, REP), { email: "attacker@example.com" }, { merge: true }),
+    );
+    // The rest of the record stays editable by an Administrator.
+    await assertSucceeds(
+      setDoc(doc(dbFor(ADMIN), USER_ACCESS_COLLECTION, REP), { title: "Rep", updatedAt: at, updatedBy: ADMIN }, { merge: true }),
+    );
+  });
+
+  test("an Auth identity with no access record grants nothing at all", async () => {
+    // Exactly the state a failed provisioning attempt leaves behind: signed in, but unknown to Momentum.
+    const db = dbFor("uid-orphan-identity");
+    await assertFails(getDoc(doc(db, EMPLOYEE_DIRECTORY_COLLECTION, REP)));
+    await assertFails(getDoc(doc(db, "domains/workspace/fields/accounts")));
+    await assertFails(getDoc(doc(db, "domains/hcm/fields/policies")));
+    await assertFails(setDoc(doc(db, `userDomains/uid-orphan-identity/identity/records`), { items: [] }));
+  });
+});
+
+describe("a hire who must still change their password", () => {
+  test("can read what onboarding needs and write their own onboarding shards", async () => {
+    const db = dbFor(PASSWORD_CHANGE);
+    await assertSucceeds(getDoc(doc(db, USER_ACCESS_COLLECTION, PASSWORD_CHANGE)));
+    await assertSucceeds(getDoc(doc(db, EMPLOYEE_DIRECTORY_COLLECTION, MANAGER)));
+    await assertSucceeds(getDoc(doc(db, "domains/hcm/fields/policies")));
+    await assertSucceeds(setDoc(doc(db, `userDomains/${PASSWORD_CHANGE}/identity/records`), { items: [] }));
+    await assertSucceeds(setDoc(doc(db, `userDomains/${PASSWORD_CHANGE}/hcm/documents`), { items: [] }));
+  });
+
+  test("cannot activate themselves, elevate themselves, or reach the live workspace", async () => {
+    const db = dbFor(PASSWORD_CHANGE);
+    await assertFails(setDoc(doc(db, USER_ACCESS_COLLECTION, PASSWORD_CHANGE), { accountState: "Active" }, { merge: true }));
+    await assertFails(setDoc(doc(db, USER_ACCESS_COLLECTION, PASSWORD_CHANGE), { role: "Administrator" }, { merge: true }));
+    await assertFails(getDoc(doc(db, "domains/workspace/fields/accounts")));
+    await assertFails(getDoc(doc(db, "domains/payroll/fields/runs")));
+    await assertFails(getDoc(doc(db, "domains/identity/fields/drafts")));
+  });
+
+  test("only an Administrator moves them to Active", async () => {
+    await assertSucceeds(
+      setDoc(doc(dbFor(ADMIN), USER_ACCESS_COLLECTION, PASSWORD_CHANGE), { accountState: "Active", updatedAt: at, updatedBy: ADMIN }, { merge: true }),
+    );
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), USER_ACCESS_COLLECTION, PASSWORD_CHANGE), { accountState: "Password change required" }, { merge: true });
+    });
+  });
+});
+
+describe("Sales Representative privilege boundaries", () => {
+  test("cannot make themselves an Administrator or activate themselves", async () => {
+    const db = dbFor(REP);
+    await assertFails(setDoc(doc(db, USER_ACCESS_COLLECTION, REP), { role: "Administrator" }, { merge: true }));
+    await assertFails(setDoc(doc(db, USER_ACCESS_COLLECTION, REP), { accountState: "Active" }, { merge: true }));
+    await assertFails(setDoc(doc(db, USER_ACCESS_COLLECTION, REP), { managedTeams: ["Sales", "Leadership"] }, { merge: true }));
+  });
+
+  test("cannot read Administrator-only provisioning state or another employee's access", async () => {
+    const db = dbFor(REP);
+    await assertFails(getDoc(doc(db, "domains/identity/fields/drafts")));
+    await assertFails(getDoc(doc(db, "domains/identity/fields/_root")));
+    await assertFails(getDoc(doc(db, USER_ACCESS_COLLECTION, ADMIN)));
+    await assertFails(getDoc(doc(db, `userDomains/${ADMIN}/identity/records`)));
   });
 });
 

@@ -13,8 +13,9 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "rules:build": "tsx scripts/generate-firestore-rules.ts",
+    "test:logic": "node --import tsx --test tests/provisioning.test.ts",
     "test:rules": "npm run rules:build && firebase emulators:exec --only firestore --project momentum-rules-test \"node --import tsx --test tests/firestore-rules.test.ts\"",
-    "test": "npm run typecheck && npm run lint && npm run test:rules",
+    "test": "npm run typecheck && npm run lint && npm run test:logic && npm run test:rules",
     "deploy": "next build && firebase deploy --only hosting",
     "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage",
     "deploy:worker": "next build && wrangler deploy"
