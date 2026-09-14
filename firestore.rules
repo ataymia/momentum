@@ -5,13 +5,11 @@ service cloud.firestore {
     // =====================================================================
     // Administrator bootstrap
     // ---------------------------------------------------------------------
-    // Put the two all-powerful Administrator work e-mails here (lower-case),
-    // e.g. return ['owner@momentumdistribution.com', 'you@momentumdistribution.com'];
+    // These are the two approved, all-powerful Administrator work e-mails.
     // Each listed, e-mail-verified account may claim Administrator for itself.
-    // While the list is EMPTY, exactly one verified account may claim it once
-    // (first come, first served) and must then provision everyone else.
+    // Keep this list synchronized with the live Momentum Firebase ruleset.
     // =====================================================================
-    function bootstrapEmails() { return []; }
+    function bootstrapEmails() { return ['vixarynholdings@gmail.com', 'momentumdistributioninc@gmail.com']; }
 
     // ---------------------------------------------------------------------
     // Identity helpers. userAccess/{uid} is the only authority for role,
