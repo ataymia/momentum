@@ -11,7 +11,7 @@ import { IDENTITY_PROVISIONING_STORAGE_KEY } from "../lib/identity-provisioning"
 import { IdentityProvisioningProvider, useIdentityProvisioning } from "../lib/identity-provisioning-context";
 import { InventoryLedgerProvider } from "../lib/inventory-ledger-context";
 import { FieldTrackingProvider } from "../lib/location-tracking-context";
-import { FirebaseSessionProvider } from "../lib/firebase-session-context";
+import { FirebaseSessionProvider, useFirebaseSessionOptional } from "../lib/firebase-session-context";
 import { MarketingProvider } from "../lib/marketing-context";
 import { NotificationProvider } from "../lib/notification-context";
 import { PayrollProvider } from "../lib/payroll-context";
@@ -46,8 +46,10 @@ function ensurePresentationSeed() {
 function MomentumExperience(){
   const {currentUser}=useWorkspace();
   const {currentRecord}=useIdentityProvisioning();
+  const firebase=useFirebaseSessionOptional();
+  const activeAdministrator=currentUser?.role==="Administrator"&&firebase?.access?.role==="Administrator"&&firebase.access.accountState==="Active";
   if(!currentUser)return <LoginScreen/>;
-  if(currentUser.role!=="Customer"&&currentRecord?.state!=="Active")return <OnboardingPortal/>;
+  if(currentUser.role!=="Customer"&&currentRecord?.state!=="Active"&&!activeAdministrator)return <OnboardingPortal/>;
   return <><AppShell/><DeparturePrompt/></>;
 }
 
