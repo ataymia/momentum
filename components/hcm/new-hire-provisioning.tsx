@@ -38,7 +38,7 @@ type FormState = {
 const teamForRole = (role: ProvisionableRole): "Sales" | "Operations" => ["Sales Manager", "Sales Representative"].includes(role) ? "Sales" : "Operations";
 const roleOptions: ProvisionableRole[] = ["Sales Representative", "Sales Manager", "Operations", "Warehouse"];
 const payBasisOptions: PayBasis[] = ["Hourly", "Salary per pay period"];
-const classificationFor = (workerType: WorkerType, payBasis: PayBasis): WorkerClassification => workerType === "Contractor" ? "Contractor" : payBasis === "Hourly" ? "Hourly" : "Salary";
+const classificationFor = (workerType: WorkerType, payBasis: PayBasis): WorkerClassification => workerType === "Contractor" ? "Contractor" : payBasis === "Hourly" ? "Hourly" : payBasis === "Salary per pay period" ? "Salary" : "Not configured";
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function NewHireProvisioning({ view }: { view: NewHireView }) {
@@ -52,7 +52,6 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const [identityDraft, setIdentityDraft] = useState<{ draftId: string; password: string; busy: boolean; error: string } | null>(null);
   const [issued, setIssued] = useState<{ draftId: string; email: string; password: string; name: string } | null>(null);
   const [pendingLink, setPendingLink] = useState<{ draftId: string; uid: string } | null>(null);
-  const defaultManager = data.users.find((user) => user.role === "Sales Manager")?.id ?? data.users.find((user) => user.role === "Administrator")?.id ?? "";
   const defaultCourses = hcm.courses.filter((course) => course.active && course.requiredForTeams.includes("Sales")).map((course) => course.id);
   const emptyForm = (): FormState => ({
     source: "Direct hire",
@@ -62,12 +61,12 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
     workEmail: "",
     jobTitle: "Sales Representative",
     role: "Sales Representative",
-    managerId: defaultManager,
-    workLocation: "Phoenix, AZ",
+    managerId: "",
+    workLocation: "",
     workerType: "Employee",
-    payBasis: "Hourly",
+    payBasis: "Not configured",
     payRate: "",
-    payGroup: "Weekly",
+    payGroup: "",
     standardWeeklyHours: "",
     startDate: arizonaDateKey(),
     courseIds: defaultCourses,
@@ -81,8 +80,8 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const activeDrafts = provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled");
   const pendingApprovals = provisioning.state.records.filter((record) => record.state === "Pending approval");
 
-  // The directory is the only prerequisite after Firebase creates the identity. HCM is prepared by beginOnboarding,
-  // so waiting for an HCM record here created a circular race and could strand a newly created account.
+  // The directory is the only prerequisite after Firebase creates the identity. beginOnboarding creates or updates
+  // the prehire HCM records itself, so an HCM timing race cannot strand the new Firebase account.
   useEffect(() => {
     if (!pendingLink) return;
     const user = data.users.find((item) => item.id === pendingLink.uid);
@@ -117,6 +116,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
       if (form.workLocation.trim().length < 2) return "Enter the work location.";
     }
     if (targetStep >= 3) {
+      if (form.payBasis === "Not configured") return "Choose the approved pay basis before issuing credentials.";
       const payRate = Number(form.payRate);
       if (!Number.isFinite(payRate) || payRate <= 0) return "Enter the approved pay rate before issuing credentials.";
       if (form.payGroup.trim().length < 2 || form.payGroup.trim().toLowerCase() === "not configured") return "Choose the actual pay group before issuing credentials.";
@@ -171,7 +171,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
       ...current,
       role,
       jobTitle: current.jobTitle === "Sales Representative" || current.jobTitle === "Sales Manager" || current.jobTitle === "Operations" || current.jobTitle === "Warehouse" ? role : current.jobTitle,
-      managerId: nextManagers.some((manager) => manager.id === current.managerId) ? current.managerId : nextManagers[0]?.id ?? "",
+      managerId: nextManagers.some((manager) => manager.id === current.managerId) ? current.managerId : "",
       courseIds: hcm.courses.filter((course) => course.active && course.requiredForTeams.includes(nextTeam)).map((course) => course.id),
     }));
   };
@@ -186,7 +186,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
       legalName: match.candidate!.name,
       workEmail: match.candidate!.email,
       jobTitle: match.offer.title,
-      payBasis: match.offer.basis === "Not configured" ? "Hourly" : match.offer.basis,
+      payBasis: match.offer.basis,
       payRate: match.offer.rate > 0 ? String(match.offer.rate) : "",
       startDate: match.offer.startDate,
     }));
@@ -261,16 +261,16 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
           <Field label="Department"><input value={team} readOnly aria-readonly="true"/></Field>
           <Field label="Position title"><input required value={form.jobTitle} onChange={(event)=>setForm((current)=>({...current,jobTitle:event.target.value}))}/></Field>
           <Field label="Reports to"><select required value={form.managerId} onChange={(event)=>setForm((current)=>({...current,managerId:event.target.value}))}><option value="">Choose manager</option>{managers.map((manager)=><option key={manager.id} value={manager.id}>{manager.name} · {manager.title}</option>)}</select></Field>
-          <Field label="Work location"><input required value={form.workLocation} onChange={(event)=>setForm((current)=>({...current,workLocation:event.target.value}))}/></Field>
+          <Field label="Work location"><input required value={form.workLocation} onChange={(event)=>setForm((current)=>({...current,workLocation:event.target.value}))} placeholder="Enter the actual work location"/></Field>
           <Field label="Standard weekly hours"><input type="number" min="0" max="168" step="0.25" value={form.standardWeeklyHours} onChange={(event)=>setForm((current)=>({...current,standardWeeklyHours:event.target.value}))} placeholder="If applicable"/></Field>
         </div></div>}
         {step===3&&<div className="provisioning-section"><div className="form-grid">
           <Field label="Worker type"><select value={form.workerType} onChange={(event)=>setForm((current)=>({...current,workerType:event.target.value as WorkerType}))}><option>Employee</option><option>Contractor</option></select></Field>
-          <Field label="Pay basis"><select value={form.payBasis} onChange={(event)=>setForm((current)=>({...current,payBasis:event.target.value as PayBasis}))}>{payBasisOptions.map((item)=><option key={item}>{item}</option>)}</select></Field>
-          <Field label={form.payBasis==="Hourly"?"Hourly rate":"Salary per pay period"}><input type="number" min="0.01" step="0.01" required value={form.payRate} onChange={(event)=>setForm((current)=>({...current,payRate:event.target.value}))}/></Field>
+          <Field label="Pay basis"><select value={form.payBasis} onChange={(event)=>setForm((current)=>({...current,payBasis:event.target.value as PayBasis}))}><option value="Not configured" disabled>Choose pay basis</option>{payBasisOptions.map((item)=><option key={item}>{item}</option>)}</select></Field>
+          <Field label={form.payBasis==="Hourly"?"Hourly rate":form.payBasis==="Salary per pay period"?"Salary per pay period":"Pay rate"}><input type="number" min="0.01" step="0.01" required value={form.payRate} onChange={(event)=>setForm((current)=>({...current,payRate:event.target.value}))}/></Field>
           <Field label="Pay group"><input required value={form.payGroup} onChange={(event)=>setForm((current)=>({...current,payGroup:event.target.value}))} placeholder="Weekly, biweekly, etc."/></Field>
         </div><div className="provisioning-banner"><ShieldCheck size={20}/><div><strong>Credentials wait until the employment setup is real.</strong><p>Momentum will not create a login with placeholder compensation, an unresolved manager, or an unconfigured pay group.</p></div></div></div>}
-        {step===4&&<div className="provisioning-section"><div className="training-picker">{activeCourses.map((course)=><label key={course.id}><input type="checkbox" checked={form.courseIds.includes(course.id)} onChange={()=>toggleCourse(course.id)}/><span><strong>{course.title}</strong><small>{course.description}</small></span></label>)}</div><div className="new-hire-review-grid"><div><small>Employee</small><strong>{form.legalName}</strong><span>{form.workEmail}</span></div><div><small>Position</small><strong>{form.jobTitle}</strong><span>{form.role} · {team}</span></div><div><small>Manager</small><strong>{data.users.find((user)=>user.id===form.managerId)?.name??"Not selected"}</strong><span>{form.workLocation}</span></div><div><small>Pay</small><strong>{form.payRate?formatMoney(Number(form.payRate)):"Missing"}</strong><span>{form.payBasis} · {form.payGroup}</span></div><div><small>Start</small><strong>{form.startDate}</strong><span>{form.courseIds.length} training assignment{form.courseIds.length===1?"":"s"}</span></div></div></div>}
+        {step===4&&<div className="provisioning-section"><div className="training-picker">{activeCourses.map((course)=><label key={course.id}><input type="checkbox" checked={form.courseIds.includes(course.id)} onChange={()=>toggleCourse(course.id)}/><span><strong>{course.title}</strong><small>{course.description}</small></span></label>)}</div><div className="new-hire-review-grid"><div><small>Employee</small><strong>{form.legalName}</strong><span>{form.workEmail}</span></div><div><small>Position</small><strong>{form.jobTitle}</strong><span>{form.role} · {team}</span></div><div><small>Manager</small><strong>{data.users.find((user)=>user.id===form.managerId)?.name??"Not selected"}</strong><span>{form.workLocation||"Work location missing"}</span></div><div><small>Pay</small><strong>{form.payRate?formatMoney(Number(form.payRate)):"Missing"}</strong><span>{form.payBasis} · {form.payGroup||"pay group missing"}</span></div><div><small>Start</small><strong>{form.startDate}</strong><span>{form.courseIds.length} training assignment{form.courseIds.length===1?"":"s"}</span></div></div></div>}
         {error&&<p className="form-error" role="alert">{error}</p>}
         {notice&&<div className="form-callout"><p>{notice}</p><Button type="button" size="sm" variant="secondary" onClick={()=>navigate("onboarding")}>Continue to onboarding queue</Button></div>}
         <div className="provisioning-actions new-hire-wizard-actions">{step>1&&<Button type="button" variant="ghost" onClick={()=>{setError("");setStep((current)=>Math.max(1,current-1))}}>Back</Button>}{step<4?<Button type="button" onClick={nextStep}>Continue</Button>:<Button type="submit" icon={<UserPlus size={16}/>}>Save new-hire setup</Button>}</div>
