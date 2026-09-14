@@ -1,0 +1,11 @@
+@media (max-width: 680px) {
+  .account-list-panel--full {
+    min-width: 0;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .account-list-panel--full .account-table {
+    min-width: 670px;
+  }
+}
