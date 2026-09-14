@@ -1,0 +1,41 @@
+{
+  "name": "momentum-operations",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "npx serve out",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "rules:build": "tsx scripts/generate-firestore-rules.ts",
+    "test:rules": "npm run rules:build && firebase emulators:exec --only firestore --project momentum-rules-test \"node --import tsx --test tests/firestore-rules.test.ts\"",
+    "test": "npm run typecheck && npm run lint && npm run test:rules",
+    "deploy": "next build && firebase deploy --only hosting",
+    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage"
+  },
+  "dependencies": {
+    "lucide-react": "0.468.0",
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "firebase": "^12.19.0",
+    "postcss": "8.5.14",
+    "tailwindcss": "4.2.1",
+    "tsx": "^4.22.1",
+    "typescript": "5.9.3"
+  }
+}

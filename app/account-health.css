@@ -1,0 +1,59 @@
+.account-health-home {
+  margin:18px 0 28px;
+}
+.account-health-table {
+  overflow-x:auto;
+}
+.account-health-row {
+  border:0;
+  border-bottom:1px solid var(--line);
+  min-width:760px;
+  min-height:54px;
+  color:inherit;
+  text-align:left;
+  background:#fff;
+  grid-template-columns:1.5fr .8fr .55fr .8fr .8fr .8fr;
+  align-items:center;
+  gap:9px;
+  width:100%;
+  padding:8px 14px;
+  font-size:9px;
+  display:grid;
+}
+.account-health-row:not(.account-health-row--head) {
+  cursor:pointer;
+}
+.account-health-row:not(.account-health-row--head):hover {
+  background:#f7f9fc;
+}
+.account-health-row--head {
+  min-height:36px;
+  color:var(--subtle);
+  text-transform:uppercase;
+  letter-spacing:.05em;
+  background:#f7f9fc;
+  font-size:8px;
+  font-weight:800;
+}
+.account-health-row>span:first-child {
+  align-items:center;
+  gap:8px;
+  display:flex;
+}
+.account-health-row strong,.account-health-row small {
+  display:block;
+}
+.account-health-row strong {
+  font-size:9px;
+}
+.account-health-row small {
+  color:var(--subtle);
+  margin-top:2px;
+  font-size:8px;
+}
+.account-health-row>span:last-child {
+  color:var(--muted);
+  align-items:center;
+  gap:4px;
+  display:flex;
+}

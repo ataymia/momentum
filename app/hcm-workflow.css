@@ -1,0 +1,412 @@
+.page-container>.page--people-v2+.panel {
+  display:none;
+}
+.page--people-v2 {
+  gap:16px;
+  display:grid;
+}
+.hcm-tabs--clean {
+  margin-bottom:0;
+}
+.hcm-tabs--clean button {
+  white-space:nowrap;
+}
+.hcm-overview-strip {
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  display:grid;
+}
+.hcm-overview-strip--three {
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+.hcm-overview-strip article {
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:12px;
+  padding:14px;
+}
+.hcm-overview-strip small,.hcm-overview-strip span {
+  color:var(--subtle);
+  font-size:8px;
+  display:block;
+}
+.hcm-overview-strip strong {
+  margin:5px 0;
+  font-size:16px;
+  display:block;
+}
+.hcm-quick-links {
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  display:grid;
+}
+.hcm-quick-links button {
+  border:1px solid var(--line);
+  min-height:82px;
+  color:inherit;
+  text-align:left;
+  cursor:pointer;
+  background:#fff;
+  border-radius:12px;
+  align-items:flex-start;
+  gap:10px;
+  padding:14px;
+  display:flex;
+}
+.hcm-quick-links button:hover {
+  background:#f7f9fc;
+  border-color:#cdd7e6;
+}
+.hcm-quick-links button>svg {
+  color:var(--blue-600);
+  flex:none;
+}
+.hcm-quick-links strong,.hcm-quick-links small {
+  display:block;
+}
+.hcm-quick-links strong {
+  font-size:10px;
+}
+.hcm-quick-links small {
+  color:var(--muted);
+  margin-top:4px;
+  font-size:8px;
+  line-height:1.4;
+}
+.hcm-record-toolbar {
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:10px 0;
+  display:flex;
+}
+.hcm-record-toolbar>div {
+  text-align:right;
+}
+.hcm-record-toolbar strong,.hcm-record-toolbar span {
+  display:block;
+}
+.hcm-record-toolbar strong {
+  font-size:11px;
+}
+.hcm-record-toolbar span {
+  color:var(--subtle);
+  margin-top:2px;
+  font-size:8px;
+}
+.timecard-record {
+  gap:12px;
+  display:grid;
+}
+.timecard-record__summary {
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:13px;
+  grid-template-columns:minmax(220px,1.5fr) repeat(3,minmax(130px,.7fr));
+  gap:9px;
+  padding:14px;
+  display:grid;
+}
+.timecard-record__person {
+  align-items:center;
+  gap:10px;
+  display:flex;
+}
+.timecard-record__person>span {
+  width:38px;
+  height:38px;
+  color:var(--blue-600);
+  background:#eef3fb;
+  border-radius:10px;
+  place-items:center;
+  display:grid;
+}
+.timecard-record__person small,
+.timecard-record__person strong,
+.timecard-record__person p,
+.timecard-record__metric small,
+.timecard-record__metric strong,
+.timecard-record__metric span {
+  display:block;
+}
+.timecard-record__person small,.timecard-record__metric small {
+  color:var(--subtle);
+  font-size:8px;
+}
+.timecard-record__person strong {
+  margin-top:3px;
+  font-size:11px;
+}
+.timecard-record__person p {
+  color:var(--muted);
+  margin:3px 0 0;
+  font-size:8px;
+}
+.timecard-record__metric {
+  border-left:1px solid var(--line);
+  padding-left:10px;
+}
+.timecard-record__metric strong {
+  margin:5px 0;
+  font-size:15px;
+}
+.timecard-record__metric span {
+  color:var(--muted);
+  margin-top:5px;
+  font-size:8px;
+}
+.timecard-return-banner,.timecard-resubmit-note {
+  border-radius:11px;
+  align-items:flex-start;
+  gap:10px;
+  padding:12px 14px;
+  display:flex;
+}
+.timecard-return-banner {
+  color:#8f1f17;
+  background:#fff6f5;
+  border:1px solid #f0b6b3;
+}
+.timecard-resubmit-note {
+  color:#24673a;
+  background:#f4fbf6;
+  border:1px solid #b8dfc6;
+}
+.timecard-return-banner strong,
+.timecard-return-banner p,
+.timecard-return-banner small,
+.timecard-resubmit-note strong,
+.timecard-resubmit-note p,
+.timecard-resubmit-note small {
+  display:block;
+}
+.timecard-return-banner strong,.timecard-resubmit-note strong {
+  font-size:10px;
+}
+.timecard-return-banner p,.timecard-resubmit-note p {
+  color:inherit;
+  margin:3px 0;
+  font-size:9px;
+  line-height:1.45;
+}
+.timecard-return-banner small,.timecard-resubmit-note small {
+  opacity:.75;
+  font-size:8px;
+}
+.timecard-record__checks {
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  display:grid;
+}
+.timecard-record__checks>div {
+  border:1px solid var(--line);
+  background:#fafbfd;
+  border-radius:10px;
+  grid-template-columns:24px 1fr auto;
+  align-items:center;
+  gap:7px;
+  padding:10px 12px;
+  display:grid;
+}
+.timecard-record__checks svg {
+  color:var(--blue-600);
+}
+.timecard-record__checks span {
+  color:var(--muted);
+  font-size:8px;
+}
+.timecard-record__checks strong {
+  font-size:9px;
+}
+.timecard-record__table {
+  min-width:820px;
+}
+.timecard-record__table td:last-child {
+  white-space:nowrap;
+}
+.timecard-correction-history {
+  border:1px solid var(--line);
+  background:#fafbfd;
+  border-radius:11px;
+  gap:7px;
+  padding:12px 14px;
+  display:grid;
+}
+.timecard-correction-history h4 {
+  margin:0 0 2px;
+  font-size:10px;
+}
+.timecard-correction-history article {
+  border-top:1px solid var(--line);
+  grid-template-columns:minmax(150px,.7fr) minmax(0,1.4fr);
+  gap:12px;
+  padding:9px 0;
+  display:grid;
+}
+.timecard-correction-history article:first-of-type {
+  border-top:0;
+}
+.timecard-correction-history strong,
+.timecard-correction-history p,
+.timecard-correction-history small {
+  display:block;
+}
+.timecard-correction-history strong {
+  font-size:9px;
+}
+.timecard-correction-history p {
+  color:var(--muted);
+  margin:3px 0 0;
+  font-size:8px;
+}
+.timecard-correction-history small {
+  color:var(--subtle);
+  font-size:8px;
+  line-height:1.5;
+}
+.timecard-record__decision {
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  display:grid;
+}
+.timecard-record__decision>div {
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:10px;
+  padding:10px 12px;
+}
+.timecard-record__decision small,.timecard-record__decision strong {
+  display:block;
+}
+.timecard-record__decision small {
+  color:var(--subtle);
+  font-size:8px;
+}
+.timecard-record__decision strong {
+  margin-top:4px;
+  font-size:9px;
+}
+.hcm-training-list {
+  gap:8px;
+  display:grid;
+}
+.hcm-training-list article {
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:11px;
+  grid-template-columns:36px minmax(0,1fr) auto auto;
+  align-items:center;
+  gap:10px;
+  padding:11px 12px;
+  display:grid;
+}
+.hcm-training-list article.is-focused {
+  box-shadow:0 0 0 2px var(--blue-600) inset;
+  background:#f6f8ff;
+}
+.hcm-training-list article>span:first-child {
+  width:34px;
+  height:34px;
+  color:var(--blue-600);
+  background:#eef3fb;
+  border-radius:9px;
+  place-items:center;
+  display:grid;
+}
+.hcm-training-list small,
+.hcm-training-list strong,
+.hcm-training-list p {
+  display:block;
+}
+.hcm-training-list small {
+  color:var(--subtle);
+  font-size:8px;
+}
+.hcm-training-list strong {
+  margin-top:3px;
+  font-size:10px;
+}
+.hcm-training-list p {
+  color:var(--muted);
+  margin:3px 0 0;
+  font-size:8px;
+  line-height:1.4;
+}
+.hcm-admin-embedded {
+  gap:12px;
+  display:grid;
+}
+.hcm-admin-intro {
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:12px;
+  align-items:flex-start;
+  gap:10px;
+  padding:14px;
+  display:flex;
+}
+.hcm-admin-intro svg {
+  color:var(--blue-600);
+}
+.hcm-admin-intro strong {
+  font-size:11px;
+  display:block;
+}
+.hcm-admin-intro p {
+  color:var(--muted);
+  margin:4px 0 0;
+  font-size:9px;
+}
+.hcm-admin-embedded>.panel {
+  margin:0;
+}
+.hcm-review-list article {
+  grid-template-columns:minmax(0,1fr) auto;
+}
+.page--work-v2 .record-review .timecard-record {
+  margin-top:12px;
+}
+@media (max-width:1000px) {
+  .hcm-overview-strip,.hcm-quick-links,.timecard-record__summary {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .timecard-record__metric {
+    border-left:0;
+    border-top:1px solid var(--line);
+    padding:10px 0 0;
+  }
+  .timecard-record__checks {
+    grid-template-columns:1fr;
+  }
+}
+@media (max-width:680px) {
+  .hcm-overview-strip,
+  .hcm-overview-strip--three,
+  .hcm-quick-links,
+  .timecard-record__summary,
+  .timecard-record__decision {
+    grid-template-columns:1fr;
+  }
+  .hcm-training-list article {
+    grid-template-columns:34px minmax(0,1fr);
+  }
+  .hcm-training-list article>.status-pill,
+  .hcm-training-list article>.button {
+    grid-column:2;
+    justify-self:start;
+  }
+  .hcm-record-toolbar {
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .hcm-record-toolbar>div {
+    text-align:left;
+  }
+  .hcm-tabs--clean {
+    flex-wrap:nowrap;
+    overflow-x:auto;
+  }
+  .timecard-correction-history article {
+    grid-template-columns:1fr;
+  }
+}

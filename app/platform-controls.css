@@ -1,0 +1,206 @@
+.platform-control-grid {
+  grid-template-columns:1.2fr 1fr;
+  gap:18px;
+  display:grid;
+}
+.platform-mode-card,.platform-metric-row,.notification-policy-row {
+  align-items:center;
+  gap:16px;
+  display:flex;
+}
+.platform-mode-card>div {
+  flex:1;
+}
+.platform-mode-card p,.platform-note,.notification-policy-row span {
+  color:var(--muted,#667085);
+  margin:4px 0 0;
+  font-size:13px;
+  line-height:1.45;
+}
+.platform-metric-row {
+  grid-template-columns:1fr 1fr;
+  display:grid;
+}
+.platform-metric-row>div {
+  border:1px solid #0f172a1a;
+  border-radius:14px;
+  align-items:center;
+  gap:10px;
+  padding:14px;
+  display:flex;
+}
+.platform-metric-row span {
+  flex-direction:column;
+  display:flex;
+}
+.platform-metric-row small {
+  color:var(--muted,#667085);
+}
+.period-lock-form {
+  margin-bottom:16px;
+}
+.period-lock-list,.notification-preference-list,.audit-list {
+  gap:10px;
+  display:grid;
+}
+.period-lock-list article,
+.notification-preference-list article,
+.audit-item {
+  background:#ffffffb8;
+  border:1px solid #0f172a1a;
+  border-radius:14px;
+  align-items:center;
+  gap:14px;
+  padding:13px 14px;
+  display:flex;
+}
+.period-lock-list article>div {
+  flex:1;
+}
+.period-lock-list p,.period-lock-list small {
+  color:var(--muted,#667085);
+  margin:3px 0;
+}
+.notification-policy-row {
+  justify-content:space-between;
+  margin-bottom:14px;
+}
+.notification-policy-row label {
+  font-weight:700;
+}
+.notification-policy-row input[type=number] {
+  border:1px solid #0f172a2e;
+  border-radius:8px;
+  width:72px;
+  margin:0 6px;
+  padding:7px;
+}
+.notification-preference-list article {
+  grid-template-columns:minmax(180px,1fr) repeat(3,auto) minmax(140px,180px) minmax(150px,auto);
+  display:grid;
+}
+.notification-preference-list article>div {
+  flex-direction:column;
+  display:flex;
+}
+.notification-preference-list small {
+  color:var(--muted,#667085);
+}
+.notification-preference-list label {
+  white-space:nowrap;
+}
+.notification-destination {
+  border:1px solid #0f172a29;
+  border-radius:9px;
+  min-width:0;
+  padding:8px 9px;
+}
+.transport-state {
+  color:var(--muted,#667085);
+  align-items:center;
+  gap:5px;
+  font-size:12px;
+  display:flex;
+}
+.audit-toolbar {
+  align-items:center;
+  gap:10px;
+  margin-bottom:14px;
+  display:flex;
+}
+.audit-toolbar .table-search {
+  flex:1;
+}
+.audit-toolbar select {
+  background:#fff;
+  border:1px solid #0f172a29;
+  border-radius:10px;
+  padding:10px 12px;
+}
+.audit-item {
+  align-items:flex-start;
+}
+.audit-item__icon {
+  padding-top:2px;
+}
+.audit-item__body {
+  flex:1;
+  min-width:0;
+}
+.audit-item__head {
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  display:flex;
+}
+.audit-item__body p {
+  margin:4px 0;
+}
+.audit-item__body small {
+  color:var(--muted,#667085);
+}
+.audit-item__actor {
+  align-items:flex-start;
+  gap:7px;
+  min-width:170px;
+  display:flex;
+}
+.audit-item__actor span {
+  flex-direction:column;
+  display:flex;
+}
+.audit-item__actor small {
+  color:var(--muted,#667085);
+  margin-top:2px;
+}
+.audit-change-list {
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:8px;
+  display:flex;
+}
+.audit-change-list span {
+  background:#0f172a0a;
+  border-radius:7px;
+  align-items:center;
+  gap:5px;
+  padding:4px 7px;
+  font-size:11px;
+  display:flex;
+}
+.audit-change-list em {
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  max-width:180px;
+  font-style:normal;
+  overflow:hidden;
+}
+.audit-change-list i {
+  color:var(--muted,#667085);
+  font-style:normal;
+}
+.record-history-empty {
+  color:var(--muted,#667085);
+  align-items:center;
+  gap:8px;
+  padding:8px 0;
+  font-size:13px;
+  display:flex;
+}
+@media (max-width:900px) {
+  .platform-control-grid {
+    grid-template-columns:1fr;
+  }
+  .notification-preference-list article {
+    grid-template-columns:1fr 1fr 1fr;
+  }
+  .notification-destination,.transport-state {
+    grid-column:1/-1;
+  }
+  .audit-item__actor {
+    min-width:0;
+  }
+  .audit-item {
+    flex-wrap:wrap;
+  }
+}

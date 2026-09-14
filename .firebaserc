@@ -1,0 +1,16 @@
+{
+  "projects": {
+    "default": "momentumdis",
+    "plat": "momentumdis"
+  },
+  "targets": {
+    "momentumdis": {
+      "hosting": {
+        "app": [
+          "momentumdis"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

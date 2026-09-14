@@ -1,0 +1,93 @@
+"use client";
+
+import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useAudit } from "./audit-context";
+import { inventoryProductStatuses } from "./inventory-ledger";
+import { useInventoryLedger } from "./inventory-ledger-context";
+import { NOTIFICATION_STORAGE_KEY, NotificationDelivery, NotificationPreference, NotificationState, auditEventCreatesNotification, createNotificationSeed, deliveryKey, enabledChannels, normalizeNotificationState, notificationCopy, resolveNotificationRecipients } from "./notification-engine";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
+import { useRuntimeMode } from "./runtime-mode";
+import { useWorkspace } from "./workspace-context";
+
+type NotificationContextValue = { state: NotificationState; currentUserItems: NotificationDelivery[]; unreadCount: number; updatePreference: (userId: string, patch: Partial<NotificationPreference>) => boolean; setEscalationHours: (hours: number) => boolean; markAllRead: () => void; resetNotifications: () => boolean };
+const NotificationContext = createContext<NotificationContextValue | null>(null);
+const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+function readState(users: ReturnType<typeof useWorkspace>["data"]["users"]) { if (typeof window === "undefined") return createNotificationSeed(users); try { return normalizeNotificationState(JSON.parse(momentumStorage.getItem(NOTIFICATION_STORAGE_KEY) ?? "null"), users); } catch { return createNotificationSeed(users); } }
+
+export function NotificationProvider({ children }: { children: ReactNode }) {
+  const { data, currentUser } = useWorkspace(); const { audit, recordManualAudit } = useAudit(); const { ledger } = useInventoryLedger(); const runtime = useRuntimeMode(); const [state, setState] = useState<NotificationState>(() => readState(data.users));
+  useEffect(() => { const handle = window.setTimeout(() => setState((current) => normalizeNotificationState(current, data.users)), 0); return () => window.clearTimeout(handle); }, [data.users]);
+  useEffect(() => { if (typeof window !== "undefined") momentumStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(state)); }, [state]);
+  useRemoteStorageSync(NOTIFICATION_STORAGE_KEY, () => setState(readState(data.users)));
+  useEffect(() => { const handle = window.setTimeout(() => setState((current) => { const existing = new Set(current.deliveries.map((item) => deliveryKey(item.sourceEventId, item.recipientUserId, item.channel))); const additions: NotificationDelivery[] = []; for (const event of audit.events.slice(0, 500)) { if (!auditEventCreatesNotification(event)) continue; const copy = notificationCopy(event); for (const userId of resolveNotificationRecipients(event, data)) { const preference = current.preferences.find((item) => item.userId === userId); if (!preference) continue; for (const channel of enabledChannels(preference)) { const key = deliveryKey(event.id, userId, channel); if (existing.has(key)) continue; existing.add(key); additions.push({ id: uid("notice"), sourceEventId: event.id, recipientUserId: userId, channel, title: copy.title, detail: copy.detail, tone: copy.tone, createdAt: event.at, status: channel === "In app" ? "Unread" : "Awaiting integration" }); } } } return additions.length ? { ...current, deliveries: [...additions, ...current.deliveries].slice(0, 12000) } : current; }), 0); return () => window.clearTimeout(handle); }, [audit.events, data]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setState((current) => {
+      const statuses = inventoryProductStatuses(ledger, data).filter((item) => item.reorderNeeded);
+      const activeSourceIds = new Set(statuses.map((item) => `inventory-threshold:${item.requiresManagerApproval ? "critical" : "reorder"}:${item.product}`));
+      const retained = current.deliveries.filter((delivery) => !delivery.sourceEventId.startsWith("inventory-threshold:") || activeSourceIds.has(delivery.sourceEventId));
+      const existing = new Set(retained.map((item) => deliveryKey(item.sourceEventId, item.recipientUserId, item.channel)));
+      const recipientIds = data.users.filter((user) => user.role === "Administrator" || user.role === "Sales Manager" || user.role === "Warehouse").map((user) => user.id);
+      const additions: NotificationDelivery[] = [];
+      for (const stock of statuses) {
+        const sourceEventId = `inventory-threshold:${stock.requiresManagerApproval ? "critical" : "reorder"}:${stock.product}`;
+        const title = stock.requiresManagerApproval ? "Low stock approval required" : "Inventory reorder required";
+        const detail = `${stock.product} has ${stock.available} available sellable cases. ${stock.requiresManagerApproval ? "Sales require manager approval below 50 cases. Replenishment is also required." : "Replenishment is required below 500 cases."}`;
+        for (const recipientUserId of recipientIds) {
+          const preference = current.preferences.find((item) => item.userId === recipientUserId); if (!preference) continue;
+          for (const channel of enabledChannels(preference)) {
+            const key = deliveryKey(sourceEventId, recipientUserId, channel); if (existing.has(key)) continue; existing.add(key);
+            additions.push({ id: uid("stock-alert"), sourceEventId, recipientUserId, channel, title, detail, tone: "warning", createdAt: new Date().toISOString(), status: channel === "In app" ? "Unread" : "Awaiting integration" });
+          }
+        }
+      }
+      return additions.length || retained.length !== current.deliveries.length ? { ...current, deliveries: [...additions, ...retained].slice(0, 12000) } : current;
+    }), 0);
+    return () => window.clearTimeout(handle);
+  }, [data, ledger]);
+
+  useEffect(() => {
+    const evaluateEscalations = () => {
+      const checkedAt = new Date().toISOString(); const nowMs = Date.now();
+      setState((current) => {
+        const additions: NotificationDelivery[] = []; let changed = false;
+        const updated = current.deliveries.map((delivery) => {
+          if (delivery.channel !== "In app" || delivery.status !== "Unread" || delivery.escalatedAt || delivery.escalationOf || nowMs - new Date(delivery.createdAt).getTime() < current.escalationHours * 3600000) return delivery;
+          const user = data.users.find((item) => item.id === delivery.recipientUserId);
+          const recipients = new Set(data.users.filter((item) => item.role === "Administrator" || item.id === user?.managerId).map((item) => item.id)); recipients.delete(delivery.recipientUserId);
+          let created = false;
+          for (const recipientUserId of recipients) { additions.push({ id: uid("escalation"), sourceEventId: delivery.sourceEventId, recipientUserId, channel: "In app", title: `Escalation: ${delivery.title}`, detail: `${user?.name ?? "A user"} has an unread operational notification beyond the ${current.escalationHours}-hour escalation window.`, tone: "warning", createdAt: checkedAt, status: "Unread", escalationOf: delivery.id }); created = true; }
+          if (!created) return delivery; changed = true; return { ...delivery, escalatedAt: checkedAt };
+        });
+        return changed ? { ...current, deliveries: [...additions, ...updated] } : current;
+      });
+    };
+    const initial = window.setTimeout(evaluateEscalations, 0);
+    const interval = window.setInterval(evaluateEscalations, 5 * 60 * 1000);
+    return () => { window.clearTimeout(initial); window.clearInterval(interval); };
+  }, [data.users]);
+  const currentUserItems = useMemo(() => currentUser ? state.deliveries.filter((item) => item.recipientUserId === currentUser.id && item.channel === "In app").sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [], [currentUser, state.deliveries]);
+  const unreadCount = currentUserItems.filter((item) => item.status === "Unread").length;
+  const updatePreference = (userId: string, patch: Partial<NotificationPreference>) => {
+    if (!currentUser || (currentUser.role !== "Administrator" && currentUser.id !== userId)) return false;
+    const target = data.users.find((user) => user.id === userId); const existing = state.preferences.find((item) => item.userId === userId); if (!target || !existing) return false;
+    const merged: NotificationPreference = { ...existing, ...patch, userId, emailAddress: patch.emailAddress !== undefined ? patch.emailAddress.trim() || undefined : existing.emailAddress, smsNumber: patch.smsNumber !== undefined ? patch.smsNumber.trim() || undefined : existing.smsNumber };
+    if (target.role === "Customer" && merged.inApp) return false;
+    if (merged.email && !(merged.emailAddress || target.email)?.trim()) return false;
+    if (merged.sms && !merged.smsNumber?.trim()) return false;
+    setState((current) => ({ ...current, preferences: current.preferences.map((item) => item.userId === userId ? merged : item) }));
+    recordManualAudit({module:"Notifications",collection:"preferences",entityType:"Notifications.preferences",entityId:userId,label:`Notification preferences · ${target.name}`,summary:`Notification delivery preferences updated for ${target.name}.`,sensitivity:"admin",relatedUserId:userId,changes:[{field:"inApp",before:String(existing.inApp),after:String(merged.inApp)},{field:"email",before:String(existing.email),after:String(merged.email)},{field:"sms",before:String(existing.sms),after:String(merged.sms)},{field:"emailDestinationConfigured",before:String(Boolean(existing.emailAddress)),after:String(Boolean(merged.emailAddress))},{field:"smsDestinationConfigured",before:String(Boolean(existing.smsNumber)),after:String(Boolean(merged.smsNumber))}]});
+    return true;
+  };
+  const setEscalationHours = (hours: number) => {
+    if (currentUser?.role !== "Administrator" || !Number.isFinite(hours) || hours < 1 || hours > 168) return false;
+    const rounded=Math.round(hours);const before=state.escalationHours;
+    setState((current) => ({ ...current, escalationHours: rounded }));
+    if(before!==rounded)recordManualAudit({module:"Notifications",collection:"settings",entityType:"Notifications.settings",entityId:"notification-policy",label:"Notification escalation policy",summary:`Unread notification escalation window changed from ${before} to ${rounded} hours.`,sensitivity:"admin",changes:[{field:"escalationHours",before:String(before),after:String(rounded)}]});
+    return true;
+  };
+  const markAllRead = () => { if (!currentUser) return; const at = new Date().toISOString(); setState((current) => ({ ...current, deliveries: current.deliveries.map((item) => item.recipientUserId === currentUser.id && item.channel === "In app" && item.status === "Unread" ? { ...item, status: "Read", readAt: at } : item) })); };
+  const resetNotifications = () => { if (!runtime.isDemo || currentUser?.role !== "Administrator") return false; setState(createNotificationSeed(data.users)); return true; };
+  return <NotificationContext.Provider value={{ state, currentUserItems, unreadCount, updatePreference, setEscalationHours, markAllRead, resetNotifications }}>{children}</NotificationContext.Provider>;
+}
+export function useNotifications() { const value = useContext(NotificationContext); if (!value) throw new Error("useNotifications must be used inside NotificationProvider"); return value; }
