@@ -21,7 +21,7 @@ type IdentityProvisioningContextValue = {
   beginOnboarding: (input: BeginOnboardingInput) => boolean;
   completePasswordChange: (evidence: string) => boolean;
   submitOnboarding: () => boolean;
-  activateUser: (userId: string) => boolean;
+  activateUser: (userId: string) => Promise<boolean>;
   returnForCorrections: (userId: string, reason: string) => boolean;
   setAccountState: (userId: string, state: Extract<AccountAccessState, "Suspended" | "Separated">, reason: string) => boolean;
 };
@@ -42,7 +42,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   const { hcm, setHcm } = useHcm();
   const firebase = useFirebaseSessionOptional();
   const [state, setState] = useState<IdentityProvisioningState>(() => readState(data));
-  // Security Rules read `userAccess.accountState`; mirror every real provisioning transition there.
+  // Intermediate account-state mirrors are best-effort; final activation below is fail-closed and awaited.
   const syncAccountState = (userId: string, nextState: AccountAccessState) => { if (firebase) void firebase.setAccountState(userId, nextState); };
 
   useEffect(() => {
@@ -52,7 +52,6 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // Fail-closed placeholder records exist only in memory in production; Firestore holds real provisioning decisions.
     const persisted = firebase ? { ...state, records: state.records.filter((record) => record.provisionedBy !== "system-fail-closed") } : state;
     momentumStorage.setItem(IDENTITY_PROVISIONING_STORAGE_KEY, JSON.stringify(persisted));
   }, [firebase, state]);
@@ -160,14 +159,17 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     return true;
   };
 
-  const activateUser = (userId: string) => {
+  const activateUser = async (userId: string) => {
     if (currentUser?.role !== "Administrator") return false;
     const record = accountAccessFor(state, userId);
     if (!record || !onboardingReadiness(hcm, record, userId).readyForActivation) return false;
+    if (firebase) {
+      const persisted = await firebase.setAccountState(userId, "Active");
+      if (!persisted.ok) return false;
+    }
     const at = new Date().toISOString();
     setHcm((current) => activateEmploymentAfterOnboarding(current, userId, currentUser.id));
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Active", activatedAt: at, activatedBy: currentUser.id, returnReason: undefined } : item) }));
-    syncAccountState(userId, "Active");
     return true;
   };
 
