@@ -31,6 +31,7 @@ import {
   refundCanSettle,
 } from "./commerce-engine";
 import { isValidCalendarDateKey } from "./date-time";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
@@ -67,7 +68,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const read = () => {
     if (typeof window === "undefined") return createCommerceSeed(data);
     try {
-      return normalizeCommerceState(JSON.parse(window.localStorage.getItem(COMMERCE_STORAGE_KEY) ?? "null"), data);
+      return normalizeCommerceState(JSON.parse(momentumStorage.getItem(COMMERCE_STORAGE_KEY) ?? "null"), data);
     } catch {
       return createCommerceSeed(data);
     }
@@ -82,8 +83,9 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   }, [data]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem(COMMERCE_STORAGE_KEY, JSON.stringify(commerce));
+    if (typeof window !== "undefined") momentumStorage.setItem(COMMERCE_STORAGE_KEY, JSON.stringify(commerce));
   }, [commerce]);
+  useRemoteStorageSync(COMMERCE_STORAGE_KEY, () => setCommerce(read()));
 
   useEffect(() => {
     const handle = window.setTimeout(() => {

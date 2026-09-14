@@ -3,6 +3,7 @@
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { accountIsVisible, canManageUser } from "./access";
 import { Expense, FINANCE_STORAGE_KEY, FinanceState, createFinanceSeed, normalizeFinanceState } from "./finance-engine";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
@@ -27,7 +28,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const read = () => {
     if (typeof window === "undefined") return createFinanceSeed();
     try {
-      return normalizeFinanceState(JSON.parse(window.localStorage.getItem(FINANCE_STORAGE_KEY) ?? "null"));
+      return normalizeFinanceState(JSON.parse(momentumStorage.getItem(FINANCE_STORAGE_KEY) ?? "null"));
     } catch {
       return createFinanceSeed();
     }
@@ -35,8 +36,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [finance, setFinance] = useState<FinanceState>(() => read());
 
   useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(finance));
+    if (typeof window !== "undefined") momentumStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(finance));
   }, [finance]);
+  useRemoteStorageSync(FINANCE_STORAGE_KEY, () => setFinance(read()));
 
   const submitExpense = (input: NewExpense) => {
     if (!currentUser || currentUser.role === "Customer" || !input.merchant.trim() || !input.category.trim() || !input.businessPurpose.trim() || !Number.isFinite(input.amount) || input.amount <= 0) return null;

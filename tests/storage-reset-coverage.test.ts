@@ -26,7 +26,7 @@ test("every business-data localStorage key is covered by demo reset or explicitl
     const source = readFileSync(file, "utf8");
     const declarations = [...source.matchAll(/(?:export\s+)?const\s+([A-Z0-9_]+)\s*=\s*["'](momentum-[^"']+)["']/g)];
     for (const [, name, value] of declarations) {
-      const usedByStorage = new RegExp(`localStorage\\.(?:get|set|remove)Item\\(\\s*${name}\\b`).test(source);
+      const usedByStorage = new RegExp(`(?:localStorage|momentumStorage)\\.(?:get|set|remove)Item\\(\\s*${name}\\b`).test(source);
       if (usedByStorage) discovered.set(value, `${relative(repoRoot, file)}:${name}`);
     }
   }

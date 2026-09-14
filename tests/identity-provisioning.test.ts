@@ -83,9 +83,13 @@ test("public runtime defaults to production and only localhost can enable demo m
   assert.match(controls, /demoAvailable&&<Button/);
 });
 
-test("production workspace filters demo identities and refuses the legacy demo credential path", () => {
+test("production workspace filters demo identities and delegates sign-in to Firebase Authentication", () => {
   const source = readFileSync(new URL("../lib/workspace-context.tsx", import.meta.url), "utf8");
+  const base = readFileSync(new URL("../lib/workspace-context-v5.tsx", import.meta.url), "utf8");
   assert.match(source, /base\.data\.users\.filter\(\(user\) => !isDemoIdentity\(user\)\)/);
-  assert.match(source, /if \(!demoMode\) return \{ ok: false, message: "Sign-in will be available when Firebase Authentication is connected\." \}/);
+  assert.match(source, /if \(!demoMode\) return base\.login\(email, password\)/);
+  assert.doesNotMatch(source, /password !== "admin"[\s\S]{0,200}!demoMode/);
+  assert.match(base, /if \(firebase\) return firebase\.signIn\(email, password\)/);
+  assert.match(base, /const currentUserId = production \? firebase\?\.session\?\.uid \?\? null : demoUserId/);
   assert.match(source, /if \(demoMode\) base\.switchUser\(userId\)/);
 });

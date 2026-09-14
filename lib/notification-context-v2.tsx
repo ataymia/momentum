@@ -5,18 +5,20 @@ import { useAudit } from "./audit-context";
 import { inventoryProductStatuses } from "./inventory-ledger";
 import { useInventoryLedger } from "./inventory-ledger-context";
 import { NOTIFICATION_STORAGE_KEY, NotificationDelivery, NotificationPreference, NotificationState, auditEventCreatesNotification, createNotificationSeed, deliveryKey, enabledChannels, normalizeNotificationState, notificationCopy, resolveNotificationRecipients } from "./notification-engine";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
 type NotificationContextValue = { state: NotificationState; currentUserItems: NotificationDelivery[]; unreadCount: number; updatePreference: (userId: string, patch: Partial<NotificationPreference>) => boolean; setEscalationHours: (hours: number) => boolean; markAllRead: () => void; resetNotifications: () => boolean };
 const NotificationContext = createContext<NotificationContextValue | null>(null);
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-function readState(users: ReturnType<typeof useWorkspace>["data"]["users"]) { if (typeof window === "undefined") return createNotificationSeed(users); try { return normalizeNotificationState(JSON.parse(window.localStorage.getItem(NOTIFICATION_STORAGE_KEY) ?? "null"), users); } catch { return createNotificationSeed(users); } }
+function readState(users: ReturnType<typeof useWorkspace>["data"]["users"]) { if (typeof window === "undefined") return createNotificationSeed(users); try { return normalizeNotificationState(JSON.parse(momentumStorage.getItem(NOTIFICATION_STORAGE_KEY) ?? "null"), users); } catch { return createNotificationSeed(users); } }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { data, currentUser } = useWorkspace(); const { audit, recordManualAudit } = useAudit(); const { ledger } = useInventoryLedger(); const runtime = useRuntimeMode(); const [state, setState] = useState<NotificationState>(() => readState(data.users));
   useEffect(() => { const handle = window.setTimeout(() => setState((current) => normalizeNotificationState(current, data.users)), 0); return () => window.clearTimeout(handle); }, [data.users]);
-  useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(state)); }, [state]);
+  useEffect(() => { if (typeof window !== "undefined") momentumStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(state)); }, [state]);
+  useRemoteStorageSync(NOTIFICATION_STORAGE_KEY, () => setState(readState(data.users)));
   useEffect(() => { const handle = window.setTimeout(() => setState((current) => { const existing = new Set(current.deliveries.map((item) => deliveryKey(item.sourceEventId, item.recipientUserId, item.channel))); const additions: NotificationDelivery[] = []; for (const event of audit.events.slice(0, 500)) { if (!auditEventCreatesNotification(event)) continue; const copy = notificationCopy(event); for (const userId of resolveNotificationRecipients(event, data)) { const preference = current.preferences.find((item) => item.userId === userId); if (!preference) continue; for (const channel of enabledChannels(preference)) { const key = deliveryKey(event.id, userId, channel); if (existing.has(key)) continue; existing.add(key); additions.push({ id: uid("notice"), sourceEventId: event.id, recipientUserId: userId, channel, title: copy.title, detail: copy.detail, tone: copy.tone, createdAt: event.at, status: channel === "In app" ? "Unread" : "Awaiting integration" }); } } } return additions.length ? { ...current, deliveries: [...additions, ...current.deliveries].slice(0, 12000) } : current; }), 0); return () => window.clearTimeout(handle); }, [audit.events, data]);
 
   useEffect(() => {

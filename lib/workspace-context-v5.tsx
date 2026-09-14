@@ -17,6 +17,8 @@ import {
 } from "./access";
 import { addCalendarDays, arizonaDateKey, arizonaTimeKey, startOfLocalWeek } from "./date-time";
 import { createDemoData } from "./demo-data";
+import { useFirebaseSessionOptional } from "./firebase-session-context";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { normalizeWorkspaceData } from "./workspace-normalization";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import type {
@@ -127,6 +129,22 @@ type AppointmentCloseout = { outcome: AppointmentOutcome; closeoutNote: string; 
 type NewBulletin = { title: string; body: string; audience: Bulletin["audience"]; team?: Team; priority: Bulletin["priority"]; expiresAt?: string };
 type TimeEntryCorrectionInput = { clockIn: string; mealStart?: string; mealEnd?: string; clockOut?: string; breakMinutes: number };
 type Scope = ReturnType<typeof getWorkspaceScope>;
+type LoginResult = { ok: boolean; message?: string };
+
+/** Production starts from an empty company; every record must come from Firestore or be created by a signed-in employee. */
+const emptyWorkspace = (users: WorkspaceUser[]): WorkspaceData => ({ users, customers: [], accounts: [], activities: [], appointments: [], orders: [], placements: [], inventory: [], approvals: [], timeEntries: [], timecards: [], notifications: [], bulletins: [], territories: [] });
+
+function hydrateProductionWorkspace(directory: WorkspaceUser[]): WorkspaceData {
+  const fallback = emptyWorkspace(directory);
+  try {
+    const saved = momentumStorage.getItem(DATA_KEY);
+    if (!saved) return fallback;
+    const parsed = JSON.parse(saved) as Record<string, unknown>;
+    return normalizeCustomerHierarchy(normalizeWorkspaceData({ ...parsed, users: directory }, fallback));
+  } catch {
+    return fallback;
+  }
+}
 
 type WorkspaceContextValue = {
   data: WorkspaceData;
@@ -139,7 +157,7 @@ type WorkspaceContextValue = {
   setSidebarOpen: (open: boolean) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   navigate: (page: PageKey) => void;
-  login: (email: string, password: string) => { ok: boolean; message?: string };
+  login: (email: string, password: string) => LoginResult | Promise<LoginResult>;
   logout: () => void;
   switchUser: (userId: string) => void;
   createAccount: (account: NewAccount) => string | null;
@@ -171,55 +189,73 @@ const nextAppointment: Record<AppointmentStatus, AppointmentStatus> = { Schedule
 const nextFulfillment: Partial<Record<OrderStatus, OrderStatus>> = { Approved: "Allocated", Allocated: "Out for delivery", "Out for delivery": "Delivered" };
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
-  const [data, setData] = useState<WorkspaceData>(() => createNormalizedDemoData());
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const firebase = useFirebaseSessionOptional();
+  const production = Boolean(firebase);
+  const directory = firebase?.directory;
+  const [data, setData] = useState<WorkspaceData>(() => production ? hydrateProductionWorkspace(directory ?? []) : createNormalizedDemoData());
+  const [demoUserId, setDemoUserId] = useState<string | null>(null);
   const [activePage, setActivePage] = useState<PageKey>("home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(production);
+  const currentUserId = production ? firebase?.session?.uid ?? null : demoUserId;
 
   useEffect(() => {
+    if (production) {
+      const handle = window.setTimeout(() => setSidebarCollapsedState(momentumStorage.getItem(SIDEBAR_KEY) === "true"), 0);
+      return () => window.clearTimeout(handle);
+    }
     const timer = window.setTimeout(() => {
       try {
-        const saved = localStorage.getItem(DATA_KEY);
+        const saved = momentumStorage.getItem(DATA_KEY);
         const fallback = createNormalizedDemoData();
         const hydrated = saved ? normalizeCustomerHierarchy(normalizeWorkspaceData(JSON.parse(saved), fallback)) : fallback;
         if (saved) setData(hydrated);
-        const storedSession = localStorage.getItem(SESSION_KEY);
-        if (storedSession && hydrated.users.some((user) => user.id === storedSession)) setCurrentUserId(storedSession);
+        const storedSession = momentumStorage.getItem(SESSION_KEY);
+        if (storedSession && hydrated.users.some((user) => user.id === storedSession)) setDemoUserId(storedSession);
         else {
-          setCurrentUserId(null);
-          if (storedSession) localStorage.removeItem(SESSION_KEY);
+          setDemoUserId(null);
+          if (storedSession) momentumStorage.removeItem(SESSION_KEY);
         }
-        setSidebarCollapsedState(localStorage.getItem(SIDEBAR_KEY) === "true");
+        setSidebarCollapsedState(momentumStorage.getItem(SIDEBAR_KEY) === "true");
       } catch {
-        localStorage.removeItem(DATA_KEY);
-        localStorage.removeItem(SESSION_KEY);
+        momentumStorage.removeItem(DATA_KEY);
+        momentumStorage.removeItem(SESSION_KEY);
       }
       setReady(true);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [production]);
+
+  // Production: the employee directory is authoritative for identities; re-normalize when it changes.
+  useEffect(() => {
+    if (!production || !directory) return;
+    const handle = window.setTimeout(() => setData((current) => normalizeCustomerHierarchy(normalizeWorkspaceData({ ...current, users: directory }, emptyWorkspace(directory)))), 0);
+    return () => window.clearTimeout(handle);
+  }, [directory, production]);
+
+  useRemoteStorageSync(DATA_KEY, () => { if (production) setData(hydrateProductionWorkspace(directory ?? [])); });
 
   useEffect(() => {
-    if (ready) localStorage.setItem(DATA_KEY, JSON.stringify(data));
+    if (ready) momentumStorage.setItem(DATA_KEY, JSON.stringify(data));
   }, [data, ready]);
 
   const currentUser = useMemo(() => data.users.find((user) => user.id === currentUserId) ?? null, [currentUserId, data.users]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
-  const setSidebarCollapsed = useCallback((collapsed: boolean) => { setSidebarCollapsedState(collapsed); localStorage.setItem(SIDEBAR_KEY, String(collapsed)); }, []);
+  const setSidebarCollapsed = useCallback((collapsed: boolean) => { setSidebarCollapsedState(collapsed); momentumStorage.setItem(SIDEBAR_KEY, String(collapsed)); }, []);
   const navigate = useCallback((page: PageKey) => { setActivePage(canAccessPage(currentUser, page) ? page : "home"); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }, [currentUser]);
 
-  const login = useCallback((email: string, password: string) => {
+  const login = useCallback((email: string, password: string): LoginResult | Promise<LoginResult> => {
+    if (firebase) return firebase.signIn(email, password);
     const user = data.users.find((item) => item.email.toLowerCase() === email.trim().toLowerCase());
     if (!user || password !== "admin") return { ok: false, message: "Use a demo email and the password admin." };
-    setCurrentUserId(user.id);
+    setDemoUserId(user.id);
     setActivePage("home");
-    localStorage.setItem(SESSION_KEY, user.id);
+    momentumStorage.setItem(SESSION_KEY, user.id);
     return { ok: true };
-  }, [data.users]);
-  const logout = useCallback(() => { setCurrentUserId(null); setActivePage("home"); localStorage.removeItem(SESSION_KEY); }, []);
-  const switchUser = useCallback((id: string) => { if (!data.users.some((user) => user.id === id)) return; setCurrentUserId(id); setActivePage("home"); localStorage.setItem(SESSION_KEY, id); }, [data.users]);
+  }, [data.users, firebase]);
+  const logout = useCallback(() => { if (firebase) { void firebase.signOut(); return; } setDemoUserId(null); setActivePage("home"); momentumStorage.removeItem(SESSION_KEY); }, [firebase]);
+  const switchUser = useCallback((id: string) => { if (firebase || !data.users.some((user) => user.id === id)) return; setDemoUserId(id); setActivePage("home"); momentumStorage.setItem(SESSION_KEY, id); }, [data.users, firebase]);
 
   const createAccount = useCallback((account: NewAccount) => {
     if (!currentUser || !canCreateAccount(currentUser)) return null;
@@ -452,7 +488,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser]);
   const acknowledgeBulletin = useCallback((id: string) => { if (!currentUser) return; setData((current) => ({ ...current, bulletins: current.bulletins.map((item) => item.id === id && !item.acknowledgedBy.includes(currentUser.id) ? { ...item, acknowledgedBy: [...item.acknowledgedBy, currentUser.id] } : item) })); }, [currentUser]);
   const markNotificationsRead = useCallback(() => { if (!currentUser) return; const ids = new Set(scope.notifications.map((item) => item.id)); setData((current) => ({ ...current, notifications: current.notifications.map((item) => ids.has(item.id) && !item.readBy.includes(currentUser.id) ? { ...item, readBy: [...item.readBy, currentUser.id] } : item) })); }, [currentUser, scope.notifications]);
-  const resetDemo = useCallback(() => { if (currentUser?.role !== "Administrator") return; setData(createNormalizedDemoData()); setActivePage("home"); }, [currentUser]);
+  const resetDemo = useCallback(() => { if (production || currentUser?.role !== "Administrator") return; setData(createNormalizedDemoData()); setActivePage("home"); }, [currentUser, production]);
 
   const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

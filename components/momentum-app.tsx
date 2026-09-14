@@ -11,16 +11,18 @@ import { IDENTITY_PROVISIONING_STORAGE_KEY } from "../lib/identity-provisioning"
 import { IdentityProvisioningProvider, useIdentityProvisioning } from "../lib/identity-provisioning-context";
 import { InventoryLedgerProvider } from "../lib/inventory-ledger-context";
 import { FieldTrackingProvider } from "../lib/location-tracking-context";
+import { FirebaseSessionProvider } from "../lib/firebase-session-context";
 import { MarketingProvider } from "../lib/marketing-context";
 import { NotificationProvider } from "../lib/notification-context";
 import { PayrollProvider } from "../lib/payroll-context";
 import { PerformanceProvider } from "../lib/performance-context";
 import { PeriodLockProvider } from "../lib/period-lock-context";
 import { RuntimeModeProvider } from "../lib/runtime-mode";
-import { currentRuntimeMode } from "../lib/runtime-mode-store";
+import { currentRuntimeMode, useRuntimeModeValue } from "../lib/runtime-mode-store";
 import { WorkspaceProvider, useWorkspace } from "../lib/workspace-context";
 import { AppShell } from "./app-shell";
 import { DeparturePrompt } from "./field-tracking/departure-prompt";
+import { FirebaseGate } from "./firebase-gate";
 import { OnboardingPortal } from "./hcm/onboarding-portal";
 import { LoginScreen } from "./login-screen";
 
@@ -49,7 +51,18 @@ function MomentumExperience(){
   return <><AppShell/><DeparturePrompt/></>;
 }
 
+function MomentumProviders(){
+  return <WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><IdentityProvisioningProvider><FieldTrackingProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></FieldTrackingProvider></IdentityProvisioningProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider>;
+}
+
+/**
+ * Local demo mode (localhost only) keeps the self-contained localStorage workspace.
+ * Production mounts the Firebase session first: the engines only render after the signed-in employee's
+ * access record is verified and every Firestore document they may read has been cached.
+ */
 export function MomentumApp(){
   ensurePresentationSeed();
-  return <WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><IdentityProvisioningProvider><FieldTrackingProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></FieldTrackingProvider></IdentityProvisioningProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider>;
+  const runtimeMode=useRuntimeModeValue();
+  if(runtimeMode==="demo")return <MomentumProviders/>;
+  return <FirebaseSessionProvider><FirebaseGate><MomentumProviders/></FirebaseGate></FirebaseSessionProvider>;
 }

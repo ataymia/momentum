@@ -4,7 +4,7 @@ service firebase.storage {
     function signedIn() { return request.auth != null; }
     function accessPath(uid) { return /databases/(default)/documents/userAccess/$(uid); }
     function hasAccess(uid) { return signedIn() && firestore.exists(accessPath(uid)); }
-    function isAdmin() { return hasAccess(request.auth.uid) && firestore.get(accessPath(request.auth.uid)).data.role == 'Administrator'; }
+    function isAdmin() { return hasAccess(request.auth.uid) && firestore.get(accessPath(request.auth.uid)).data.role == 'Administrator' && firestore.get(accessPath(request.auth.uid)).data.accountState == 'Active'; }
     function safeDocumentUpload() { return request.resource.size < 10 * 1024 * 1024 && request.resource.contentType.matches('(application/pdf|image/.*)'); }
 
     match /onboardingTemplates/{allPaths=**} {

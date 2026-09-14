@@ -32,6 +32,7 @@ import {
   shouldPersistRouteSample,
   validCoordinate,
 } from "./location-tracking-engine";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import type { Appointment } from "./types";
 import { useWorkspace } from "./workspace-context";
 
@@ -70,7 +71,7 @@ const FieldTrackingContext = createContext<FieldTrackingContextValue | null>(nul
 
 function readState() {
   if (typeof window === "undefined") return createFieldTrackingSeed();
-  try { return normalizeFieldTrackingState(JSON.parse(window.localStorage.getItem(FIELD_TRACKING_STORAGE_KEY) ?? "null")); }
+  try { return normalizeFieldTrackingState(JSON.parse(momentumStorage.getItem(FIELD_TRACKING_STORAGE_KEY) ?? "null")); }
   catch { return createFieldTrackingSeed(); }
 }
 
@@ -110,8 +111,9 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     stateRef.current = state;
-    if (typeof window !== "undefined") window.localStorage.setItem(FIELD_TRACKING_STORAGE_KEY, JSON.stringify(state));
+    if (typeof window !== "undefined") momentumStorage.setItem(FIELD_TRACKING_STORAGE_KEY, JSON.stringify(state));
   }, [state]);
+  useRemoteStorageSync(FIELD_TRACKING_STORAGE_KEY, () => setState(readState()));
 
   const todayEntries = useMemo(() => currentUser ? data.timeEntries.filter((entry) => entry.userId === currentUser.id && entry.date === today()) : [], [currentUser, data.timeEntries]);
   const hasActiveClock = todayEntries.some((entry) => !entry.clockOut);

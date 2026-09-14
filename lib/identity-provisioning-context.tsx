@@ -1,9 +1,11 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useFirebaseSessionOptional } from "./firebase-session-context";
 import { useHcm } from "./hcm-context";
 import { AccountAccessState, IDENTITY_PROVISIONING_STORAGE_KEY, IdentityProvisioningRecord, IdentityProvisioningState, ProvisioningDraft, ProvisioningSource, accountAccessFor, createIdentityProvisioningSeed, normalizeIdentityProvisioningState } from "./identity-provisioning";
 import { activateEmploymentAfterOnboarding, onboardingReadiness, prepareOnboardingPackage } from "./onboarding-engine";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useWorkspace } from "./workspace-context";
 
 export type BeginOnboardingInput = { userId: string; source?: ProvisioningSource; candidateId?: string; offerId?: string; draftId?: string };
@@ -30,14 +32,17 @@ const expectedTeam: Record<ProvisioningDraft["role"], ProvisioningDraft["team"]>
 
 function readState(data: ReturnType<typeof useWorkspace>["data"]) {
   if (typeof window === "undefined") return createIdentityProvisioningSeed(data);
-  try { return normalizeIdentityProvisioningState(JSON.parse(window.localStorage.getItem(IDENTITY_PROVISIONING_STORAGE_KEY) ?? "null"), data); }
+  try { return normalizeIdentityProvisioningState(JSON.parse(momentumStorage.getItem(IDENTITY_PROVISIONING_STORAGE_KEY) ?? "null"), data); }
   catch { return createIdentityProvisioningSeed(data); }
 }
 
 export function IdentityProvisioningProvider({ children }: { children: ReactNode }) {
   const { data, currentUser } = useWorkspace();
   const { hcm, setHcm } = useHcm();
+  const firebase = useFirebaseSessionOptional();
   const [state, setState] = useState<IdentityProvisioningState>(() => readState(data));
+  // Security Rules read `userAccess.accountState`; only Administrators may write it, so mirror admin transitions there.
+  const syncAccountState = (userId: string, nextState: AccountAccessState) => { if (firebase) void firebase.setAccountState(userId, nextState); };
 
   useEffect(() => {
     const handle = window.setTimeout(() => setState((current) => normalizeIdentityProvisioningState(current, data)), 0);
@@ -45,8 +50,12 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   }, [data]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem(IDENTITY_PROVISIONING_STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+    if (typeof window === "undefined") return;
+    // Fail-closed placeholder records exist only in memory in production; Firestore holds real provisioning decisions.
+    const persisted = firebase ? { ...state, records: state.records.filter((record) => record.provisionedBy !== "system-fail-closed") } : state;
+    momentumStorage.setItem(IDENTITY_PROVISIONING_STORAGE_KEY, JSON.stringify(persisted));
+  }, [firebase, state]);
+  useRemoteStorageSync(IDENTITY_PROVISIONING_STORAGE_KEY, () => setState(readState(data)));
 
   useEffect(() => {
     if (!currentUser || currentUser.role === "Customer") return;
@@ -124,6 +133,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     };
     setHcm((current) => prepareOnboardingPackage(current, data, draft, target.id, currentUser.id));
     setState((current) => ({ ...current, records: [record, ...current.records.filter((item) => item.userId !== target.id)] }));
+    syncAccountState(target.id, "Password change required");
     return true;
   };
 
@@ -152,6 +162,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const at = new Date().toISOString();
     setHcm((current) => activateEmploymentAfterOnboarding(current, userId, currentUser.id));
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Active", activatedAt: at, activatedBy: currentUser.id, returnReason: undefined } : item) }));
+    syncAccountState(userId, "Active");
     return true;
   };
 
@@ -161,6 +172,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (!record || !["Pending approval", "Onboarding"].includes(record.state)) return false;
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Onboarding", returnedAt: at, returnedBy: currentUser.id, returnReason: reason.trim() } : item) }));
+    syncAccountState(userId, "Onboarding");
     return true;
   };
 
@@ -169,6 +181,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const record = accountAccessFor(state, userId);
     if (!record) return false;
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: nextState, returnedAt: new Date().toISOString(), returnedBy: currentUser.id, returnReason: reason.trim() } : item) }));
+    syncAccountState(userId, nextState);
     return true;
   };
 

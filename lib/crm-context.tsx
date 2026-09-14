@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import {
   CRM_STORAGE_KEY,
   CrmContact,
@@ -50,7 +51,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   const read = () => {
     if (typeof window === "undefined") return createCrmSeed(data);
     try {
-      return normalizeCrmState(JSON.parse(window.localStorage.getItem(CRM_STORAGE_KEY) ?? "null"), data);
+      return normalizeCrmState(JSON.parse(momentumStorage.getItem(CRM_STORAGE_KEY) ?? "null"), data);
     } catch {
       return createCrmSeed(data);
     }
@@ -65,8 +66,9 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   }, [data]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(state));
+    if (typeof window !== "undefined") momentumStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(state));
   }, [state]);
+  useRemoteStorageSync(CRM_STORAGE_KEY, () => setCrm(read()));
 
   const locationIds = useMemo(() => new Set(scope.accounts.map((account) => account.id)), [scope.accounts]);
   const customerIds = useMemo(() => new Set(scope.accounts.map((account) => account.customerId).filter((id): id is string => Boolean(id))), [scope.accounts]);

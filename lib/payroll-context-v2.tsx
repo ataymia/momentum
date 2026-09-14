@@ -6,6 +6,7 @@ import { useHcm } from "./hcm-context";
 import { payrollCorrectionBlockers, payrollRunControlIssues, voidPayrollRunForCorrection } from "./payroll-controls";
 import { disbursementCanRecordFailure, disbursementCanRecordSettlement, disbursementCanRetry, type DisbursementRecord, liabilityCanRecordPaid, liabilityCanSchedule, type TaxLiabilityRecord } from "./payroll-settlement-controls";
 import { usePeriodLocks } from "./period-lock-context";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { PAYROLL_STORAGE_KEY, BenefitTaxRule, BenefitTaxTreatment, Disbursement, EmployerTaxRule, PayGroup, PayRun, PayRunStatus, PayrollEmployee, PayrollState, TaxLiability, TaxLiabilityStatus, WithholdingProfile, calculateBonusLine, calculateRegularLine, consumedTimecards, createPayrollSeed, earnedBonusesForMonth, normalizePayrollState } from "./payroll-engine";
 import { useWorkspace } from "./workspace-context";
@@ -23,8 +24,9 @@ const PayrollContext=createContext<PayrollContextValue|null>(null);
 
 export function PayrollProvider({children}:{children:ReactNode}){
   const{data,currentUser}=useWorkspace();const{hcm}=useHcm();const locks=usePeriodLocks();const runtime=useRuntimeMode();
-  const read=()=>{if(typeof window==="undefined")return createPayrollSeed();try{return normalizePayrollState(JSON.parse(window.localStorage.getItem(PAYROLL_STORAGE_KEY)??"null"));}catch{return createPayrollSeed();}};
-  const[payroll,setPayroll]=useState<PayrollState>(()=>read());useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(PAYROLL_STORAGE_KEY,JSON.stringify(payroll));},[payroll]);
+  const read=()=>{if(typeof window==="undefined")return createPayrollSeed();try{return normalizePayrollState(JSON.parse(momentumStorage.getItem(PAYROLL_STORAGE_KEY)??"null"));}catch{return createPayrollSeed();}};
+  const[payroll,setPayroll]=useState<PayrollState>(()=>read());useEffect(()=>{if(typeof window!=="undefined")momentumStorage.setItem(PAYROLL_STORAGE_KEY,JSON.stringify(payroll));},[payroll]);
+  useRemoteStorageSync(PAYROLL_STORAGE_KEY,()=>setPayroll(read()));
   const isAdmin=currentUser?.role==="Administrator";
   const savePayGroup=(input:Omit<PayGroup,"id">)=>{if(!isAdmin||!input.name.trim()||!frequencies.has(input.frequency)||!Number.isFinite(input.overtimeThresholdHours)||input.overtimeThresholdHours<0||typeof input.active!=="boolean")return"";const id=uid("pay-group");setPayroll((state)=>({...state,payGroups:[{...input,name:input.name.trim(),id},...state.payGroups]}));return id;};
   const savePayrollEmployee=(input:PayrollEmployee)=>{if(!isAdmin||!data.users.some((user)=>user.id===input.userId&&user.role!=="Customer")||!payroll.payGroups.some((group)=>group.id===input.payGroupId&&group.active)||!paymentMethods.has(input.paymentMethod)||typeof input.paymentTokenLabel!=="string")return;setPayroll((state)=>({...state,employees:[input,...state.employees.filter((item)=>item.userId!==input.userId)]}));};

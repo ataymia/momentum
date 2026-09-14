@@ -1,13 +1,15 @@
 "use client";
 
-import { CheckCircle2, KeyRound, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { CheckCircle2, Copy, KeyRound, MailCheck, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
+import { generateTemporaryPassword, validateTemporaryPassword } from "../../lib/firebase-admin-provisioning";
+import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { useHcm } from "../../lib/hcm-context";
 import type { PayBasis, WorkerClassification } from "../../lib/hcm-engine";
 import { useIdentityProvisioning, type NewProvisioningDraftInput } from "../../lib/identity-provisioning-context";
 import type { ProvisionableRole, ProvisioningDraft } from "../../lib/identity-provisioning";
-import { managerOptionsForProvisioning } from "../../lib/workspace-user-provisioning";
+import { buildProvisionedWorkspaceUser, managerOptionsForProvisioning, validateInternalUserProvisioning } from "../../lib/workspace-user-provisioning";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Section, StatusPill, formatMoney } from "../ui";
 
@@ -40,7 +42,11 @@ export function NewHireProvisioning() {
   const { data, currentUser } = useWorkspace();
   const { hcm } = useHcm();
   const provisioning = useIdentityProvisioning();
+  const firebase = useFirebaseSessionOptional();
   const [notice, setNotice] = useState("");
+  const [identityDraft, setIdentityDraft] = useState<{ draftId: string; password: string; busy: boolean; error: string } | null>(null);
+  const [issued, setIssued] = useState<{ draftId: string; email: string; password: string; name: string } | null>(null);
+  const [pendingLink, setPendingLink] = useState<{ draftId: string; uid: string } | null>(null);
   const [form, setForm] = useState<FormState>(() => ({
     source: "Direct hire",
     offerId: "",
@@ -66,7 +72,45 @@ export function NewHireProvisioning() {
   const activeCourses = hcm.courses.filter((course) => course.active);
   const pendingApprovals = provisioning.state.records.filter((record) => record.state === "Pending approval");
 
+  // Once the new identity appears in the directory and HCM has seeded its employee record, link it and open onboarding.
+  useEffect(() => {
+    if (!pendingLink) return;
+    const user = data.users.find((item) => item.id === pendingLink.uid);
+    if (!user || !hcm.employees.some((item) => item.userId === pendingLink.uid)) return;
+    const handle = window.setTimeout(() => {
+      const draft = provisioning.state.drafts.find((item) => item.id === pendingLink.draftId);
+      if (!draft) { setPendingLink(null); return; }
+      const linked = draft.status === "Auth linked" || provisioning.linkDraftToUser(draft.id, user.id);
+      if (linked) provisioning.beginOnboarding({ userId: user.id, draftId: draft.id });
+      setNotice(linked ? `${user.name} now has a Firebase identity and is ready to begin onboarding.` : "The identity was created but could not be linked to the setup. Use “Link & start onboarding”.");
+      setPendingLink(null);
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [data.users, hcm.employees, pendingLink, provisioning]);
+
   if (currentUser?.role !== "Administrator") return null;
+
+  const startIdentityCreation = (draft: ProvisioningDraft) => { setIssued(null); setIdentityDraft({ draftId: draft.id, password: generateTemporaryPassword(), busy: false, error: "" }); };
+
+  const createIdentity = async (draft: ProvisioningDraft) => {
+    if (!firebase || !identityDraft || identityDraft.busy) return;
+    const invalid = validateTemporaryPassword(identityDraft.password);
+    if (invalid) { setIdentityDraft({ ...identityDraft, error: invalid }); return; }
+    const input = { name: draft.legalName, email: draft.workEmail, title: draft.jobTitle, role: draft.role, team: draft.team, managerId: draft.managerId };
+    const validation = validateInternalUserProvisioning(data, input);
+    if (validation) { setIdentityDraft({ ...identityDraft, error: validation }); return; }
+    setIdentityDraft({ ...identityDraft, busy: true, error: "" });
+    const user = buildProvisionedWorkspaceUser(data, input, "pending-firebase-uid");
+    const result = await firebase.createEmployeeAccount({ user, temporaryPassword: identityDraft.password });
+    if (!result.ok || !result.uid) { setIdentityDraft({ ...identityDraft, busy: false, error: result.message ?? "Identity creation failed." }); return; }
+    if (draft.status === "Ready to invite") provisioning.markDraftInviteSent(draft.id);
+    setIssued({ draftId: draft.id, email: draft.workEmail, password: identityDraft.password, name: draft.legalName });
+    setPendingLink({ draftId: draft.id, uid: result.uid });
+    setIdentityDraft(null);
+  };
+
+  const copyPassword = async () => { if (issued && typeof navigator !== "undefined" && navigator.clipboard) { await navigator.clipboard.writeText(issued.password).catch(() => undefined); setNotice("Temporary password copied. Share it through a secure channel only."); } };
+  const sendResetInstead = async () => { if (!firebase || !issued) return; const result = await firebase.sendPasswordReset(issued.email); setNotice(result.message ?? (result.ok ? "Password setup e-mail sent." : "Could not send the e-mail.")); };
 
   const setRole = (role: ProvisionableRole) => {
     const nextTeam = teamForRole(role);
@@ -171,11 +215,13 @@ export function NewHireProvisioning() {
       </form>
     </Section>
 
-    <Section title="Provisioning queue" description="Prepared employee accounts waiting for identity or onboarding steps." action={<StatusPill tone="neutral">{provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled").length} setup{provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled").length === 1 ? "" : "s"}</StatusPill>}>
+    <Section title="Provisioning queue" description={firebase ? "Prepared employee accounts. Create the Firebase identity here; the employee signs in with a temporary password and must change it before onboarding." : "Prepared employee accounts waiting for identity or onboarding steps."} action={<StatusPill tone="neutral">{provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled").length} setup{provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled").length === 1 ? "" : "s"}</StatusPill>}>
+      {issued && <div className="temp-password" role="status"><strong>{issued.name} · {issued.email}</strong><span>Temporary password (shown once). The employee must change it at first sign-in.</span><code>{issued.password}</code><div className="provisioning-row-actions"><Button size="sm" variant="secondary" icon={<Copy size={14}/>} onClick={() => void copyPassword()}>Copy</Button><Button size="sm" variant="ghost" icon={<MailCheck size={14}/>} onClick={() => void sendResetInstead()}>E-mail a password setup link instead</Button><Button size="sm" variant="ghost" onClick={() => setIssued(null)}>Dismiss</Button></div></div>}
       <div className="provisioning-queue">{provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled").map((draft) => {
         const manager = data.users.find((user) => user.id === draft.managerId);
         const matchingUser = data.users.find((user) => user.email.toLowerCase() === draft.workEmail.toLowerCase() && user.role !== "Administrator" && user.role !== "Customer");
-        return <article key={draft.id}><span className="provisioning-avatar"><UsersRound size={18}/></span><div><strong>{draft.legalName}</strong><p>{draft.jobTitle} · {draft.team} · reports to {manager?.name ?? "Unresolved manager"}</p><small>{draft.workEmail} · starts {draft.startDate}{draft.payRate ? ` · ${draft.payBasis} ${formatMoney(draft.payRate)}` : " · compensation pending"}</small></div><StatusPill tone={draft.status === "Auth linked" ? "success" : draft.status === "Invite sent" ? "info" : "warning"}>{draft.status}</StatusPill><div className="provisioning-row-actions">{matchingUser ? <Button size="sm" variant="secondary" onClick={() => startExistingOnboarding(draft)}>Link & start onboarding</Button> : <Button size="sm" variant="secondary" disabled title="Requires trusted Firebase Admin identity creation">Firebase identity required</Button>}<Button size="sm" variant="ghost" onClick={() => provisioning.cancelDraft(draft.id)}>Cancel</Button></div></article>;
+        const creating = identityDraft?.draftId === draft.id;
+        return <article key={draft.id}><span className="provisioning-avatar"><UsersRound size={18}/></span><div><strong>{draft.legalName}</strong><p>{draft.jobTitle} · {draft.team} · reports to {manager?.name ?? "Unresolved manager"}</p><small>{draft.workEmail} · starts {draft.startDate}{draft.payRate ? ` · ${draft.payBasis} ${formatMoney(draft.payRate)}` : " · compensation pending"}</small>{creating && identityDraft && <form className="access-gate-form" onSubmit={(event) => { event.preventDefault(); void createIdentity(draft); }}><label><span>Temporary password</span><input value={identityDraft.password} onChange={(event) => setIdentityDraft({ ...identityDraft, password: event.target.value, error: "" })} autoComplete="off"/></label>{identityDraft.error && <p className="form-error" role="alert">{identityDraft.error}</p>}<div className="provisioning-row-actions"><Button size="sm" type="submit" disabled={identityDraft.busy} icon={<KeyRound size={14}/>}>{identityDraft.busy ? "Creating…" : "Create identity & access record"}</Button><Button size="sm" variant="ghost" type="button" onClick={() => setIdentityDraft(null)}>Cancel</Button></div></form>}</div><StatusPill tone={draft.status === "Auth linked" ? "success" : draft.status === "Invite sent" ? "info" : "warning"}>{draft.status}</StatusPill><div className="provisioning-row-actions">{matchingUser ? <Button size="sm" variant="secondary" onClick={() => startExistingOnboarding(draft)}>Link & start onboarding</Button> : firebase ? <Button size="sm" variant="secondary" disabled={creating} icon={<KeyRound size={14}/>} onClick={() => startIdentityCreation(draft)}>Create Firebase identity</Button> : <Button size="sm" variant="secondary" disabled title="Available in production mode with Firebase connected">Firebase identity required</Button>}<Button size="sm" variant="ghost" onClick={() => provisioning.cancelDraft(draft.id)}>Cancel</Button></div></article>;
       })}{provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled").length === 0 && <div className="review-empty"><UserPlus size={24}/><h3>No new-hire setups yet</h3><p>Create an employee setup before issuing credentials.</p></div>}</div>
     </Section>
 

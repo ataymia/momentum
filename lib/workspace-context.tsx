@@ -6,6 +6,7 @@ import { normalizeCommercialState } from "./commercial-state";
 import { addCalendarDays, arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import { findAccountDuplicate } from "./duplicate-engine";
 import { activeFieldAppointmentForUser } from "./field-work-session";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { evaluatePartnerPricing } from "./pricing-engine";
 import { useRuntimeModeValue } from "./runtime-mode-store";
 import { canAssignRepToAccountTerritory, canSalesRepWorkAccount, normalizePostalCode, territoryForPostalCode, territorySystemEnabled, validateTerritoryDraft, type TerritoryDraft } from "./territory-engine";
@@ -71,7 +72,7 @@ type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | 
   data: WorkspaceData;
   scope: ReturnType<typeof getWorkspaceScope>;
   currentUser: WorkspaceUser | null;
-  login: (email: string, password: string) => { ok: boolean; message?: string };
+  login: BaseWorkspace["login"];
   logout: () => boolean;
   toggleClock: () => boolean;
   switchUser: (userId: string) => void;
@@ -120,7 +121,7 @@ function seedCommercial(data: WorkspaceData): CommercialState {
 function readCommercial(data: WorkspaceData): CommercialState {
   if (typeof window === "undefined") return seedCommercial(data);
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(COMMERCIAL_KEY) ?? "null") as unknown;
+    const parsed = JSON.parse(momentumStorage.getItem(COMMERCIAL_KEY) ?? "null") as unknown;
     return normalizeCommercialState(parsed, data, today());
   } catch {
     return seedCommercial(data);
@@ -135,8 +136,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const [warehouseSession, setWarehouseSession] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem(COMMERCIAL_KEY, JSON.stringify(commercial));
+    if (typeof window !== "undefined") momentumStorage.setItem(COMMERCIAL_KEY, JSON.stringify(commercial));
   }, [commercial]);
+
+  useRemoteStorageSync(COMMERCIAL_KEY, () => setCommercial(readCommercial(base.data)));
 
   useEffect(() => {
     const handle = window.setTimeout(() => setCommercial((state) => normalizeCommercialState(state, base.data, today())), 0);
@@ -151,30 +154,12 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   }, [demoMode]);
 
   const data = useMemo<WorkspaceData>(() => {
-    if (!demoMode) {
-      const productionUsers = base.data.users.filter((user) => !isDemoIdentity(user));
-      return {
-        ...base.data,
-        users: productionUsers,
-        customers: [],
-        accounts: [],
-        activities: [],
-        appointments: [],
-        orders: [],
-        placements: [],
-        inventory: [],
-        approvals: [],
-        timeEntries: [],
-        timecards: [],
-        notifications: [],
-        bulletins: [],
-        territories: [],
-      };
-    }
-    const cleanBaseUsers = base.data.users;
-    const users = !cleanBaseUsers.some((user) => user.id === warehouseUser.id) ? [...cleanBaseUsers, warehouseUser] : cleanBaseUsers;
+    // Production identities come from the Firebase employee directory; demo fixtures (warehouse reviewer, demo SKU) never leak in.
+    const productionUsers = base.data.users.filter((user) => !isDemoIdentity(user));
+    const cleanBaseUsers = demoMode ? base.data.users : productionUsers;
+    const users = demoMode && !cleanBaseUsers.some((user) => user.id === warehouseUser.id) ? [...cleanBaseUsers, warehouseUser] : cleanBaseUsers;
     const extraLots = commercial.inventoryLots;
-    if (!base.data.inventory.some((lot) => lot.id === tropicalLot.id) && !extraLots.some((lot) => lot.id === tropicalLot.id)) extraLots.push(tropicalLot);
+    if (demoMode && !base.data.inventory.some((lot) => lot.id === tropicalLot.id) && !extraLots.some((lot) => lot.id === tropicalLot.id)) extraLots.push(tropicalLot);
     const extraLotIds = new Set(extraLots.map((lot) => lot.id));
     const inventory = [...extraLots, ...base.data.inventory.filter((lot) => !extraLotIds.has(lot.id))];
     const territoryData={territories:commercial.territories};
@@ -212,8 +197,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     base.navigate("dispatch");
   };
 
-  const login = (email: string, password: string) => {
-    if (!demoMode) return { ok: false, message: "Sign-in will be available when Firebase Authentication is connected." };
+  const login: BaseWorkspace["login"] = (email, password) => {
+    if (!demoMode) return base.login(email, password);
     if (email.trim().toLowerCase() === warehouseUser.email && password === "admin") {
       base.logout();
       setWarehouseSession(true);
@@ -521,7 +506,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     setCommercial(seedCommercial(base.data));
     setWarehouseSession(false);
     if (typeof window !== "undefined") {
-      window.localStorage.removeItem(COMMERCIAL_KEY);
+      momentumStorage.removeItem(COMMERCIAL_KEY);
       window.localStorage.removeItem(WAREHOUSE_SESSION_KEY);
     }
   };

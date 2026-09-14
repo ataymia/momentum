@@ -1,147 +1,212 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // =====================================================================
+    // Administrator bootstrap
+    // ---------------------------------------------------------------------
+    // Put the two all-powerful Administrator work e-mails here (lower-case),
+    // e.g. return ['owner@momentumdistribution.com', 'you@momentumdistribution.com'];
+    // Each listed, e-mail-verified account may claim Administrator for itself.
+    // While the list is EMPTY, exactly one verified account may claim it once
+    // (first come, first served) and must then provision everyone else.
+    // =====================================================================
+    function bootstrapEmails() { return []; }
+
+    // ---------------------------------------------------------------------
+    // Identity helpers. userAccess/{uid} is the only authority for role,
+    // reporting line and account state. Only Administrators write it.
+    // ---------------------------------------------------------------------
     function signedIn() { return request.auth != null; }
+    function isSelf(uid) { return signedIn() && uid == request.auth.uid; }
     function accessPath(uid) { return /databases/$(database)/documents/userAccess/$(uid); }
     function hasAccess(uid) { return signedIn() && exists(accessPath(uid)); }
+    function callerHasAccess() { return hasAccess(request.auth.uid); }
+    function callerHasAccessAfter() { return signedIn() && existsAfter(accessPath(request.auth.uid)); }
     function myAccess() { return get(accessPath(request.auth.uid)).data; }
-    function roleIs(role) { return hasAccess(request.auth.uid) && myAccess().role == role; }
-    function isAdmin() { return roleIs('Administrator'); }
-    function isSalesManager() { return roleIs('Sales Manager'); }
-    function isSalesRep() { return roleIs('Sales Representative'); }
-    function isOperations() { return roleIs('Operations'); }
-    function isWarehouse() { return roleIs('Warehouse'); }
+    function accessOf(uid) { return get(accessPath(uid)).data; }
+    function employeeRole(role) { return role in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']; }
+    function isAdmin() { return callerHasAccess() && myAccess().role == 'Administrator' && myAccess().accountState == 'Active'; }
+    function activeEmployee() { return callerHasAccess() && employeeRole(myAccess().role) && myAccess().accountState == 'Active'; }
+    function roleIn(roles) { return activeEmployee() && myAccess().role in roles; }
+    // Employees who may still write their own onboarding shards (not suspended/separated).
+    function selfWritable() { return callerHasAccess() && employeeRole(myAccess().role) && myAccess().accountState in ['Password change required', 'Onboarding', 'Pending approval', 'Active']; }
+    // Sales Managers manage direct reports and explicitly managed teams. Mirrors buildPersistenceScope().
     function manages(uid) {
-      return isAdmin() || (isSalesManager() && uid != request.auth.uid && hasAccess(uid) && get(accessPath(uid)).data.managerId == request.auth.uid);
-    }
-    function activeEmployee() { return hasAccess(request.auth.uid) && myAccess().accountState == 'Active'; }
-    function territoryPath(id) { return /databases/$(database)/documents/territories/$(id); }
-    function territoryMatches(data) {
-      return data.territoryId is string
-        && data.postalCode is string
-        && exists(territoryPath(data.territoryId))
-        && get(territoryPath(data.territoryId)).data.status == 'Active'
-        && get(territoryPath(data.territoryId)).data.ownerId == data.ownerId
-        && get(territoryPath(data.territoryId)).data.postalCodes.hasAny([data.postalCode]);
-    }
-    function accountPath(id) { return /databases/$(database)/documents/accounts/$(id); }
-    function canReadAccount(data) {
-      return activeEmployee() && (isAdmin() || data.ownerId == request.auth.uid || manages(data.ownerId) || isOperations() || isWarehouse());
+      return activeEmployee() && myAccess().role == 'Sales Manager' && uid != request.auth.uid && hasAccess(uid)
+        && employeeRole(accessOf(uid).role)
+        && (accessOf(uid).managerId == request.auth.uid || accessOf(uid).team in myAccess().get('managedTeams', []));
     }
 
-    match /userAccess/{uid} {
-      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
-      allow create, update, delete: if isAdmin() && uid != request.auth.uid;
+    function emailVerified() { return signedIn() && request.auth.token.email_verified == true; }
+    function bootstrapPath() { return /databases/$(database)/documents/platform/bootstrap; }
+    function bootstrapByList() { return bootstrapEmails().size() > 0 && emailVerified() && request.auth.token.email.lower() in bootstrapEmails(); }
+    function bootstrapFirstClaim() { return bootstrapEmails().size() == 0 && emailVerified() && !exists(bootstrapPath()); }
+    // The claim is one atomic batch: platform/bootstrap + userAccess + employeeDirectory + identity record.
+    function bootstrapClaim() {
+      return signedIn() && !callerHasAccess() && (bootstrapByList() || bootstrapFirstClaim())
+        && getAfter(bootstrapPath()).data.claimedBy == request.auth.uid;
     }
 
-    match /employeeDirectory/{uid} {
-      allow read: if signedIn() && (uid == request.auth.uid || activeEmployee());
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (signedIn() && uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredName','profilePhotoPath','lastActivityAt']));
+    function validAccess(data) {
+      return data.keys().hasAll(['email', 'role', 'team', 'accountState', 'updatedAt', 'updatedBy'])
+        && data.email is string
+        && (employeeRole(data.role) || data.role == 'Customer')
+        && data.team in ['Leadership', 'Sales', 'Operations', 'Customer']
+        && data.accountState in ['Password change required', 'Onboarding', 'Pending approval', 'Active', 'Suspended', 'Separated'];
     }
 
-    match /employeePrivate/{uid} {
-      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
-      allow create: if isAdmin() || (signedIn() && uid == request.auth.uid && request.resource.data.keys().hasOnly(['phone','address','emergencyContact','preferredName','updatedAt']));
-      allow update: if isAdmin() || (signedIn() && uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone','address','emergencyContact','preferredName','updatedAt']));
-      allow delete: if isAdmin();
-    }
-
-    match /identityAccess/{uid} {
-      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (signedIn() && uid == request.auth.uid && (
-        (resource.data.state == 'Password change required' && request.resource.data.state == 'Onboarding' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state','passwordChangedAt','passwordChangeEvidence']))
-        || (resource.data.state == 'Onboarding' && request.resource.data.state == 'Pending approval' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state','onboardingSubmittedAt']))
-      ));
-    }
-
-    match /provisioningDrafts/{draftId} {
-      allow read, write: if isAdmin();
-    }
-
-    match /territories/{territoryId} {
-      allow read: if activeEmployee() && (isAdmin() || isSalesManager() || resource.data.ownerId == request.auth.uid);
-      allow create: if activeEmployee() && (isAdmin() || (isSalesManager() && request.resource.data.ownerId is string && manages(request.resource.data.ownerId)));
-      allow update: if activeEmployee() && (isAdmin() || (isSalesManager() && resource.data.ownerId is string && manages(resource.data.ownerId) && request.resource.data.ownerId is string && manages(request.resource.data.ownerId)));
-      allow delete: if isAdmin();
-    }
-
-    match /accounts/{accountId} {
-      allow read: if canReadAccount(resource.data);
-      allow create: if activeEmployee() && territoryMatches(request.resource.data) && (isAdmin() || manages(request.resource.data.ownerId) || (isSalesRep() && request.resource.data.ownerId == request.auth.uid));
-      allow update: if activeEmployee() && canReadAccount(resource.data) && territoryMatches(request.resource.data) && (isAdmin() || manages(request.resource.data.ownerId) || (isSalesRep() && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == request.auth.uid && request.resource.data.territoryId == resource.data.territoryId && request.resource.data.postalCode == resource.data.postalCode));
-      allow delete: if isAdmin();
-    }
-
-    match /appointments/{appointmentId} {
-      allow read: if activeEmployee() && (isAdmin() || resource.data.ownerId == request.auth.uid || manages(resource.data.ownerId) || (isOperations() && resource.data.type == 'Delivery'));
-      allow create: if activeEmployee() && exists(accountPath(request.resource.data.accountId)) && canReadAccount(get(accountPath(request.resource.data.accountId)).data) && request.resource.data.ownerId == get(accountPath(request.resource.data.accountId)).data.ownerId && (isAdmin() || manages(request.resource.data.ownerId) || request.resource.data.ownerId == request.auth.uid);
-      allow update: if activeEmployee() && (isAdmin() || manages(resource.data.ownerId) || resource.data.ownerId == request.auth.uid) && request.resource.data.accountId == resource.data.accountId;
-      allow delete: if isAdmin();
-    }
-
-    match /orders/{orderId} {
-      allow read: if activeEmployee() && exists(accountPath(resource.data.accountId)) && canReadAccount(get(accountPath(resource.data.accountId)).data);
-      allow create: if activeEmployee() && exists(accountPath(request.resource.data.accountId)) && canReadAccount(get(accountPath(request.resource.data.accountId)).data) && (isAdmin() || manages(get(accountPath(request.resource.data.accountId)).data.ownerId) || get(accountPath(request.resource.data.accountId)).data.ownerId == request.auth.uid);
-      allow update: if activeEmployee() && isAdmin();
+    match /platform/bootstrap {
+      allow read: if signedIn();
+      allow create: if request.resource.data.claimedBy == request.auth.uid && (bootstrapByList() || bootstrapFirstClaim());
+      allow update: if request.resource.data.claimedBy == request.auth.uid && bootstrapByList();
       allow delete: if false;
     }
 
-    match /placements/{placementId} {
-      allow read: if activeEmployee() && exists(accountPath(resource.data.accountId)) && canReadAccount(get(accountPath(resource.data.accountId)).data);
-      allow create, update: if activeEmployee() && exists(accountPath(request.resource.data.accountId)) && canReadAccount(get(accountPath(request.resource.data.accountId)).data) && (isAdmin() || manages(get(accountPath(request.resource.data.accountId)).data.ownerId) || get(accountPath(request.resource.data.accountId)).data.ownerId == request.auth.uid);
+    // Change-detection document: writers bump a version key per document they touched.
+    match /platform/meta {
+      allow read: if callerHasAccess();
+      allow create, update: if callerHasAccessAfter() && request.resource.data.keys().hasOnly(['versions']);
+      allow delete: if false;
+    }
+
+    match /userAccess/{uid} {
+      allow read: if isSelf(uid) || isAdmin();
+      allow create: if validAccess(request.resource.data) && (
+        (isAdmin() && uid != request.auth.uid)
+        || (isSelf(uid) && bootstrapClaim() && request.resource.data.role == 'Administrator' && request.resource.data.accountState == 'Active')
+      );
+      allow update: if isAdmin() && uid != request.auth.uid && validAccess(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /employeeDirectory/{uid} {
+      allow read: if isSelf(uid) || callerHasAccess();
+      allow create: if isAdmin() || (isSelf(uid) && bootstrapClaim() && request.resource.data.role == 'Administrator');
+      allow update: if isAdmin() || (isSelf(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['firstName', 'initials', 'accent', 'updatedAt']));
+      allow delete: if false;
+    }
+
+    // =====================================================================
+    // Engine state. Mirrors lib/firestore-domains.ts — keep both in sync.
+    //   domains/{domainId}/fields/{field}      shared documents
+    //   userDomains/{uid}/{domainId}/{field}   per-user shards
+    // =====================================================================
+    function validShard(field) {
+      return (field == '_root' && request.resource.data.keys().hasOnly(['data']) && request.resource.data.data is map)
+        || (field != '_root' && request.resource.data.keys().hasOnly(['items']) && request.resource.data.items is list);
+    }
+
+    function hcmRestrictedField(field) { return field in ['requisitions', 'candidates', 'interviews', 'offers', 'lifecycleCases']; }
+    function hcmSharedRead(field) {
+      return (field == 'audit' && isAdmin())
+        || (hcmRestrictedField(field) && roleIn(['Administrator', 'Sales Manager']))
+        || (field != 'audit' && !hcmRestrictedField(field) && callerHasAccess());
+    }
+    function hcmSharedWrite(field) {
+      return ((field == 'audit' || hcmRestrictedField(field)) && isAdmin())
+        || (field != 'audit' && !hcmRestrictedField(field) && roleIn(['Administrator', 'Sales Manager']));
+    }
+
+    function domainRead(domainId, field) {
+      return (domainId == 'workspace' && activeEmployee())
+        || (domainId == 'commercial' && activeEmployee())
+        || (domainId == 'crm' && roleIn(['Administrator', 'Sales Manager', 'Sales Representative']))
+        || (domainId == 'hcm' && hcmSharedRead(field))
+        || (domainId == 'identity' && isAdmin())
+        || (domainId == 'documentTemplates' && callerHasAccess())
+        || (domainId == 'performance' && activeEmployee())
+        || (domainId == 'commerce' && roleIn(['Administrator', 'Sales Manager', 'Sales Representative', 'Operations']))
+        || (domainId == 'inventoryLedger' && activeEmployee())
+        || (domainId == 'finance' && isAdmin())
+        || (domainId == 'accounting' && isAdmin())
+        || (domainId == 'marketing' && activeEmployee())
+        || (domainId == 'payroll' && isAdmin())
+        || (domainId == 'fieldTracking' && activeEmployee())
+        || (domainId == 'audit' && isAdmin())
+        || (domainId == 'notificationRules' && activeEmployee())
+        || (domainId == 'periodLocks' && activeEmployee());
+    }
+
+    function domainWrite(domainId, field) {
+      return (domainId == 'workspace' && activeEmployee())
+        || (domainId == 'commercial' && activeEmployee())
+        || (domainId == 'crm' && roleIn(['Administrator', 'Sales Manager', 'Sales Representative']))
+        || (domainId == 'hcm' && hcmSharedWrite(field))
+        || (domainId == 'identity' && isAdmin())
+        || (domainId == 'documentTemplates' && isAdmin())
+        || (domainId == 'performance' && roleIn(['Administrator', 'Sales Manager']))
+        || (domainId == 'commerce' && isAdmin())
+        || (domainId == 'inventoryLedger' && roleIn(['Administrator', 'Operations', 'Warehouse']))
+        || (domainId == 'finance' && isAdmin())
+        || (domainId == 'accounting' && isAdmin())
+        || (domainId == 'marketing' && roleIn(['Administrator', 'Sales Manager']))
+        || (domainId == 'payroll' && isAdmin())
+        || (domainId == 'fieldTracking' && roleIn(['Administrator', 'Sales Manager']))
+        || (domainId == 'audit' && isAdmin())
+        || (domainId == 'notificationRules' && ((field == 'deliveries' && activeEmployee()) || (field != 'deliveries' && isAdmin())))
+        || (domainId == 'periodLocks' && isAdmin());
+    }
+
+    match /domains/{domainId}/fields/{field} {
+      allow read: if domainRead(domainId, field);
+      allow create, update: if domainWrite(domainId, field) && validShard(field);
       allow delete: if isAdmin();
     }
 
-    match /activities/{activityId} {
-      allow read: if activeEmployee() && (!('accountId' in resource.data) || resource.data.accountId == null || (exists(accountPath(resource.data.accountId)) && canReadAccount(get(accountPath(resource.data.accountId)).data)));
-      allow create: if activeEmployee() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if false;
+    // Per-user shards: records whose owner field equals {uid}.
+    function perUserField(domainId, field) {
+      return (domainId == 'workspace' && field in ['timeEntries', 'timecards'])
+        || (domainId == 'hcm' && field in ['privateProfiles', 'profileChangeRequests', 'acknowledgments', 'leaveRequests', 'availability', 'shiftRequests', 'dependents', 'benefitEnrollments', 'benefitEvents', 'training', 'goals', 'reviews', 'workflows', 'tasks', 'documents', 'employmentChanges', 'ptoAssignments', 'ptoLedger', 'compensation', 'compensationChanges', 'audit'])
+        || (domainId == 'identity' && field == 'records')
+        || (domainId == 'documentTemplates' && field == 'packets')
+        || (domainId == 'performance' && field in ['goals', 'reports', 'notes'])
+        || (domainId == 'finance' && field == 'expenses')
+        || (domainId == 'marketing' && field == 'requests')
+        || (domainId == 'payroll' && field in ['employees', 'withholdingProfiles', 'disbursements'])
+        || (domainId == 'fieldTracking' && field in ['sessions', 'samples', 'appointmentEvents', 'exceptions', 'departureAlerts'])
+        || (domainId == 'audit' && field == 'events')
+        || (domainId == 'notificationRules' && field == 'preferences');
+    }
+    // Decisions the owner must never author about themselves (selfWrite:false in the domain spec).
+    function ownerLockedField(domainId, field) {
+      return (domainId == 'hcm' && field in ['employmentChanges', 'ptoAssignments', 'ptoLedger', 'compensation', 'compensationChanges'])
+        || (domainId == 'payroll' && field in ['employees', 'withholdingProfiles', 'disbursements']);
+    }
+    // Shards a Sales Manager may not see or touch for their reports (managerRead/managerWrite:false).
+    function managerBlockedField(domainId, field) {
+      return domainId == 'identity' || domainId == 'payroll' || domainId == 'audit'
+        || (domainId == 'hcm' && (field == 'compensation' || field == 'audit'));
+    }
+    function managerShard(uid, domainId, field) { return !managerBlockedField(domainId, field) && manages(uid); }
+
+    // Employees may only move their own identity record forward through the onboarding states.
+    function identitySelfTransition() {
+      return request.resource.data.items.size() == 1 && resource.data.items.size() == 1
+        && request.resource.data.items[0].userId == request.auth.uid
+        && request.resource.data.items[0].source == resource.data.items[0].source
+        && request.resource.data.items[0].provisionedBy == resource.data.items[0].provisionedBy
+        && (
+          request.resource.data.items[0].state == resource.data.items[0].state
+          || (resource.data.items[0].state == 'Password change required' && request.resource.data.items[0].state == 'Onboarding')
+          || (resource.data.items[0].state == 'Onboarding' && request.resource.data.items[0].state == 'Pending approval')
+        );
     }
 
-    match /fieldTracking/{uid}/events/{eventId} {
-      allow read: if activeEmployee() && (uid == request.auth.uid || manages(uid));
-      allow create: if activeEmployee() && uid == request.auth.uid;
-      allow update, delete: if false;
-    }
-
-    match /timeEntries/{entryId} {
-      allow read: if activeEmployee() && (resource.data.userId == request.auth.uid || manages(resource.data.userId));
-      allow create: if activeEmployee() && request.resource.data.userId == request.auth.uid;
-      allow update: if activeEmployee() && (resource.data.userId == request.auth.uid || manages(resource.data.userId)) && request.resource.data.userId == resource.data.userId;
+    match /userDomains/{uid}/{domainId}/{field} {
+      allow read: if perUserField(domainId, field) && (isAdmin() || isSelf(uid) || managerShard(uid, domainId, field));
+      allow create: if perUserField(domainId, field) && validShard(field) && (
+        isAdmin()
+        || (isSelf(uid) && domainId == 'identity' && bootstrapClaim())
+        || (isSelf(uid) && domainId != 'identity' && selfWritable() && !ownerLockedField(domainId, field))
+        || managerShard(uid, domainId, field)
+      );
+      allow update: if perUserField(domainId, field) && validShard(field) && (
+        isAdmin()
+        || (isSelf(uid) && selfWritable() && !ownerLockedField(domainId, field) && (domainId != 'identity' || identitySelfTransition()))
+        || managerShard(uid, domainId, field)
+      );
       allow delete: if isAdmin();
-    }
-
-    match /timecards/{cardId} {
-      allow read: if activeEmployee() && (resource.data.userId == request.auth.uid || manages(resource.data.userId));
-      allow create: if activeEmployee() && request.resource.data.userId == request.auth.uid;
-      allow update: if activeEmployee() && (resource.data.userId == request.auth.uid || manages(resource.data.userId)) && request.resource.data.userId == resource.data.userId;
-      allow delete: if isAdmin();
-    }
-
-    match /hcmPrivate/{uid}/{document=**} {
-      allow read: if signedIn() && (uid == request.auth.uid || isAdmin());
-      allow write: if isAdmin();
-    }
-
-    match /payroll/{document=**} {
-      allow read, write: if isAdmin();
-    }
-
-    match /finance/{document=**} {
-      allow read, write: if isAdmin();
-    }
-
-    match /inventory/{document=**} {
-      allow read: if activeEmployee() && (isAdmin() || isOperations() || isWarehouse());
-      allow write: if activeEmployee() && (isAdmin() || isOperations());
-    }
-
-    match /auditEvents/{eventId} {
-      allow read: if isAdmin();
-      allow create: if activeEmployee() && request.resource.data.actorId == request.auth.uid;
-      allow update, delete: if false;
     }
 
     match /{document=**} {

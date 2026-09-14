@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { DailyWorkReport, ManagerWeeklyReport, PERFORMANCE_STORAGE_KEY, PerformanceGoal, PerformanceState, WorkReport, ReportNote, canViewPerformanceRecord, createPerformanceSeed, managerWeeklyMetrics, normalizePerformanceState, userCommercialMetrics } from "./performance-engine";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
@@ -18,11 +19,12 @@ type PerformanceContextValue={
 };
 const PerformanceContext=createContext<PerformanceContextValue|null>(null);
 
-const readState=()=>{if(typeof window==="undefined")return createPerformanceSeed();try{return normalizePerformanceState(JSON.parse(window.localStorage.getItem(PERFORMANCE_STORAGE_KEY)??"null"));}catch{return createPerformanceSeed();}};
+const readState=()=>{if(typeof window==="undefined")return createPerformanceSeed();try{return normalizePerformanceState(JSON.parse(momentumStorage.getItem(PERFORMANCE_STORAGE_KEY)??"null"));}catch{return createPerformanceSeed();}};
 
 export function PerformanceProvider({children}:{children:ReactNode}){
   const {currentUser,data}=useWorkspace();const runtime=useRuntimeMode();const[performance,setPerformance]=useState<PerformanceState>(()=>readState());
-  useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(PERFORMANCE_STORAGE_KEY,JSON.stringify(performance));},[performance]);
+  useEffect(()=>{if(typeof window!=="undefined")momentumStorage.setItem(PERFORMANCE_STORAGE_KEY,JSON.stringify(performance));},[performance]);
+  useRemoteStorageSync(PERFORMANCE_STORAGE_KEY,()=>setPerformance(readState()));
   const createGoal=(goal:NewGoal)=>{if(!currentUser||goal.userId!==currentUser.id||!Number.isFinite(goal.target)||goal.target<0||goal.periodEnd<goal.periodStart)return null;const id=uid("goal");setPerformance((state)=>({...state,goals:[{...goal,id,createdAt:now(),updatedAt:now()},...state.goals]}));return id;};
   const updateManualGoal=(goalId:string,value:number,note?:string)=>{if(!currentUser||!Number.isFinite(value))return false;const goal=performance.goals.find((item)=>item.id===goalId);if(!goal||goal.userId!==currentUser.id||goal.metric!=="Manual"||goal.status==="Cancelled")return false;setPerformance((state)=>({...state,goals:state.goals.map((item)=>item.id===goalId?{...item,manualValue:Math.max(0,value),note:note??item.note,updatedAt:now()}:item)}));return true;};
   const cancelGoal=(goalId:string)=>{if(!currentUser)return false;const goal=performance.goals.find((item)=>item.id===goalId);if(!goal||goal.userId!==currentUser.id)return false;setPerformance((state)=>({...state,goals:state.goals.map((item)=>item.id===goalId?{...item,status:"Cancelled",updatedAt:now()}:item)}));return true;};

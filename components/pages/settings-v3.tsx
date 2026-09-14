@@ -9,6 +9,7 @@ import { CRM_STORAGE_KEY } from "../../lib/crm-engine";
 import { arizonaDateKey } from "../../lib/date-time";
 import { DOCUMENT_TEMPLATE_STORAGE_KEY } from "../../lib/document-template-engine";
 import { FINANCE_STORAGE_KEY } from "../../lib/finance-engine";
+import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { HCM_STORAGE_KEY } from "../../lib/hcm-engine";
 import { IDENTITY_PROVISIONING_STORAGE_KEY } from "../../lib/identity-provisioning";
 import { INVENTORY_LEDGER_STORAGE_KEY } from "../../lib/inventory-ledger";
@@ -20,13 +21,14 @@ import { PERFORMANCE_STORAGE_KEY } from "../../lib/performance-engine";
 import { PERIOD_LOCK_STORAGE_KEY } from "../../lib/period-lock-engine";
 import { useRuntimeMode } from "../../lib/runtime-mode";
 import { useWorkspace } from "../../lib/workspace-context";
+import { FirebaseAccessPanel } from "../settings/firebase-access-panel";
 import { PlatformControls } from "../settings/platform-controls";
 import { Avatar, Button, Modal, PageHeader, Section, StatusPill } from "../ui";
 
 const integrations = [
-  { name:"Identity & access", provider:"Firebase Authentication", icon:KeyRound, boundary:"Sign-in, MFA, sessions, role claims", status:"Configuration required", tone:"warning" as const },
-  { name:"Operational records", provider:"Cloud Firestore", icon:Database, boundary:"CRM, inventory, HR, payroll, finance, marketing, approvals and audit events", status:"Configuration required", tone:"warning" as const },
-  { name:"Files & evidence", provider:"Firebase Storage", icon:HardDrive, boundary:"Receipts, employee documents, training evidence, photos and proof documents", status:"Configuration required", tone:"warning" as const },
+  { name:"Identity & access", provider:"Firebase Authentication", icon:KeyRound, boundary:"Sign-in, password rotation, sessions; roles live in Firestore access records", status:"Configuration required", tone:"warning" as const, firebase:true },
+  { name:"Operational records", provider:"Cloud Firestore", icon:Database, boundary:"CRM, inventory, HR, payroll, finance, marketing, approvals and audit events", status:"Configuration required", tone:"warning" as const, firebase:true },
+  { name:"Files & evidence", provider:"Firebase Storage", icon:HardDrive, boundary:"Receipts, employee documents, training evidence, photos and proof documents", status:"Rules deployed; uploads pending", tone:"warning" as const },
   { name:"Hosting", provider:"Cloudflare", icon:Cloud, boundary:"Production hosting, edge delivery, DNS and environment controls", status:"Integration remaining", tone:"warning" as const },
   { name:"Payments", provider:"External tokenized money rail", icon:CreditCard, boundary:"Processor moves money; Momentum owns orders, invoices, settlement state, refunds, reconciliation and audit", status:"Rail not selected", tone:"warning" as const },
   { name:"Payroll", provider:"Native Momentum payroll engine", icon:WalletCards, boundary:"Time, earnings, monthly bonuses, deductions, approvals, pay runs, statements, liabilities and disbursement instructions", status:"Product layer built", tone:"success" as const },
@@ -65,6 +67,7 @@ const resetSessionKeys = [
 export function SettingsPage() {
   const { data } = useWorkspace();
   const runtime = useRuntimeMode();
+  const firebase = useFirebaseSessionOptional();
   const [resetOpen,setResetOpen]=useState(false);
   const [resetDone,setResetDone]=useState(false);
   const health = useMemo(() => {
@@ -97,12 +100,14 @@ export function SettingsPage() {
 
   return <div className="page page--settings">
     <PageHeader eyebrow="Administration" title="Administration" description="Runtime mode, permissions, audit, notification rules, period locks, production architecture, and data health." actions={<StatusPill tone={runtime.isDemo?"gold":"success"}>{runtime.isDemo?"Demo mode":"Production mode"}</StatusPill>}/>
-    <div className="settings-security-banner"><span><ShieldCheck size={22}/></span><div><strong>{runtime.isDemo?"Product-complete demo layer":"Production-mode standalone test"}</strong><p>Core workflows are native Momentum logic. Live employee, customer, payment, notification, and file data still requires the remaining Firebase, Cloudflare, payment-rail, and email/SMS integrations.</p></div><StatusPill tone={runtime.isDemo?"warning":"success"}>{runtime.isDemo?"Demo persistence":"Reset disabled"}</StatusPill></div>
+    <div className="settings-security-banner"><span><ShieldCheck size={22}/></span><div><strong>{runtime.isDemo?"Product-complete demo layer":firebase?`Production tenancy · Firebase project ${firebase.projectId}`:"Production-mode standalone test"}</strong><p>{firebase?"Sign-in is Firebase Authentication; every engine persists to role-gated Firestore documents enforced by Security Rules. Payment rails, e-mail/SMS transport, and file uploads remain to be connected.":"Core workflows are native Momentum logic. Live employee, customer, payment, notification, and file data still requires the remaining Firebase, Cloudflare, payment-rail, and email/SMS integrations."}</p></div><StatusPill tone={runtime.isDemo?"warning":"success"}>{runtime.isDemo?"Demo persistence":firebase?"Firestore persistence":"Reset disabled"}</StatusPill></div>
+
+    {firebase&&<FirebaseAccessPanel/>}
 
     <PlatformControls/>
 
     <div className="settings-grid">
-      <Section title="Production architecture" description="Infrastructure plugs into Momentum without becoming a second business system" className="integration-panel"><div className="integration-list">{integrations.map((integration)=>{const Icon=integration.icon;return <article key={integration.name}><span><Icon size={19}/></span><div><strong>{integration.name}</strong><p>{integration.provider}</p><small>{integration.boundary}</small></div><StatusPill tone={integration.tone} dot={false}>{integration.status}</StatusPill></article>;})}</div><div className="integration-rule"><Cloud size={18}/><p>Every connector must fail visibly, retry safely, reconcile to a Momentum source record, and never create a hidden second source of truth.</p></div></Section>
+      <Section title="Production architecture" description="Infrastructure plugs into Momentum without becoming a second business system" className="integration-panel"><div className="integration-list">{integrations.map((integration)=>{const Icon=integration.icon;const live=Boolean(firebase&&integration.firebase);return <article key={integration.name}><span><Icon size={19}/></span><div><strong>{integration.name}</strong><p>{integration.provider}</p><small>{integration.boundary}</small></div><StatusPill tone={live?"success":integration.tone} dot={false}>{live?"Connected":integration.status}</StatusPill></article>;})}</div><div className="integration-rule"><Cloud size={18}/><p>Every connector must fail visibly, retry safely, reconcile to a Momentum source record, and never create a hidden second source of truth.</p></div></Section>
       <Section title={runtime.isDemo?"Demo users":"Company identities"} description="Role visibility follows the authenticated account" className="settings-users">{data.users.map((user)=><article key={user.id}><Avatar initials={user.initials} color={user.accent}/><div><strong>{user.name}</strong><p>{user.title}</p><small>{user.email}</small></div><StatusPill tone={user.role==="Administrator"?"gold":"neutral"} dot={false}>{user.role}</StatusPill></article>)}</Section>
     </div>
 

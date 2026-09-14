@@ -59,11 +59,10 @@ test("public production runtime excludes demo identities while local demo mode r
   assert.match(source, /const demoMode = runtimeMode === "demo"/);
   assert.match(source, /if \(!demoMode\)[\s\S]{0,100}?removeItem\(WAREHOUSE_SESSION_KEY\)/);
   assert.match(source, /base\.data\.users\.filter\(\(user\) => !isDemoIdentity\(user\)\)/);
-  assert.match(source, /if \(!demoMode\) \{[\s\S]*?users: productionUsers/);
-  assert.match(source, /const cleanBaseUsers = base\.data\.users;/);
-  assert.match(source, /!cleanBaseUsers\.some\(\(user\) => user\.id === warehouseUser\.id\)/);
-  assert.match(source, /!base\.data\.inventory\.some\(\(lot\) => lot\.id === tropicalLot\.id\)/);
-  assert.match(source, /if \(!demoMode\) return \{ ok: false, message: "Sign-in will be available when Firebase Authentication is connected\." \}/);
+  assert.match(source, /const cleanBaseUsers = demoMode \? base\.data\.users : productionUsers;/);
+  assert.match(source, /demoMode && !cleanBaseUsers\.some\(\(user\) => user\.id === warehouseUser\.id\)/);
+  assert.match(source, /demoMode && !base\.data\.inventory\.some\(\(lot\) => lot\.id === tropicalLot\.id\)/);
+  assert.match(source, /if \(!demoMode\) return base\.login\(email, password\)/);
   assert.match(source, /if \(email\.trim\(\)\.toLowerCase\(\) === warehouseUser\.email && password === "admin"\)/);
   assert.match(source, /if \(demoMode && userId === warehouseUser\.id\)/);
 });

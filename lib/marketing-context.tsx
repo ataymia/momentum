@@ -4,6 +4,7 @@ import { ReactNode, createContext, useContext, useEffect, useState } from "react
 import { canManageMarketing } from "./access";
 import { isValidCalendarDateKey } from "./date-time";
 import { MARKETING_STORAGE_KEY, Asset, Campaign, MarketingAttribution, MarketingRequest, MarketingSpend, MarketingState, MarketingTouch, MaterialItem, MaterialMovement, Partnership, createMarketingSeed, materialBalance, normalizeMarketingState } from "./marketing-engine";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
@@ -14,9 +15,10 @@ const MarketingContext=createContext<MarketingContextValue|null>(null);
 
 export function MarketingProvider({children}:{children:ReactNode}){
   const{data,scope,currentUser}=useWorkspace();const runtime=useRuntimeMode();
-  const read=()=>{if(typeof window==="undefined")return createMarketingSeed();try{return normalizeMarketingState(JSON.parse(window.localStorage.getItem(MARKETING_STORAGE_KEY)??"null"));}catch{return createMarketingSeed();}};
+  const read=()=>{if(typeof window==="undefined")return createMarketingSeed();try{return normalizeMarketingState(JSON.parse(momentumStorage.getItem(MARKETING_STORAGE_KEY)??"null"));}catch{return createMarketingSeed();}};
   const[state,setState]=useState<MarketingState>(()=>read());
-  useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(MARKETING_STORAGE_KEY,JSON.stringify(state));},[state]);
+  useEffect(()=>{if(typeof window!=="undefined")momentumStorage.setItem(MARKETING_STORAGE_KEY,JSON.stringify(state));},[state]);
+  useRemoteStorageSync(MARKETING_STORAGE_KEY,()=>setState(read()));
 
   const isEmployee=Boolean(currentUser&&currentUser.role!=="Customer");
   const isAdmin=canManageMarketing(currentUser);

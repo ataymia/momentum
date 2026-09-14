@@ -1,12 +1,43 @@
 "use client";
 
 import { CheckCircle2, FileCheck2, KeyRound, LockKeyhole, ShieldCheck, UserRoundCheck } from "lucide-react";
+import { FormEvent, useState } from "react";
+import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { useHcm } from "../../lib/hcm-context";
 import { appendAudit } from "../../lib/hcm-engine";
 import { useIdentityProvisioning } from "../../lib/identity-provisioning-context";
 import { onboardingReadiness } from "../../lib/onboarding-engine";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, StatusPill } from "../ui";
+
+/** First-login password rotation. Firebase Authentication holds the credential; Momentum only records that it happened. */
+function PasswordChangeForm({ onComplete }: { onComplete: (evidence: string) => boolean }) {
+  const firebase = useFirebaseSessionOptional();
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!firebase) return <Button disabled title="Firebase Authentication integration required">Change password securely</Button>;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    if (password.length < 10 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) { setError("Use at least 10 characters with upper-case, lower-case, and a digit."); return; }
+    if (password !== confirm) { setError("The two passwords do not match."); return; }
+    setBusy(true);
+    const result = await firebase.changePassword(password);
+    setBusy(false);
+    if (!result.ok) { setError(result.message ?? "Password change failed."); return; }
+    onComplete(`Firebase Authentication password rotated at ${new Date().toISOString()}`);
+  };
+
+  return <form className="access-gate-form" onSubmit={submit}>
+    <label><span>New password</span><input type="password" required autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+    <label><span>Confirm new password</span><input type="password" required autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    <Button type="submit" disabled={busy} icon={<KeyRound size={16} />}>{busy ? "Updating…" : "Change password securely"}</Button>
+  </form>;
+}
 
 export function OnboardingPortal() {
   const { currentUser, logout } = useWorkspace();
@@ -29,7 +60,7 @@ export function OnboardingPortal() {
     setHcm((current) => appendAudit({ ...current, training: current.training.map((item) => item.id === assignment.id ? { ...item, status: "Complete", completedAt: at, evidence: "Employee attested completion in Momentum" } : item) }, { actorId: currentUser.id, action: "Completed assigned onboarding training", entityType: "TrainingAssignment", entityId: assignment.id, before: assignment.status, after: "Complete" }));
   };
 
-  if (record.state === "Password change required") return <main className="onboarding-shell"><section className="onboarding-card onboarding-card--center"><span className="onboarding-hero-icon"><KeyRound size={28}/></span><StatusPill tone="warning">Security setup required</StatusPill><h1>Secure your Momentum account</h1><p>Change your temporary password before continuing.</p><div className="onboarding-security-note"><LockKeyhole size={18}/><span>Momentum never stores or displays your password.</span></div><Button disabled title="Firebase Authentication integration required">Change password securely</Button><button className="onboarding-signout" onClick={logout}>Sign out</button></section></main>;
+  if (record.state === "Password change required") return <main className="onboarding-shell"><section className="onboarding-card onboarding-card--center"><span className="onboarding-hero-icon"><KeyRound size={28}/></span><StatusPill tone="warning">Security setup required</StatusPill><h1>Secure your Momentum account</h1><p>Change your temporary password before continuing.</p><div className="onboarding-security-note"><LockKeyhole size={18}/><span>Momentum never stores or displays your password.</span></div><PasswordChangeForm onComplete={provisioning.completePasswordChange}/><button className="onboarding-signout" onClick={logout}>Sign out</button></section></main>;
 
   if (record.state === "Pending approval") return <main className="onboarding-shell"><section className="onboarding-card onboarding-card--center"><span className="onboarding-hero-icon"><ShieldCheck size={28}/></span><StatusPill tone="info">Submitted</StatusPill><h1>Onboarding in progress</h1><p>Your onboarding has been submitted for final review. Check back later.</p>{record.onboardingSubmittedAt && <small>Submitted {new Date(record.onboardingSubmittedAt).toLocaleString()}</small>}<button className="onboarding-signout" onClick={logout}>Sign out</button></section></main>;
 

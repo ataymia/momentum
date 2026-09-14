@@ -2,17 +2,19 @@
 
 import { ReactNode, createContext, useContext, useEffect, useState } from "react";
 import { PERIOD_LOCK_STORAGE_KEY, PeriodLock, PeriodLockDomain, PeriodLockState, createPeriodLockSeed, isDateLocked, isRangeLocked, isValidPeriodLockRange, normalizePeriodLockState } from "./period-lock-engine";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
 const uid = () => `period-lock-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 type PeriodLockContextValue = { state: PeriodLockState; createLock: (domain: PeriodLockDomain, startDate: string, endDate: string, reason: string) => string | null; releaseLock: (id: string, reason: string) => boolean; isLocked: (domain: PeriodLockDomain, date: string) => boolean; isRangeLocked: (domain: PeriodLockDomain, startDate: string, endDate: string) => boolean; resetLocks: () => boolean };
 const PeriodLockContext = createContext<PeriodLockContextValue | null>(null);
-function readState() { if (typeof window === "undefined") return createPeriodLockSeed(); try { return normalizePeriodLockState(JSON.parse(window.localStorage.getItem(PERIOD_LOCK_STORAGE_KEY) ?? "null")); } catch { return createPeriodLockSeed(); } }
+function readState() { if (typeof window === "undefined") return createPeriodLockSeed(); try { return normalizePeriodLockState(JSON.parse(momentumStorage.getItem(PERIOD_LOCK_STORAGE_KEY) ?? "null")); } catch { return createPeriodLockSeed(); } }
 
 export function PeriodLockProvider({ children }: { children: ReactNode }) {
   const { currentUser } = useWorkspace(); const { isDemo } = useRuntimeMode(); const [state, setState] = useState<PeriodLockState>(() => readState());
-  useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem(PERIOD_LOCK_STORAGE_KEY, JSON.stringify(state)); }, [state]);
+  useEffect(() => { if (typeof window !== "undefined") momentumStorage.setItem(PERIOD_LOCK_STORAGE_KEY, JSON.stringify(state)); }, [state]);
+  useRemoteStorageSync(PERIOD_LOCK_STORAGE_KEY, () => setState(readState()));
   const createLock = (domain: PeriodLockDomain, startDate: string, endDate: string, reason: string) => { if (currentUser?.role !== "Administrator" || !isValidPeriodLockRange(startDate, endDate) || reason.trim().length < 4) return null; const id = uid(); const record: PeriodLock = { id, domain, startDate, endDate, reason: reason.trim(), lockedAt: new Date().toISOString(), lockedBy: currentUser.id }; setState((current) => ({ ...current, locks: [record, ...current.locks] })); return id; };
   const releaseLock = (id: string, reason: string) => { if (currentUser?.role !== "Administrator" || reason.trim().length < 4) return false; const target = state.locks.find((lock) => lock.id === id && !lock.releasedAt); if (!target) return false; const releasedAt = new Date().toISOString(); setState((current) => ({ ...current, locks: current.locks.map((lock) => lock.id === id && !lock.releasedAt ? { ...lock, releasedAt, releasedBy: currentUser.id, releaseReason: reason.trim() } : lock) })); return true; };
   const resetLocks = () => { if (!isDemo || currentUser?.role !== "Administrator") return false; setState(createPeriodLockSeed()); return true; };

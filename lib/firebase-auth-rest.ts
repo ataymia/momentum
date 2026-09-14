@@ -96,3 +96,42 @@ export async function updateFirebasePassword(session:FirebaseAuthSession,newPass
 }
 
 export function signOutFirebase(){persistFirebaseSession(null);}
+
+export type FirebaseAccountInfo={uid:string;email:string;emailVerified:boolean;disabled:boolean;createdAt?:string;lastLoginAt?:string};
+
+/** Fetch the authoritative account profile (used to confirm e-mail verification before Administrator bootstrap). */
+export async function lookupFirebaseAccount(session:FirebaseAuthSession):Promise<FirebaseAccountInfo>{
+  const config=firebaseWebConfig();
+  if(!config)throw new Error("Firebase web app configuration is missing.");
+  const response=await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(config.apiKey)}`,{
+    method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idToken:session.idToken}),
+  });
+  const payload=await response.json().catch(()=>null) as {users?:Array<{localId:string;email?:string;emailVerified?:boolean;disabled?:boolean;createdAt?:string;lastLoginAt?:string}>}|null;
+  const user=payload?.users?.[0];
+  if(!response.ok||!user)throw new Error(authErrorMessage(payload));
+  return{uid:user.localId,email:(user.email??session.email).toLowerCase(),emailVerified:Boolean(user.emailVerified),disabled:Boolean(user.disabled),createdAt:user.createdAt,lastLoginAt:user.lastLoginAt};
+}
+
+/** Ask Firebase to e-mail a verification link to the signed-in user. */
+export async function sendFirebaseEmailVerification(session:FirebaseAuthSession):Promise<void>{
+  const config=firebaseWebConfig();
+  if(!config)throw new Error("Firebase web app configuration is missing.");
+  const response=await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${encodeURIComponent(config.apiKey)}`,{
+    method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({requestType:"VERIFY_EMAIL",idToken:session.idToken}),
+  });
+  if(!response.ok)throw new Error(authErrorMessage(await response.json().catch(()=>null)));
+}
+
+/** Ask Firebase to e-mail a password reset link. Works signed-out; Firebase does not reveal whether the account exists. */
+export async function sendFirebasePasswordReset(email:string):Promise<void>{
+  const config=firebaseWebConfig();
+  if(!config)throw new Error("Firebase web app configuration is missing.");
+  const response=await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${encodeURIComponent(config.apiKey)}`,{
+    method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({requestType:"PASSWORD_RESET",email:email.trim().toLowerCase()}),
+  });
+  if(!response.ok){
+    const payload=await response.json().catch(()=>null) as {error?:{message?:string}}|null;
+    if(payload?.error?.message?.includes("EMAIL_NOT_FOUND"))return;
+    throw new Error(authErrorMessage(payload));
+  }
+}

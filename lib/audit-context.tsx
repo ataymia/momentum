@@ -14,6 +14,7 @@ import { useMarketing } from "./marketing-context";
 import { usePayroll } from "./payroll-context";
 import { usePerformance } from "./performance-context";
 import { usePeriodLocks } from "./period-lock-context";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
@@ -21,7 +22,7 @@ type ManualAuditInput = { module:string; collection:string; entityType:string; e
 type AuditContextValue = { audit: AuditState; visibleEvents: AuditEvent[]; eventsForRecord: (entityType: string, entityId: string) => AuditEvent[]; eventsForAccount: (accountId: string) => AuditEvent[]; recordManualAudit: (input:ManualAuditInput)=>boolean; resetAudit: () => boolean };
 const AuditContext = createContext<AuditContextValue | null>(null);
 
-function readAudit() { if (typeof window === "undefined") return createAuditSeed(); try { return normalizeAuditState(JSON.parse(window.localStorage.getItem(AUDIT_STORAGE_KEY) ?? "null")); } catch { return createAuditSeed(); } }
+function readAudit() { if (typeof window === "undefined") return createAuditSeed(); try { return normalizeAuditState(JSON.parse(momentumStorage.getItem(AUDIT_STORAGE_KEY) ?? "null")); } catch { return createAuditSeed(); } }
 
 export function AuditProvider({ children }: { children: ReactNode }) {
   const { data, currentUser } = useWorkspace();
@@ -41,7 +42,8 @@ export function AuditProvider({ children }: { children: ReactNode }) {
   const [audit, setAudit] = useState<AuditState>(() => readAudit());
   const previous = useRef<ReturnType<typeof mergeAuditSnapshots> | null>(null);
 
-  useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify(audit)); }, [audit]);
+  useEffect(() => { if (typeof window !== "undefined") momentumStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify(audit)); }, [audit]);
+  useRemoteStorageSync(AUDIT_STORAGE_KEY, () => setAudit(readAudit()));
 
   const auditableFieldTracking = useMemo(() => ({
     geofences: fieldTracking.geofences,

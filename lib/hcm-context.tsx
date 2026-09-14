@@ -4,6 +4,7 @@ import { ReactNode, createContext, useContext, useEffect, useState } from "react
 import { validateHcmActorTransition, validateHcmTransition } from "./hcm-controls";
 import { HCM_STORAGE_KEY, HCMState, createHcmSeed, normalizeHcmState } from "./hcm-engine";
 import { normalizePersistedHcmState } from "./hcm-persistence";
+import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
@@ -14,14 +15,15 @@ const HcmContext=createContext<HcmContextValue|null>(null);
 const readState=(data:ReturnType<typeof useWorkspace>["data"]):HCMState=>{
   const seed=createHcmSeed(data);
   if(typeof window==="undefined")return seed;
-  try{return normalizePersistedHcmState(JSON.parse(window.localStorage.getItem(HCM_STORAGE_KEY)??"null"),data,seed);}catch{return seed;}
+  try{return normalizePersistedHcmState(JSON.parse(momentumStorage.getItem(HCM_STORAGE_KEY)??"null"),data,seed);}catch{return seed;}
 };
 
 export function HcmProvider({children}:{children:ReactNode}){
   const {data,currentUser}=useWorkspace();
   const runtime=useRuntimeMode();
   const [hcm,setState]=useState<HCMState>(()=>readState(data));
-  useEffect(()=>{if(typeof window!=="undefined")window.localStorage.setItem(HCM_STORAGE_KEY,JSON.stringify(hcm));},[hcm]);
+  useEffect(()=>{if(typeof window!=="undefined")momentumStorage.setItem(HCM_STORAGE_KEY,JSON.stringify(hcm));},[hcm]);
+  useRemoteStorageSync(HCM_STORAGE_KEY,()=>setState(readState(data)));
   useEffect(()=>{
     const handle=window.setTimeout(()=>setState((current)=>normalizePersistedHcmState(current,data,createHcmSeed(data))),0);
     return()=>window.clearTimeout(handle);
