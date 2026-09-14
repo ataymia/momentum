@@ -42,9 +42,11 @@ function PasswordChangeForm({ onComplete }: { onComplete: (evidence: string) => 
 export function OnboardingPortal() {
   const { currentUser, logout } = useWorkspace();
   const { hcm, setHcm } = useHcm();
+  const firebase = useFirebaseSessionOptional();
   const provisioning = useIdentityProvisioning();
   const record = provisioning.currentRecord;
-  if (!currentUser || currentUser.role === "Customer" || !record || record.state === "Active") return null;
+  const activeAdministrator = currentUser?.role === "Administrator" && firebase?.access?.role === "Administrator" && firebase.access.accountState === "Active";
+  if (!currentUser || currentUser.role === "Customer" || !record || record.state === "Active" || activeAdministrator) return null;
 
   const employee = hcm.employees.find((item) => item.userId === currentUser.id);
   const profile = hcm.privateProfiles.find((item) => item.userId === currentUser.id);
@@ -78,7 +80,7 @@ export function OnboardingPortal() {
 
       <section className="onboarding-panel onboarding-panel--wide"><header><FileCheck2 size={19}/><div><h2>Employment and tax documents</h2><p>Open, complete, and sign the forms assigned to you.</p></div></header><div className="onboarding-document-list">{documents.map((document) => <article key={document.id}><div><strong>{document.title}</strong><small>{document.category}</small></div><StatusPill tone={document.status === "Available" ? "success" : document.status === "Acknowledgment required" ? "warning" : "neutral"}>{document.status}</StatusPill></article>)}{documents.length === 0 && <p>No required document package has been prepared yet.</p>}</div><div className="onboarding-integration-gate"><LockKeyhole size={17}/><p>PDF completion and e-signing will use the Administrator template library and secure file storage.</p></div></section>
 
-      <section className="onboarding-panel onboarding-panel--wide"><header><CheckCircle2 size={19}/><div><h2>Assigned training</h2><p>Complete the courses assigned to your role.</p></div></header><div className="onboarding-training-list">{assignments.map((assignment) => { const course = hcm.courses.find((item) => item.id === assignment.courseId); return <article key={assignment.id}><div><strong>{course?.title ?? "Assigned training"}</strong><small>{course?.description ?? "Required onboarding course"}</small></div>{assignment.status === "Complete" ? <StatusPill tone="success">Complete</StatusPill> : <Button size="sm" variant="secondary" onClick={() => completeTraining(assignment.id)}>Mark complete</Button>}</article>; })}{assignments.length === 0 && <p>No training assignments have been prepared yet.</p>}</div></section>
+      <section className="onboarding-panel onboarding-panel--wide"><header><CheckCircle2 size={19}/><div><h2>Assigned training</h2><p>Complete the courses assigned to your role.</p></div></header><div className="onboarding-training-list">{assignments.map((assignment) => { const course = hcm.courses.find((item) => item.courseId === assignment.courseId); return <article key={assignment.id}><div><strong>{course?.title ?? "Assigned training"}</strong><small>{course?.description ?? "Required onboarding course"}</small></div>{assignment.status === "Complete" ? <StatusPill tone="success">Complete</StatusPill> : <Button size="sm" variant="secondary" onClick={() => completeTraining(assignment.id)}>Mark complete</Button>}</article>; })}{assignments.length === 0 && <p>No training assignments have been prepared yet.</p>}</div></section>
     </div>
 
     {record.returnReason && <section className="onboarding-return"><strong>Returned for correction</strong><p>{record.returnReason}</p></section>}
