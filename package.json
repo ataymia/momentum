@@ -17,6 +17,8 @@
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern out",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
+    "deploy:worker": "MOMENTUM_STATIC_EXPORT=true next build && wrangler deploy",
+    "deploy:firebase": "MOMENTUM_STATIC_EXPORT=true next build && npx --yes firebase-tools deploy --only hosting",
     "firebase:deploy:rules": "npx --yes firebase-tools deploy --only firestore:rules,storage",
     "firebase:create-auth-user": "node scripts/firebase-create-auth-user.mjs"
   },
