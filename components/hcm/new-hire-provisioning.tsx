@@ -52,6 +52,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const [identityDraft, setIdentityDraft] = useState<{ draftId: string; password: string; busy: boolean; error: string } | null>(null);
   const [issued, setIssued] = useState<{ draftId: string; email: string; password: string; name: string } | null>(null);
   const [pendingLink, setPendingLink] = useState<{ draftId: string; uid: string } | null>(null);
+  const [activationBusy,setActivationBusy]=useState<string|null>(null);
   const defaultCourses = hcm.courses.filter((course) => course.active && course.requiredForTeams.includes("Sales")).map((course) => course.id);
   const emptyForm = (): FormState => ({
     source: "Direct hire",
@@ -80,8 +81,6 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const activeDrafts = provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled");
   const pendingApprovals = provisioning.state.records.filter((record) => record.state === "Pending approval");
 
-  // The directory is the only prerequisite after Firebase creates the identity. beginOnboarding creates or updates
-  // the prehire HCM records itself, so an HCM timing race cannot strand the new Firebase account.
   useEffect(() => {
     if (!pendingLink) return;
     const user = data.users.find((item) => item.id === pendingLink.uid);
@@ -244,6 +243,14 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
     setNotice(`${document.title} marked verified externally. No file was stored in Momentum.`);
   };
 
+  const activatePendingUser=async(userId:string,name:string)=>{
+    if(activationBusy)return;
+    setActivationBusy(userId);
+    const ok=await provisioning.activateUser(userId);
+    setActivationBusy(null);
+    setNotice(ok?`${name} activated.`:"Activation could not be persisted. Access remains blocked; recheck the listed controls and Firestore access before retrying.");
+  };
+
   if (view === "create") return <div className="page page--new-hire">
     <PageHeader eyebrow="Human Resources" title="Create new hire" description="Create one complete employee setup before any login credentials are issued." actions={<Button variant="secondary" onClick={() => navigate("onboarding")}>Open onboarding queue</Button>}/>
     <div className="new-hire-stepper" aria-label="New hire setup steps">{["Identity","Position","Pay","Training & review"].map((label,index)=><button type="button" key={label} className={step===index+1?"is-active":step>index+1?"is-complete":""} onClick={()=>{if(index+1<step)setStep(index+1)}}><span>{index+1}</span><strong>{label}</strong></button>)}</div>
@@ -299,7 +306,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
         const employee=hcm.employees.find((item)=>item.userId===record.userId);
         const requiredTitles=new Set(requiredOnboardingDocumentTemplates(employee?.classification??"Not configured").map((item)=>item.title.toLowerCase()));
         const documents=hcm.documents.filter((item)=>item.userId===record.userId&&requiredTitles.has(item.title.toLowerCase()));
-        return <article key={record.id} className="onboarding-review-card"><span className="provisioning-avatar"><CheckCircle2 size={18}/></span><div className="onboarding-review-body"><strong>{user?.name??record.userId}</strong><p>{readiness.readyForActivation?"All activation controls are complete.":`${readiness.activationBlockers.length} activation blocker${readiness.activationBlockers.length===1?"":"s"} remain.`}</p><div className="onboarding-doc-review">{documents.map((document)=><div key={document.id}><span><FileCheck2 size={15}/><span><strong>{document.title}</strong><small>{document.status==="Available"?document.fileName??"Verified":"Awaiting Administrator verification"}</small></span></span>{document.status==="Available"?<StatusPill tone="success">Verified</StatusPill>:<Button size="sm" variant="secondary" onClick={()=>verifyDocumentExternally(document.id)}>Verify externally</Button>}</div>)}</div>{readiness.activationBlockers.length>0&&<ul className="onboarding-activation-blockers">{readiness.activationBlockers.map((blocker)=><li key={blocker}>{blocker}</li>)}</ul>}</div><StatusPill tone={readiness.readyForActivation?"success":"warning"}>{readiness.readyForActivation?"Ready":"Review"}</StatusPill><Button size="sm" disabled={!readiness.readyForActivation} onClick={()=>{const ok=provisioning.activateUser(record.userId);setNotice(ok?`${user?.name??"Employee"} activated.`:"Activation was blocked. Resolve every listed control first.")}}>Activate access</Button></article>;
+        return <article key={record.id} className="onboarding-review-card"><span className="provisioning-avatar"><CheckCircle2 size={18}/></span><div className="onboarding-review-body"><strong>{user?.name??record.userId}</strong><p>{readiness.readyForActivation?"All activation controls are complete.":`${readiness.activationBlockers.length} activation blocker${readiness.activationBlockers.length===1?"":"s"} remain.`}</p><div className="onboarding-doc-review">{documents.map((document)=><div key={document.id}><span><FileCheck2 size={15}/><span><strong>{document.title}</strong><small>{document.status==="Available"?document.fileName??"Verified":"Awaiting Administrator verification"}</small></span></span>{document.status==="Available"?<StatusPill tone="success">Verified</StatusPill>:<Button size="sm" variant="secondary" onClick={()=>verifyDocumentExternally(document.id)}>Verify externally</Button>}</div>)}</div>{readiness.activationBlockers.length>0&&<ul className="onboarding-activation-blockers">{readiness.activationBlockers.map((blocker)=><li key={blocker}>{blocker}</li>)}</ul>}</div><StatusPill tone={readiness.readyForActivation?"success":"warning"}>{readiness.readyForActivation?"Ready":"Review"}</StatusPill><Button size="sm" disabled={!readiness.readyForActivation||activationBusy===record.userId} onClick={()=>void activatePendingUser(record.userId,user?.name??"Employee")}>{activationBusy===record.userId?"Activating…":"Activate access"}</Button></article>;
       })}{pendingApprovals.length===0&&<div className="review-empty"><CheckCircle2 size={24}/><h3>No onboarding approvals waiting</h3><p>Employees appear here after they complete and submit their onboarding work.</p></div>}</div>
     </Section>
   </div>;
