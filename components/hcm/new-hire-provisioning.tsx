@@ -9,6 +9,7 @@ import { useHcm } from "../../lib/hcm-context";
 import type { PayBasis, WorkerClassification } from "../../lib/hcm-engine";
 import { useIdentityProvisioning, type NewProvisioningDraftInput } from "../../lib/identity-provisioning-context";
 import type { ProvisionableRole, ProvisioningDraft } from "../../lib/identity-provisioning";
+import { isFailClosedPlaceholder } from "../../lib/identity-provisioning";
 import { buildProvisionedWorkspaceUser, managerOptionsForProvisioning, validateInternalUserProvisioning } from "../../lib/workspace-user-provisioning";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Section, StatusPill, formatMoney } from "../ui";
@@ -72,21 +73,20 @@ export function NewHireProvisioning() {
   const activeCourses = hcm.courses.filter((course) => course.active);
   const pendingApprovals = provisioning.state.records.filter((record) => record.state === "Pending approval");
 
-  // Once the new identity appears in the directory and HCM has seeded its employee record, link it and open onboarding.
+  // Once the new identity reaches the directory, link the draft and open onboarding.
   useEffect(() => {
     if (!pendingLink) return;
     const user = data.users.find((item) => item.id === pendingLink.uid);
-    if (!user || !hcm.employees.some((item) => item.userId === pendingLink.uid)) return;
+    if (!user) return;
     const handle = window.setTimeout(() => {
-      const draft = provisioning.state.drafts.find((item) => item.id === pendingLink.draftId);
-      if (!draft) { setPendingLink(null); return; }
-      const linked = draft.status === "Auth linked" || provisioning.linkDraftToUser(draft.id, user.id);
-      if (linked) provisioning.beginOnboarding({ userId: user.id, draftId: draft.id });
-      setNotice(linked ? `${user.name} now has a Firebase identity and is ready to begin onboarding.` : "The identity was created but could not be linked to the setup. Use “Link & start onboarding”.");
+      const linked = provisioning.beginOnboarding({ userId: user.id, draftId: pendingLink.draftId });
+      setNotice(linked
+        ? `${user.name} now has a Firebase identity and is ready to begin onboarding.`
+        : "The identity exists but onboarding could not be opened. Use “Link & start onboarding” on this hire.");
       setPendingLink(null);
     }, 0);
     return () => window.clearTimeout(handle);
-  }, [data.users, hcm.employees, pendingLink, provisioning]);
+  }, [data.users, pendingLink, provisioning]);
 
   if (currentUser?.role !== "Administrator") return null;
 
@@ -102,9 +102,18 @@ export function NewHireProvisioning() {
     setIdentityDraft({ ...identityDraft, busy: true, error: "" });
     const user = buildProvisionedWorkspaceUser(data, input, "pending-firebase-uid");
     const result = await firebase.createEmployeeAccount({ user, temporaryPassword: identityDraft.password });
-    if (!result.ok || !result.uid) { setIdentityDraft({ ...identityDraft, busy: false, error: result.message ?? "Identity creation failed." }); return; }
+    if (!result.ok || !result.uid) {
+      // Naming the failing stage matters: a Firestore rejection means recover the hire, never recreate it.
+      const guidance = result.stage === "firestore-access"
+        ? " The Firebase identity survived — reopen this hire here to finish it instead of creating it again."
+        : result.stage === "authorization" ? " Ask an active Administrator to provision this account." : "";
+      setIdentityDraft({ ...identityDraft, busy: false, error: `${result.message ?? "Identity creation failed."}${guidance}` });
+      return;
+    }
     if (draft.status === "Ready to invite") provisioning.markDraftInviteSent(draft.id);
     setIssued({ draftId: draft.id, email: draft.workEmail, password: identityDraft.password, name: draft.legalName });
+    if (result.outcome === "recovered") setNotice(`An unfinished Firebase identity for ${draft.workEmail} was recovered rather than duplicated. Its password has been reset to the temporary password below.`);
+    if (result.outcome === "already-provisioned") setNotice(`${draft.workEmail} already had a complete Momentum account. Nothing was changed.`);
     setPendingLink({ draftId: draft.id, uid: result.uid });
     setIdentityDraft(null);
   };
@@ -175,9 +184,15 @@ export function NewHireProvisioning() {
 
   const startExistingOnboarding = (draft: ProvisioningDraft) => {
     const matchingUser = data.users.find((user) => user.email.toLowerCase() === draft.workEmail.toLowerCase() && user.role !== "Administrator" && user.role !== "Customer");
-    if (!matchingUser) { setNotice("No linked identity exists yet. Create it through the trusted Firebase admin service first."); return; }
-    const linked = draft.status === "Auth linked" || provisioning.linkDraftToUser(draft.id, matchingUser.id);
-    if (!linked || !provisioning.beginOnboarding({ userId: matchingUser.id, draftId: draft.id })) { setNotice("The identity could not be linked to this onboarding setup."); return; }
+    if (!matchingUser) { setNotice("No linked identity exists yet. Create the Firebase identity for this hire first."); return; }
+    if (!provisioning.beginOnboarding({ userId: matchingUser.id, draftId: draft.id })) {
+      const record = provisioning.state.records.find((item) => item.userId === matchingUser.id);
+      const started = record && !isFailClosedPlaceholder(record) && record.state !== "Password change required";
+      setNotice(started
+        ? `${matchingUser.name} is already past the password change (${record!.state}). Nothing to restart.`
+        : "The identity could not be linked to this onboarding setup. Confirm the work e-mail matches the Firebase account.");
+      return;
+    }
     setNotice(`${matchingUser.name} is ready to begin onboarding.`);
   };
 

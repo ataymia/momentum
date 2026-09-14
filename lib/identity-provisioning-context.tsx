@@ -3,7 +3,7 @@
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useFirebaseSessionOptional } from "./firebase-session-context";
 import { useHcm } from "./hcm-context";
-import { AccountAccessState, IDENTITY_PROVISIONING_STORAGE_KEY, IdentityProvisioningRecord, IdentityProvisioningState, ProvisioningDraft, ProvisioningSource, accountAccessFor, createIdentityProvisioningSeed, normalizeIdentityProvisioningState } from "./identity-provisioning";
+import { AccountAccessState, IDENTITY_PROVISIONING_STORAGE_KEY, IdentityProvisioningRecord, IdentityProvisioningState, ProvisioningDraft, ProvisioningSource, accountAccessFor, createIdentityProvisioningSeed, isFailClosedPlaceholder, normalizeIdentityProvisioningState } from "./identity-provisioning";
 import { activateEmploymentAfterOnboarding, onboardingReadiness, prepareOnboardingPackage } from "./onboarding-engine";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useWorkspace } from "./workspace-context";
@@ -52,7 +52,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   useEffect(() => {
     if (typeof window === "undefined") return;
     // Fail-closed placeholder records exist only in memory in production; Firestore holds real provisioning decisions.
-    const persisted = firebase ? { ...state, records: state.records.filter((record) => record.provisionedBy !== "system-fail-closed") } : state;
+    const persisted = firebase ? { ...state, records: state.records.filter((record) => !isFailClosedPlaceholder(record)) } : state;
     momentumStorage.setItem(IDENTITY_PROVISIONING_STORAGE_KEY, JSON.stringify(persisted));
   }, [firebase, state]);
   useRemoteStorageSync(IDENTITY_PROVISIONING_STORAGE_KEY, () => setState(readState(data)));
@@ -109,30 +109,55 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const draft = state.drafts.find((item) => item.id === draftId);
     const user = data.users.find((item) => item.id === userId && item.role !== "Customer" && item.role !== "Administrator");
     if (!draft || !user || draft.status === "Cancelled" || user.email.toLowerCase() !== draft.workEmail.toLowerCase()) return false;
+    // Never re-point a draft at a second identity: that is how one employee silently inherits another's account.
+    if (draft.linkedUserId && draft.linkedUserId !== userId) return false;
     const at = new Date().toISOString();
     setState((current) => ({ ...current, drafts: current.drafts.map((item) => item.id === draftId ? { ...item, status: "Auth linked", linkedUserId: userId, updatedAt: at } : item) }));
     return true;
   };
 
+  /**
+   * Links the identity to its draft and opens onboarding in a single state transition.
+   *
+   * Doing this as two calls is what broke production: `linkDraftToUser` queues a `setState`, so a
+   * `beginOnboarding` called in the same tick still saw the draft as "Invite sent" and refused to start.
+   * The hire ended up with a linked draft and no provisioning record at all, which the fail-closed seed
+   * then reported as "Suspended".
+   */
   const beginOnboarding = (input: BeginOnboardingInput) => {
     if (currentUser?.role !== "Administrator") return false;
     const target = data.users.find((user) => user.id === input.userId && user.role !== "Customer");
     if (!target || target.role === "Administrator") return false;
-    const draft = input.draftId ? state.drafts.find((item) => item.id === input.draftId && item.linkedUserId === target.id && item.status === "Auth linked") : undefined;
-    if (!draft) return false;
+    const draft = input.draftId
+      ? state.drafts.find((item) => item.id === input.draftId && item.status !== "Cancelled" && item.workEmail.toLowerCase() === target.email.toLowerCase())
+      : undefined;
+    if (!draft || (draft.linkedUserId && draft.linkedUserId !== target.id)) return false;
+
+    const at = new Date().toISOString();
+    const linked: ProvisioningDraft = { ...draft, status: "Auth linked", linkedUserId: target.id, updatedAt: at };
+    const current = accountAccessFor(state, target.id);
+    // A fail-closed placeholder is Momentum's own "I don't trust this identity" marker, not real history:
+    // it is exactly what a stuck hire has, so it must never block recovery.
+    const existing = isFailClosedPlaceholder(current) ? undefined : current;
+    // Re-running recovery must not demote somebody who has already moved past the password change.
+    if (existing && existing.state !== "Password change required") return false;
     const record: IdentityProvisioningRecord = {
       id: `access-${target.id}`,
       userId: target.id,
       state: "Password change required",
       source: input.source ?? draft.source,
       provisionedBy: currentUser.id,
-      provisionedAt: new Date().toISOString(),
+      provisionedAt: existing?.provisionedAt ?? at,
       candidateId: input.candidateId ?? draft.candidateId,
       offerId: input.offerId ?? draft.offerId,
       draftId: draft.id,
     };
-    setHcm((current) => prepareOnboardingPackage(current, data, draft, target.id, currentUser.id));
-    setState((current) => ({ ...current, records: [record, ...current.records.filter((item) => item.userId !== target.id)] }));
+    setHcm((current) => prepareOnboardingPackage(current, data, linked, target.id, currentUser.id));
+    setState((current) => ({
+      ...current,
+      drafts: current.drafts.map((item) => item.id === draft.id ? { ...item, status: "Auth linked", linkedUserId: target.id, updatedAt: at } : item),
+      records: [record, ...current.records.filter((item) => item.userId !== target.id)],
+    }));
     syncAccountState(target.id, "Password change required");
     return true;
   };

@@ -71,6 +71,13 @@ const validInstant = (value?: string) => Boolean(value && !Number.isNaN(new Date
 const validDate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 const isDemoIdentity = (email: string) => email.toLowerCase().endsWith("@momentum.demo");
 
+/**
+ * Marks a record Momentum invented to stay fail-closed, not one an Administrator decided.
+ * It is never persisted in production and must never be mistaken for real provisioning history.
+ */
+export const FAIL_CLOSED_PROVISIONER = "system-fail-closed";
+export const isFailClosedPlaceholder = (record?: IdentityProvisioningRecord) => record?.provisionedBy === FAIL_CLOSED_PROVISIONER;
+
 export function createIdentityProvisioningSeed(data: WorkspaceData): IdentityProvisioningState {
   const now = new Date().toISOString();
   return {
@@ -83,7 +90,7 @@ export function createIdentityProvisioningSeed(data: WorkspaceData): IdentityPro
         userId: user.id,
         state: demo ? "Active" as const : "Suspended" as const,
         source: user.role === "Administrator" ? "Bootstrap admin" as const : "Direct hire" as const,
-        provisionedBy: demo ? "demo-seed" : "system-fail-closed",
+        provisionedBy: demo ? "demo-seed" : FAIL_CLOSED_PROVISIONER,
         provisionedAt: now,
         activatedAt: demo ? now : undefined,
         activatedBy: demo ? "demo-seed" : undefined,

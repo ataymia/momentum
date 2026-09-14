@@ -1,4 +1,4 @@
-import { appendAudit, type EmployeeDocument, type HCMState, type LifecycleCase, type TrainingAssignment, type WorkerClassification } from "./hcm-engine";
+import { appendAudit, type EmployeeDocument, type EmploymentRecord, type HCMState, type LifecycleCase, type TrainingAssignment, type WorkerClassification } from "./hcm-engine";
 import type { IdentityProvisioningRecord, ProvisioningDraft } from "./identity-provisioning";
 import type { WorkspaceData } from "./types";
 
@@ -33,11 +33,13 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
   const user = data.users.find((item) => item.id === userId && item.role !== "Customer");
   if (!user || draft.linkedUserId !== userId || user.email.toLowerCase() !== draft.workEmail.toLowerCase()) return state;
   const at = new Date().toISOString();
-  const employeeIndex = state.employees.findIndex((item) => item.userId === userId);
-  if (employeeIndex < 0) return state;
-  const employee = state.employees[employeeIndex];
-  const employees = state.employees.map((item) => item.userId === userId ? {
-    ...item,
+  const existing = state.employees.find((item) => item.userId === userId);
+  // A hire provisioned through the admin endpoint has no employment record yet. Creating one here keeps
+  // onboarding from silently producing an empty package (no documents, no training, no lifecycle case).
+  const employeeNumber = existing?.employeeNumber ?? `MD-${String(state.employees.length + 1).padStart(4, "0")}`;
+  const employee: EmploymentRecord = {
+    ...(existing ?? { userId, employeeNumber, status: "Prehire" as const, classification: draft.classification, payGroup: draft.payGroup, updatedAt: at }),
+    employeeNumber,
     status: "Prehire" as const,
     hireDate: draft.startDate,
     jobTitle: draft.jobTitle,
@@ -48,7 +50,10 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
     payGroup: draft.payGroup,
     standardWeeklyHours: draft.standardWeeklyHours,
     updatedAt: at,
-  } : item);
+  };
+  const employees = existing
+    ? state.employees.map((item) => item.userId === userId ? employee : item)
+    : [employee, ...state.employees];
 
   const templates = requiredOnboardingDocumentTemplates(draft.classification);
   const existingTitles = new Set(state.documents.filter((doc) => doc.userId === userId).map((doc) => doc.title.toLowerCase()));
@@ -89,7 +94,7 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
     };
   }
 
-  return appendAudit(next, { actorId, action: "Prepared employee onboarding package", entityType: "LifecycleCase", entityId: lifecycleCase.id, before: employee.status, after: "Prehire", reason: `Provisioning draft ${draft.id}` });
+  return appendAudit(next, { actorId, action: "Prepared employee onboarding package", entityType: "LifecycleCase", entityId: lifecycleCase.id, before: existing?.status ?? "None", after: "Prehire", reason: `Provisioning draft ${draft.id}` });
 }
 
 export function onboardingReadiness(state: HCMState, record: IdentityProvisioningRecord | undefined, userId: string): OnboardingReadiness {
