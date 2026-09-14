@@ -1,17 +1,33 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
 
-  // Targets the EXISTING Worker (account 825607df750f42607439c105a946242c). Do not rename.
+  // Targets the EXISTING Worker. Do not rename.
   "name": "momentum",
+  // Pinned to the Cloudflare account that owns momentum-dci.com, so a Codespace authenticated to a
+  // different account fails loudly instead of silently deploying Momentum somewhere else.
+  "account_id": "01a31c8ba6c362bd82bdafef765be008",
   "compatibility_date": "2026-09-14",
 
-  // Assets-only Worker: Momentum is a static export (next.config.ts -> output: "export"),
-  // so there is no server code and no "main" entry point. Every engine runs in the browser
-  // and talks to Firebase Auth/Firestore over REST.
+  // Momentum is a static export (next.config.ts -> output: "export"); every engine runs in the browser
+  // and talks to Firebase Auth/Firestore over REST. The Worker script exists only to serve
+  // /api/admin/*, the privileged provisioning endpoint that holds the Firebase service account.
+  "main": "worker/index.ts",
   "assets": {
     "directory": "./out",
+    "binding": "ASSETS",
     // Serves out/404.html with a 404 status. Not "single-page-application": the app renders
     // one route ("/") and navigates by state, not by URL, so there are no deep links to rewrite.
-    "not_found_handling": "404-page"
-  }
+    "not_found_handling": "404-page",
+    // Everything outside /api/* is a static file and never invokes the script.
+    "run_worker_first": ["/api/*"]
+  },
+
+  "vars": {
+    "FIREBASE_PROJECT_ID": "momentumdis"
+  },
+
+  "observability": { "enabled": true }
+
+  // Secrets are never committed. Set once per environment:
+  //   npx wrangler secret put FIREBASE_SERVICE_ACCOUNT
 }
