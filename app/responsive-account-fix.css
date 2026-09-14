@@ -96,9 +96,19 @@
 
   .page--orders .orders-list {
     min-width: 0;
+    min-inline-size: 0;
     width: 100%;
+    inline-size: 100%;
     max-width: 100%;
+    max-inline-size: 100%;
     overflow-x: auto;
     overscroll-behavior-x: contain;
+    contain: inline-size;
+  }
+
+  .page--orders .order-table {
+    width: 680px;
+    min-width: 680px;
+    max-width: none;
   }
 }
