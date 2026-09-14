@@ -18,6 +18,26 @@ const readState=(data:ReturnType<typeof useWorkspace>["data"]):HCMState=>{
   try{return normalizePersistedHcmState(JSON.parse(momentumStorage.getItem(HCM_STORAGE_KEY)??"null"),data,seed);}catch{return seed;}
 };
 
+const same=(left:unknown,right:unknown)=>JSON.stringify(left)===JSON.stringify(right);
+const safePrehireSelfProfileMutation=(current:HCMState,next:HCMState,userId:string)=>{
+  const employment=current.employees.find((item)=>item.userId===userId);
+  if(employment?.status!=="Prehire")return false;
+  const keys=(Object.keys(current) as (keyof HCMState)[]).filter((key)=>!["privateProfiles","audit"].includes(String(key)));
+  if(keys.some((key)=>!same(current[key],next[key])))return false;
+  if(current.privateProfiles.length!==next.privateProfiles.length)return false;
+  const before=current.privateProfiles.find((item)=>item.userId===userId);
+  const after=next.privateProfiles.find((item)=>item.userId===userId);
+  if(!before||!after||before.userId!==after.userId)return false;
+  if(current.privateProfiles.some((item)=>item.userId!==userId&&!same(item,next.privateProfiles.find((candidate)=>candidate.userId===item.userId))))return false;
+  const left=before as unknown as Record<string,unknown>;
+  const right=after as unknown as Record<string,unknown>;
+  const changed=[...new Set([...Object.keys(left),...Object.keys(right)])].filter((key)=>!same(left[key],right[key]));
+  if(!changed.length||changed.some((key)=>!["phone","address","emergencyContact","preferredName","updatedAt"].includes(key)))return false;
+  if(next.audit.length!==current.audit.length+1)return false;
+  const event=next.audit[0];
+  return event?.actorId===userId&&event.entityType==="EmployeePrivateProfile"&&event.entityId===userId;
+};
+
 export function HcmProvider({children}:{children:ReactNode}){
   const {data,currentUser}=useWorkspace();
   const runtime=useRuntimeMode();
@@ -33,7 +53,8 @@ export function HcmProvider({children}:{children:ReactNode}){
     if(!proposed||typeof proposed!=="object")return current;
     const raw=proposed as HCMState;
     const actorCheck=validateHcmActorTransition(current,raw,currentUser,data);
-    if(!actorCheck.ok)return current;
+    const onboardingSelfProfile=Boolean(currentUser&&safePrehireSelfProfileMutation(current,raw,currentUser.id));
+    if(!actorCheck.ok&&!onboardingSelfProfile)return current;
     const candidate=normalizePersistedHcmState(normalizeHcmState(raw,data),data,createHcmSeed(data));
     return validateHcmTransition(current,candidate).ok?candidate:current;
   });
