@@ -60,7 +60,7 @@
     min-width: 0;
     width: 100%;
     max-width: 100vw;
-    overflow-x: clip;
+    overflow-x: hidden;
   }
 
   .page--orders .order-stats {
@@ -88,27 +88,43 @@
 
   .page--orders .orders-layout {
     min-width: 0;
-    width: calc(100vw - 28px);
-    max-width: calc(100vw - 28px);
+    width: 100%;
+    max-width: 100%;
     grid-template-columns: minmax(0, 1fr);
     overflow: hidden;
   }
 
-  .page--orders .orders-list {
+  .page--orders .orders-list,
+  .page--orders .order-table-body {
     min-width: 0;
-    min-inline-size: 0;
     width: 100%;
-    inline-size: 100%;
     max-width: 100%;
-    max-inline-size: 100%;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    contain: inline-size;
+    overflow-x: hidden;
   }
 
   .page--orders .order-table {
-    width: 680px;
-    min-width: 680px;
-    max-width: none;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    grid-template-columns: 56px minmax(70px, 1fr) 34px 52px 68px 10px;
+    gap: 3px;
+    padding-inline: 6px;
+  }
+
+  .page--orders .order-table > span,
+  .page--orders .order-table strong,
+  .page--orders .order-table small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .page--orders .order-table .status-pill {
+    max-width: 68px;
+    padding: 4px 5px;
+    white-space: normal;
+    text-align: center;
+    justify-content: center;
+    line-height: 1.15;
   }
 }
