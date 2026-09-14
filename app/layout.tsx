@@ -11,6 +11,7 @@ import "./owner-feedback.css";
 import "./account-health.css";
 import "./hcm-workflow.css";
 import "./onboarding.css";
+import "./admin-polish.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
