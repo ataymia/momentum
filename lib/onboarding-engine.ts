@@ -1,4 +1,4 @@
-import { appendAudit, type EmployeeDocument, type HCMState, type LifecycleCase, type TrainingAssignment, type WorkerClassification } from "./hcm-engine";
+import { appendAudit, type EmployeeDocument, type EmploymentRecord, type HCMState, type LifecycleCase, type TrainingAssignment, type WorkerClassification } from "./hcm-engine";
 import type { IdentityProvisioningRecord, ProvisioningDraft } from "./identity-provisioning";
 import type { WorkspaceData } from "./types";
 
@@ -34,12 +34,21 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
   const user = data.users.find((item) => item.id === userId && item.role !== "Customer");
   if (!user || draft.linkedUserId !== userId || user.email.toLowerCase() !== draft.workEmail.toLowerCase()) return state;
   const at = new Date().toISOString();
-  const employeeIndex = state.employees.findIndex((item) => item.userId === userId);
-  if (employeeIndex < 0) return state;
-  const employee = state.employees[employeeIndex];
-  const employees = state.employees.map((item) => item.userId === userId ? {
-    ...item,
-    status: "Prehire" as const,
+  const existingEmployee = state.employees.find((item) => item.userId === userId);
+  const employeeNumber = existingEmployee?.employeeNumber ?? `MD-${String(state.employees.length + 1).padStart(4, "0")}`;
+  const preparedEmployee: EmploymentRecord = {
+    ...(existingEmployee ?? {
+      userId,
+      employeeNumber,
+      status: "Prehire",
+      jobTitle: draft.jobTitle,
+      department: draft.team,
+      location: draft.workLocation,
+      classification: draft.classification,
+      payGroup: draft.payGroup,
+      updatedAt: at,
+    }),
+    status: "Prehire",
     hireDate: draft.startDate,
     jobTitle: draft.jobTitle,
     department: draft.team,
@@ -49,7 +58,9 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
     payGroup: draft.payGroup,
     standardWeeklyHours: draft.standardWeeklyHours,
     updatedAt: at,
-  } : item);
+  };
+  const employees = existingEmployee ? state.employees.map((item) => item.userId === userId ? preparedEmployee : item) : [preparedEmployee, ...state.employees];
+  const privateProfiles = state.privateProfiles.some((item) => item.userId === userId) ? state.privateProfiles : [{ userId, updatedAt: at }, ...state.privateProfiles];
 
   const templates = requiredOnboardingDocumentTemplates(draft.classification);
   const existingTitles = new Set(state.documents.filter((doc) => doc.userId === userId).map((doc) => doc.title.toLowerCase()));
@@ -78,6 +89,7 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
   let next: HCMState = {
     ...state,
     employees,
+    privateProfiles,
     documents: [...addedDocuments, ...state.documents],
     training: [...addedTraining, ...state.training],
     lifecycleCases: existingCase ? state.lifecycleCases : [lifecycleCase, ...state.lifecycleCases],
@@ -90,7 +102,7 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
     };
   }
 
-  return appendAudit(next, { actorId, action: "Prepared employee onboarding package", entityType: "LifecycleCase", entityId: lifecycleCase.id, before: employee.status, after: "Prehire", reason: `Provisioning draft ${draft.id}` });
+  return appendAudit(next, { actorId, action: "Prepared employee onboarding package", entityType: "LifecycleCase", entityId: lifecycleCase.id, before: existingEmployee?.status ?? "Not present", after: "Prehire", reason: `Provisioning draft ${draft.id}` });
 }
 
 export function onboardingReadiness(state: HCMState, record: IdentityProvisioningRecord | undefined, userId: string): OnboardingReadiness {
