@@ -8,4 +8,51 @@
   .account-list-panel--full .account-table {
     min-width: 670px;
   }
+
+  .page--dispatch {
+    min-width: 0;
+    overflow-x: clip;
+  }
+
+  .page--dispatch .dispatch-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .page--dispatch .dispatch-summary > i {
+    display: none;
+  }
+
+  .page--dispatch .dispatch-summary > div {
+    min-width: 0;
+    padding: 12px;
+  }
+
+  .page--dispatch .dispatch-summary__policy {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    border-top: 1px solid var(--line);
+  }
+
+  .page--dispatch .dispatch-toolbar-v2,
+  .page--dispatch .dispatch-date-tabs,
+  .page--dispatch .dispatch-timeline-shell,
+  .page--dispatch .dispatch-timeline-scroll,
+  .page--dispatch .dispatch-holding,
+  .page--dispatch .company-grid {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .page--dispatch .dispatch-date-tabs {
+    overflow-x: auto;
+  }
+
+  .page--dispatch .dispatch-timeline-scroll {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
 }
