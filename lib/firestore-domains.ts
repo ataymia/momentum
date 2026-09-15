@@ -11,9 +11,6 @@ import type { Role } from "./types";
  *   domains/{domainId}/fields/_root            non-array remainder  → { data: {...} }
  *   userDomains/{uid}/{domainId}/{field}       per-user array shard → { items: [...] } (records whose
  *                                              `userIdField` equals uid; unowned records stay shared)
- *
- * `firestore.rules` mirrors this table. Keep them in sync (tests/firebase-boundary.test.ts checks the
- * domain ids and restricted field lists appear in the rules).
  */
 
 export type RoleRule="activeEmployee"|"hasAccess"|Role[];
@@ -27,6 +24,8 @@ export type DomainFieldSpec={
   managerWrite?:boolean;
   /** Managers may read their direct reports' shards (default true for per-user fields). */
   managerRead?:boolean;
+  /** Sales Representatives may read/write this field only for directly assigned Brand Ambassadors. */
+  salesRepSupervise?:boolean;
   /** Override read/write rule for the shared portion of this field. */
   read?:RoleRule;
   write?:RoleRule;
@@ -80,6 +79,10 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {
     key:"momentum-identity-provisioning-v1",id:"identity",read:ADMIN,write:ADMIN,
     fields:{drafts:{},records:perUser("userId",{selfWrite:true,managerWrite:false,managerRead:false})},
+  },
+  {
+    key:"momentum-brand-ambassador-v1",id:"brandAmbassador",read:"hasAccess",write:ADMIN,
+    fields:{assignments:perUser("ambassadorId",{selfWrite:false,managerWrite:false,managerRead:false,salesRepSupervise:true,read:ADMIN,write:ADMIN})},
   },
   {
     key:"momentum-document-templates-v1",id:"documentTemplates",read:"hasAccess",write:ADMIN,
@@ -169,8 +172,11 @@ export function domainDocuments(spec:DomainSpec,scope:PersistenceScope):DomainDo
     const write=fieldSpec.write?roleAllows(fieldSpec.write,scope):sharedWritable;
     if(read)documents.push({path:sharedDocPath(spec.id,field),writable:write});
     if(!fieldSpec.userIdField)continue;
-    for(const uid of scope.readableUserIds){
-      if(uid!==scope.uid&&scope.role!=="Administrator"&&fieldSpec.managerRead===false)continue;
+    const readableUids=new Set(scope.readableUserIds);
+    if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative")for(const uid of scope.supervisedBrandAmbassadorIds)readableUids.add(uid);
+    for(const uid of readableUids){
+      if(uid!==scope.uid&&scope.role!=="Administrator"&&!scope.managedUserIds.has(uid)&&!(fieldSpec.salesRepSupervise&&scope.supervisedBrandAmbassadorIds.has(uid)))continue;
+      if(uid!==scope.uid&&scope.role!=="Administrator"&&scope.managedUserIds.has(uid)&&fieldSpec.managerRead===false)continue;
       documents.push({path:userDocPath(uid,spec.id,field),writable:userShardWritable(spec,fieldSpec,uid,scope)});
     }
   }
@@ -181,6 +187,7 @@ export function userShardWritable(spec:DomainSpec,fieldSpec:DomainFieldSpec,uid:
   if(scope.role==="Customer")return false;
   if(scope.role==="Administrator")return true;
   if(uid===scope.uid)return fieldSpec.selfWrite!==false;
+  if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative"&&scope.supervisedBrandAmbassadorIds.has(uid))return scope.accountState==="Active";
   if(scope.managedUserIds.has(uid))return fieldSpec.managerWrite!==false&&scope.accountState==="Active";
   return false;
 }
