@@ -9,7 +9,7 @@ import { activeFieldAppointmentForUser } from "./field-work-session";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { evaluatePartnerPricing } from "./pricing-engine";
 import { useRuntimeModeValue } from "./runtime-mode-store";
-import { canAssignRepToAccountTerritory, canSalesRepWorkAccount, normalizePostalCode, territoryForPostalCode, territorySystemEnabled, validateTerritoryDraft, type TerritoryDraft } from "./territory-engine";
+import { isTerritoryDeviation, normalizePostalCode, territoryForPostalCode, territorySystemEnabled, validateTerritoryDraft, type TerritoryDraft } from "./territory-engine";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import type { Account, Activity, Appointment, AppointmentStatus, Approval, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, SalesTerritory, WorkspaceData, WorkspaceUser } from "./types";
 import { WorkspaceProvider as BaseWorkspaceProvider, useWorkspace as useBaseWorkspace } from "./workspace-context-v5";
@@ -66,6 +66,7 @@ type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string
 type TerritoryInput = Omit<TerritoryDraft,"id"> & {id?:string};
 type TerritoryMutationResult = {ok:boolean;message?:string;id?:string};
 type BaseWorkspace = ReturnType<typeof useBaseWorkspace>;
+type NewAccountInput = Parameters<BaseWorkspace["createAccount"]>[0];
 type NewAppointmentInput = Parameters<BaseWorkspace["createAppointment"]>[0];
 type AppointmentCloseout = Parameters<BaseWorkspace["completeAppointment"]>[1];
 type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | "login" | "logout" | "toggleClock" | "switchUser" | "createAccount" | "createOrder" | "createAppointment" | "advanceAppointment" | "completeAppointment" | "reassignAppointment" | "moveAppointment" | "updatePlacement" | "correctTimeEntry" | "decideApproval" | "setOrderStatus" | "reconcileOrderPayment" | "resetDemo"> & {
@@ -76,7 +77,7 @@ type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | 
   logout: () => boolean;
   toggleClock: () => boolean;
   switchUser: (userId: string) => void;
-  createAccount: BaseWorkspace["createAccount"];
+  createAccount: (account: NewAccountInput, territoryExceptionReason?: string) => string | null;
   createOrder: (order: EnhancedOrderInput) => string | null;
   createAppointment: (appointment: NewAppointmentInput) => string | null;
   advanceAppointment: (id: string) => void;
@@ -162,12 +163,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     if (demoMode && !base.data.inventory.some((lot) => lot.id === tropicalLot.id) && !extraLots.some((lot) => lot.id === tropicalLot.id)) extraLots.push(tropicalLot);
     const extraLotIds = new Set(extraLots.map((lot) => lot.id));
     const inventory = [...extraLots, ...base.data.inventory.filter((lot) => !extraLotIds.has(lot.id))];
-    const territoryData={territories:commercial.territories};
-    const accounts = base.data.accounts.map((account) => {
-      const patched={ ...account, ...(commercial.accountPatches[account.id] ?? {}) };
-      const territory=territoryForPostalCode(territoryData,patched.postalCode);
-      return territory?.ownerId?{...patched,territoryId:territory.id,ownerId:territory.ownerId,accountManagerId:territory.ownerId}:({...patched,territoryId:undefined});
-    });
+    // Geographic territory is a routing suggestion only. Never rewrite explicit account responsibility from ZIP.
+    const accounts = base.data.accounts.map((account) => ({ ...account, ...(commercial.accountPatches[account.id] ?? {}) }));
     const salesRepIds = new Set(users.filter((user) => user.role === "Sales Representative").map((user) => user.id));
     const baseOrders = base.data.orders.map((order) => ({
       ...order,
@@ -195,6 +192,43 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const focusActiveFieldWork = (appointment: Appointment) => {
     if (typeof window !== "undefined") window.sessionStorage.setItem("momentum-focus-record", appointment.id);
     base.navigate("dispatch");
+  };
+
+  const territoryExceptionExists = (accountId: string, repId: string) => commercial.approvals.some((approval) => approval.type === "Territory exception" && approval.recordId === accountId && approval.requesterId === repId && approval.status !== "Returned");
+
+  const requestTerritoryReason = (accountName: string, postalCode: string | undefined, repId: string, action: string, supplied?: string) => {
+    const provided = supplied?.trim() ?? "";
+    if (provided.length >= 5) return provided;
+    if (typeof window === "undefined") return "";
+    const territory = territoryForPostalCode(data, postalCode);
+    const suggestedRep = territory?.ownerId ? data.users.find((user) => user.id === territory.ownerId) : undefined;
+    const actualRep = data.users.find((user) => user.id === repId);
+    const suggestion = territory ? `${territory.name}${suggestedRep ? ` (${suggestedRep.name})` : ""}` : "no configured territory";
+    return window.prompt(`${accountName} is outside ${actualRep?.name ?? "this rep"}'s geographic suggestion. Suggested coverage: ${suggestion}.\n\nThis will not block the work, but Momentum requires a reason so the exception can be documented and reviewed.\n\nWhy is ${action} happening outside the suggestion?`)?.trim() ?? "";
+  };
+
+  const recordTerritoryException = (accountId: string, accountName: string, postalCode: string | undefined, repId: string, action: string, reason: string, status: Approval["status"]) => {
+    const territory = territoryForPostalCode(data, postalCode);
+    const suggestedRep = territory?.ownerId ? data.users.find((user) => user.id === territory.ownerId) : undefined;
+    const actualRep = data.users.find((user) => user.id === repId);
+    const actorName = currentUser?.name ?? "Momentum";
+    const detail = `Action: ${action}. Geographic suggestion: ${territory?.name ?? "Outside configured coverage"}${suggestedRep ? ` · ${suggestedRep.name}` : ""}. Working rep: ${actualRep?.name ?? repId}. Reason: ${reason.trim()}.${status === "Approved" ? ` Validated by ${actorName}.` : " Manager validation required."}`;
+    const approval: Approval = { id: uid("apr-territory"), type: "Territory exception", title: `Territory exception · ${accountName}`, detail, requestedBy: actualRep?.name ?? actorName, requesterId: repId, recordId: accountId, team: "Sales", submittedAt: now(), dueAt: new Date(Date.now() + 86400000).toISOString(), priority: "High", status };
+    setCommercial((state) => {
+      const existing = state.approvals.some((item) => item.type === "Territory exception" && item.recordId === accountId && item.requesterId === repId && item.status !== "Returned");
+      if (existing) return state;
+      return { ...state, approvals: [approval, ...state.approvals], activities: [{ id: uid("act-territory-exception"), accountId, type: "note", title: status === "Approved" ? "Territory exception documented" : "Territory exception submitted for review", detail, at: now(), userId: currentUser?.id ?? repId }, ...state.activities] };
+    });
+  };
+
+  const documentTerritoryDeviation = (account: Pick<Account,"id"|"name"|"locationName"|"postalCode">, repId: string, action: string, suppliedReason?: string) => {
+    const rep = data.users.find((user) => user.id === repId);
+    if (!rep || rep.role !== "Sales Representative" || !territorySystemEnabled(data) || !isTerritoryDeviation(data, account.postalCode, repId)) return true;
+    if (territoryExceptionExists(account.id, repId)) return true;
+    const reason = requestTerritoryReason(account.locationName ?? account.name, account.postalCode, repId, action, suppliedReason);
+    if (reason.length < 5) return false;
+    recordTerritoryException(account.id, account.locationName ?? account.name, account.postalCode, repId, action, reason, currentUser?.role === "Sales Representative" ? "Pending" : "Approved");
+    return true;
   };
 
   const login: BaseWorkspace["login"] = (email, password) => {
@@ -244,15 +278,22 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     if (demoMode) base.switchUser(userId);
   };
 
-  const createAccount: BaseWorkspace["createAccount"] = (account) => {
+  const createAccount = (account: NewAccountInput, territoryExceptionReason?: string) => {
     if ([account.name, account.location, account.channel, account.contactName, account.contactRole, account.phone, account.email].some((value) => !value.trim())) return null;
     const postalCode=normalizePostalCode(account.postalCode);
     if(!postalCode)return null;
-    const territory=territoryForPostalCode(data,postalCode);
-    if(currentUser?.role==="Sales Representative"&&territorySystemEnabled(data)&&territory?.ownerId!==currentUser.id)return null;
+    let exceptionReason="";
+    const repDeviation=currentUser?.role==="Sales Representative"&&territorySystemEnabled(data)&&isTerritoryDeviation(data,postalCode,currentUser.id);
+    if(repDeviation){
+      exceptionReason=requestTerritoryReason(account.name,postalCode,currentUser!.id,"creating this account",territoryExceptionReason);
+      if(exceptionReason.length<5)return null;
+    }
     if (findAccountDuplicate(data.accounts, account)) return null;
     const id = base.createAccount({...account,postalCode});
-    if (id) setCommercial((state) => ({ ...state, accountPatches: { ...state.accountPatches, [id]: { premiseType: "Unclassified", businessType: account.channel.trim(), categoryReviewDate: plusDays(today(), 90),postalCode } } }));
+    if (id) {
+      setCommercial((state) => ({ ...state, accountPatches: { ...state.accountPatches, [id]: { premiseType: "Unclassified", businessType: account.channel.trim(), categoryReviewDate: plusDays(today(), 90),postalCode } } }));
+      if(repDeviation&&currentUser)recordTerritoryException(id,account.name,postalCode,currentUser.id,"creating this account",exceptionReason,"Pending");
+    }
     return id;
   };
 
@@ -280,7 +321,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
           ...(pricingChanged ? { pricingUpdatedAt: now(), pricingUpdatedBy: currentUser.id } : {}),
         },
       },
-      activities: [{ id: uid("act-commercial"), accountId, type: "note", title: postalCode&&postalCode!==account.postalCode?"Account territory location updated":pricingChanged ? "Pricing tier changed" : "Account classification updated", detail: postalCode&&postalCode!==account.postalCode?`ZIP code updated to ${postalCode}; territory ownership recalculated automatically.`:pricingChanged ? `Pricing tier ${account.pricingTier ?? "Unassigned"} → ${patch.pricingTier}.` : "Commercial account fields updated.", at: now(), userId: currentUser.id }, ...state.activities],
+      activities: [{ id: uid("act-commercial"), accountId, type: "note", title: postalCode&&postalCode!==account.postalCode?"Account geographic suggestion updated":pricingChanged ? "Pricing tier changed" : "Account classification updated", detail: postalCode&&postalCode!==account.postalCode?`ZIP code updated to ${postalCode}; suggested territory recalculated. Explicit account responsibility was not changed.`:pricingChanged ? `Pricing tier ${account.pricingTier ?? "Unassigned"} → ${patch.pricingTier}.` : "Commercial account fields updated.", at: now(), userId: currentUser.id }, ...state.activities],
     }));
     return true;
   };
@@ -303,10 +344,6 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     if (!currentUser || !["Administrator", "Sales Manager"].includes(currentUser.role) || reason.trim().length < 3) return false;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !canTransferSalesResponsibility(data, currentUser, account, toUserId)) return false;
-    if(territorySystemEnabled(data)){
-      const territory=territoryForPostalCode(data,account.postalCode);
-      if(!territory||territory.ownerId!==toUserId)return false;
-    }
     const target = data.users.find((user) => user.id === toUserId)!;
     const from = data.users.find((user) => user.id === account.ownerId);
     setCommercial((state) => ({
@@ -323,6 +360,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       },
       activities: [{ id: uid("act-handoff"), accountId, type: "note", title: "Sales responsibility transferred", detail: `${from?.name ?? "Unassigned"} → ${target.name}. ${reason.trim()} Historical order attribution remains unchanged.`, at: now(), userId: currentUser.id }, ...state.activities],
     }));
+    if(target.role==="Sales Representative"&&territorySystemEnabled(data)&&isTerritoryDeviation(data,account.postalCode,target.id))recordTerritoryException(account.id,account.locationName??account.name,account.postalCode,target.id,"manual account assignment",reason.trim(),"Approved");
     return true;
   };
 
@@ -330,10 +368,11 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     if (!currentUser || ["Customer", "Warehouse"].includes(currentUser.role)) return null;
     if (!isValidCalendarDateKey(appointment.date) || !validTime(appointment.startTime) || !Number.isInteger(appointment.duration) || appointment.duration < 1 || !appointment.objective.trim()) return null;
     const account = data.accounts.find((item) => item.id === appointment.accountId);
-    if (!account || !accountIsVisible(data, currentUser, account) || !canSalesRepWorkAccount(data,currentUser,account)) return null;
+    if (!account || !accountIsVisible(data, currentUser, account)) return null;
     const ownerId = currentUser.role === "Sales Representative" ? currentUser.id : appointment.ownerId || undefined;
-    if (ownerId && (!canAssignScheduleUser(data, currentUser, ownerId)||!canAssignRepToAccountTerritory(data,account,ownerId))) return null;
+    if (ownerId && !canAssignScheduleUser(data, currentUser, ownerId)) return null;
     const owner = data.users.find((user) => user.id === ownerId);
+    if(owner?.role==="Sales Representative"&&!documentTerritoryDeviation(account,owner.id,`scheduling ${appointment.type.toLowerCase()}`))return null;
     const id = uid("apt");
     const record: Appointment = { ...appointment, objective: appointment.objective.trim(), id, ownerId, customerId: account.customerId, status: "Scheduled", location: account.streetAddress || account.location, priority: appointment.priority ?? "Normal", tags: appointment.tags ?? [], assignedBy: ownerId ? currentUser.id : undefined, assignedAt: ownerId ? now() : undefined };
     setCommercial((state) => ({ ...state, appointments: [record, ...state.appointments], activities: [{ id: uid("act-appt"), accountId: account.id, type: "visit", title: `${appointment.type} scheduled`, detail: `${appointment.date} at ${appointment.startTime} · ${owner ? `assigned to ${owner.name}` : "left unassigned"}.`, at: now(), userId: currentUser.id }, ...state.activities] }));
@@ -384,8 +423,9 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
     if (!currentUser || !canManageSchedule(currentUser) || enhanced.status !== "Scheduled") return;
     const account=data.accounts.find((item)=>item.id===enhanced.accountId);
-    if (ownerId && (!account||!canAssignScheduleUser(data, currentUser, ownerId)||!canAssignRepToAccountTerritory(data,account,ownerId))) return;
+    if (ownerId && (!account||!canAssignScheduleUser(data, currentUser, ownerId))) return;
     const owner = ownerId ? data.users.find((user) => user.id === ownerId) : undefined;
+    if(account&&owner?.role==="Sales Representative"&&!documentTerritoryDeviation(account,owner.id,"reassigning this appointment"))return;
     const prior = data.users.find((user) => user.id === enhanced.ownerId);
     setCommercial((state) => ({ ...state, appointments: state.appointments.map((item) => item.id === id ? { ...item, ownerId: ownerId || undefined, assignedBy: ownerId ? currentUser.id : undefined, assignedAt: ownerId ? now() : undefined } : item), activities: [{ id: uid("act-assign"), accountId: enhanced.accountId, type: "note", title: ownerId ? "Appointment assigned" : "Appointment unassigned", detail: `${prior?.name ?? "Unassigned"} → ${owner?.name ?? "Holding area"}.`, at: now(), userId: currentUser.id }, ...state.activities] }));
   };
@@ -396,7 +436,9 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     if (!enhanced) return base.moveAppointment(id, ownerId, date, startTime);
     if (!currentUser || !canManageSchedule(currentUser) || enhanced.status !== "Scheduled") return false;
     const account=data.accounts.find((item)=>item.id===enhanced.accountId);
-    if (ownerId && (!account||!canAssignScheduleUser(data, currentUser, ownerId)||!canAssignRepToAccountTerritory(data,account,ownerId))) return false;
+    if (ownerId && (!account||!canAssignScheduleUser(data, currentUser, ownerId))) return false;
+    const owner=ownerId?data.users.find((user)=>user.id===ownerId):undefined;
+    if(account&&owner?.role==="Sales Representative"&&!documentTerritoryDeviation(account,owner.id,"moving this appointment"))return false;
     const before = `${enhanced.ownerId ?? "Unassigned"} · ${enhanced.date} ${enhanced.startTime}`;
     const after = `${ownerId ?? "Unassigned"} · ${date} ${startTime}`;
     setCommercial((state) => ({ ...state, appointments: state.appointments.map((item) => item.id === id ? { ...item, ownerId, date, startTime, assignedBy: ownerId ? currentUser.id : undefined, assignedAt: ownerId ? now() : undefined } : item), activities: [{ id: uid("act-move"), accountId: enhanced.accountId, type: "note", title: "Dispatch schedule changed", detail: `${before} → ${after}.`, at: now(), userId: currentUser.id }, ...state.activities] }));
@@ -416,7 +458,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const createOrder = ({ accountId, cases, product, inventoryAvailableAtOrder, sourcePlacementId }: EnhancedOrderInput) => {
     if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role) || !Number.isInteger(cases) || cases < 1 || typeof inventoryAvailableAtOrder !== "number" || !Number.isFinite(inventoryAvailableAtOrder) || inventoryAvailableAtOrder < 0) return null;
     const account = data.accounts.find((item) => item.id === accountId);
-    if (!account || !accountIsVisible(data, currentUser, account) || !canSalesRepWorkAccount(data,currentUser,account)) return null;
+    if (!account || !accountIsVisible(data, currentUser, account)) return null;
+    if(currentUser.role==="Sales Representative"&&!documentTerritoryDeviation(account,currentUser.id,"placing an order"))return null;
     const selectedProduct = product?.trim() || data.inventory[0]?.product || "Golden Eagle";
     if (!data.inventory.some((lot) => lot.product === selectedProduct)) return null;
     const sourcePlacement = sourcePlacementId ? data.placements.find((placement) => placement.id === sourcePlacementId) : undefined;
@@ -443,6 +486,17 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!currentUser || approval.status !== "Pending" || !canReviewApproval(data, currentUser, approval)) return;
+    if(approval.type==="Territory exception"){
+      let returnReason="";
+      if(decision==="Returned"){
+        if(typeof window==="undefined")return;
+        returnReason=window.prompt("Why is this territory exception being returned? This note will be kept with the account history.")?.trim()??"";
+        if(returnReason.length<3)return;
+      }
+      const accountId=approval.recordId;
+      setCommercial((state)=>({...state,approvals:state.approvals.map((item)=>item.id===id?{...item,status:decision}:item),activities:accountId?[{id:uid("act-territory-review"),accountId,type:"note",title:decision==="Approved"?"Territory exception validated":"Territory exception returned",detail:decision==="Approved"?`${approval.detail} Reviewed and approved by ${currentUser.name}.`:`${approval.detail} Returned by ${currentUser.name}: ${returnReason}`,at:now(),userId:currentUser.id},...state.activities]:state.activities}));
+      return;
+    }
     setCommercial((state) => ({ ...state, approvals: state.approvals.map((item) => item.id === id ? { ...item, status: decision } : item), orders: state.orders.map((order) => order.id === approval.recordId ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order) }));
   };
 
