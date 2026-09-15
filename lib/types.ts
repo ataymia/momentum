@@ -278,6 +278,7 @@ export type InventoryLot = {
 export type ApprovalType =
   | "Order"
   | "Low stock sale"
+  | "Territory exception"
   | "Timecard"
   | "Price exception"
   | "Inventory adjustment"
@@ -296,7 +297,7 @@ export type Approval = {
   detail: string;
   requestedBy: string;
   requesterId?: string;
-  /** Id of the underlying order, timecard, or lot this decision releases. */
+  /** Id of the underlying order, account, timecard, or lot this decision concerns. */
   recordId?: string;
   team?: Team;
   submittedAt: string;
@@ -387,7 +388,7 @@ export type TerritoryStatus = "Draft" | "Active" | "Suspended";
 export type SalesTerritory = {
   id: string;
   name: string;
-  /** Must be a Sales Representative before the territory may go Active. */
+  /** Suggested representative for this geographic coverage. This does not lock account ownership. */
   ownerId?: string;
   postalCodes: string[];
   status: TerritoryStatus;
