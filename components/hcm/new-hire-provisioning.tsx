@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Copy, FileCheck2, KeyRound, MailCheck, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
+import { CheckCircle2, Copy, FileCheck2, KeyRound, LifeBuoy, MailCheck, ShieldAlert, ShieldCheck, UserPlus, UsersRound, Wrench } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
 import { generateTemporaryPassword, validateTemporaryPassword } from "../../lib/firebase-admin-provisioning";
@@ -10,7 +10,9 @@ import { appendAudit, type PayBasis, type WorkerClassification } from "../../lib
 import { useIdentityProvisioning, type NewProvisioningDraftInput } from "../../lib/identity-provisioning-context";
 import type { ProvisionableRole, ProvisioningDraft } from "../../lib/identity-provisioning";
 import { isFailClosedPlaceholder } from "../../lib/identity-provisioning";
-import { onboardingReadiness, requiredOnboardingDocumentTemplates } from "../../lib/onboarding-engine";
+import { onboardingReadiness, requiredOnboardingDocumentTemplates, type OnboardingRescueAction, type OnboardingRescueEntry } from "../../lib/onboarding-engine";
+import { useTrainingLibrary } from "../../lib/training-library-context";
+import { coursesForRoleAudience } from "../../lib/training-library-engine";
 import { buildProvisionedWorkspaceUser, managerOptionsForProvisioning, validateInternalUserProvisioning } from "../../lib/workspace-user-provisioning";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, PageHeader, Section, StatusPill, formatMoney } from "../ui";
@@ -36,16 +38,100 @@ type FormState = {
   courseIds: string[];
 };
 
-const teamForRole = (role: ProvisionableRole): "Sales" | "Operations" => ["Sales Manager", "Sales Representative"].includes(role) ? "Sales" : "Operations";
-const roleOptions: ProvisionableRole[] = ["Sales Representative", "Sales Manager", "Operations", "Warehouse"];
+const teamForRole = (role: ProvisionableRole): "Sales" | "Operations" => ["Sales Manager", "Sales Representative", "Brand Ambassador"].includes(role) ? "Sales" : "Operations";
+const roleOptions: ProvisionableRole[] = ["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse"];
+const defaultTitles = new Set<string>(["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse"]);
 const payBasisOptions: PayBasis[] = ["Hourly", "Salary per pay period"];
 const classificationFor = (workerType: WorkerType, payBasis: PayBasis): WorkerClassification => workerType === "Contractor" ? "Contractor" : payBasis === "Hourly" ? "Hourly" : payBasis === "Salary per pay period" ? "Salary" : "Not configured";
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const RESCUE_LABELS: Record<OnboardingRescueAction, string> = {
+  repairIdentityRecord: "Repair identity record",
+  repairOnboardingPackage: "Rebuild onboarding package",
+  attestPasswordChange: "Attest password change",
+  moveToOnboarding: "Move back to onboarding",
+  advanceToReview: "Move to pending approval",
+  returnForCorrections: "Return for corrections",
+  activate: "Activate access",
+  overrideAndActivate: "Override and force activation",
+};
+const RESCUE_HINTS: Record<OnboardingRescueAction, string> = {
+  repairIdentityRecord: "Rebuilds the trusted provisioning record from the Firebase identity, the access record, and the saved new-hire setup.",
+  repairOnboardingPackage: "Recreates any missing employment record, required documents, training assignments, or approved compensation.",
+  attestPasswordChange: "Records that Firebase Authentication already holds a rotated password when Momentum missed the local evidence.",
+  moveToOnboarding: "Reopens onboarding so the employee can finish the steps they control.",
+  advanceToReview: "Sends a completed onboarding to the Administrator approval queue on the employee's behalf.",
+  returnForCorrections: "Sends the employee back to onboarding with a correction note.",
+  activate: "Normal activation. Available only when every readiness control is complete.",
+  overrideAndActivate: "Operations override. Grants Active access now and records the reason. Unfinished documents, training, and forms stay truthfully incomplete.",
+};
+/** Actions that change access without the employee finishing their own steps. */
+const RESCUE_DESTRUCTIVE = new Set<OnboardingRescueAction>(["overrideAndActivate"]);
+const RESCUE_NEEDS_REASON = new Set<OnboardingRescueAction>(["repairIdentityRecord", "attestPasswordChange", "moveToOnboarding", "advanceToReview", "returnForCorrections", "overrideAndActivate"]);
+
+function RescueCard({ entry }: { entry: OnboardingRescueEntry }) {
+  const { data } = useWorkspace();
+  const provisioning = useIdentityProvisioning();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState<OnboardingRescueAction | null>(null);
+  const [result, setResult] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const [armed, setArmed] = useState(false);
+  const manager = data.users.find((user) => user.id === entry.user.managerId);
+  const trimmed = reason.trim();
+
+  const run = async (action: OnboardingRescueAction) => {
+    if (busy) return;
+    if (RESCUE_NEEDS_REASON.has(action) && trimmed.length < 5) { setResult({ tone: "bad", text: "Type the operational reason (at least 5 characters) before running this control." }); return; }
+    setBusy(action);
+    setResult(null);
+    const userId = entry.user.id;
+    const ok = action === "repairIdentityRecord" ? await provisioning.administratorRepairIdentityRecord(userId, trimmed)
+      : action === "repairOnboardingPackage" ? provisioning.repairOnboardingPackage(userId)
+      : action === "attestPasswordChange" ? await provisioning.administratorVerifyPasswordStep(userId, trimmed)
+      : action === "moveToOnboarding" ? await provisioning.administratorMoveToOnboarding(userId, trimmed)
+      : action === "advanceToReview" ? await provisioning.administratorAdvanceToReview(userId, trimmed)
+      : action === "returnForCorrections" ? provisioning.returnForCorrections(userId, trimmed)
+      : action === "activate" ? await provisioning.activateUser(userId)
+      : await provisioning.administratorBypassAndActivate(userId, trimmed);
+    setBusy(null);
+    setArmed(false);
+    setResult(ok
+      ? { tone: "ok", text: `${RESCUE_LABELS[action]} completed for ${entry.user.name}. The action is recorded in the HCM audit trail.` }
+      : { tone: "bad", text: `${RESCUE_LABELS[action]} was refused. The employee is not in a state this control can change, or the access record could not be written.` });
+    if (ok) setReason("");
+  };
+
+  return <article className="onboarding-review-card onboarding-rescue-card">
+    <span className="provisioning-avatar"><LifeBuoy size={18}/></span>
+    <div className="onboarding-review-body">
+      <strong>{entry.user.name}</strong>
+      <p>{entry.user.title} · {entry.user.role} · {entry.user.team} · reports to {manager?.name ?? "Unresolved manager"}</p>
+      <small>{entry.user.email}</small>
+      <p className="onboarding-rescue-diagnosis">{entry.diagnosis}</p>
+      {entry.missingTrustedRecord && <small className="onboarding-rescue-flag"><ShieldAlert size={13}/> No trusted identity provisioning record</small>}
+      {entry.packageIncomplete && <small className="onboarding-rescue-flag"><Wrench size={13}/> Onboarding package incomplete</small>}
+      {entry.passwordEvidenceMissing && <small className="onboarding-rescue-flag"><KeyRound size={13}/> Password-change evidence missing</small>}
+      {entry.readiness.blockers.length > 0 && <ul className="onboarding-activation-blockers">{entry.readiness.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>}
+      <Field label="Reason (recorded in the audit trail)"><input value={reason} onChange={(event) => { setReason(event.target.value); setArmed(false); }} placeholder="Why this account is being changed"/></Field>
+      <div className="provisioning-row-actions">{entry.actions.filter((action) => !RESCUE_DESTRUCTIVE.has(action)).map((action) =>
+        <Button key={action} size="sm" variant={action === "activate" ? "primary" : "secondary"} disabled={busy !== null} title={RESCUE_HINTS[action]} onClick={() => void run(action)}>{busy === action ? "Working…" : RESCUE_LABELS[action]}</Button>)}</div>
+      <div className="onboarding-rescue-override">
+        <p><ShieldAlert size={14}/> {RESCUE_HINTS.overrideAndActivate}</p>
+        {armed
+          ? <div className="provisioning-row-actions"><Button size="sm" variant="primary" disabled={busy !== null} onClick={() => void run("overrideAndActivate")}>{busy === "overrideAndActivate" ? "Activating…" : `Confirm forced activation of ${entry.user.name}`}</Button><Button size="sm" variant="ghost" onClick={() => setArmed(false)}>Cancel</Button></div>
+          : <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => { if (trimmed.length < 5) { setResult({ tone: "bad", text: "Type the operational reason before overriding onboarding." }); return; } setResult(null); setArmed(true); }}>{RESCUE_LABELS.overrideAndActivate}</Button>}
+      </div>
+      {result && <p className={result.tone === "ok" ? "form-notice" : "form-error"} role={result.tone === "ok" ? "status" : "alert"}>{result.text}</p>}
+    </div>
+    <StatusPill tone={entry.state === "Active" ? "success" : entry.state === "Pending approval" ? "info" : entry.state === "Onboarding" ? "warning" : "danger"}>{entry.state}</StatusPill>
+  </article>;
+}
 
 export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const { data, currentUser, navigate } = useWorkspace();
   const { hcm, setHcm } = useHcm();
   const provisioning = useIdentityProvisioning();
+  const trainingLibrary = useTrainingLibrary();
   const firebase = useFirebaseSessionOptional();
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -54,7 +140,8 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const [issued, setIssued] = useState<{ draftId: string; email: string; password: string; name: string } | null>(null);
   const [pendingLink, setPendingLink] = useState<{ draftId: string; uid: string } | null>(null);
   const [activationBusy,setActivationBusy]=useState<string|null>(null);
-  const defaultCourses = hcm.courses.filter((course) => course.active && course.requiredForTeams.includes("Sales")).map((course) => course.id);
+  const coursesForRole = (role: ProvisionableRole, team: "Sales" | "Operations") => coursesForRoleAudience(hcm.courses, trainingLibrary.state.audiences, role, team).map((course) => course.id);
+  const defaultCourses = coursesForRole("Sales Representative", "Sales");
   const emptyForm = (): FormState => ({
     source: "Direct hire",
     offerId: "",
@@ -81,6 +168,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const activeCourses = hcm.courses.filter((course) => course.active);
   const activeDrafts = provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled");
   const pendingApprovals = provisioning.state.records.filter((record) => record.state === "Pending approval");
+  const rescueQueue = provisioning.rescueQueue;
 
   // Once the new identity reaches the directory, link the draft and open onboarding.
   useEffect(() => {
@@ -178,9 +266,9 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
     setForm((current) => ({
       ...current,
       role,
-      jobTitle: current.jobTitle === "Sales Representative" || current.jobTitle === "Sales Manager" || current.jobTitle === "Operations" || current.jobTitle === "Warehouse" ? role : current.jobTitle,
+      jobTitle: defaultTitles.has(current.jobTitle) ? role : current.jobTitle,
       managerId: nextManagers.some((manager) => manager.id === current.managerId) ? current.managerId : "",
-      courseIds: hcm.courses.filter((course) => course.active && course.requiredForTeams.includes(nextTeam)).map((course) => course.id),
+      courseIds: coursesForRole(role, nextTeam),
     }));
   };
 
@@ -323,6 +411,10 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
         const documents=hcm.documents.filter((item)=>item.userId===record.userId&&requiredTitles.has(item.title.toLowerCase()));
         return <article key={record.id} className="onboarding-review-card"><span className="provisioning-avatar"><CheckCircle2 size={18}/></span><div className="onboarding-review-body"><strong>{user?.name??record.userId}</strong><p>{readiness.readyForActivation?"All activation controls are complete.":`${readiness.activationBlockers.length} activation blocker${readiness.activationBlockers.length===1?"":"s"} remain.`}</p><div className="onboarding-doc-review">{documents.map((document)=><div key={document.id}><span><FileCheck2 size={15}/><span><strong>{document.title}</strong><small>{document.status==="Available"?document.fileName??"Verified":"Awaiting Administrator verification"}</small></span></span>{document.status==="Available"?<StatusPill tone="success">Verified</StatusPill>:<Button size="sm" variant="secondary" onClick={()=>verifyDocumentExternally(document.id)}>Verify externally</Button>}</div>)}</div>{readiness.activationBlockers.length>0&&<ul className="onboarding-activation-blockers">{readiness.activationBlockers.map((blocker)=><li key={blocker}>{blocker}</li>)}</ul>}</div><StatusPill tone={readiness.readyForActivation?"success":"warning"}>{readiness.readyForActivation?"Ready":"Review"}</StatusPill><Button size="sm" disabled={!readiness.readyForActivation||activationBusy===record.userId} onClick={()=>void activatePendingUser(record.userId,user?.name??"Employee")}>{activationBusy===record.userId?"Activating…":"Activate access"}</Button></article>;
       })}{pendingApprovals.length===0&&<div className="review-empty"><CheckCircle2 size={24}/><h3>No onboarding approvals waiting</h3><p>Employees appear here after they complete and submit their onboarding work.</p></div>}</div>
+    </Section>
+
+    <Section title="Stuck employees & Administrator rescue" description="Every employee who is not Active yet, including anyone stranded before Pending approval by an incomplete provisioning record. Each control writes the real access record and an HCM audit event; none of them mark unfinished documents, training, or forms as complete." action={<StatusPill tone={rescueQueue.length?"warning":"success"}><LifeBuoy size={14}/> {rescueQueue.length} to rescue</StatusPill>}>
+      <div className="provisioning-queue onboarding-approval-list">{rescueQueue.map((entry)=><RescueCard key={entry.user.id} entry={entry}/>)}{rescueQueue.length===0&&<div className="review-empty"><ShieldCheck size={24}/><h3>No employee is stuck</h3><p>Every provisioned employee has an active Momentum account.</p></div>}</div>
     </Section>
   </div>;
 }

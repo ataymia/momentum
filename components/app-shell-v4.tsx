@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeDollarSign, BarChart3, Bell, Boxes, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, CircleDollarSign, CircleHelp, Command, KeyRound, LayoutDashboard, LogOut, Megaphone, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings, ShoppingCart, Store, UsersRound, X } from "lucide-react";
+import { BadgeDollarSign, BarChart3, Bell, Boxes, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, CircleDollarSign, CircleHelp, Command, KeyRound, LayoutDashboard, LogOut, Megaphone, Menu, PanelLeftClose, PanelLeftOpen, PartyPopper, Search, Settings, ShoppingCart, Store, UsersRound, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { canAccessPage } from "../lib/access";
 import { evaluateSalesRepAccountBonuses } from "../lib/bonus-engine";
@@ -12,6 +12,7 @@ import { useRuntimeMode } from "../lib/runtime-mode";
 import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
 import { AccountsPage } from "./pages/accounts";
+import { BrandAmbassadorsPage } from "./pages/brand-ambassadors";
 import { DashboardPage } from "./pages/dashboard";
 import { DispatchPage } from "./pages/dispatch";
 import { FinancePage } from "./pages/finance";
@@ -25,7 +26,7 @@ import { ReportsPage } from "./pages/reports";
 import { RetailPage } from "./pages/retail";
 import { SettingsPage } from "./pages/settings";
 import { WorkPage } from "./pages/work";
-import { AccountHealthPage, AccountingWorkspacePage, ActionCenterPage, AuditWorkspacePage, CrmToolsPage, DataExchangePage, EmployeeDirectoryPage, InventoryLedgerPage, NewHirePage, OnboardingQueuePage, OrderCashPage, PerformanceWorkspacePage, ReportingCenterPage } from "./pages/focused-workspace-pages";
+import { AccountHealthPage, AccountingWorkspacePage, ActionCenterPage, AuditWorkspacePage, CrmToolsPage, DataExchangePage, EmployeeDirectoryPage, InventoryLedgerPage, NewHirePage, OnboardingQueuePage, OrderCashPage, PerformanceWorkspacePage, ReportingCenterPage, TrainingSetupPage } from "./pages/focused-workspace-pages";
 import { Avatar, BrandMark, Button, Modal, formatDate } from "./ui";
 
 type NavItem = { key: PageKey; label: string; icon: typeof LayoutDashboard };
@@ -37,6 +38,7 @@ const primaryNav: NavItem[] = [
   { key: "accounts", label: "CRM & sales", icon: Building2 }, { key: "dispatch", label: "Dispatch board", icon: CalendarDays },
   { key: "retail", label: "Retail execution", icon: Store }, { key: "orders", label: "Orders & billing", icon: ShoppingCart },
   { key: "inventory", label: "Inventory & fulfillment", icon: Boxes }, { key: "marketing", label: "Marketing", icon: Megaphone },
+  { key: "brandAmbassadors", label: "Brand Ambassadors", icon: PartyPopper },
   { key: "people", label: "Human Resources", icon: UsersRound }, { key: "payroll", label: "Payroll", icon: BadgeDollarSign },
   { key: "finance", label: "Finance & accounting", icon: CircleDollarSign },
 ];
@@ -51,23 +53,24 @@ const sectionTabs: Partial<Record<PageKey, SectionTab[]>> = {
   accounts: [{key:"accounts",label:"Accounts"},{key:"accountHealth",label:"Account health"},{key:"crmTools",label:"CRM tools"}],
   orders: [{key:"orders",label:"Orders"},{key:"orderCash",label:"Invoices & payments"}],
   inventory: [{key:"inventory",label:"Fulfillment"},{key:"inventoryLedger",label:"Inventory ledger"}],
-  people: [{key:"people",label:"HR home"},{key:"employees",label:"Employee directory"},{key:"newHire",label:"New hire"},{key:"onboarding",label:"Onboarding queue"}],
+  people: [{key:"people",label:"HR home"},{key:"employees",label:"Employee directory"},{key:"newHire",label:"New hire"},{key:"onboarding",label:"Onboarding queue"},{key:"trainingAdmin",label:"Training setup"}],
   finance: [{key:"finance",label:"Finance"},{key:"accounting",label:"Accounting"}],
   reports: [{key:"reports",label:"Reports"},{key:"performance",label:"Performance"},{key:"reportingCenter",label:"Reporting center"},{key:"audit",label:"Audit trail"}],
   settings: [{key:"settings",label:"Administration"},{key:"dataExchange",label:"Data exchange"}],
 };
 const pageParent: Partial<Record<PageKey, PageKey>> = {
   actions:"work", accountHealth:"accounts", crmTools:"accounts", orderCash:"orders", inventoryLedger:"inventory",
-  employees:"people", newHire:"people", onboarding:"people", accounting:"finance", performance:"reports",
+  employees:"people", newHire:"people", onboarding:"people", trainingAdmin:"people", accounting:"finance", performance:"reports",
   reportingCenter:"reports", audit:"reports", dataExchange:"settings",
 };
 const pageLabels: Partial<Record<PageKey,string>> = {
   actions:"Action center", accountHealth:"Account health", crmTools:"CRM tools", orderCash:"Invoices & payments",
-  inventoryLedger:"Inventory ledger", employees:"Employee directory", newHire:"New hire", onboarding:"Onboarding queue",
+  inventoryLedger:"Inventory ledger", employees:"Employee directory", newHire:"New hire", onboarding:"Onboarding queue", trainingAdmin:"Training setup",
+  brandAmbassadors:"Brand Ambassadors",
   accounting:"Accounting", performance:"Performance", reportingCenter:"Reporting center", audit:"Audit trail", dataExchange:"Data exchange",
 };
 const demoTourIds = new Set(["usr-flo", "usr-mia", "usr-avery", "usr-jordan", "usr-customer"]);
-const labelFor = (item: NavItem, user: WorkspaceUser) => user.role !== "Customer" ? item.label : item.key === "home" ? "Account overview" : item.key === "accounts" ? "My account" : item.key === "orders" ? "My orders" : item.label;
+const labelFor = (item: NavItem, user: WorkspaceUser) => user.role === "Brand Ambassador" ? (item.key === "brandAmbassadors" ? "My schedule" : item.label) : user.role !== "Customer" ? item.label : item.key === "home" ? "Account overview" : item.key === "accounts" ? "My account" : item.key === "orders" ? "My orders" : item.label;
 
 function NavButton({ item, user }: { item: NavItem; user: WorkspaceUser }) {
   const { activePage, navigate, scope, data } = useWorkspace(); const Icon = item.icon; const label = labelFor(item, user);
@@ -103,10 +106,12 @@ function PageView() {
     case "inventory": return <InventoryPage/>;
     case "inventoryLedger": return <InventoryLedgerPage/>;
     case "marketing": return <MarketingPage/>;
+    case "brandAmbassadors": return <BrandAmbassadorsPage/>;
     case "people": return <PeoplePage/>;
     case "employees": return <EmployeeDirectoryPage/>;
     case "newHire": return <NewHirePage/>;
     case "onboarding": return <OnboardingQueuePage/>;
+    case "trainingAdmin": return <TrainingSetupPage/>;
     case "payroll": return <PayrollPage/>;
     case "finance": return <FinancePage/>;
     case "accounting": return <AccountingWorkspacePage/>;

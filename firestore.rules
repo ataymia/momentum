@@ -81,6 +81,15 @@ service cloud.firestore {
         );
     }
 
+    /** Narrow BA supervision. This never grants a Sales Representative general manager/HR access. */
+    function supervisesBrandAmbassador(uid) {
+      return uid != request.auth.uid
+        && isActiveRole('Sales Representative')
+        && exists(accessPath(uid))
+        && get(accessPath(uid)).data.role == 'Brand Ambassador'
+        && get(accessPath(uid)).data.managerId == request.auth.uid;
+    }
+
     // --- first-Administrator bootstrap --------------------------------------
     //
     // The only path that does not require an existing Administrator. It requires a verified e-mail on the
@@ -151,14 +160,14 @@ service cloud.firestore {
     match /domains {
     // momentum-demo-workspace-v5
     match /workspace/fields/{field} {
-      allow get, list: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && ((activeEmployee()));
-      allow write: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && ((activeEmployee()));
+      allow get, list: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
+      allow write: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
     }
 
     // momentum-commercial-controls-v1
     match /commercial/fields/{field} {
-      allow get, list: if field in ['_root', 'activities', 'appointments', 'approvals', 'inventoryLots', 'orders', 'territories'] && ((activeEmployee()));
-      allow write: if field in ['_root', 'activities', 'appointments', 'approvals', 'inventoryLots', 'orders', 'territories'] && ((activeEmployee()));
+      allow get, list: if field in ['_root', 'activities', 'appointments', 'approvals', 'inventoryLots', 'orders', 'territories'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
+      allow write: if field in ['_root', 'activities', 'appointments', 'approvals', 'inventoryLots', 'orders', 'territories'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
     }
 
     // momentum-crm-v1
@@ -179,6 +188,18 @@ service cloud.firestore {
       allow write: if field in ['_root', 'drafts', 'records'] && ((isActiveRole('Administrator')));
     }
 
+    // momentum-brand-ambassador-v1
+    match /brandAmbassador/fields/{field} {
+      allow get, list: if field in ['_root', 'assignments'] && (field in ['assignments'] ? (isActiveRole('Administrator')) : (hasAccess()));
+      allow write: if field in ['_root', 'assignments'] && ((isActiveRole('Administrator')));
+    }
+
+    // momentum-training-library-v1
+    match /trainingLibrary/fields/{field} {
+      allow get, list: if field in ['_root', 'audiences', 'materials'] && ((hasAccess()));
+      allow write: if field in ['_root', 'audiences', 'materials'] && ((isActiveRole('Administrator')));
+    }
+
     // momentum-document-templates-v1
     match /documentTemplates/fields/{field} {
       allow get, list: if field in ['_root', 'packets', 'templates'] && ((hasAccess()));
@@ -187,7 +208,7 @@ service cloud.firestore {
 
     // momentum-performance-v1
     match /performance/fields/{field} {
-      allow get, list: if field in ['_root', 'goals', 'notes', 'reports'] && ((activeEmployee()));
+      allow get, list: if field in ['_root', 'goals', 'notes', 'reports'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
       allow write: if field in ['_root', 'goals', 'notes', 'reports'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
     }
 
@@ -199,7 +220,7 @@ service cloud.firestore {
 
     // momentum-inventory-ledger-v1
     match /inventoryLedger/fields/{field} {
-      allow get, list: if field in ['_root', 'counts', 'movements', 'nodes', 'reservations'] && ((activeEmployee()));
+      allow get, list: if field in ['_root', 'counts', 'movements', 'nodes', 'reservations'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
       allow write: if field in ['_root', 'counts', 'movements', 'nodes', 'reservations'] && ((activeEmployee() && role() in ['Administrator', 'Operations', 'Warehouse']));
     }
 
@@ -217,7 +238,7 @@ service cloud.firestore {
 
     // momentum-marketing-v3
     match /marketing/fields/{field} {
-      allow get, list: if field in ['_root', 'assets', 'attributions', 'campaigns', 'materialMovements', 'materials', 'partnerships', 'requests', 'spend', 'touches'] && ((activeEmployee()));
+      allow get, list: if field in ['_root', 'assets', 'attributions', 'campaigns', 'materialMovements', 'materials', 'partnerships', 'requests', 'spend', 'touches'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
       allow write: if field in ['_root', 'assets', 'attributions', 'campaigns', 'materialMovements', 'materials', 'partnerships', 'requests', 'spend', 'touches'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
     }
 
@@ -229,7 +250,7 @@ service cloud.firestore {
 
     // momentum-field-tracking-v1
     match /fieldTracking/fields/{field} {
-      allow get, list: if field in ['_root', 'appointmentEvents', 'departureAlerts', 'exceptions', 'geofences', 'samples', 'sessions'] && ((activeEmployee()));
+      allow get, list: if field in ['_root', 'appointmentEvents', 'departureAlerts', 'exceptions', 'geofences', 'samples', 'sessions'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
       allow write: if field in ['_root', 'appointmentEvents', 'departureAlerts', 'exceptions', 'geofences', 'samples', 'sessions'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
     }
 
@@ -259,89 +280,97 @@ service cloud.firestore {
     // momentum-demo-workspace-v5
     match /{uid}/workspace/{field} {
       allow get, list: if field in ['timeEntries', 'timecards']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid)));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['timeEntries', 'timecards']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : (manages(uid) && activeEmployee())));
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-hcm-v4
     match /{uid}/hcm/{field} {
       allow get, list: if field in ['acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'compensation', 'compensationChanges', 'dependents', 'documents', 'employmentChanges', 'goals', 'leaveRequests', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'reviews', 'shiftRequests', 'tasks', 'training', 'workflows']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['audit', 'compensation']) && manages(uid))));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['audit', 'compensation']) && manages(uid)) || false));
       allow write: if field in ['acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'compensation', 'compensationChanges', 'dependents', 'documents', 'employmentChanges', 'goals', 'leaveRequests', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'reviews', 'shiftRequests', 'tasks', 'training', 'workflows']
-        && (isAdmin() || (uid == request.auth.uid ? (!(field in ['compensation', 'compensationChanges', 'employmentChanges', 'ptoAssignments', 'ptoLedger']) && isEmployee()) : (!(field in ['audit', 'compensation']) && manages(uid) && activeEmployee())));
+        && (isAdmin() || (uid == request.auth.uid ? (!(field in ['compensation', 'compensationChanges', 'employmentChanges', 'ptoAssignments', 'ptoLedger']) && isEmployee()) : ((!(field in ['audit', 'compensation']) && manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-identity-provisioning-v1
     match /{uid}/identity/{field} {
       allow get, list: if field in ['records']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['records']) && manages(uid))));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['records']) && manages(uid)) || false));
       allow write: if field in ['records']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : (!(field in ['records']) && manages(uid) && activeEmployee())));
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((!(field in ['records']) && manages(uid) && activeEmployee()) || false)));
+    }
+
+    // momentum-brand-ambassador-v1
+    match /{uid}/brandAmbassador/{field} {
+      allow get, list: if field in ['assignments']
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['assignments']) && manages(uid)) || (field in ['assignments'] && supervisesBrandAmbassador(uid))));
+      allow write: if field in ['assignments']
+        && (isAdmin() || (uid == request.auth.uid ? (!(field in ['assignments']) && isEmployee()) : ((!(field in ['assignments']) && manages(uid) && activeEmployee()) || (field in ['assignments'] && supervisesBrandAmbassador(uid) && activeEmployee()))));
     }
 
     // momentum-document-templates-v1
     match /{uid}/documentTemplates/{field} {
       allow get, list: if field in ['packets']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid)));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['packets']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : (manages(uid) && activeEmployee())));
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-performance-v1
     match /{uid}/performance/{field} {
       allow get, list: if field in ['goals', 'notes', 'reports']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid)));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['goals', 'notes', 'reports']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : (manages(uid) && activeEmployee())));
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-finance-v3
     match /{uid}/finance/{field} {
       allow get, list: if field in ['expenses']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid)));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['expenses']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : (manages(uid) && activeEmployee())));
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-marketing-v3
     match /{uid}/marketing/{field} {
       allow get, list: if field in ['requests']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid)));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['requests']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : (manages(uid) && activeEmployee())));
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-payroll-v5
     match /{uid}/payroll/{field} {
       allow get, list: if field in ['disbursements', 'employees', 'withholdingProfiles']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['disbursements', 'employees', 'withholdingProfiles']) && manages(uid))));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['disbursements', 'employees', 'withholdingProfiles']) && manages(uid)) || false));
       allow write: if field in ['disbursements', 'employees', 'withholdingProfiles']
-        && (isAdmin() || (uid == request.auth.uid ? (!(field in ['disbursements', 'employees', 'withholdingProfiles']) && isEmployee()) : (!(field in ['disbursements', 'employees', 'withholdingProfiles']) && manages(uid) && activeEmployee())));
+        && (isAdmin() || (uid == request.auth.uid ? (!(field in ['disbursements', 'employees', 'withholdingProfiles']) && isEmployee()) : ((!(field in ['disbursements', 'employees', 'withholdingProfiles']) && manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-field-tracking-v1
     match /{uid}/fieldTracking/{field} {
       allow get, list: if field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid)));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : (manages(uid) && activeEmployee())));
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-audit-v1
     match /{uid}/audit/{field} {
       allow get, list: if field in ['events']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['events']) && manages(uid))));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['events']) && manages(uid)) || false));
       allow write: if field in ['events']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : (!(field in ['events']) && manages(uid) && activeEmployee())));
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((!(field in ['events']) && manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-notification-rules-v1
     match /{uid}/notificationRules/{field} {
       allow get, list: if field in ['preferences']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid)));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['preferences']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : (manages(uid) && activeEmployee())));
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
     }
 

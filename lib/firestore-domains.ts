@@ -20,14 +20,22 @@ const ADMIN:Role[]=["Administrator"];
 const ADMIN_MANAGER:Role[]=["Administrator","Sales Manager"];
 const SALES:Role[]=["Administrator","Sales Manager","Sales Representative"];
 const OPERATIONS:Role[]=["Administrator","Operations","Warehouse"];
+/**
+ * Every active employee role except Brand Ambassador.
+ *
+ * A Brand Ambassador is an event worker, not a member of the commercial platform: no CRM, accounts, orders,
+ * inventory, marketing, or performance data. Filtering that out in the UI is not enough, so the domains that
+ * carry those records are denied at the rules layer instead of gated on `activeEmployee`.
+ */
+const OPERATIONAL:Role[]=["Administrator","Sales Manager","Sales Representative","Operations","Warehouse"];
 
 const perUser=(userIdField="userId",extra:Partial<DomainFieldSpec>={}):DomainFieldSpec=>({userIdField,selfWrite:true,managerWrite:true,...extra});
 const adminOwned=(userIdField="userId"):DomainFieldSpec=>({userIdField,selfWrite:false,managerWrite:false,managerRead:false});
 const restricted=(read:RoleRule,write:RoleRule):DomainFieldSpec=>({read,write});
 
 export const DOMAIN_SPECS:DomainSpec[]=[
-  {key:"momentum-demo-workspace-v5",id:"workspace",read:"activeEmployee",write:"activeEmployee",omit:["users"],fields:{customers:{},accounts:{},activities:{},appointments:{},orders:{},placements:{},inventory:{},approvals:{},notifications:{},bulletins:{},territories:{},timeEntries:perUser(),timecards:perUser()}},
-  {key:"momentum-commercial-controls-v1",id:"commercial",read:"activeEmployee",write:"activeEmployee",fields:{orders:{},appointments:{},approvals:{},activities:{},inventoryLots:{},territories:{}}},
+  {key:"momentum-demo-workspace-v5",id:"workspace",read:OPERATIONAL,write:OPERATIONAL,omit:["users"],fields:{customers:{},accounts:{},activities:{},appointments:{},orders:{},placements:{},inventory:{},approvals:{},notifications:{},bulletins:{},territories:{},timeEntries:perUser(),timecards:perUser()}},
+  {key:"momentum-commercial-controls-v1",id:"commercial",read:OPERATIONAL,write:OPERATIONAL,fields:{orders:{},appointments:{},approvals:{},activities:{},inventoryLots:{},territories:{}}},
   {key:"momentum-crm-v1",id:"crm",read:SALES,write:SALES,fields:{contacts:{},interactions:{},opportunities:{},responsibilityHistory:{}}},
   {
     key:"momentum-hcm-v4",id:"hcm",read:"hasAccess",write:ADMIN_MANAGER,
@@ -45,14 +53,14 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-brand-ambassador-v1",id:"brandAmbassador",read:"hasAccess",write:ADMIN,fields:{assignments:perUser("ambassadorId",{selfWrite:false,managerWrite:false,managerRead:false,salesRepSupervise:true,read:ADMIN,write:ADMIN})}},
   {key:"momentum-training-library-v1",id:"trainingLibrary",read:"hasAccess",write:ADMIN,fields:{materials:{},audiences:{}}},
   {key:"momentum-document-templates-v1",id:"documentTemplates",read:"hasAccess",write:ADMIN,fields:{templates:{},packets:perUser()}},
-  {key:"momentum-performance-v1",id:"performance",read:"activeEmployee",write:ADMIN_MANAGER,fields:{goals:perUser(),reports:perUser(),notes:perUser("authorId")}},
+  {key:"momentum-performance-v1",id:"performance",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{goals:perUser(),reports:perUser(),notes:perUser("authorId")}},
   {key:"momentum-commerce-v1",id:"commerce",read:["Administrator","Sales Manager","Sales Representative","Operations"],write:ADMIN,fields:{invoices:{},payments:{},allocations:{},credits:{},refunds:{},notes:{}}},
-  {key:"momentum-inventory-ledger-v1",id:"inventoryLedger",read:"activeEmployee",write:OPERATIONS,fields:{nodes:{},movements:{},reservations:{},counts:{}}},
+  {key:"momentum-inventory-ledger-v1",id:"inventoryLedger",read:OPERATIONAL,write:OPERATIONS,fields:{nodes:{},movements:{},reservations:{},counts:{}}},
   {key:"momentum-finance-v3",id:"finance",read:ADMIN,write:ADMIN,fields:{expenses:perUser("requesterId")}},
   {key:"momentum-accounting-v1",id:"accounting",read:ADMIN,write:ADMIN,fields:{accounts:{},rules:{},journals:{},reconciliations:{}}},
-  {key:"momentum-marketing-v3",id:"marketing",read:"activeEmployee",write:ADMIN_MANAGER,fields:{requests:perUser("requesterId"),campaigns:{},spend:{},assets:{},materials:{},materialMovements:{},touches:{},attributions:{},partnerships:{}}},
+  {key:"momentum-marketing-v3",id:"marketing",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{requests:perUser("requesterId"),campaigns:{},spend:{},assets:{},materials:{},materialMovements:{},touches:{},attributions:{},partnerships:{}}},
   {key:"momentum-payroll-v5",id:"payroll",read:ADMIN,write:ADMIN,fields:{payGroups:{},employerTaxRules:{},benefitTaxRules:{},runs:{},liabilities:{},employees:adminOwned(),withholdingProfiles:adminOwned(),disbursements:adminOwned()}},
-  {key:"momentum-field-tracking-v1",id:"fieldTracking",read:"activeEmployee",write:ADMIN_MANAGER,fields:{geofences:{},sessions:perUser(),samples:perUser(),appointmentEvents:perUser(),exceptions:perUser(),departureAlerts:perUser()}},
+  {key:"momentum-field-tracking-v1",id:"fieldTracking",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{geofences:{},sessions:perUser(),samples:perUser(),appointmentEvents:perUser(),exceptions:perUser(),departureAlerts:perUser()}},
   {key:"momentum-audit-v1",id:"audit",read:ADMIN,write:ADMIN,fields:{events:perUser("actorId",{managerWrite:false,managerRead:false})}},
   {key:"momentum-notification-rules-v1",id:"notificationRules",read:"activeEmployee",write:ADMIN,fields:{preferences:perUser(),deliveries:restricted("activeEmployee","activeEmployee")}},
   {key:"momentum-period-locks-v1",id:"periodLocks",read:"activeEmployee",write:ADMIN,fields:{locks:{}}},

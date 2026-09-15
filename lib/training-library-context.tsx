@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useMemo, useState } from "react";
+import { deleteTrainingFile, uploadTrainingFile } from "./firebase-storage";
 import { useHcm } from "./hcm-context";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { TRAINING_LIBRARY_STORAGE_KEY, TrainingLibraryState, TrainingMaterialKind, createTrainingLibrarySeed, normalizeTrainingLibraryState } from "./training-library-engine";
@@ -21,6 +22,7 @@ type TrainingLibraryContextValue = {
   rolesForCourse: (courseId: string) => Role[];
   setCourseRoles: (courseId: string, roles: Role[]) => boolean;
   addMaterial: (courseId: string, input: { title: string; kind: TrainingMaterialKind; url: string; description?: string }) => { ok: true } | { ok: false; message: string };
+  uploadMaterial: (courseId: string, input: { title: string; kind: TrainingMaterialKind; description?: string; file: File }) => Promise<{ ok: true } | { ok: false; message: string }>;
   removeMaterial: (materialId: string) => boolean;
 };
 
@@ -61,11 +63,25 @@ export function TrainingLibraryProvider({ children }: { children: ReactNode }) {
     if (currentUser?.role !== "Administrator") return false;
     const existing = state.materials.find((material) => material.id === materialId);
     if (!existing) return false;
+    // Retire the record first: the stored object is secondary evidence, and a Storage failure must not
+    // leave a material the Administrator believes they removed.
     commit({ ...state, materials: state.materials.map((material) => material.id === materialId ? { ...material, active: false, updatedAt: new Date().toISOString() } : material) });
+    if (existing.storagePath) void deleteTrainingFile(existing.storagePath);
     return true;
   };
 
-  return <Context.Provider value={{ state, materialsForCourse, rolesForCourse, setCourseRoles, addMaterial, removeMaterial }}>{children}</Context.Provider>;
+  /** Upload the file to Firebase Storage first; only a stored object earns a material record. */
+  const uploadMaterial = async (courseId: string, input: { title: string; kind: TrainingMaterialKind; description?: string; file: File }) => {
+    if (currentUser?.role !== "Administrator" || !courseIds.has(courseId)) return { ok: false as const, message: "Administrator access is required." };
+    if (input.title.trim().length < 2) return { ok: false as const, message: "Enter a material title." };
+    const uploaded = await uploadTrainingFile(courseId, input.file);
+    if (!uploaded.ok) return { ok: false as const, message: uploaded.message };
+    const at = new Date().toISOString();
+    commit({ ...state, materials: [{ id: id("training-material"), courseId, title: input.title.trim(), kind: input.kind, storagePath: uploaded.value.storagePath, fileName: input.file.name, contentType: uploaded.value.contentType, sizeBytes: uploaded.value.size, description: input.description?.trim() || undefined, active: true, createdAt: at, updatedAt: at }, ...state.materials] });
+    return { ok: true as const };
+  };
+
+  return <Context.Provider value={{ state, materialsForCourse, rolesForCourse, setCourseRoles, addMaterial, uploadMaterial, removeMaterial }}>{children}</Context.Provider>;
 }
 
 export function useTrainingLibrary() {

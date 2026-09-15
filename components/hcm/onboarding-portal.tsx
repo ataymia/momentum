@@ -7,8 +7,10 @@ import { useHcm } from "../../lib/hcm-context";
 import { appendAudit } from "../../lib/hcm-engine";
 import { useIdentityProvisioning } from "../../lib/identity-provisioning-context";
 import { onboardingReadiness } from "../../lib/onboarding-engine";
+import { useTrainingLibrary } from "../../lib/training-library-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, StatusPill } from "../ui";
+import { TrainingMaterialLink } from "./training-material-link";
 
 /** First-login password rotation. Firebase Authentication holds the credential; Momentum only records that it happened. */
 function PasswordChangeForm({ onComplete }: { onComplete: (evidence: string) => boolean }) {
@@ -44,6 +46,7 @@ export function OnboardingPortal() {
   const { hcm, setHcm } = useHcm();
   const firebase = useFirebaseSessionOptional();
   const provisioning = useIdentityProvisioning();
+  const trainingLibrary = useTrainingLibrary();
   const record = provisioning.currentRecord;
   const activeAdministrator = currentUser?.role === "Administrator" && firebase?.access?.role === "Administrator" && firebase.access.accountState === "Active";
   const employee = currentUser ? hcm.employees.find((item) => item.userId === currentUser.id) : undefined;
@@ -110,7 +113,7 @@ export function OnboardingPortal() {
 
       <section className="onboarding-panel onboarding-panel--wide"><header><FileCheck2 size={19}/><div><h2>Employment and tax paperwork</h2><p>These records must be verified by HR before access is activated.</p></div></header><div className="onboarding-document-list">{documents.map((document) => <article key={document.id}><div><strong>{document.title}</strong><small>{document.status === "Available" ? document.fileName ?? "Verified by HR" : "Administrator verification required"}</small></div><StatusPill tone={document.status === "Available" ? "success" : "warning"}>{document.status === "Available" ? "Verified" : "Pending HR"}</StatusPill></article>)}{documents.length === 0 && <p>No required document package has been prepared yet. Contact HR.</p>}</div><div className="onboarding-security-note"><LockKeyhole size={17}/><span>Until secure file upload and e-sign are connected, HR verifies completed paperwork outside Momentum. The app records the verification, not a fake uploaded file.</span></div></section>
 
-      <section className="onboarding-panel onboarding-panel--wide"><header><CheckCircle2 size={19}/><div><h2>Assigned training</h2><p>Complete every course assigned to your role.</p></div></header><div className="onboarding-training-list">{assignments.map((assignment) => { const course = hcm.courses.find((item) => item.id === assignment.courseId); return <article key={assignment.id}><div><strong>{course?.title ?? "Assigned training"}</strong><small>{course?.description ?? "Required onboarding course"}</small></div>{assignment.status === "Complete" ? <StatusPill tone="success">Complete</StatusPill> : <Button size="sm" variant="secondary" onClick={() => completeTraining(assignment.id)}>Mark complete</Button>}</article>; })}{assignments.length === 0 && <p>No training assignments have been prepared yet. Contact HR.</p>}</div></section>
+      <section className="onboarding-panel onboarding-panel--wide"><header><CheckCircle2 size={19}/><div><h2>Assigned training</h2><p>Complete every course assigned to your role.</p></div></header><div className="onboarding-training-list">{assignments.map((assignment) => { const course = hcm.courses.find((item) => item.id === assignment.courseId); const materials = course ? trainingLibrary.materialsForCourse(course.id) : []; return <article key={assignment.id}><div><strong>{course?.title ?? "Assigned training"}</strong><small>{course?.description ?? "Required onboarding course"}</small>{materials.map((material) => <TrainingMaterialLink key={material.id} material={material}/>)}</div>{assignment.status === "Complete" ? <StatusPill tone="success">Complete</StatusPill> : <Button size="sm" variant="secondary" onClick={() => completeTraining(assignment.id)}>Mark complete</Button>}</article>; })}{assignments.length === 0 && <p>No training assignments have been prepared yet. Contact HR.</p>}</div></section>
     </div>
 
     {record.returnReason && <section className="onboarding-return"><strong>Returned for correction</strong><p>{record.returnReason}</p></section>}

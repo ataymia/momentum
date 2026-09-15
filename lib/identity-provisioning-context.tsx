@@ -5,7 +5,7 @@ import { useFirebaseSessionOptional } from "./firebase-session-context";
 import { useHcm } from "./hcm-context";
 import { appendAudit } from "./hcm-engine";
 import { AccountAccessState, IDENTITY_PROVISIONING_STORAGE_KEY, IdentityProvisioningRecord, IdentityProvisioningState, ProvisioningDraft, ProvisioningSource, accountAccessFor, createIdentityProvisioningSeed, isFailClosedPlaceholder, normalizeIdentityProvisioningState } from "./identity-provisioning";
-import { activateEmploymentAfterOnboarding, administratorOverrideEmploymentActivation, onboardingPackageNeedsRepair, onboardingReadiness, prepareOnboardingPackage } from "./onboarding-engine";
+import { activateEmploymentAfterOnboarding, administratorOverrideEmploymentActivation, onboardingPackageNeedsRepair, onboardingReadiness, onboardingRescueQueue, prepareOnboardingPackage, type OnboardingRescueEntry } from "./onboarding-engine";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useWorkspace } from "./workspace-context";
 
@@ -24,6 +24,9 @@ type IdentityProvisioningContextValue = {
   completePasswordChange: (evidence: string) => boolean;
   submitOnboarding: () => boolean;
   activateUser: (userId: string) => Promise<boolean>;
+  rescueQueue: OnboardingRescueEntry[];
+  administratorRepairIdentityRecord: (userId: string, reason: string) => Promise<boolean>;
+  administratorMoveToOnboarding: (userId: string, reason: string) => Promise<boolean>;
   administratorVerifyPasswordStep: (userId: string, reason: string) => Promise<boolean>;
   administratorAdvanceToReview: (userId: string, reason: string) => Promise<boolean>;
   administratorBypassAndActivate: (userId: string, reason: string) => Promise<boolean>;
@@ -36,7 +39,8 @@ const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toStrin
 const expectedTeam: Record<ProvisioningDraft["role"], ProvisioningDraft["team"]> = { "Sales Manager": "Sales", "Sales Representative": "Sales", "Brand Ambassador": "Sales", Operations: "Operations", Warehouse: "Operations" };
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const preactiveStates = new Set<AccountAccessState>(["Password change required", "Onboarding", "Pending approval"]);
-const founderOverrideEmails = new Set(["vixarynholdings@gmail.com", "momentumdistributioninc@gmail.com"]);
+/** Every state an Administrator may rescue from. Separated is deliberately included: a wrongly closed account. */
+const rescuableStates = new Set<AccountAccessState>(["Password change required", "Onboarding", "Pending approval", "Suspended", "Separated"]);
 
 function readState(data: ReturnType<typeof useWorkspace>["data"]) {
   if (typeof window === "undefined") return createIdentityProvisioningSeed(data);
@@ -50,7 +54,9 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   const firebase = useFirebaseSessionOptional();
   const [state, setState] = useState<IdentityProvisioningState>(() => readState(data));
   const syncAccountState = (userId: string, nextState: AccountAccessState) => { if (firebase) void firebase.setAccountState(userId, nextState); };
-  const founderOverrideAllowed = Boolean(currentUser?.role === "Administrator" && founderOverrideEmails.has(currentUser.email.toLowerCase()));
+  // Rescue and override are Administrator powers, not founder-only powers: an on-call Administrator has to be
+  // able to unstick a hire without anyone opening the Firebase Console.
+  const overrideAllowed = currentUser?.role === "Administrator";
 
   useEffect(() => {
     const handle = window.setTimeout(() => setState((current) => normalizeIdentityProvisioningState(current, data)), 0);
@@ -147,9 +153,9 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   const repairOnboardingPackage = (userId: string) => {
     if (currentUser?.role !== "Administrator") return false;
     const record = accountAccessFor(state, userId);
-    if (!record || !preactiveStates.has(record.state) || !record.draftId) return false;
+    if (!record || record.state === "Active") return false;
     const target = data.users.find((user) => user.id === userId && user.role !== "Customer" && user.role !== "Administrator");
-    const draft = state.drafts.find((item) => item.id === record.draftId && item.status !== "Cancelled");
+    const draft = state.drafts.find((item) => item.status !== "Cancelled" && (item.id === record.draftId || item.linkedUserId === userId || item.workEmail.toLowerCase() === target?.email.toLowerCase()));
     if (!target || !draft || target.email.toLowerCase() !== draft.workEmail.toLowerCase() || target.role !== draft.role || target.team !== draft.team || target.managerId !== draft.managerId) return false;
     const at = new Date().toISOString();
     const linked: ProvisioningDraft = { ...draft, status: "Auth linked", linkedUserId: target.id, updatedAt: at };
@@ -209,10 +215,10 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
 
   const administratorVerifyPasswordStep = async (userId: string, reason: string) => {
     const cleanReason = reason.trim();
-    if (!founderOverrideAllowed || !currentUser || cleanReason.length < 5 || userId === currentUser.id) return false;
+    if (!overrideAllowed || !currentUser || cleanReason.length < 5 || userId === currentUser.id) return false;
     const record = accountAccessFor(state, userId);
     const target = data.users.find((user) => user.id === userId && user.role !== "Administrator" && user.role !== "Customer");
-    if (!record || !target || !preactiveStates.has(record.state)) return false;
+    if (!record || !target || !rescuableStates.has(record.state)) return false;
     const nextState = record.state === "Password change required" ? "Onboarding" as const : record.state;
     if (firebase && nextState !== record.state) { const persisted = await firebase.setAccountState(userId, nextState); if (!persisted.ok) return false; }
     const at = new Date().toISOString();
@@ -223,26 +229,96 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
 
   const administratorAdvanceToReview = async (userId: string, reason: string) => {
     const cleanReason = reason.trim();
-    if (!founderOverrideAllowed || !currentUser || cleanReason.length < 5 || userId === currentUser.id) return false;
+    if (!overrideAllowed || !currentUser || cleanReason.length < 5 || userId === currentUser.id) return false;
     const record = accountAccessFor(state, userId);
-    if (!record || record.state !== "Onboarding" || !onboardingReadiness(hcm, record, userId).readyForEmployeeSubmission) return false;
+    if (!record || record.state === "Pending approval" || !preactiveStates.has(record.state) || !onboardingReadiness(hcm, record, userId).readyForEmployeeSubmission) return false;
     if (firebase) { const persisted = await firebase.setAccountState(userId, "Pending approval"); if (!persisted.ok) return false; }
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Pending approval", onboardingSubmittedAt: item.onboardingSubmittedAt ?? at } : item) }));
-    setHcm((current) => appendAudit(current, { actorId: currentUser.id, action: "Administrator advanced onboarding to final review", entityType: "IdentityProvisioningRecord", entityId: record.id, before: "Onboarding", after: "Pending approval", reason: cleanReason }));
+    setHcm((current) => appendAudit(current, { actorId: currentUser.id, action: "Administrator advanced onboarding to final review", entityType: "IdentityProvisioningRecord", entityId: record.id, before: record.state, after: "Pending approval", reason: cleanReason }));
+    return true;
+  };
+
+  /**
+   * Rebuild a trusted provisioning record for an identity that has Firebase Auth and a userAccess record but
+   * no Momentum provisioning history, which is the state that fails closed into "Suspended" and strands the
+   * employee. The rebuilt record is derived from the saved new-hire draft and the directory entry, never
+   * invented, and it deliberately lands in a pre-active state so the real onboarding controls still apply.
+   */
+  const administratorRepairIdentityRecord = async (userId: string, reason: string) => {
+    const cleanReason = reason.trim();
+    if (!overrideAllowed || !currentUser || cleanReason.length < 5 || userId === currentUser.id) return false;
+    const target = data.users.find((user) => user.id === userId && user.role !== "Customer" && user.role !== "Administrator");
+    if (!target) return false;
+    const existing = accountAccessFor(state, userId);
+    if (existing && !isFailClosedPlaceholder(existing) && existing.state !== "Suspended") return false;
+    const draft = state.drafts.find((item) => item.status !== "Cancelled" && (item.id === existing?.draftId || item.linkedUserId === userId || item.workEmail.toLowerCase() === target.email.toLowerCase()));
+    // Only adopt a draft that still describes this identity; a stale one would rewrite the reporting line.
+    const usableDraft = draft && draft.role === target.role && draft.team === target.team && draft.managerId === target.managerId ? draft : undefined;
+    const at = new Date().toISOString();
+    const nextState: AccountAccessState = "Onboarding";
+    if (firebase) { const persisted = await firebase.setAccountState(userId, nextState); if (!persisted.ok) return false; }
+    const record: IdentityProvisioningRecord = {
+      id: `access-${userId}`,
+      userId,
+      state: nextState,
+      source: usableDraft?.source ?? "Direct hire",
+      provisionedBy: currentUser.id,
+      provisionedAt: existing && !isFailClosedPlaceholder(existing) ? existing.provisionedAt : at,
+      candidateId: usableDraft?.candidateId,
+      offerId: usableDraft?.offerId,
+      draftId: usableDraft?.id,
+      firstLoginAt: existing?.firstLoginAt,
+      passwordChangedAt: existing?.passwordChangedAt,
+      passwordChangeEvidence: existing?.passwordChangeEvidence,
+      returnReason: undefined,
+    };
+    const linked: ProvisioningDraft | undefined = usableDraft ? { ...usableDraft, status: "Auth linked", linkedUserId: userId, updatedAt: at } : undefined;
+    setState((current) => ({
+      ...current,
+      drafts: linked ? current.drafts.map((item) => item.id === linked.id ? linked : item) : current.drafts,
+      records: [record, ...current.records.filter((item) => item.userId !== userId)],
+    }));
+    setHcm((current) => {
+      const repaired = linked && onboardingPackageNeedsRepair(current, linked, userId) ? prepareOnboardingPackage(current, data, linked, userId, currentUser.id) : current;
+      return appendAudit(repaired, { actorId: currentUser.id, action: "Administrator repaired missing identity provisioning record", entityType: "IdentityProvisioningRecord", entityId: record.id, before: existing ? existing.state : "Not provisioned", after: nextState, reason: cleanReason });
+    });
+    return true;
+  };
+
+  /** Put a stuck or wrongly closed identity back into Onboarding so the employee can finish their own steps. */
+  const administratorMoveToOnboarding = async (userId: string, reason: string) => {
+    const cleanReason = reason.trim();
+    if (!overrideAllowed || !currentUser || cleanReason.length < 5 || userId === currentUser.id) return false;
+    const target = data.users.find((user) => user.id === userId && user.role !== "Customer" && user.role !== "Administrator");
+    const record = accountAccessFor(state, userId);
+    if (!target || !record || record.state === "Onboarding" || !rescuableStates.has(record.state)) return false;
+    if (firebase) { const persisted = await firebase.setAccountState(userId, "Onboarding"); if (!persisted.ok) return false; }
+    const at = new Date().toISOString();
+    setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Onboarding", returnedAt: at, returnedBy: currentUser.id, returnReason: cleanReason } : item) }));
+    setHcm((current) => appendAudit(current, { actorId: currentUser.id, action: "Administrator moved employee back into onboarding", entityType: "IdentityProvisioningRecord", entityId: record.id, before: record.state, after: "Onboarding", reason: cleanReason }));
     return true;
   };
 
   const administratorBypassAndActivate = async (userId: string, reason: string) => {
     const cleanReason = reason.trim();
-    if (!founderOverrideAllowed || !currentUser || cleanReason.length < 5 || userId === currentUser.id) return false;
+    if (!overrideAllowed || !currentUser || cleanReason.length < 5 || userId === currentUser.id) return false;
     const record = accountAccessFor(state, userId);
     const target = data.users.find((user) => user.id === userId && user.role !== "Administrator" && user.role !== "Customer");
-    if (!record || !target || !preactiveStates.has(record.state)) return false;
+    if (!target || (record && !rescuableStates.has(record.state))) return false;
     if (firebase) { const persisted = await firebase.setAccountState(userId, "Active"); if (!persisted.ok) return false; }
     const at = new Date().toISOString();
     setHcm((current) => administratorOverrideEmploymentActivation(current, data, userId, currentUser.id, cleanReason));
-    setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Active", passwordChangedAt: item.passwordChangedAt ?? at, passwordChangeEvidence: item.passwordChangeEvidence ?? `Administrator override: ${cleanReason}`, activatedAt: at, activatedBy: currentUser.id, returnReason: undefined } : item) }));
+    const activated: IdentityProvisioningRecord = {
+      ...(record ?? { id: `access-${userId}`, userId, source: "Direct hire" as const, provisionedBy: currentUser.id, provisionedAt: at }),
+      state: "Active",
+      passwordChangedAt: record?.passwordChangedAt ?? at,
+      passwordChangeEvidence: record?.passwordChangeEvidence ?? `Administrator override: ${cleanReason}`,
+      activatedAt: at,
+      activatedBy: currentUser.id,
+      returnReason: undefined,
+    };
+    setState((current) => ({ ...current, records: [activated, ...current.records.filter((item) => item.userId !== userId)] }));
     return true;
   };
 
@@ -266,7 +342,8 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   };
 
   const currentRecord = useMemo(() => currentUser ? accountAccessFor(state, currentUser.id) : undefined, [currentUser, state]);
-  return <Context.Provider value={{ state, currentRecord, saveDraft, cancelDraft, markDraftInviteSent, linkDraftToUser, beginOnboarding, repairOnboardingPackage, completePasswordChange, submitOnboarding, activateUser, administratorVerifyPasswordStep, administratorAdvanceToReview, administratorBypassAndActivate, returnForCorrections, setAccountState }}>{children}</Context.Provider>;
+  const rescueQueue = useMemo(() => currentUser?.role === "Administrator" ? onboardingRescueQueue(hcm, data, state) : [], [currentUser, data, hcm, state]);
+  return <Context.Provider value={{ state, currentRecord, rescueQueue, saveDraft, cancelDraft, markDraftInviteSent, linkDraftToUser, beginOnboarding, repairOnboardingPackage, completePasswordChange, submitOnboarding, activateUser, administratorRepairIdentityRecord, administratorMoveToOnboarding, administratorVerifyPasswordStep, administratorAdvanceToReview, administratorBypassAndActivate, returnForCorrections, setAccountState }}>{children}</Context.Provider>;
 }
 
 export function useIdentityProvisioning() {

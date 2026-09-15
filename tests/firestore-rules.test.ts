@@ -50,6 +50,9 @@ const REP = "uid-rep";
 const OTHER_REP = "uid-other-rep";
 const OPS = "uid-ops";
 const ONBOARDING = "uid-onboarding";
+/** Brand Ambassadors, one per Sales Representative, to prove supervision is scoped to the reporting line. */
+const BA_OF_REP = "uid-ba-of-rep";
+const BA_OF_OTHER_REP = "uid-ba-of-other-rep";
 /** A hire who has signed in with the temporary password but has not changed it yet. */
 const PASSWORD_CHANGE = "uid-password-change";
 /** Never seeded: stands in for the brand-new uid an Administrator provisions. */
@@ -87,6 +90,8 @@ const ACCESS: UserAccessRecord[] = [
     managerId: MANAGER,
     accountState: "Password change required",
   }),
+  accessRecord(BA_OF_REP, "Brand Ambassador", "Sales", { managerId: REP }),
+  accessRecord(BA_OF_OTHER_REP, "Brand Ambassador", "Sales", { managerId: OTHER_REP }),
 ];
 
 const DIRECTORY: WorkspaceUser[] = ACCESS.map((record) => ({
@@ -444,7 +449,7 @@ describe("first-Administrator bootstrap", () => {
  * denied writes.
  */
 describe("domain sharding matches the rules", () => {
-  for (const uid of [ADMIN, MANAGER, REP, OPS, ONBOARDING]) {
+  for (const uid of [ADMIN, MANAGER, REP, OPS, ONBOARDING, BA_OF_REP]) {
     test(`reads planned by the client succeed for ${uid}`, async () => {
       const scope = scopeFor(uid);
       const db = dbFor(uid);
@@ -482,6 +487,96 @@ describe("domain sharding matches the rules", () => {
       assert.deepEqual(wrongly, [], `rules and documentWritable() disagree for ${uid}`);
     });
   }
+});
+
+describe("Brand Ambassador event supervision", () => {
+  const assignments = (uid: string) => `userDomains/${uid}/brandAmbassador/assignments`;
+
+  test("an Administrator manages any Brand Ambassador's events", async () => {
+    const db = dbFor(ADMIN);
+    for (const ba of [BA_OF_REP, BA_OF_OTHER_REP]) {
+      await assertSucceeds(setDoc(doc(db, assignments(ba)), { items: [] }));
+      await assertSucceeds(getDoc(doc(db, assignments(ba))));
+    }
+  });
+
+  test("a Sales Representative schedules only the Brand Ambassadors assigned to them", async () => {
+    const db = dbFor(REP);
+    await assertSucceeds(setDoc(doc(db, assignments(BA_OF_REP)), { items: [] }));
+    await assertSucceeds(getDoc(doc(db, assignments(BA_OF_REP))));
+    await assertFails(setDoc(doc(db, assignments(BA_OF_OTHER_REP)), { items: [] }));
+    await assertFails(getDoc(doc(db, assignments(BA_OF_OTHER_REP))));
+  });
+
+  test("supervising a Brand Ambassador never exposes their HR, pay, or private records", async () => {
+    const db = dbFor(REP);
+    for (const path of ["hcm/privateProfiles", "hcm/compensation", "hcm/documents", "hcm/training", "hcm/leaveRequests", "hcm/audit", "identity/records"]) {
+      await assertFails(getDoc(doc(db, `userDomains/${BA_OF_REP}/${path}`)));
+      await assertFails(setDoc(doc(db, `userDomains/${BA_OF_REP}/${path}`), { items: [] }));
+    }
+    await assertFails(getDoc(doc(db, USER_ACCESS_COLLECTION, BA_OF_REP)));
+  });
+
+  test("a Brand Ambassador reads their own schedule and nobody else's", async () => {
+    const db = dbFor(BA_OF_REP);
+    await assertSucceeds(getDoc(doc(db, assignments(BA_OF_REP))));
+    await assertFails(getDoc(doc(db, assignments(BA_OF_OTHER_REP))));
+    // The schedule is written by the supervising rep or an Administrator, never by the Ambassador.
+    await assertFails(setDoc(doc(db, assignments(BA_OF_REP)), { items: [] }));
+    await assertFails(getDoc(doc(db, "domains/brandAmbassador/fields/assignments")));
+  });
+
+  test("a Brand Ambassador cannot reach CRM, orders, inventory, marketing, or finance", async () => {
+    const db = dbFor(BA_OF_REP);
+    for (const path of [
+      "domains/crm/fields/contacts",
+      "domains/crm/fields/opportunities",
+      "domains/workspace/fields/accounts",
+      "domains/workspace/fields/orders",
+      "domains/commercial/fields/orders",
+      "domains/commerce/fields/invoices",
+      "domains/inventoryLedger/fields/movements",
+      "domains/marketing/fields/campaigns",
+      "domains/finance/fields/expenses",
+      "domains/accounting/fields/journals",
+      "domains/payroll/fields/runs",
+      "domains/identity/fields/drafts",
+    ]) {
+      await assertFails(getDoc(doc(db, path)));
+      await assertFails(setDoc(doc(db, path), { items: [] }));
+    }
+    await assertFails(getDoc(doc(db, `userDomains/${REP}/hcm/privateProfiles`)));
+  });
+
+  test("a Brand Ambassador still reads the training library assigned to them", async () => {
+    const db = dbFor(BA_OF_REP);
+    await assertSucceeds(getDoc(doc(db, "domains/trainingLibrary/fields/materials")));
+    await assertSucceeds(getDoc(doc(db, "domains/trainingLibrary/fields/audiences")));
+    await assertSucceeds(getDoc(doc(db, `userDomains/${BA_OF_REP}/hcm/training`)));
+    await assertFails(setDoc(doc(db, "domains/trainingLibrary/fields/materials"), { items: [] }));
+  });
+});
+
+describe("training file storage boundaries", () => {
+  // The Storage emulator is not part of this project's test topology, so the rules file is asserted
+  // structurally: training objects are employee-readable, Administrator-only writable, never public.
+  const rules = readFileSync("storage.rules", "utf8");
+
+  test("training objects are readable by provisioned employees only", () => {
+    assert.match(rules, /match \/training\/\{courseId\}\/\{fileName\} \{[\s\S]*?allow read: if isEmployee\(\);/);
+  });
+
+  test("only an active Administrator may write or delete training objects", () => {
+    assert.match(rules, /allow write: if isAdmin\(\)/);
+    assert.match(rules, /allow delete: if isAdmin\(\);/);
+    assert.match(rules, /access\(\)\.role == 'Administrator' && access\(\)\.accountState == 'Active'/);
+  });
+
+  test("Storage reuses the Firestore userAccess authority and denies everything else", () => {
+    assert.match(rules, /firestore\.get\(\/databases\/\(default\)\/documents\/userAccess\/\$\(request\.auth\.uid\)\)/);
+    assert.match(rules, /match \/\{allPaths=\*\*\} \{\s*allow read, write: if false;/);
+    assert.ok(!/allow read: if true/.test(rules), "storage.rules exposes a publicly readable path");
+  });
 });
 
 describe("cross-employee isolation", () => {

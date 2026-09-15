@@ -201,6 +201,48 @@
   resize:vertical;
 }
 
+.onboarding-rescue-card {
+  border-left:3px solid var(--warning,#d98324);
+}
+.onboarding-rescue-diagnosis {
+  color:var(--ink,#1f2a37);
+  margin-top:8px;
+  font-size:12px;
+  line-height:1.5;
+}
+.onboarding-rescue-flag {
+  color:var(--muted,#667085);
+  align-items:center;
+  gap:6px;
+  margin-top:4px;
+  display:flex;
+}
+.onboarding-rescue-card .field {
+  margin-top:12px;
+}
+.onboarding-rescue-card .provisioning-row-actions {
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:10px;
+  display:flex;
+}
+.onboarding-rescue-override {
+  border:1px solid var(--line,#e4e8ef);
+  background:#fff8ef;
+  border-radius:9px;
+  margin-top:12px;
+  padding:10px;
+}
+.onboarding-rescue-override p {
+  color:var(--muted,#667085);
+  align-items:flex-start;
+  gap:7px;
+  margin:0 0 9px;
+  font-size:11px;
+  line-height:1.5;
+  display:flex;
+}
+
 @media (max-width:900px) {
   .new-hire-stepper {
     grid-template-columns:repeat(2,minmax(0,1fr));

@@ -1,6 +1,6 @@
 import { appendAudit, type EmployeeDocument, type EmploymentRecord, type HCMState, type LifecycleCase, type TrainingAssignment, type WorkerClassification } from "./hcm-engine";
-import type { IdentityProvisioningRecord, ProvisioningDraft } from "./identity-provisioning";
-import type { WorkspaceData } from "./types";
+import { isFailClosedPlaceholder, type AccountAccessState, type IdentityProvisioningRecord, type IdentityProvisioningState, type ProvisioningDraft } from "./identity-provisioning";
+import type { WorkspaceData, WorkspaceUser } from "./types";
 
 export type OnboardingReadiness = {
   readyForEmployeeSubmission: boolean;
@@ -240,3 +240,86 @@ export function administratorOverrideEmploymentActivation(state: HCMState, data:
   };
   return appendAudit(next, { actorId, action: "Administrator bypassed remaining onboarding and activated employment", entityType: "LifecycleCase", entityId: completedCase.id, before: existingEmployee?.status ?? "Not present", after: "Active", reason: cleanReason });
 }
+
+/** Everything an Administrator can do to a stuck identity from the onboarding queue. */
+export type OnboardingRescueAction =
+  | "repairIdentityRecord"
+  | "repairOnboardingPackage"
+  | "attestPasswordChange"
+  | "moveToOnboarding"
+  | "advanceToReview"
+  | "returnForCorrections"
+  | "activate"
+  | "overrideAndActivate";
+
+export type OnboardingRescueEntry = {
+  user: WorkspaceUser;
+  record?: IdentityProvisioningRecord;
+  /** "Not provisioned" when Momentum holds no trusted record at all. */
+  state: AccountAccessState | "Not provisioned";
+  draft?: ProvisioningDraft;
+  /** Momentum has no trusted provisioning record, or only the fail-closed placeholder it invented. */
+  missingTrustedRecord: boolean;
+  /** The employee/document/training/compensation package was never created or is incomplete. */
+  packageIncomplete: boolean;
+  /** Firebase Auth may hold a rotated password, but Momentum never recorded the local evidence. */
+  passwordEvidenceMissing: boolean;
+  readiness: OnboardingReadiness;
+  diagnosis: string;
+  actions: OnboardingRescueAction[];
+};
+
+const RESCUE_ORDER: Record<AccountAccessState | "Not provisioned", number> = {
+  "Not provisioned": 0,
+  Suspended: 1,
+  "Password change required": 2,
+  Onboarding: 3,
+  "Pending approval": 4,
+  Separated: 5,
+  Active: 6,
+};
+
+/**
+ * Every non-active internal identity an Administrator may still need to rescue, with the reason it is stuck.
+ *
+ * The Administrator queue previously listed only `Pending approval`, which left employees who never got past
+ * the password change, or who fell back to the fail-closed placeholder, invisible outside Firebase Console.
+ */
+export function onboardingRescueQueue(hcm: HCMState, data: WorkspaceData, identity: IdentityProvisioningState): OnboardingRescueEntry[] {
+  const entries = data.users.flatMap((user): OnboardingRescueEntry[] => {
+    if (user.role === "Customer" || user.role === "Administrator") return [];
+    const stored = identity.records.find((item) => item.userId === user.id);
+    const missingTrustedRecord = !stored || isFailClosedPlaceholder(stored);
+    const record = missingTrustedRecord ? undefined : stored;
+    if (record?.state === "Active") return [];
+
+    const draft = identity.drafts.find((item) => item.status !== "Cancelled" && (item.id === stored?.draftId || item.linkedUserId === user.id || item.workEmail.toLowerCase() === user.email.toLowerCase()));
+    const packageIncomplete = draft ? onboardingPackageNeedsRepair(hcm, { ...draft, linkedUserId: user.id }, user.id) : !hcm.employees.some((item) => item.userId === user.id);
+    const readiness = onboardingReadiness(hcm, record, user.id);
+    const state: AccountAccessState | "Not provisioned" = missingTrustedRecord ? (stored?.state === "Suspended" ? "Not provisioned" : stored?.state ?? "Not provisioned") : record!.state;
+
+    const actions: OnboardingRescueAction[] = [];
+    if (missingTrustedRecord) actions.push("repairIdentityRecord");
+    if (packageIncomplete && draft) actions.push("repairOnboardingPackage");
+    if (!record?.passwordChangedAt) actions.push("attestPasswordChange");
+    if (record?.state !== "Onboarding") actions.push("moveToOnboarding");
+    if (record && record.state !== "Pending approval" && readiness.readyForEmployeeSubmission) actions.push("advanceToReview");
+    if (record && ["Pending approval", "Onboarding"].includes(record.state)) actions.push("returnForCorrections");
+    if (readiness.readyForActivation) actions.push("activate");
+    actions.push("overrideAndActivate");
+
+    const diagnosis = missingTrustedRecord
+      ? "No trusted Momentum provisioning record. Repair it from the Firebase identity, access record, and saved new-hire setup."
+      : packageIncomplete
+        ? "The onboarding package (employment record, documents, training, or compensation) is incomplete."
+        : record!.state === "Password change required"
+          ? "Waiting on the first-login password change. If Firebase Authentication already has a new password, attest it here."
+          : record!.state === "Suspended" || record!.state === "Separated"
+            ? "Access is closed. Move the employee back into onboarding to restart, or override if activation was already approved."
+            : readiness.blockers[0] ?? readiness.activationBlockers[0] ?? "Waiting on Administrator review.";
+
+    return [{ user, record, state, draft, missingTrustedRecord, packageIncomplete, passwordEvidenceMissing: !record?.passwordChangedAt, readiness, diagnosis, actions }];
+  });
+  return entries.sort((a, b) => RESCUE_ORDER[a.state] - RESCUE_ORDER[b.state] || a.user.name.localeCompare(b.user.name));
+}
+

@@ -63,6 +63,26 @@
   color:var(--text-muted,#637083);
   line-height:1.35;
 }
+.training-material-open {
+  color:var(--accent,#0b2e92);
+  cursor:pointer;
+  background:none;
+  border:0;
+  align-items:center;
+  gap:5px;
+  padding:0;
+  font:inherit;
+  text-decoration:underline;
+  display:inline-flex;
+}
+.training-material-open[disabled] {
+  cursor:progress;
+  opacity:.6;
+}
+.training-material-open+em {
+  margin-left:6px;
+  font-size:11px;
+}
 .provisioning-actions {
   justify-content:flex-end;
   display:flex;

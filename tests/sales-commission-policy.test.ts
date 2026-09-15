@@ -8,7 +8,11 @@ describe("standard sales commission policy", () => {
     assert.equal(STANDARD_SALES_COMMISSION_POLICY.representativeRate, 0.025);
     assert.equal(STANDARD_SALES_COMMISSION_POLICY.managerOverrideRate, 0.005);
     assert.equal(STANDARD_SALES_COMMISSION_POLICY.maxCombinedRate, 0.03);
-    assert.equal(STANDARD_SALES_COMMISSION_POLICY.representativeRate + STANDARD_SALES_COMMISSION_POLICY.managerOverrideRate, STANDARD_SALES_COMMISSION_POLICY.maxCombinedRate);
+    // Rates are stored as decimals, so the sum is compared in basis points rather than binary floats.
+    assert.equal(
+      Math.round((STANDARD_SALES_COMMISSION_POLICY.representativeRate + STANDARD_SALES_COMMISSION_POLICY.managerOverrideRate) * 10_000),
+      Math.round(STANDARD_SALES_COMMISSION_POLICY.maxCombinedRate * 10_000),
+    );
   });
 
   test("fails closed until a written effective date is supplied", () => {
