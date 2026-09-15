@@ -57,7 +57,7 @@ export function onboardingPackageNeedsRepair(state: HCMState, draft: Provisionin
   return false;
 }
 
-export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, draft: ProvisioningDraft, userId: string, actorId: string, options: PrepareOnboardingOptions = {}): HCMState {
+export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, draft: ProvisioningDraft, userId: string, actorId: string, options: PrepareOnboardingOptions = { preserveExistingEmployee: true }): HCMState {
   const user = data.users.find((item) => item.id === userId && item.role !== "Customer");
   if (!user || draft.linkedUserId !== userId || user.email.toLowerCase() !== draft.workEmail.toLowerCase()) return state;
   const at = new Date().toISOString();
