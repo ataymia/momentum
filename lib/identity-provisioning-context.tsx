@@ -4,7 +4,7 @@ import { ReactNode, createContext, useContext, useEffect, useMemo, useState } fr
 import { useFirebaseSessionOptional } from "./firebase-session-context";
 import { useHcm } from "./hcm-context";
 import { AccountAccessState, IDENTITY_PROVISIONING_STORAGE_KEY, IdentityProvisioningRecord, IdentityProvisioningState, ProvisioningDraft, ProvisioningSource, accountAccessFor, createIdentityProvisioningSeed, isFailClosedPlaceholder, normalizeIdentityProvisioningState } from "./identity-provisioning";
-import { activateEmploymentAfterOnboarding, onboardingReadiness, prepareOnboardingPackage } from "./onboarding-engine";
+import { activateEmploymentAfterOnboarding, onboardingPackageNeedsRepair, onboardingReadiness, prepareOnboardingPackage } from "./onboarding-engine";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useWorkspace } from "./workspace-context";
 
@@ -19,6 +19,7 @@ type IdentityProvisioningContextValue = {
   markDraftInviteSent: (draftId: string) => boolean;
   linkDraftToUser: (draftId: string, userId: string) => boolean;
   beginOnboarding: (input: BeginOnboardingInput) => boolean;
+  repairOnboardingPackage: (userId: string) => boolean;
   completePasswordChange: (evidence: string) => boolean;
   submitOnboarding: () => boolean;
   activateUser: (userId: string) => Promise<boolean>;
@@ -30,6 +31,7 @@ const Context = createContext<IdentityProvisioningContextValue | null>(null);
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const expectedTeam: Record<ProvisioningDraft["role"], ProvisioningDraft["team"]> = { "Sales Manager": "Sales", "Sales Representative": "Sales", Operations: "Operations", Warehouse: "Operations" };
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const preactiveStates = new Set<AccountAccessState>(["Password change required", "Onboarding", "Pending approval"]);
 
 function readState(data: ReturnType<typeof useWorkspace>["data"]) {
   if (typeof window === "undefined") return createIdentityProvisioningSeed(data);
@@ -167,6 +169,49 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     return true;
   };
 
+  /** Repairs only the HCM package for a trusted pre-active identity. It never resets the password or account state. */
+  const repairOnboardingPackage = (userId: string) => {
+    if (currentUser?.role !== "Administrator") return false;
+    const record = accountAccessFor(state, userId);
+    if (!record || !preactiveStates.has(record.state) || !record.draftId) return false;
+    const target = data.users.find((user) => user.id === userId && user.role !== "Customer" && user.role !== "Administrator");
+    const draft = state.drafts.find((item) => item.id === record.draftId && item.status !== "Cancelled");
+    if (!target || !draft || target.email.toLowerCase() !== draft.workEmail.toLowerCase() || target.role !== draft.role || target.team !== draft.team || target.managerId !== draft.managerId) return false;
+    const at = new Date().toISOString();
+    const linked: ProvisioningDraft = { ...draft, status: "Auth linked", linkedUserId: target.id, updatedAt: at };
+    if (onboardingPackageNeedsRepair(hcm, linked, target.id)) setHcm((current) => prepareOnboardingPackage(current, data, linked, target.id, currentUser.id));
+    if (draft.status !== "Auth linked" || draft.linkedUserId !== target.id) {
+      setState((current) => ({ ...current, drafts: current.drafts.map((item) => item.id === draft.id ? linked : item) }));
+    }
+    return true;
+  };
+
+  // Production repair path for hires created before the atomic provisioning fix. When an Administrator opens
+  // Momentum, any structurally incomplete pre-active package is rebuilt from its trusted draft exactly once.
+  useEffect(() => {
+    if (currentUser?.role !== "Administrator") return;
+    const repairable = state.records.flatMap((record) => {
+      if (!preactiveStates.has(record.state) || !record.draftId) return [];
+      const target = data.users.find((user) => user.id === record.userId && user.role !== "Customer" && user.role !== "Administrator");
+      const draft = state.drafts.find((item) => item.id === record.draftId && item.status !== "Cancelled");
+      if (!target || !draft || target.email.toLowerCase() !== draft.workEmail.toLowerCase() || target.role !== draft.role || target.team !== draft.team || target.managerId !== draft.managerId) return [];
+      const linked: ProvisioningDraft = { ...draft, status: "Auth linked", linkedUserId: target.id, updatedAt: draft.updatedAt };
+      return onboardingPackageNeedsRepair(hcm, linked, target.id) ? [{ target, draft: linked }] : [];
+    });
+    if (!repairable.length) return;
+    const handle = window.setTimeout(() => {
+      setHcm((current) => repairable.reduce((next, item) => onboardingPackageNeedsRepair(next, item.draft, item.target.id) ? prepareOnboardingPackage(next, data, item.draft, item.target.id, currentUser.id) : next, current));
+      setState((current) => ({
+        ...current,
+        drafts: current.drafts.map((draft) => {
+          const repair = repairable.find((item) => item.draft.id === draft.id);
+          return repair ? { ...draft, status: "Auth linked", linkedUserId: repair.target.id, updatedAt: new Date().toISOString() } : draft;
+        }),
+      }));
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [currentUser, data, hcm, setHcm, state.drafts, state.records]);
+
   const completePasswordChange = (evidence: string) => {
     if (!currentUser || !evidence.trim()) return false;
     const record = accountAccessFor(state, currentUser.id);
@@ -221,7 +266,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   };
 
   const currentRecord = useMemo(() => currentUser ? accountAccessFor(state, currentUser.id) : undefined, [currentUser, state]);
-  return <Context.Provider value={{ state, currentRecord, saveDraft, cancelDraft, markDraftInviteSent, linkDraftToUser, beginOnboarding, completePasswordChange, submitOnboarding, activateUser, returnForCorrections, setAccountState }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ state, currentRecord, saveDraft, cancelDraft, markDraftInviteSent, linkDraftToUser, beginOnboarding, repairOnboardingPackage, completePasswordChange, submitOnboarding, activateUser, returnForCorrections, setAccountState }}>{children}</Context.Provider>;
 }
 
 export function useIdentityProvisioning() {
