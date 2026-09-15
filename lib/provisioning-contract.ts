@@ -38,12 +38,13 @@ export type ProvisioningOutcome =
   | "already-provisioned";
 
 /** Administrator accounts are bootstrap-only or promoted by an existing Administrator, never provisioned here. */
-export const PROVISIONABLE_ROLES = ["Sales Manager", "Sales Representative", "Operations", "Warehouse"] as const;
+export const PROVISIONABLE_ROLES = ["Sales Manager", "Sales Representative", "Brand Ambassador", "Operations", "Warehouse"] as const;
 export type ProvisionableRoleName = (typeof PROVISIONABLE_ROLES)[number];
 
 export const TEAM_FOR_ROLE: Record<ProvisionableRoleName, Exclude<Team, "Customer">> = {
   "Sales Manager": "Sales",
   "Sales Representative": "Sales",
+  "Brand Ambassador": "Sales",
   Operations: "Operations",
   Warehouse: "Operations",
 };

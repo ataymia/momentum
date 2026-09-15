@@ -7,6 +7,7 @@ import { AccountHealthHome } from "../crm/account-health-home";
 import { CrmDepthPanel } from "../crm/crm-depth-panel";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { NewHireProvisioning } from "../hcm/new-hire-provisioning";
+import { TrainingAdminPage } from "../hcm/training-admin";
 import { InventoryLedgerPanel } from "../inventory/inventory-ledger-panel";
 import { DashboardPerformance } from "../performance/dashboard-performance";
 import { ReportingCenter } from "../performance/reporting-center";
@@ -22,6 +23,7 @@ export function InventoryLedgerPage(){return <div className="page page--focused-
 export function EmployeeDirectoryPage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Human Resources" title="Employee directory" description="People, reporting lines, roles, and workforce records."/><EmployeeDirectory/></div>;}
 export function NewHirePage(){return <NewHireProvisioning view="create"/>;}
 export function OnboardingQueuePage(){return <NewHireProvisioning view="queue"/>;}
+export function TrainingSetupPage(){return <TrainingAdminPage/>;}
 export function AccountingWorkspacePage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Finance & accounting" title="Accounting" description="Chart of accounts, journals, reconciliations, and accounting controls."/><AccountingPanel/></div>;}
 export function PerformanceWorkspacePage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Performance & reports" title="Performance" description="Operational performance signals and management scorecards."/><DashboardPerformance/></div>;}
 export function ReportingCenterPage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Performance & reports" title="Reporting center" description="Create, review, and trace recurring employee and management reports."/><ReportingCenter/></div>;}

@@ -1,0 +1,55 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// Momentum Firebase Storage rules.
+//
+// Storage reuses the same identity authority as Firestore: `userAccess/{uid}` decides role and account
+// state, so an employee can never gain file access their Firestore access record does not already imply.
+//
+// Layout:
+//   training/{courseId}/{fileName}   Administrator-managed training materials
+//
+// Nothing here is public. Downloads go through the signed-in Firebase ID token, not an unguessable token
+// URL, so revoking a Momentum account revokes the files with it.
+// ---------------------------------------------------------------------------
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function access() {
+      return firestore.get(/databases/(default)/documents/userAccess/$(request.auth.uid)).data;
+    }
+
+    function hasAccessRecord() {
+      return signedIn() && firestore.exists(/databases/(default)/documents/userAccess/$(request.auth.uid));
+    }
+
+    /** Any provisioned employee, including one still onboarding. Mirrors firestore.rules isEmployee(). */
+    function isEmployee() {
+      return hasAccessRecord() && access().role != 'Customer';
+    }
+
+    function isAdmin() {
+      return isEmployee() && access().role == 'Administrator' && access().accountState == 'Active';
+    }
+
+    // Training materials. Administrators own the library; every provisioned employee may read the files they
+    // are expected to complete during onboarding or active employment. Customers never qualify.
+    match /training/{courseId}/{fileName} {
+      allow read: if isEmployee();
+      allow write: if isAdmin()
+        && request.resource.size < 200 * 1024 * 1024
+        && request.resource.contentType != null;
+      allow delete: if isAdmin();
+    }
+
+    // Anything not matched above is denied.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

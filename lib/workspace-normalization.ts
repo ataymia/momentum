@@ -1,7 +1,7 @@
 import { isValidCalendarDateKey } from "./date-time";
 import type { Account, Activity, Appointment, Approval, Bulletin, CustomerAccount, InventoryLot, Notification, Order, Placement, TimeEntry, Timecard, WorkspaceData, WorkspaceUser } from "./types";
 
-const roles = new Set(["Administrator", "Sales Manager", "Sales Representative", "Operations", "Warehouse", "Customer"]);
+const roles = new Set(["Administrator", "Sales Manager", "Sales Representative", "Brand Ambassador", "Operations", "Warehouse", "Customer"]);
 const teams = new Set(["Leadership", "Sales", "Operations", "Customer"]);
 const accountStages = new Set(["Prospect", "Qualified", "Sampled", "Opening order", "Placed", "Reordered", "At risk"]);
 const healthStates = new Set(["Strong", "Watch", "New", "At risk"]);
@@ -17,7 +17,7 @@ const paymentStatuses = new Set(["Not invoiced", "Open", "Partially paid", "Paid
 const placementSources = new Set(["Physical count", "Customer estimate", "Demo POS feed"]);
 const placementStatuses = new Set(["Healthy", "Check soon", "Out of stock"]);
 const inventoryStatuses = new Set(["Available", "Quality hold", "Low stock"]);
-const approvalTypes = new Set(["Order", "Low stock sale", "Timecard", "Price exception", "Inventory adjustment", "Leave", "Expense", "Marketing spend", "Compensation"]);
+const approvalTypes = new Set(["Order", "Low stock sale", "Territory exception", "Timecard", "Price exception", "Inventory adjustment", "Leave", "Expense", "Marketing spend", "Compensation"]);
 const approvalPriorities = new Set(["Normal", "High", "Urgent"]);
 const approvalStatuses = new Set(["Pending", "Approved", "Returned"]);
 const timeSources = new Set(["Demo mobile", "Demo desktop", "Manual correction"]);
@@ -80,7 +80,6 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
   const users = normalizeUsers(list(root, "users", fallback.users), fallback.users);
   const userIds = new Set(users.map((user) => user.id));
   const internalUserIds = new Set(users.filter((user) => user.role !== "Customer").map((user) => user.id));
-
   const fallbackCustomers = fallback.customers ?? [];
   const customers = normalizeCustomers(list(root, "customers", fallbackCustomers), fallbackCustomers);
   const customerIds = new Set(customers.map((customer) => customer.id));
@@ -169,6 +168,7 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
     const id = text(value.id); const type = text(value.type); const requesterId = optionalText(value.requesterId); const recordId = optionalText(value.recordId); const priority = text(value.priority); const status = text(value.status); const team = optionalText(value.team);
     if (!id || !approvalTypes.has(type) || !text(value.title) || !text(value.detail) || !text(value.requestedBy) || (requesterId && !userIds.has(requesterId)) || !validInstant(value.submittedAt) || !validInstant(value.dueAt) || !approvalPriorities.has(priority) || !approvalStatuses.has(status) || (team && !teams.has(team))) return [];
     if (recordId && ["Order", "Low stock sale", "Price exception"].includes(type) && !orderIds.has(recordId)) return [];
+    if (recordId && type === "Territory exception" && !accountIds.has(recordId)) return [];
     if (recordId && type === "Timecard" && !timecardIds.has(recordId)) return [];
     if (recordId && type === "Inventory adjustment" && !inventoryIds.has(recordId)) return [];
     return [{ id, type: type as Approval["type"], title: text(value.title), detail: text(value.detail), requestedBy: text(value.requestedBy), requesterId, recordId, team: team as Approval["team"], submittedAt: text(value.submittedAt), dueAt: text(value.dueAt), priority: priority as Approval["priority"], status: status as Approval["status"] }];

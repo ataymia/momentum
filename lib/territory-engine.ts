@@ -59,15 +59,15 @@ export function validateTerritoryDraft(data:Pick<WorkspaceData,"territories"|"us
   if(invalid)return{ok:false,message:`Invalid ZIP code: ${invalid}.`,postalCodes:[]};
   const postalCodes=normalizePostalCodes(raw);
   if(draft.status==="Active"){
-    if(!draft.ownerId)return{ok:false,message:"An active territory needs a sales representative.",postalCodes};
+    if(!draft.ownerId)return{ok:false,message:"An active territory needs a suggested sales representative.",postalCodes};
     const owner=data.users.find((user)=>user.id===draft.ownerId);
-    if(!owner||owner.role!=="Sales Representative")return{ok:false,message:"Active territories can only be assigned to a Sales Representative.",postalCodes};
+    if(!owner||owner.role!=="Sales Representative")return{ok:false,message:"Active territory suggestions can only point to a Sales Representative.",postalCodes};
     if(postalCodes.length===0)return{ok:false,message:"An active territory needs at least one ZIP code.",postalCodes};
     const overlap=territoryOverlap(data,postalCodes,draft.id);
-    if(overlap)return{ok:false,message:`ZIP ${overlap.postalCode} is already active in ${overlap.territory.name}.`,postalCodes};
+    if(overlap)return{ok:false,message:`ZIP ${overlap.postalCode} is already active in ${overlap.territory.name}. Keep one geographic suggestion per ZIP so exceptions remain clear.`,postalCodes};
   }else if(draft.ownerId){
     const owner=data.users.find((user)=>user.id===draft.ownerId);
-    if(!owner||owner.role!=="Sales Representative")return{ok:false,message:"Territory owner must be a Sales Representative.",postalCodes};
+    if(!owner||owner.role!=="Sales Representative")return{ok:false,message:"Suggested territory owner must be a Sales Representative.",postalCodes};
   }
   return{ok:true,postalCodes};
 }
@@ -103,17 +103,23 @@ export function normalizeTerritories(input:unknown,users:WorkspaceUser[]):SalesT
 
 export function territorySystemEnabled(data:Pick<WorkspaceData,"territories">){return activeTerritories(data).length>0;}
 
-export function canSalesRepWorkAccount(data:Pick<WorkspaceData,"territories">,user:WorkspaceUser,account:Pick<Account,"postalCode">){
-  if(user.role!=="Sales Representative")return true;
-  if(!territorySystemEnabled(data))return true;
-  const territory=territoryForAccount(data,account);
-  return Boolean(territory?.ownerId===user.id);
+/**
+ * Territory coverage is advisory. It may recommend a rep and flag a deviation, but it must never prevent
+ * an otherwise authorized sales representative from working an account.
+ */
+export function canSalesRepWorkAccount(_data:Pick<WorkspaceData,"territories">,_user:WorkspaceUser,_account:Pick<Account,"postalCode">){
+  return true;
 }
 
-export function canAssignRepToAccountTerritory(data:Pick<WorkspaceData,"territories">,account:Pick<Account,"postalCode">,repId:string){
-  if(!territorySystemEnabled(data))return true;
-  const territory=territoryForAccount(data,account);
-  return Boolean(territory?.ownerId===repId);
+/** Territory suggestions do not lock dispatch or manual responsibility assignment. */
+export function canAssignRepToAccountTerritory(_data:Pick<WorkspaceData,"territories">,_account:Pick<Account,"postalCode">,_repId:string){
+  return true;
+}
+
+export function isTerritoryDeviation(data:Pick<WorkspaceData,"territories">,postalCode:string|undefined,repId:string){
+  if(!territorySystemEnabled(data))return false;
+  const territory=territoryForPostalCode(data,postalCode);
+  return !territory||territory.ownerId!==repId;
 }
 
 export function accountTerritoryState(data:Pick<WorkspaceData,"territories">,account:Pick<Account,"postalCode"|"ownerId">):AccountTerritoryState{

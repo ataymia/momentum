@@ -7,8 +7,10 @@ import { useHcm } from "../../lib/hcm-context";
 import { appendAudit } from "../../lib/hcm-engine";
 import { useIdentityProvisioning } from "../../lib/identity-provisioning-context";
 import { onboardingReadiness } from "../../lib/onboarding-engine";
+import { useTrainingLibrary } from "../../lib/training-library-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, StatusPill } from "../ui";
+import { TrainingMaterialLink } from "./training-material-link";
 
 /** First-login password rotation. Firebase Authentication holds the credential; Momentum only records that it happened. */
 function PasswordChangeForm({ onComplete }: { onComplete: (evidence: string) => boolean }) {
@@ -44,6 +46,7 @@ export function OnboardingPortal() {
   const { hcm, setHcm } = useHcm();
   const firebase = useFirebaseSessionOptional();
   const provisioning = useIdentityProvisioning();
+  const trainingLibrary = useTrainingLibrary();
   const record = provisioning.currentRecord;
   const activeAdministrator = currentUser?.role === "Administrator" && firebase?.access?.role === "Administrator" && firebase.access.accountState === "Active";
   const employee = currentUser ? hcm.employees.find((item) => item.userId === currentUser.id) : undefined;
@@ -51,6 +54,7 @@ export function OnboardingPortal() {
   const [profileForm, setProfileForm] = useState(() => ({ phone: profile?.phone ?? "", address: profile?.address ?? "", emergencyContact: profile?.emergencyContact ?? "", preferredName: profile?.preferredName ?? "" }));
   const [profileNotice, setProfileNotice] = useState("");
   const [profileError, setProfileError] = useState("");
+  const [submitNotice, setSubmitNotice] = useState("");
 
   if (!currentUser || currentUser.role === "Customer" || !record || record.state === "Active" || activeAdministrator) return null;
 
@@ -80,6 +84,17 @@ export function OnboardingPortal() {
     setProfileNotice("Contact and emergency information saved.");
   };
 
+  const submitOnboarding = () => {
+    setSubmitNotice("");
+    if (!readiness.readyForEmployeeSubmission) {
+      const hrBlocked = readiness.blockers.some((blocker) => blocker.startsWith("HR "));
+      setSubmitNotice(hrBlocked ? "Your employee-controlled items may be complete, but HR still needs to finish part of your setup. The required items are listed below." : "Complete the required items listed below, then submit again.");
+      window.setTimeout(() => document.getElementById("onboarding-required-items")?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+      return;
+    }
+    if (!provisioning.submitOnboarding()) setSubmitNotice("Momentum could not submit onboarding. Refresh once and try again; if it remains blocked, contact an Administrator.");
+  };
+
   if (record.state === "Password change required") return <main className="onboarding-shell"><section className="onboarding-card onboarding-card--center"><span className="onboarding-hero-icon"><KeyRound size={28}/></span><StatusPill tone="warning">Security setup required</StatusPill><h1>Secure your Momentum account</h1><p>Change your temporary password before continuing.</p><div className="onboarding-security-note"><LockKeyhole size={18}/><span>Momentum never stores or displays your password.</span></div><PasswordChangeForm onComplete={provisioning.completePasswordChange}/><button className="onboarding-signout" onClick={logout}>Sign out</button></section></main>;
 
   if (record.state === "Pending approval") return <main className="onboarding-shell"><section className="onboarding-card onboarding-card--center"><span className="onboarding-hero-icon"><ShieldCheck size={28}/></span><StatusPill tone="info">Submitted</StatusPill><h1>Onboarding submitted</h1><p>Your part is complete. An Administrator is verifying required employment and tax paperwork before production access is activated.</p>{record.onboardingSubmittedAt && <small>Submitted {new Date(record.onboardingSubmittedAt).toLocaleString()}</small>}<button className="onboarding-signout" onClick={logout}>Sign out</button></section></main>;
@@ -98,11 +113,11 @@ export function OnboardingPortal() {
 
       <section className="onboarding-panel onboarding-panel--wide"><header><FileCheck2 size={19}/><div><h2>Employment and tax paperwork</h2><p>These records must be verified by HR before access is activated.</p></div></header><div className="onboarding-document-list">{documents.map((document) => <article key={document.id}><div><strong>{document.title}</strong><small>{document.status === "Available" ? document.fileName ?? "Verified by HR" : "Administrator verification required"}</small></div><StatusPill tone={document.status === "Available" ? "success" : "warning"}>{document.status === "Available" ? "Verified" : "Pending HR"}</StatusPill></article>)}{documents.length === 0 && <p>No required document package has been prepared yet. Contact HR.</p>}</div><div className="onboarding-security-note"><LockKeyhole size={17}/><span>Until secure file upload and e-sign are connected, HR verifies completed paperwork outside Momentum. The app records the verification, not a fake uploaded file.</span></div></section>
 
-      <section className="onboarding-panel onboarding-panel--wide"><header><CheckCircle2 size={19}/><div><h2>Assigned training</h2><p>Complete every course assigned to your role.</p></div></header><div className="onboarding-training-list">{assignments.map((assignment) => { const course = hcm.courses.find((item) => item.id === assignment.courseId); return <article key={assignment.id}><div><strong>{course?.title ?? "Assigned training"}</strong><small>{course?.description ?? "Required onboarding course"}</small></div>{assignment.status === "Complete" ? <StatusPill tone="success">Complete</StatusPill> : <Button size="sm" variant="secondary" onClick={() => completeTraining(assignment.id)}>Mark complete</Button>}</article>; })}{assignments.length === 0 && <p>No training assignments have been prepared yet. Contact HR.</p>}</div></section>
+      <section className="onboarding-panel onboarding-panel--wide"><header><CheckCircle2 size={19}/><div><h2>Assigned training</h2><p>Complete every course assigned to your role.</p></div></header><div className="onboarding-training-list">{assignments.map((assignment) => { const course = hcm.courses.find((item) => item.id === assignment.courseId); const materials = course ? trainingLibrary.materialsForCourse(course.id) : []; return <article key={assignment.id}><div><strong>{course?.title ?? "Assigned training"}</strong><small>{course?.description ?? "Required onboarding course"}</small>{materials.map((material) => <TrainingMaterialLink key={material.id} material={material}/>)}</div>{assignment.status === "Complete" ? <StatusPill tone="success">Complete</StatusPill> : <Button size="sm" variant="secondary" onClick={() => completeTraining(assignment.id)}>Mark complete</Button>}</article>; })}{assignments.length === 0 && <p>No training assignments have been prepared yet. Contact HR.</p>}</div></section>
     </div>
 
     {record.returnReason && <section className="onboarding-return"><strong>Returned for correction</strong><p>{record.returnReason}</p></section>}
-    {readiness.blockers.length > 0 && <section className="onboarding-blockers"><h2>Still required from you or HR before submission</h2><ul>{readiness.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul></section>}
-    <section className="onboarding-submit"><div><strong>Submit to HR</strong><p>Your required paperwork may still be pending Administrator verification after you submit.</p></div><Button disabled={!readiness.readyForEmployeeSubmission} onClick={() => provisioning.submitOnboarding()}>Submit onboarding</Button></section>
+    {readiness.blockers.length > 0 && <section id="onboarding-required-items" className="onboarding-blockers"><h2>Still required from you or HR before submission</h2><ul>{readiness.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul></section>}
+    <section className="onboarding-submit"><div><strong>{readiness.readyForEmployeeSubmission ? "Ready to submit" : "Onboarding is not ready to submit yet"}</strong><p>{readiness.readyForEmployeeSubmission ? "Your employee-controlled requirements are complete. Submit to HR for final verification." : "Use the button to jump to the exact items still blocking submission."}</p>{submitNotice&&<p className="form-notice" role="status">{submitNotice}</p>}</div><Button onClick={submitOnboarding}>{readiness.readyForEmployeeSubmission ? "Submit onboarding" : `Review ${readiness.blockers.length} required item${readiness.blockers.length===1?"":"s"}`}</Button></section>
   </div></main>;
 }

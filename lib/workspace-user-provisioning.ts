@@ -13,6 +13,7 @@ export type ProvisionInternalUserInput = {
 const expectedTeam: Record<ProvisionableRole, Exclude<Team, "Customer">> = {
   "Sales Manager": "Sales",
   "Sales Representative": "Sales",
+  "Brand Ambassador": "Sales",
   Operations: "Operations",
   Warehouse: "Operations",
 };
@@ -30,6 +31,7 @@ export function validateInternalUserProvisioning(data: WorkspaceData, input: Pro
   if (!manager) return "Choose a valid manager.";
   if (input.role === "Sales Manager" && manager.role !== "Administrator") return "A Sales Manager must report to an Administrator in the current hierarchy.";
   if (input.role === "Sales Representative" && !["Administrator", "Sales Manager"].includes(manager.role)) return "A Sales Representative must report to an Administrator or Sales Manager.";
+  if (input.role === "Brand Ambassador" && manager.role !== "Sales Representative") return "A Brand Ambassador must be assigned to a Sales Representative.";
   if (["Operations", "Warehouse"].includes(input.role) && manager.role !== "Administrator") return `${input.role} must report to an Administrator until an operations-manager role is formally configured.`;
   return null;
 }
@@ -56,6 +58,7 @@ export function buildProvisionedWorkspaceUser(data: WorkspaceData, input: Provis
 }
 
 export function managerOptionsForProvisioning(data: WorkspaceData, role: ProvisionableRole) {
+  if (role === "Brand Ambassador") return data.users.filter((user) => user.role === "Sales Representative");
   if (role === "Sales Representative") return data.users.filter((user) => ["Administrator", "Sales Manager"].includes(user.role));
   return data.users.filter((user) => user.role === "Administrator");
 }

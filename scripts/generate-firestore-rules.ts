@@ -66,33 +66,34 @@ function userBlock(spec: DomainSpec): string {
   const noSelfWrite = perUser.filter(([, f]) => f.selfWrite === false).map(([field]) => field).sort();
   const noManagerWrite = perUser.filter(([, f]) => f.managerWrite === false).map(([field]) => field).sort();
   const noManagerRead = perUser.filter(([, f]) => f.managerRead === false).map(([field]) => field).sort();
+  const salesRepSupervise = perUser.filter(([, f]) => f.salesRepSupervise === true).map(([field]) => field).sort();
 
-  // Mirrors domainDocuments(): a user shard is readable by its owner regardless of the domain's shared
-  // read rule, by any Administrator, and by a manager unless the field opts out of manager visibility.
-  const readable = [
-    "uid == request.auth.uid ? hasAccessRecord()",
-    "isAdmin()",
-    noManagerRead.length
-      ? `(!(field in ${list(noManagerRead)}) && manages(uid))`
-      : "manages(uid)",
-  ];
-  // Mirrors userShardWritable(): Administrator is checked *before* the owner, so an Administrator may
-  // write shards that even their owner may not (compensation, PTO ledger, payroll disbursements).
-  const writable = [
-    noSelfWrite.length
-      ? `uid == request.auth.uid ? (!(field in ${list(noSelfWrite)}) && isEmployee())`
-      : "uid == request.auth.uid ? isEmployee()",
-    noManagerWrite.length
-      ? `(!(field in ${list(noManagerWrite)}) && manages(uid) && activeEmployee())`
-      : "(manages(uid) && activeEmployee())",
-  ];
+  const managerReadable = noManagerRead.length
+    ? `(!(field in ${list(noManagerRead)}) && manages(uid))`
+    : "manages(uid)";
+  const supervisorReadable = salesRepSupervise.length
+    ? `(field in ${list(salesRepSupervise)} && supervisesBrandAmbassador(uid))`
+    : "false";
+  const managerWritable = noManagerWrite.length
+    ? `(!(field in ${list(noManagerWrite)}) && manages(uid) && activeEmployee())`
+    : "(manages(uid) && activeEmployee())";
+  const supervisorWritable = salesRepSupervise.length
+    ? `(field in ${list(salesRepSupervise)} && supervisesBrandAmbassador(uid) && activeEmployee())`
+    : "false";
+
+  // A user shard is readable by its owner, any Administrator, an ordinary manager where enabled, and for
+  // explicitly opted-in fields only, the Sales Representative directly supervising a Brand Ambassador.
+  const ownerReadable = "uid == request.auth.uid ? hasAccessRecord()";
+  const ownerWritable = noSelfWrite.length
+    ? `uid == request.auth.uid ? (!(field in ${list(noSelfWrite)}) && isEmployee())`
+    : "uid == request.auth.uid ? isEmployee()";
 
   return `    // ${spec.key}
     match /{uid}/${spec.id}/{field} {
       allow get, list: if field in ${list(fields)}
-        && (${readable[0]} : (${readable[1]} || ${readable[2]}));
+        && (${ownerReadable} : (isAdmin() || ${managerReadable} || ${supervisorReadable}));
       allow write: if field in ${list(fields)}
-        && (isAdmin() || (${writable[0]} : ${writable[1]}));
+        && (isAdmin() || (${ownerWritable} : (${managerWritable} || ${supervisorWritable})));
     }`;
 }
 
@@ -177,6 +178,15 @@ service cloud.firestore {
             && get(accessPath(uid)).data.team in access().managedTeams
           )
         );
+    }
+
+    /** Narrow BA supervision. This never grants a Sales Representative general manager/HR access. */
+    function supervisesBrandAmbassador(uid) {
+      return uid != request.auth.uid
+        && isActiveRole('Sales Representative')
+        && exists(accessPath(uid))
+        && get(accessPath(uid)).data.role == 'Brand Ambassador'
+        && get(accessPath(uid)).data.managerId == request.auth.uid;
     }
 
     // --- first-Administrator bootstrap --------------------------------------
