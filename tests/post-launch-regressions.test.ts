@@ -76,6 +76,7 @@ describe("post-launch onboarding repair", () => {
 
     const broken = {
       ...prepared,
+      employees: prepared.employees.map((item) => item.userId === REP_A ? { ...item, jobTitle: "Senior Sales Representative", location: "Phoenix Field Office" } : item),
       lifecycleCases: prepared.lifecycleCases.filter((item) => !(item.userId === REP_A && item.type === "Onboarding")),
       privateProfiles: prepared.privateProfiles.map((item) => item.userId === REP_A ? { ...item, phone: "6025550100", address: "Phoenix, AZ", emergencyContact: "Pat 6025550199" } : item),
     };
@@ -86,6 +87,8 @@ describe("post-launch onboarding repair", () => {
     assert.equal(repaired.employees.filter((item) => item.userId === REP_A).length, 1, "repair must not duplicate the employee");
     assert.equal(repaired.lifecycleCases.filter((item) => item.userId === REP_A && item.type === "Onboarding").length, 1, "repair must restore exactly one onboarding case");
     assert.equal(repaired.privateProfiles.find((item) => item.userId === REP_A)?.phone, "6025550100", "repair must preserve employee-entered profile data");
+    assert.equal(repaired.employees.find((item) => item.userId === REP_A)?.jobTitle, "Senior Sales Representative", "repair must preserve a valid HR edit instead of replaying an old draft");
+    assert.equal(repaired.employees.find((item) => item.userId === REP_A)?.location, "Phoenix Field Office", "repair must preserve a valid HR work-location edit");
   });
 });
 
