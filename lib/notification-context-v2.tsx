@@ -19,17 +19,54 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   useEffect(() => { const handle = window.setTimeout(() => setState((current) => normalizeNotificationState(current, data.users)), 0); return () => window.clearTimeout(handle); }, [data.users]);
   useEffect(() => { if (typeof window !== "undefined") momentumStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(state)); }, [state]);
   useRemoteStorageSync(NOTIFICATION_STORAGE_KEY, () => setState(readState(data.users)));
-  useEffect(() => { const handle = window.setTimeout(() => setState((current) => { const existing = new Set(current.deliveries.map((item) => deliveryKey(item.sourceEventId, item.recipientUserId, item.channel))); const additions: NotificationDelivery[] = []; for (const event of audit.events.slice(0, 500)) { if (!auditEventCreatesNotification(event)) continue; const copy = notificationCopy(event); for (const userId of resolveNotificationRecipients(event, data)) { const preference = current.preferences.find((item) => item.userId === userId); if (!preference) continue; for (const channel of enabledChannels(preference)) { const key = deliveryKey(event.id, userId, channel); if (existing.has(key)) continue; existing.add(key); additions.push({ id: uid("notice"), sourceEventId: event.id, recipientUserId: userId, channel, title: copy.title, detail: copy.detail, tone: copy.tone, createdAt: event.at, status: channel === "In app" ? "Unread" : "Awaiting integration" }); } } } return additions.length ? { ...current, deliveries: [...additions, ...current.deliveries].slice(0, 12000) } : current; }), 0); return () => window.clearTimeout(handle); }, [audit.events, data]);
+
+  /*
+   * Audit events are the source of truth for generated notifications. Rebuild the copy for existing
+   * deliveries as well as new ones so old code-like messages are upgraded to plain English after deploy.
+   */
+  useEffect(() => {
+    const handle = window.setTimeout(() => setState((current) => {
+      const sourceEvents = audit.events.slice(0, 500).filter(auditEventCreatesNotification);
+      const eventById = new Map(sourceEvents.map((event) => [event.id, event]));
+      let copyChanged = false;
+      const refreshed = current.deliveries.map((delivery) => {
+        const event = eventById.get(delivery.sourceEventId);
+        if (!event) return delivery;
+        const copy = notificationCopy(event, data);
+        if (delivery.title === copy.title && delivery.detail === copy.detail && delivery.tone === copy.tone) return delivery;
+        copyChanged = true;
+        return { ...delivery, title: copy.title, detail: copy.detail, tone: copy.tone };
+      });
+
+      const existing = new Set(refreshed.map((item) => deliveryKey(item.sourceEventId, item.recipientUserId, item.channel)));
+      const additions: NotificationDelivery[] = [];
+      for (const event of sourceEvents) {
+        const copy = notificationCopy(event, data);
+        for (const userId of resolveNotificationRecipients(event, data)) {
+          const preference = current.preferences.find((item) => item.userId === userId);
+          if (!preference) continue;
+          for (const channel of enabledChannels(preference)) {
+            const key = deliveryKey(event.id, userId, channel);
+            if (existing.has(key)) continue;
+            existing.add(key);
+            additions.push({ id: uid("notice"), sourceEventId: event.id, recipientUserId: userId, channel, title: copy.title, detail: copy.detail, tone: copy.tone, createdAt: event.at, status: channel === "In app" ? "Unread" : "Awaiting integration" });
+          }
+        }
+      }
+      return copyChanged || additions.length ? { ...current, deliveries: [...additions, ...refreshed].slice(0, 12000) } : current;
+    }), 0);
+    return () => window.clearTimeout(handle);
+  }, [audit.events, data]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => setState((current) => {
-      const statuses = inventoryProductStatuses(ledger, data).filter((item) => item.reorderNeeded);
-      const activeSourceIds = new Set(statuses.map((item) => `inventory-threshold:${item.requiresManagerApproval ? "critical" : "reorder"}:${item.product}`));
+      const stockStatuses = inventoryProductStatuses(ledger, data).filter((item) => item.reorderNeeded);
+      const activeSourceIds = new Set(stockStatuses.map((item) => `inventory-threshold:${item.requiresManagerApproval ? "critical" : "reorder"}:${item.product}`));
       const retained = current.deliveries.filter((delivery) => !delivery.sourceEventId.startsWith("inventory-threshold:") || activeSourceIds.has(delivery.sourceEventId));
       const existing = new Set(retained.map((item) => deliveryKey(item.sourceEventId, item.recipientUserId, item.channel)));
       const recipientIds = data.users.filter((user) => user.role === "Administrator" || user.role === "Sales Manager" || user.role === "Warehouse").map((user) => user.id);
       const additions: NotificationDelivery[] = [];
-      for (const stock of statuses) {
+      for (const stock of stockStatuses) {
         const sourceEventId = `inventory-threshold:${stock.requiresManagerApproval ? "critical" : "reorder"}:${stock.product}`;
         const title = stock.requiresManagerApproval ? "Low stock approval required" : "Inventory reorder required";
         const detail = `${stock.product} has ${stock.available} available sellable cases. ${stock.requiresManagerApproval ? "Sales require manager approval below 50 cases. Replenishment is also required." : "Replenishment is required below 500 cases."}`;
@@ -56,7 +93,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           const user = data.users.find((item) => item.id === delivery.recipientUserId);
           const recipients = new Set(data.users.filter((item) => item.role === "Administrator" || item.id === user?.managerId).map((item) => item.id)); recipients.delete(delivery.recipientUserId);
           let created = false;
-          for (const recipientUserId of recipients) { additions.push({ id: uid("escalation"), sourceEventId: delivery.sourceEventId, recipientUserId, channel: "In app", title: `Escalation: ${delivery.title}`, detail: `${user?.name ?? "A user"} has an unread operational notification beyond the ${current.escalationHours}-hour escalation window.`, tone: "warning", createdAt: checkedAt, status: "Unread", escalationOf: delivery.id }); created = true; }
+          for (const recipientUserId of recipients) { additions.push({ id: uid("escalation"), sourceEventId: delivery.sourceEventId, recipientUserId, channel: "In app", title: `Needs attention: ${delivery.title}`, detail: `${user?.name ?? "A team member"} has not opened this notification within the ${current.escalationHours}-hour follow-up window.`, tone: "warning", createdAt: checkedAt, status: "Unread", escalationOf: delivery.id }); created = true; }
           if (!created) return delivery; changed = true; return { ...delivery, escalatedAt: checkedAt };
         });
         return changed ? { ...current, deliveries: [...additions, ...updated] } : current;
