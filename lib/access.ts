@@ -1,9 +1,10 @@
 import type { Account, Approval, Bulletin, PageKey, WorkspaceData, WorkspaceUser } from "./types";
 
 const pageAccess: Record<WorkspaceUser["role"], PageKey[]> = {
-  Administrator: ["home","work","actions","accounts","accountHealth","crmTools","dispatch","retail","orders","orderCash","inventory","inventoryLedger","marketing","people","employees","newHire","onboarding","payroll","finance","accounting","reports","performance","reportingCenter","audit","settings","dataExchange","help"],
+  Administrator: ["home","work","actions","accounts","accountHealth","crmTools","dispatch","retail","orders","orderCash","inventory","inventoryLedger","marketing","brandAmbassadors","people","employees","newHire","onboarding","trainingAdmin","payroll","finance","accounting","reports","performance","reportingCenter","audit","settings","dataExchange","help"],
   "Sales Manager": ["home","work","actions","accounts","accountHealth","crmTools","dispatch","retail","orders","orderCash","marketing","people","employees","payroll","finance","reports","performance","reportingCenter","help"],
-  "Sales Representative": ["home","work","actions","accounts","accountHealth","crmTools","dispatch","retail","orders","orderCash","marketing","people","employees","payroll","finance","reports","performance","reportingCenter","help"],
+  "Sales Representative": ["home","work","actions","accounts","accountHealth","crmTools","dispatch","retail","orders","orderCash","marketing","brandAmbassadors","people","employees","payroll","finance","reports","performance","reportingCenter","help"],
+  "Brand Ambassador": ["home","brandAmbassadors","help"],
   Operations: ["home","work","actions","dispatch","orders","orderCash","inventory","inventoryLedger","marketing","people","employees","payroll","finance","help"],
   Warehouse: ["home","work","actions","orders","inventory","inventoryLedger","people","employees","payroll","help"],
   Customer: ["home","accounts","orders","help"],
@@ -15,7 +16,7 @@ export const canCreateAccount = (user: WorkspaceUser | null) => Boolean(user && 
 export const canCreateOrder = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager","Sales Representative","Customer"].includes(user.role));
 export const canAdvanceFulfillment = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Operations"].includes(user.role));
 export const canManageSchedule = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager","Operations"].includes(user.role));
-export const canCreateScheduleItem = (user: WorkspaceUser | null) => Boolean(user && !["Customer","Warehouse"].includes(user.role));
+export const canCreateScheduleItem = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager","Sales Representative","Operations"].includes(user.role));
 export const canPostBulletin = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager"].includes(user.role));
 export const canReconcileOrderPayment = (user: WorkspaceUser | null | undefined) => user?.role === "Administrator";
 export const canManageMarketing = (user: WorkspaceUser | null | undefined) => user?.role === "Administrator";
@@ -34,10 +35,19 @@ export const canManageUser = (data: WorkspaceData, actor: WorkspaceUser | null |
   return managedUserIds(data, actor).has(targetUserId);
 };
 
+/** Brand Ambassador supervision is intentionally narrower than HR management. */
+export const canSuperviseBrandAmbassador = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
+  if (!actor) return false;
+  const target = data.users.find((user) => user.id === targetUserId && user.role === "Brand Ambassador");
+  if (!target) return false;
+  if (actor.role === "Administrator") return true;
+  return actor.role === "Sales Representative" && target.managerId === actor.id;
+};
+
 export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
   if (!actor) return false;
   const target = data.users.find((user) => user.id === targetUserId);
-  if (!target || target.role === "Customer" || target.role === "Warehouse") return false;
+  if (!target || target.role === "Customer" || target.role === "Warehouse" || target.role === "Brand Ambassador") return false;
   if (actor.role === "Administrator") return ["Sales", "Operations", "Leadership"].includes(target.team);
   if (actor.role === "Operations") return target.team === "Operations";
   if (actor.role === "Sales Manager") return target.team === "Sales" && canManageUser(data, actor, target.id, true);
@@ -48,6 +58,7 @@ export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser 
 export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, account: Account) => {
   if (["Administrator","Operations","Warehouse"].includes(user.role)) return true;
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
+  if (user.role === "Brand Ambassador") return false;
   if (user.role === "Sales Representative") return account.ownerId === user.id;
   return managedUserIds(data, user).has(account.ownerId);
 };
@@ -80,7 +91,7 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
   const accounts = data.accounts.filter(account => accountIsVisible(data, user, account));
   const accountIds = new Set(accounts.map(account => account.id));
   const managedIds = managedUserIds(data, user);
-  const users = user.role === "Administrator" ? data.users : data.users.filter(candidate => candidate.id === user.id || (user.role === "Sales Manager" && managedIds.has(candidate.id)) || (user.role === "Sales Representative" && candidate.id === user.managerId));
+  const users = user.role === "Administrator" ? data.users : data.users.filter(candidate => candidate.id === user.id || (user.role === "Sales Manager" && managedIds.has(candidate.id)) || (user.role === "Sales Representative" && (candidate.id === user.managerId || (candidate.role === "Brand Ambassador" && candidate.managerId === user.id))));
   const appointments = user.role === "Administrator"
     ? data.appointments
     : user.role === "Operations"
@@ -91,7 +102,7 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
           ? data.appointments.filter(item => item.ownerId === user.id)
           : [];
   const orders = ["Administrator","Operations","Warehouse"].includes(user.role) ? data.orders : data.orders.filter(order => accountIds.has(order.accountId));
-  const placements = ["Customer","Operations","Warehouse"].includes(user.role) ? [] : user.role === "Administrator" ? data.placements : data.placements.filter(item => accountIds.has(item.accountId));
+  const placements = ["Customer","Operations","Warehouse","Brand Ambassador"].includes(user.role) ? [] : user.role === "Administrator" ? data.placements : data.placements.filter(item => accountIds.has(item.accountId));
   const approvals = user.role === "Administrator" ? data.approvals : user.role === "Sales Manager" ? data.approvals.filter(item => (item.requesterId && managedIds.has(item.requesterId)) || Boolean(item.team && (user.managedTeams ?? []).includes(item.team))) : data.approvals.filter(item => item.requesterId === user.id);
   const timecards = user.role === "Administrator" ? data.timecards : user.role === "Sales Manager" ? data.timecards.filter(card => card.userId === user.id || managedIds.has(card.userId)) : data.timecards.filter(card => card.userId === user.id);
   const timecardUserIds = new Set(timecards.map(card => card.userId));
@@ -106,7 +117,9 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
     ? data.activities.filter(item => item.type === "order" || (item.type === "visit" && appointments.some(appointment => appointment.accountId === item.accountId)))
     : user.role === "Warehouse"
       ? data.activities.filter(item => item.type === "order")
-      : data.activities.filter(item => !item.accountId || accountIds.has(item.accountId));
+      : user.role === "Brand Ambassador"
+        ? []
+        : data.activities.filter(item => !item.accountId || accountIds.has(item.accountId));
   return {
     users, accounts, activities, appointments, orders, placements,
     inventory: ["Administrator","Operations","Warehouse"].includes(user.role) ? data.inventory : [],
