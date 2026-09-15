@@ -14,6 +14,21 @@ type RoleGuide = {
 };
 
 const roleGuides: Partial<Record<Role, RoleGuide>> = {
+  Administrator: {
+    heading: "Administrator",
+    summary: "Keep the company workspace accurate, resolve blocked workflows, maintain access, and use the source record before making an override.",
+    priorities: [
+      "Start with My Work and Human Resources for anything waiting on a company decision.",
+      "Use Administration for access, integrations, audit tools, and system controls.",
+      "Use department pages to correct the source record instead of patching symptoms somewhere else.",
+      "Use Audit trail when you need to confirm who changed a record and what changed.",
+    ],
+    guardrails: [
+      "Use overrides only when the normal workflow cannot reasonably be completed.",
+      "Do not erase operational history to make a record look cleaner.",
+      "Keep role access narrow. Give people the tools their job requires, not broad Administrator access.",
+    ],
+  },
   "Sales Manager": {
     heading: "Sales Manager",
     summary: "Manage the sales team, keep field work moving, review submitted work, and make sure account follow-up is happening on time.",
@@ -44,6 +59,19 @@ const roleGuides: Partial<Record<Role, RoleGuide>> = {
       "A completed visit needs an outcome, a useful note, and the next action when follow-up is required.",
     ],
   },
+  "Brand Ambassador": {
+    heading: "Brand Ambassador",
+    summary: "Use Momentum as your event and training home. Your schedule only contains work Momentum has actually assigned to you.",
+    priorities: [
+      "Check My schedule for your upcoming event date, time, address, and instructions.",
+      "Open assigned training before the event when a module is required.",
+      "Use the event details in Momentum as the source of truth for where and when to report.",
+    ],
+    guardrails: [
+      "There is no open-job marketplace in Momentum. Your page shows assigned work only.",
+      "Customer records, orders, payroll administration, and employee records are intentionally outside Brand Ambassador access.",
+    ],
+  },
   Operations: {
     heading: "Operations",
     summary: "Move approved orders through fulfillment, protect inventory accuracy, document custody changes, handle delivery work, and resolve inventory exceptions with a record behind every movement.",
@@ -57,6 +85,19 @@ const roleGuides: Partial<Record<Role, RoleGuide>> = {
       "Do not mark an order paid because it was delivered. Payment settlement is a separate event.",
       "Inventory should not move without a recorded source, destination, quantity, reason, and actor.",
       "Sales notes and unrelated sales execution stay outside Operations scope.",
+    ],
+  },
+  Warehouse: {
+    heading: "Warehouse",
+    summary: "Keep physical inventory and fulfillment records aligned with what actually moved through the warehouse.",
+    priorities: [
+      "Use Inventory & fulfillment for lot, reservation, movement, and count records.",
+      "Use Orders to see the fulfillment work that is ready for warehouse action.",
+      "Complete your own workforce records through the employee areas available to you.",
+    ],
+    guardrails: [
+      "Do not move inventory without a recorded movement.",
+      "Do not change customer sales records to solve a warehouse exception.",
     ],
   },
   Customer: {
@@ -81,15 +122,21 @@ const faq = [
   ["What is the difference between a customer and a location?", "The customer is the parent business relationship. A location is the specific store, office, franchise, or site where work happens. Orders, appointments, responsibility, and sales activity can belong to one location without assigning the entire customer relationship to that person."],
   ["How do approvals work?", "Open the underlying order, timecard, request, or other source record first. Approve only after the record is complete. Return it when a correction is needed. The history keeps the decision and actor."],
   ["Where can I see what changed?", "Managers and administrators can use the audit/history views for detailed changes. Other users see the operational changes that matter to their own work, such as a reschedule, status change, or returned item."],
-  ["What do the notifications mean?", "Notifications point you back to the record that changed or needs attention. In-app alerts work in the demo. Email and SMS delivery are prepared for integration but are not connected yet."],
-  ["Can I delete or reset live company records?", "No. Demo data can be reset by an administrator. Production mode does not expose a reset button. Corrections should preserve history rather than erase it."],
+  ["What do notifications mean?", "Notifications describe the business change in plain language and point you toward the record that changed or needs attention."],
+  ["Can I delete or reset live company records?", "No. Production corrections should preserve history instead of erasing it. Administrators have specific recovery and override controls for workflows that become blocked."],
+] as const;
+
+const platformBasics = [
+  { label: "Start", title: "Home", detail: "Your current work, updates, goals, and exceptions." },
+  { label: "Act", title: "My Work", detail: "Approvals, exceptions, and items waiting on you." },
+  { label: "Find", title: "Search", detail: "Command K / Control K searches the records in your scope.", icon: true },
+  { label: "Verify", title: "History", detail: "Check the audit trail before guessing who changed something." },
 ];
 
 export function HelpPage() {
   const { currentUser, navigate } = useWorkspace();
   if (!currentUser) return null;
   const guide = roleGuides[currentUser.role];
-  const leadership = currentUser.role === "Administrator";
   const allQuickLinks: Array<{ label: string; page: PageKey }> = [
     { label: "Home", page: "home" },
     { label: "My Work", page: "work" },
@@ -97,6 +144,7 @@ export function HelpPage() {
     { label: "Dispatch", page: "dispatch" },
     { label: "Orders", page: "orders" },
     { label: "Human Resources", page: "people" },
+    { label: "Brand Ambassadors", page: "brandAmbassadors" },
     { label: "Reports", page: "reports" },
     { label: "Administration", page: "settings" },
   ];
@@ -106,44 +154,50 @@ export function HelpPage() {
     <PageHeader
       eyebrow="Help & training"
       title="How to use Momentum"
-      description={leadership ? "A practical reference for the parts of the platform you may need to explain, review, or troubleshoot." : "A practical guide to your role, the screens you use most, and the rules that keep records clean."}
-      actions={<StatusPill tone="info">Role: {currentUser.title}</StatusPill>}
+      description="A role-aware guide to the screens you use, the records you control, and the quickest path when you need help."
+      actions={<StatusPill tone="info">{currentUser.title}</StatusPill>}
     />
 
-    {!leadership && guide && <div className="company-grid company-grid--two">
-      <Section title={`Your role: ${guide.heading}`} description={guide.summary}>
-        <div className="company-request-list">{guide.priorities.map((item, index) => <article key={item}><span><ClipboardCheck size={17}/></span><div><small>Step {index + 1}</small><strong>{item}</strong></div></article>)}</div>
-      </Section>
-      <Section title="What to keep in mind" description="These rules prevent most avoidable workflow problems.">
-        <div className="company-request-list">{guide.guardrails.map((item) => <article key={item}><span><ShieldCheck size={17}/></span><div><strong>{item}</strong></div></article>)}</div>
-      </Section>
-    </div>}
+    {guide && <section className="help-role-grid" aria-label={`${guide.heading} guide`}>
+      <article className="help-role-card help-role-card--primary">
+        <header><ClipboardCheck size={20}/><div><span>Your workflow</span><h2>{guide.heading}</h2></div></header>
+        <p>{guide.summary}</p>
+        <ol>{guide.priorities.map((item) => <li key={item}><span aria-hidden="true"/><p>{item}</p></li>)}</ol>
+      </article>
+      <article className="help-role-card help-role-card--guardrails">
+        <header><ShieldCheck size={20}/><div><span>Guardrails</span><h2>Keep records clean</h2></div></header>
+        <ul>{guide.guardrails.map((item) => <li key={item}>{item}</li>)}</ul>
+      </article>
+    </section>}
 
-    <Section title="Platform basics" description="The same habits apply across most roles.">
-      <div className="company-rule-facts">
-        <div><span>Start</span><strong>Home</strong><small>Current work, goals, updates, and exceptions</small></div>
-        <div><span>Act</span><strong>My Work</strong><small>Items waiting on you or your team</small></div>
-        <div><span>Find</span><strong><Search size={16}/> Search</strong><small>Command K / Control K searches your permitted records</small></div>
-        <div><span>Verify</span><strong>History</strong><small>Use the record history before guessing who changed something</small></div>
-      </div>
+    <Section title="Platform basics" description="Four habits keep most Momentum workflows simple." className="help-section">
+      <div className="help-basics-grid">{platformBasics.map((item) => <article key={item.label}>
+        <span>{item.label}</span>
+        <strong>{item.icon && <Search size={16}/>} {item.title}</strong>
+        <p>{item.detail}</p>
+      </article>)}</div>
     </Section>
 
-    <div className="company-grid company-grid--two">
-      <Section title="Quick links" description="Open the areas available to your role.">
-        <div className="request-actions">{quickLinks.map((item) => <Button key={item.page} size="sm" variant="secondary" onClick={() => navigate(item.page)}>{item.label}</Button>)}</div>
-      </Section>
-      <Section title="Training library" description="Platform training is separate from department job training.">
-        <div className="company-request-list">
-          <article><span><BookOpenCheck size={18}/></span><div><strong>Finding records and understanding access</strong><p>Use global search, role-based navigation, and record history without working around permissions.</p></div></article>
-          <article><span><BookOpenCheck size={18}/></span><div><strong>Customer, location, and job structure</strong><p>Keep the parent business separate from the specific site where the appointment, order, placement, or delivery occurred.</p></div></article>
-          <article><span><BookOpenCheck size={18}/></span><div><strong>Approvals and corrections</strong><p>Review the source record, make the decision, and preserve the correction trail instead of deleting history.</p></div></article>
-          <article><span><BookOpenCheck size={18}/></span><div><strong>Department training</strong><p>Job-specific playbooks, policies, product training, and required acknowledgments are maintained as assigned employee training records.</p></div></article>
+    <Section title="Quick links" description="Jump directly to the parts of Momentum available to your role." className="help-section help-quick-links-section">
+      <div className="help-quick-links">{quickLinks.map((item) => <Button key={item.page} size="sm" variant="secondary" onClick={() => navigate(item.page)}>{item.label}</Button>)}</div>
+    </Section>
+
+    <div className="help-lower-grid">
+      <Section title="Training library" description="Platform orientation and assigned job training serve different purposes." className="help-section">
+        <div className="help-training-list">
+          <article><BookOpenCheck size={18}/><div><strong>Finding records and understanding access</strong><p>Use global search, role-based navigation, and record history without working around permissions.</p></div></article>
+          <article><BookOpenCheck size={18}/><div><strong>Customer, location, and job structure</strong><p>Keep the parent business separate from the specific site where the appointment, order, placement, or delivery occurred.</p></div></article>
+          <article><BookOpenCheck size={18}/><div><strong>Approvals and corrections</strong><p>Review the source record, make the decision, and preserve the correction trail instead of deleting history.</p></div></article>
+          <article><BookOpenCheck size={18}/><div><strong>Assigned department training</strong><p>Role-specific playbooks, product training, videos, documents, and required materials appear in your assigned training.</p></div></article>
         </div>
       </Section>
-    </div>
 
-    <Section title="Frequently asked questions" description="Short answers for the questions most likely to come up when an administrator is not available.">
-      <div className="company-request-list">{faq.map(([question, answer]) => <article key={question}><span><CircleHelp size={18}/></span><div><strong>{question}</strong><p>{answer}</p></div></article>)}</div>
-    </Section>
+      <Section title="Frequently asked questions" description="Open only the answer you need." className="help-section">
+        <div className="help-faq-list">{faq.map(([question, answer]) => <details key={question}>
+          <summary><CircleHelp size={17}/><span>{question}</span></summary>
+          <p>{answer}</p>
+        </details>)}</div>
+      </Section>
+    </div>
   </div>;
 }
