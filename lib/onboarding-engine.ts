@@ -13,6 +13,8 @@ export type OnboardingReadiness = {
   requiredTrainingIds: string[];
 };
 
+type PrepareOnboardingOptions = { preserveExistingEmployee?: boolean };
+
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 export function requiredOnboardingDocumentTemplates(classification: WorkerClassification) {
@@ -55,13 +57,26 @@ export function onboardingPackageNeedsRepair(state: HCMState, draft: Provisionin
   return false;
 }
 
-export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, draft: ProvisioningDraft, userId: string, actorId: string): HCMState {
+export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, draft: ProvisioningDraft, userId: string, actorId: string, options: PrepareOnboardingOptions = {}): HCMState {
   const user = data.users.find((item) => item.id === userId && item.role !== "Customer");
   if (!user || draft.linkedUserId !== userId || user.email.toLowerCase() !== draft.workEmail.toLowerCase()) return state;
   const at = new Date().toISOString();
   const existingEmployee = state.employees.find((item) => item.userId === userId);
   const employeeNumber = existingEmployee?.employeeNumber ?? `MD-${String(state.employees.length + 1).padStart(4, "0")}`;
-  const preparedEmployee: EmploymentRecord = {
+  const preserve = Boolean(options.preserveExistingEmployee && existingEmployee);
+  const preparedEmployee: EmploymentRecord = preserve && existingEmployee ? {
+    ...existingEmployee,
+    status: "Prehire",
+    hireDate: existingEmployee.hireDate ?? draft.startDate,
+    jobTitle: existingEmployee.jobTitle.trim() || draft.jobTitle,
+    department: existingEmployee.department.trim() || draft.team,
+    location: existingEmployee.location.trim() || draft.workLocation,
+    managerId: existingEmployee.managerId ?? draft.managerId,
+    classification: existingEmployee.classification === "Not configured" ? draft.classification : existingEmployee.classification,
+    payGroup: existingEmployee.payGroup.trim() && existingEmployee.payGroup !== "Not configured" ? existingEmployee.payGroup : draft.payGroup,
+    standardWeeklyHours: existingEmployee.standardWeeklyHours ?? draft.standardWeeklyHours,
+    updatedAt: at,
+  } : {
     ...(existingEmployee ?? {
       userId,
       employeeNumber,
@@ -127,7 +142,7 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
     };
   }
 
-  return appendAudit(next, { actorId, action: "Prepared employee onboarding package", entityType: "LifecycleCase", entityId: lifecycleCase.id, before: existingEmployee?.status ?? "Not present", after: "Prehire", reason: `Provisioning draft ${draft.id}` });
+  return appendAudit(next, { actorId, action: preserve ? "Repaired employee onboarding package" : "Prepared employee onboarding package", entityType: "LifecycleCase", entityId: lifecycleCase.id, before: existingEmployee?.status ?? "Not present", after: "Prehire", reason: `Provisioning draft ${draft.id}` });
 }
 
 export function onboardingReadiness(state: HCMState, record: IdentityProvisioningRecord | undefined, userId: string): OnboardingReadiness {
