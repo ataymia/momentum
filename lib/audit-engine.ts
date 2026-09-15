@@ -27,7 +27,11 @@ export function normalizeAuditState(input: unknown): AuditState {
   return { version: 1, events: events.slice(0, 10000) };
 }
 function recordLabel(record: Record<string, unknown>, id: string) { return text(record.number) || text(record.name) || text(record.title) || text(record.legalName) || text(record.lotCode) || text(record.email) || text(record.workEmail) || id; }
-function relatedAccount(record: Record<string, unknown>, module: string, collection: string, id: string) { if (module === "Workspace" && collection === "accounts") return id; return text(record.accountId) || text(record.locationId); }
+function relatedAccount(record: Record<string, unknown>, module: string, collection: string, id: string) {
+  if (module === "Workspace" && collection === "accounts") return id;
+  if (module === "Workspace" && collection === "approvals" && text(record.type) === "Territory exception") return text(record.recordId);
+  return text(record.accountId) || text(record.locationId);
+}
 function relatedUser(record: Record<string, unknown>, module: string, collection: string, id: string) { if (module === "Workspace" && collection === "users") return id; return text(record.userId) || text(record.employeeId) || text(record.requesterId) || text(record.ownerId) || text(record.linkedUserId); }
 
 function commerceRelatedAccount(state: Record<string, unknown>, collection: string, record: Record<string, unknown>) {
