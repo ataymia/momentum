@@ -33,30 +33,30 @@ export function TerritoryPanel(){
 
   return <>
     <div className="company-rule-facts">
-      <div><span>Active territories</span><strong>{active.length}</strong></div>
-      <div><span>Accounts needing coverage</span><strong>{unresolved.length}</strong><small>{missingZip} missing ZIP · {uncovered} outside active coverage</small></div>
-      <div><span>Boundary rule</span><strong>No shared ZIPs</strong><small>Active territories cannot overlap</small></div>
-      <div><span>Account ownership</span><strong>Inherited</strong><small>Active ZIP determines responsible rep</small></div>
+      <div><span>Active geographic suggestions</span><strong>{active.length}</strong></div>
+      <div><span>Accounts outside suggestion</span><strong>{unresolved.length}</strong><small>{missingZip} missing ZIP · {uncovered} outside configured coverage</small></div>
+      <div><span>Suggestion map</span><strong>One per ZIP</strong><small>Active ZIP suggestions do not overlap</small></div>
+      <div><span>Account ownership</span><strong>Manual</strong><small>ZIP never changes the responsible rep automatically</small></div>
     </div>
-    <Section title="Sales territories" description="Active ZIP coverage cannot overlap. Accounts inherit the sales representative assigned to their ZIP." action={manager?<Button size="sm" variant="gold" icon={<Plus size={15}/>} onClick={beginCreate}>New territory</Button>:undefined}>
+    <Section title="Sales territory suggestions" description="ZIP coverage recommends a geographic lane and sales representative. It does not lock account ownership or prevent authorized work outside the suggestion." action={manager?<Button size="sm" variant="gold" icon={<Plus size={15}/>} onClick={beginCreate}>New suggestion</Button>:undefined}>
       <div className="company-request-list">
         {visibleTerritories.map((territory)=>{const owner=data.users.find((user)=>user.id===territory.ownerId);const accounts=territoryAccounts(data,territory.id);return <article key={territory.id}>
-          <div><small>{territory.postalCodes.length?territory.postalCodes.join(", "):"No ZIP coverage yet"}</small><strong>{territory.name}</strong><p>{owner?.name??"Unassigned"} · {accounts.length} account{accounts.length===1?"":"s"}</p></div>
+          <div><small>{territory.postalCodes.length?territory.postalCodes.join(", "):"No ZIP coverage yet"}</small><strong>{territory.name}</strong><p>Suggested rep: {owner?.name??"Unassigned"} · {accounts.length} account{accounts.length===1?"":"s"} in coverage</p></div>
           <StatusPill tone={tone(territory.status)}>{territory.status}</StatusPill>
           {manager&&<Button size="sm" variant="ghost" icon={<Pencil size={14}/>} onClick={()=>beginEdit(territory)}>Edit</Button>}
         </article>})}
-        {visibleTerritories.length===0&&<div className="review-empty"><MapPinned size={24}/><p>{manager?"No sales territories have been configured yet.":"No territory is assigned to you yet."}</p></div>}
+        {visibleTerritories.length===0&&<div className="review-empty"><MapPinned size={24}/><p>{manager?"No geographic sales suggestions have been configured yet.":"No geographic suggestion is assigned to you yet."}</p></div>}
       </div>
-      {unresolved.length>0&&manager?<div className="payroll-control-alert"><ShieldCheck size={18}/><div><strong>{unresolved.length} account{unresolved.length===1?"":"s"} need territory resolution</strong><p>Add a valid ZIP or activate coverage before routing those accounts to a sales representative.</p></div></div>:null}
+      {unresolved.length>0&&manager?<div className="payroll-control-alert"><ShieldCheck size={18}/><div><strong>{unresolved.length} account{unresolved.length===1?"":"s"} differ from the geographic suggestion</strong><p>This is a review signal, not a lock. When a sales rep works outside the suggestion, Momentum requires an explanation, creates a territory-exception review, and notifies management.</p></div></div>:null}
     </Section>
 
-    <Modal open={open} title={editingId?"Edit territory":"Create territory"} description="Draft territories may be planned freely. Active territories must have one sales representative, at least one ZIP, and no overlap with another active territory." onClose={()=>setOpen(false)} footer={<><Button variant="ghost" onClick={()=>setOpen(false)}>Cancel</Button><Button type="submit" form="territory-form">Save territory</Button></>}>
+    <Modal open={open} title={editingId?"Edit geographic suggestion":"Create geographic suggestion"} description="Draft suggestions may be planned freely. Active suggestions need one recommended sales representative, at least one ZIP, and no overlap with another active suggestion. Account ownership remains manual." onClose={()=>setOpen(false)} footer={<><Button variant="ghost" onClick={()=>setOpen(false)}>Cancel</Button><Button type="submit" form="territory-form">Save suggestion</Button></>}>
       <form id="territory-form" className="form-grid" onSubmit={submit}>
         {message&&<div className="form-callout field--full"><p>{message}</p></div>}
         <Field label="Territory name"><input required value={form.name} onChange={(event)=>setForm({...form,name:event.target.value})} placeholder="Phoenix North"/></Field>
-        <Field label="Sales representative"><select value={form.ownerId} onChange={(event)=>setForm({...form,ownerId:event.target.value})}><option value="">Unassigned</option>{reps.map((user)=><option key={user.id} value={user.id}>{user.name}</option>)}</select></Field>
+        <Field label="Suggested sales representative"><select value={form.ownerId} onChange={(event)=>setForm({...form,ownerId:event.target.value})}><option value="">Unassigned</option>{reps.map((user)=><option key={user.id} value={user.id}>{user.name}</option>)}</select></Field>
         <Field label="Status"><select value={form.status} onChange={(event)=>setForm({...form,status:event.target.value as TerritoryStatus})}><option>Draft</option><option>Active</option><option>Suspended</option></select></Field>
-        <Field label="ZIP coverage" className="field--full" hint="Separate ZIP codes with commas or spaces. ZIP+4 is normalized to the first five digits."><textarea rows={4} value={form.postalCodes} onChange={(event)=>setForm({...form,postalCodes:event.target.value})} placeholder="85016, 85018, 85028"/></Field>
+        <Field label="ZIP suggestion coverage" className="field--full" hint="Separate ZIP codes with commas or spaces. ZIP+4 is normalized to the first five digits."><textarea rows={4} value={form.postalCodes} onChange={(event)=>setForm({...form,postalCodes:event.target.value})} placeholder="85016, 85018, 85028"/></Field>
         <Field label="Internal note" className="field--full"><textarea rows={3} value={form.notes} onChange={(event)=>setForm({...form,notes:event.target.value})}/></Field>
       </form>
     </Modal>
