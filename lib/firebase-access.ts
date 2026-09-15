@@ -16,8 +16,8 @@ export const EMPLOYEE_DIRECTORY_COLLECTION="employeeDirectory";
 export const PLATFORM_BOOTSTRAP_DOCUMENT="platform/bootstrap";
 export const PLATFORM_META_DOCUMENT="platform/meta";
 
-export const EMPLOYEE_ROLES:Role[]=["Administrator","Sales Manager","Sales Representative","Operations","Warehouse"];
-const roles=new Set<string>(["Administrator","Sales Manager","Sales Representative","Operations","Warehouse","Customer"]);
+export const EMPLOYEE_ROLES:Role[]=["Administrator","Sales Manager","Sales Representative","Brand Ambassador","Operations","Warehouse"];
+const roles=new Set<string>(["Administrator","Sales Manager","Sales Representative","Brand Ambassador","Operations","Warehouse","Customer"]);
 const teams=new Set<string>(["Leadership","Sales","Operations","Customer"]);
 const accountStates=new Set<string>(["Password change required","Onboarding","Pending approval","Active","Suspended","Separated"]);
 
@@ -84,15 +84,17 @@ export function userAccessDocument(record:Omit<UserAccessRecord,"uid">):Record<s
   return{email:record.email.toLowerCase(),role:record.role,team:record.team,managerId:record.managerId??null,managedTeams:record.managedTeams??[],accountState:record.accountState,updatedAt:record.updatedAt,updatedBy:record.updatedBy};
 }
 
-/** Scope the browser uses to decide which per-user Firestore shards to load and write. Mirrors `manages()` in firestore.rules. */
+/** Scope the browser uses to decide which per-user Firestore shards to load and write. Mirrors Security Rules. */
 export type PersistenceScope={
   uid:string;
   role:Role;
   accountState:AccountAccessState;
-  /** Users whose private shards this actor may read (always includes self). */
+  /** Users whose ordinary private shards this actor may read (always includes self). */
   readableUserIds:Set<string>;
-  /** Users this actor manages (direct reports and explicitly managed teams). Excludes self. */
+  /** Users this Sales Manager manages. Excludes self. */
   managedUserIds:Set<string>;
+  /** Brand Ambassadors directly assigned to this Sales Representative. Only opt-in BA fields use this set. */
+  supervisedBrandAmbassadorIds:Set<string>;
 };
 
 export function buildPersistenceScope(access:UserAccessRecord,directory:WorkspaceUser[]):PersistenceScope{
@@ -104,10 +106,16 @@ export function buildPersistenceScope(access:UserAccessRecord,directory:Workspac
       if(user.managerId===access.uid||teamsManaged.has(user.team))managed.add(user.id);
     }
   }
+  const supervisedBrandAmbassadors=new Set<string>();
+  if(access.role==="Sales Representative"){
+    for(const user of directory){
+      if(user.role==="Brand Ambassador"&&user.managerId===access.uid)supervisedBrandAmbassadors.add(user.id);
+    }
+  }
   const readable=new Set<string>([access.uid]);
   if(access.role==="Administrator")for(const user of directory)readable.add(user.id);
   else for(const id of managed)readable.add(id);
-  return{uid:access.uid,role:access.role,accountState:access.accountState,readableUserIds:readable,managedUserIds:managed};
+  return{uid:access.uid,role:access.role,accountState:access.accountState,readableUserIds:readable,managedUserIds:managed,supervisedBrandAmbassadorIds:supervisedBrandAmbassadors};
 }
 
 export const isActiveEmployee=(scope:PersistenceScope)=>scope.accountState==="Active"&&scope.role!=="Customer";
