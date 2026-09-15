@@ -2,6 +2,8 @@
 
 import { AccountingProvider } from "../lib/accounting-context";
 import { AuditProvider } from "../lib/audit-context";
+import { BrandAmbassadorProvider } from "../lib/brand-ambassador-context";
+import { BRAND_AMBASSADOR_STORAGE_KEY } from "../lib/brand-ambassador-engine";
 import { CommerceProvider } from "../lib/commerce-context";
 import { CrmProvider } from "../lib/crm-context";
 import { DOCUMENT_TEMPLATE_STORAGE_KEY } from "../lib/document-template-engine";
@@ -33,6 +35,7 @@ const PRESENTATION_RESET_KEYS = [
   "momentum-audit-v1",
   "momentum-notification-rules-v1",
   "momentum-field-tracking-v1",
+  BRAND_AMBASSADOR_STORAGE_KEY,
   IDENTITY_PROVISIONING_STORAGE_KEY,
   DOCUMENT_TEMPLATE_STORAGE_KEY,
 ];
@@ -54,7 +57,7 @@ function MomentumExperience(){
 }
 
 function MomentumProviders(){
-  return <WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><IdentityProvisioningProvider><FieldTrackingProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></FieldTrackingProvider></IdentityProvisioningProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider>;
+  return <WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><IdentityProvisioningProvider><BrandAmbassadorProvider><FieldTrackingProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></FieldTrackingProvider></BrandAmbassadorProvider></IdentityProvisioningProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider>;
 }
 
 /**
