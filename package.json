@@ -48,7 +48,7 @@
     "esbuild@0.28.1": true,
     "protobufjs@7.6.6": true,
     "sharp": true,
-    "unrs-resolver@1.11.1": true,
+    "unrs-resolver": true,
     "workerd@1.20260911.1": true
   }
 }
