@@ -30,6 +30,31 @@ export function requiredOnboardingDocumentTemplates(classification: WorkerClassi
   return common;
 }
 
+/**
+ * Detects the partial-provisioning state that previously stranded an employee after Firebase identity creation.
+ * This intentionally checks structural package pieces, not mutable employee-entered values, so a repair never
+ * overwrites a phone/address/training completion or resets the employee's access state.
+ */
+export function onboardingPackageNeedsRepair(state: HCMState, draft: ProvisioningDraft, userId: string) {
+  const employee = state.employees.find((item) => item.userId === userId);
+  if (!employee) return true;
+  if (!state.privateProfiles.some((item) => item.userId === userId)) return true;
+  if (!state.lifecycleCases.some((item) => item.type === "Onboarding" && item.userId === userId && item.status === "Open")) return true;
+
+  const requiredTitles = requiredOnboardingDocumentTemplates(draft.classification).map((item) => item.title.toLowerCase());
+  const existingTitles = new Set(state.documents.filter((item) => item.userId === userId).map((item) => item.title.toLowerCase()));
+  if (requiredTitles.some((title) => !existingTitles.has(title))) return true;
+
+  const assignedCourseIds = new Set(state.training.filter((item) => item.userId === userId).map((item) => item.courseId));
+  if (draft.courseIds.some((courseId) => !assignedCourseIds.has(courseId))) return true;
+
+  if (draft.payBasis !== "Not configured" && draft.payRate && draft.payRate > 0) {
+    const compensationExists = state.compensation.some((item) => item.userId === userId && item.effectiveDate === draft.startDate && item.status !== "Ended" && item.basis !== "Not configured" && item.rate > 0);
+    if (!compensationExists) return true;
+  }
+  return false;
+}
+
 export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, draft: ProvisioningDraft, userId: string, actorId: string): HCMState {
   const user = data.users.find((item) => item.id === userId && item.role !== "Customer");
   if (!user || draft.linkedUserId !== userId || user.email.toLowerCase() !== draft.workEmail.toLowerCase()) return state;
