@@ -13,7 +13,7 @@ const appointmentStatuses = new Set(["Scheduled", "Dispatched", "En route", "Arr
 const appointmentOutcomes = new Set(["Order placed", "Follow-up scheduled", "Placement verified", "No decision", "Closed lost", "Delivery completed"]);
 const orderStatuses = new Set(["Draft", "Awaiting approval", "Approved", "Allocated", "Out for delivery", "Delivered", "Paid"]);
 const paymentStatuses = new Set(["Not invoiced", "Open", "Partially paid", "Paid"]);
-const approvalTypes = new Set(["Order", "Low stock sale"]);
+const approvalTypes = new Set(["Order", "Low stock sale", "Territory exception"]);
 const approvalPriorities = new Set(["Normal", "High", "Urgent"]);
 const approvalStatuses = new Set(["Pending", "Approved", "Returned"]);
 const activityTypes = new Set(["call", "visit", "sample", "order", "placement", "note"]);
@@ -112,7 +112,8 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
   const approvals = uniqueById(rawApprovals.flatMap((raw): Approval[] => {
     if (!object(raw)) return [];
     const id = text(raw.id); const type = text(raw.type); const requesterId = optionalText(raw.requesterId); const recordId = optionalText(raw.recordId); const priority = text(raw.priority); const status = text(raw.status);
-    if (!id || baseApprovalIds.has(id) || !approvalTypes.has(type) || !text(raw.title) || !text(raw.detail) || !text(raw.requestedBy) || (requesterId && !userById.has(requesterId)) || !recordId || !orderIds.has(recordId) || !validInstant(raw.submittedAt) || !validInstant(raw.dueAt) || !approvalPriorities.has(priority) || !approvalStatuses.has(status)) return [];
+    const linkedRecordValid = type === "Territory exception" ? Boolean(recordId && accountIds.has(recordId)) : Boolean(recordId && orderIds.has(recordId));
+    if (!id || baseApprovalIds.has(id) || !approvalTypes.has(type) || !text(raw.title) || !text(raw.detail) || !text(raw.requestedBy) || (requesterId && !userById.has(requesterId)) || !linkedRecordValid || !validInstant(raw.submittedAt) || !validInstant(raw.dueAt) || !approvalPriorities.has(priority) || !approvalStatuses.has(status)) return [];
     return [{ id, type: type as Approval["type"], title: text(raw.title), detail: text(raw.detail), requestedBy: text(raw.requestedBy), requesterId, recordId, team: raw.team === "Customer" ? "Sales" : ["Leadership", "Sales", "Operations"].includes(text(raw.team)) ? text(raw.team) as Approval["team"] : undefined, submittedAt: text(raw.submittedAt), dueAt: text(raw.dueAt), priority: priority as Approval["priority"], status: status as Approval["status"] }];
   }));
 
