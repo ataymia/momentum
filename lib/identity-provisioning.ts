@@ -63,7 +63,7 @@ const validStates = new Set<AccountAccessState>(["Password change required", "On
 const validSources = new Set<ProvisioningSource>(["Direct hire", "Accepted offer", "Referral", "Bootstrap admin"]);
 const validDraftSources = new Set<ProvisioningDraft["source"]>(["Direct hire", "Accepted offer", "Referral"]);
 const validDraftStatuses = new Set<ProvisioningDraftStatus>(["Draft", "Ready to invite", "Invite sent", "Auth linked", "Cancelled"]);
-const validRoles = new Set<ProvisionableRole>(["Sales Manager", "Sales Representative", "Operations", "Warehouse"]);
+const validRoles = new Set<ProvisionableRole>(["Sales Manager", "Sales Representative", "Brand Ambassador", "Operations", "Warehouse"]);
 const validTeams = new Set<Exclude<Team, "Customer">>(["Leadership", "Sales", "Operations"]);
 const validClassifications = new Set<WorkerClassification>(["Hourly", "Salary", "Contractor", "Not configured"]);
 const validPayBasis = new Set<PayBasis>(["Hourly", "Salary per pay period", "Not configured"]);
@@ -105,7 +105,7 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
   if (!input || typeof input !== "object") return seed;
   const raw = input as Partial<IdentityProvisioningState>;
   const userIds = new Set(data.users.filter((user) => user.role !== "Customer").map((user) => user.id));
-  const managerIds = new Set(data.users.filter((user) => ["Administrator", "Sales Manager"].includes(user.role)).map((user) => user.id));
+  const managerIds = new Set(data.users.filter((user) => ["Administrator", "Sales Manager", "Sales Representative"].includes(user.role)).map((user) => user.id));
   const seen = new Set<string>();
   const records = (Array.isArray(raw.records) ? raw.records : []).filter((record): record is IdentityProvisioningRecord => {
     if (!record || typeof record !== "object" || !userIds.has(record.userId) || seen.has(record.userId) || !validStates.has(record.state) || !validSources.has(record.source) || !record.provisionedBy || !validInstant(record.provisionedAt)) return false;
@@ -125,6 +125,12 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
     if (!Number.isFinite(draft.payRate) || Number(draft.payRate) <= 0) return false;
     if (draft.standardWeeklyHours !== undefined && (!Number.isFinite(draft.standardWeeklyHours) || draft.standardWeeklyHours < 0 || draft.standardWeeklyHours > 168)) return false;
     if (draft.inviteSentAt && !validInstant(draft.inviteSentAt)) return false;
+    const manager = data.users.find((user) => user.id === draft.managerId);
+    if (!manager) return false;
+    if (draft.role === "Brand Ambassador" && manager.role !== "Sales Representative") return false;
+    if (draft.role === "Sales Representative" && !["Administrator", "Sales Manager"].includes(manager.role)) return false;
+    if (draft.role === "Sales Manager" && manager.role !== "Administrator") return false;
+    if (["Operations", "Warehouse"].includes(draft.role) && manager.role !== "Administrator") return false;
     draftIds.add(draft.id);
     return true;
   }).map((draft) => {
