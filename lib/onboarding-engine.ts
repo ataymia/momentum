@@ -32,11 +32,7 @@ export function requiredOnboardingDocumentTemplates(classification: WorkerClassi
   return common;
 }
 
-/**
- * Detects the partial-provisioning state that previously stranded an employee after Firebase identity creation.
- * This intentionally checks structural package pieces, not mutable employee-entered values, so a repair never
- * overwrites a phone/address/training completion or resets the employee's access state.
- */
+/** Detects the partial-provisioning state that previously stranded an employee after Firebase identity creation. */
 export function onboardingPackageNeedsRepair(state: HCMState, draft: ProvisioningDraft, userId: string) {
   const employee = state.employees.find((item) => item.userId === userId);
   if (!employee) return true;
@@ -136,10 +132,7 @@ export function prepareOnboardingPackage(state: HCMState, data: WorkspaceData, d
   };
 
   if (draft.payBasis !== "Not configured" && draft.payRate && draft.payRate > 0 && !state.compensation.some((item) => item.userId === userId && item.effectiveDate === draft.startDate && item.status !== "Ended")) {
-    next = {
-      ...next,
-      compensation: [{ id: uid("comp"), userId, basis: draft.payBasis, rate: draft.payRate, effectiveDate: draft.startDate, reason: draft.source === "Accepted offer" ? "Accepted employment offer" : "New hire setup", status: "Active", approvedBy: actorId, createdAt: at }, ...next.compensation],
-    };
+    next = { ...next, compensation: [{ id: uid("comp"), userId, basis: draft.payBasis, rate: draft.payRate, effectiveDate: draft.startDate, reason: draft.source === "Accepted offer" ? "Accepted employment offer" : "New hire setup", status: "Active", approvedBy: actorId, createdAt: at }, ...next.compensation] };
   }
 
   return appendAudit(next, { actorId, action: preserve ? "Repaired employee onboarding package" : "Prepared employee onboarding package", entityType: "LifecycleCase", entityId: lifecycleCase.id, before: existingEmployee?.status ?? "Not present", after: "Prehire", reason: `Provisioning draft ${draft.id}` });
@@ -190,16 +183,7 @@ export function onboardingReadiness(state: HCMState, record: IdentityProvisionin
   if (record?.state !== "Pending approval") activationBlockers.push("Employee onboarding must be in Pending approval status.");
   const readyForActivation = readyForEmployeeSubmission && documentsComplete && record?.state === "Pending approval";
 
-  return {
-    readyForEmployeeSubmission,
-    readyForActivation,
-    completed: employeeChecks.filter(Boolean).length,
-    total: employeeChecks.length,
-    blockers,
-    activationBlockers,
-    requiredDocumentIds,
-    requiredTrainingIds,
-  };
+  return { readyForEmployeeSubmission, readyForActivation, completed: employeeChecks.filter(Boolean).length, total: employeeChecks.length, blockers, activationBlockers, requiredDocumentIds, requiredTrainingIds };
 }
 
 export function activateEmploymentAfterOnboarding(state: HCMState, userId: string, actorId: string) {
@@ -213,4 +197,46 @@ export function activateEmploymentAfterOnboarding(state: HCMState, userId: strin
     lifecycleCases: state.lifecycleCases.map((item) => item.id === lifecycle.id ? { ...item, status: "Complete", tasks: item.tasks.map((task) => ({ ...task, status: "Complete", completedAt: task.completedAt ?? at })) } : item),
   };
   return appendAudit(next, { actorId, action: "Completed onboarding and activated employment", entityType: "LifecycleCase", entityId: lifecycle.id, before: employee.status, after: "Active" });
+}
+
+/**
+ * Explicit Administrator override. This changes access and employment state, but it never fabricates missing
+ * documents, training completion, or employee profile data. The reason is preserved in the HCM audit and on
+ * the completed lifecycle tasks so an override can be distinguished from ordinary onboarding later.
+ */
+export function administratorOverrideEmploymentActivation(state: HCMState, data: WorkspaceData, userId: string, actorId: string, reason: string) {
+  const target = data.users.find((user) => user.id === userId && user.role !== "Customer" && user.role !== "Administrator");
+  const cleanReason = reason.trim();
+  if (!target || cleanReason.length < 5) return state;
+  const at = new Date().toISOString();
+  const existingEmployee = state.employees.find((item) => item.userId === userId);
+  const employee: EmploymentRecord = existingEmployee ? { ...existingEmployee, status: "Active", updatedAt: at } : {
+    userId,
+    employeeNumber: `MD-${String(state.employees.length + 1).padStart(4, "0")}`,
+    status: "Active",
+    hireDate: undefined,
+    jobTitle: target.title,
+    department: target.team,
+    location: "Not configured",
+    managerId: target.managerId,
+    classification: "Not configured",
+    payGroup: "Not configured",
+    updatedAt: at,
+  };
+  const openCase = state.lifecycleCases.find((item) => item.type === "Onboarding" && item.userId === userId && item.status === "Open");
+  const completedCase: LifecycleCase = openCase ? {
+    ...openCase,
+    status: "Complete",
+    reason: `Administrator override: ${cleanReason}`,
+    tasks: openCase.tasks.map((task) => ({ ...task, status: "Complete", completedAt: task.completedAt ?? at, evidence: task.evidence ?? `Administrator override: ${cleanReason}` })),
+  } : {
+    id: uid("onboarding-override"), type: "Onboarding", userId, effectiveDate: at.slice(0, 10), status: "Complete", reason: `Administrator override: ${cleanReason}`, createdAt: at, createdBy: actorId,
+    tasks: [{ id: uid("task"), title: "Administrator override activation", status: "Complete", completedAt: at, evidence: cleanReason }],
+  };
+  const next: HCMState = {
+    ...state,
+    employees: existingEmployee ? state.employees.map((item) => item.userId === userId ? employee : item) : [employee, ...state.employees],
+    lifecycleCases: openCase ? state.lifecycleCases.map((item) => item.id === openCase.id ? completedCase : item) : [completedCase, ...state.lifecycleCases],
+  };
+  return appendAudit(next, { actorId, action: "Administrator bypassed remaining onboarding and activated employment", entityType: "LifecycleCase", entityId: completedCase.id, before: existingEmployee?.status ?? "Not present", after: "Active", reason: cleanReason });
 }
