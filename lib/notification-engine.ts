@@ -59,6 +59,9 @@ export function notificationCopy(event: AuditEvent) {
   if (event.module === "Field tracking" && event.collection === "departureAlerts") {
     return { title: "Customer-radius departure", detail: "A tracked sales-rep appointment left its 2-mile customer radius. Open Dispatch to review the closeout or documented offsite continuation.", tone: "warning" as const };
   }
+  if (event.collection === "approvals" && event.label.startsWith("Territory exception")) {
+    return { title: event.action === "Created" ? "Territory exception needs review" : "Territory exception updated", detail: "A sales representative is working outside the account's geographic suggestion. The reason is documented in My Work and requires management validation without blocking the sales activity.", tone: "warning" as const };
+  }
   const high = ["approvals", "payroll", "journals", "inventory"].some((token) => `${event.collection} ${event.entityType}`.toLowerCase().includes(token));
   return { title: `${event.label}: ${event.action.toLowerCase()}`, detail: event.summary, tone: high ? "warning" as const : "info" as const };
 }
