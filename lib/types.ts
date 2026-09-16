@@ -142,7 +142,7 @@ export type Activity = {
   userId: string;
 };
 
-export type AppointmentType = "First visit" | "Sample drop" | "Placement check" | "Reorder" | "Delivery";
+export type AppointmentType = "First visit" | "Revisit" | "Sample drop" | "Placement check" | "Reorder" | "Delivery";
 
 export type AppointmentStatus =
   | "Scheduled"
