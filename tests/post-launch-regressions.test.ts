@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 
+import { validateNewAccountContact } from "../lib/account-creation";
+import { normalizeCommercialState } from "../lib/commercial-state";
 import { createHcmSeed } from "../lib/hcm-engine";
+import { normalizeWorkspaceData } from "../lib/workspace-normalization";
 import { onboardingPackageNeedsRepair, prepareOnboardingPackage } from "../lib/onboarding-engine";
 import type { ProvisioningDraft } from "../lib/identity-provisioning";
 import { canAssignRepToAccountTerritory, canSalesRepWorkAccount, isTerritoryDeviation } from "../lib/territory-engine";
@@ -89,6 +92,74 @@ describe("post-launch onboarding repair", () => {
     assert.equal(repaired.privateProfiles.find((item) => item.userId === REP_A)?.phone, "6025550100", "repair must preserve employee-entered profile data");
     assert.equal(repaired.employees.find((item) => item.userId === REP_A)?.jobTitle, "Senior Sales Representative", "repair must preserve a valid HR edit instead of replaying an old draft");
     assert.equal(repaired.employees.find((item) => item.userId === REP_A)?.location, "Phoenix Field Office", "repair must preserve a valid HR work-location edit");
+  });
+});
+
+
+describe("sales rep field account capture", () => {
+  const baseContact = {
+    name: "Copper Rail Bar",
+    location: "Phoenix, AZ",
+    channel: "Restaurant / nightlife",
+    contactName: "Morgan Lee",
+    contactRole: "Bar manager",
+    phone: "",
+    email: "",
+  };
+
+  test("accepts a phone-only primary contact", () => {
+    assert.deepEqual(validateNewAccountContact({ ...baseContact, phone: "602-555-0144" }), { ok: true });
+  });
+
+  test("accepts an email-only primary contact", () => {
+    assert.deepEqual(validateNewAccountContact({ ...baseContact, email: "manager@example.com" }), { ok: true });
+  });
+
+  test("rejects an account with no way to reach the primary contact", () => {
+    const result = validateNewAccountContact(baseContact);
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.match(result.message, /phone number or an email/i);
+  });
+
+  test("Revisit survives both workspace and commercial normalization", () => {
+    const account = {
+      id: "acc-revisit",
+      name: "Copper Rail Bar",
+      location: "Phoenix, AZ",
+      channel: "Restaurant / nightlife",
+      stage: "Prospect" as const,
+      ownerId: REP_A,
+      contactName: "Morgan Lee",
+      contactRole: "Bar manager",
+      phone: "602-555-0144",
+      email: "",
+      lastActivity: "First visit completed",
+      nextAction: "Return for manager follow-up",
+      nextActionDate: "2026-09-17",
+      health: "New" as const,
+      lifetimeCases: 0,
+      reorderCount: 0,
+      notes: "",
+    };
+    const appointment = {
+      id: "apt-revisit",
+      accountId: account.id,
+      ownerId: REP_A,
+      date: "2026-09-17",
+      startTime: "14:00",
+      duration: 30,
+      type: "Revisit" as const,
+      status: "Scheduled" as const,
+      objective: "Return to speak with the bar manager",
+      location: account.location,
+      priority: "Normal" as const,
+      tags: [],
+    };
+    const fallback = { ...emptyWorkspace([admin, repA]), accounts: [account] };
+    const workspace = normalizeWorkspaceData({ ...fallback, appointments: [appointment] }, fallback);
+    assert.equal(workspace.appointments[0]?.type, "Revisit");
+    const commercial = normalizeCommercialState({ version: 1, accountPatches: {}, orders: [], appointments: [appointment], approvals: [], activities: [], inventoryLots: [], territories: [] }, fallback, "2026-09-16");
+    assert.equal(commercial.appointments[0]?.type, "Revisit");
   });
 });
 

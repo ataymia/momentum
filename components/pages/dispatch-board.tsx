@@ -154,7 +154,7 @@ export function DispatchPage() {
   const operationsOwnWork = Boolean(selected && currentUser?.role === "Operations" && selected.ownerId === currentUser.id);
   const canOperate = salesRepOwnWork || operationsOwnWork;
   const formLocations = customerLocations(data, appointmentForm.customerId, scope.accounts);
-  const workTypes: Appointment["type"][] = operationsMode ? ["Delivery"] : ["First visit", "Sample drop", "Placement check", "Reorder", "Delivery"];
+  const workTypes: Appointment["type"][] = operationsMode ? ["Delivery"] : ["First visit", "Revisit", "Sample drop", "Placement check", "Reorder", "Delivery"];
   const currentMinutes = timeToMinutes(arizonaTimeKey(clock));
   const currentLineVisible = selectedDate === todayKey() && currentMinutes >= BOARD_START && currentMinutes <= BOARD_END;
   const currentLineLeft = `${((currentMinutes - BOARD_START) / BOARD_SPAN) * 100}%`;

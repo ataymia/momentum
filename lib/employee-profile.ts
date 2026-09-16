@@ -20,7 +20,7 @@ export type PunctualityEvidence = {
 };
 
 const fieldStatuses = new Set<Appointment["status"]>(["Dispatched", "En route", "Arrived"]);
-const salesAppointmentTypes = new Set<Appointment["type"]>(["First visit", "Sample drop", "Placement check", "Reorder"]);
+const salesAppointmentTypes = new Set<Appointment["type"]>(["First visit", "Revisit", "Sample drop", "Placement check", "Reorder"]);
 
 function minutes(value: string) {
   const [hours, minute] = value.slice(0, 5).split(":").map(Number);

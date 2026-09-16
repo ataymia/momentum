@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { accountIsVisible, canAdvanceFulfillment, canAssignScheduleUser, canManageSchedule, canReconcileOrderPayment, canReviewApproval, canTransferSalesResponsibility, getWorkspaceScope } from "./access";
+import { validateNewAccountContact } from "./account-creation";
 import { normalizeCommercialState } from "./commercial-state";
 import { addCalendarDays, arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import { findAccountDuplicate } from "./duplicate-engine";
@@ -279,7 +280,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const createAccount = (account: NewAccountInput, territoryExceptionReason?: string) => {
-    if ([account.name, account.location, account.channel, account.contactName, account.contactRole, account.phone, account.email].some((value) => !value.trim())) return null;
+    if (!validateNewAccountContact(account).ok) return null;
     const postalCode=normalizePostalCode(account.postalCode);
     if(!postalCode)return null;
     let exceptionReason="";
