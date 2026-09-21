@@ -88,7 +88,7 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
       <div className="login-panel__heading"><span className="login-panel__icon"><LockKeyhole size={20} /></span><div><h2>Sign in</h2><p>{subtitle}</p></div></div>
 
       {pane === "none" && <form className="login-form" onSubmit={submit}>
-        <label><span>Username or email</span><input required autoCapitalize="none" autoCorrect="off" spellCheck={false} value={username} onChange={(event) => { setUsername(event.target.value); setError(""); }} autoComplete="username" placeholder="jsmith" /></label>
+        <label><span>Username or work email</span><input required autoCapitalize="none" autoCorrect="off" spellCheck={false} value={username} onChange={(event) => { setUsername(event.target.value); setError(""); }} autoComplete="username" placeholder="jsmith or name@company.com" /></label>
         <label><span>Password</span><div className="password-input"><input type={showPassword ? "text" : "password"} required value={password} onChange={(event) => { setPassword(event.target.value); setError(""); }} autoComplete="current-password" /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div></label>
         {error && <p className="form-error" role="alert">{error}</p>}
         {notice && <p className="form-notice" role="status">{notice}</p>}
@@ -98,8 +98,8 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
       </form>}
 
       {pane === "password" && <form className="login-form" onSubmit={resetPassword}>
-        <p className="login-recovery-note">Enter your username or the e-mail on your account. When you use a username, Momentum sends the link to the recovery e-mail on file and only ever shows a masked version of that address.</p>
-        <label><span>Username or email</span><input required autoCapitalize="none" autoCorrect="off" spellCheck={false} value={username} onChange={(event) => { setUsername(event.target.value); setError(""); }} autoComplete="username" placeholder="jsmith" /></label>
+        <p className="login-recovery-note">Enter your username or the work e-mail on your account. Both identify the same Momentum account. When you use a username, Momentum only shows a masked version of the recovery address.</p>
+        <label><span>Username or work email</span><input required autoCapitalize="none" autoCorrect="off" spellCheck={false} value={username} onChange={(event) => { setUsername(event.target.value); setError(""); }} autoComplete="username" placeholder="jsmith or name@company.com" /></label>
         {error && <p className="form-error" role="alert">{error}</p>}
         {notice && <p className="form-notice" role="status">{notice}</p>}
         <Button type="submit" size="lg" disabled={busy} icon={<MailQuestion size={18} />}>{busy ? "Working…" : "Send reset link"}</Button>
@@ -107,8 +107,8 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
       </form>}
 
       {pane === "username" && <form className="login-form" onSubmit={remindUsername}>
-        <p className="login-recovery-note">Enter the e-mail address on your Momentum account. An Administrator confirms your username directly — Momentum never replies with it here.</p>
-        <label><span>Recovery e-mail</span><input type="email" required value={recoveryEmail} onChange={(event) => { setRecoveryEmail(event.target.value); setError(""); }} autoComplete="email" /></label>
+        <p className="login-recovery-note">You can always sign in with your work e-mail even if you forget your username. If you still need the username, enter that e-mail here and an Administrator can confirm it.</p>
+        <label><span>Work e-mail</span><input type="email" required value={recoveryEmail} onChange={(event) => { setRecoveryEmail(event.target.value); setError(""); }} autoComplete="email" /></label>
         {error && <p className="form-error" role="alert">{error}</p>}
         {notice && <p className="form-notice" role="status">{notice}</p>}
         <Button type="submit" size="lg" disabled={busy} icon={<MailQuestion size={18} />}>{busy ? "Working…" : "Request my username"}</Button>
