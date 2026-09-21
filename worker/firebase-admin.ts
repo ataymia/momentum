@@ -8,11 +8,9 @@
 import { serviceAccountAccessToken, type ServiceAccount } from "./service-account";
 
 const IDENTITY_BASE = "https://identitytoolkit.googleapis.com/v1/projects";
-const IDENTITY_PUBLIC = "https://identitytoolkit.googleapis.com/v1";
 const FIRESTORE_BASE = "https://firestore.googleapis.com/v1/projects";
 
 export type AdminAuthUser = { uid: string; email: string; emailVerified: boolean; disabled: boolean; createdAt?: string; lastLoginAt?: string };
-export type PasswordSignIn = { uid: string; email: string; idToken: string; refreshToken: string; expiresIn: string };
 
 type FirestoreValue = {
   nullValue?: null; booleanValue?: boolean; integerValue?: string; doubleValue?: number;
@@ -90,39 +88,6 @@ export class FirebaseAdmin {
 
   async setPassword(uid: string, password: string): Promise<void> {
     await this.identity("accounts:update", { localId: uid, password });
-  }
-
-  /**
-   * Verifies an e-mail/password pair through the public Identity Toolkit endpoint and returns the same
-   * tokens the browser would have received had it signed in directly.
-   *
-   * The web API key is required here (the service-account endpoints cannot verify a password). That key
-   * is public by design — it is embedded in every browser bundle — and grants nothing on its own.
-   * Returns null for any rejection so the caller cannot accidentally leak which half of the pair failed.
-   */
-  async signInWithPassword(webApiKey: string, email: string, password: string): Promise<PasswordSignIn | null> {
-    const response = await fetch(`${IDENTITY_PUBLIC}/accounts:signInWithPassword?key=${encodeURIComponent(webApiKey)}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, password, returnSecureToken: true }),
-    });
-    const payload = await response.json().catch(() => null) as { localId?: string; email?: string; idToken?: string; refreshToken?: string; expiresIn?: string; error?: { message?: string } } | null;
-    if (!response.ok || !payload?.localId || !payload.idToken || !payload.refreshToken) {
-      // Surfaced separately so the Worker can pass Firebase's own lockout back to the employee.
-      if (payload?.error?.message?.includes("TOO_MANY_ATTEMPTS_TRY_LATER")) throw new Error("TOO_MANY_ATTEMPTS_TRY_LATER");
-      if (payload?.error?.message?.includes("USER_DISABLED")) throw new Error("USER_DISABLED");
-      return null;
-    }
-    return { uid: payload.localId, email: (payload.email ?? email).toLowerCase(), idToken: payload.idToken, refreshToken: payload.refreshToken, expiresIn: payload.expiresIn ?? "3600" };
-  }
-
-  /** Sends Firebase's own password-reset e-mail. Silent on `EMAIL_NOT_FOUND`, which Firebase also hides. */
-  async sendPasswordReset(webApiKey: string, email: string): Promise<void> {
-    await fetch(`${IDENTITY_PUBLIC}/accounts:sendOobCode?key=${encodeURIComponent(webApiKey)}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ requestType: "PASSWORD_RESET", email }),
-    }).catch(() => undefined);
   }
 
   /** Removes the sign-in identity. Returns false when there was nothing left to delete. */
@@ -222,28 +187,6 @@ export class FirebaseAdmin {
         throw new Error(payload?.error?.message ?? `Firestore delete failed (${response.status}).`);
       }
     }
-  }
-
-  /** Every document in a top-level collection. Used to enumerate identities during the username backfill. */
-  async listDocuments(collectionPath: string): Promise<Array<{ id: string; data: Record<string, unknown> }>> {
-    const base = `${FIRESTORE_BASE}/${this.projectId}/databases/(default)/documents`;
-    const output: Array<{ id: string; data: Record<string, unknown> }> = [];
-    let pageToken = "";
-    do {
-      const url = `${base}/${collectionPath}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
-      const response = await fetch(url, { headers: this.headers() });
-      if (!response.ok) break;
-      const payload = await response.json().catch(() => null) as { documents?: FirestoreDocument[]; nextPageToken?: string } | null;
-      for (const document of payload?.documents ?? []) {
-        const id = (document.name ?? "").split("/").pop() ?? "";
-        if (!id) continue;
-        const data: Record<string, unknown> = {};
-        for (const [key, value] of Object.entries(document.fields ?? {})) data[key] = decodeValue(value);
-        output.push({ id, data });
-      }
-      pageToken = payload?.nextPageToken ?? "";
-    } while (pageToken);
-    return output;
   }
 
   /** Never used for provisioning; kept so callers can avoid re-minting a token per request. */

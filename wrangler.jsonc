@@ -23,10 +23,7 @@
   },
 
   "vars": {
-    "FIREBASE_PROJECT_ID": "momentumdis",
-    // Public by design: the same key the browser bundle already ships. The Worker needs it to verify a
-    // password during username sign-in, which the service-account endpoints cannot do.
-    "FIREBASE_WEB_API_KEY": "AIzaSyCP-WGSiZvZin_xgMBCnYgHqwxRYcqUl0Y"
+    "FIREBASE_PROJECT_ID": "momentumdis"
   },
 
   "observability": { "enabled": true }
