@@ -1,8 +1,6 @@
 import type { FirebaseAuthSession } from "./firebase-auth-rest";
+import { firebaseFunctionUrl } from "./firebase-functions";
 import {
-  DELETE_EMPLOYEE_PATH,
-  PROVISIONING_STATUS_PATH,
-  PROVISION_EMPLOYEE_PATH,
   temporaryPasswordProblem,
   type DeleteEmployeeSuccess,
   type ProvisionEmployeeRequest,
@@ -15,9 +13,9 @@ import {
  * Administrator-only identity creation.
  *
  * Momentum never exposes public self-signup, and the browser can no longer create Firebase identities at
- * all. It asks the Cloudflare Worker at `/api/admin/*`, which verifies the Administrator's Firebase ID
- * token, confirms `userAccess/{caller}` is an Active Administrator, and only then uses the Firebase
- * service account to create the account and write its access records atomically.
+ * all. It asks Firebase Functions, which verify the Administrator's Firebase ID token, confirm
+ * `userAccess/{caller}` is an Active Administrator, and only then use Firebase Admin to create the account
+ * and write its access records atomically.
  *
  * A freshly created Authentication user has no `userAccess/{uid}` document until that same privileged step
  * writes it, so Security Rules deny it everything in the meantime.
@@ -70,20 +68,20 @@ async function callAdminEndpoint<T extends {ok:true}>(path:string,session:Fireba
 /**
  * Creates the Firebase identity *and* its Momentum access records in one privileged, atomic step.
  *
- * Re-running this for the same address is safe: the Worker adopts an orphan identity left by a previous
- * partial attempt rather than creating a duplicate, and reports `already-provisioned` when there is
- * nothing left to do.
+ * Re-running this for the same address is safe: Firebase Functions adopt an orphan identity left by a
+ * previous partial attempt rather than creating a duplicate, and report `already-provisioned` when there
+ * is nothing left to do.
  */
 export async function createFirebaseIdentityAsAdministrator(session:FirebaseAuthSession,request:ProvisionEmployeeRequest):Promise<CreatedFirebaseIdentity>{
   const invalid=validateTemporaryPassword(request.temporaryPassword);
   if(invalid)throw new ProvisioningError("request",invalid);
-  const result=await callAdminEndpoint<ProvisionEmployeeSuccess>(PROVISION_EMPLOYEE_PATH,session,request);
+  const result=await callAdminEndpoint<ProvisionEmployeeSuccess>(firebaseFunctionUrl("provisionEmployee"),session,request);
   return{uid:result.uid,email:result.email,outcome:result.outcome};
 }
 
 /** Lets the provisioning queue show whether a stuck hire can be recovered before anything is created. */
 export async function lookupProvisioningStatus(session:FirebaseAuthSession,email:string):Promise<ProvisioningStatusSuccess>{
-  return callAdminEndpoint<ProvisioningStatusSuccess>(PROVISIONING_STATUS_PATH,session,{email});
+  return callAdminEndpoint<ProvisioningStatusSuccess>(firebaseFunctionUrl("provisioningStatus"),session,{email});
 }
 
 /**
@@ -93,5 +91,5 @@ export async function lookupProvisioningStatus(session:FirebaseAuthSession,email
  * fails as a duplicate.
  */
 export async function deleteEmployeeIdentity(session:FirebaseAuthSession,uid:string):Promise<DeleteEmployeeSuccess>{
-  return callAdminEndpoint<DeleteEmployeeSuccess>(DELETE_EMPLOYEE_PATH,session,{uid});
+  return callAdminEndpoint<DeleteEmployeeSuccess>(firebaseFunctionUrl("deleteEmployee"),session,{uid});
 }
