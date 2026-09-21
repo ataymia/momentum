@@ -1,14 +1,15 @@
 /**
- * The provisioning contract shared by the browser and the Cloudflare Worker.
+ * Provisioning contract shared by the browser and privileged server-side provisioning code.
  *
- * Both sides import this module so the request shape, the role allow-list, and the validation rules cannot
- * drift apart. The Worker re-validates everything here on the server: the browser copy is a convenience,
- * never a control.
+ * The browser validates for fast feedback, but Firebase Functions re-validate every request before using
+ * Firebase Admin. The legacy Worker route constants remain below only so the existing Worker can keep its
+ * pre-existing provisioning routes intact while the browser migrates to Firebase Functions.
  */
 
 import type { Role, Team } from "./types";
 import { normalizeUsername, usernameProblem } from "./username";
 
+/** Existing Worker compatibility only. New browser calls use Firebase Functions. */
 export const PROVISION_EMPLOYEE_PATH = "/api/admin/provision-employee";
 export const PROVISIONING_STATUS_PATH = "/api/admin/provisioning-status";
 export const DELETE_EMPLOYEE_PATH = "/api/admin/delete-employee";
@@ -24,10 +25,7 @@ export type DeleteEmployeeSuccess = {
 };
 export type DeleteEmployeeResponse = DeleteEmployeeSuccess | ProvisioningFailure;
 
-/**
- * Which part of the pipeline failed. Administrators need to know whether to retry, recover, or escalate,
- * and the Worker never leaks raw backend errors to satisfy that.
- */
+/** Which part of the privileged provisioning pipeline failed. */
 export type ProvisioningStage = "authentication" | "authorization" | "request" | "firebase-auth" | "firestore-access" | "service";
 
 export type ProvisioningOutcome =
@@ -59,7 +57,7 @@ export type ProvisionEmployeeProfile = {
   team: Exclude<Team, "Customer">;
   managerId?: string;
   accent: string;
-  /** Login identifier. The e-mail stays on the identity for recovery only. */
+  /** Login alias. Work e-mail and username both resolve to this same Firebase identity. */
   username: string;
   phone?: string;
 };
