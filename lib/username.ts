@@ -1,9 +1,9 @@
 /**
  * Momentum login usernames.
  *
- * Employees sign in with a username, never an e-mail address. The e-mail stays on the Firebase
- * Authentication identity for recovery, verification, and notifications, and the username -> e-mail
- * mapping is resolved server-side only (see `usernames/{username}` and the Worker auth endpoints).
+ * Employees may sign in with either a username or their work e-mail. Both identifiers resolve to the same
+ * Firebase Authentication uid and password. The username -> e-mail mapping is private and resolved only
+ * by Firebase Functions through `usernames/{username}`; browser clients cannot read that collection.
  *
  * Format: first initial + last name, lowercased and reduced to `a-z0-9`. Collisions get a numeric suffix.
  */
