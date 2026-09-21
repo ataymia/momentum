@@ -1,21 +1,21 @@
 /**
- * Username authentication contract shared by the browser and the Cloudflare Worker.
+ * Username authentication contract shared by the browser and Firebase Functions.
  *
- * Employees sign in with a username. Firebase Authentication still holds the credential, but the
- * username -> e-mail mapping lives in `usernames/{username}`, which Security Rules deny to every client.
- * Only the Worker's service account can read it, so knowing a username never reveals a mailbox.
+ * Employees may sign in with either their work e-mail or their username. Firebase Authentication still
+ * owns the credential and the uid. The username -> e-mail mapping lives in `usernames/{username}`, which
+ * Security Rules deny to every browser client. Firebase Functions resolve that private alias server-side.
  *
- *   browser {username, password}  -->  Worker
- *                                        |  read usernames/{username}  (service account)
+ *   browser {username, password}  -->  Firebase Function
+ *                                        |  read usernames/{username}  (Admin SDK)
  *                                        |  identitytoolkit signInWithPassword(email, password)
  *                                        v
  *                              { idToken, refreshToken, uid, expiresIn }
  *
- * The password is relayed over TLS and never stored or logged. The browser never learns another
- * employee's e-mail address, and the Worker answers identically for an unknown username and a wrong
- * password so the endpoint cannot be used to enumerate accounts.
+ * The password is relayed over TLS and never stored or logged. The browser learns only the signed-in
+ * employee's own e-mail after successful authentication, and username failures use a generic response.
  */
 
+/** Legacy Worker route constants retained only for compatibility with older server code. New clients use Firebase Functions. */
 export const USERNAME_SIGN_IN_PATH = "/api/auth/sign-in";
 export const PASSWORD_RESET_PATH = "/api/auth/password-reset";
 export const USERNAME_REMINDER_PATH = "/api/auth/username-reminder";
@@ -28,9 +28,9 @@ export const SIGN_IN_REJECTED = "Incorrect username or password.";
 /**
  * What the employee typed in the single login field.
  *
- * E-mail sign-in is a permanently supported path, not a migration leftover: it authenticates straight
- * against the existing Firebase identity without involving the Worker at all, so accounts that have no
- * username yet keep working unchanged before, during, and after the username rollout.
+ * E-mail sign-in is a permanent supported path, not a migration fallback. It authenticates directly
+ * against the same Firebase identity that username sign-in resolves to, so both identifiers land on one
+ * uid, one password, one access record, and one employee profile.
  */
 export type LoginIdentifier = { kind: "email"; email: string } | { kind: "username"; username: string } | { kind: "empty" };
 
