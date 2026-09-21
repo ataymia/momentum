@@ -2,7 +2,7 @@ import coreWebVitals from "eslint-config-next/core-web-vitals";
 import typescript from "eslint-config-next/typescript";
 
 const eslintConfig = [
-  { ignores: [".next/**", "out/**", "dist/**", "node_modules/**"] },
+  { ignores: [".next/**", "out/**", "dist/**", "functions/lib/**", "functions/node_modules/**", "node_modules/**"] },
   ...coreWebVitals,
   ...typescript,
 ];
