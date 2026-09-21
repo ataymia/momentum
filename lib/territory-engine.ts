@@ -1,3 +1,15 @@
+import { arizonaDateKey } from "./date-time";
+import { momentumStorage } from "./persistence";
+import {
+  TERRITORY_STORAGE_KEY,
+  activeAssignments as advancedActiveAssignments,
+  activeExceptions as advancedActiveExceptions,
+  activeTerritories as advancedActiveTerritories,
+  normalizeTerritoryState,
+  primaryTerritoryForLocation,
+  type Territory as ManagedTerritory,
+  type TerritoryState,
+} from "./territory-management";
 import type { Account, SalesTerritory, TerritoryStatus, WorkspaceData, WorkspaceUser } from "./types";
 
 export type TerritoryDraft = {
@@ -27,21 +39,85 @@ export function normalizePostalCodes(values:string[]){
   return [...unique].sort();
 }
 
-export function activeTerritories(data:Pick<WorkspaceData,"territories">){
-  return (data.territories??[]).filter((territory)=>territory.status==="Active");
+/**
+ * Read the richer territory model when it has been configured.
+ *
+ * The legacy ZIP suggestions remain a fallback so an existing market never loses routing information
+ * merely because the managed-territory module was introduced. New assignments, shared coverage and
+ * temporary coverage are authoritative whenever a managed territory covers the location.
+ */
+function managedState(data:Pick<WorkspaceData,"users">):TerritoryState|null{
+  if(typeof window==="undefined")return null;
+  const raw=momentumStorage.getItem(TERRITORY_STORAGE_KEY);
+  if(!raw)return null;
+  try{
+    const state=normalizeTerritoryState(JSON.parse(raw) as unknown,data.users);
+    return state.territories.length?state:null;
+  }catch{
+    return null;
+  }
 }
 
-export function territoryForPostalCode(data:Pick<WorkspaceData,"territories">,postalCode:string|undefined){
+const assignmentPriority=(role:"Primary"|"Shared"|"Coverage")=>role==="Primary"?0:role==="Shared"?1:2;
+
+function managedOwnerId(state:TerritoryState,territoryId:string,on:string){
+  return advancedActiveAssignments(state,on)
+    .filter((assignment)=>assignment.territoryId===territoryId)
+    .sort((a,b)=>assignmentPriority(a.role)-assignmentPriority(b.role)||a.assignedAt.localeCompare(b.assignedAt))[0]?.userId;
+}
+
+function compatibleManagedTerritory(state:TerritoryState,territory:ManagedTerritory,on:string):SalesTerritory{
+  return{
+    id:territory.id,
+    name:territory.name,
+    ownerId:managedOwnerId(state,territory.id,on),
+    postalCodes:territory.definition.kind==="postalCodes"?territory.definition.postalCodes:[],
+    status:territory.status==="Retired"?"Suspended":territory.status,
+    notes:territory.notes,
+    createdAt:territory.createdAt,
+    createdBy:territory.createdBy,
+    updatedAt:territory.updatedAt,
+    updatedBy:territory.updatedBy,
+  };
+}
+
+function managedPostalMatch(data:Pick<WorkspaceData,"users">,postalCode:string|undefined){
   const zip=normalizePostalCode(postalCode);
   if(!zip)return undefined;
-  return activeTerritories(data).find((territory)=>territory.postalCodes.includes(zip));
+  const state=managedState(data);
+  if(!state)return undefined;
+  const on=arizonaDateKey();
+  const match=primaryTerritoryForLocation(state,{id:`postal-${zip}`,postalCode:zip},on);
+  return match?{state,on,territory:match.territory,compatible:compatibleManagedTerritory(state,match.territory,on)}:undefined;
 }
 
-export function territoryForAccount(data:Pick<WorkspaceData,"territories">,account:Pick<Account,"postalCode">){
+function legacyActiveTerritories(data:Pick<WorkspaceData,"territories">){
+  return(data.territories??[]).filter((territory)=>territory.status==="Active");
+}
+
+function legacyTerritoryForPostalCode(data:Pick<WorkspaceData,"territories">,postalCode:string|undefined){
+  const zip=normalizePostalCode(postalCode);
+  if(!zip)return undefined;
+  return legacyActiveTerritories(data).find((territory)=>territory.postalCodes.includes(zip));
+}
+
+export function activeTerritories(data:Pick<WorkspaceData,"users"|"territories">){
+  const state=managedState(data);
+  const on=arizonaDateKey();
+  const managed=state?advancedActiveTerritories(state,on).map((territory)=>compatibleManagedTerritory(state,territory,on)):[];
+  const ids=new Set(managed.map((territory)=>territory.id));
+  return[...managed,...legacyActiveTerritories(data).filter((territory)=>!ids.has(territory.id))];
+}
+
+export function territoryForPostalCode(data:Pick<WorkspaceData,"users"|"territories">,postalCode:string|undefined){
+  return managedPostalMatch(data,postalCode)?.compatible??legacyTerritoryForPostalCode(data,postalCode);
+}
+
+export function territoryForAccount(data:Pick<WorkspaceData,"users"|"territories">,account:Pick<Account,"postalCode">){
   return territoryForPostalCode(data,account.postalCode);
 }
 
-export function territoryOverlap(data:Pick<WorkspaceData,"territories">,postalCodes:string[],ignoreId?:string){
+export function territoryOverlap(data:Pick<WorkspaceData,"users"|"territories">,postalCodes:string[],ignoreId?:string){
   const wanted=new Set(normalizePostalCodes(postalCodes));
   for(const territory of activeTerritories(data)){
     if(territory.id===ignoreId)continue;
@@ -101,38 +177,56 @@ export function normalizeTerritories(input:unknown,users:WorkspaceUser[]):SalesT
   return result;
 }
 
-export function territorySystemEnabled(data:Pick<WorkspaceData,"territories">){return activeTerritories(data).length>0;}
+export function territorySystemEnabled(data:Pick<WorkspaceData,"users"|"territories">){
+  return activeTerritories(data).length>0;
+}
 
 /**
- * Territory coverage is advisory. It may recommend a rep and flag a deviation, but it must never prevent
- * an otherwise authorized sales representative from working an account.
+ * Territory coverage remains advisory in the commercial workflow. A deviation requires a documented reason
+ * and management review, but geography alone never rewrites ownership, sales credit or historical records.
  */
 export function canSalesRepWorkAccount(_data:Pick<WorkspaceData,"territories">,_user:WorkspaceUser,_account:Pick<Account,"postalCode">){
   return true;
 }
 
-/** Territory suggestions do not lock dispatch or manual responsibility assignment. */
+/** Territory coverage does not lock dispatch or manual responsibility assignment. */
 export function canAssignRepToAccountTerritory(_data:Pick<WorkspaceData,"territories">,_account:Pick<Account,"postalCode">,_repId:string){
   return true;
 }
 
-export function isTerritoryDeviation(data:Pick<WorkspaceData,"territories">,postalCode:string|undefined,repId:string){
-  if(!territorySystemEnabled(data))return false;
-  const territory=territoryForPostalCode(data,postalCode);
-  return !territory||territory.ownerId!==repId;
+/**
+ * A managed Primary, Shared or in-force Coverage assignment all count as valid territory access.
+ * Approved territory-wide exceptions do too. Location-specific exceptions remain handled by the existing
+ * account-linked approval workflow because this compatibility call receives a ZIP, not an account id.
+ */
+export function isTerritoryDeviation(data:Pick<WorkspaceData,"users"|"territories">,postalCode:string|undefined,repId:string){
+  const managed=managedPostalMatch(data,postalCode);
+  if(managed){
+    const assigned=advancedActiveAssignments(managed.state,managed.on).some((assignment)=>assignment.territoryId===managed.territory.id&&assignment.userId===repId);
+    if(assigned)return false;
+    const excepted=advancedActiveExceptions(managed.state,managed.on).some((exception)=>exception.userId===repId&&exception.scope==="Territory"&&exception.requestedTerritoryId===managed.territory.id);
+    return !excepted;
+  }
+  const legacy=legacyTerritoryForPostalCode(data,postalCode);
+  return Boolean(territorySystemEnabled(data)&&(!legacy||legacy.ownerId!==repId));
 }
 
-export function accountTerritoryState(data:Pick<WorkspaceData,"territories">,account:Pick<Account,"postalCode"|"ownerId">):AccountTerritoryState{
-  if(!territorySystemEnabled(data))return"Unresolved";
+export function accountTerritoryState(data:Pick<WorkspaceData,"users"|"territories">,account:Pick<Account,"postalCode"|"ownerId">):AccountTerritoryState{
   const zip=normalizePostalCode(account.postalCode);
   if(!zip)return"Unresolved";
-  const territory=territoryForPostalCode(data,zip);
+  const managed=managedPostalMatch(data,zip);
+  if(managed){
+    const assigned=advancedActiveAssignments(managed.state,managed.on).some((assignment)=>assignment.territoryId===managed.territory.id&&assignment.userId===account.ownerId);
+    return assigned?"Owned":"Owner mismatch";
+  }
+  if(!territorySystemEnabled(data))return"Unresolved";
+  const territory=legacyTerritoryForPostalCode(data,zip);
   if(!territory)return"Outside coverage";
   return territory.ownerId===account.ownerId?"Owned":"Owner mismatch";
 }
 
-export function territoryAccounts(data:Pick<WorkspaceData,"accounts"|"territories">,territoryId:string){
-  const territory=(data.territories??[]).find((item)=>item.id===territoryId&&item.status==="Active");
+export function territoryAccounts(data:Pick<WorkspaceData,"accounts"|"users"|"territories">,territoryId:string){
+  const territory=activeTerritories(data).find((item)=>item.id===territoryId);
   if(!territory)return[];
   const coverage=new Set(territory.postalCodes);
   return data.accounts.filter((account)=>coverage.has(normalizePostalCode(account.postalCode)));
