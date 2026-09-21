@@ -18,6 +18,7 @@ import {
 import { addCalendarDays, arizonaDateKey, arizonaTimeKey, startOfLocalWeek } from "./date-time";
 import { createDemoData } from "./demo-data";
 import { useFirebaseSessionOptional } from "./firebase-session-context";
+import { normalizeUsername } from "./username";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { normalizeWorkspaceData } from "./workspace-normalization";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
@@ -245,10 +246,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const setSidebarCollapsed = useCallback((collapsed: boolean) => { setSidebarCollapsedState(collapsed); momentumStorage.setItem(SIDEBAR_KEY, String(collapsed)); }, []);
   const navigate = useCallback((page: PageKey) => { setActivePage(canAccessPage(currentUser, page) ? page : "home"); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }, [currentUser]);
 
-  const login = useCallback((email: string, password: string): LoginResult | Promise<LoginResult> => {
-    if (firebase) return firebase.signIn(email, password);
-    const user = data.users.find((item) => item.email.toLowerCase() === email.trim().toLowerCase());
-    if (!user || password !== "admin") return { ok: false, message: "Use a demo email and the password admin." };
+  const login = useCallback((identifier: string, password: string): LoginResult | Promise<LoginResult> => {
+    if (firebase) return firebase.signIn(identifier, password);
+    const typed = identifier.trim().toLowerCase();
+    const asUsername = normalizeUsername(identifier);
+    // Local test mode still accepts the demo e-mail so older bookmarks and docs keep working.
+    const user = data.users.find((item) => (item.username && item.username === asUsername) || item.email.toLowerCase() === typed);
+    if (!user || password !== "admin") return { ok: false, message: "Use a demo username and the password admin." };
     setDemoUserId(user.id);
     setActivePage("home");
     momentumStorage.setItem(SESSION_KEY, user.id);

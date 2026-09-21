@@ -44,7 +44,7 @@ const workspace = (users: WorkspaceUser[]) => ({ users } as unknown as Workspace
 const validRequest = () => ({
   email: "New.Hire@Momentum.test",
   temporaryPassword: "Abcd-efgh-1234",
-  profile: { name: "New Hire", firstName: "New", initials: "NH", title: "Sales Representative", role: "Sales Representative", team: "Sales", managerId: "uid-manager", accent: "#53657d" },
+  profile: { name: "New Hire", firstName: "New", initials: "NH", title: "Sales Representative", role: "Sales Representative", team: "Sales", managerId: "uid-manager", accent: "#53657d", username: "nhire" },
 });
 
 describe("provisioning request contract", () => {
@@ -95,7 +95,7 @@ describe("onboarding package", () => {
     id: "prehire-1",
     source: "Direct hire",
     legalName: "New Hire",
-    workEmail: "new.hire@momentum.test",
+    workEmail: "new.hire@momentum.test", username: "fixtureuser",
     jobTitle: "Sales Representative",
     role: "Sales Representative",
     team: "Sales",
@@ -164,7 +164,7 @@ describe("onboarding package", () => {
 
 describe("deleting an account frees the hire to be recreated", () => {
   const draftFor = (linkedUserId?: string): ProvisioningDraft => ({
-    id: "prehire-1", source: "Direct hire", legalName: "Megan Van Lewen", workEmail: "megan.vl@momentum.test",
+    id: "prehire-1", source: "Direct hire", legalName: "Megan Van Lewen", workEmail: "megan.vl@momentum.test", username: "fixtureuser",
     jobTitle: "Sales Representative", role: "Sales Representative", team: "Sales", managerId: ADMIN_ID,
     workLocation: "Phoenix, AZ", classification: "Hourly", payBasis: "Hourly", payRate: 22, payGroup: "Weekly",
     startDate: "2026-10-01", courseIds: ["course-company-onboarding"],

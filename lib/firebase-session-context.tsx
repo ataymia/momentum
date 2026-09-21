@@ -4,13 +4,15 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, 
 import { EMPLOYEE_DIRECTORY_COLLECTION, PLATFORM_BOOTSTRAP_DOCUMENT, PLATFORM_META_DOCUMENT, USER_ACCESS_COLLECTION, buildPersistenceScope, directoryDocument, normalizeDirectoryEntry, normalizeUserAccess, userAccessDocument, type UserAccessRecord } from "./firebase-access";
 import { ProvisioningError, createFirebaseIdentityAsAdministrator, deleteEmployeeIdentity, lookupProvisioningStatus, type CreatedFirebaseIdentity } from "./firebase-admin-provisioning";
 import { isProvisionableRole, type ProvisionEmployeeProfile, type ProvisioningStage, type ProvisioningStatusSuccess } from "./provisioning-contract";
-import { FirebaseAuthSession, currentFirebaseSession, lookupFirebaseAccount, refreshFirebaseSession, sendFirebaseEmailVerification, sendFirebasePasswordReset, signInWithFirebasePassword, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
+import { FirebaseAuthSession, currentFirebaseSession, lookupFirebaseAccount, refreshFirebaseSession, requestPasswordResetByUsername, requestUsernameReminder, sendFirebaseEmailVerification, signInWithUsername, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
+import { SIGN_IN_REJECTED } from "./auth-contract";
 import { firebaseConfigurationStatus } from "./firebase-config";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, listFirestoreSnapshots, type FirestoreWrite } from "./firebase-firestore-rest";
 import { EMPLOYEE_DIRECTORY_META_KEY, metaVersionKey, userDocPath } from "./firestore-domains";
 import type { AccountAccessState, IdentityProvisioningRecord } from "./identity-provisioning";
 import { attachFirestorePersistence, detachFirestorePersistence, momentumStorage, updateFirestoreScope } from "./persistence";
 import type { Role, Team, WorkspaceUser } from "./types";
+import { normalizeUsername, usernameProblem } from "./username";
 
 export type FirebaseSessionStatus="unconfigured"|"initializing"|"signed-out"|"no-access"|"loading-workspace"|"ready"|"error";
 export type ActionResult={ok:boolean;message?:string};
@@ -30,11 +32,14 @@ export type FirebaseSessionValue={
   directory:WorkspaceUser[];
   /** Administrator-only: every access record, keyed by uid. */
   accessRecords:Record<string,UserAccessRecord>;
-  signIn:(email:string,password:string)=>Promise<ActionResult>;
+  signIn:(username:string,password:string)=>Promise<ActionResult>;
   signOut:()=>Promise<void>;
   retry:()=>Promise<void>;
   changePassword:(newPassword:string)=>Promise<ActionResult>;
-  sendPasswordReset:(email:string)=>Promise<ActionResult>;
+  /** Forgot password: resolves the recovery address from a username and reveals only a masked form. */
+  sendPasswordReset:(username:string)=>Promise<ActionResult>;
+  /** Forgot username: files an Administrator task. Answers identically whether or not the e-mail matches. */
+  recoverUsername:(email:string)=>Promise<ActionResult>;
   sendVerificationEmail:()=>Promise<ActionResult>;
   refreshVerification:()=>Promise<boolean>;
   claimAdministrator:(profile:{name:string;title:string})=>Promise<ActionResult>;
@@ -148,17 +153,17 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     return()=>{window.clearTimeout(handle);void detachFirestorePersistence();};
   },[boot]);
 
-  const signIn=useCallback(async(email:string,password:string):Promise<ActionResult>=>{
+  const signIn=useCallback(async(username:string,password:string):Promise<ActionResult>=>{
     if(!configuration.configured)return{ok:false,message:"Firebase is not configured for this deployment."};
     let active:FirebaseAuthSession|null=null;
     try{
-      active=await signInWithFirebasePassword(email,password);
+      active=await signInWithUsername(username,password);
       setSession(active);
       await loadWorkspace(active);
       return{ok:true};
     }catch(caught){
       if(active){setError(message(caught,"The workspace could not be loaded."));setStatus("error");}
-      return{ok:false,message:message(caught,"Could not sign in.")};
+      return{ok:false,message:message(caught,SIGN_IN_REJECTED)};
     }
   },[configuration.configured,loadWorkspace]);
 
@@ -170,9 +175,23 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     catch(caught){return{ok:false,message:message(caught,"Password change failed.")};}
   },[session]);
 
-  const sendPasswordReset=useCallback(async(email:string):Promise<ActionResult>=>{
-    try{await sendFirebasePasswordReset(email);return{ok:true,message:"If that work e-mail has a Momentum identity, a password reset link is on its way."};}
-    catch(caught){return{ok:false,message:message(caught,"Could not send the reset e-mail.")};}
+  const sendPasswordReset=useCallback(async(username:string):Promise<ActionResult>=>{
+    try{
+      const {maskedEmail}=await requestPasswordResetByUsername(username);
+      // The masked address is the only thing revealed, and only when the username resolved.
+      return{ok:true,message:maskedEmail
+        ?`A password reset link is on its way to ${maskedEmail}. Open it to set a new password, then sign in with your username.`
+        :"If that username exists, a password reset link has been sent to the recovery e-mail on file."};
+    }
+    catch(caught){return{ok:false,message:message(caught,"Could not start password recovery.")};}
+  },[]);
+
+  const recoverUsername=useCallback(async(email:string):Promise<ActionResult>=>{
+    try{
+      await requestUsernameReminder(email);
+      return{ok:true,message:"If that e-mail is on file, an Administrator has been notified and will confirm your username."};
+    }
+    catch(caught){return{ok:false,message:message(caught,"Could not submit the request.")};}
   },[]);
 
   const sendVerificationEmail=useCallback(async():Promise<ActionResult>=>{
@@ -238,6 +257,10 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     const email=input.user.email.trim().toLowerCase();
     if(directory.some((user)=>user.email.toLowerCase()===email))return{ok:false,message:"That work e-mail already has a Momentum account."};
     if(!isProvisionableRole(input.user.role))return{ok:false,message:"That role cannot be provisioned here. Administrator access is granted separately."};
+    const username=normalizeUsername(input.user.username??"");
+    const usernameIssue=usernameProblem(username);
+    if(usernameIssue)return{ok:false,message:usernameIssue};
+    if(directory.some((user)=>user.username===username))return{ok:false,message:`The username ${username} is already taken. Choose another before creating this account.`};
     // The Worker creates the identity AND writes userAccess/employeeDirectory/identity records atomically,
     // so there is no window where an Auth identity exists without its access record.
     let identity:CreatedFirebaseIdentity;
@@ -248,6 +271,7 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
         profile:{
           name:input.user.name,firstName:input.user.firstName,initials:input.user.initials,title:input.user.title,
           role:input.user.role,team:input.user.team as ProvisionEmployeeProfile["team"],managerId:input.user.managerId,accent:input.user.accent,
+          username,phone:input.user.phone,
         },
       });
     }catch(caught){
@@ -255,8 +279,8 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
       return{ok:false,stage,message:message(caught,"Identity creation failed.")};
     }
     const at=now();
-    const user:WorkspaceUser={...input.user,id:identity.uid,email};
-    const accessRecord:UserAccessRecord={uid:identity.uid,email,role:user.role,team:user.team,managerId:user.managerId,managedTeams:user.managedTeams,accountState:"Password change required",updatedAt:at,updatedBy:session!.uid};
+    const user:WorkspaceUser={...input.user,id:identity.uid,email,username};
+    const accessRecord:UserAccessRecord={uid:identity.uid,email,username,role:user.role,team:user.team,managerId:user.managerId,managedTeams:user.managedTeams,accountState:"Password change required",updatedAt:at,updatedBy:session!.uid};
     const nextDirectory=[...directory.filter((item)=>item.id!==user.id),user];
     setDirectory(nextDirectory);
     setAccessRecords((current)=>({...current,[identity.uid]:accessRecord}));
@@ -315,8 +339,8 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
 
   const value=useMemo<FirebaseSessionValue>(()=>({
     configured:configuration.configured,projectId:configuration.projectId,status,error,session,access,emailVerified,directory,accessRecords,
-    signIn,signOut,retry:boot,changePassword,sendPasswordReset,sendVerificationEmail,refreshVerification,claimAdministrator,createEmployeeAccount,provisioningStatus,deleteEmployeeAccount,setAccountState,updateUserAccess,grantAdministrator,
-  }),[access,accessRecords,boot,changePassword,claimAdministrator,configuration.configured,configuration.projectId,createEmployeeAccount,deleteEmployeeAccount,directory,emailVerified,error,grantAdministrator,provisioningStatus,refreshVerification,sendPasswordReset,sendVerificationEmail,session,setAccountState,signIn,signOut,status,updateUserAccess]);
+    signIn,signOut,retry:boot,changePassword,sendPasswordReset,recoverUsername,sendVerificationEmail,refreshVerification,claimAdministrator,createEmployeeAccount,provisioningStatus,deleteEmployeeAccount,setAccountState,updateUserAccess,grantAdministrator,
+  }),[access,accessRecords,boot,changePassword,claimAdministrator,configuration.configured,configuration.projectId,createEmployeeAccount,deleteEmployeeAccount,directory,emailVerified,error,grantAdministrator,provisioningStatus,recoverUsername,refreshVerification,sendPasswordReset,sendVerificationEmail,session,setAccountState,signIn,signOut,status,updateUserAccess]);
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

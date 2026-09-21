@@ -16,6 +16,21 @@
  */
 
 import {
+  PASSWORD_RESET_PATH,
+  SIGN_IN_REJECTED,
+  USERNAME_AVAILABILITY_PATH,
+  USERNAME_BACKFILL_PATH,
+  USERNAME_REMINDER_PATH,
+  USERNAME_SIGN_IN_PATH,
+  type AuthFailure,
+  type PasswordResetResponse,
+  type UsernameAvailabilityResponse,
+  type UsernameBackfillEntry,
+  type UsernameBackfillResponse,
+  type UsernameReminderResponse,
+  type UsernameSignInResponse,
+} from "../lib/auth-contract";
+import {
   DELETE_EMPLOYEE_PATH,
   PROVISIONING_STATUS_PATH,
   PROVISION_EMPLOYEE_PATH,
@@ -25,6 +40,15 @@ import {
   type ProvisioningStage,
   type ProvisioningStatusResponse,
 } from "../lib/provisioning-contract";
+import {
+  USERNAME_INDEX_COLLECTION,
+  USERNAME_REMINDER_COLLECTION,
+  generateUsername,
+  maskEmail,
+  normalizeUsername,
+  splitLegalName,
+  usernameProblem,
+} from "../lib/username";
 import { FirebaseAdmin } from "./firebase-admin";
 import { parseServiceAccount } from "./service-account";
 import { verifyFirebaseIdToken } from "./verify-id-token";
@@ -35,6 +59,8 @@ type AssetsBinding = { fetch(request: Request): Promise<Response> };
 export type Env = {
   ASSETS: AssetsBinding;
   FIREBASE_PROJECT_ID?: string;
+  /** Public by design: the same key the browser bundle carries. Needed to verify a password. */
+  FIREBASE_WEB_API_KEY?: string;
   /** Worker secret. Set with `wrangler secret put FIREBASE_SERVICE_ACCOUNT`. Never committed. */
   FIREBASE_SERVICE_ACCOUNT?: string;
 };
@@ -98,6 +124,11 @@ async function handleProvision(request: Request, admin: FirebaseAdmin): Promise<
   if (!validated.ok) return fail("request", validated.message, 400);
   const { email, temporaryPassword, profile } = validated.value;
 
+  // The username must be free before any identity is created, or provisioning half-succeeds and leaves
+  // an Auth account whose login name belongs to somebody else.
+  const claimed = await admin.getDocument(usernameIndexPath(profile.username)).catch(() => null);
+  if (claimed && claimed.email !== email) return fail("request", `The username ${profile.username} is already taken. Choose another before creating this account.`, 409);
+
   // --- Firebase Authentication: create, or adopt an orphan from a previous partial attempt -------------
   let uid: string;
   let outcome: "created" | "recovered" | "already-provisioned";
@@ -130,17 +161,23 @@ async function handleProvision(request: Request, admin: FirebaseAdmin): Promise<
       {
         path: `${USER_ACCESS}/${uid}`,
         data: {
-          email, role: profile.role, team: profile.team,
+          email, username: profile.username, role: profile.role, team: profile.team,
           managerId: profile.managerId ?? null, managedTeams: [],
           accountState: "Password change required", updatedAt: at, updatedBy: caller.uid,
         },
+      },
+      {
+        // Private username -> identity mapping. Security Rules deny this collection to every client, so
+        // the browser can never turn a login name back into an e-mail address.
+        path: usernameIndexPath(profile.username),
+        data: { uid, email, updatedAt: at, updatedBy: caller.uid },
       },
       {
         path: `${EMPLOYEE_DIRECTORY}/${uid}`,
         data: {
           name: profile.name, firstName: profile.firstName, email, initials: profile.initials, title: profile.title,
           role: profile.role, team: profile.team, managerId: profile.managerId ?? null, managedTeams: [], accountIds: [],
-          accent: profile.accent, updatedAt: at,
+          accent: profile.accent, username: profile.username, phone: profile.phone ?? null, updatedAt: at,
         },
       },
       {
@@ -206,11 +243,14 @@ async function handleDelete(request: Request, admin: FirebaseAdmin): Promise<Res
     const access = await admin.getDocument(`${USER_ACCESS}/${uid}`);
     const directory = await admin.getDocument(`${EMPLOYEE_DIRECTORY}/${uid}`);
     const email = String(access?.email ?? directory?.email ?? "");
+    const username = normalizeUsername(String(access?.username ?? directory?.username ?? ""));
 
     // Remove the identity first: while it exists the address stays taken.
     const authIdentityDeleted = await admin.deleteUser(uid);
 
-    const paths = [`${USER_ACCESS}/${uid}`, `${EMPLOYEE_DIRECTORY}/${uid}`, ...await admin.userShardPaths(uid)];
+    // Freeing the username matters as much as freeing the e-mail: a stale index entry would point a
+    // login name at a uid that no longer exists.
+    const paths = [`${USER_ACCESS}/${uid}`, `${EMPLOYEE_DIRECTORY}/${uid}`, ...(username ? [usernameIndexPath(username)] : []), ...await admin.userShardPaths(uid)];
     await admin.deleteDocuments(paths);
     await admin.stampMeta(["employeeDirectory", `userDomains_${uid}_identity_records`]);
 
@@ -218,6 +258,178 @@ async function handleDelete(request: Request, admin: FirebaseAdmin): Promise<Res
   } catch {
     return fail("service", "The account could not be fully deleted. Check Firebase Authentication before retrying.", 502);
   }
+}
+
+// --- username authentication ---------------------------------------------------------------------
+//
+// These endpoints are the only place the username -> e-mail mapping is readable. Security Rules deny
+// `usernames/{username}` to every client, so the mapping is not reachable from a browser at all.
+
+const authFail = (message: string, status: number, retryAfterSeconds?: number) =>
+  json({ ok: false, message, retryAfterSeconds } satisfies AuthFailure, status);
+
+const usernameIndexPath = (username: string) => `${USERNAME_INDEX_COLLECTION}/${username}`;
+
+/** Resolves a login name to its identity, or null. Callers must answer identically when this is null. */
+async function resolveUsername(admin: FirebaseAdmin, raw: unknown): Promise<{ username: string; uid: string; email: string } | null> {
+  const username = normalizeUsername(typeof raw === "string" ? raw : "");
+  if (!username || usernameProblem(username)) return null;
+  const record = await admin.getDocument(usernameIndexPath(username)).catch(() => null);
+  const uid = typeof record?.uid === "string" ? record.uid : "";
+  const email = typeof record?.email === "string" ? record.email.toLowerCase() : "";
+  if (!uid || !email.includes("@")) return null;
+  return { username, uid, email };
+}
+
+async function handleUsernameSignIn(request: Request, admin: FirebaseAdmin, env: Env): Promise<Response> {
+  const apiKey = (env.FIREBASE_WEB_API_KEY ?? "").trim();
+  if (!apiKey) return authFail("Username sign-in is not configured on this deployment.", 503);
+
+  const body = await request.json().catch(() => null) as { username?: unknown; password?: unknown } | null;
+  const password = typeof body?.password === "string" ? body.password : "";
+  const resolved = await resolveUsername(admin, body?.username);
+  // One rejection message for an unknown username and a wrong password: the endpoint must not confirm
+  // that a username exists, or it becomes an account-enumeration oracle.
+  if (!resolved || !password) return authFail(SIGN_IN_REJECTED, 401);
+
+  let signIn;
+  try {
+    signIn = await admin.signInWithPassword(apiKey, resolved.email, password);
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : "";
+    if (raw.includes("TOO_MANY_ATTEMPTS_TRY_LATER")) return authFail("Too many sign-in attempts. Wait a few minutes and try again.", 429, 300);
+    if (raw.includes("USER_DISABLED")) return authFail("This Momentum account is disabled. Contact an Administrator.", 403);
+    return authFail("Sign-in is temporarily unavailable. Try again.", 502);
+  }
+  if (!signIn || signIn.uid !== resolved.uid) return authFail(SIGN_IN_REJECTED, 401);
+
+  return json({
+    ok: true, uid: signIn.uid, idToken: signIn.idToken, refreshToken: signIn.refreshToken,
+    expiresIn: signIn.expiresIn, email: signIn.email,
+  } satisfies UsernameSignInResponse, 200);
+}
+
+async function handlePasswordReset(request: Request, admin: FirebaseAdmin, env: Env): Promise<Response> {
+  const apiKey = (env.FIREBASE_WEB_API_KEY ?? "").trim();
+  if (!apiKey) return authFail("Password recovery is not configured on this deployment.", 503);
+
+  const body = await request.json().catch(() => null) as { username?: unknown } | null;
+  const resolved = await resolveUsername(admin, body?.username);
+  // Unknown usernames still return ok so the caller cannot tell the two cases apart from the status code.
+  if (!resolved) return json({ ok: true } satisfies PasswordResetResponse, 200);
+
+  await admin.sendPasswordReset(apiKey, resolved.email);
+  // Masked, never the address itself: knowing a username must not reveal the mailbox behind it.
+  return json({ ok: true, maskedEmail: maskEmail(resolved.email) } satisfies PasswordResetResponse, 200);
+}
+
+/**
+ * Forgot username.
+ *
+ * Momentum has no outbound mail service of its own, and Firebase cannot send a custom message, so a match
+ * records an Administrator task instead of replying with the name. The response is identical either way,
+ * so this cannot be used to test whether an address belongs to an employee.
+ */
+async function handleUsernameReminder(request: Request, admin: FirebaseAdmin): Promise<Response> {
+  const body = await request.json().catch(() => null) as { email?: unknown } | null;
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  const acknowledged = json({ ok: true } satisfies UsernameReminderResponse, 200);
+  if (!email.includes("@")) return acknowledged;
+
+  const identity = await admin.findUserByEmail(email).catch(() => null);
+  if (!identity) return acknowledged;
+  const access = await admin.getDocument(`${USER_ACCESS}/${identity.uid}`).catch(() => null);
+  if (!access) return acknowledged;
+
+  const at = new Date().toISOString();
+  await admin.commit([{
+    path: `${USERNAME_REMINDER_COLLECTION}/${identity.uid}`,
+    data: { uid: identity.uid, email, username: String(access.username ?? ""), requestedAt: at, resolved: false },
+  }]).catch(() => undefined);
+  return acknowledged;
+}
+
+async function handleUsernameAvailability(request: Request, admin: FirebaseAdmin): Promise<Response> {
+  const caller = await requireAdministrator(request, admin);
+  if (caller instanceof Response) return caller;
+
+  const body = await request.json().catch(() => null) as { username?: unknown; uid?: unknown } | null;
+  const username = normalizeUsername(typeof body?.username === "string" ? body.username : "");
+  const forUid = typeof body?.uid === "string" ? body.uid : "";
+  const problem = usernameProblem(username);
+  if (problem) return authFail(problem, 400);
+
+  const existing = await admin.getDocument(usernameIndexPath(username)).catch(() => null);
+  const ownedByTarget = Boolean(forUid && existing && existing.uid === forUid);
+  if (!existing || ownedByTarget) return json({ ok: true, username, available: true } satisfies UsernameAvailabilityResponse, 200);
+
+  const taken = new Set((await admin.listDocuments(USERNAME_INDEX_COLLECTION).catch(() => [])).map((item) => item.id));
+  return json({ ok: true, username, available: false, suggestion: generateUsername(username[0], username.slice(1), taken) || undefined } satisfies UsernameAvailabilityResponse, 200);
+}
+
+/**
+ * One-time migration: give every existing identity a username.
+ *
+ * Runs as a dry run by default so an Administrator can review the generated names before anything is
+ * written. Identities that already have a username are reported and left alone.
+ */
+async function handleUsernameBackfill(request: Request, admin: FirebaseAdmin): Promise<Response> {
+  const caller = await requireAdministrator(request, admin);
+  if (caller instanceof Response) return caller;
+
+  const body = await request.json().catch(() => null) as { apply?: unknown } | null;
+  const apply = body?.apply === true;
+
+  let accessRecords: Array<{ id: string; data: Record<string, unknown> }>;
+  let directory: Array<{ id: string; data: Record<string, unknown> }>;
+  let index: Array<{ id: string; data: Record<string, unknown> }>;
+  try {
+    accessRecords = await admin.listDocuments(USER_ACCESS);
+    directory = await admin.listDocuments(EMPLOYEE_DIRECTORY);
+    index = await admin.listDocuments(USERNAME_INDEX_COLLECTION);
+  } catch {
+    return authFail("Could not read the existing identities. Try again.", 502);
+  }
+
+  const directoryById = new Map(directory.map((item) => [item.id, item.data]));
+  const taken = new Set(index.map((item) => item.id));
+  const claimedBy = new Map(index.map((item) => [item.id, String(item.data.uid ?? "")]));
+  const entries: UsernameBackfillEntry[] = [];
+  const writes: Array<{ path: string; data: Record<string, unknown> }> = [];
+  const at = new Date().toISOString();
+
+  for (const record of accessRecords) {
+    const uid = record.id;
+    const profile = directoryById.get(uid) ?? {};
+    const name = String(profile.name ?? record.data.email ?? uid);
+    const email = String(record.data.email ?? profile.email ?? "").toLowerCase();
+    const existing = normalizeUsername(String(record.data.username ?? ""));
+
+    if (existing && claimedBy.get(existing) === uid) { entries.push({ uid, name, username: existing, status: "already-assigned" }); continue; }
+    if (!email.includes("@")) { entries.push({ uid, name, username: "", status: "unresolvable" }); continue; }
+
+    const { firstName, lastName } = splitLegalName(name);
+    const username = generateUsername(firstName || String(profile.firstName ?? ""), lastName, taken);
+    if (!username) { entries.push({ uid, name, username: "", status: "unresolvable" }); continue; }
+    taken.add(username);
+    claimedBy.set(username, uid);
+    entries.push({ uid, name, username, status: apply ? "assigned" : "would-assign" });
+    if (!apply) continue;
+    writes.push({ path: usernameIndexPath(username), data: { uid, email, updatedAt: at, updatedBy: caller.uid } });
+    writes.push({ path: `${USER_ACCESS}/${uid}`, data: { ...record.data, username, updatedAt: at, updatedBy: caller.uid } });
+    writes.push({ path: `${EMPLOYEE_DIRECTORY}/${uid}`, data: { ...profile, username, updatedAt: at } });
+  }
+
+  if (apply && writes.length) {
+    try {
+      for (let start = 0; start < writes.length; start += 200) await admin.commit(writes.slice(start, start + 200));
+    } catch {
+      return authFail("Some usernames could not be written. Re-run the migration; it skips identities that already have one.", 502);
+    }
+    await admin.stampMeta([EMPLOYEE_DIRECTORY]);
+  }
+
+  return json({ ok: true, applied: apply, entries } satisfies UsernameBackfillResponse, 200);
 }
 
 const handler = {
@@ -238,6 +450,11 @@ const handler = {
       return fail("service", "Employee provisioning is not configured on this deployment. Set the FIREBASE_SERVICE_ACCOUNT Worker secret.", 503);
     }
 
+    if (url.pathname === USERNAME_SIGN_IN_PATH) return handleUsernameSignIn(request, admin, env);
+    if (url.pathname === PASSWORD_RESET_PATH) return handlePasswordReset(request, admin, env);
+    if (url.pathname === USERNAME_REMINDER_PATH) return handleUsernameReminder(request, admin);
+    if (url.pathname === USERNAME_AVAILABILITY_PATH) return handleUsernameAvailability(request, admin);
+    if (url.pathname === USERNAME_BACKFILL_PATH) return handleUsernameBackfill(request, admin);
     if (url.pathname === PROVISION_EMPLOYEE_PATH) return handleProvision(request, admin);
     if (url.pathname === PROVISIONING_STATUS_PATH) return handleStatus(request, admin);
     if (url.pathname === DELETE_EMPLOYEE_PATH) return handleDelete(request, admin);

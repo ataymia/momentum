@@ -10,6 +10,7 @@
 
 import { writeFileSync } from "node:fs";
 import { DOMAIN_SPECS, ROOT_FIELD, type DomainSpec, type RoleRule } from "../lib/firestore-domains";
+import { USERNAME_INDEX_COLLECTION, USERNAME_REMINDER_COLLECTION } from "../lib/username";
 
 /**
  * The two founding Administrator bootstrap identities for Momentum Distribution Inc. Momentum has no
@@ -115,6 +116,8 @@ const header = `rules_version = '2';
 //
 //   userAccess/{uid}          authority for role, reporting line, and account state (Administrator-written)
 //   employeeDirectory/{uid}   workspace-facing profile every employee may read
+//   usernames/{username}      private login-name -> identity map, denied to every client
+//   usernameReminders/{uid}   forgot-username requests an Administrator resolves
 //   platform/bootstrap        one-time marker for the first Administrator claim
 //   platform/meta             monotonic per-document version stamps used for change polling
 // ---------------------------------------------------------------------------
@@ -224,8 +227,12 @@ service cloud.firestore {
       // The e-mail is written once, from the Firebase identity itself, and is never editable afterwards.
       // Production drifted exactly here: an access record was edited to an address the Auth identity did
       // not own, which silently pointed an Administrator grant at the wrong mailbox.
+      //
+      // The username is the login identifier and is owned by the Worker, which keeps it in step with
+      // \`usernames/{username}\`. A browser that could edit it here would break that pairing.
       allow update: if isAdmin()
         && request.resource.data.email == resource.data.email
+        && request.resource.data.get('username', '') == resource.data.get('username', '')
         && (
           uid != request.auth.uid
           || (
@@ -234,6 +241,20 @@ service cloud.firestore {
           )
         );
       allow delete: if false;
+    }
+
+    // The private login-name -> identity map. Only the Worker's service account reads or writes it, and
+    // service-account access bypasses these rules, so denying every client here costs nothing and means
+    // a username can never be turned back into an e-mail address from a browser.
+    match /${USERNAME_INDEX_COLLECTION}/{username} {
+      allow read, write: if false;
+    }
+
+    // Forgot-username requests. Administrators read them to answer the employee; the Worker writes them.
+    match /${USERNAME_REMINDER_COLLECTION}/{uid} {
+      allow get, list: if isAdmin();
+      allow update: if isAdmin();
+      allow create, delete: if false;
     }
 
     match /employeeDirectory/{uid} {

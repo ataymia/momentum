@@ -1,5 +1,6 @@
 import type { PayBasis, WorkerClassification } from "./hcm-engine";
 import type { Role, Team, WorkspaceData } from "./types";
+import { normalizeUsername, usernameProblem } from "./username";
 
 export const IDENTITY_PROVISIONING_STORAGE_KEY = "momentum-identity-provisioning-v1";
 
@@ -16,6 +17,9 @@ export type ProvisioningDraft = {
   legalName: string;
   preferredName?: string;
   workEmail: string;
+  /** Login identifier chosen at setup time. `workEmail` is the recovery address, not the login. */
+  username: string;
+  phone?: string;
   jobTitle: string;
   role: ProvisionableRole;
   team: Exclude<Team, "Customer">;
@@ -125,6 +129,7 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
     if (!Number.isFinite(draft.payRate) || Number(draft.payRate) <= 0) return false;
     if (draft.standardWeeklyHours !== undefined && (!Number.isFinite(draft.standardWeeklyHours) || draft.standardWeeklyHours < 0 || draft.standardWeeklyHours > 168)) return false;
     if (draft.inviteSentAt && !validInstant(draft.inviteSentAt)) return false;
+    if (usernameProblem(normalizeUsername(draft.username ?? ""))) return false;
     const manager = data.users.find((user) => user.id === draft.managerId);
     if (!manager) return false;
     if (draft.role === "Brand Ambassador" && manager.role !== "Sales Representative") return false;
@@ -134,10 +139,11 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
     draftIds.add(draft.id);
     return true;
   }).map((draft) => {
+    const normalized = { ...draft, username: normalizeUsername(draft.username) };
     // The identity this draft pointed at is gone (deleted account). Keep the new-hire setup and return it
     // to the queue rather than discarding the work, so the same hire can simply be issued credentials again.
-    if (!draft.linkedUserId || userIds.has(draft.linkedUserId)) return draft;
-    return { ...draft, linkedUserId: undefined, inviteSentAt: undefined, status: "Ready to invite" as const };
+    if (!normalized.linkedUserId || userIds.has(normalized.linkedUserId)) return normalized;
+    return { ...normalized, linkedUserId: undefined, inviteSentAt: undefined, status: "Ready to invite" as const };
   });
   return { version: 1, records, drafts };
 }

@@ -53,7 +53,7 @@ describe("post-launch onboarding repair", () => {
     id: "prehire-regression",
     source: "Direct hire",
     legalName: "Rep Alpha",
-    workEmail: repA.email,
+    workEmail: repA.email, username: "fixtureuser",
     jobTitle: "Sales Representative",
     role: "Sales Representative",
     team: "Sales",

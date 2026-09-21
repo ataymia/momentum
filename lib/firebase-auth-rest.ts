@@ -1,4 +1,14 @@
+import {
+  PASSWORD_RESET_PATH,
+  SIGN_IN_REJECTED,
+  USERNAME_REMINDER_PATH,
+  USERNAME_SIGN_IN_PATH,
+  type PasswordResetResponse,
+  type UsernameReminderResponse,
+  type UsernameSignInResponse,
+} from "./auth-contract";
 import { firebaseWebConfig } from "./firebase-config";
+import { normalizeUsername } from "./username";
 
 export type FirebaseAuthSession={
   uid:string;
@@ -96,6 +106,54 @@ export async function updateFirebasePassword(session:FirebaseAuthSession,newPass
 }
 
 export function signOutFirebase(){persistFirebaseSession(null);}
+
+/**
+ * Username sign-in.
+ *
+ * The browser has no way to turn a username into the e-mail Firebase needs, and deliberately so: the
+ * `usernames/{username}` mapping is denied to every client. The Worker holds the service account, resolves
+ * the name, verifies the password with Identity Toolkit, and returns the same tokens a direct Firebase
+ * sign-in would have produced — so everything downstream keeps using the existing session architecture.
+ */
+export async function signInWithUsername(username:string,password:string):Promise<FirebaseAuthSession>{
+  let response:Response;
+  try{
+    response=await fetch(USERNAME_SIGN_IN_PATH,{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({username:normalizeUsername(username),password}),
+    });
+  }catch{throw new Error("Could not reach the Momentum sign-in service. Check your connection and try again.");}
+  const payload=await response.json().catch(()=>null) as UsernameSignInResponse|null;
+  if(!payload)throw new Error(`The sign-in service returned an unreadable response (${response.status}).`);
+  if(payload.ok!==true)throw new Error(payload.message||SIGN_IN_REJECTED);
+  const session:FirebaseAuthSession={uid:payload.uid,email:payload.email.toLowerCase(),idToken:payload.idToken,refreshToken:payload.refreshToken,expiresAt:expiresAt(payload.expiresIn)};
+  persistFirebaseSession(session);
+  return session;
+}
+
+/** Starts password recovery from a username. Resolves to the masked recovery address when there is one. */
+export async function requestPasswordResetByUsername(username:string):Promise<{maskedEmail?:string}>{
+  const response=await fetch(PASSWORD_RESET_PATH,{
+    method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({username:normalizeUsername(username)}),
+  }).catch(()=>null);
+  const payload=await response?.json().catch(()=>null) as PasswordResetResponse|null;
+  if(!response||!payload)throw new Error("Could not reach the password recovery service. Try again.");
+  if(payload.ok!==true)throw new Error(payload.message);
+  return{maskedEmail:payload.maskedEmail};
+}
+
+/** Forgot username. The response is identical whether or not the address matches an employee. */
+export async function requestUsernameReminder(email:string):Promise<void>{
+  const response=await fetch(USERNAME_REMINDER_PATH,{
+    method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({email:email.trim().toLowerCase()}),
+  }).catch(()=>null);
+  const payload=await response?.json().catch(()=>null) as UsernameReminderResponse|null;
+  if(!response||!payload)throw new Error("Could not reach the account recovery service. Try again.");
+  if(payload.ok!==true)throw new Error(payload.message);
+}
 
 export type FirebaseAccountInfo={uid:string;email:string;emailVerified:boolean;disabled:boolean;createdAt?:string;lastLoginAt?:string};
 

@@ -1,5 +1,6 @@
 import { isValidCalendarDateKey } from "./date-time";
 import type { Account, Activity, Appointment, Approval, Bulletin, CustomerAccount, InventoryLot, Notification, Order, Placement, TimeEntry, Timecard, WorkspaceData, WorkspaceUser } from "./types";
+import { normalizeUsername } from "./username";
 
 const roles = new Set(["Administrator", "Sales Manager", "Sales Representative", "Brand Ambassador", "Operations", "Warehouse", "Customer"]);
 const teams = new Set(["Leadership", "Sales", "Operations", "Customer"]);
@@ -50,7 +51,7 @@ function normalizeUsers(raw: unknown[], fallback: WorkspaceUser[]) {
     if (!object(value)) return [];
     const id = text(value.id); const name = text(value.name); const firstName = text(value.firstName); const email = text(value.email).toLowerCase(); const initials = text(value.initials); const title = text(value.title); const role = text(value.role); const team = text(value.team); const accent = text(value.accent);
     if (!id || !name || !firstName || !email || !email.includes("@") || !initials || !title || !roles.has(role) || !teams.has(team) || !accent) return [];
-    return [{ id, name, firstName, email, initials, title, role: role as WorkspaceUser["role"], team: team as WorkspaceUser["team"], managerId: optionalText(value.managerId), managedTeams: stringList(value.managedTeams, teams) as WorkspaceUser["managedTeams"], accountIds: stringList(value.accountIds), accent }];
+    return [{ id, name, firstName, email, initials, title, role: role as WorkspaceUser["role"], team: team as WorkspaceUser["team"], managerId: optionalText(value.managerId), username: normalizeUsername(text(value.username)) || undefined, phone: optionalText(value.phone), managedTeams: stringList(value.managedTeams, teams) as WorkspaceUser["managedTeams"], accountIds: stringList(value.accountIds), accent }];
   }));
   const dedupedEmails = new Set<string>();
   const valid = users.filter((user) => !dedupedEmails.has(user.email) && (dedupedEmails.add(user.email), true));

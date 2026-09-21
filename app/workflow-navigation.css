@@ -201,6 +201,32 @@
   resize:vertical;
 }
 
+.username-status {
+  border:1px solid var(--line,#e4e8ef);
+  background:#f8fafc;
+  border-radius:9px;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:10px;
+  padding:9px 11px;
+  display:flex;
+}
+.username-status small {
+  color:var(--muted,#667085);
+  flex:1 1 220px;
+  font-size:11px;
+  line-height:1.5;
+}
+.login-recovery-note {
+  color:var(--muted,#667085);
+  margin:0 0 4px;
+  font-size:12px;
+  line-height:1.55;
+}
+.temp-password code+code {
+  margin-top:6px;
+}
+
 .onboarding-rescue-card {
   border-left:3px solid var(--warning,#d98324);
 }

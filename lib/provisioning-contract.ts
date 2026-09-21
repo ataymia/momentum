@@ -7,6 +7,7 @@
  */
 
 import type { Role, Team } from "./types";
+import { normalizeUsername, usernameProblem } from "./username";
 
 export const PROVISION_EMPLOYEE_PATH = "/api/admin/provision-employee";
 export const PROVISIONING_STATUS_PATH = "/api/admin/provisioning-status";
@@ -58,6 +59,9 @@ export type ProvisionEmployeeProfile = {
   team: Exclude<Team, "Customer">;
   managerId?: string;
   accent: string;
+  /** Login identifier. The e-mail stays on the identity for recovery only. */
+  username: string;
+  phone?: string;
 };
 
 export type ProvisionEmployeeRequest = {
@@ -118,6 +122,10 @@ export function validateProvisionRequest(input: unknown): { ok: true; value: Pro
   const role = text(profile.role) as ProvisionableRoleName;
   if (!PROVISIONABLE_ROLES.includes(role)) return { ok: false, message: "That role cannot be provisioned here. Administrator access is granted separately." };
 
+  const username = normalizeUsername(text(profile.username));
+  const usernameIssue = usernameProblem(username);
+  if (usernameIssue) return { ok: false, message: usernameIssue };
+
   const team = text(profile.team) as Exclude<Team, "Customer">;
   if (team !== TEAM_FOR_ROLE[role]) return { ok: false, message: `A ${role} must be on the ${TEAM_FOR_ROLE[role]} team.` };
 
@@ -126,9 +134,10 @@ export function validateProvisionRequest(input: unknown): { ok: true; value: Pro
   const firstName = text(profile.firstName) || parts[0] || name;
   const initials = (text(profile.initials) || (parts.length > 1 ? `${parts[0][0]}${parts.at(-1)![0]}` : name.slice(0, 2))).toUpperCase();
   const managerId = text(profile.managerId) || undefined;
+  const phone = text(profile.phone) || undefined;
   const accent = /^#[0-9a-fA-F]{6}$/.test(text(profile.accent)) ? text(profile.accent) : "#53657d";
 
-  return { ok: true, value: { email, temporaryPassword, profile: { name, firstName, initials, title, role, team, managerId, accent } } };
+  return { ok: true, value: { email, temporaryPassword, profile: { name, firstName, initials, title, role, team, managerId, accent, username, phone } } };
 }
 
 /** Roles that may never be handed out by the provisioning endpoint, restated for tests and reviewers. */

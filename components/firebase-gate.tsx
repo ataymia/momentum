@@ -61,7 +61,7 @@ export function FirebaseGate({ children }: { children: ReactNode }) {
     case "unconfigured": return <Unconfigured />;
     case "initializing":
     case "loading-workspace": return <Loading />;
-    case "signed-out": return <LoginForm login={firebase.signIn} ready requestPasswordReset={firebase.sendPasswordReset} subtitle={`Momentum work account · ${firebase.projectId ?? "Firebase"}`} />;
+    case "signed-out": return <LoginForm login={firebase.signIn} ready requestPasswordReset={firebase.sendPasswordReset} recoverUsername={firebase.recoverUsername} subtitle={`Momentum work account · ${firebase.projectId ?? "Firebase"}`} />;
     case "no-access": return <NoAccess />;
     case "error": return <Failure error={firebase.error} retry={firebase.retry} signOut={firebase.signOut} />;
     case "ready": return <>{children}</>;

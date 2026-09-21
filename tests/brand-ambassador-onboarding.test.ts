@@ -112,7 +112,7 @@ describe("Brand Ambassador role normalization", () => {
     const request = (team: string) => validateProvisionRequest({
       email: "new.ba@momentum.test",
       temporaryPassword: "Temporary12x",
-      profile: { name: "New Ambassador", role: "Brand Ambassador", team, title: "Brand Ambassador", managerId: REP_A },
+      profile: { name: "New Ambassador", role: "Brand Ambassador", team, title: "Brand Ambassador", managerId: REP_A, username: "nambassador" },
     });
     const accepted = request("Sales");
     assert.equal(accepted.ok, true);
@@ -120,7 +120,7 @@ describe("Brand Ambassador role normalization", () => {
     assert.equal(validateProvisionRequest({
       email: "escalate@momentum.test",
       temporaryPassword: "Temporary12x",
-      profile: { name: "Escalation", role: "Administrator", team: "Leadership" },
+      profile: { name: "Escalation", role: "Administrator", team: "Leadership", username: "escalation" },
     }).ok, false, "Administrator must never be provisionable");
   });
 
@@ -188,7 +188,7 @@ describe("Brand Ambassador provisioning requires a Sales Representative manager"
 
   test("a Brand Ambassador draft whose manager is no longer a Sales Representative is dropped on normalization", () => {
     const draft: ProvisioningDraft = {
-      id: "prehire-ba", source: "Direct hire", legalName: "New Ambassador", workEmail: "new.ba@momentum.test",
+      id: "prehire-ba", source: "Direct hire", legalName: "New Ambassador", workEmail: "new.ba@momentum.test", username: "fixtureuser",
       jobTitle: "Brand Ambassador", role: "Brand Ambassador", team: "Sales", managerId: ADMIN_ID, workLocation: "Phoenix, AZ",
       classification: "Hourly", payBasis: "Hourly", payRate: 18, payGroup: "Weekly", startDate: "2026-09-15",
       courseIds: ["course-1"], status: "Ready to invite", createdBy: ADMIN_ID, createdAt: "2026-09-15T00:00:00.000Z", updatedAt: "2026-09-15T00:00:00.000Z",
@@ -293,7 +293,7 @@ describe("role-targeted training audiences", () => {
 
 describe("Administrator onboarding rescue", () => {
   const draft: ProvisioningDraft = {
-    id: "prehire-ba", source: "Direct hire", legalName: "Ambassador Alpha", workEmail: baA.email,
+    id: "prehire-ba", source: "Direct hire", legalName: "Ambassador Alpha", workEmail: baA.email, username: "fixtureuser",
     jobTitle: "Brand Ambassador", role: "Brand Ambassador", team: "Sales", managerId: REP_A, workLocation: "Phoenix, AZ",
     classification: "Hourly", payBasis: "Hourly", payRate: 18, payGroup: "Weekly", startDate: "2026-09-15",
     courseIds: [], status: "Auth linked", linkedUserId: BA_A, createdBy: ADMIN_ID, createdAt: "2026-09-15T00:00:00.000Z", updatedAt: "2026-09-15T00:00:00.000Z",
@@ -346,7 +346,7 @@ describe("Administrator onboarding rescue", () => {
 
 describe("an onboarding override stays truthful", () => {
   const draft: ProvisioningDraft = {
-    id: "prehire-override", source: "Direct hire", legalName: "Rep Alpha", workEmail: repA.email,
+    id: "prehire-override", source: "Direct hire", legalName: "Rep Alpha", workEmail: repA.email, username: "fixtureuser",
     jobTitle: "Sales Representative", role: "Sales Representative", team: "Sales", managerId: MANAGER_ID, workLocation: "Phoenix, AZ",
     classification: "Hourly", payBasis: "Hourly", payRate: 22, payGroup: "Weekly", startDate: "2026-09-15",
     courseIds: [], status: "Auth linked", linkedUserId: REP_A, createdBy: ADMIN_ID, createdAt: "2026-09-15T00:00:00.000Z", updatedAt: "2026-09-15T00:00:00.000Z",

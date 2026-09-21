@@ -7,6 +7,7 @@ import { appendAudit } from "./hcm-engine";
 import { AccountAccessState, IDENTITY_PROVISIONING_STORAGE_KEY, IdentityProvisioningRecord, IdentityProvisioningState, ProvisioningDraft, ProvisioningSource, accountAccessFor, createIdentityProvisioningSeed, isFailClosedPlaceholder, normalizeIdentityProvisioningState } from "./identity-provisioning";
 import { activateEmploymentAfterOnboarding, administratorOverrideEmploymentActivation, onboardingPackageNeedsRepair, onboardingReadiness, onboardingRescueQueue, prepareOnboardingPackage, type OnboardingRescueEntry } from "./onboarding-engine";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
+import { normalizeUsername, usernameProblem } from "./username";
 import { useWorkspace } from "./workspace-context";
 
 export type BeginOnboardingInput = { userId: string; source?: ProvisioningSource; candidateId?: string; offerId?: string; draftId?: string };
@@ -82,7 +83,10 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   const saveDraft = (input: NewProvisioningDraftInput) => {
     if (currentUser?.role !== "Administrator") return null;
     const email = input.workEmail.trim().toLowerCase();
+    const username = normalizeUsername(input.username ?? "");
     const manager = data.users.find((user) => user.id === input.managerId && user.role !== "Customer");
+    if (usernameProblem(username)) return null;
+    if (data.users.some((user) => user.username === username) || state.drafts.some((draft) => draft.status !== "Cancelled" && draft.username === username)) return null;
     if (input.legalName.trim().length < 2 || !emailPattern.test(email) || input.jobTitle.trim().length < 2 || input.team !== expectedTeam[input.role] || !manager || input.workLocation.trim().length < 2 || !/^\d{4}-\d{2}-\d{2}$/.test(input.startDate) || !Array.isArray(input.courseIds) || input.courseIds.length === 0 || new Set(input.courseIds).size !== input.courseIds.length) return null;
     if (input.classification === "Not configured" || input.payBasis === "Not configured" || !Number.isFinite(input.payRate) || Number(input.payRate) <= 0 || input.payGroup.trim().length < 2 || input.payGroup.trim().toLowerCase() === "not configured") return null;
     if (input.standardWeeklyHours !== undefined && (!Number.isFinite(input.standardWeeklyHours) || input.standardWeeklyHours < 0 || input.standardWeeklyHours > 168)) return null;
@@ -98,7 +102,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     } else if (input.offerId || input.candidateId) return null;
     const at = new Date().toISOString();
     const id = uid("prehire");
-    const draft: ProvisioningDraft = { ...input, legalName: input.legalName.trim(), preferredName: input.preferredName?.trim() || undefined, workEmail: email, jobTitle: input.jobTitle.trim(), workLocation: input.workLocation.trim(), payGroup: input.payGroup.trim(), courseIds: [...input.courseIds], id, status: "Ready to invite", createdBy: currentUser.id, createdAt: at, updatedAt: at };
+    const draft: ProvisioningDraft = { ...input, legalName: input.legalName.trim(), preferredName: input.preferredName?.trim() || undefined, workEmail: email, username, phone: input.phone?.trim() || undefined, jobTitle: input.jobTitle.trim(), workLocation: input.workLocation.trim(), payGroup: input.payGroup.trim(), courseIds: [...input.courseIds], id, status: "Ready to invite", createdBy: currentUser.id, createdAt: at, updatedAt: at };
     setState((current) => ({ ...current, drafts: [draft, ...current.drafts] }));
     return id;
   };

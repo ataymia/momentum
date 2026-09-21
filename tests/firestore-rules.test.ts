@@ -489,6 +489,53 @@ describe("domain sharding matches the rules", () => {
   }
 });
 
+describe("the username login index is unreachable from any client", () => {
+  const INDEX = "usernames/jsmith";
+  const REMINDER = `usernameReminders/${REP}`;
+
+  before(async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, INDEX), { uid: REP, email: `${REP}@momentum.test`, updatedAt: at, updatedBy: ADMIN });
+      await setDoc(doc(db, REMINDER), { uid: REP, email: `${REP}@momentum.test`, username: "jsmith", requestedAt: at, resolved: false });
+    });
+  });
+
+  test("nobody — signed out, employee, or Administrator — can read a username to e-mail mapping", async () => {
+    for (const uid of [null, REP, MANAGER, OPS, ONBOARDING, ADMIN]) {
+      await assertFails(getDoc(doc(dbFor(uid), INDEX)));
+      await assertFails(setDoc(doc(dbFor(uid), INDEX), { uid, email: "attacker@example.com" }));
+    }
+  });
+
+  test("the mapping cannot be probed by writing a new entry either", async () => {
+    await assertFails(setDoc(doc(dbFor(ADMIN), "usernames/anything"), { uid: ADMIN, email: `${ADMIN}@momentum.test` }));
+    await assertFails(setDoc(doc(dbFor(null), "usernames/anything"), { uid: "x", email: "x@y.co" }));
+  });
+
+  test("forgot-username requests are Administrator-only and only the Worker may file them", async () => {
+    await assertSucceeds(getDoc(doc(dbFor(ADMIN), REMINDER)));
+    await assertSucceeds(setDoc(doc(dbFor(ADMIN), REMINDER), { resolved: true }, { merge: true }));
+    for (const uid of [null, REP, MANAGER, OPS]) await assertFails(getDoc(doc(dbFor(uid), REMINDER)));
+    await assertFails(setDoc(doc(dbFor(ADMIN), "usernameReminders/uid-new"), { uid: "uid-new", email: "a@b.co" }));
+  });
+
+  test("an Administrator cannot repoint a login name by editing the access record", async () => {
+    const db = dbFor(ADMIN);
+    await assertFails(setDoc(doc(db, USER_ACCESS_COLLECTION, REP), { username: "someoneelse" }, { merge: true }));
+    await assertFails(setDoc(doc(db, USER_ACCESS_COLLECTION, REP), { email: "elsewhere@momentum.test" }, { merge: true }));
+    // Everything the Administrator is still supposed to change keeps working.
+    await assertSucceeds(setDoc(doc(db, USER_ACCESS_COLLECTION, REP), { accountState: "Suspended", updatedAt: at, updatedBy: ADMIN }, { merge: true }));
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), USER_ACCESS_COLLECTION, REP), { accountState: "Active" }, { merge: true });
+    });
+  });
+
+  test("an employee cannot edit their own username", async () => {
+    await assertFails(setDoc(doc(dbFor(REP), USER_ACCESS_COLLECTION, REP), { username: "administrator" }, { merge: true }));
+  });
+});
+
 describe("Brand Ambassador event supervision", () => {
   const assignments = (uid: string) => `userDomains/${uid}/brandAmbassador/assignments`;
 

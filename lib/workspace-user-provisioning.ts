@@ -1,4 +1,5 @@
 import type { Role, Team, WorkspaceData, WorkspaceUser } from "./types";
+import { generateUsername, normalizeUsername, splitLegalName, usernameProblem } from "./username";
 
 export type ProvisionableRole = Exclude<Role, "Administrator" | "Customer">;
 export type ProvisionInternalUserInput = {
@@ -8,7 +9,20 @@ export type ProvisionInternalUserInput = {
   role: ProvisionableRole;
   team: Exclude<Team, "Customer">;
   managerId: string;
+  /** Login identifier. Defaults to the generated one when the Administrator does not override it. */
+  username?: string;
+  phone?: string;
 };
+
+/** Every login name already in use, so a generated one cannot collide with a live account. */
+export const takenUsernames = (data: WorkspaceData, exceptUserId?: string) =>
+  new Set(data.users.filter((user) => user.username && user.id !== exceptUserId).map((user) => user.username!));
+
+/** The username Momentum proposes for a name, skipping anything already taken. */
+export function suggestUsername(data: WorkspaceData, fullName: string, exceptUserId?: string) {
+  const { firstName, lastName } = splitLegalName(fullName);
+  return generateUsername(firstName, lastName, takenUsernames(data, exceptUserId));
+}
 
 const expectedTeam: Record<ProvisionableRole, Exclude<Team, "Customer">> = {
   "Sales Manager": "Sales",
@@ -23,9 +37,15 @@ export function validateInternalUserProvisioning(data: WorkspaceData, input: Pro
   const email = input.email.trim().toLowerCase();
   const title = input.title.trim();
   if (name.length < 2) return "Employee name is required.";
-  if (!email.includes("@") || email.startsWith("@") || email.endsWith("@")) return "A valid work email is required.";
-  if (data.users.some((user) => user.email.toLowerCase() === email)) return "That work email already belongs to another account.";
+  if (!email.includes("@") || email.startsWith("@") || email.endsWith("@")) return "A valid recovery e-mail is required.";
+  if (data.users.some((user) => user.email.toLowerCase() === email)) return "That e-mail already belongs to another account.";
   if (title.length < 2) return "Job title is required.";
+  if (input.username !== undefined) {
+    const username = normalizeUsername(input.username);
+    const problem = usernameProblem(username);
+    if (problem) return problem;
+    if (data.users.some((user) => user.username === username)) return `The username ${username} is already taken.`;
+  }
   if (input.team !== expectedTeam[input.role]) return `${input.role} must be assigned to the ${expectedTeam[input.role]} department in the current role model.`;
   const manager = data.users.find((user) => user.id === input.managerId && user.role !== "Customer");
   if (!manager) return "Choose a valid manager.";
@@ -52,6 +72,8 @@ export function buildProvisionedWorkspaceUser(data: WorkspaceData, input: Provis
     role: input.role,
     team: input.team,
     managerId: input.managerId,
+    username: normalizeUsername(input.username ?? "") || suggestUsername(data, name),
+    phone: input.phone?.trim() || undefined,
     managedTeams: input.role === "Sales Manager" ? ["Sales"] : undefined,
     accent: "#53657d",
   };

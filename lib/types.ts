@@ -58,6 +58,9 @@ export type WorkspaceUser = {
   role: Role;
   team: Team;
   managerId?: string;
+  /** Login identifier. The e-mail is kept for recovery, verification, and notifications only. */
+  username?: string;
+  phone?: string;
   /** Teams a Sales Manager supervises in addition to direct reports. */
   managedTeams?: Team[];
   /** Customer identities only: the accounts the portal user may see. */

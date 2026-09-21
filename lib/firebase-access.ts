@@ -1,5 +1,6 @@
 import type { AccountAccessState } from "./identity-provisioning";
 import type { Role, Team, WorkspaceUser } from "./types";
+import { normalizeUsername } from "./username";
 
 /**
  * Firestore identity documents.
@@ -24,6 +25,8 @@ const accountStates=new Set<string>(["Password change required","Onboarding","Pe
 export type UserAccessRecord={
   uid:string;
   email:string;
+  /** Login identifier. Written by the Worker, which keeps it in step with `usernames/{username}`. */
+  username?:string;
   role:Role;
   team:Team;
   managerId?:string;
@@ -48,7 +51,7 @@ export function normalizeUserAccess(uid:string,input:unknown):UserAccessRecord|n
   const raw=input as Record<string,unknown>;
   const role=text(raw.role);const team=text(raw.team);const accountState=text(raw.accountState);const email=text(raw.email).toLowerCase();
   if(!roles.has(role)||!teams.has(team)||!accountStates.has(accountState)||!email.includes("@"))return null;
-  return{uid,email,role:role as Role,team:team as Team,managerId:optionalText(raw.managerId),managedTeams:teamList(raw.managedTeams),accountState:accountState as AccountAccessState,updatedAt:text(raw.updatedAt)||new Date(0).toISOString(),updatedBy:text(raw.updatedBy)||"unknown"};
+  return{uid,email,username:normalizeUsername(text(raw.username))||undefined,role:role as Role,team:team as Team,managerId:optionalText(raw.managerId),managedTeams:teamList(raw.managedTeams),accountState:accountState as AccountAccessState,updatedAt:text(raw.updatedAt)||new Date(0).toISOString(),updatedBy:text(raw.updatedBy)||"unknown"};
 }
 
 export function normalizeDirectoryEntry(uid:string,input:unknown):WorkspaceUser|null{
@@ -69,6 +72,8 @@ export function normalizeDirectoryEntry(uid:string,input:unknown):WorkspaceUser|
     managerId:optionalText(raw.managerId),
     managedTeams:teamList(raw.managedTeams),
     accountIds:Array.isArray(raw.accountIds)?raw.accountIds.filter((item):item is string=>typeof item==="string"):undefined,
+    username:normalizeUsername(text(raw.username))||undefined,
+    phone:optionalText(raw.phone),
     accent:text(raw.accent)||"#53657d",
   };
 }
@@ -76,12 +81,13 @@ export function normalizeDirectoryEntry(uid:string,input:unknown):WorkspaceUser|
 export function directoryDocument(user:WorkspaceUser,updatedAt=new Date().toISOString()):Record<string,unknown>{
   return{
     name:user.name,firstName:user.firstName,email:user.email.toLowerCase(),initials:user.initials,title:user.title,
-    role:user.role,team:user.team,managerId:user.managerId??null,managedTeams:user.managedTeams??[],accountIds:user.accountIds??[],accent:user.accent,updatedAt,
+    role:user.role,team:user.team,managerId:user.managerId??null,managedTeams:user.managedTeams??[],accountIds:user.accountIds??[],
+    username:user.username??null,phone:user.phone??null,accent:user.accent,updatedAt,
   };
 }
 
 export function userAccessDocument(record:Omit<UserAccessRecord,"uid">):Record<string,unknown>{
-  return{email:record.email.toLowerCase(),role:record.role,team:record.team,managerId:record.managerId??null,managedTeams:record.managedTeams??[],accountState:record.accountState,updatedAt:record.updatedAt,updatedBy:record.updatedBy};
+  return{email:record.email.toLowerCase(),username:record.username??"",role:record.role,team:record.team,managerId:record.managerId??null,managedTeams:record.managedTeams??[],accountState:record.accountState,updatedAt:record.updatedAt,updatedBy:record.updatedBy};
 }
 
 /** Scope the browser uses to decide which per-user Firestore shards to load and write. Mirrors Security Rules. */
