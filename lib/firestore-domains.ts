@@ -37,6 +37,15 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-demo-workspace-v5",id:"workspace",read:OPERATIONAL,write:OPERATIONAL,omit:["users"],fields:{customers:{},accounts:{},activities:{},appointments:{},orders:{},placements:{},inventory:{},approvals:{},notifications:{},bulletins:{},territories:{},timeEntries:perUser(),timecards:perUser()}},
   {key:"momentum-commercial-controls-v1",id:"commercial",read:OPERATIONAL,write:OPERATIONAL,fields:{orders:{},appointments:{},approvals:{},activities:{},inventoryLots:{},territories:{}}},
   {key:"momentum-crm-v1",id:"crm",read:SALES,write:SALES,fields:{contacts:{},interactions:{},opportunities:{},responsibilityHistory:{}}},
+  /**
+   * Territory management. Configuration and assignments are manager-owned; exception requests are sharded
+   * per requesting employee so a representative can file their own without being able to touch anybody
+   * else's, and a manager can decide the ones belonging to the people they supervise.
+   */
+  {key:"momentum-territory-v2",id:"territory",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{
+    territories:{},assignments:{},history:{},
+    exceptions:{userIdField:"userId",selfWrite:true,managerWrite:true},
+  }},
   {
     key:"momentum-hcm-v4",id:"hcm",read:"hasAccess",write:ADMIN_MANAGER,
     fields:{

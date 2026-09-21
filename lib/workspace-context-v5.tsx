@@ -250,9 +250,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if (firebase) return firebase.signIn(identifier, password);
     const typed = identifier.trim().toLowerCase();
     const asUsername = normalizeUsername(identifier);
-    // Local test mode still accepts the demo e-mail so older bookmarks and docs keep working.
+    // Local test mode accepts either identifier, matching production.
     const user = data.users.find((item) => (item.username && item.username === asUsername) || item.email.toLowerCase() === typed);
-    if (!user || password !== "admin") return { ok: false, message: "Use a demo username and the password admin." };
+    if (!user || password !== "admin") return { ok: false, message: "Use a demo username or e-mail and the password admin." };
     setDemoUserId(user.id);
     setActivePage("home");
     momentumStorage.setItem(SESSION_KEY, user.id);

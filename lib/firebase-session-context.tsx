@@ -4,8 +4,8 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, 
 import { EMPLOYEE_DIRECTORY_COLLECTION, PLATFORM_BOOTSTRAP_DOCUMENT, PLATFORM_META_DOCUMENT, USER_ACCESS_COLLECTION, buildPersistenceScope, directoryDocument, normalizeDirectoryEntry, normalizeUserAccess, userAccessDocument, type UserAccessRecord } from "./firebase-access";
 import { ProvisioningError, createFirebaseIdentityAsAdministrator, deleteEmployeeIdentity, lookupProvisioningStatus, type CreatedFirebaseIdentity } from "./firebase-admin-provisioning";
 import { isProvisionableRole, type ProvisionEmployeeProfile, type ProvisioningStage, type ProvisioningStatusSuccess } from "./provisioning-contract";
-import { FirebaseAuthSession, currentFirebaseSession, lookupFirebaseAccount, refreshFirebaseSession, requestPasswordResetByUsername, requestUsernameReminder, sendFirebaseEmailVerification, signInWithUsername, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
-import { SIGN_IN_REJECTED } from "./auth-contract";
+import { FirebaseAuthSession, currentFirebaseSession, lookupFirebaseAccount, refreshFirebaseSession, requestPasswordResetByUsername, requestUsernameReminder, sendFirebaseEmailVerification, sendFirebasePasswordReset, signInWithFirebasePassword, signInWithUsername, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
+import { SIGN_IN_REJECTED, classifyLoginIdentifier } from "./auth-contract";
 import { firebaseConfigurationStatus } from "./firebase-config";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, listFirestoreSnapshots, type FirestoreWrite } from "./firebase-firestore-rest";
 import { EMPLOYEE_DIRECTORY_META_KEY, metaVersionKey, userDocPath } from "./firestore-domains";
@@ -32,12 +32,13 @@ export type FirebaseSessionValue={
   directory:WorkspaceUser[];
   /** Administrator-only: every access record, keyed by uid. */
   accessRecords:Record<string,UserAccessRecord>;
-  signIn:(username:string,password:string)=>Promise<ActionResult>;
+  /** Accepts an e-mail address or a username. E-mail authenticates directly against Firebase. */
+  signIn:(identifier:string,password:string)=>Promise<ActionResult>;
   signOut:()=>Promise<void>;
   retry:()=>Promise<void>;
   changePassword:(newPassword:string)=>Promise<ActionResult>;
-  /** Forgot password: resolves the recovery address from a username and reveals only a masked form. */
-  sendPasswordReset:(username:string)=>Promise<ActionResult>;
+  /** Forgot password. A username resolves privately and reveals only a masked recovery address. */
+  sendPasswordReset:(identifier:string)=>Promise<ActionResult>;
   /** Forgot username: files an Administrator task. Answers identically whether or not the e-mail matches. */
   recoverUsername:(email:string)=>Promise<ActionResult>;
   sendVerificationEmail:()=>Promise<ActionResult>;
@@ -153,11 +154,23 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     return()=>{window.clearTimeout(handle);void detachFirestorePersistence();};
   },[boot]);
 
-  const signIn=useCallback(async(username:string,password:string):Promise<ActionResult>=>{
+  /**
+   * Accepts an e-mail address or a username.
+   *
+   * An e-mail goes straight to Firebase Authentication exactly as it always has, so existing accounts are
+   * unaffected by the username rollout and never depend on the Worker being reachable. A username is
+   * resolved privately by the Worker and authenticates against that same Firebase identity, so both paths
+   * end on one uid and one set of records.
+   */
+  const signIn=useCallback(async(identifier:string,password:string):Promise<ActionResult>=>{
     if(!configuration.configured)return{ok:false,message:"Firebase is not configured for this deployment."};
+    const login=classifyLoginIdentifier(identifier);
+    if(login.kind==="empty")return{ok:false,message:"Enter your username or e-mail address."};
     let active:FirebaseAuthSession|null=null;
     try{
-      active=await signInWithUsername(username,password);
+      active=login.kind==="email"
+        ?await signInWithFirebasePassword(login.email,password)
+        :await signInWithUsername(login.username,password);
       setSession(active);
       await loadWorkspace(active);
       return{ok:true};
@@ -175,12 +188,18 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     catch(caught){return{ok:false,message:message(caught,"Password change failed.")};}
   },[session]);
 
-  const sendPasswordReset=useCallback(async(username:string):Promise<ActionResult>=>{
+  const sendPasswordReset=useCallback(async(identifier:string):Promise<ActionResult>=>{
+    const login=classifyLoginIdentifier(identifier);
+    if(login.kind==="empty")return{ok:false,message:"Enter your username or e-mail address."};
     try{
-      const {maskedEmail}=await requestPasswordResetByUsername(username);
+      if(login.kind==="email"){
+        await sendFirebasePasswordReset(login.email);
+        return{ok:true,message:"If that e-mail has a Momentum account, a password reset link is on its way."};
+      }
+      const {maskedEmail}=await requestPasswordResetByUsername(login.username);
       // The masked address is the only thing revealed, and only when the username resolved.
       return{ok:true,message:maskedEmail
-        ?`A password reset link is on its way to ${maskedEmail}. Open it to set a new password, then sign in with your username.`
+        ?`A password reset link is on its way to ${maskedEmail}. Open it to set a new password, then sign in again.`
         :"If that username exists, a password reset link has been sent to the recovery e-mail on file."};
     }
     catch(caught){return{ok:false,message:message(caught,"Could not start password recovery.")};}

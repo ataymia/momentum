@@ -25,6 +25,23 @@ export const USERNAME_BACKFILL_PATH = "/api/admin/backfill-usernames";
 /** Deliberately identical for an unknown username and a wrong password. */
 export const SIGN_IN_REJECTED = "Incorrect username or password.";
 
+/**
+ * What the employee typed in the single login field.
+ *
+ * E-mail sign-in is a permanently supported path, not a migration leftover: it authenticates straight
+ * against the existing Firebase identity without involving the Worker at all, so accounts that have no
+ * username yet keep working unchanged before, during, and after the username rollout.
+ */
+export type LoginIdentifier = { kind: "email"; email: string } | { kind: "username"; username: string } | { kind: "empty" };
+
+/** An `@` is the only thing that distinguishes the two; usernames can never contain one. */
+export function classifyLoginIdentifier(raw: string): LoginIdentifier {
+  const value = (raw ?? "").trim();
+  if (!value) return { kind: "empty" };
+  if (value.includes("@")) return { kind: "email", email: value.toLowerCase() };
+  return { kind: "username", username: value.toLowerCase() };
+}
+
 export type AuthFailure = { ok: false; message: string; retryAfterSeconds?: number };
 
 export type UsernameSignInRequest = { username: string; password: string };

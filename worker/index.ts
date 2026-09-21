@@ -25,7 +25,6 @@ import {
   type AuthFailure,
   type PasswordResetResponse,
   type UsernameAvailabilityResponse,
-  type UsernameBackfillEntry,
   type UsernameBackfillResponse,
   type UsernameReminderResponse,
   type UsernameSignInResponse,
@@ -40,13 +39,13 @@ import {
   type ProvisioningStage,
   type ProvisioningStatusResponse,
 } from "../lib/provisioning-contract";
+import { planUsernameBackfill } from "../lib/username-migration";
 import {
   USERNAME_INDEX_COLLECTION,
   USERNAME_REMINDER_COLLECTION,
   generateUsername,
   maskEmail,
   normalizeUsername,
-  splitLegalName,
   usernameProblem,
 } from "../lib/username";
 import { FirebaseAdmin } from "./firebase-admin";
@@ -391,45 +390,22 @@ async function handleUsernameBackfill(request: Request, admin: FirebaseAdmin): P
     return authFail("Could not read the existing identities. Try again.", 502);
   }
 
-  const directoryById = new Map(directory.map((item) => [item.id, item.data]));
-  const taken = new Set(index.map((item) => item.id));
-  const claimedBy = new Map(index.map((item) => [item.id, String(item.data.uid ?? "")]));
-  const entries: UsernameBackfillEntry[] = [];
-  const writes: Array<{ path: string; data: Record<string, unknown> }> = [];
-  const at = new Date().toISOString();
+  const plan = planUsernameBackfill({
+    accessRecords, directory, index, apply,
+    actorId: caller.uid, at: new Date().toISOString(),
+    userAccessCollection: USER_ACCESS, employeeDirectoryCollection: EMPLOYEE_DIRECTORY,
+  });
 
-  for (const record of accessRecords) {
-    const uid = record.id;
-    const profile = directoryById.get(uid) ?? {};
-    const name = String(profile.name ?? record.data.email ?? uid);
-    const email = String(record.data.email ?? profile.email ?? "").toLowerCase();
-    const existing = normalizeUsername(String(record.data.username ?? ""));
-
-    if (existing && claimedBy.get(existing) === uid) { entries.push({ uid, name, username: existing, status: "already-assigned" }); continue; }
-    if (!email.includes("@")) { entries.push({ uid, name, username: "", status: "unresolvable" }); continue; }
-
-    const { firstName, lastName } = splitLegalName(name);
-    const username = generateUsername(firstName || String(profile.firstName ?? ""), lastName, taken);
-    if (!username) { entries.push({ uid, name, username: "", status: "unresolvable" }); continue; }
-    taken.add(username);
-    claimedBy.set(username, uid);
-    entries.push({ uid, name, username, status: apply ? "assigned" : "would-assign" });
-    if (!apply) continue;
-    writes.push({ path: usernameIndexPath(username), data: { uid, email, updatedAt: at, updatedBy: caller.uid } });
-    writes.push({ path: `${USER_ACCESS}/${uid}`, data: { ...record.data, username, updatedAt: at, updatedBy: caller.uid } });
-    writes.push({ path: `${EMPLOYEE_DIRECTORY}/${uid}`, data: { ...profile, username, updatedAt: at } });
-  }
-
-  if (apply && writes.length) {
+  if (apply && plan.writes.length) {
     try {
-      for (let start = 0; start < writes.length; start += 200) await admin.commit(writes.slice(start, start + 200));
+      for (let start = 0; start < plan.writes.length; start += 200) await admin.commit(plan.writes.slice(start, start + 200));
     } catch {
       return authFail("Some usernames could not be written. Re-run the migration; it skips identities that already have one.", 502);
     }
     await admin.stampMeta([EMPLOYEE_DIRECTORY]);
   }
 
-  return json({ ok: true, applied: apply, entries } satisfies UsernameBackfillResponse, 200);
+  return json({ ok: true, applied: apply, entries: plan.entries } satisfies UsernameBackfillResponse, 200);
 }
 
 const handler = {

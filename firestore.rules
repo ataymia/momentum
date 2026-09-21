@@ -196,6 +196,12 @@ service cloud.firestore {
       allow write: if field in ['_root', 'contacts', 'interactions', 'opportunities', 'responsibilityHistory'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative']));
     }
 
+    // momentum-territory-v2
+    match /territory/fields/{field} {
+      allow get, list: if field in ['_root', 'assignments', 'exceptions', 'history', 'territories'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
+      allow write: if field in ['_root', 'assignments', 'exceptions', 'history', 'territories'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
+    }
+
     // momentum-hcm-v4
     match /hcm/fields/{field} {
       allow get, list: if field in ['_root', 'acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'benefitPlans', 'candidates', 'compensation', 'compensationChanges', 'courses', 'dependents', 'documents', 'employees', 'employmentChanges', 'goals', 'interviews', 'leaveRequests', 'lifecycleCases', 'offers', 'policies', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'ptoPolicies', 'requisitions', 'reviewCycles', 'reviews', 'shiftRequests', 'shifts', 'tasks', 'training', 'workflows'] && (field in ['candidates', 'interviews', 'lifecycleCases', 'offers', 'requisitions'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager']) : field in ['audit'] ? (isActiveRole('Administrator')) : (hasAccess()));
@@ -302,6 +308,14 @@ service cloud.firestore {
       allow get, list: if field in ['timeEntries', 'timecards']
         && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['timeEntries', 'timecards']
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
+    }
+
+    // momentum-territory-v2
+    match /{uid}/territory/{field} {
+      allow get, list: if field in ['exceptions']
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+      allow write: if field in ['exceptions']
         && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
 

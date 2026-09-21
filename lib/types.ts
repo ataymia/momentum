@@ -130,6 +130,24 @@ export type Account = {
   pricingTier?: PricingTier;
   pricingUpdatedAt?: string;
   pricingUpdatedBy?: string;
+  /**
+   * Coordinates for this location, filled in after the address is geocoded.
+   *
+   * Territory matching and field geofencing both read these, but they remain separate controls: one
+   * decides authorization to work a location, the other decides whether a device is at an appointment.
+   */
+  latitude?: number;
+  longitude?: number;
+  geocodePrecision?: "rooftop" | "street" | "locality" | "postal" | "unknown";
+  geocodeProvider?: string;
+  geocodedAt?: string;
+  /** Fingerprint of the address these coordinates came from, so a material change can be detected. */
+  geocodeFingerprint?: string;
+  geocodeStatus?: "ok" | "not-found" | "pending-provider" | "error";
+  /** Derived: the territory this location last resolved to. The engine remains the authority. */
+  territoryId?: string;
+  /** Strategic or national account, owned by management outside normal territory ownership. */
+  strategic?: boolean;
 };
 
 export type ActivityType = "call" | "visit" | "sample" | "order" | "placement" | "note";

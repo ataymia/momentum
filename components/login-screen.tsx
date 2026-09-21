@@ -10,11 +10,11 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export type LoginResult = { ok: boolean; message?: string };
 export type LoginFormProps = {
-  /** Employees sign in with a username. The e-mail is kept on the identity for recovery only. */
-  login: (username: string, password: string) => LoginResult | Promise<LoginResult>;
+  /** Accepts a username or an e-mail address. Both resolve to the same Firebase identity. */
+  login: (identifier: string, password: string) => LoginResult | Promise<LoginResult>;
   ready: boolean;
-  /** Present only when Firebase Authentication is connected. Takes a username, never an e-mail. */
-  requestPasswordReset?: (username: string) => Promise<LoginResult>;
+  /** Present only when Firebase Authentication is connected. Accepts a username or an e-mail. */
+  requestPasswordReset?: (identifier: string) => Promise<LoginResult>;
   /** Present only when Firebase Authentication is connected. Takes the employee's recovery e-mail. */
   recoverUsername?: (email: string) => Promise<LoginResult>;
   subtitle?: string;
@@ -38,9 +38,9 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await login(username, password);
-      if (!result.ok) setError(result.message ?? "Incorrect username or password.");
+      if (!result.ok) setError(result.message ?? "Incorrect sign-in details.");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Incorrect username or password.");
+      setError(caught instanceof Error ? caught.message : "Incorrect sign-in details.");
     } finally {
       setBusy(false);
     }
@@ -62,7 +62,7 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
   const resetPassword = (event: FormEvent) => {
     event.preventDefault();
     if (!requestPasswordReset || busy) return;
-    if (!username.trim()) { setError("Enter your username, then send the reset link."); return; }
+    if (!username.trim()) { setError("Enter your username or e-mail address, then send the reset link."); return; }
     void run(() => requestPasswordReset(username), "Password reset requested.");
   };
 
@@ -88,7 +88,7 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
       <div className="login-panel__heading"><span className="login-panel__icon"><LockKeyhole size={20} /></span><div><h2>Sign in</h2><p>{subtitle}</p></div></div>
 
       {pane === "none" && <form className="login-form" onSubmit={submit}>
-        <label><span>Username</span><input required autoCapitalize="none" autoCorrect="off" spellCheck={false} value={username} onChange={(event) => { setUsername(event.target.value); setError(""); }} autoComplete="username" placeholder="jsmith" /></label>
+        <label><span>Username or email</span><input required autoCapitalize="none" autoCorrect="off" spellCheck={false} value={username} onChange={(event) => { setUsername(event.target.value); setError(""); }} autoComplete="username" placeholder="jsmith" /></label>
         <label><span>Password</span><div className="password-input"><input type={showPassword ? "text" : "password"} required value={password} onChange={(event) => { setPassword(event.target.value); setError(""); }} autoComplete="current-password" /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div></label>
         {error && <p className="form-error" role="alert">{error}</p>}
         {notice && <p className="form-notice" role="status">{notice}</p>}
@@ -98,8 +98,8 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
       </form>}
 
       {pane === "password" && <form className="login-form" onSubmit={resetPassword}>
-        <p className="login-recovery-note">Enter your username. Momentum sends the reset link to the recovery e-mail on your account and only ever shows a masked version of that address.</p>
-        <label><span>Username</span><input required autoCapitalize="none" autoCorrect="off" spellCheck={false} value={username} onChange={(event) => { setUsername(event.target.value); setError(""); }} autoComplete="username" placeholder="jsmith" /></label>
+        <p className="login-recovery-note">Enter your username or the e-mail on your account. When you use a username, Momentum sends the link to the recovery e-mail on file and only ever shows a masked version of that address.</p>
+        <label><span>Username or email</span><input required autoCapitalize="none" autoCorrect="off" spellCheck={false} value={username} onChange={(event) => { setUsername(event.target.value); setError(""); }} autoComplete="username" placeholder="jsmith" /></label>
         {error && <p className="form-error" role="alert">{error}</p>}
         {notice && <p className="form-notice" role="status">{notice}</p>}
         <Button type="submit" size="lg" disabled={busy} icon={<MailQuestion size={18} />}>{busy ? "Working…" : "Send reset link"}</Button>
@@ -123,5 +123,5 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
 /** Local demo sign-in backed by the workspace provider. Production uses `FirebaseGate`, which renders `LoginForm` directly. */
 export function LoginScreen() {
   const { login, ready } = useWorkspace();
-  return <LoginForm login={login} ready={ready} subtitle="Use your Momentum username." />;
+  return <LoginForm login={login} ready={ready} subtitle="Use your Momentum username or work e-mail." />;
 }

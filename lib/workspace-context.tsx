@@ -50,7 +50,15 @@ const tropicalLot: InventoryLot = {
   location: "Phoenix demo warehouse",
 };
 
-type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "postalCode">>;
+type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "postalCode" | "latitude" | "longitude" | "geocodePrecision" | "geocodeProvider" | "geocodedAt" | "geocodeFingerprint" | "geocodeStatus" | "territoryId" | "strategic">>;
+
+/**
+ * The only fields the territory/geocoding layer may write on a business location.
+ *
+ * Deliberately excludes ownership, stage, activity, and every attribution field: a geocode or a territory
+ * result must never be able to rewrite sales credit or account history.
+ */
+export type AccountLocationPatch = Partial<Pick<Account, "latitude" | "longitude" | "geocodePrecision" | "geocodeProvider" | "geocodedAt" | "geocodeFingerprint" | "geocodeStatus" | "territoryId" | "strategic">>;
 type CommercialState = {
   version: 1;
   accountPatches: Record<string, CommercialAccountPatch>;
@@ -91,6 +99,8 @@ type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | 
   setOrderStatus: (id: string, status: OrderStatus) => void;
   reconcileOrderPayment: (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => void;
   updateAccountCommercial: (accountId: string, patch: CommercialAccountInput) => boolean;
+  /** Geocode and territory results only. Cannot touch ownership, stage, or any attribution field. */
+  patchAccountLocation: (accountId: string, patch: AccountLocationPatch) => boolean;
   transferAccountResponsibility: (accountId: string, toUserId: string, reason: string) => boolean;
   saveTerritory:(input:TerritoryInput)=>TerritoryMutationResult;
   importInventoryLots: (lots: InventoryLot[]) => number;
@@ -296,6 +306,17 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       if(repDeviation&&currentUser)recordTerritoryException(id,account.name,postalCode,currentUser.id,"creating this account",exceptionReason,"Pending");
     }
     return id;
+  };
+
+  /** Geocode/territory results only. Never touches ownership, stage, or any attribution field. */
+  const patchAccountLocation = (accountId: string, patch: AccountLocationPatch) => {
+    if (!currentUser || currentUser.role === "Customer") return false;
+    const account = data.accounts.find((item) => item.id === accountId);
+    if (!account || !accountIsVisible(data, currentUser, account)) return false;
+    if (patch.latitude !== undefined && (!Number.isFinite(patch.latitude) || Math.abs(patch.latitude) > 90)) return false;
+    if (patch.longitude !== undefined && (!Number.isFinite(patch.longitude) || Math.abs(patch.longitude) > 180)) return false;
+    setCommercial((state) => ({ ...state, accountPatches: { ...state.accountPatches, [accountId]: { ...state.accountPatches[accountId], ...patch } } }));
+    return true;
   };
 
   const updateAccountCommercial = (accountId: string, patch: CommercialAccountInput) => {
@@ -566,7 +587,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, updateAccountCommercial, transferAccountResponsibility, saveTerritory, importInventoryLots, resetDemo };
+  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, updateAccountCommercial, patchAccountLocation, transferAccountResponsibility, saveTerritory, importInventoryLots, resetDemo };
   return <EnhancedWorkspaceContext.Provider value={value}>{children}</EnhancedWorkspaceContext.Provider>;
 }
 
