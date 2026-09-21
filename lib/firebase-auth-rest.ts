@@ -1,13 +1,11 @@
 import {
-  PASSWORD_RESET_PATH,
   SIGN_IN_REJECTED,
-  USERNAME_REMINDER_PATH,
-  USERNAME_SIGN_IN_PATH,
   type PasswordResetResponse,
   type UsernameReminderResponse,
   type UsernameSignInResponse,
 } from "./auth-contract";
 import { firebaseWebConfig } from "./firebase-config";
+import { firebaseFunctionUrl } from "./firebase-functions";
 import { normalizeUsername } from "./username";
 
 export type FirebaseAuthSession={
@@ -111,14 +109,14 @@ export function signOutFirebase(){persistFirebaseSession(null);}
  * Username sign-in.
  *
  * The browser has no way to turn a username into the e-mail Firebase needs, and deliberately so: the
- * `usernames/{username}` mapping is denied to every client. The Worker holds the service account, resolves
- * the name, verifies the password with Identity Toolkit, and returns the same tokens a direct Firebase
- * sign-in would have produced — so everything downstream keeps using the existing session architecture.
+ * `usernames/{username}` mapping is denied to every client. A Firebase Function resolves the name,
+ * verifies the password with Identity Toolkit, and returns the same tokens a direct Firebase sign-in
+ * would have produced, so everything downstream keeps using the existing session architecture.
  */
 export async function signInWithUsername(username:string,password:string):Promise<FirebaseAuthSession>{
   let response:Response;
   try{
-    response=await fetch(USERNAME_SIGN_IN_PATH,{
+    response=await fetch(firebaseFunctionUrl("usernameSignIn"),{
       method:"POST",
       headers:{"content-type":"application/json"},
       body:JSON.stringify({username:normalizeUsername(username),password}),
@@ -134,7 +132,7 @@ export async function signInWithUsername(username:string,password:string):Promis
 
 /** Starts password recovery from a username. Resolves to the masked recovery address when there is one. */
 export async function requestPasswordResetByUsername(username:string):Promise<{maskedEmail?:string}>{
-  const response=await fetch(PASSWORD_RESET_PATH,{
+  const response=await fetch(firebaseFunctionUrl("usernamePasswordReset"),{
     method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({username:normalizeUsername(username)}),
   }).catch(()=>null);
@@ -146,7 +144,7 @@ export async function requestPasswordResetByUsername(username:string):Promise<{m
 
 /** Forgot username. The response is identical whether or not the address matches an employee. */
 export async function requestUsernameReminder(email:string):Promise<void>{
-  const response=await fetch(USERNAME_REMINDER_PATH,{
+  const response=await fetch(firebaseFunctionUrl("usernameReminder"),{
     method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({email:email.trim().toLowerCase()}),
   }).catch(()=>null);
