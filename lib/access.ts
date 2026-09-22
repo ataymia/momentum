@@ -1,12 +1,12 @@
 import type { Account, Approval, Bulletin, PageKey, WorkspaceData, WorkspaceUser } from "./types";
 
 const pageAccess: Record<WorkspaceUser["role"], PageKey[]> = {
-  Administrator: ["home","work","actions","accounts","accountHealth","crmTools","dispatch","retail","orders","orderCash","inventory","inventoryLedger","marketing","brandAmbassadors","people","employees","newHire","onboarding","trainingAdmin","payroll","finance","accounting","reports","performance","reportingCenter","audit","settings","dataExchange","help"],
-  "Sales Manager": ["home","work","actions","accounts","accountHealth","crmTools","dispatch","retail","orders","orderCash","marketing","people","employees","payroll","finance","reports","performance","reportingCenter","help"],
-  "Sales Representative": ["home","work","actions","accounts","accountHealth","crmTools","dispatch","retail","orders","orderCash","marketing","brandAmbassadors","people","employees","payroll","finance","reports","performance","reportingCenter","help"],
-  "Brand Ambassador": ["home","brandAmbassadors","help"],
-  Operations: ["home","work","actions","dispatch","orders","orderCash","inventory","inventoryLedger","marketing","people","employees","payroll","finance","help"],
-  Warehouse: ["home","work","actions","orders","inventory","inventoryLedger","people","employees","payroll","help"],
+  Administrator: ["home","work","actions","accounts","quickVisit","salesMap","accountSetup","accountHealth","crmTools","dispatch","retail","orders","orderCash","inventory","inventoryLedger","products","marketing","brandAmbassadors","people","employees","newHire","onboarding","trainingAdmin","timekeeping","materials","payroll","finance","accounting","reports","performance","reportingCenter","audit","settings","dataExchange","help"],
+  "Sales Manager": ["home","work","actions","accounts","quickVisit","salesMap","accountSetup","accountHealth","crmTools","dispatch","retail","orders","orderCash","products","marketing","people","employees","timekeeping","materials","payroll","finance","reports","performance","reportingCenter","help"],
+  "Sales Representative": ["home","work","actions","accounts","quickVisit","salesMap","accountSetup","accountHealth","crmTools","dispatch","retail","orders","orderCash","products","marketing","brandAmbassadors","people","employees","timekeeping","materials","payroll","finance","reports","performance","reportingCenter","help"],
+  "Brand Ambassador": ["home","brandAmbassadors","timekeeping","materials","help"],
+  Operations: ["home","work","actions","dispatch","orders","orderCash","inventory","inventoryLedger","products","marketing","people","employees","timekeeping","materials","payroll","finance","help"],
+  Warehouse: ["home","work","actions","orders","inventory","inventoryLedger","products","people","employees","timekeeping","materials","payroll","help"],
   Customer: ["home","accounts","orders","help"],
 };
 
@@ -20,6 +20,8 @@ export const canCreateScheduleItem = (user: WorkspaceUser | null) => Boolean(use
 export const canPostBulletin = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager"].includes(user.role));
 export const canReconcileOrderPayment = (user: WorkspaceUser | null | undefined) => user?.role === "Administrator";
 export const canManageMarketing = (user: WorkspaceUser | null | undefined) => user?.role === "Administrator";
+export const canManageCustomerCredit = (user: WorkspaceUser | null | undefined) => Boolean(user && ["Administrator","Sales Manager"].includes(user.role));
+export const canEditEmployeeDirectory = (user: WorkspaceUser | null | undefined) => user?.role === "Administrator";
 
 const managedUserIds = (data: WorkspaceData, user: WorkspaceUser) => {
   const teams = new Set(user.managedTeams ?? []);
@@ -40,8 +42,7 @@ export const canSuperviseBrandAmbassador = (data: WorkspaceData, actor: Workspac
   if (!actor) return false;
   const target = data.users.find((user) => user.id === targetUserId && user.role === "Brand Ambassador");
   if (!target) return false;
-  if (actor.role === "Administrator") return true;
-  return actor.role === "Sales Representative" && target.managerId === actor.id;
+  return actor.role === "Administrator";
 };
 
 export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
@@ -59,9 +60,17 @@ export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, accou
   if (["Administrator","Operations","Warehouse"].includes(user.role)) return true;
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
   if (user.role === "Brand Ambassador") return false;
-  if (user.role === "Sales Representative") return account.ownerId === user.id;
-  return managedUserIds(data, user).has(account.ownerId);
+  if (user.role === "Sales Representative") return Boolean(account.ownerId) && account.ownerId === user.id;
+  return Boolean(account.ownerId) && managedUserIds(data, user).has(account.ownerId);
 };
+
+/** Only an unassigned Prospect may be self-claimed. Existing customers still use managed responsibility transfer. */
+export const canClaimUnassignedProspect = (user: WorkspaceUser | null | undefined, account: Account | null | undefined) => Boolean(
+  user?.role === "Sales Representative" &&
+  account &&
+  account.stage === "Prospect" &&
+  !account.ownerId,
+);
 
 export const canTransferSalesResponsibility = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, account: Account, targetUserId: string) => {
   if (!actor || !["Administrator", "Sales Manager"].includes(actor.role) || !accountIsVisible(data, actor, account)) return false;
