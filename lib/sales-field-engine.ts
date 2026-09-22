@@ -1,5 +1,6 @@
 import { addCalendarDays, arizonaDateKey, startOfLocalWeek } from "./date-time";
-import type { Account, Activity, WorkspaceData } from "./types";
+import type { CrmInteraction } from "./crm-engine";
+import type { Account, WorkspaceData } from "./types";
 
 export const WEEKLY_VISIT_TARGET_MIN = 75;
 export const WEEKLY_VISIT_TARGET_STRETCH = 80;
@@ -16,7 +17,7 @@ export type WeeklyVisitSummary = {
   targetStretch: number;
   remainingToMinimum: number;
   priorWeekCompleted: number;
-  sourceActivityIds: string[];
+  sourceInteractionIds: string[];
 };
 
 export function clampProspectRating(value: number) {
@@ -32,20 +33,20 @@ export function prospectRatingColor(value: number | undefined) {
   return `hsl(${hue} 72% 42%)`;
 }
 
-export const isPhysicalVisit = (activity: Activity) => activity.type === "visit" && activity.physicalVisit === true;
+export const isPhysicalVisit = (interaction: CrmInteraction) => interaction.type === "Visit" && interaction.physicalVisit === true;
 
-export function weeklyVisitSummary(activities: Activity[], userId: string, asOf = arizonaDateKey()): WeeklyVisitSummary {
+export function weeklyVisitSummary(interactions: CrmInteraction[], userId: string, asOf = arizonaDateKey()): WeeklyVisitSummary {
   const weekStart = startOfLocalWeek(asOf);
   const weekEnd = addCalendarDays(weekStart, 6);
   const priorWeekStart = addCalendarDays(weekStart, -7);
   const priorWeekEnd = addCalendarDays(weekStart, -1);
-  const visits = activities.filter((activity) => activity.userId === userId && isPhysicalVisit(activity));
-  const current = visits.filter((activity) => {
-    const date = arizonaDateKey(activity.at);
+  const visits = interactions.filter((interaction) => interaction.userId === userId && isPhysicalVisit(interaction));
+  const current = visits.filter((interaction) => {
+    const date = arizonaDateKey(interaction.occurredAt);
     return date >= weekStart && date <= weekEnd;
   });
-  const prior = visits.filter((activity) => {
-    const date = arizonaDateKey(activity.at);
+  const prior = visits.filter((interaction) => {
+    const date = arizonaDateKey(interaction.occurredAt);
     return date >= priorWeekStart && date <= priorWeekEnd;
   });
   return {
@@ -57,16 +58,16 @@ export function weeklyVisitSummary(activities: Activity[], userId: string, asOf 
     targetStretch: WEEKLY_VISIT_TARGET_STRETCH,
     remainingToMinimum: Math.max(0, WEEKLY_VISIT_TARGET_MIN - current.length),
     priorWeekCompleted: prior.length,
-    sourceActivityIds: current.map((activity) => activity.id),
+    sourceInteractionIds: current.map((interaction) => interaction.id),
   };
 }
 
-export function unsuccessfulProspectVisitCount(activities: Activity[], accountId: string, ownerId?: string) {
-  return activities.filter((activity) =>
-    activity.accountId === accountId &&
-    isPhysicalVisit(activity) &&
-    activity.visitUnsuccessful === true &&
-    (!ownerId || activity.userId === ownerId),
+export function unsuccessfulProspectVisitCount(interactions: CrmInteraction[], accountId: string, ownerId?: string) {
+  return interactions.filter((interaction) =>
+    interaction.locationId === accountId &&
+    isPhysicalVisit(interaction) &&
+    interaction.visitUnsuccessful === true &&
+    (!ownerId || interaction.userId === ownerId),
   ).length;
 }
 
@@ -77,9 +78,9 @@ function daysSince(dateOrInstant: string, asOf: string) {
   return Math.max(0, Math.floor((end - start) / 86_400_000));
 }
 
-export function prospectOwnershipReleaseReason(account: Account, activities: Activity[], asOf = arizonaDateKey()) {
+export function prospectOwnershipReleaseReason(account: Account, interactions: CrmInteraction[], asOf = arizonaDateKey()) {
   if (account.stage !== "Prospect" || !account.ownerId) return undefined;
-  const unsuccessful = unsuccessfulProspectVisitCount(activities, account.id, account.ownerId);
+  const unsuccessful = unsuccessfulProspectVisitCount(interactions, account.id, account.ownerId);
   if (unsuccessful >= PROSPECT_MAX_UNSUCCESSFUL_VISITS) {
     return `${PROSPECT_MAX_UNSUCCESSFUL_VISITS} unsuccessful physical visits recorded`;
   }
@@ -89,22 +90,23 @@ export function prospectOwnershipReleaseReason(account: Account, activities: Act
   return undefined;
 }
 
-export function latestProspectRating(activities: Activity[], accountId: string) {
-  return activities
-    .filter((activity) => activity.accountId === accountId && isPhysicalVisit(activity) && clampProspectRating(activity.prospectRating ?? Number.NaN) !== undefined)
-    .sort((a, b) => b.at.localeCompare(a.at))[0]?.prospectRating;
+export function latestProspectRating(interactions: CrmInteraction[], accountId: string) {
+  return interactions
+    .filter((interaction) => interaction.locationId === accountId && isPhysicalVisit(interaction) && clampProspectRating(interaction.prospectRating ?? Number.NaN) !== undefined)
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0]?.prospectRating;
 }
 
 /**
  * Customer inactivity is an alert, not an automatic reassignment. Only two-way commercial evidence counts:
- * a paid/delivered order or an explicitly recorded meaningful-business timestamp.
+ * a paid/delivered order or an explicitly recorded meaningful-business timestamp when one exists.
  */
 export function customerOwnershipReview(data: WorkspaceData, account: Account, asOf = arizonaDateKey()) {
   if (["Prospect", "Qualified", "Sampled", "Opening order"].includes(account.stage)) return undefined;
   const commercialDates = data.orders
     .filter((order) => order.accountId === account.id && (order.paymentStatus === "Paid" || ["Delivered", "Paid"].includes(order.status)))
     .map((order) => arizonaDateKey(order.paidAt ?? order.placedAt));
-  if (account.lastMeaningfulBusinessAt) commercialDates.push(arizonaDateKey(account.lastMeaningfulBusinessAt));
+  const accountWithMeaningful = account as Account & { lastMeaningfulBusinessAt?: string };
+  if (accountWithMeaningful.lastMeaningfulBusinessAt) commercialDates.push(arizonaDateKey(accountWithMeaningful.lastMeaningfulBusinessAt));
   const last = commercialDates.sort().at(-1);
   if (!last) return { review: true, daysInactive: undefined as number | undefined, lastMeaningfulAt: undefined as string | undefined };
   const inactive = daysSince(last, asOf);
