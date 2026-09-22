@@ -6,7 +6,28 @@ import { customerForLocation } from "./crm-hierarchy";
 export const CRM_STORAGE_KEY="momentum-crm-v1";
 export type ContactScope="Customer"|"Location";
 export type CrmContact={id:string;scope:ContactScope;customerId:string;locationId?:string;name:string;role:string;email?:string;phone?:string;decisionRole:"Decision maker"|"Influencer"|"Billing"|"Operations"|"Other";primary:boolean;active:boolean;createdAt:string;createdBy:string};
-export type CrmInteraction={id:string;locationId:string;userId:string;type:"Call"|"Email"|"Text"|"Visit"|"Sample"|"Note";occurredAt:string;summary:string;outcome?:string;nextAction?:string;nextActionDate?:string;contactId?:string};
+export type CrmInteraction={
+  id:string;
+  locationId:string;
+  userId:string;
+  type:"Call"|"Email"|"Text"|"Visit"|"Sample"|"Note";
+  occurredAt:string;
+  summary:string;
+  outcome?:string;
+  nextAction?:string;
+  nextActionDate?:string;
+  contactId?:string;
+  /** True only when a person physically visited the business. Scheduling/status chatter never counts. */
+  physicalVisit?:boolean;
+  /** Simple 1–10 field judgment. No mandatory explanation or category. */
+  prospectRating?:number;
+  /** Explicit flag used by the five-unsuccessful-visit ownership rule. */
+  visitUnsuccessful?:boolean;
+  /** Sample records are auditable field logs; they do not silently change the custody ledger. */
+  sampleProduct?:string;
+  sampleQuantity?:number;
+  sampleInventoryLinked?:boolean;
+};
 export type OpportunityStage="Prospecting"|"Qualified"|"Sample / evaluation"|"Commercial review"|"Order pending"|"Won"|"Lost";
 export type Opportunity={id:string;customerId:string;locationId:string;name:string;stage:OpportunityStage;ownerId:string;estimatedCases?:number;expectedCloseDate?:string;nextAction:string;nextActionDate:string;status:"Open"|"Won"|"Lost";lossReason?:string;createdAt:string;createdBy:string;updatedAt:string};
 export type OpportunityUpdate=Partial<Pick<Opportunity,"name"|"stage"|"estimatedCases"|"expectedCloseDate"|"nextAction"|"nextActionDate"|"status"|"lossReason">>;
@@ -24,17 +45,29 @@ const interactionTypes=new Set<CrmInteraction["type"]>(["Call","Email","Text","V
 const opportunityStages=new Set<OpportunityStage>(["Prospecting","Qualified","Sample / evaluation","Commercial review","Order pending","Won","Lost"]);
 const opportunityStatuses=new Set<Opportunity["status"]>(["Open","Won","Lost"]);
 const uniqueById=<T extends {id:string}>(records:T[])=>{const seen=new Set<string>();return records.filter((record)=>Boolean(record?.id)&&!seen.has(record.id)&&(seen.add(record.id),true));};
+const validRating=(value:unknown)=>value===undefined||(Number.isInteger(value)&&Number(value)>=1&&Number(value)<=10);
+const validSampleQuantity=(value:unknown)=>value===undefined||(Number.isInteger(value)&&Number(value)>0);
 
 export function createCrmSeed(data:WorkspaceData):CrmState{
   const contacts:CrmContact[]=data.accounts.filter((location)=>location.contactName).map((location)=>{const customer=customerForLocation(data,location);return{id:`contact-${location.id}-primary`,scope:"Location",customerId:customer.id,locationId:location.id,name:location.contactName,role:location.contactRole||"Contact",email:location.email||undefined,phone:location.phone||undefined,decisionRole:"Decision maker",primary:true,active:true,createdAt:now(),createdBy:"system"};});
-  const responsibilityHistory:ResponsibilityEvent[]=data.accounts.map((location)=>({id:`responsibility-${location.id}-initial`,locationId:location.id,toUserId:location.ownerId,effectiveAt:location.responsibilityStartedAt??now(),reason:"Initial location responsibility",changedBy:location.originatorId??location.ownerId,acceptedAt:location.responsibilityStartedAt??now()}));
-  const interactions:CrmInteraction[]=data.activities.filter((activity)=>activity.accountId).map((activity)=>({id:`crm-${activity.id}`,locationId:activity.accountId!,userId:activity.userId,type:activity.type==="call"?"Call":activity.type==="visit"?"Visit":activity.type==="sample"?"Sample":"Note",occurredAt:activity.at,summary:activity.title,outcome:activity.detail}));
+  const responsibilityHistory:ResponsibilityEvent[]=data.accounts.filter((location)=>Boolean(location.ownerId)).map((location)=>({id:`responsibility-${location.id}-initial`,locationId:location.id,toUserId:location.ownerId,effectiveAt:location.responsibilityStartedAt??now(),reason:"Initial location responsibility",changedBy:location.originatorId??location.ownerId,acceptedAt:location.responsibilityStartedAt??now()}));
+  const interactions:CrmInteraction[]=data.activities.filter((activity)=>activity.accountId).map((activity)=>({
+    id:`crm-${activity.id}`,
+    locationId:activity.accountId!,
+    userId:activity.userId,
+    type:activity.type==="call"?"Call":activity.type==="visit"?"Visit":activity.type==="sample"?"Sample":"Note",
+    occurredAt:activity.at,
+    summary:activity.title,
+    outcome:activity.detail,
+    physicalVisit:activity.type==="visit"&&/completed/i.test(activity.title)||undefined,
+  }));
   return{version:1,contacts,interactions,opportunities:[],responsibilityHistory};
 }
 
 export function reconcileResponsibilityHistory(history:ResponsibilityEvent[],data:WorkspaceData){
   const events=[...history];
   for(const location of data.accounts){
+    if(!location.ownerId)continue;
     const locationEvents=events.filter((event)=>event.locationId===location.id).sort((a,b)=>a.effectiveAt.localeCompare(b.effectiveAt));
     const latest=locationEvents.at(-1);
     if(!latest){
@@ -87,7 +120,19 @@ export function normalizeCrmState(input:unknown,data:WorkspaceData):CrmState{
     if(Boolean(interaction.nextAction?.trim())!==Boolean(interaction.nextActionDate))return false;
     if(interaction.nextActionDate&&!validDateKey(interaction.nextActionDate))return false;
     if(interaction.contactId){const contact=contactById.get(interaction.contactId);if(!contact||!contact.active||!(contact.scope==="Location"?contact.locationId===location.id&&contact.customerId===location.customerId:contact.customerId===location.customerId))return false;}
+    if(!validRating(interaction.prospectRating)||!validSampleQuantity(interaction.sampleQuantity))return false;
+    if(interaction.prospectRating!==undefined&&interaction.type!=="Visit")return false;
+    if(interaction.visitUnsuccessful!==undefined&&interaction.type!=="Visit")return false;
+    if(interaction.physicalVisit!==undefined&&interaction.type!=="Visit")return false;
+    if(interaction.sampleQuantity!==undefined&&interaction.type!=="Sample")return false;
+    if(interaction.sampleProduct!==undefined&&(interaction.type!=="Sample"||!interaction.sampleProduct.trim()))return false;
+    if(interaction.sampleInventoryLinked!==undefined&&interaction.type!=="Sample")return false;
     return true;
+  })).map((interaction)=>({
+    ...interaction,
+    sampleProduct:interaction.sampleProduct?.trim()||undefined,
+    physicalVisit:interaction.type==="Visit"?interaction.physicalVisit===true:undefined,
+    visitUnsuccessful:interaction.type==="Visit"?interaction.visitUnsuccessful===true:undefined,
   }));
   const interactions=[...seed.interactions,...extraInteractions];
 
@@ -131,7 +176,7 @@ export function contactMatchesLocation(state:CrmState,contactId:string,locationI
 
 export function opportunityOwnerForLocation(data:WorkspaceData,locationId:string){
   const location=data.accounts.find((item)=>item.id===locationId);
-  if(!location)return undefined;
+  if(!location||!location.ownerId)return undefined;
   const owner=data.users.find((user)=>user.id===location.ownerId);
   if(!owner||!["Sales Representative","Sales Manager","Administrator"].includes(owner.role))return undefined;
   return owner.id;
