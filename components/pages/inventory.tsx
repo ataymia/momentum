@@ -1,21 +1,32 @@
 "use client";
 
-import { Boxes, CalendarClock, CheckCircle2, ChevronRight, ClipboardCheck, PackageOpen, ShieldAlert, Warehouse } from "lucide-react";
+import { Boxes, CalendarClock, CheckCircle2, ChevronRight, ClipboardCheck, PackageOpen, Plus, ShieldAlert, Warehouse } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import { arizonaDateKey, isValidCalendarDateKey } from "../../lib/date-time";
 import { holdNodeId, nodeLotBalance, warehouseAvailable } from "../../lib/inventory-ledger";
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
+import type { InventoryLot } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Modal, PageHeader, Section, StatusPill, formatDate } from "../ui";
 
 const companyCustodyTypes=new Set(["Warehouse","Bin","Vehicle","Employee custody","Quality hold"]);
+const quickProducts=["Tropical","Sugar Free","Original","Red","Blue"] as const;
+type QuickInventoryRow={product:string;cases:string;lotCode:string;bestBy:string};
+const freshQuickRows=():QuickInventoryRow[]=>quickProducts.map((product)=>({product,cases:"",lotCode:"",bestBy:""}));
 
 export function InventoryPage() {
-  const { scope } = useWorkspace();
+  const { data, scope, currentUser, importInventoryLots } = useWorkspace();
   const { ledger, resolveQualityHold }=useInventoryLedger();
   const focusId=typeof window!=="undefined"?window.sessionStorage.getItem("momentum-focus-record"):null;
   const focusedLot=scope.inventory.find((lot)=>lot.id===focusId);
   const [selectedLotId, setSelectedLotId] = useState(focusedLot?.id??scope.inventory[0]?.id ?? "");
   const [holdOpen,setHoldOpen] = useState(false); const [decision,setDecision] = useState<"Release"|"Retain">("Retain"); const [reason,setReason] = useState(""); const [error,setError] = useState("");
+  const [quickOpen,setQuickOpen]=useState(false);
+  const [quickRows,setQuickRows]=useState<QuickInventoryRow[]>(freshQuickRows);
+  const [receivedAt,setReceivedAt]=useState(arizonaDateKey());
+  const [receiptLocation,setReceiptLocation]=useState("Phoenix warehouse");
+  const [quickError,setQuickError]=useState("");
+  const [quickNotice,setQuickNotice]=useState("");
   useEffect(()=>{if(focusId)window.sessionStorage.removeItem("momentum-focus-record")},[focusId]);
   const selectedLot = scope.inventory.find((lot) => lot.id === selectedLotId) ?? scope.inventory[0];
   const companyQtyFor=(lotId:string)=>ledger.nodes.filter((node)=>companyCustodyTypes.has(node.type)).reduce((sum,node)=>sum+nodeLotBalance(ledger,node.id,lotId),0);
@@ -27,9 +38,70 @@ export function InventoryPage() {
   const selectedCustody=selectedLot?ledger.nodes.map((node)=>({node,qty:nodeLotBalance(ledger,node.id,selectedLot.id)})).filter(({node,qty})=>node.type!=="External"&&qty>0):[];
   const submitHold = (event: FormEvent) => { event.preventDefault(); if (!selectedLot || !resolveQualityHold(selectedLot.id,decision,reason)) { setError("The hold decision could not be recorded. Use a reason of at least eight characters and confirm the inventory period is open and the held cases are present in custody."); return; } setHoldOpen(false); setReason(""); setError(""); };
 
+  const openQuickAdd=()=>{
+    setQuickRows(freshQuickRows());
+    setReceivedAt(arizonaDateKey());
+    setReceiptLocation("Phoenix warehouse");
+    setQuickError("");
+    setQuickNotice("");
+    setQuickOpen(true);
+  };
+  const updateQuickRow=(index:number,patch:Partial<QuickInventoryRow>)=>setQuickRows((rows)=>rows.map((row,rowIndex)=>rowIndex===index?{...row,...patch}:row));
+  const submitQuickAdd=(event:FormEvent)=>{
+    event.preventDefault();
+    setQuickError("");
+    if(currentUser?.role!=="Administrator"){setQuickError("Only an Administrator can use quick inventory receipt.");return;}
+    if(!isValidCalendarDateKey(receivedAt)){setQuickError("Choose a valid received date.");return;}
+    const location=receiptLocation.trim();
+    if(location.length<2){setQuickError("Enter the warehouse or custody location receiving these cases.");return;}
+
+    const existingCodes=new Set(data.inventory.map((lot)=>lot.lotCode.trim().toLowerCase()));
+    const batchCodes=new Set<string>();
+    const records:InventoryLot[]=[];
+    let totalCases=0;
+    const stamp=Date.now();
+
+    for(let index=0;index<quickRows.length;index+=1){
+      const row=quickRows[index];
+      if(!row.cases.trim())continue;
+      const quantity=Number(row.cases);
+      if(!Number.isInteger(quantity)||quantity<=0){setQuickError(`${row.product||`Row ${index+1}`}: cases must be a whole number greater than zero.`);return;}
+      const product=row.product.trim();
+      if(!product){setQuickError(`Row ${index+1}: enter a product name.`);return;}
+      const lotCode=row.lotCode.trim();
+      if(!lotCode){setQuickError(`${product}: enter the actual lot code or an internal receipt code before adding stock.`);return;}
+      const normalizedCode=lotCode.toLowerCase();
+      if(existingCodes.has(normalizedCode)||batchCodes.has(normalizedCode)){setQuickError(`${product}: lot code ${lotCode} already exists or is repeated in this receipt.`);return;}
+      if(!isValidCalendarDateKey(row.bestBy)){setQuickError(`${product}: enter the best-by date printed for this lot.`);return;}
+      if(row.bestBy<receivedAt){setQuickError(`${product}: best-by date cannot be earlier than the received date.`);return;}
+      batchCodes.add(normalizedCode);
+      totalCases+=quantity;
+      records.push({
+        id:`lot-manual-${stamp}-${index}`,
+        lotCode,
+        product,
+        receivedAt,
+        bestBy:row.bestBy,
+        onHand:quantity,
+        reserved:0,
+        available:quantity,
+        status:"Available",
+        location,
+      });
+    }
+
+    if(!records.length){setQuickError("Enter a case quantity for at least one product.");return;}
+    const imported=importInventoryLots(records);
+    if(imported!==records.length){setQuickError(`Momentum accepted ${imported} of ${records.length} lots. Nothing else was retried automatically. Review existing lot codes and dates before trying the rejected rows again.`);return;}
+    setSelectedLotId(records[0].id);
+    setQuickNotice(`${totalCases} cases across ${records.length} product lot${records.length===1?"":"s"} were added to warehouse inventory.`);
+    setQuickOpen(false);
+  };
+
   return (
     <div className="page page--inventory">
-      <PageHeader eyebrow="Supply chain" title="Inventory" description="The custody ledger is the quantity source of truth. Lot records provide product, dates, and disposition status." />
+      <PageHeader eyebrow="Supply chain" title="Inventory" description="The custody ledger is the quantity source of truth. Lot records provide product, dates, and disposition status." actions={currentUser?.role==="Administrator"?<Button variant="gold" icon={<Plus size={17}/>} onClick={openQuickAdd}>Quick add inventory</Button>:undefined}/>
+      {quickNotice&&<div className="form-callout"><CheckCircle2 size={17}/><p>{quickNotice}</p></div>}
       <div className="inventory-kpis">
         <div><span><Boxes size={19} /></span><div><small>Company custody</small><strong>{onHand} cases</strong></div></div>
         <div><span><CheckCircle2 size={19} /></span><div><small>Warehouse available</small><strong>{available} cases</strong></div></div>
@@ -55,6 +127,20 @@ export function InventoryPage() {
           </div>
         )}
       </Section>
+      <Modal open={quickOpen} title="Quick add inventory" description="Administrator-only opening receipt. Enter only quantities physically in company custody. Lot code and best-by date are required so inventory stays auditable and usable for fulfillment." onClose={()=>setQuickOpen(false)} footer={<><Button variant="ghost" onClick={()=>setQuickOpen(false)}>Cancel</Button><Button type="submit" form="quick-inventory-form" variant="primary">Add inventory</Button></>}>
+        <form id="quick-inventory-form" className="form-grid" onSubmit={submitQuickAdd}>
+          <Field label="Received date"><input type="date" required value={receivedAt} onChange={(event)=>setReceivedAt(event.target.value)}/></Field>
+          <Field label="Receiving location"><input required value={receiptLocation} onChange={(event)=>setReceiptLocation(event.target.value)} placeholder="Phoenix warehouse"/></Field>
+          <div className="field--full form-callout"><Boxes size={17}/><p>Leave Cases blank for any product you are not receiving. Product names are editable before the receipt is saved.</p></div>
+          {quickRows.map((row,index)=><div key={`${row.product}-${index}`} className="field--full form-grid">
+            <Field label="Product"><input value={row.product} onChange={(event)=>updateQuickRow(index,{product:event.target.value})}/></Field>
+            <Field label="Cases"><input type="number" min="1" step="1" value={row.cases} onChange={(event)=>updateQuickRow(index,{cases:event.target.value})} placeholder="0"/></Field>
+            <Field label="Lot / receipt code"><input value={row.lotCode} onChange={(event)=>updateQuickRow(index,{lotCode:event.target.value})} placeholder="Printed lot or internal receipt code"/></Field>
+            <Field label="Best by"><input type="date" value={row.bestBy} onChange={(event)=>updateQuickRow(index,{bestBy:event.target.value})}/></Field>
+          </div>)}
+          {quickError&&<p className="form-error field--full" role="alert">{quickError}</p>}
+        </form>
+      </Modal>
       <Modal open={holdOpen} title={`Review ${selectedLot?.lotCode ?? "quality hold"}`} description="Retaining the hold leaves custody in Quality Hold. Releasing it records the physical move from Quality Hold to Warehouse and then makes the lot sellable." onClose={() => setHoldOpen(false)} footer={<><Button variant="ghost" onClick={() => setHoldOpen(false)}>Cancel</Button><Button type="submit" form="hold-form" variant={decision === "Release" ? "primary" : "secondary"}>Record decision</Button></>}>
         <form id="hold-form" className="form-grid" onSubmit={submitHold}><Field label="Disposition"><select value={decision} onChange={event => setDecision(event.target.value as "Release"|"Retain")}><option value="Retain">Retain hold</option><option value="Release">Release hold</option></select></Field><Field label="Cases currently held"><input value={selectedLot?Math.max(0,nodeLotBalance(ledger,holdNodeId,selectedLot.id)):0} disabled/></Field><Field label="Reason and evidence reviewed" className="field--full"><textarea rows={4} required value={reason} onChange={event => { setReason(event.target.value); setError(""); }} placeholder="Why is this disposition appropriate?"/></Field>{selectedLot?.holdReason && <div className="form-callout field--full"><ShieldAlert size={17}/><p>Hold reason: {selectedLot.holdReason}</p></div>}{error && <p className="form-error field--full" role="alert">{error}</p>}</form>
       </Modal>
