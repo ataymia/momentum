@@ -22,6 +22,9 @@ export type PageKey =
   | "work"
   | "actions"
   | "accounts"
+  | "quickVisit"
+  | "salesMap"
+  | "accountSetup"
   | "accountHealth"
   | "crmTools"
   | "dispatch"
@@ -30,6 +33,7 @@ export type PageKey =
   | "orderCash"
   | "inventory"
   | "inventoryLedger"
+  | "products"
   | "marketing"
   | "brandAmbassadors"
   | "people"
@@ -37,6 +41,8 @@ export type PageKey =
   | "newHire"
   | "onboarding"
   | "trainingAdmin"
+  | "timekeeping"
+  | "materials"
   | "payroll"
   | "finance"
   | "accounting"
@@ -58,7 +64,7 @@ export type WorkspaceUser = {
   role: Role;
   team: Team;
   managerId?: string;
-  /** Login identifier. The e-mail is kept for recovery, verification, and notifications only. */
+  /** Login alias. Work e-mail remains a valid sign-in and recovery identifier for the same Firebase uid. */
   username?: string;
   phone?: string;
   /** Teams a Sales Manager supervises in addition to direct reports. */
@@ -81,6 +87,10 @@ export type AccountHealth = "Strong" | "Watch" | "New" | "At risk";
 export type CustomerAccountType = "Independent" | "Chain / franchise" | "Distributor" | "Other";
 export type PremiseType = "On-premise" | "Off-premise" | "Hybrid" | "Unclassified";
 export type PricingTier = "A" | "B" | "C";
+export type CreditStatus = "COD" | "Credit Requested" | "Credit Under Review" | "Net 30 Approved" | "Credit Declined" | "Personal Guaranty Required";
+export type TaxExemptionStatus = "Not exempt" | "Requested" | "Received" | "Verified" | "Missing";
+export type OnboardingPackageStatus = "Not started" | "Prepared" | "Awaiting provider" | "Sent externally" | "Complete";
+export type ProgramPricingStatus = "Draft" | "Scheduled" | "Active" | "Expired" | "Cancelled";
 
 /** The billing entity above one or more selling locations (`Account`). */
 export type CustomerAccount = {
@@ -90,6 +100,20 @@ export type CustomerAccount = {
   billingContactName?: string;
   billingEmail?: string;
   billingPhone?: string;
+  ein?: string;
+  accountsPayableContactName?: string;
+  accountsPayablePhone?: string;
+  accountsPayableEmail?: string;
+  az5000Number?: string;
+  taxExemptionStatus?: TaxExemptionStatus;
+  creditStatus?: CreditStatus;
+  /** Displayed on invoices. COD remains the default unless an authorized approval changes this. */
+  paymentTerms?: "COD" | "Net 30" | "Custom";
+  customPaymentTerms?: string;
+  onboardingPackageStatus?: OnboardingPackageStatus;
+  onboardingPackagePreparedAt?: string;
+  onboardingPackagePreparedBy?: string;
+  onboardingProviderStatus?: "Provider not selected" | "Ready to connect" | "Connected";
   notes?: string;
   createdAt: string;
 };
@@ -100,10 +124,13 @@ export type Account = {
   location: string;
   channel: string;
   stage: AccountStage;
+  /** Empty string means an intentionally released/unassigned prospect. */
   ownerId: string;
   contactName: string;
   contactRole: string;
   phone: string;
+  mobilePhone?: string;
+  fax?: string;
   email: string;
   lastActivity: string;
   nextAction: string;
@@ -130,6 +157,13 @@ export type Account = {
   pricingTier?: PricingTier;
   pricingUpdatedAt?: string;
   pricingUpdatedBy?: string;
+  programPricingLabel?: string;
+  programPricePerCase?: number;
+  programPricingEffectiveDate?: string;
+  programPricingExpirationDate?: string;
+  programPricingStatus?: ProgramPricingStatus;
+  programPricingOwnerId?: string;
+  lastMeaningfulBusinessAt?: string;
   /**
    * Coordinates for this location, filled in after the address is geocoded.
    *
