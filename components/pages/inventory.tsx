@@ -18,16 +18,17 @@ export function InventoryPage() {
   const { data, scope, currentUser, importInventoryLots } = useWorkspace();
   const { ledger, resolveQualityHold }=useInventoryLedger();
   const focusId=typeof window!=="undefined"?window.sessionStorage.getItem("momentum-focus-record"):null;
+  const quickIntent=typeof window!=="undefined"?window.sessionStorage.getItem("momentum-inventory-intent"):null;
   const focusedLot=scope.inventory.find((lot)=>lot.id===focusId);
   const [selectedLotId, setSelectedLotId] = useState(focusedLot?.id??scope.inventory[0]?.id ?? "");
   const [holdOpen,setHoldOpen] = useState(false); const [decision,setDecision] = useState<"Release"|"Retain">("Retain"); const [reason,setReason] = useState(""); const [error,setError] = useState("");
-  const [quickOpen,setQuickOpen]=useState(false);
+  const [quickOpen,setQuickOpen]=useState(quickIntent==="quick-add");
   const [quickRows,setQuickRows]=useState<QuickInventoryRow[]>(freshQuickRows);
   const [receivedAt,setReceivedAt]=useState(arizonaDateKey());
   const [receiptLocation,setReceiptLocation]=useState("Phoenix warehouse");
   const [quickError,setQuickError]=useState("");
   const [quickNotice,setQuickNotice]=useState("");
-  useEffect(()=>{if(focusId)window.sessionStorage.removeItem("momentum-focus-record")},[focusId]);
+  useEffect(()=>{if(focusId)window.sessionStorage.removeItem("momentum-focus-record");if(quickIntent)window.sessionStorage.removeItem("momentum-inventory-intent")},[focusId,quickIntent]);
   const selectedLot = scope.inventory.find((lot) => lot.id === selectedLotId) ?? scope.inventory[0];
   const companyQtyFor=(lotId:string)=>ledger.nodes.filter((node)=>companyCustodyTypes.has(node.type)).reduce((sum,node)=>sum+nodeLotBalance(ledger,node.id,lotId),0);
   const availableFor=(lotId:string,status:string)=>status==="Quality hold"?0:warehouseAvailable(ledger,lotId);
@@ -114,7 +115,7 @@ export function InventoryPage() {
           <button key={lot.id} className={`lot-table ${selectedLot?.id === lot.id ? "is-selected" : ""}`} onClick={() => setSelectedLotId(lot.id)}>
             <span><strong>{lot.lotCode}</strong><small>{lot.product}</small></span>
             <span><StatusPill tone={lot.status === "Available" ? "success" : lot.status === "Quality hold" ? "danger" : "warning"}>{lot.status}</StatusPill></span>
-            <span>{companyQtyFor(lot.id)}</span><span>{availableFor(lot.id,lot.status)}</span><span>{formatDate(lot.bestBy, { month: "short", year: "numeric" })}</span><ChevronRight size={16} />
+            <span>{companyQtyFor(lot.id)}</span><span>{availableFor(lot.id,lot.status)}</span><span>{formatDate(lot.bestBy, { month:"short", year:"numeric" })}</span><ChevronRight size={16} />
           </button>
         ))}
         {selectedLot && (
