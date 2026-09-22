@@ -68,8 +68,10 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     const pricingTier = optionalText(raw.pricingTier); if (pricingTier && pricingTiers.has(pricingTier)) patch.pricingTier = pricingTier as PricingTier;
     if (validInstant(raw.pricingUpdatedAt)) patch.pricingUpdatedAt = text(raw.pricingUpdatedAt);
     const pricingUpdatedBy = optionalText(raw.pricingUpdatedBy); if (pricingUpdatedBy && userById.has(pricingUpdatedBy)) patch.pricingUpdatedBy = pricingUpdatedBy;
-    const ownerId = optionalText(raw.ownerId); if (ownerId && internalSalesIds.has(ownerId)) patch.ownerId = ownerId;
-    const accountManagerId = optionalText(raw.accountManagerId); if (accountManagerId && internalSalesIds.has(accountManagerId)) patch.accountManagerId = accountManagerId;
+    if (raw.ownerId === "") patch.ownerId = "";
+    else { const ownerId = optionalText(raw.ownerId); if (ownerId && internalSalesIds.has(ownerId)) patch.ownerId = ownerId; }
+    if (raw.accountManagerId === "") patch.accountManagerId = "";
+    else { const accountManagerId = optionalText(raw.accountManagerId); if (accountManagerId && internalSalesIds.has(accountManagerId)) patch.accountManagerId = accountManagerId; }
     if (validInstant(raw.responsibilityStartedAt)) patch.responsibilityStartedAt = text(raw.responsibilityStartedAt);
     const lastActivity = optionalText(raw.lastActivity); if (lastActivity) patch.lastActivity = lastActivity;
     const nextAction = optionalText(raw.nextAction); if (nextAction) patch.nextAction = nextAction;
