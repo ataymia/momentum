@@ -6,6 +6,7 @@ on:
       - platform-integrity-workflows-2026-09-22
     paths:
       - scripts/apply-platform-integrity-v3.py
+      - scripts/apply-platform-integrity-v4.py
       - .github/workflows/platform-integrity-apply.yml
 
 permissions:
@@ -39,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          python3 scripts/apply-platform-integrity-v3.py > platform-patch.log 2>&1
+          python3 scripts/apply-platform-integrity-v4.py > platform-patch.log 2>&1
           code=$?
           cat platform-patch.log
           exit $code
