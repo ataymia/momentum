@@ -68,8 +68,8 @@ export function barcodeCatalogReady() {
 }
 
 /**
- * Historical purchase-order quantities are intentionally absent. This catalog describes products only and
- * must never seed current inventory balances.
+ * The catalog may retain historical purchase-order quantities for reference, but those values are metadata only.
+ * Current inventory must come from verified physical receipts/counts and must never be seeded from historical POs.
  */
 export const PRODUCT_CATALOG_INVENTORY_POLICY = "Product master only. Current on-hand stock must come from verified physical inventory receipts.";
 
