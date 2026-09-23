@@ -6,6 +6,8 @@ import { BrandAmbassadorProvider } from "../lib/brand-ambassador-context";
 import { BRAND_AMBASSADOR_STORAGE_KEY } from "../lib/brand-ambassador-engine";
 import { CommerceProvider } from "../lib/commerce-context";
 import { CrmProvider } from "../lib/crm-context";
+import { DeliveryProvider } from "../lib/delivery-context";
+import { DELIVERY_STORAGE_KEY } from "../lib/delivery-engine";
 import { DOCUMENT_TEMPLATE_STORAGE_KEY } from "../lib/document-template-engine";
 import { FinanceProvider } from "../lib/finance-context";
 import { HcmProvider } from "../lib/hcm-context";
@@ -38,6 +40,7 @@ const PRESENTATION_RESET_KEYS = [
   "momentum-notification-rules-v1",
   "momentum-field-tracking-v1",
   BRAND_AMBASSADOR_STORAGE_KEY,
+  DELIVERY_STORAGE_KEY,
   TRAINING_LIBRARY_STORAGE_KEY,
   IDENTITY_PROVISIONING_STORAGE_KEY,
   DOCUMENT_TEMPLATE_STORAGE_KEY,
@@ -60,7 +63,7 @@ function MomentumExperience(){
 }
 
 function MomentumProviders(){
-  return <WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><TrainingLibraryProvider><IdentityProvisioningProvider><BrandAmbassadorProvider><FieldTrackingProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></FieldTrackingProvider></BrandAmbassadorProvider></IdentityProvisioningProvider></TrainingLibraryProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider>;
+  return <WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><TrainingLibraryProvider><IdentityProvisioningProvider><BrandAmbassadorProvider><FieldTrackingProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><DeliveryProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></DeliveryProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></FieldTrackingProvider></BrandAmbassadorProvider></IdentityProvisioningProvider></TrainingLibraryProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider>;
 }
 
 /**
