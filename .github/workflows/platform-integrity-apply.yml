@@ -5,7 +5,7 @@ on:
     branches:
       - platform-integrity-workflows-2026-09-22
     paths:
-      - scripts/apply-platform-refinements-v6.py
+      - scripts/apply-platform-refinements-v7.py
       - .github/workflows/platform-integrity-apply.yml
 
 permissions:
@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python3 scripts/apply-platform-refinements-v6.py 2>&1 | tee platform-validation.log
+          python3 scripts/apply-platform-refinements-v7.py 2>&1 | tee platform-validation.log
 
       - name: Install dependencies
         shell: bash
@@ -94,5 +94,5 @@ jobs:
             echo "No source changes to commit."
             exit 0
           fi
-          git commit -m "Finalize platform integrity and commercial workflows"
+          git commit -m "Add weekly sales management and pricing expiry actions"
           git push origin HEAD:platform-integrity-workflows-2026-09-22
