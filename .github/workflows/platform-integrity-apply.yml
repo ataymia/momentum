@@ -5,7 +5,7 @@ on:
     branches:
       - platform-integrity-workflows-2026-09-22
     paths:
-      - scripts/apply-platform-refinements-v8.py
+      - scripts/apply-platform-refinements-v9.py
       - .github/workflows/platform-integrity-apply.yml
 
 permissions:
@@ -34,11 +34,11 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Apply final application refinements
+      - name: Apply latest application refinements
         shell: bash
         run: |
           set -o pipefail
-          python3 scripts/apply-platform-refinements-v8.py 2>&1 | tee platform-validation.log
+          python3 scripts/apply-platform-refinements-v9.py 2>&1 | tee platform-validation.log
 
       - name: Install dependencies
         shell: bash
@@ -94,5 +94,5 @@ jobs:
             echo "No source changes to commit."
             exit 0
           fi
-          git commit -m "Fix Arizona sales reporting date boundaries"
+          git commit -m "Tighten SKU and inventory integrity rules"
           git push origin HEAD:platform-integrity-workflows-2026-09-22
