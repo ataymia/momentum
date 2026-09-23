@@ -5,8 +5,7 @@ on:
     branches:
       - platform-integrity-workflows-2026-09-22
     paths:
-      - scripts/apply-platform-integrity-v3.py
-      - scripts/apply-platform-integrity-v4.py
+      - scripts/apply-platform-refinements-v5.py
       - .github/workflows/platform-integrity-apply.yml
 
 permissions:
@@ -35,22 +34,22 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Apply application patch
+      - name: Apply final application refinements
         id: patch
         shell: bash
         run: |
           set +e
-          python3 scripts/apply-platform-integrity-v4.py > platform-patch.log 2>&1
+          python3 scripts/apply-platform-refinements-v5.py > platform-refinements.log 2>&1
           code=$?
-          cat platform-patch.log
+          cat platform-refinements.log
           exit $code
 
       - name: Upload patch diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: platform-patch-diagnostics-${{ github.run_number }}
-          path: platform-patch.log
+          name: platform-refinement-diagnostics-${{ github.run_number }}
+          path: platform-refinements.log
           if-no-files-found: ignore
 
       - name: Install dependencies
@@ -75,11 +74,11 @@ jobs:
         run: |
           git config user.name "Momentum Platform Automation"
           git config user.email "actions@users.noreply.github.com"
-          rm -f platform-patch.log
+          rm -f platform-refinements.log
           git add -A
           if git diff --cached --quiet; then
             echo "No source changes to commit."
             exit 0
           fi
-          git commit -m "Apply platform integrity and workflow improvements"
+          git commit -m "Refine account setup, approvals, and invoice workflows"
           git push origin HEAD:platform-integrity-workflows-2026-09-22
