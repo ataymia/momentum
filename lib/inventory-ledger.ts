@@ -1,5 +1,6 @@
 import { isValidCalendarDateKey } from "./date-time";
 import type { InventoryLot, Order, WorkspaceData } from "./types";
+import { orderAcceptsProduct, orderCasesForProduct, productsEquivalent } from "./order-lines";
 
 export const INVENTORY_LEDGER_STORAGE_KEY="momentum-inventory-ledger-v1";
 export const LOW_STOCK_MANAGER_APPROVAL_THRESHOLD_CASES=50;
@@ -52,11 +53,11 @@ export function normalizeInventoryLedger(input:unknown,data:WorkspaceData):Inven
   const orderById=new Map(data.orders.map((order)=>[order.id,order]));
   const storedMovements=uniqueById((Array.isArray(state.movements)?state.movements:[]).filter((movement):movement is InventoryMovement=>{
     if(!movement?.id||movement.id.startsWith("opening-")||!positiveFiniteQuantity(movement.quantity)||!movementTypes.has(movement.type)||!movement.reason?.trim()||!movement.actorId||!validTimestamp(movement.at))return false;
-    const lot=lotByIdMap.get(movement.lotId);if(!lot||movement.product!==lot.product)return false;
+    const lot=lotByIdMap.get(movement.lotId);if(!lot||!productsEquivalent(movement.product,lot.product))return false;
     const from=movement.fromNodeId?nodeById.get(movement.fromNodeId):undefined;const to=movement.toNodeId?nodeById.get(movement.toNodeId):undefined;
     if(movement.fromNodeId&&!from||movement.toNodeId&&!to||movement.fromNodeId&&movement.fromNodeId===movement.toNodeId)return false;
     if(movement.type==="Adjustment"){if(Boolean(movement.fromNodeId)===Boolean(movement.toNodeId))return false;}else if(!from||!to)return false;
-    const order=movement.relatedOrderId?orderById.get(movement.relatedOrderId):undefined;if(movement.relatedOrderId&&!order)return false;if(order&&order.product&&order.product!==lot.product)return false;
+    const order=movement.relatedOrderId?orderById.get(movement.relatedOrderId):undefined;if(movement.relatedOrderId&&!order)return false;if(order&&!orderAcceptsProduct(order,lot.product))return false;
     if(movement.type==="Receipt"&&(from?.type!=="External"||!["Warehouse","Quality hold"].includes(to?.type??"")))return false;
     if(movement.type==="Delivery"){if(!order||to?.id!==`node-account-${order.accountId}`||["Customer","External","Quality hold","Disposed"].includes(from?.type??""))return false;}
     if(movement.type==="Return"&&order&&(from?.id!==`node-account-${order.accountId}`||!["Warehouse","Quality hold"].includes(to?.type??"")))return false;
@@ -70,7 +71,7 @@ export function normalizeInventoryLedger(input:unknown,data:WorkspaceData):Inven
   const reservations:InventoryReservation[]=[];const reservedByOrder=new Map<string,number>();
   for(const reservation of uniqueById((Array.isArray(state.reservations)?state.reservations:[]).filter((item):item is InventoryReservation=>Boolean(item?.id)))){
     const order=orderById.get(reservation.orderId);const lot=lotByIdMap.get(reservation.lotId);
-    if(!order||!lot||order.product&&order.product!==lot.product||!positiveFiniteQuantity(reservation.quantity)||reservation.quantity>order.cases||!reservationStatuses.has(reservation.status)||!reservation.createdBy||!validTimestamp(reservation.createdAt))continue;
+    if(!order||!lot||!orderAcceptsProduct(order,lot.product)||!positiveFiniteQuantity(reservation.quantity)||reservation.quantity>order.cases||!reservationStatuses.has(reservation.status)||!reservation.createdBy||!validTimestamp(reservation.createdAt))continue;
     if(reservation.status==="Released"&&(!reservation.releasedAt||!validTimestamp(reservation.releasedAt)))continue;
     if(reservation.status==="Fulfilled"&&(!reservation.fulfilledAt||!validTimestamp(reservation.fulfilledAt)))continue;
     if(reservation.status!=="Released"){const used=reservedByOrder.get(order.id)??0;if(used+reservation.quantity>order.cases+0.005)continue;reservedByOrder.set(order.id,used+reservation.quantity);}
@@ -92,16 +93,20 @@ export function reservedQuantity(state:InventoryLedgerState,lotId:string){return
 export function activeReservedForOrder(state:InventoryLedgerState,orderId:string,lotId?:string){return state.reservations.filter((reservation)=>reservation.orderId===orderId&&reservation.status==="Active"&&positiveFiniteQuantity(reservation.quantity)&&(!lotId||reservation.lotId===lotId)).reduce((sum,item)=>sum+item.quantity,0);}
 export function fulfilledForOrder(state:InventoryLedgerState,orderId:string){return state.reservations.filter((reservation)=>reservation.orderId===orderId&&reservation.status==="Fulfilled"&&positiveFiniteQuantity(reservation.quantity)).reduce((sum,item)=>sum+item.quantity,0);}
 export function warehouseAvailable(state:InventoryLedgerState,lotId:string){return Math.max(0,nodeLotBalance(state,warehouseNodeId,lotId)-reservedQuantity(state,lotId));}
-export function productAvailableSellableCases(state:InventoryLedgerState,data:WorkspaceData,product:string){return data.inventory.filter((lot)=>lot.product===product&&lot.status!=="Quality hold").reduce((sum,lot)=>sum+warehouseAvailable(state,lot.id),0);}
+export function productAvailableSellableCases(state:InventoryLedgerState,data:WorkspaceData,product:string){return data.inventory.filter((lot)=>productsEquivalent(lot.product,product)&&lot.status!=="Quality hold").reduce((sum,lot)=>sum+warehouseAvailable(state,lot.id),0);}
 export function productInventoryStatus(state:InventoryLedgerState,data:WorkspaceData,product:string){const available=productAvailableSellableCases(state,data,product);return{product,available,requiresManagerApproval:available<LOW_STOCK_MANAGER_APPROVAL_THRESHOLD_CASES,reorderNeeded:available<WAREHOUSE_REORDER_THRESHOLD_CASES};}
 export function inventoryProductStatuses(state:InventoryLedgerState,data:WorkspaceData){return [...new Set(data.inventory.map((lot)=>lot.product))].sort().map((product)=>productInventoryStatus(state,data,product));}
 
+export function activeReservedForOrderProduct(state:InventoryLedgerState,data:WorkspaceData,orderId:string,product:string){
+  const lotIds=new Set(data.inventory.filter((lot)=>productsEquivalent(lot.product,product)).map((lot)=>lot.id));
+  return state.reservations.filter((reservation)=>reservation.orderId===orderId&&reservation.status==="Active"&&lotIds.has(reservation.lotId)).reduce((sum,item)=>sum+item.quantity,0);
+}
 export function reservationCanCreate(state:InventoryLedgerState,data:WorkspaceData,orderId:string,lotId:string,quantity:number){
   if(!positiveFiniteQuantity(quantity))return false;
   const order=data.orders.find((item)=>item.id===orderId);const lot=data.inventory.find((item)=>item.id===lotId);
   if(!order||!lot||!["Approved","Allocated"].includes(order.status)||!positiveFiniteQuantity(order.cases)||lot.status==="Quality hold")return false;
-  if(order.product&&order.product!==lot.product)return false;
-  if(activeReservedForOrder(state,orderId)+quantity>order.cases)return false;
+  const allowedForProduct=orderCasesForProduct(order,lot.product);if(allowedForProduct<=0)return false;
+  if(activeReservedForOrderProduct(state,data,orderId,lot.product)+quantity>allowedForProduct)return false;
   if(quantity>warehouseAvailable(state,lotId))return false;
   return true;
 }

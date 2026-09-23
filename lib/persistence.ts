@@ -74,22 +74,19 @@ type BackendOptions={scope:PersistenceScope;onDirectoryChange:()=>void;pollInter
 
 function mergeItems(base:unknown[],localItems:unknown[],remote:unknown[]):unknown[]{
   const baseMap=new Map(base.map((item)=>[recordIdentity(item),item]));
-  const localMap=new Map(localItems.map((item)=>[recordIdentity(item),item]));
-  const remoteMap=new Map(remote.map((item)=>[recordIdentity(item),item]));
-  const result:unknown[]=[];
-  for(const item of remote){const key=recordIdentity(item);if(!baseMap.has(key)&&!localMap.has(key))result.push(item);}
+  const result=new Map(remote.map((item)=>[recordIdentity(item),item]));
   for(const item of localItems){
-    const key=recordIdentity(item);const baseItem=baseMap.get(key);const remoteItem=remoteMap.get(key);
-    if(baseItem===undefined){result.push(item);continue;}
-    if(stable(item)!==stable(baseItem)){result.push(item);continue;}
-    if(remoteItem!==undefined)result.push(remoteItem);
+    const key=recordIdentity(item);const baseItem=baseMap.get(key);
+    // New records and actual local edits win. An omitted record never means delete.
+    if(baseItem===undefined||stable(item)!==stable(baseItem)||!result.has(key))result.set(key,item);
   }
-  return result;
+  return [...result.values()];
 }
 
 function mergeRoot(base:Record<string,unknown>|undefined,localData:Record<string,unknown>,remote:Record<string,unknown>,depth=0):Record<string,unknown>{
   const output:Record<string,unknown>={};
   for(const key of new Set([...Object.keys(remote),...Object.keys(localData)])){
+    if(!(key in localData)&&key in remote){output[key]=remote[key];continue;}
     const localValue=localData[key];const baseValue=base?.[key];const remoteValue=remote[key];
     if(depth<1&&isRecord(localValue)&&isRecord(remoteValue)){output[key]=mergeRoot(isRecord(baseValue)?baseValue:undefined,localValue,remoteValue,depth+1);continue;}
     if(stable(localValue)!==stable(baseValue))output[key]=localValue;
@@ -223,8 +220,10 @@ class FirestoreBackend{
       for(const doc of domainDocuments(spec,this.scope)){
         if(!doc.writable||this.denied.has(doc.path))continue;
         const parsedPath=parseDocPath(doc.path)!;
-        const next=shards.get(doc.path)??(parsedPath.field===ROOT_FIELD?{data:{}}:{items:[]});
+        const proposed=shards.get(doc.path)??(parsedPath.field===ROOT_FIELD?{data:{}}:{items:[]});
         const base=this.docs.get(doc.path);
+        // Existing Firestore records survive a locally omitted/temporarily unrecognized record.
+        const next=base?.data?mergeDocument(base.data,proposed,base.data):proposed;
         if(!base?.data&&emptyDocument(next))continue;
         if(base?.data&&stable(base.data)===stable(next))continue;
         writes.push({kind:"set",path:doc.path,data:next,updateTime:base?.updateTime,create:!base?.data});

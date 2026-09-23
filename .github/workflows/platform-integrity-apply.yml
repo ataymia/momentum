@@ -1,0 +1,98 @@
+name: Apply platform integrity workflows
+
+on:
+  push:
+    branches:
+      - platform-integrity-workflows-2026-09-22
+    paths:
+      - scripts/apply-platform-refinements-v9.py
+      - .github/workflows/platform-integrity-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out side branch
+        uses: actions/checkout@v4
+        with:
+          ref: platform-integrity-workflows-2026-09-22
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+          cache: npm
+
+      - name: Set up Java for Firestore emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Apply latest application refinements
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 scripts/apply-platform-refinements-v9.py 2>&1 | tee platform-validation.log
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee -a platform-validation.log
+
+      - name: Typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee -a platform-validation.log
+
+      - name: Lint
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee -a platform-validation.log
+
+      - name: Logic regression tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:logic 2>&1 | tee -a platform-validation.log
+
+      - name: Firestore rules regression tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:rules 2>&1 | tee -a platform-validation.log
+
+      - name: Production build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee -a platform-validation.log
+
+      - name: Upload validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-validation-${{ github.run_number }}
+          path: platform-validation.log
+          if-no-files-found: ignore
+
+      - name: Commit validated application changes
+        run: |
+          git config user.name "Momentum Platform Automation"
+          git config user.email "actions@users.noreply.github.com"
+          rm -f platform-validation.log
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git commit -m "Tighten SKU and inventory integrity rules"
+          git push origin HEAD:platform-integrity-workflows-2026-09-22

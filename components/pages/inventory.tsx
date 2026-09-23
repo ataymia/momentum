@@ -4,13 +4,14 @@ import { Boxes, CalendarClock, CheckCircle2, ChevronRight, ClipboardCheck, Packa
 import { FormEvent, useEffect, useState } from "react";
 import { arizonaDateKey, isValidCalendarDateKey } from "../../lib/date-time";
 import { holdNodeId, nodeLotBalance, warehouseAvailable } from "../../lib/inventory-ledger";
+import { GOLDEN_EAGLE_SKUS } from "../../lib/product-catalog";
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import type { InventoryLot } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Modal, PageHeader, Section, StatusPill, formatDate } from "../ui";
 
 const companyCustodyTypes=new Set(["Warehouse","Bin","Vehicle","Employee custody","Quality hold"]);
-const quickProducts=["Tropical","Sugar Free","Original","Red","Blue"] as const;
+const quickProducts=GOLDEN_EAGLE_SKUS.filter((sku)=>sku.active).map((sku)=>sku.description);
 type QuickInventoryRow={product:string;cases:string;lotCode:string;bestBy:string};
 const freshQuickRows=():QuickInventoryRow[]=>quickProducts.map((product)=>({product,cases:"",lotCode:"",bestBy:""}));
 
@@ -132,9 +133,9 @@ export function InventoryPage() {
         <form id="quick-inventory-form" className="form-grid" onSubmit={submitQuickAdd}>
           <Field label="Received date"><input type="date" required value={receivedAt} onChange={(event)=>setReceivedAt(event.target.value)}/></Field>
           <Field label="Receiving location"><input required value={receiptLocation} onChange={(event)=>setReceiptLocation(event.target.value)} placeholder="Phoenix warehouse"/></Field>
-          <div className="field--full form-callout"><Boxes size={17}/><p>Leave Cases blank for any product you are not receiving. Product names are editable before the receipt is saved.</p></div>
+          <div className="field--full form-callout"><Boxes size={17}/><p>Leave Cases blank for any product you are not receiving. Product names come from the verified Golden Eagle SKU master. Historical purchase-order quantities are reference only and never load into current on-hand inventory.</p></div>
           {quickRows.map((row,index)=><div key={`${row.product}-${index}`} className="field--full form-grid">
-            <Field label="Product"><input value={row.product} onChange={(event)=>updateQuickRow(index,{product:event.target.value})}/></Field>
+            <Field label="Product"><select value={row.product} onChange={(event)=>updateQuickRow(index,{product:event.target.value})}>{quickProducts.map((product)=><option value={product} key={product}>{product}</option>)}</select></Field>
             <Field label="Cases"><input type="number" min="1" step="1" value={row.cases} onChange={(event)=>updateQuickRow(index,{cases:event.target.value})} placeholder="0"/></Field>
             <Field label="Lot / receipt code"><input value={row.lotCode} onChange={(event)=>updateQuickRow(index,{lotCode:event.target.value})} placeholder="Printed lot or internal receipt code"/></Field>
             <Field label="Best by"><input type="date" value={row.bestBy} onChange={(event)=>updateQuickRow(index,{bestBy:event.target.value})}/></Field>

@@ -271,6 +271,17 @@ export type OrderStatus =
 
 export type PaymentStatus = "Not invoiced" | "Open" | "Partially paid" | "Paid";
 
+export type OrderLine = {
+  id: string;
+  product: string;
+  cases: number;
+  pricePerCase: number;
+  amount: number;
+  inventoryAvailableAtOrder?: number;
+  sourcePlacementId?: string;
+  lowStockApprovalRequired?: boolean;
+};
+
 export type Order = {
   id: string;
   number: string;
@@ -293,6 +304,8 @@ export type Order = {
   sourcePlacementId?: string;
   inventoryAvailableAtOrder?: number;
   lowStockApprovalRequired?: boolean;
+  /** Authoritative SKU breakdown. Legacy single-SKU orders may omit this and are treated as one line. */
+  lines?: OrderLine[];
 };
 
 export type PlacementSource = "Physical count" | "Customer estimate" | "Demo POS feed";
@@ -363,6 +376,9 @@ export type Approval = {
   dueAt: string;
   priority: ApprovalPriority;
   status: ApprovalStatus;
+  decidedBy?: string;
+  decidedAt?: string;
+  returnReason?: string;
 };
 
 export type TimeEntrySource = "Demo mobile" | "Demo desktop" | "Manual correction";

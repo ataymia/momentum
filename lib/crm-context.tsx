@@ -19,6 +19,7 @@ import {
 import { isValidCalendarDateKey } from "./date-time";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
+import { prospectOwnershipReleaseReason } from "./sales-field-engine";
 
 const now = () => new Date().toISOString();
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -46,7 +47,7 @@ type CrmContextValue = {
 const CrmContext = createContext<CrmContextValue | null>(null);
 
 export function CrmProvider({ children }: { children: ReactNode }) {
-  const { data, scope, currentUser } = useWorkspace();
+  const { data, scope, currentUser, releaseProspectOwnership } = useWorkspace();
   const runtime = useRuntimeMode();
   const read = () => {
     if (typeof window === "undefined") return createCrmSeed(data);
@@ -66,9 +67,12 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   }, [data]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") momentumStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(state));
+    if (typeof window !== "undefined") { momentumStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(state)); void momentumStorage.flush(); }
   }, [state]);
   useRemoteStorageSync(CRM_STORAGE_KEY, () => setCrm(read()));
+  useEffect(()=>{
+    if(!currentUser)return;for(const account of data.accounts){const reason=prospectOwnershipReleaseReason(account,state.interactions);if(reason)releaseProspectOwnership(account.id,reason);}
+  },[currentUser,data.accounts,state.interactions,releaseProspectOwnership]);
 
   const locationIds = useMemo(() => new Set(scope.accounts.map((account) => account.id)), [scope.accounts]);
   const customerIds = useMemo(() => new Set(scope.accounts.map((account) => account.customerId).filter((id): id is string => Boolean(id))), [scope.accounts]);

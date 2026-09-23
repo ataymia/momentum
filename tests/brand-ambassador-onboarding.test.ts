@@ -204,13 +204,13 @@ describe("Brand Ambassador provisioning requires a Sales Representative manager"
 describe("Brand Ambassador event supervision boundaries", () => {
   const draft = { title: "Golden Eagle sampling", date: "2026-10-01", startTime: "10:00", endTime: "14:00", address: "1 Main Street, Phoenix AZ", requiredStaff: 2, notes: "Arrive 15 minutes early" };
 
-  test("a Sales Representative may only schedule their own Brand Ambassadors", () => {
-    assert.equal(canSuperviseBrandAmbassador(data, repA, BA_A), true);
+  test("Sales Representatives request events but only an Administrator assigns Brand Ambassadors", () => {
+    assert.equal(canSuperviseBrandAmbassador(data, repA, BA_A), false);
     assert.equal(canSuperviseBrandAmbassador(data, repA, BA_B), false);
     assert.equal(canSuperviseBrandAmbassador(data, admin, BA_B), true);
-    assert.equal(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_A] }), null);
-    assert.ok(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_B] }), "Rep A must not schedule Rep B's Ambassador");
-    assert.ok(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_A, BA_B] }), "a mixed roster must be refused wholesale");
+    assert.ok(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_A] }), "a Sales Representative must request the event instead of assigning an Ambassador");
+    assert.ok(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_B] }), "a Sales Representative must not assign another rep's Ambassador");
+    assert.ok(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_A, BA_B] }), "a Sales Representative must not assign a mixed roster");
     assert.equal(validateBrandAmbassadorEvent(data, admin, { ...draft, ambassadorIds: [BA_A, BA_B] }), null);
   });
 
@@ -221,9 +221,9 @@ describe("Brand Ambassador event supervision boundaries", () => {
     assert.equal(canSuperviseBrandAmbassador(data, ops, BA_A), false);
   });
 
-  test("nobody outside Administrator or the assigned rep may schedule at all", () => {
-    for (const actor of [manager, ops, warehouse, baA, null]) {
-      assert.ok(validateBrandAmbassadorEvent(data, actor, { ...draft, ambassadorIds: [BA_A] }), "only Administrators and the assigned rep may schedule");
+  test("nobody outside Administrator may assign Brand Ambassadors", () => {
+    for (const actor of [repA, manager, ops, warehouse, baA, null]) {
+      assert.ok(validateBrandAmbassadorEvent(data, actor, { ...draft, ambassadorIds: [BA_A] }), "only Administrators may assign Brand Ambassadors");
     }
   });
 

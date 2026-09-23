@@ -104,11 +104,29 @@ export function customerOwnershipReview(data: WorkspaceData, account: Account, a
   if (["Prospect", "Qualified", "Sampled", "Opening order"].includes(account.stage)) return undefined;
   const commercialDates = data.orders
     .filter((order) => order.accountId === account.id && (order.paymentStatus === "Paid" || ["Delivered", "Paid"].includes(order.status)))
-    .map((order) => arizonaDateKey(order.paidAt ?? order.placedAt));
+    .map((order) => { const value=order.paidAt ?? order.placedAt; return value.length===10?value:arizonaDateKey(value); });
   const accountWithMeaningful = account as Account & { lastMeaningfulBusinessAt?: string };
   if (accountWithMeaningful.lastMeaningfulBusinessAt) commercialDates.push(arizonaDateKey(accountWithMeaningful.lastMeaningfulBusinessAt));
   const last = commercialDates.sort().at(-1);
   if (!last) return { review: true, daysInactive: undefined as number | undefined, lastMeaningfulAt: undefined as string | undefined };
   const inactive = daysSince(last, asOf);
   return inactive >= CUSTOMER_OWNERSHIP_REVIEW_DAYS ? { review: true, daysInactive: inactive, lastMeaningfulAt: last } : undefined;
+}
+
+export type WeeklySalesManagementSummary = {
+  userId:string;weekStart:string;weekEnd:string;visits:number;orders:number;orderCases:number;orderValue:number;
+  reorders:number;newAccounts:number;promisingProspects:number;followUpsDue:number;blockers:number;
+};
+
+export function weeklySalesManagementSummary(data:WorkspaceData,interactions:CrmInteraction[],userId:string,asOf=arizonaDateKey()):WeeklySalesManagementSummary{
+  const weekStart=startOfLocalWeek(asOf);const weekEnd=addCalendarDays(weekStart,6);const inWeek=(value:string|undefined)=>{if(!value)return false;const date=value.length===10?value:arizonaDateKey(value);return date>=weekStart&&date<=weekEnd;};
+  const visits=weeklyVisitSummary(interactions,userId,asOf).completed;
+  const orders=data.orders.filter((order)=>(order.creditedRepId===userId||(!order.creditedRepId&&order.ownerId===userId))&&inWeek(order.placedAt));
+  const reorders=orders.filter((order)=>data.orders.some((prior)=>prior.accountId===order.accountId&&prior.id!==order.id&&prior.placedAt<order.placedAt)).length;
+  const newAccounts=new Set(data.activities.filter((activity)=>activity.userId===userId&&activity.accountId&&activity.title==="Customer location created"&&inWeek(activity.at)).map((activity)=>activity.accountId)).size;
+  const promisingProspects=data.accounts.filter((account)=>account.ownerId===userId&&["Prospect","Qualified","Sampled"].includes(account.stage)&&(latestProspectRating(interactions,account.id)??0)>=7).length;
+  const followUpsDue=interactions.filter((interaction)=>interaction.userId===userId&&Boolean(interaction.nextAction?.trim())&&inWeek(interaction.nextActionDate)).length;
+  const returnedApprovals=data.approvals.filter((approval)=>approval.requesterId===userId&&approval.status==="Returned"&&inWeek(approval.decidedAt??approval.submittedAt)).length;
+  const atRisk=data.accounts.filter((account)=>account.ownerId===userId&&account.health==="At risk").length;
+  return{userId,weekStart,weekEnd,visits,orders:orders.length,orderCases:orders.reduce((sum,order)=>sum+order.cases,0),orderValue:orders.reduce((sum,order)=>sum+order.amount,0),reorders,newAccounts,promisingProspects,followUpsDue,blockers:returnedApprovals+atRisk};
 }

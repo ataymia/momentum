@@ -1,5 +1,5 @@
 import type { AuditEvent, AuditChange } from "./audit-engine";
-import type { WorkspaceData, WorkspaceUser } from "./types";
+import type { Account, WorkspaceData, WorkspaceUser } from "./types";
 
 export const NOTIFICATION_STORAGE_KEY = "momentum-notification-rules-v1";
 export type NotificationChannel = "In app" | "Email" | "SMS";
@@ -38,6 +38,12 @@ export function normalizeNotificationState(input: unknown, users: WorkspaceUser[
 }
 
 export function resolveNotificationRecipients(event: AuditEvent, data: WorkspaceData): string[] {
+  if (event.collection === "approvals" && event.action === "Created") {
+    return data.users.filter((user) => user.role === "Administrator" && user.id !== event.actorId).map((user) => user.id);
+  }
+  if (event.collection === "approvals" && event.action === "Updated" && event.relatedUserId) {
+    return event.relatedUserId === event.actorId ? [] : [event.relatedUserId];
+  }
   if (event.sensitivity === "admin") {
     const admins = data.users.filter((user) => user.role === "Administrator").map((user) => user.id);
     const otherAdmins = admins.filter((id) => id !== event.actorId);
@@ -50,9 +56,19 @@ export function resolveNotificationRecipients(event: AuditEvent, data: Workspace
   recipients.delete(event.actorId); if (!recipients.size && data.users.some((user) => user.id === event.actorId)) recipients.add(event.actorId); return [...recipients].filter((id) => data.users.some((user) => user.id === id));
 }
 
+const changedTo = (event: AuditEvent, field: string, value: string) => event.changes.some((change) => change.field === field && change.after === value);
+
+/** The bell is an action queue. Routine activity stays in Audit and never becomes an in-app/email/SMS action. */
 export function auditEventCreatesNotification(event: AuditEvent) {
-  if (event.module !== "Field tracking") return true;
-  return event.collection === "departureAlerts" && event.action === "Created";
+  if (event.module === "Field tracking") return event.collection === "departureAlerts" && event.action === "Created";
+  if (event.collection === "approvals") {
+    if (event.action === "Created") return changedTo(event, "status", "Pending");
+    return event.action === "Updated" && changedTo(event, "status", "Returned");
+  }
+  if (event.collection === "timecards") return event.action === "Updated" && (changedTo(event, "status", "Submitted") || changedTo(event, "status", "Returned"));
+  if (event.module === "Marketing" && event.collection === "requests") return event.action === "Created" || (event.action === "Updated" && changedTo(event, "status", "Returned"));
+  if (event.module === "HCM" && event.collection === "leaveRequests") return event.action === "Created" || (event.action === "Updated" && changedTo(event, "status", "Returned"));
+  return false;
 }
 
 const collectionNames: Record<string, string> = {
@@ -232,3 +248,9 @@ export function notificationCopy(event: AuditEvent, data?: WorkspaceData) {
 
 export function enabledChannels(preference: NotificationPreference): NotificationChannel[] { return [preference.inApp ? "In app" : null, preference.email && preference.emailAddress?.trim() ? "Email" : null, preference.sms && preference.smsNumber?.trim() ? "SMS" : null].filter((item): item is NotificationChannel => Boolean(item)); }
 export const deliveryKey = (eventId: string, userId: string, channel: NotificationChannel) => `${eventId}:${userId}:${channel}`;
+
+export function programPricingDaysRemaining(account:Account,asOf:string){
+  if(!account.programPricingExpirationDate||["Expired","Cancelled"].includes(account.programPricingStatus??""))return undefined;
+  const start=new Date(`${asOf}T12:00:00-07:00`).getTime();const end=new Date(`${account.programPricingExpirationDate}T12:00:00-07:00`).getTime();
+  if(Number.isNaN(start)||Number.isNaN(end))return undefined;return Math.ceil((end-start)/86_400_000);
+}

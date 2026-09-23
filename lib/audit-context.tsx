@@ -71,11 +71,11 @@ export function AuditProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!previous.current) { previous.current = snapshots; return; }
-    const actor = { id: currentUser?.id ?? "system", role: currentUser?.role ?? "System" };
-    const additions = diffAuditableRecords(previous.current, snapshots, actor);
+    // A passive Firestore refresh may represent another employee's work. Never infer the current viewer as actor.
+    const additions = diffAuditableRecords(previous.current, snapshots, { id: "system", role: "System" }, new Date().toISOString(), data.users);
     previous.current = snapshots;
     if (additions.length) setAudit((state) => ({ ...state, events: [...additions, ...state.events].slice(0, 10000) }));
-  }, [snapshots, currentUser]);
+  }, [snapshots, data.users]);
 
   const visibleEvents = useMemo(() => visibleAuditEvents(currentUser, data, audit.events), [currentUser, data, audit.events]);
   const recordManualAudit = (input:ManualAuditInput) => {

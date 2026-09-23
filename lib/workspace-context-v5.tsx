@@ -388,13 +388,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if (!price || price <= 0) return null;
     const id = `ord-${Date.now()}`;
     const number = `GE-${data.orders.length + 1050}`;
-    const reviewers = data.users.filter((user) => user.role === "Administrator" || user.id === currentUser.managerId).map((user) => user.id);
     setData((current) => ({
       ...current,
       orders: [{ id, number, accountId, cases, pricePerCase: price, amount: cases * price, status: "Awaiting approval", placedAt: todayKey(), ownerId: currentUser.id, priceBasis: customer ? "Prior demo order snapshot" : "Demo entered price", paymentStatus: "Not invoiced" }, ...current.orders],
       accounts: current.accounts.map((item) => item.id === accountId ? { ...item, stage: "Opening order", lastActivity: `Order request ${number} submitted` } : item),
       approvals: [{ id: `apr-${Date.now()}`, type: "Order", title: `Review order ${number}`, detail: `${cases} cases · ${customer ? "prior order snapshot" : "demo-entered price"} · ${account.locationName ?? account.name}`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.team, submittedAt: nowStamp(), dueAt: plusHours(24), priority: "High", status: "Pending" }, ...current.approvals],
-      notifications: [{ id: `note-${Date.now()}`, title: `Order ${number} needs review`, detail: `${account.locationName ?? account.name} · ${cases} cases`, at: nowStamp(), readBy: [], tone: "info", audienceUserIds: reviewers }, ...current.notifications],
     }));
     return id;
   }, [currentUser, data]);
@@ -412,11 +410,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData((current) => {
       const approval = current.approvals.find((item) => item.id === id);
       if (!approval || approval.status !== "Pending" || !canReviewApproval(current, currentUser, approval)) return current;
+      const decidedAt = nowStamp();
       return {
         ...current,
-        approvals: current.approvals.map((item) => item.id === id ? { ...item, status: decision } : item),
-        orders: current.orders.map((order) => approval.type === "Order" && (order.id === approval.recordId || approval.title.includes(order.number)) ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
-        notifications: [{ id: `note-${Date.now()}`, title: `${approval.type} ${decision.toLowerCase()}`, detail: approval.title, at: nowStamp(), readBy: [], tone: decision === "Approved" ? "success" : "warning", audienceUserIds: approval.requesterId ? [approval.requesterId] : undefined }, ...current.notifications],
+        approvals: current.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt } : item),
+        orders: current.orders.map((order) => ["Order", "Low stock sale"].includes(approval.type) && (order.id === approval.recordId || approval.title.includes(order.number)) ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
+        activities: approval.recordId ? [{ id: `act-${Date.now()}`, accountId: current.orders.find((order) => order.id === approval.recordId)?.accountId, type: "order", title: decision === "Approved" ? "Order approved" : "Order returned for edits", detail: `${approval.title} ${decision.toLowerCase()} by ${currentUser.name}.`, at: decidedAt, userId: currentUser.id }, ...current.activities] : current.activities,
       };
     });
   }, [currentUser]);

@@ -42,9 +42,7 @@ export const canManageUser = (data: WorkspaceData, actor: WorkspaceUser | null |
 export const canSuperviseBrandAmbassador = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
   if (!actor) return false;
   const target = data.users.find((user) => user.id === targetUserId && user.role === "Brand Ambassador");
-  if (!target) return false;
-  if (actor.role === "Administrator") return true;
-  return actor.role === "Sales Representative" && target.managerId === actor.id;
+  return Boolean(target && actor.role === "Administrator");
 };
 
 export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
@@ -63,7 +61,7 @@ export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, accou
   if (user.role === "Delivery Driver") return data.orders.some((order) => order.accountId === account.id && ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status));
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
   if (user.role === "Brand Ambassador") return false;
-  if (user.role === "Sales Representative") return Boolean(account.ownerId) && account.ownerId === user.id;
+  if (user.role === "Sales Representative") return account.ownerId === user.id || (!account.ownerId && account.stage === "Prospect");
   return Boolean(account.ownerId) && managedUserIds(data, user).has(account.ownerId);
 };
 
@@ -85,6 +83,9 @@ export const canTransferSalesResponsibility = (data: WorkspaceData, actor: Works
 
 export const canReviewApproval = (data: WorkspaceData, user: WorkspaceUser | null, approval: Approval) => {
   if (!user) return false;
+  // Sales orders have one authoritative Administrator approval. A Sales Manager may still review
+  // manager-owned workflows such as timecards, but cannot create a second order decision.
+  if (["Order", "Low stock sale"].includes(approval.type)) return user.role === "Administrator";
   if (user.role === "Administrator") return true;
   if (user.role !== "Sales Manager") return false;
   if (approval.requesterId && managedUserIds(data, user).has(approval.requesterId)) return approval.requesterId !== user.id;
