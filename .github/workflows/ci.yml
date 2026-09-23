@@ -34,8 +34,11 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Install dependencies
+      - name: Install application dependencies
         run: npm ci
+
+      - name: Install Firebase Functions dependencies
+        run: npm --prefix functions ci
 
       - name: Git integrity check
         run: git diff --check
