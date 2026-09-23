@@ -67,7 +67,7 @@ const validStates = new Set<AccountAccessState>(["Password change required", "On
 const validSources = new Set<ProvisioningSource>(["Direct hire", "Accepted offer", "Referral", "Bootstrap admin"]);
 const validDraftSources = new Set<ProvisioningDraft["source"]>(["Direct hire", "Accepted offer", "Referral"]);
 const validDraftStatuses = new Set<ProvisioningDraftStatus>(["Draft", "Ready to invite", "Invite sent", "Auth linked", "Cancelled"]);
-const validRoles = new Set<ProvisionableRole>(["Sales Manager", "Sales Representative", "Brand Ambassador", "Operations", "Warehouse"]);
+const validRoles = new Set<ProvisionableRole>(["Sales Manager", "Sales Representative", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver"]);
 const validTeams = new Set<Exclude<Team, "Customer">>(["Leadership", "Sales", "Operations"]);
 const validClassifications = new Set<WorkerClassification>(["Hourly", "Salary", "Contractor", "Not configured"]);
 const validPayBasis = new Set<PayBasis>(["Hourly", "Salary per pay period", "Not configured"]);
@@ -136,6 +136,7 @@ export function normalizeIdentityProvisioningState(input: unknown, data: Workspa
     if (draft.role === "Sales Representative" && !["Administrator", "Sales Manager"].includes(manager.role)) return false;
     if (draft.role === "Sales Manager" && manager.role !== "Administrator") return false;
     if (["Operations", "Warehouse"].includes(draft.role) && manager.role !== "Administrator") return false;
+    if (draft.role === "Delivery Driver" && !["Administrator", "Operations"].includes(manager.role)) return false;
     draftIds.add(draft.id);
     return true;
   }).map((draft) => {

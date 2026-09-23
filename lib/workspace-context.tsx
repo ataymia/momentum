@@ -148,7 +148,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const [warehouseSession, setWarehouseSession] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined") momentumStorage.setItem(COMMERCIAL_KEY, JSON.stringify(commercial));
+    if (typeof window !== "undefined") {
+      momentumStorage.setItem(COMMERCIAL_KEY, JSON.stringify(commercial));
+      void momentumStorage.flush();
+    }
   }, [commercial]);
 
   useRemoteStorageSync(COMMERCIAL_KEY, () => setCommercial(readCommercial(base.data)));

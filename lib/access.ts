@@ -7,6 +7,7 @@ const pageAccess: Record<WorkspaceUser["role"], PageKey[]> = {
   "Brand Ambassador": ["home","brandAmbassadors","timekeeping","materials","help"],
   Operations: ["home","work","actions","dispatch","orders","orderCash","inventory","inventoryLedger","products","marketing","people","employees","timekeeping","materials","payroll","finance","help"],
   Warehouse: ["home","work","actions","orders","inventory","inventoryLedger","products","people","employees","timekeeping","materials","payroll","help"],
+  "Delivery Driver": ["home","orders","inventory","inventoryLedger","people","employees","timekeeping","materials","help"],
   Customer: ["home","accounts","orders","help"],
 };
 
@@ -14,7 +15,7 @@ export const canAccessPage = (user: WorkspaceUser | null, page: PageKey) => Bool
 export const isCustomer = (user: WorkspaceUser | null) => user?.role === "Customer";
 export const canCreateAccount = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager","Sales Representative"].includes(user.role));
 export const canCreateOrder = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager","Sales Representative","Customer"].includes(user.role));
-export const canAdvanceFulfillment = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Operations"].includes(user.role));
+export const canAdvanceFulfillment = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Operations","Delivery Driver"].includes(user.role));
 export const canManageSchedule = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager","Operations"].includes(user.role));
 export const canCreateScheduleItem = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager","Sales Representative","Operations"].includes(user.role));
 export const canPostBulletin = (user: WorkspaceUser | null) => Boolean(user && ["Administrator","Sales Manager"].includes(user.role));
@@ -42,7 +43,8 @@ export const canSuperviseBrandAmbassador = (data: WorkspaceData, actor: Workspac
   if (!actor) return false;
   const target = data.users.find((user) => user.id === targetUserId && user.role === "Brand Ambassador");
   if (!target) return false;
-  return actor.role === "Administrator";
+  if (actor.role === "Administrator") return true;
+  return actor.role === "Sales Representative" && target.managerId === actor.id;
 };
 
 export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
@@ -58,6 +60,7 @@ export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser 
 
 export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, account: Account) => {
   if (["Administrator","Operations","Warehouse"].includes(user.role)) return true;
+  if (user.role === "Delivery Driver") return data.orders.some((order) => order.accountId === account.id && ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status));
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
   if (user.role === "Brand Ambassador") return false;
   if (user.role === "Sales Representative") return Boolean(account.ownerId) && account.ownerId === user.id;
@@ -110,11 +113,11 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
         : user.role === "Sales Representative"
           ? data.appointments.filter(item => item.ownerId === user.id)
           : [];
-  const orders = ["Administrator","Operations","Warehouse"].includes(user.role) ? data.orders : data.orders.filter(order => accountIds.has(order.accountId));
-  const placements = ["Customer","Operations","Warehouse","Brand Ambassador"].includes(user.role) ? [] : user.role === "Administrator" ? data.placements : data.placements.filter(item => accountIds.has(item.accountId));
+  const orders = ["Administrator","Operations","Warehouse"].includes(user.role) ? data.orders : user.role === "Delivery Driver" ? data.orders.filter((order) => ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status)) : data.orders.filter(order => accountIds.has(order.accountId));
+  const placements = ["Customer","Operations","Warehouse","Brand Ambassador","Delivery Driver"].includes(user.role) ? [] : user.role === "Administrator" ? data.placements : data.placements.filter(item => accountIds.has(item.accountId));
   const approvals = user.role === "Administrator" ? data.approvals : user.role === "Sales Manager" ? data.approvals.filter(item => (item.requesterId && managedIds.has(item.requesterId)) || Boolean(item.team && (user.managedTeams ?? []).includes(item.team))) : data.approvals.filter(item => item.requesterId === user.id);
-  const timecards = user.role === "Administrator" ? data.timecards : user.role === "Sales Manager" ? data.timecards.filter(card => card.userId === user.id || managedIds.has(card.userId)) : data.timecards.filter(card => card.userId === user.id);
-  const timecardUserIds = new Set(timecards.map(card => card.userId));
+  const visibleTimeUserIds = user.role === "Administrator" ? new Set(data.users.filter((candidate) => candidate.role !== "Customer").map((candidate) => candidate.id)) : user.role === "Sales Manager" ? managedIds : new Set([user.id]);
+  const timecards = data.timecards.filter((card) => visibleTimeUserIds.has(card.userId));
   const now = new Date().toISOString();
   const bulletins = user.role === "Customer" ? [] : data.bulletins.filter(item => {
     if (user.role === "Administrator") return true;
@@ -124,6 +127,8 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
   });
   const activities = user.role === "Operations"
     ? data.activities.filter(item => item.type === "order" || (item.type === "visit" && appointments.some(appointment => appointment.accountId === item.accountId)))
+    : user.role === "Delivery Driver"
+      ? data.activities.filter((item) => item.type === "order")
     : user.role === "Warehouse"
       ? data.activities.filter(item => item.type === "order")
       : user.role === "Brand Ambassador"
@@ -131,9 +136,9 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
         : data.activities.filter(item => !item.accountId || accountIds.has(item.accountId));
   return {
     users, accounts, activities, appointments, orders, placements,
-    inventory: ["Administrator","Operations","Warehouse"].includes(user.role) ? data.inventory : [],
+    inventory: ["Administrator","Operations","Warehouse","Delivery Driver"].includes(user.role) ? data.inventory : [],
     approvals,
-    timeEntries: data.timeEntries.filter(item => timecardUserIds.has(item.userId)),
+    timeEntries: data.timeEntries.filter(item => visibleTimeUserIds.has(item.userId)),
     timecards,
     notifications: user.role === "Customer" ? [] : data.notifications.filter(item => !item.audienceUserIds || item.audienceUserIds.includes(user.id)),
     bulletins,

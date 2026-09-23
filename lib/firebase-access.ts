@@ -17,8 +17,8 @@ export const EMPLOYEE_DIRECTORY_COLLECTION="employeeDirectory";
 export const PLATFORM_BOOTSTRAP_DOCUMENT="platform/bootstrap";
 export const PLATFORM_META_DOCUMENT="platform/meta";
 
-export const EMPLOYEE_ROLES:Role[]=["Administrator","Sales Manager","Sales Representative","Brand Ambassador","Operations","Warehouse"];
-const roles=new Set<string>(["Administrator","Sales Manager","Sales Representative","Brand Ambassador","Operations","Warehouse","Customer"]);
+export const EMPLOYEE_ROLES:Role[]=["Administrator","Sales Manager","Sales Representative","Brand Ambassador","Operations","Warehouse","Delivery Driver"];
+const roles=new Set<string>(["Administrator","Sales Manager","Sales Representative","Brand Ambassador","Operations","Warehouse","Delivery Driver","Customer"]);
 const teams=new Set<string>(["Leadership","Sales","Operations","Customer"]);
 const accountStates=new Set<string>(["Password change required","Onboarding","Pending approval","Active","Suspended","Separated"]);
 

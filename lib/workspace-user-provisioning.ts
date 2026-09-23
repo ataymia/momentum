@@ -30,6 +30,7 @@ const expectedTeam: Record<ProvisionableRole, Exclude<Team, "Customer">> = {
   "Brand Ambassador": "Sales",
   Operations: "Operations",
   Warehouse: "Operations",
+  "Delivery Driver": "Operations",
 };
 
 export function validateInternalUserProvisioning(data: WorkspaceData, input: ProvisionInternalUserInput) {
@@ -53,6 +54,7 @@ export function validateInternalUserProvisioning(data: WorkspaceData, input: Pro
   if (input.role === "Sales Representative" && !["Administrator", "Sales Manager"].includes(manager.role)) return "A Sales Representative must report to an Administrator or Sales Manager.";
   if (input.role === "Brand Ambassador" && manager.role !== "Sales Representative") return "A Brand Ambassador must be assigned to a Sales Representative.";
   if (["Operations", "Warehouse"].includes(input.role) && manager.role !== "Administrator") return `${input.role} must report to an Administrator until an operations-manager role is formally configured.`;
+  if (input.role === "Delivery Driver" && !["Administrator", "Operations"].includes(manager.role)) return "A Delivery Driver must report to an Administrator or Operations user.";
   return null;
 }
 

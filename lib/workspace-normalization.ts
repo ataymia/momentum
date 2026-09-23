@@ -5,7 +5,7 @@ import { normalizeUsername } from "./username";
 /** Out-of-range coordinates are dropped rather than trusted: bad pins silently break distance math. */
 const coordinate = (value: unknown, limit: number) => (typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= limit ? value : undefined);
 
-const roles = new Set(["Administrator", "Sales Manager", "Sales Representative", "Brand Ambassador", "Operations", "Warehouse", "Customer"]);
+const roles = new Set(["Administrator", "Sales Manager", "Sales Representative", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver", "Customer"]);
 const teams = new Set(["Leadership", "Sales", "Operations", "Customer"]);
 const accountStages = new Set(["Prospect", "Qualified", "Sampled", "Opening order", "Placed", "Reordered", "At risk"]);
 const healthStates = new Set(["Strong", "Watch", "New", "At risk"]);
@@ -104,26 +104,23 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
   const placements = uniqueById(list(root, "placements", fallback.placements).flatMap((value): Placement[] => {
     if (!object(value)) return [];
     const id = text(value.id); const accountId = text(value.accountId); const source = text(value.source); const status = text(value.status);
-    if (!id || !accountIds.has(accountId) || !text(value.product) || !wholeNonnegative(value.casesDelivered) || !wholeNonnegative(value.facings) || !finite(value.shelfPrice) || Number(value.shelfPrice) < 0 || !wholeNonnegative(value.observedStock) || !validDate(value.lastChecked) || !validDate(value.nextCheck) || !placementSources.has(source) || !placementStatuses.has(status) || typeof value.cold !== "boolean") return [];
+    if (!id || !accountId || !text(value.product) || !wholeNonnegative(value.casesDelivered) || !wholeNonnegative(value.facings) || !finite(value.shelfPrice) || Number(value.shelfPrice) < 0 || !wholeNonnegative(value.observedStock) || !validDate(value.lastChecked) || !validDate(value.nextCheck) || !placementSources.has(source) || !placementStatuses.has(status) || typeof value.cold !== "boolean") return [];
     return [{ id, accountId, product: text(value.product), casesDelivered: Number(value.casesDelivered), facings: Number(value.facings), location: text(value.location), cold: value.cold, shelfPrice: Number(value.shelfPrice), observedStock: Number(value.observedStock), lastChecked: text(value.lastChecked), nextCheck: text(value.nextCheck), source: source as Placement["source"], status: status as Placement["status"] }];
   }));
-  const placementIds = new Set(placements.map((placement) => placement.id));
 
   const orders = uniqueById(list(root, "orders", fallback.orders).flatMap((value): Order[] => {
     if (!object(value)) return [];
     const id = text(value.id); const accountId = text(value.accountId); const ownerId = text(value.ownerId); const status = text(value.status); const paymentStatus = text(value.paymentStatus); const price = Number(value.pricePerCase); const cases = Number(value.cases); const amount = Number(value.amount);
     const owner = users.find((user) => user.id === ownerId);
-    if (!id || !text(value.number) || !accountIds.has(accountId) || !owner || (owner.role === "Customer" && !(owner.accountIds ?? []).includes(accountId)) || !wholePositive(cases) || !finite(price) || price <= 0 || !finite(amount) || amount < 0 || Math.abs(amount - cases * price) > 0.01 || !orderStatuses.has(status) || !paymentStatuses.has(paymentStatus) || !validDateOrInstant(value.placedAt) || !text(value.priceBasis)) return [];
+    if (!id || !text(value.number) || !accountId || !owner || (owner.role === "Customer" && !(owner.accountIds ?? []).includes(accountId)) || !wholePositive(cases) || !finite(price) || price <= 0 || !finite(amount) || amount < 0 || Math.abs(amount - cases * price) > 0.01 || !orderStatuses.has(status) || !paymentStatuses.has(paymentStatus) || !validDateOrInstant(value.placedAt) || !text(value.priceBasis)) return [];
     if (!optionalValidDate(value.paidAt) || !optionalValidDate(value.firstSettledAt) || !optionalFinite(value.inventoryAvailableAtOrder)) return [];
     const settlementEvidence = optionalText(value.firstSettledAt) || optionalText(value.paidAt);
     const safePaymentStatus = paymentStatus === "Paid" && !settlementEvidence ? "Open" : paymentStatus;
     const safeStatus = status === "Paid" && safePaymentStatus !== "Paid" ? "Delivered" : status;
     const creditedRepId = optionalText(value.creditedRepId); const sourcePlacementId = optionalText(value.sourcePlacementId);
     if (creditedRepId && users.find((user) => user.id === creditedRepId)?.role !== "Sales Representative") return [];
-    if (sourcePlacementId && !placementIds.has(sourcePlacementId)) return [];
     return [{ id, number: text(value.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(value.placedAt), ownerId, paidAt: optionalText(value.paidAt), firstSettledAt: optionalText(value.firstSettledAt), priceBasis: text(value.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product: optionalText(value.product), creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: finite(value.inventoryAvailableAtOrder) ? Number(value.inventoryAvailableAtOrder) : undefined, lowStockApprovalRequired: typeof value.lowStockApprovalRequired === "boolean" ? value.lowStockApprovalRequired : undefined }];
   }));
-  const orderIds = new Set(orders.map((order) => order.id));
 
   const inventory = uniqueById(list(root, "inventory", fallback.inventory).flatMap((value): InventoryLot[] => {
     if (!object(value)) return [];
@@ -132,21 +129,20 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
     const available = status === "Quality hold" ? 0 : onHand - reserved;
     return [{ id, lotCode: text(value.lotCode), product: text(value.product), receivedAt: text(value.receivedAt), bestBy: text(value.bestBy), onHand, reserved, available, status: status as InventoryLot["status"], location: text(value.location), holdReason: optionalText(value.holdReason), holdDecision: optionalText(value.holdDecision), holdResolvedAt: optionalText(value.holdResolvedAt), holdResolvedBy: internalUserIds.has(text(value.holdResolvedBy)) ? text(value.holdResolvedBy) : undefined }];
   }));
-  const inventoryIds = new Set(inventory.map((lot) => lot.id));
 
   const appointments = uniqueById(list(root, "appointments", fallback.appointments).flatMap((value): Appointment[] => {
     if (!object(value)) return [];
     const id = text(value.id); const accountId = text(value.accountId); const ownerId = optionalText(value.ownerId); const type = text(value.type); const status = text(value.status); const outcome = optionalText(value.outcome);
-    if (!id || !accountIds.has(accountId) || (ownerId && !internalUserIds.has(ownerId)) || !validDate(value.date) || !validTime(value.startTime) || !wholePositive(value.duration) || !appointmentTypes.has(type) || !appointmentStatuses.has(status) || !text(value.objective) || !text(value.location) || (outcome && !appointmentOutcomes.has(outcome)) || !optionalValidInstant(value.completedAt) || !optionalValidDate(value.nextActionDate) || !optionalValidInstant(value.assignedAt) || !optionalValidInstant(value.arrivalVerifiedAt) || !optionalValidInstant(value.geofenceDepartureAt) || !optionalValidInstant(value.geofenceExceptionAt)) return [];
+    if (!id || !accountId || (ownerId && !internalUserIds.has(ownerId)) || !validDate(value.date) || !validTime(value.startTime) || !wholePositive(value.duration) || !appointmentTypes.has(type) || !appointmentStatuses.has(status) || !text(value.objective) || !text(value.location) || (outcome && !appointmentOutcomes.has(outcome)) || !optionalValidInstant(value.completedAt) || !optionalValidDate(value.nextActionDate) || !optionalValidInstant(value.assignedAt) || !optionalValidInstant(value.arrivalVerifiedAt) || !optionalValidInstant(value.geofenceDepartureAt) || !optionalValidInstant(value.geofenceExceptionAt)) return [];
     if (![value.arrivalLatitude, value.arrivalLongitude, value.arrivalAccuracyMeters, value.arrivalDistanceMiles, value.geofenceDepartureLatitude, value.geofenceDepartureLongitude, value.geofenceDepartureAccuracyMeters, value.geofenceDepartureDistanceMiles].every(optionalFinite)) return [];
-    const account = accounts.find((item) => item.id === accountId)!;
-    return [{ ...value, id, accountId, ownerId, customerId: account.customerId, date: text(value.date), startTime: text(value.startTime), duration: Number(value.duration), type: type as Appointment["type"], status: status as Appointment["status"], objective: text(value.objective), location: text(value.location), outcome: outcome as Appointment["outcome"], closeoutNote: optionalText(value.closeoutNote), nextAction: optionalText(value.nextAction), nextActionDate: optionalText(value.nextActionDate), priority: ["Normal", "High", "Urgent"].includes(text(value.priority)) ? text(value.priority) as Appointment["priority"] : "Normal", tags: stringList(value.tags), requiredSkills: stringList(value.requiredSkills), confirmed: typeof value.confirmed === "boolean" ? value.confirmed : undefined, arrivalWindow: optionalText(value.arrivalWindow), assignedBy: internalUserIds.has(text(value.assignedBy)) ? text(value.assignedBy) : undefined, assignedAt: optionalText(value.assignedAt), geofenceExceptionBy: internalUserIds.has(text(value.geofenceExceptionBy)) ? text(value.geofenceExceptionBy) : undefined } as Appointment];
+    const account = accounts.find((item) => item.id === accountId);
+    return [{ ...value, id, accountId, ownerId, customerId: account?.customerId ?? optionalText(value.customerId), date: text(value.date), startTime: text(value.startTime), duration: Number(value.duration), type: type as Appointment["type"], status: status as Appointment["status"], objective: text(value.objective), location: text(value.location), outcome: outcome as Appointment["outcome"], closeoutNote: optionalText(value.closeoutNote), nextAction: optionalText(value.nextAction), nextActionDate: optionalText(value.nextActionDate), priority: ["Normal", "High", "Urgent"].includes(text(value.priority)) ? text(value.priority) as Appointment["priority"] : "Normal", tags: stringList(value.tags), requiredSkills: stringList(value.requiredSkills), confirmed: typeof value.confirmed === "boolean" ? value.confirmed : undefined, arrivalWindow: optionalText(value.arrivalWindow), assignedBy: internalUserIds.has(text(value.assignedBy)) ? text(value.assignedBy) : undefined, assignedAt: optionalText(value.assignedAt), geofenceExceptionBy: internalUserIds.has(text(value.geofenceExceptionBy)) ? text(value.geofenceExceptionBy) : undefined } as Appointment];
   }));
 
   const activities = uniqueById(list(root, "activities", fallback.activities).flatMap((value): Activity[] => {
     if (!object(value)) return [];
     const id = text(value.id); const accountId = optionalText(value.accountId); const type = text(value.type); const userId = text(value.userId);
-    if (!id || (accountId && !accountIds.has(accountId)) || !activityTypes.has(type) || (!userIds.has(userId) && userId !== "system") || !text(value.title) || !text(value.detail) || !validInstant(value.at)) return [];
+    if (!id || !activityTypes.has(type) || (!userIds.has(userId) && userId !== "system") || !text(value.title) || !text(value.detail) || !validInstant(value.at)) return [];
     return [{ id, accountId, type: type as Activity["type"], title: text(value.title), detail: text(value.detail), at: text(value.at), userId }];
   }));
 
@@ -165,16 +161,11 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
     if (!id || !internalUserIds.has(userId) || !validDate(value.weekStart) || !validDate(value.weekEnd) || text(value.weekEnd) < text(value.weekStart) || !timecardStatuses.has(status) || typeof value.attested !== "boolean" || !optionalValidInstant(value.submittedAt) || !optionalValidInstant(value.approvedAt) || !optionalValidInstant(value.returnedAt)) return [];
     return [{ id, userId, weekStart: text(value.weekStart), weekEnd: text(value.weekEnd), status: status as Timecard["status"], submittedAt: optionalText(value.submittedAt), approvedAt: optionalText(value.approvedAt), approverId: internalUserIds.has(text(value.approverId)) ? text(value.approverId) : undefined, attested: value.attested, returnedAt: optionalText(value.returnedAt), returnedBy: internalUserIds.has(text(value.returnedBy)) ? text(value.returnedBy) : undefined, returnReason: optionalText(value.returnReason) }];
   }));
-  const timecardIds = new Set(timecards.map((card) => card.id));
 
   const approvals = uniqueById(list(root, "approvals", fallback.approvals).flatMap((value): Approval[] => {
     if (!object(value)) return [];
     const id = text(value.id); const type = text(value.type); const requesterId = optionalText(value.requesterId); const recordId = optionalText(value.recordId); const priority = text(value.priority); const status = text(value.status); const team = optionalText(value.team);
     if (!id || !approvalTypes.has(type) || !text(value.title) || !text(value.detail) || !text(value.requestedBy) || (requesterId && !userIds.has(requesterId)) || !validInstant(value.submittedAt) || !validInstant(value.dueAt) || !approvalPriorities.has(priority) || !approvalStatuses.has(status) || (team && !teams.has(team))) return [];
-    if (recordId && ["Order", "Low stock sale", "Price exception"].includes(type) && !orderIds.has(recordId)) return [];
-    if (recordId && type === "Territory exception" && !accountIds.has(recordId)) return [];
-    if (recordId && type === "Timecard" && !timecardIds.has(recordId)) return [];
-    if (recordId && type === "Inventory adjustment" && !inventoryIds.has(recordId)) return [];
     return [{ id, type: type as Approval["type"], title: text(value.title), detail: text(value.detail), requestedBy: text(value.requestedBy), requesterId, recordId, team: team as Approval["team"], submittedAt: text(value.submittedAt), dueAt: text(value.dueAt), priority: priority as Approval["priority"], status: status as Approval["status"] }];
   }));
 

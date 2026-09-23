@@ -108,11 +108,13 @@ export function territorySystemEnabled(data:Pick<WorkspaceData,"territories">){r
  * an otherwise authorized sales representative from working an account.
  */
 export function canSalesRepWorkAccount(_data:Pick<WorkspaceData,"territories">,_user:WorkspaceUser,_account:Pick<Account,"postalCode">){
+  void _data; void _user; void _account;
   return true;
 }
 
 /** Territory suggestions do not lock dispatch or manual responsibility assignment. */
 export function canAssignRepToAccountTerritory(_data:Pick<WorkspaceData,"territories">,_account:Pick<Account,"postalCode">,_repId:string){
+  void _data; void _account; void _repId;
   return true;
 }
 

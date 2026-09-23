@@ -37,7 +37,7 @@ type IdentityProvisioningContextValue = {
 
 const Context = createContext<IdentityProvisioningContextValue | null>(null);
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const expectedTeam: Record<ProvisioningDraft["role"], ProvisioningDraft["team"]> = { "Sales Manager": "Sales", "Sales Representative": "Sales", "Brand Ambassador": "Sales", Operations: "Operations", Warehouse: "Operations" };
+const expectedTeam: Record<ProvisioningDraft["role"], ProvisioningDraft["team"]> = { "Sales Manager": "Sales", "Sales Representative": "Sales", "Brand Ambassador": "Sales", Operations: "Operations", Warehouse: "Operations", "Delivery Driver": "Operations" };
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const preactiveStates = new Set<AccountAccessState>(["Password change required", "Onboarding", "Pending approval"]);
 /** Every state an Administrator may rescue from. Separated is deliberately included: a wrongly closed account. */

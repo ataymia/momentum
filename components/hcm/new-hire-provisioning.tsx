@@ -47,8 +47,8 @@ type FormState = {
 const legalNameOf = (form: Pick<FormState, "firstName" | "lastName">) => `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
 
 const teamForRole = (role: ProvisionableRole): "Sales" | "Operations" => ["Sales Manager", "Sales Representative", "Brand Ambassador"].includes(role) ? "Sales" : "Operations";
-const roleOptions: ProvisionableRole[] = ["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse"];
-const defaultTitles = new Set<string>(["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse"]);
+const roleOptions: ProvisionableRole[] = ["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver"];
+const defaultTitles = new Set<string>(["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver"]);
 const payBasisOptions: PayBasis[] = ["Hourly", "Salary per pay period"];
 const classificationFor = (workerType: WorkerType, payBasis: PayBasis): WorkerClassification => workerType === "Contractor" ? "Contractor" : payBasis === "Hourly" ? "Hourly" : payBasis === "Salary per pay period" ? "Salary" : "Not configured";
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

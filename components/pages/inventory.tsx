@@ -123,7 +123,7 @@ export function InventoryPage() {
             <div><Warehouse size={19} /><span><small>Current custody</small><strong>{selectedCustody.length?selectedCustody.map(({node,qty})=>`${node.name}: ${qty} cs`).join(" · "):"No active custody balance"}</strong></span></div>
             <div><PackageOpen size={19} /><span><small>Product</small><strong>{selectedLot.product}</strong></span></div>
             <div><CalendarClock size={19} /><span><small>Received</small><strong>{formatDate(selectedLot.receivedAt)}</strong></span></div>
-            {selectedLot.status === "Quality hold" && <button onClick={() => setHoldOpen(true)}><ShieldAlert size={16} /> Resolve hold</button>}
+            {selectedLot.status === "Quality hold" && currentUser && ["Administrator","Operations"].includes(currentUser.role) && <button onClick={() => setHoldOpen(true)}><ShieldAlert size={16} /> Resolve hold</button>}
             {selectedLot.holdDecision && <div className="lot-decision"><ShieldAlert size={16}/><span><small>Latest disposition review</small><strong>{selectedLot.holdDecision}</strong></span></div>}
           </div>
         )}

@@ -180,8 +180,8 @@ service cloud.firestore {
     match /domains {
     // momentum-demo-workspace-v5
     match /workspace/fields/{field} {
-      allow get, list: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
-      allow write: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
+      allow get, list: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && (field in ['accounts', 'inventory', 'orders'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : field in ['timeEntries', 'timecards'] ? (hasAccess()) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
+      allow write: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && (field in ['orders'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : field in ['timeEntries', 'timecards'] ? (activeEmployee()) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
     }
 
     // momentum-commercial-controls-v1
@@ -246,8 +246,14 @@ service cloud.firestore {
 
     // momentum-inventory-ledger-v1
     match /inventoryLedger/fields/{field} {
-      allow get, list: if field in ['_root', 'counts', 'movements', 'nodes', 'reservations'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
-      allow write: if field in ['_root', 'counts', 'movements', 'nodes', 'reservations'] && ((activeEmployee() && role() in ['Administrator', 'Operations', 'Warehouse']));
+      allow get, list: if field in ['_root', 'counts', 'movements', 'nodes', 'reservations'] && (field in ['counts', 'movements', 'nodes', 'reservations'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
+      allow write: if field in ['_root', 'counts', 'movements', 'nodes', 'reservations'] && (field in ['movements', 'reservations'] ? (activeEmployee() && role() in ['Administrator', 'Operations', 'Warehouse', 'Delivery Driver']) : (activeEmployee() && role() in ['Administrator', 'Operations', 'Warehouse']));
+    }
+
+    // momentum-delivery-v1
+    match /delivery/fields/{field} {
+      allow get, list: if field in ['_root', 'tasks'] && ((activeEmployee() && role() in ['Administrator', 'Operations', 'Warehouse', 'Delivery Driver']));
+      allow write: if field in ['_root', 'tasks'] && ((activeEmployee() && role() in ['Administrator', 'Operations', 'Delivery Driver']));
     }
 
     // momentum-finance-v3

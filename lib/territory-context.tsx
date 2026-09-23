@@ -2,7 +2,7 @@
 
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { arizonaDateKey } from "./date-time";
-import { addressIsGeocodable, geocodePatch, needsGeocode, resolveGeocodeProvider, type GeocodingConfig, DEFAULT_GEOCODING_CONFIG } from "./geocoding";
+import { geocodePatch, needsGeocode, resolveGeocodeProvider, type GeocodingConfig, DEFAULT_GEOCODING_CONFIG } from "./geocoding";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import {
   TERRITORY_STORAGE_KEY,
@@ -88,7 +88,7 @@ function geocodingConfig(): GeocodingConfig {
 export function TerritoryProvider({ children }: { children: ReactNode }) {
   const { data, currentUser, scope, patchAccountLocation } = useWorkspace();
   const [state, setState] = useState<TerritoryState>(() => readState(data.users));
-  const geocoding = useMemo(geocodingConfig, []);
+  const geocoding = useMemo(() => geocodingConfig(), []);
   const today = arizonaDateKey();
 
   useRemoteStorageSync(TERRITORY_STORAGE_KEY, () => setState(readState(data.users)));

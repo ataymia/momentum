@@ -13,6 +13,7 @@ export type Role =
   | "Brand Ambassador"
   | "Operations"
   | "Warehouse"
+  | "Delivery Driver"
   | "Customer";
 
 export type Team = "Leadership" | "Sales" | "Operations" | "Customer";

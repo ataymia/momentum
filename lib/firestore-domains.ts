@@ -28,13 +28,16 @@ const OPERATIONS:Role[]=["Administrator","Operations","Warehouse"];
  * carry those records are denied at the rules layer instead of gated on `activeEmployee`.
  */
 const OPERATIONAL:Role[]=["Administrator","Sales Manager","Sales Representative","Operations","Warehouse"];
+const DELIVERY_READ:Role[]=["Administrator","Operations","Warehouse","Delivery Driver"];
+const DELIVERY_WRITE:Role[]=["Administrator","Operations","Delivery Driver"];
+const DELIVERY_LEDGER_WRITE:Role[]=["Administrator","Operations","Warehouse","Delivery Driver"];
 
 const perUser=(userIdField="userId",extra:Partial<DomainFieldSpec>={}):DomainFieldSpec=>({userIdField,selfWrite:true,managerWrite:true,...extra});
 const adminOwned=(userIdField="userId"):DomainFieldSpec=>({userIdField,selfWrite:false,managerWrite:false,managerRead:false});
 const restricted=(read:RoleRule,write:RoleRule):DomainFieldSpec=>({read,write});
 
 export const DOMAIN_SPECS:DomainSpec[]=[
-  {key:"momentum-demo-workspace-v5",id:"workspace",read:OPERATIONAL,write:OPERATIONAL,omit:["users"],fields:{customers:{},accounts:{},activities:{},appointments:{},orders:{},placements:{},inventory:{},approvals:{},notifications:{},bulletins:{},territories:{},timeEntries:perUser(),timecards:perUser()}},
+  {key:"momentum-demo-workspace-v5",id:"workspace",read:OPERATIONAL,write:OPERATIONAL,omit:["users"],fields:{customers:{},accounts:{read:[...OPERATIONAL,"Delivery Driver"]},activities:{},appointments:{},orders:{read:[...OPERATIONAL,"Delivery Driver"],write:[...OPERATIONAL,"Delivery Driver"]},placements:{},inventory:{read:[...OPERATIONAL,"Delivery Driver"]},approvals:{},notifications:{},bulletins:{},territories:{},timeEntries:perUser("userId",{read:"hasAccess",write:"activeEmployee"}),timecards:perUser("userId",{read:"hasAccess",write:"activeEmployee"})}},
   {key:"momentum-commercial-controls-v1",id:"commercial",read:OPERATIONAL,write:OPERATIONAL,fields:{orders:{},appointments:{},approvals:{},activities:{},inventoryLots:{},territories:{}}},
   {key:"momentum-crm-v1",id:"crm",read:SALES,write:SALES,fields:{contacts:{},interactions:{},opportunities:{},responsibilityHistory:{}}},
   /**
@@ -64,7 +67,8 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-document-templates-v1",id:"documentTemplates",read:"hasAccess",write:ADMIN,fields:{templates:{},packets:perUser()}},
   {key:"momentum-performance-v1",id:"performance",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{goals:perUser(),reports:perUser(),notes:perUser("authorId")}},
   {key:"momentum-commerce-v1",id:"commerce",read:["Administrator","Sales Manager","Sales Representative","Operations"],write:ADMIN,fields:{invoices:{},payments:{},allocations:{},credits:{},refunds:{},notes:{}}},
-  {key:"momentum-inventory-ledger-v1",id:"inventoryLedger",read:OPERATIONAL,write:OPERATIONS,fields:{nodes:{},movements:{},reservations:{},counts:{}}},
+  {key:"momentum-inventory-ledger-v1",id:"inventoryLedger",read:OPERATIONAL,write:OPERATIONS,fields:{nodes:{read:[...OPERATIONAL,"Delivery Driver"]},movements:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},reservations:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},counts:{read:[...OPERATIONAL,"Delivery Driver"]}}},
+  {key:"momentum-delivery-v1",id:"delivery",read:DELIVERY_READ,write:DELIVERY_WRITE,fields:{tasks:{}}},
   {key:"momentum-finance-v3",id:"finance",read:ADMIN,write:ADMIN,fields:{expenses:perUser("requesterId")}},
   {key:"momentum-accounting-v1",id:"accounting",read:ADMIN,write:ADMIN,fields:{accounts:{},rules:{},journals:{},reconciliations:{}}},
   {key:"momentum-marketing-v3",id:"marketing",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{requests:perUser("requesterId"),campaigns:{},spend:{},assets:{},materials:{},materialMovements:{},touches:{},attributions:{},partnerships:{}}},

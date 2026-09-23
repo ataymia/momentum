@@ -45,7 +45,7 @@ export function coursesForRoleAudience<T extends AudienceTargetedCourse>(courses
 }
 
 const validKinds = new Set<TrainingMaterialKind>(["Video", "Link", "Document"]);
-const validRoles = new Set<Role>(["Administrator","Sales Manager","Sales Representative","Brand Ambassador","Operations","Warehouse","Customer"]);
+const validRoles = new Set<Role>(["Administrator","Sales Manager","Sales Representative","Brand Ambassador","Operations","Warehouse","Delivery Driver","Customer"]);
 const instant = (value: unknown) => typeof value === "string" && !Number.isNaN(new Date(value).getTime());
 const validUrl = (value: unknown) => {
   if (typeof value !== "string") return false;

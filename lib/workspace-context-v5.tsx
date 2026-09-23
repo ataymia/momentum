@@ -238,7 +238,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   useRemoteStorageSync(DATA_KEY, () => { if (production) setData(hydrateProductionWorkspace(directory ?? [])); });
 
   useEffect(() => {
-    if (ready) momentumStorage.setItem(DATA_KEY, JSON.stringify(data));
+    if (ready) {
+      momentumStorage.setItem(DATA_KEY, JSON.stringify(data));
+      void momentumStorage.flush();
+    }
   }, [data, ready]);
 
   const currentUser = useMemo(() => data.users.find((user) => user.id === currentUserId) ?? null, [currentUserId, data.users]);
@@ -431,7 +434,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData((current) => {
       const active = current.timeEntries.find((item) => item.userId === currentUser.id && !item.clockOut);
       if (active?.mealStart && !active.mealEnd) return current;
-      return active ? { ...current, timeEntries: current.timeEntries.map((item) => item.id === active.id ? { ...item, clockOut: localTime() } : item) } : { ...current, timeEntries: [{ id: `te-${Date.now()}`, userId: currentUser.id, date: todayKey(), clockIn: localTime(), breakMinutes: 0, source: "Demo desktop" }, ...current.timeEntries] };
+      const date = todayKey();
+      const weekStart = startOfLocalWeek(date);
+      const weekEnd = addCalendarDays(weekStart, 6);
+      const hasTimecard = current.timecards.some((card) => card.userId === currentUser.id && card.weekStart === weekStart && card.weekEnd === weekEnd);
+      const timecards = hasTimecard ? current.timecards : [{ id: `tc-${currentUser.id}-${weekStart}`, userId: currentUser.id, weekStart, weekEnd, status: "Open" as const, attested: false }, ...current.timecards];
+      const timeEntries = active
+        ? current.timeEntries.map((item) => item.id === active.id ? { ...item, clockOut: localTime() } : item)
+        : [{ id: `te-${Date.now()}`, userId: currentUser.id, date, clockIn: localTime(), breakMinutes: 0, source: "Demo desktop" as const }, ...current.timeEntries];
+      return { ...current, timeEntries, timecards };
     });
   }, [currentUser]);
   const startMeal = useCallback(() => {

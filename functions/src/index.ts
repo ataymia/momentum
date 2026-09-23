@@ -351,6 +351,7 @@ const PROVISIONABLE_TEAMS: Record<string, string> = {
   "Brand Ambassador": "Sales",
   "Operations": "Operations",
   "Warehouse": "Operations",
+  "Delivery Driver": "Operations",
 };
 
 type ProvisioningStage =
