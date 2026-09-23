@@ -12,6 +12,8 @@ export type DomainFieldSpec={
   salesRepSupervise?:boolean;
   read?:RoleRule;
   write?:RoleRule;
+  /** Derived/bounded fields may intentionally replace their prior persisted collection. */
+  replaceOnWrite?:boolean;
 };
 
 export type DomainSpec={key:string;id:string;read:RoleRule;write:RoleRule;fields:Record<string,DomainFieldSpec>;omit?:string[]};
@@ -75,7 +77,7 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-payroll-v5",id:"payroll",read:ADMIN,write:ADMIN,fields:{payGroups:{},employerTaxRules:{},benefitTaxRules:{},runs:{},liabilities:{},employees:adminOwned(),withholdingProfiles:adminOwned(),disbursements:adminOwned()}},
   {key:"momentum-field-tracking-v1",id:"fieldTracking",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{geofences:{},sessions:perUser(),samples:perUser(),appointmentEvents:perUser(),exceptions:perUser(),departureAlerts:perUser()}},
   {key:"momentum-audit-v1",id:"audit",read:ADMIN,write:ADMIN,fields:{events:perUser("actorId",{managerWrite:false,managerRead:false})}},
-  {key:"momentum-notification-rules-v1",id:"notificationRules",read:"activeEmployee",write:ADMIN,fields:{preferences:perUser(),deliveries:restricted("activeEmployee","activeEmployee")}},
+  {key:"momentum-notification-rules-v1",id:"notificationRules",read:"activeEmployee",write:ADMIN,fields:{preferences:perUser(),deliveries:{...restricted("activeEmployee","activeEmployee"),replaceOnWrite:true}}},
   {key:"momentum-period-locks-v1",id:"periodLocks",read:"activeEmployee",write:ADMIN,fields:{locks:{}}},
 ];
 
@@ -106,6 +108,7 @@ export function domainDocuments(spec:DomainSpec,scope:PersistenceScope):DomainDo
 
 export function userShardWritable(_spec:DomainSpec,fieldSpec:DomainFieldSpec,uid:string,scope:PersistenceScope){if(scope.role==="Customer")return false;if(scope.role==="Administrator")return true;if(uid===scope.uid)return fieldSpec.selfWrite!==false;if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative"&&scope.supervisedBrandAmbassadorIds.has(uid))return scope.accountState==="Active";if(scope.managedUserIds.has(uid))return fieldSpec.managerWrite!==false&&scope.accountState==="Active";return false;}
 export function documentWritable(path:string,scope:PersistenceScope){const parsed=parseDocPath(path);if(!parsed)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)return false;if(parsed.uid){const fieldSpec=spec.fields[parsed.field];return Boolean(fieldSpec?.userIdField)&&userShardWritable(spec,fieldSpec,parsed.uid,scope);}const fieldSpec=parsed.field===ROOT_FIELD?undefined:spec.fields[parsed.field];return roleAllows(fieldSpec?.write??spec.write,scope);}
+export function documentReplacesOnWrite(path:string){const parsed=parseDocPath(path);if(!parsed||parsed.uid||parsed.field===ROOT_FIELD)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);return spec?.fields[parsed.field]?.replaceOnWrite===true;}
 const isRecord=(value:unknown):value is Record<string,unknown>=>Boolean(value&&typeof value==="object"&&!Array.isArray(value));
 export function shardState(spec:DomainSpec,state:unknown):Map<string,Record<string,unknown>>{const output=new Map<string,Record<string,unknown>>();if(!isRecord(state))return output;const root:Record<string,unknown>={};for(const [key,value] of Object.entries(state)){if(spec.omit?.includes(key))continue;const fieldSpec=spec.fields[key];if(!Array.isArray(value)||!fieldSpec){root[key]=value;continue;}if(!fieldSpec.userIdField){output.set(sharedDocPath(spec.id,key),{items:value});continue;}const shared:unknown[]=[];const byUser=new Map<string,unknown[]>();for(const item of value){const owner=isRecord(item)?item[fieldSpec.userIdField]:undefined;if(typeof owner==="string"&&owner){const list=byUser.get(owner)??[];list.push(item);byUser.set(owner,list);}else shared.push(item);}output.set(sharedDocPath(spec.id,key),{items:shared});for(const [uid,items] of byUser)output.set(userDocPath(uid,spec.id,key),{items});}output.set(sharedDocPath(spec.id,ROOT_FIELD),{data:root});return output;}
 export function assembleState(spec:DomainSpec,documents:Map<string,Record<string,unknown>|null>):Record<string,unknown>|null{let found=false;const rootDoc=documents.get(sharedDocPath(spec.id,ROOT_FIELD));const state:Record<string,unknown>=isRecord(rootDoc?.data)?{...rootDoc!.data}:{};if(rootDoc)found=true;for(const field of Object.keys(spec.fields)){const items:unknown[]=[];const shared=documents.get(sharedDocPath(spec.id,field));if(shared){found=true;if(Array.isArray(shared.items))items.push(...shared.items);}const userPaths=[...documents.keys()].filter((path)=>{const parsed=parseDocPath(path);return parsed?.uid&&parsed.domainId===spec.id&&parsed.field===field;}).sort();for(const path of userPaths){const doc=documents.get(path);if(doc){found=true;if(Array.isArray(doc.items))items.push(...doc.items);}}state[field]=items;}return found?state:null;}
