@@ -4,7 +4,7 @@ import { ReactNode, createContext, useContext, useEffect, useMemo, useState } fr
 import { useAudit } from "./audit-context";
 import { inventoryProductStatuses } from "./inventory-ledger";
 import { useInventoryLedger } from "./inventory-ledger-context";
-import { NOTIFICATION_STORAGE_KEY, NotificationDelivery, NotificationPreference, NotificationState, auditEventCreatesNotification, createNotificationSeed, deliveryKey, enabledChannels, normalizeNotificationState, notificationCopy, programPricingDaysRemaining, resolveNotificationRecipients } from "./notification-engine";
+import { NOTIFICATION_STORAGE_KEY, NotificationDelivery, NotificationPreference, NotificationState, auditEventCreatesNotification, compactNotificationDeliveries, createNotificationSeed, deliveryKey, enabledChannels, normalizeNotificationState, notificationCopy, programPricingDaysRemaining, resolveNotificationRecipients } from "./notification-engine";
 import { arizonaDateKey } from "./date-time";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
@@ -18,7 +18,7 @@ function readState(users: ReturnType<typeof useWorkspace>["data"]["users"]) { if
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { data, currentUser } = useWorkspace(); const { audit, recordManualAudit } = useAudit(); const { ledger } = useInventoryLedger(); const runtime = useRuntimeMode(); const [state, setState] = useState<NotificationState>(() => readState(data.users));
   useEffect(() => { const handle = window.setTimeout(() => setState((current) => normalizeNotificationState(current, data.users)), 0); return () => window.clearTimeout(handle); }, [data.users]);
-  useEffect(() => { if (typeof window !== "undefined") momentumStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(state)); }, [state]);
+  useEffect(() => { if (typeof window !== "undefined") momentumStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify({ ...state, deliveries: compactNotificationDeliveries(state.deliveries) })); }, [state]);
   useRemoteStorageSync(NOTIFICATION_STORAGE_KEY, () => setState(readState(data.users)));
 
   /*
@@ -32,7 +32,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const eventById = new Map(sourceEvents.map((event) => [event.id, event]));
       const auditEventIds = new Set(auditWindow.map((event) => event.id));
       // Remove only old bell deliveries derived from routine audit events. The audit source itself is preserved.
-      const retained = current.deliveries.filter((delivery) => !auditEventIds.has(delivery.sourceEventId) || eventById.has(delivery.sourceEventId));
+      const retained = current.deliveries.filter((delivery) => {
+        const auditDerived = delivery.sourceEventId.startsWith("audit-") || auditEventIds.has(delivery.sourceEventId);
+        return !auditDerived || eventById.has(delivery.sourceEventId);
+      });
       let copyChanged = retained.length !== current.deliveries.length;
       const refreshed = retained.map((delivery) => {
         const event = eventById.get(delivery.sourceEventId);
@@ -58,7 +61,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           }
         }
       }
-      return copyChanged || additions.length ? { ...current, deliveries: [...additions, ...refreshed].slice(0, 12000) } : current;
+      return copyChanged || additions.length ? { ...current, deliveries: compactNotificationDeliveries([...additions, ...refreshed]) } : current;
     }), 0);
     return () => window.clearTimeout(handle);
   }, [audit.events, data]);
@@ -83,7 +86,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           }
         }
       }
-      return additions.length || retained.length !== current.deliveries.length ? { ...current, deliveries: [...additions, ...retained].slice(0, 12000) } : current;
+      return additions.length || retained.length !== current.deliveries.length ? { ...current, deliveries: compactNotificationDeliveries([...additions, ...retained]) } : current;
     }), 0);
     return () => window.clearTimeout(handle);
   }, [data, ledger]);
@@ -102,7 +105,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const title=`Program pricing expires in ${days} day${days===1?"":"s"}`;const detail=`${account.locationName??account.name}${account.programPricingLabel?` · ${account.programPricingLabel}`:""} expires ${account.programPricingExpirationDate}. Review renewal, replacement pricing, or expiration.`;
         for(const recipientUserId of recipients){const preference=current.preferences.find((item)=>item.userId===recipientUserId);if(!preference)continue;for(const channel of enabledChannels(preference)){const key=deliveryKey(sourceEventId,recipientUserId,channel);if(existing.has(key))continue;existing.add(key);additions.push({id:uid("pricing-alert"),sourceEventId,recipientUserId,channel,title,detail,tone:"warning",createdAt:new Date().toISOString(),status:channel==="In app"?"Unread":"Awaiting integration"});}}
       }
-      return additions.length||retained.length!==current.deliveries.length?{...current,deliveries:[...additions,...retained].slice(0,12000)}:current;
+      return additions.length||retained.length!==current.deliveries.length?{...current,deliveries:compactNotificationDeliveries([...additions,...retained])}:current;
     }),0);return()=>window.clearTimeout(handle);
   },[data.accounts,data.users]);
 
@@ -119,7 +122,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           for (const recipientUserId of recipients) { additions.push({ id: uid("escalation"), sourceEventId: delivery.sourceEventId, recipientUserId, channel: "In app", title: `Needs attention: ${delivery.title}`, detail: `${user?.name ?? "A team member"} has not opened this notification within the ${current.escalationHours}-hour follow-up window.`, tone: "warning", createdAt: checkedAt, status: "Unread", escalationOf: delivery.id }); created = true; }
           if (!created) return delivery; changed = true; return { ...delivery, escalatedAt: checkedAt };
         });
-        return changed ? { ...current, deliveries: [...additions, ...updated] } : current;
+        return changed ? { ...current, deliveries: compactNotificationDeliveries([...additions, ...updated]) } : current;
       });
     };
     const initial = window.setTimeout(evaluateEscalations, 0);

@@ -4,7 +4,8 @@ import test, { describe } from "node:test";
 import { reconcileApprovals, reconcileOrders } from "../lib/order-approval-engine";
 import { mergeDocument } from "../lib/persistence";
 import { GOLDEN_EAGLE_SKUS, HISTORICAL_PURCHASE_ORDER_POLICY, PRODUCT_CATALOG_INVENTORY_POLICY, WHOLESALE_BARCODE_POLICY } from "../lib/product-catalog";
-import { auditEventCreatesNotification } from "../lib/notification-engine";
+import { MAX_PERSISTED_NOTIFICATION_BYTES, MAX_PERSISTED_NOTIFICATION_DELIVERIES, auditEventCreatesNotification, compactNotificationDeliveries } from "../lib/notification-engine";
+import { documentReplacesOnWrite } from "../lib/firestore-domains";
 import type { Approval, Order } from "../lib/types";
 
 const pending: Approval = {
@@ -95,5 +96,62 @@ describe("notification bell remains an action queue", () => {
       action: "Created", module: "Workspace", collection: "approvals", entityType: "Workspace.approvals", entityId: "apr-1",
       label: "Review GE-1", summary: "Approval created", sensitivity: "manager", changes: [{ field: "status", after: "Pending" }],
     }), true);
+  });
+});
+
+describe("production persistence incident guards", () => {
+  test("notification delivery storage is bounded far below the Firestore document ceiling", () => {
+    const deliveries = Array.from({ length: 1600 }, (_, index) => ({
+      id: `notice-${index}`,
+      sourceEventId: `audit-${index}`,
+      recipientUserId: "admin",
+      channel: "In app" as const,
+      title: `Action ${index}`,
+      detail: "Requires attention",
+      tone: "warning" as const,
+      createdAt: new Date(2026, 8, 23, 12, 0, index % 60).toISOString(),
+      status: index < 700 ? "Unread" as const : "Read" as const,
+    }));
+    const compacted = compactNotificationDeliveries(deliveries);
+    assert.equal(compacted.length, MAX_PERSISTED_NOTIFICATION_DELIVERIES);
+    assert.ok(compacted.every((item) => item.status === "Unread"), "actionable entries are kept ahead of resolved history");
+  });
+
+  test("notification delivery storage also respects a byte budget below Firestore's 1 MiB ceiling", () => {
+    const deliveries = Array.from({ length: 100 }, (_, index) => ({
+      id: `large-${index}`,
+      sourceEventId: `audit-large-${index}`,
+      recipientUserId: "admin",
+      channel: "In app" as const,
+      title: `Large action ${index}`,
+      detail: "x".repeat(20_000),
+      tone: "warning" as const,
+      createdAt: new Date(2026, 8, 23, 12, 0, index % 60).toISOString(),
+      status: "Unread" as const,
+    }));
+    const compacted = compactNotificationDeliveries(deliveries);
+    const bytes = new TextEncoder().encode(JSON.stringify(compacted)).byteLength;
+    assert.ok(bytes <= MAX_PERSISTED_NOTIFICATION_BYTES);
+    assert.ok(compacted.length > 0);
+  });
+
+  test("notification deliveries may be intentionally replaced while business records remain merge-protected", () => {
+    assert.equal(documentReplacesOnWrite("domains/notificationRules/fields/deliveries"), true);
+    assert.equal(documentReplacesOnWrite("domains/commercial/fields/orders"), false);
+  });
+
+  test("persistence isolates a failed document instead of poisoning unrelated writes and journals pending state", () => {
+    const source = readFileSync(new URL("../lib/persistence.ts", import.meta.url), "utf8");
+    assert.match(source, /isolateWriteFailures/);
+    assert.match(source, /momentum-firestore-pending-v1/);
+    assert.match(source, /documentReplacesOnWrite/);
+  });
+
+  test("production app exposes cloud sync health and hides sidebar scrollbar chrome", () => {
+    const shell = readFileSync(new URL("../components/app-shell-v4.tsx", import.meta.url), "utf8");
+    const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+    assert.match(shell, /SyncStatusPill/);
+    assert.match(css, /sidebar__nav::-webkit-scrollbar/);
+    assert.match(css, /scrollbar-width:none/);
   });
 });

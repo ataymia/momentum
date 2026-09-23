@@ -1029,6 +1029,13 @@ a {
 }
 .sidebar__nav {
   overflow-y:auto;
+  scrollbar-width:none;
+  -ms-overflow-style:none;
+}
+.sidebar__nav::-webkit-scrollbar {
+  width:0;
+  height:0;
+  display:none;
 }
 .sidebar__nav>p {
   color:#526986;

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PLATFORM_META_DOCUMENT, type PersistenceScope } from "./firebase-access";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite } from "./firebase-firestore-rest";
-import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, domainDocuments, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, shardState, type DomainSpec } from "./firestore-domains";
+import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, documentReplacesOnWrite, domainDocuments, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, shardState, type DomainSpec } from "./firestore-domains";
 
 /**
  * Momentum storage boundary.
@@ -30,6 +30,8 @@ const setStatus=(patch:Partial<SyncStatus>)=>{status={...status,...patch};for(co
 const stable=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==="object"&&!Array.isArray(item)?Object.keys(item as Record<string,unknown>).sort().reduce<Record<string,unknown>>((acc,key)=>{acc[key]=(item as Record<string,unknown>)[key];return acc;},{}):item);
 const isRecord=(value:unknown):value is Record<string,unknown>=>Boolean(value&&typeof value==="object"&&!Array.isArray(value));
 const local=()=>typeof window==="undefined"?null:window.localStorage;
+const PENDING_JOURNAL_PREFIX="momentum-firestore-pending-v1";
+const pendingJournalKey=(uid:string,key:string)=>`${PENDING_JOURNAL_PREFIX}:${uid}:${key}`;
 
 export function subscribeStorageKey(key:string,listener:Listener){
   const set=keyListeners.get(key)??new Set<Listener>();
@@ -122,7 +124,7 @@ class FirestoreBackend{
   constructor(options:BackendOptions){
     this.scope=options.scope;
     this.onDirectoryChange=options.onDirectoryChange;
-    this.pollIntervalMs=options.pollIntervalMs??20_000;
+    this.pollIntervalMs=options.pollIntervalMs??5_000;
   }
 
   private readablePaths(){
@@ -152,13 +154,19 @@ class FirestoreBackend{
       this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
     }
     for(const spec of DOMAIN_SPECS)this.cache.set(spec.key,this.assemble(spec));
-    setStatus({mode:"firestore",pending:0,flushing:false,lastSyncedAt:new Date().toISOString(),lastError:undefined,conflicts:0,deniedDocuments:[...this.denied]});
+    // Recover any locally journaled Firestore state that did not finish syncing before a reload/crash.
+    for(const spec of DOMAIN_SPECS){
+      const pending=local()?.getItem(pendingJournalKey(this.scope.uid,spec.key));
+      if(typeof pending==="string"){this.cache.set(spec.key,pending);this.dirty.add(spec.key);}
+    }
+    setStatus({mode:"firestore",pending:this.dirty.size,flushing:false,lastSyncedAt:new Date().toISOString(),lastError:undefined,conflicts:0,deniedDocuments:[...this.denied]});
     if(typeof window!=="undefined"){
       this.pollTimer=window.setInterval(()=>void this.poll(),this.pollIntervalMs);
       window.addEventListener("focus",this.handleFocus);
       document.addEventListener("visibilitychange",this.handleFocus);
       window.addEventListener("pagehide",this.handlePageHide);
     }
+    if(this.dirty.size)this.scheduleFlush(50);
   }
 
   private versionsFrom(data:Record<string,unknown>|null){
@@ -197,6 +205,7 @@ class FirestoreBackend{
   setItem(key:string,value:string){
     if(this.cache.get(key)===value)return;
     this.cache.set(key,value);
+    local()?.setItem(pendingJournalKey(this.scope.uid,key),value);
     this.dirty.add(key);
     setStatus({pending:this.dirty.size});
     this.scheduleFlush(350);
@@ -222,8 +231,10 @@ class FirestoreBackend{
         const parsedPath=parseDocPath(doc.path)!;
         const proposed=shards.get(doc.path)??(parsedPath.field===ROOT_FIELD?{data:{}}:{items:[]});
         const base=this.docs.get(doc.path);
-        // Existing Firestore records survive a locally omitted/temporarily unrecognized record.
-        const next=base?.data?mergeDocument(base.data,proposed,base.data):proposed;
+        // Existing business records survive a locally omitted/temporarily unrecognized record.
+        // Bounded derived queues (currently notification deliveries) are intentionally replaceable so
+        // old items can actually be pruned below Firestore document-size limits.
+        const next=base?.data?(documentReplacesOnWrite(doc.path)?proposed:mergeDocument(base.data,proposed,base.data)):proposed;
         if(!base?.data&&emptyDocument(next))continue;
         if(base?.data&&stable(base.data)===stable(next))continue;
         writes.push({kind:"set",path:doc.path,data:next,updateTime:base?.updateTime,create:!base?.data});
@@ -240,7 +251,7 @@ class FirestoreBackend{
     try{
       for(let attempt=0;attempt<4;attempt++){
         const {writes,pathKey,nextDocs}=this.buildWrites(keys);
-        if(writes.length===0)break;
+        if(writes.length===0){for(const key of keys)local()?.removeItem(pendingJournalKey(this.scope.uid,key));break;}
         const stamp=`${new Date().toISOString()}#${Math.random().toString(36).slice(2,8)}`;
         const versionEntries=writes.map((write)=>metaVersionKey(write.path));
         const metaWrite:FirestoreWrite={kind:"merge",path:PLATFORM_META_DOCUMENT,data:{versions:Object.fromEntries(versionEntries.map((entry)=>[entry,stamp]))},fieldPaths:versionEntries.map((entry)=>`versions.${entry}`)};
@@ -249,6 +260,7 @@ class FirestoreBackend{
           for(const write of writes){this.docs.set(write.path,{data:nextDocs.get(write.path)??null,updateTime:result.updateTimes[write.path]});}
           for(const entry of versionEntries)this.metaVersions[entry]=stamp;
           this.retryDelay=0;
+          for(const key of keys)local()?.removeItem(pendingJournalKey(this.scope.uid,key));
           setStatus({lastSyncedAt:new Date().toISOString(),lastError:undefined});
           break;
         }
@@ -261,7 +273,11 @@ class FirestoreBackend{
           await this.isolateDenied(writes,pathKey,nextDocs);
           break;
         }
-        throw new Error(result.message||`Firestore commit failed (${result.status}).`);
+        // A size/validation failure in one noncritical document must never block an order, account,
+        // inventory movement, or any other unrelated record in the same flush. Isolate the writes and
+        // commit every healthy document independently.
+        await this.isolateWriteFailures(writes,pathKey,nextDocs);
+        break;
       }
     }catch(error){
       for(const key of keys)this.dirty.add(key);
@@ -273,6 +289,36 @@ class FirestoreBackend{
       setStatus({flushing:false,pending:this.dirty.size,deniedDocuments:[...this.denied]});
       if(this.dirty.size&&!this.retryDelay)this.scheduleFlush(200);
     }
+  }
+
+  /** A non-conflict batch failed. Commit healthy documents independently so one bad shard cannot poison unrelated records. */
+  private async isolateWriteFailures(writes:FirestoreWrite[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>){
+    const failedKeys=new Set<string>();
+    const touchedKeys=new Set<string>();
+    const messages:string[]=[];
+    let anySuccess=false;
+    for(const write of writes){
+      const key=pathKey.get(write.path);if(key)touchedKeys.add(key);
+      const stamp=`${new Date().toISOString()}#${Math.random().toString(36).slice(2,8)}`;
+      const versionEntry=metaVersionKey(write.path);
+      const metaWrite:FirestoreWrite={kind:"merge",path:PLATFORM_META_DOCUMENT,data:{versions:{[versionEntry]:stamp}},fieldPaths:[`versions.${versionEntry}`]};
+      const result=await commitFirestoreWrites([write,metaWrite]);
+      if(result.ok){
+        this.docs.set(write.path,{data:nextDocs.get(write.path)??null,updateTime:result.updateTimes[write.path]});
+        this.metaVersions[versionEntry]=stamp;anySuccess=true;continue;
+      }
+      if(key)failedKeys.add(key);
+      if(isFirestorePermissionDenied(result)){this.denied.add(write.path);messages.push(`${write.path}: Security Rules rejected the write.`);continue;}
+      if(isFirestoreConflict(result)){setStatus({conflicts:status.conflicts+1});messages.push(`${write.path}: concurrent update; retrying.`);continue;}
+      messages.push(`${write.path}: ${result.message||`Firestore write failed (${result.status}).`}`);
+    }
+    for(const key of touchedKeys){
+      if(failedKeys.has(key)){this.dirty.add(key);continue;}
+      local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+    }
+    this.retryDelay=failedKeys.size?Math.min(this.retryDelay?this.retryDelay*2:2_000,60_000):0;
+    setStatus({lastSyncedAt:anySuccess?new Date().toISOString():status.lastSyncedAt,lastError:messages.length?`Some changes are still safely queued: ${messages.slice(0,2).join(" | ")}`:undefined});
+    if(this.dirty.size)this.scheduleFlush(this.retryDelay||200);
   }
 
   /** A batch failed on rules. Retry one document at a time so the offending shard is identified and parked. */
@@ -298,7 +344,7 @@ class FirestoreBackend{
     for(const snapshot of snapshots){
       const base=this.docs.get(snapshot.path);
       const localDoc=nextDocs.get(snapshot.path);
-      const merged=localDoc?mergeDocument(base?.data,localDoc,snapshot.data):snapshot.data;
+      const merged=localDoc?(documentReplacesOnWrite(snapshot.path)?localDoc:mergeDocument(base?.data,localDoc,snapshot.data)):snapshot.data;
       this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
       const key=pathKey.get(snapshot.path);
       if(!key)continue;
@@ -334,7 +380,7 @@ class FirestoreBackend{
         let override:Record<string,unknown>|null=snapshot.data;
         if(this.dirty.has(spec.key)){
           const raw=this.cache.get(spec.key);
-          if(raw!=null){try{const localShard=shardState(spec,JSON.parse(raw)).get(snapshot.path);if(localShard)override=mergeDocument(base?.data,localShard,snapshot.data);}catch{/* keep remote */}}
+          if(raw!=null){try{const localShard=shardState(spec,JSON.parse(raw)).get(snapshot.path);if(localShard)override=documentReplacesOnWrite(snapshot.path)?localShard:mergeDocument(base?.data,localShard,snapshot.data);}catch{/* keep remote */}}
         }
         this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
         const map=touched.get(spec.key)??new Map<string,Record<string,unknown>|null>();

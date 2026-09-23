@@ -14,8 +14,9 @@ export function SyncStatusPill() {
   const sync = useSyncStatus();
   if (sync.mode !== "firestore") return null;
   const tone = sync.lastError ? "error" : sync.pending || sync.flushing ? "pending" : "ok";
-  const label = sync.lastError ? sync.lastError : sync.flushing ? "Saving to Firestore…" : sync.pending ? `${sync.pending} change${sync.pending === 1 ? "" : "s"} pending` : sync.lastSyncedAt ? `Synced ${new Date(sync.lastSyncedAt).toLocaleTimeString()}` : "Connected to Firestore";
-  return <span className="sync-status-pill" data-tone={tone} title={sync.deniedDocuments.length ? `Rules denied: ${sync.deniedDocuments.join(", ")}` : undefined}><RefreshCcw size={12} />{label}</span>;
+  const label = sync.lastError ? "Sync error" : sync.flushing ? "Saving…" : sync.pending ? `${sync.pending} pending` : sync.lastSyncedAt ? "Cloud synced" : "Connected";
+  const detail = sync.lastError ?? (sync.deniedDocuments.length ? `Rules denied: ${sync.deniedDocuments.join(", ")}` : undefined);
+  return <span className="sync-status-pill" data-tone={tone} title={detail}><RefreshCcw size={12} />{label}</span>;
 }
 
 /** Administrator view of Firebase identities and access records. Rendered only in production mode. */

@@ -12,6 +12,28 @@ export function createNotificationSeed(users: WorkspaceUser[]): NotificationStat
 const channels = new Set<NotificationChannel>(["In app", "Email", "SMS"]);
 const tones = new Set<NotificationDelivery["tone"]>(["info", "warning", "success"]);
 const statuses = new Set<NotificationDelivery["status"]>(["Unread", "Read", "Awaiting integration", "Sent", "Failed"]);
+export const MAX_PERSISTED_NOTIFICATION_DELIVERIES = 500;
+export const MAX_PERSISTED_NOTIFICATION_BYTES = 600_000;
+const serializedBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+export function compactNotificationDeliveries(deliveries: NotificationDelivery[]): NotificationDelivery[] {
+  const seen = new Set<string>();
+  const unique: NotificationDelivery[] = [];
+  for (const delivery of deliveries) {
+    if (!delivery?.id || seen.has(delivery.id)) continue;
+    seen.add(delivery.id);
+    unique.push(delivery);
+  }
+  const actionable = unique.filter((delivery) => !["Read", "Sent"].includes(delivery.status));
+  const resolved = unique.filter((delivery) => ["Read", "Sent"].includes(delivery.status));
+  const compacted: NotificationDelivery[] = [];
+  for (const delivery of [...actionable, ...resolved]) {
+    if (compacted.length >= MAX_PERSISTED_NOTIFICATION_DELIVERIES) break;
+    const candidate = [...compacted, delivery];
+    if (serializedBytes(candidate) > MAX_PERSISTED_NOTIFICATION_BYTES) continue;
+    compacted.push(delivery);
+  }
+  return compacted;
+}
 const validInstant = (value?: string) => Boolean(value && !Number.isNaN(new Date(value).getTime()));
 
 export function normalizeNotificationState(input: unknown, users: WorkspaceUser[]): NotificationState {
@@ -34,7 +56,7 @@ export function normalizeNotificationState(input: unknown, users: WorkspaceUser[
     seen.add(delivery.id); return true;
   });
   const escalationHours = typeof state.escalationHours === "number" && Number.isFinite(state.escalationHours) && state.escalationHours >= 1 && state.escalationHours <= 168 ? Math.round(state.escalationHours) : 24;
-  return { version: 1, escalationHours, preferences, deliveries };
+  return { version: 1, escalationHours, preferences, deliveries: compactNotificationDeliveries(deliveries) };
 }
 
 export function resolveNotificationRecipients(event: AuditEvent, data: WorkspaceData): string[] {
