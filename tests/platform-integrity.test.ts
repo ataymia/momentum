@@ -27,3 +27,16 @@ describe("notification classification",()=>{
   test("routine audit movement does not ring the bell",()=>assert.equal(auditEventCreatesNotification(routine),false));
   test("a newly pending approval is actionable",()=>assert.equal(auditEventCreatesNotification({...routine,action:"Created",module:"Workspace",collection:"approvals",changes:[{field:"status",after:"Pending"}]}),true));
 });
+
+import { weeklySalesManagementSummary } from "../lib/sales-field-engine";
+import { programPricingDaysRemaining } from "../lib/notification-engine";
+
+test("weekly management view is source-derived",()=>{
+  const account={id:"acc-week",name:"Shop",location:"Phoenix",channel:"Retail",stage:"Prospect" as const,ownerId:REP,contactName:"Owner",contactRole:"Owner",phone:"1",email:"x@y.com",lastActivity:"",nextAction:"Follow up",nextActionDate:"2026-09-25",health:"New" as const,lifetimeCases:0,reorderCount:0,notes:"",responsibilityStartedAt:"2026-09-21T10:00:00.000Z"};
+  const order:Order={id:"week-order",number:"GE-W",accountId:account.id,cases:12,pricePerCase:24,amount:288,status:"Awaiting approval",placedAt:"2026-09-23",ownerId:REP,creditedRepId:REP,priceBasis:"Tier A",paymentStatus:"Not invoiced"};
+  const weeklyData:WorkspaceData={...data,accounts:[account],orders:[order],activities:[{id:"created",accountId:account.id,type:"note",title:"Customer location created",detail:"created",at:"2026-09-22T10:00:00.000Z",userId:REP}]};
+  const interactions=[{id:"visit",locationId:account.id,userId:REP,type:"Visit" as const,occurredAt:"2026-09-22T12:00:00.000Z",summary:"visit",physicalVisit:true,prospectRating:8,nextAction:"Follow up",nextActionDate:"2026-09-25"}];
+  const summary=weeklySalesManagementSummary(weeklyData,interactions,REP,"2026-09-23");assert.equal(summary.visits,1);assert.equal(summary.orders,1);assert.equal(summary.orderCases,12);assert.equal(summary.newAccounts,1);assert.equal(summary.promisingProspects,1);assert.equal(summary.followUpsDue,1);
+});
+
+test("program pricing enters the action window at 30 days",()=>{const account={id:"a",name:"A",location:"Phoenix",channel:"Retail",stage:"Prospect",ownerId:REP,contactName:"x",contactRole:"x",phone:"",email:"",lastActivity:"",nextAction:"",nextActionDate:"2026-09-23",health:"New",lifetimeCases:0,reorderCount:0,notes:"",programPricingExpirationDate:"2026-10-23",programPricingStatus:"Active"} as const;assert.equal(programPricingDaysRemaining(account,"2026-09-23"),30)});

@@ -1,5 +1,5 @@
 import type { AuditEvent, AuditChange } from "./audit-engine";
-import type { WorkspaceData, WorkspaceUser } from "./types";
+import type { Account, WorkspaceData, WorkspaceUser } from "./types";
 
 export const NOTIFICATION_STORAGE_KEY = "momentum-notification-rules-v1";
 export type NotificationChannel = "In app" | "Email" | "SMS";
@@ -248,3 +248,9 @@ export function notificationCopy(event: AuditEvent, data?: WorkspaceData) {
 
 export function enabledChannels(preference: NotificationPreference): NotificationChannel[] { return [preference.inApp ? "In app" : null, preference.email && preference.emailAddress?.trim() ? "Email" : null, preference.sms && preference.smsNumber?.trim() ? "SMS" : null].filter((item): item is NotificationChannel => Boolean(item)); }
 export const deliveryKey = (eventId: string, userId: string, channel: NotificationChannel) => `${eventId}:${userId}:${channel}`;
+
+export function programPricingDaysRemaining(account:Account,asOf:string){
+  if(!account.programPricingExpirationDate||["Expired","Cancelled"].includes(account.programPricingStatus??""))return undefined;
+  const start=new Date(`${asOf}T12:00:00-07:00`).getTime();const end=new Date(`${account.programPricingExpirationDate}T12:00:00-07:00`).getTime();
+  if(Number.isNaN(start)||Number.isNaN(end))return undefined;return Math.ceil((end-start)/86_400_000);
+}

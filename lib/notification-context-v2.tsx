@@ -4,7 +4,8 @@ import { ReactNode, createContext, useContext, useEffect, useMemo, useState } fr
 import { useAudit } from "./audit-context";
 import { inventoryProductStatuses } from "./inventory-ledger";
 import { useInventoryLedger } from "./inventory-ledger-context";
-import { NOTIFICATION_STORAGE_KEY, NotificationDelivery, NotificationPreference, NotificationState, auditEventCreatesNotification, createNotificationSeed, deliveryKey, enabledChannels, normalizeNotificationState, notificationCopy, resolveNotificationRecipients } from "./notification-engine";
+import { NOTIFICATION_STORAGE_KEY, NotificationDelivery, NotificationPreference, NotificationState, auditEventCreatesNotification, createNotificationSeed, deliveryKey, enabledChannels, normalizeNotificationState, notificationCopy, programPricingDaysRemaining, resolveNotificationRecipients } from "./notification-engine";
+import { arizonaDateKey } from "./date-time";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
@@ -86,6 +87,24 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }), 0);
     return () => window.clearTimeout(handle);
   }, [data, ledger]);
+
+
+  useEffect(() => {
+    const handle=window.setTimeout(()=>setState((current)=>{
+      const today=arizonaDateKey();
+      const warnings=data.accounts.map((account)=>({account,days:programPricingDaysRemaining(account,today)})).filter((item):item is {account:typeof data.accounts[number];days:number}=>item.days!==undefined&&item.days>=0&&item.days<=30);
+      const activeSourceIds=new Set(warnings.map(({account})=>`program-pricing-expiry:${account.id}:${account.programPricingExpirationDate}`));
+      const retained=current.deliveries.filter((delivery)=>!delivery.sourceEventId.startsWith("program-pricing-expiry:")||activeSourceIds.has(delivery.sourceEventId));
+      const existing=new Set(retained.map((item)=>deliveryKey(item.sourceEventId,item.recipientUserId,item.channel)));const additions:NotificationDelivery[]=[];
+      for(const{account,days}of warnings){
+        const sourceEventId=`program-pricing-expiry:${account.id}:${account.programPricingExpirationDate}`;const owner=data.users.find((user)=>user.id===account.ownerId);const recipients=new Set(data.users.filter((user)=>user.role==="Administrator").map((user)=>user.id));
+        if(account.accountManagerId)recipients.add(account.accountManagerId);if(account.ownerId)recipients.add(account.ownerId);if(owner?.managerId)recipients.add(owner.managerId);
+        const title=`Program pricing expires in ${days} day${days===1?"":"s"}`;const detail=`${account.locationName??account.name}${account.programPricingLabel?` · ${account.programPricingLabel}`:""} expires ${account.programPricingExpirationDate}. Review renewal, replacement pricing, or expiration.`;
+        for(const recipientUserId of recipients){const preference=current.preferences.find((item)=>item.userId===recipientUserId);if(!preference)continue;for(const channel of enabledChannels(preference)){const key=deliveryKey(sourceEventId,recipientUserId,channel);if(existing.has(key))continue;existing.add(key);additions.push({id:uid("pricing-alert"),sourceEventId,recipientUserId,channel,title,detail,tone:"warning",createdAt:new Date().toISOString(),status:channel==="In app"?"Unread":"Awaiting integration"});}}
+      }
+      return additions.length||retained.length!==current.deliveries.length?{...current,deliveries:[...additions,...retained].slice(0,12000)}:current;
+    }),0);return()=>window.clearTimeout(handle);
+  },[data.accounts,data.users]);
 
   useEffect(() => {
     const evaluateEscalations = () => {
