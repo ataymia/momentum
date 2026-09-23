@@ -6,11 +6,12 @@ import { commitFirestoreWrites } from "../lib/firebase-firestore-rest";
 import { useFirebaseSessionOptional } from "../lib/firebase-session-context";
 import type { WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
+import { DeliveryDriverShell } from "./delivery-driver-shell";
 import { AppShell as BaseAppShell } from "./app-shell-v4";
 
 const FOUNDER_PROFILES:Record<string,{name:string;firstName:string;initials:string;title:string;accent:string}>={
   "vixarynholdings@gmail.com":{name:"Ataymia Murray",firstName:"Ataymia",initials:"AM",title:"Director of Operations",accent:"#e49e13"},
-  "momentumdistributioninc@gmail.com":{name:"Floris Ymeri",firstName:"Floris",initials:"FY",title:"Owner",accent:"#0b2e92"},
+  "momentumdistributioninc@gmail.com":{name:"Florim Ymeri",firstName:"Florim",initials:"FY",title:"General Manager",accent:"#0b2e92"},
 };
 
 /**
@@ -60,5 +61,6 @@ function FoundingProfileRepair(){
 }
 
 export function AppShell(){
-  return <><FoundingProfileRepair/><BaseAppShell/></>;
+  const {currentUser}=useWorkspace();
+  return <><FoundingProfileRepair/>{currentUser?.role==="Delivery Driver"?<DeliveryDriverShell/>:<BaseAppShell/>}</>;
 }
