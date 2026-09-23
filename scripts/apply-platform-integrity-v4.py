@@ -17,4 +17,31 @@ def replace_once(path,old,new):
 replace_once("lib/workspace-context.tsx",'''import type { Account, Activity, Appointment, AppointmentStatus, Approval, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, SalesTerritory, WorkspaceData, WorkspaceUser } from "./types";''','''import type { Account, Activity, Appointment, AppointmentStatus, Approval, CustomerAccount, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, SalesTerritory, WorkspaceData, WorkspaceUser } from "./types";''')
 replace_once("lib/workspace-context.tsx",'''type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string; categoryReviewDate?: string; pricingTier?: PricingTier; postalCode?: string };''','''type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string; categoryReviewDate?: string; pricingTier?: PricingTier; postalCode?: string; programPricingLabel?:string; programPricePerCase?:number; programPricingEffectiveDate?:string; programPricingExpirationDate?:string; programPricingStatus?:Account["programPricingStatus"] };''')
 replace_once("components/app-shell-v4.tsx",'''import { BadgeDollarSign, BarChart3, Bell, Boxes, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, CircleDollarSign, CircleHelp, Command, KeyRound, LayoutDashboard, LogOut, Megaphone, Menu, PanelLeftClose, PanelLeftOpen, PartyPopper, Search, Settings, ShoppingCart, Store, UsersRound, X } from "lucide-react";''','''import { BadgeDollarSign, BarChart3, Bell, Boxes, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, CircleDollarSign, CircleHelp, Command, FileText, KeyRound, LayoutDashboard, LogOut, Megaphone, Menu, PanelLeftClose, PanelLeftOpen, PartyPopper, Search, Settings, ShoppingCart, Store, UsersRound, X } from "lucide-react";''')
+
+replace_once("tests/brand-ambassador-onboarding.test.ts",'''  test("a Sales Representative may only schedule their own Brand Ambassadors", () => {
+    assert.equal(canSuperviseBrandAmbassador(data, repA, BA_A), true);
+    assert.equal(canSuperviseBrandAmbassador(data, repA, BA_B), false);
+    assert.equal(canSuperviseBrandAmbassador(data, admin, BA_B), true);
+    assert.equal(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_A] }), null);
+    assert.ok(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_B] }), "Rep A must not schedule Rep B's Ambassador");
+    assert.ok(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_A, BA_B] }), "a mixed roster must be refused wholesale");
+    assert.equal(validateBrandAmbassadorEvent(data, admin, { ...draft, ambassadorIds: [BA_A, BA_B] }), null);
+  });''','''  test("Sales Representatives request events but only an Administrator assigns Brand Ambassadors", () => {
+    assert.equal(canSuperviseBrandAmbassador(data, repA, BA_A), false);
+    assert.equal(canSuperviseBrandAmbassador(data, repA, BA_B), false);
+    assert.equal(canSuperviseBrandAmbassador(data, admin, BA_B), true);
+    assert.ok(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_A] }), "a Sales Representative must request the event instead of assigning an Ambassador");
+    assert.ok(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_B] }), "a Sales Representative must not assign another rep's Ambassador");
+    assert.ok(validateBrandAmbassadorEvent(data, repA, { ...draft, ambassadorIds: [BA_A, BA_B] }), "a Sales Representative must not assign a mixed roster");
+    assert.equal(validateBrandAmbassadorEvent(data, admin, { ...draft, ambassadorIds: [BA_A, BA_B] }), null);
+  });''')
+replace_once("tests/brand-ambassador-onboarding.test.ts",'''  test("nobody outside Administrator or the assigned rep may schedule at all", () => {
+    for (const actor of [manager, ops, warehouse, baA, null]) {
+      assert.ok(validateBrandAmbassadorEvent(data, actor, { ...draft, ambassadorIds: [BA_A] }), "only Administrators and the assigned rep may schedule");
+    }
+  });''','''  test("nobody outside Administrator may assign Brand Ambassadors", () => {
+    for (const actor of [repA, manager, ops, warehouse, baA, null]) {
+      assert.ok(validateBrandAmbassadorEvent(data, actor, { ...draft, ambassadorIds: [BA_A] }), "only Administrators may assign Brand Ambassadors");
+    }
+  });''')
 print("PASS: v4 runner completed")
