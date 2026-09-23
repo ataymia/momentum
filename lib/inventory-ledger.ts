@@ -53,7 +53,7 @@ export function normalizeInventoryLedger(input:unknown,data:WorkspaceData):Inven
   const orderById=new Map(data.orders.map((order)=>[order.id,order]));
   const storedMovements=uniqueById((Array.isArray(state.movements)?state.movements:[]).filter((movement):movement is InventoryMovement=>{
     if(!movement?.id||movement.id.startsWith("opening-")||!positiveFiniteQuantity(movement.quantity)||!movementTypes.has(movement.type)||!movement.reason?.trim()||!movement.actorId||!validTimestamp(movement.at))return false;
-    const lot=lotByIdMap.get(movement.lotId);if(!lot||movement.product!==lot.product)return false;
+    const lot=lotByIdMap.get(movement.lotId);if(!lot||!productsEquivalent(movement.product,lot.product))return false;
     const from=movement.fromNodeId?nodeById.get(movement.fromNodeId):undefined;const to=movement.toNodeId?nodeById.get(movement.toNodeId):undefined;
     if(movement.fromNodeId&&!from||movement.toNodeId&&!to||movement.fromNodeId&&movement.fromNodeId===movement.toNodeId)return false;
     if(movement.type==="Adjustment"){if(Boolean(movement.fromNodeId)===Boolean(movement.toNodeId))return false;}else if(!from||!to)return false;
@@ -71,7 +71,7 @@ export function normalizeInventoryLedger(input:unknown,data:WorkspaceData):Inven
   const reservations:InventoryReservation[]=[];const reservedByOrder=new Map<string,number>();
   for(const reservation of uniqueById((Array.isArray(state.reservations)?state.reservations:[]).filter((item):item is InventoryReservation=>Boolean(item?.id)))){
     const order=orderById.get(reservation.orderId);const lot=lotByIdMap.get(reservation.lotId);
-    if(!order||!lot||order.product&&order.product!==lot.product||!positiveFiniteQuantity(reservation.quantity)||reservation.quantity>order.cases||!reservationStatuses.has(reservation.status)||!reservation.createdBy||!validTimestamp(reservation.createdAt))continue;
+    if(!order||!lot||!orderAcceptsProduct(order,lot.product)||!positiveFiniteQuantity(reservation.quantity)||reservation.quantity>order.cases||!reservationStatuses.has(reservation.status)||!reservation.createdBy||!validTimestamp(reservation.createdAt))continue;
     if(reservation.status==="Released"&&(!reservation.releasedAt||!validTimestamp(reservation.releasedAt)))continue;
     if(reservation.status==="Fulfilled"&&(!reservation.fulfilledAt||!validTimestamp(reservation.fulfilledAt)))continue;
     if(reservation.status!=="Released"){const used=reservedByOrder.get(order.id)??0;if(used+reservation.quantity>order.cases+0.005)continue;reservedByOrder.set(order.id,used+reservation.quantity);}

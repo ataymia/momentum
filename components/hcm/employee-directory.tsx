@@ -41,7 +41,7 @@ export function EmployeeDirectory() {
   const focusId = typeof window !== "undefined" ? window.sessionStorage.getItem("momentum-focus-record") : null;
   const focusedEmployee = focusId ? data.users.find((user) => user.id === focusId && user.role !== "Customer") : undefined;
   const [selectedId, setSelectedId] = useState(focusedEmployee?.id ?? currentUser?.id ?? "");
-  const [editPhone,setEditPhone]=useState("");const [editTitle,setEditTitle]=useState("");const [editMessage,setEditMessage]=useState("");
+  const [editMessage,setEditMessage]=useState("");
   const employees = useMemo(() => data.users.filter((user) => user.role !== "Customer").sort((a, b) => a.name.localeCompare(b.name)), [data.users]);
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -107,7 +107,7 @@ export function EmployeeDirectory() {
 
         {!managementDetail && <div className="employee-profile-public-note"><UserRound size={17}/><p>Private HR, pay, training, documents, location trails, and performance records are not shown in the coworker directory.</p></div>}
 
-        {currentUser.role==="Administrator"&&firebase&&<Section title="Edit directory profile" description="Updates the shared employee directory, not payroll or private HR."><div className="form-grid"><Field label="Title"><input value={editTitle} placeholder={selected.title} onChange={e=>setEditTitle(e.target.value)}/></Field><Field label="Work phone"><input value={editPhone} placeholder={selected.phone??"602-555-0000"} onChange={e=>setEditPhone(e.target.value)}/></Field><div className="field--full"><Button size="sm" onClick={async()=>{const result=await firebase.updateUserAccess(selected.id,{...(editTitle.trim()?{title:editTitle.trim()}:{}),phone:editPhone.trim()});setEditMessage(result.ok?"Directory profile updated.":result.message??"Update failed.")}}>Save directory profile</Button>{editMessage&&<p>{editMessage}</p>}</div></div></Section>}
+        {currentUser.role==="Administrator"&&firebase&&<Section title="Edit directory profile" description="Updates the shared employee directory, not payroll or private HR."><form key={selected.id} className="form-grid" onSubmit={async(event)=>{event.preventDefault();const form=new FormData(event.currentTarget);const result=await firebase.updateUserAccess(selected.id,{title:String(form.get("title")||selected.title).trim()||selected.title,phone:String(form.get("phone")||"").trim()});setEditMessage(result.ok?"Directory profile updated.":result.message??"Update failed.")}}><Field label="Title"><input name="title" defaultValue={selected.title}/></Field><Field label="Work phone"><input name="phone" defaultValue={selected.phone??""} placeholder="602-555-0000"/></Field><div className="field--full"><Button type="submit" size="sm">Save directory profile</Button>{editMessage&&<p>{editMessage}</p>}</div></form></Section>}
 
         {managementDetail && <>
           <div className="employee-manager-banner"><ShieldCheck size={18}/><div><strong>{adminPrivate ? "Administrator view" : "Manager view"}</strong><p>Operational detail is source-linked. Private HR and pay records remain Administrator-only.</p></div><StatusPill tone="gold">Last 30 days</StatusPill></div>

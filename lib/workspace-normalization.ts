@@ -1,6 +1,7 @@
 import { isValidCalendarDateKey } from "./date-time";
 import type { Account, Activity, Appointment, Approval, Bulletin, CustomerAccount, InventoryLot, Notification, Order, Placement, TimeEntry, Timecard, WorkspaceData, WorkspaceUser } from "./types";
 import { normalizeUsername } from "./username";
+import { canonicalProductDescription } from "./product-catalog";
 import { normalizeStoredOrderLines } from "./order-lines";
 
 /** Out-of-range coordinates are dropped rather than trusted: bad pins silently break distance math. */
@@ -130,7 +131,7 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
     const id = text(value.id); const status = text(value.status); const onHand = Number(value.onHand); const reserved = Number(value.reserved);
     if (!id || !text(value.lotCode) || !text(value.product) || !validDate(value.receivedAt) || !validDate(value.bestBy) || !wholeNonnegative(onHand) || !wholeNonnegative(reserved) || reserved > onHand || !inventoryStatuses.has(status) || !text(value.location) || !optionalValidInstant(value.holdResolvedAt)) return [];
     const available = status === "Quality hold" ? 0 : onHand - reserved;
-    return [{ id, lotCode: text(value.lotCode), product: text(value.product), receivedAt: text(value.receivedAt), bestBy: text(value.bestBy), onHand, reserved, available, status: status as InventoryLot["status"], location: text(value.location), holdReason: optionalText(value.holdReason), holdDecision: optionalText(value.holdDecision), holdResolvedAt: optionalText(value.holdResolvedAt), holdResolvedBy: internalUserIds.has(text(value.holdResolvedBy)) ? text(value.holdResolvedBy) : undefined }];
+    return [{ id, lotCode: text(value.lotCode), product: canonicalProductDescription(text(value.product)), receivedAt: text(value.receivedAt), bestBy: text(value.bestBy), onHand, reserved, available, status: status as InventoryLot["status"], location: text(value.location), holdReason: optionalText(value.holdReason), holdDecision: optionalText(value.holdDecision), holdResolvedAt: optionalText(value.holdResolvedAt), holdResolvedBy: internalUserIds.has(text(value.holdResolvedBy)) ? text(value.holdResolvedBy) : undefined }];
   }));
 
   const appointments = uniqueById(list(root, "appointments", fallback.appointments).flatMap((value): Appointment[] => {

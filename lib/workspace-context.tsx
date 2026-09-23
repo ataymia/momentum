@@ -371,12 +371,30 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const updateCustomerCommercial=(customerId:string,patch:CommercialCustomerPatch)=>{
-    if(!currentUser||!["Administrator","Sales Manager"].includes(currentUser.role))return false;
+    if(!currentUser)return false;
     const customer=(data.customers??[]).find((item)=>item.id===customerId);if(!customer)return false;
-    if(patch.paymentTerms==="Net 30"&&patch.creditStatus!=="Net 30 Approved"&&customer.creditStatus!=="Net 30 Approved")return false;
-    if(patch.paymentTerms==="Custom"&&!patch.customPaymentTerms?.trim())return false;
-    const clean={...patch,...(patch.paymentTerms?{}:{paymentTerms:customer.paymentTerms??"COD"})};
-    setCommercial((state)=>({...state,customerPatches:{...state.customerPatches,[customerId]:{...(state.customerPatches[customerId]??{}),...clean}},activities:[{id:uid("act-customer-commercial"),type:"note",title:"Customer commercial setup updated",detail:`${customer.name} commercial setup updated by ${currentUser.name}.`,at:now(),userId:currentUser.id},...state.activities]}));return true;
+    const management=["Administrator","Sales Manager"].includes(currentUser.role);
+    const repOwned=currentUser.role==="Sales Representative"&&data.accounts.some((account)=>account.customerId===customerId&&account.ownerId===currentUser.id);
+    if(!management&&!repOwned)return false;
+    let clean:CommercialCustomerPatch={...patch};
+    if(repOwned&&!management){
+      if(patch.paymentTerms&&patch.paymentTerms!=="COD")return false;
+      if(patch.creditStatus&&patch.creditStatus!=="Credit Requested"&&patch.creditStatus!==customer.creditStatus)return false;
+      if(patch.onboardingPackageStatus&&!(["Not started","Prepared"] as string[]).includes(patch.onboardingPackageStatus))return false;
+      clean={
+        billingContactName:patch.billingContactName,billingEmail:patch.billingEmail,billingPhone:patch.billingPhone,
+        ein:patch.ein,accountsPayableContactName:patch.accountsPayableContactName,accountsPayablePhone:patch.accountsPayablePhone,accountsPayableEmail:patch.accountsPayableEmail,
+        az5000Number:patch.az5000Number,taxExemptionStatus:patch.taxExemptionStatus,notes:patch.notes,
+        ...(patch.creditStatus==="Credit Requested"?{creditStatus:"Credit Requested" as const}:{}),
+        ...(patch.onboardingPackageStatus?{onboardingPackageStatus:patch.onboardingPackageStatus}:{}),
+      };
+    }
+    if(clean.paymentTerms==="Net 30"&&clean.creditStatus!=="Net 30 Approved"&&customer.creditStatus!=="Net 30 Approved")return false;
+    if(clean.paymentTerms==="Custom"&&!clean.customPaymentTerms?.trim())return false;
+    if(management&&!clean.paymentTerms)clean.paymentTerms=customer.paymentTerms??"COD";
+    setCommercial((state)=>({...state,customerPatches:{...state.customerPatches,[customerId]:{...(state.customerPatches[customerId]??{}),...clean}},activities:[{id:uid("act-customer-commercial"),accountId:data.accounts.find((account)=>account.customerId===customerId)?.id,type:"note",title:management?"Customer commercial setup updated":"Customer onboarding information updated",detail:`${customer.name} setup updated by ${currentUser.name}.`,at:now(),userId:currentUser.id},...state.activities]}));
+    window.setTimeout(()=>void momentumStorage.flush(),0);
+    return true;
   };
 
   const claimUnassignedProspect=(accountId:string)=>{
@@ -537,7 +555,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       grouped.set(key,{product,cases:(existing?.cases??0)+cases,inventoryAvailableAtOrder:Math.min(existing?.inventoryAvailableAtOrder??Number.POSITIVE_INFINITY,typeof candidate.inventoryAvailableAtOrder==="number"&&Number.isFinite(candidate.inventoryAvailableAtOrder)&&candidate.inventoryAvailableAtOrder>=0?candidate.inventoryAvailableAtOrder:0),sourcePlacementId:candidate.sourcePlacementId??existing?.sourcePlacementId});
     }
     const lineInputs=[...grouped.values()];if(!lineInputs.length)return null;
-    const id=uid("ord");const number=`GE-${Date.now().toString().slice(-9)}`;const creditedRepId=currentUser.role==="Sales Representative"?currentUser.id:undefined;
+    const id=uid("ord");const number=`GE-${Date.now().toString().slice(-9)}-${Math.floor(Math.random()*1000).toString().padStart(3,"0")}`;const creditedRepId=currentUser.role==="Sales Representative"?currentUser.id:undefined;
     const priceBasis=pricing.effectiveTier?`Tier ${pricing.effectiveTier} · ${pricing.status}`:pricing.status;
     const lines=lineInputs.map((line,index)=>{
       const sourcePlacement=line.sourcePlacementId?data.placements.find((placement)=>placement.id===line.sourcePlacementId&&placement.accountId===accountId&&productsEquivalent(placement.product,line.product)):undefined;

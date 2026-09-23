@@ -68,8 +68,9 @@ export function mergeAuditSnapshots(...maps: Map<string, AuditSnapshot>[]) { con
 function changeList(before: Record<string, unknown> | undefined, after: Record<string, unknown> | undefined): AuditChange[] { const keys = new Set([...(before ? Object.keys(before) : []), ...(after ? Object.keys(after) : [])]); const changes: AuditChange[] = []; for (const field of keys) { if (field === "updatedAt") continue; const beforeValue = before?.[field]; const afterValue = after?.[field]; let same = false; try { same = JSON.stringify(beforeValue) === JSON.stringify(afterValue); } catch { same = beforeValue === afterValue; } if (!same) changes.push({ field, before: display(beforeValue), after: display(afterValue) }); } return changes.slice(0, 20); }
 const provenanceFields = ["decidedBy", "approvedBy", "fulfilledBy", "reviewedBy", "resolvedBy", "returnedBy", "approverId", "updatedBy", "changedBy", "actorId", "assignedBy", "createdBy", "submittedBy", "provisionedBy", "requesterId"] as const;
 function inferredActorId(before: AuditSnapshot | undefined, after: AuditSnapshot | undefined, action: AuditEvent["action"], changes: AuditChange[]) {
-  const payload = after?.payload ?? before?.payload;
-  if (!payload) return undefined;
+  const snapshot=after??before;const payload = snapshot?.payload;
+  if (!payload||!snapshot) return undefined;
+  if ((snapshot.module==="CRM"&&snapshot.collection==="interactions")||(snapshot.module==="Workspace"&&snapshot.collection==="activities")) { const worker=text(payload.userId); if(worker)return worker; }
   if (action === "Updated") {
     const changed = new Set(changes.map((item) => item.field));
     for (const field of provenanceFields) { const value = changed.has(field) ? text(payload[field]) : undefined; if (value) return value; }

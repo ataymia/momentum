@@ -2,6 +2,7 @@ import { addCalendarDays, isValidCalendarDateKey } from "./date-time";
 import { normalizePostalCode, normalizeTerritories } from "./territory-engine";
 import type { Account, Activity, Appointment, Approval, CustomerAccount, InventoryLot, Order, PricingTier, SalesTerritory, WorkspaceData } from "./types";
 import { normalizeStoredOrderLines } from "./order-lines";
+import { canonicalProductDescription } from "./product-catalog";
 
 export type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "postalCode" | "programPricingLabel" | "programPricePerCase" | "programPricingEffectiveDate" | "programPricingExpirationDate" | "programPricingStatus" | "programPricingOwnerId" | "lastMeaningfulBusinessAt">>;
 export type CommercialCustomerPatch = Partial<Pick<CustomerAccount,"name"|"billingContactName"|"billingEmail"|"billingPhone"|"ein"|"accountsPayableContactName"|"accountsPayablePhone"|"accountsPayableEmail"|"az5000Number"|"taxExemptionStatus"|"creditStatus"|"paymentTerms"|"customPaymentTerms"|"onboardingPackageStatus"|"onboardingPackagePreparedAt"|"onboardingPackagePreparedBy"|"onboardingProviderStatus"|"notes">>;
@@ -152,7 +153,7 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     const id = text(raw.id); const lotCode = text(raw.lotCode); const status = text(raw.status); const onHand = Number(raw.onHand); const code = lotCode.toLowerCase();
     if (!id || baseInventoryIds.has(id) || !lotCode || seenLotCodes.has(code) || !text(raw.product) || !validDate(raw.receivedAt) || !validDate(raw.bestBy) || !wholeNonnegative(onHand) || Number(raw.reserved) !== 0 || !inventoryStatuses.has(status) || !text(raw.location)) return [];
     seenLotCodes.add(code);
-    return [{ id, lotCode, product: text(raw.product), receivedAt: text(raw.receivedAt), bestBy: text(raw.bestBy), onHand, reserved: 0, available: status === "Quality hold" ? 0 : onHand, status: status as InventoryLot["status"], location: text(raw.location), holdReason: optionalText(raw.holdReason) }];
+    return [{ id, lotCode, product: canonicalProductDescription(text(raw.product)), receivedAt: text(raw.receivedAt), bestBy: text(raw.bestBy), onHand, reserved: 0, available: status === "Quality hold" ? 0 : onHand, status: status as InventoryLot["status"], location: text(raw.location), holdReason: optionalText(raw.holdReason) }];
   }));
 
   const territories=normalizeTerritories(input.territories??seed.territories,data.users);
