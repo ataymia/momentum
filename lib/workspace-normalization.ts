@@ -1,6 +1,7 @@
 import { isValidCalendarDateKey } from "./date-time";
 import type { Account, Activity, Appointment, Approval, Bulletin, CustomerAccount, InventoryLot, Notification, Order, Placement, TimeEntry, Timecard, WorkspaceData, WorkspaceUser } from "./types";
 import { normalizeUsername } from "./username";
+import { normalizeStoredOrderLines } from "./order-lines";
 
 /** Out-of-range coordinates are dropped rather than trusted: bad pins silently break distance math. */
 const coordinate = (value: unknown, limit: number) => (typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= limit ? value : undefined);
@@ -119,7 +120,9 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
     const safeStatus = status === "Paid" && safePaymentStatus !== "Paid" ? "Delivered" : status;
     const creditedRepId = optionalText(value.creditedRepId); const sourcePlacementId = optionalText(value.sourcePlacementId);
     if (creditedRepId && users.find((user) => user.id === creditedRepId)?.role !== "Sales Representative") return [];
-    return [{ id, number: text(value.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(value.placedAt), ownerId, paidAt: optionalText(value.paidAt), firstSettledAt: optionalText(value.firstSettledAt), priceBasis: text(value.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product: optionalText(value.product), creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: finite(value.inventoryAvailableAtOrder) ? Number(value.inventoryAvailableAtOrder) : undefined, lowStockApprovalRequired: typeof value.lowStockApprovalRequired === "boolean" ? value.lowStockApprovalRequired : undefined }];
+    const lines=normalizeStoredOrderLines(value.lines);
+    if(lines&&(lines.reduce((sum,line)=>sum+line.cases,0)!==cases||Math.abs(lines.reduce((sum,line)=>sum+line.amount,0)-amount)>0.01))return [];
+    return [{ id, number: text(value.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(value.placedAt), ownerId, paidAt: optionalText(value.paidAt), firstSettledAt: optionalText(value.firstSettledAt), priceBasis: text(value.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product: optionalText(value.product), creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: finite(value.inventoryAvailableAtOrder) ? Number(value.inventoryAvailableAtOrder) : undefined, lowStockApprovalRequired: typeof value.lowStockApprovalRequired === "boolean" ? value.lowStockApprovalRequired : undefined, lines }];
   }));
 
   const inventory = uniqueById(list(root, "inventory", fallback.inventory).flatMap((value): InventoryLot[] => {
@@ -165,8 +168,10 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
   const approvals = uniqueById(list(root, "approvals", fallback.approvals).flatMap((value): Approval[] => {
     if (!object(value)) return [];
     const id = text(value.id); const type = text(value.type); const requesterId = optionalText(value.requesterId); const recordId = optionalText(value.recordId); const priority = text(value.priority); const status = text(value.status); const team = optionalText(value.team);
-    if (!id || !approvalTypes.has(type) || !text(value.title) || !text(value.detail) || !text(value.requestedBy) || (requesterId && !userIds.has(requesterId)) || !validInstant(value.submittedAt) || !validInstant(value.dueAt) || !approvalPriorities.has(priority) || !approvalStatuses.has(status) || (team && !teams.has(team))) return [];
-    return [{ id, type: type as Approval["type"], title: text(value.title), detail: text(value.detail), requestedBy: text(value.requestedBy), requesterId, recordId, team: team as Approval["team"], submittedAt: text(value.submittedAt), dueAt: text(value.dueAt), priority: priority as Approval["priority"], status: status as Approval["status"] }];
+    if (!id || !approvalTypes.has(type) || !text(value.title) || !text(value.detail) || !text(value.requestedBy) || !validInstant(value.submittedAt) || !validInstant(value.dueAt) || !approvalPriorities.has(priority) || !approvalStatuses.has(status) || (team && !teams.has(team))) return [];
+    const decidedBy = optionalText(value.decidedBy);
+    if (!optionalValidInstant(value.decidedAt)) return [];
+    return [{ id, type: type as Approval["type"], title: text(value.title), detail: text(value.detail), requestedBy: text(value.requestedBy), requesterId, recordId, team: team as Approval["team"], submittedAt: text(value.submittedAt), dueAt: text(value.dueAt), priority: priority as Approval["priority"], status: status as Approval["status"], decidedBy, decidedAt: optionalText(value.decidedAt), returnReason: optionalText(value.returnReason) }];
   }));
 
   const notifications = uniqueById(list(root, "notifications", fallback.notifications).flatMap((value): Notification[] => {

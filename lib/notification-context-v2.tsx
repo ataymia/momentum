@@ -26,10 +26,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     const handle = window.setTimeout(() => setState((current) => {
-      const sourceEvents = audit.events.slice(0, 500).filter(auditEventCreatesNotification);
+      const auditWindow = audit.events;
+      const sourceEvents = auditWindow.filter(auditEventCreatesNotification).slice(0,500);
       const eventById = new Map(sourceEvents.map((event) => [event.id, event]));
-      let copyChanged = false;
-      const refreshed = current.deliveries.map((delivery) => {
+      const auditEventIds = new Set(auditWindow.map((event) => event.id));
+      // Remove only old bell deliveries derived from routine audit events. The audit source itself is preserved.
+      const retained = current.deliveries.filter((delivery) => !auditEventIds.has(delivery.sourceEventId) || eventById.has(delivery.sourceEventId));
+      let copyChanged = retained.length !== current.deliveries.length;
+      const refreshed = retained.map((delivery) => {
         const event = eventById.get(delivery.sourceEventId);
         if (!event) return delivery;
         const copy = notificationCopy(event, data);

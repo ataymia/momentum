@@ -1,9 +1,11 @@
 import { addCalendarDays, isValidCalendarDateKey } from "./date-time";
 import { normalizePostalCode, normalizeTerritories } from "./territory-engine";
-import type { Account, Activity, Appointment, Approval, InventoryLot, Order, PricingTier, SalesTerritory, WorkspaceData } from "./types";
+import type { Account, Activity, Appointment, Approval, CustomerAccount, InventoryLot, Order, PricingTier, SalesTerritory, WorkspaceData } from "./types";
+import { normalizeStoredOrderLines } from "./order-lines";
 
-export type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "postalCode">>;
-export type CommercialState = { version: 1; accountPatches: Record<string, CommercialAccountPatch>; orders: Order[]; appointments: Appointment[]; approvals: Approval[]; activities: Activity[]; inventoryLots: InventoryLot[]; territories: SalesTerritory[] };
+export type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "postalCode" | "programPricingLabel" | "programPricePerCase" | "programPricingEffectiveDate" | "programPricingExpirationDate" | "programPricingStatus" | "programPricingOwnerId" | "lastMeaningfulBusinessAt">>;
+export type CommercialCustomerPatch = Partial<Pick<CustomerAccount,"name"|"billingContactName"|"billingEmail"|"billingPhone"|"ein"|"accountsPayableContactName"|"accountsPayablePhone"|"accountsPayableEmail"|"az5000Number"|"taxExemptionStatus"|"creditStatus"|"paymentTerms"|"customPaymentTerms"|"onboardingPackageStatus"|"onboardingPackagePreparedAt"|"onboardingPackagePreparedBy"|"onboardingProviderStatus"|"notes">>;
+export type CommercialState = { version: 1; accountPatches: Record<string, CommercialAccountPatch>; customerPatches: Record<string,CommercialCustomerPatch>; orders: Order[]; appointments: Appointment[]; approvals: Approval[]; activities: Activity[]; inventoryLots: InventoryLot[]; territories: SalesTerritory[] };
 
 const premiseTypes = new Set(["On-premise", "Off-premise", "Hybrid", "Unclassified"]);
 const pricingTiers = new Set(["A", "B", "C"]);
@@ -40,7 +42,7 @@ function inferredTier(data: WorkspaceData, accountId: string): PricingTier | und
 export function seedCommercialState(data: WorkspaceData, todayKey: string): CommercialState {
   const accountPatches: Record<string, CommercialAccountPatch> = {};
   for (const account of data.accounts) accountPatches[account.id] = { premiseType: account.premiseType ?? "Unclassified", businessType: account.businessType ?? account.channel, categoryReviewDate: account.categoryReviewDate ?? addCalendarDays(todayKey, 90), pricingTier: account.pricingTier ?? inferredTier(data, account.id), postalCode: normalizePostalCode(account.postalCode) || undefined };
-  return { version: 1, accountPatches, orders: [], appointments: [], approvals: [], activities: [], inventoryLots: [], territories: normalizeTerritories(data.territories??[],data.users) };
+  return { version: 1, accountPatches, customerPatches:{}, orders: [], appointments: [], approvals: [], activities: [], inventoryLots: [], territories: normalizeTerritories(data.territories??[],data.users) };
 }
 
 export function normalizeCommercialState(input: unknown, data: WorkspaceData, todayKey: string): CommercialState {
@@ -83,6 +85,21 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     accountPatches[accountId] = { ...accountPatches[accountId], ...patch };
   }
 
+  const customerIds=new Set((data.customers??[]).map((customer)=>customer.id));
+  const paymentTerms=new Set(["COD","Net 30","Custom"]);const creditStatuses=new Set(["COD","Credit Requested","Credit Under Review","Net 30 Approved","Credit Declined","Personal Guaranty Required"]);const taxStatuses=new Set(["Not exempt","Requested","Received","Verified","Missing"]);const onboardingStatuses=new Set(["Not started","Prepared","Awaiting provider","Sent externally","Complete"]);const providerStatuses=new Set(["Provider not selected","Ready to connect","Connected"]);
+  const customerPatches:Record<string,CommercialCustomerPatch>={};
+  if(object(input.customerPatches))for(const[customerId,raw]of Object.entries(input.customerPatches)){
+    if(!customerIds.has(customerId)||!object(raw))continue;const patch:CommercialCustomerPatch={};
+    for(const field of ["name","billingContactName","billingEmail","billingPhone","ein","accountsPayableContactName","accountsPayablePhone","accountsPayableEmail","az5000Number","customPaymentTerms","notes"] as const){const value=optionalText(raw[field]);if(value)patch[field]=value as never;}
+    const payment=optionalText(raw.paymentTerms);if(payment&&paymentTerms.has(payment))patch.paymentTerms=payment as CommercialCustomerPatch["paymentTerms"];
+    const credit=optionalText(raw.creditStatus);if(credit&&creditStatuses.has(credit))patch.creditStatus=credit as CommercialCustomerPatch["creditStatus"];
+    const tax=optionalText(raw.taxExemptionStatus);if(tax&&taxStatuses.has(tax))patch.taxExemptionStatus=tax as CommercialCustomerPatch["taxExemptionStatus"];
+    const onboarding=optionalText(raw.onboardingPackageStatus);if(onboarding&&onboardingStatuses.has(onboarding))patch.onboardingPackageStatus=onboarding as CommercialCustomerPatch["onboardingPackageStatus"];
+    const provider=optionalText(raw.onboardingProviderStatus);if(provider&&providerStatuses.has(provider))patch.onboardingProviderStatus=provider as CommercialCustomerPatch["onboardingProviderStatus"];
+    if(validInstant(raw.onboardingPackagePreparedAt))patch.onboardingPackagePreparedAt=text(raw.onboardingPackagePreparedAt);const preparedBy=optionalText(raw.onboardingPackagePreparedBy);if(preparedBy)patch.onboardingPackagePreparedBy=preparedBy;
+    customerPatches[customerId]=patch;
+  }
+
   const rawOrders = Array.isArray(input.orders) ? input.orders : [];
   const orders = uniqueById(rawOrders.flatMap((raw): Order[] => {
     if (!object(raw)) return [];
@@ -92,10 +109,12 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     if (!optionalValidDate(raw.paidAt) || !optionalValidDate(raw.firstSettledAt)) return [];
     const creditedRepId = optionalText(raw.creditedRepId); if (creditedRepId && !salesRepIds.has(creditedRepId)) return [];
     const sourcePlacementId = optionalText(raw.sourcePlacementId);
+    const lines=normalizeStoredOrderLines(raw.lines);
+    if(lines&&(lines.reduce((sum,line)=>sum+line.cases,0)!==cases||Math.abs(lines.reduce((sum,line)=>sum+line.amount,0)-amount)>0.01))return [];
     const settlementEvidence = optionalText(raw.firstSettledAt) || optionalText(raw.paidAt);
     const safePaymentStatus = paymentStatus === "Paid" && !settlementEvidence ? "Open" : paymentStatus;
     const safeStatus = status === "Paid" && safePaymentStatus !== "Paid" ? "Delivered" : status;
-    return [{ id, number: text(raw.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(raw.placedAt), ownerId, paidAt: optionalText(raw.paidAt), firstSettledAt: optionalText(raw.firstSettledAt), priceBasis: text(raw.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product, creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: Number(raw.inventoryAvailableAtOrder), lowStockApprovalRequired: typeof raw.lowStockApprovalRequired === "boolean" ? raw.lowStockApprovalRequired : undefined }];
+    return [{ id, number: text(raw.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(raw.placedAt), ownerId, paidAt: optionalText(raw.paidAt), firstSettledAt: optionalText(raw.firstSettledAt), priceBasis: text(raw.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product, creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: Number(raw.inventoryAvailableAtOrder), lowStockApprovalRequired: typeof raw.lowStockApprovalRequired === "boolean" ? raw.lowStockApprovalRequired : undefined, lines }];
   }));
 
   const rawAppointments = Array.isArray(input.appointments) ? input.appointments : [];
@@ -112,8 +131,10 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     if (!object(raw)) return [];
     const id = text(raw.id); const type = text(raw.type); const requesterId = optionalText(raw.requesterId); const recordId = optionalText(raw.recordId); const priority = text(raw.priority); const status = text(raw.status);
     const linkedRecordValid = Boolean(recordId);
-    if (!id || baseApprovalIds.has(id) || !approvalTypes.has(type) || !text(raw.title) || !text(raw.detail) || !text(raw.requestedBy) || (requesterId && !userById.has(requesterId)) || !linkedRecordValid || !validInstant(raw.submittedAt) || !validInstant(raw.dueAt) || !approvalPriorities.has(priority) || !approvalStatuses.has(status)) return [];
-    return [{ id, type: type as Approval["type"], title: text(raw.title), detail: text(raw.detail), requestedBy: text(raw.requestedBy), requesterId, recordId, team: raw.team === "Customer" ? "Sales" : ["Leadership", "Sales", "Operations"].includes(text(raw.team)) ? text(raw.team) as Approval["team"] : undefined, submittedAt: text(raw.submittedAt), dueAt: text(raw.dueAt), priority: priority as Approval["priority"], status: status as Approval["status"] }];
+    if (!id || baseApprovalIds.has(id) || !approvalTypes.has(type) || !text(raw.title) || !text(raw.detail) || !text(raw.requestedBy) || !linkedRecordValid || !validInstant(raw.submittedAt) || !validInstant(raw.dueAt) || !approvalPriorities.has(priority) || !approvalStatuses.has(status)) return [];
+    const decidedBy = optionalText(raw.decidedBy);
+    if (!optionalValidInstant(raw.decidedAt)) return [];
+    return [{ id, type: type as Approval["type"], title: text(raw.title), detail: text(raw.detail), requestedBy: text(raw.requestedBy), requesterId, recordId, team: raw.team === "Customer" ? "Sales" : ["Leadership", "Sales", "Operations"].includes(text(raw.team)) ? text(raw.team) as Approval["team"] : undefined, submittedAt: text(raw.submittedAt), dueAt: text(raw.dueAt), priority: priority as Approval["priority"], status: status as Approval["status"], decidedBy, decidedAt: optionalText(raw.decidedAt), returnReason: optionalText(raw.returnReason) }];
   }));
 
   const rawActivities = Array.isArray(input.activities) ? input.activities : [];
@@ -135,5 +156,5 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
   }));
 
   const territories=normalizeTerritories(input.territories??seed.territories,data.users);
-  return { version: 1, accountPatches, orders, appointments, approvals, activities, inventoryLots, territories };
+  return { version: 1, accountPatches, customerPatches, orders, appointments, approvals, activities, inventoryLots, territories };
 }

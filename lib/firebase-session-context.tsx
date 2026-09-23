@@ -19,7 +19,7 @@ export type ActionResult={ok:boolean;message?:string};
 export type CreateEmployeeAccountInput={user:Omit<WorkspaceUser,"id">;temporaryPassword:string};
 /** `stage` tells the Administrator which step failed; `outcome` distinguishes a new hire from a recovered one. */
 export type CreateEmployeeAccountResult=ActionResult&{uid?:string;stage?:ProvisioningStage;outcome?:CreatedFirebaseIdentity["outcome"]};
-export type UserAccessPatch=Partial<Pick<UserAccessRecord,"role"|"team"|"managerId"|"managedTeams">>&{title?:string};
+export type UserAccessPatch=Partial<Pick<UserAccessRecord,"role"|"team"|"managerId"|"managedTeams">>&{title?:string;phone?:string};
 
 export type FirebaseSessionValue={
   configured:boolean;
@@ -122,7 +122,7 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     setAccess(record);
     const users=await loadDirectory(record);
     const scope=buildPersistenceScope(record,users);
-    await attachFirestorePersistence({scope,onDirectoryChange:()=>{
+    await attachFirestorePersistence({scope,pollIntervalMs:5_000,onDirectoryChange:()=>{
       const current=accessRef.current??record;
       void loadDirectory(current).then((next)=>updateFirestoreScope(buildPersistenceScope(current,next))).catch(()=>undefined);
     }});
@@ -351,6 +351,7 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     if("managerId" in patch){accessPatch.managerId=patch.managerId??null;directoryPatch.managerId=patch.managerId??null;}
     if("managedTeams" in patch){accessPatch.managedTeams=patch.managedTeams??[];directoryPatch.managedTeams=patch.managedTeams??[];}
     if(patch.title)directoryPatch.title=patch.title;
+    if("phone" in patch)directoryPatch.phone=patch.phone?.trim()||null;
     return writeAccess(uid,accessPatch,Object.keys(directoryPatch).length?directoryPatch:null);
   },[writeAccess]);
 

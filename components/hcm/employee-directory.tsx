@@ -1,6 +1,7 @@
 "use client";
 
-import { BarChart3, BriefcaseBusiness, Building2, CalendarClock, Clock3, Mail, MapPin, Search, ShieldCheck, UserRound, UsersRound } from "lucide-react";
+import { BarChart3, BriefcaseBusiness, Building2, CalendarClock, Clock3, Mail, MapPin, Phone, Search, ShieldCheck, UserRound, UsersRound } from "lucide-react";
+import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { useMemo, useState } from "react";
 import { useAudit } from "../../lib/audit-context";
 import {
@@ -16,7 +17,7 @@ import { useFieldTracking } from "../../lib/location-tracking-context";
 import { calculateManagementKpi, formatKpiValue, kpiPresetPeriod, managementKpiDefinition, type ManagementKpiKey } from "../../lib/management-kpi";
 import { useHcm } from "../../lib/hcm-context";
 import { useWorkspace } from "../../lib/workspace-context";
-import { Avatar, Button, Section, StatusPill, formatDate, hoursBetween } from "../ui";
+import { Avatar, Button, Field, Section, StatusPill, formatDate, hoursBetween } from "../ui";
 
 const managerSalesMetrics: ManagementKpiKey[] = [
   "collected_revenue",
@@ -32,6 +33,7 @@ const presenceTone = (status: string) => status === "In field appointment" || st
 
 export function EmployeeDirectory() {
   const { data, currentUser, navigate } = useWorkspace();
+  const firebase=useFirebaseSessionOptional();
   const { hcm } = useHcm();
   const tracking = useFieldTracking();
   const { audit } = useAudit();
@@ -39,6 +41,7 @@ export function EmployeeDirectory() {
   const focusId = typeof window !== "undefined" ? window.sessionStorage.getItem("momentum-focus-record") : null;
   const focusedEmployee = focusId ? data.users.find((user) => user.id === focusId && user.role !== "Customer") : undefined;
   const [selectedId, setSelectedId] = useState(focusedEmployee?.id ?? currentUser?.id ?? "");
+  const [editPhone,setEditPhone]=useState("");const [editTitle,setEditTitle]=useState("");const [editMessage,setEditMessage]=useState("");
   const employees = useMemo(() => data.users.filter((user) => user.role !== "Customer").sort((a, b) => a.name.localeCompare(b.name)), [data.users]);
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -94,6 +97,7 @@ export function EmployeeDirectory() {
 
         <div className="employee-profile-info-grid">
           <article><Mail size={17}/><div><small>Work email</small><strong>{selected.email}</strong></div></article>
+          <article><Phone size={17}/><div><small>Work phone</small><strong>{selected.phone??"Not configured"}</strong></div></article>
           <article><Building2 size={17}/><div><small>Department</small><strong>{employment?.department ?? selected.team}</strong></div></article>
           <article><BriefcaseBusiness size={17}/><div><small>Manager</small><strong>{manager?.name ?? "Not configured"}</strong></div></article>
           <article><MapPin size={17}/><div><small>Work location</small><strong>{employment?.location || "Not configured"}</strong></div></article>
@@ -102,6 +106,8 @@ export function EmployeeDirectory() {
         </div>
 
         {!managementDetail && <div className="employee-profile-public-note"><UserRound size={17}/><p>Private HR, pay, training, documents, location trails, and performance records are not shown in the coworker directory.</p></div>}
+
+        {currentUser.role==="Administrator"&&firebase&&<Section title="Edit directory profile" description="Updates the shared employee directory, not payroll or private HR."><div className="form-grid"><Field label="Title"><input value={editTitle} placeholder={selected.title} onChange={e=>setEditTitle(e.target.value)}/></Field><Field label="Work phone"><input value={editPhone} placeholder={selected.phone??"602-555-0000"} onChange={e=>setEditPhone(e.target.value)}/></Field><div className="field--full"><Button size="sm" onClick={async()=>{const result=await firebase.updateUserAccess(selected.id,{...(editTitle.trim()?{title:editTitle.trim()}:{}),phone:editPhone.trim()});setEditMessage(result.ok?"Directory profile updated.":result.message??"Update failed.")}}>Save directory profile</Button>{editMessage&&<p>{editMessage}</p>}</div></div></Section>}
 
         {managementDetail && <>
           <div className="employee-manager-banner"><ShieldCheck size={18}/><div><strong>{adminPrivate ? "Administrator view" : "Manager view"}</strong><p>Operational detail is source-linked. Private HR and pay records remain Administrator-only.</p></div><StatusPill tone="gold">Last 30 days</StatusPill></div>

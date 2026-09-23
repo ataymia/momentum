@@ -38,6 +38,12 @@ export function normalizeNotificationState(input: unknown, users: WorkspaceUser[
 }
 
 export function resolveNotificationRecipients(event: AuditEvent, data: WorkspaceData): string[] {
+  if (event.collection === "approvals" && event.action === "Created") {
+    return data.users.filter((user) => user.role === "Administrator" && user.id !== event.actorId).map((user) => user.id);
+  }
+  if (event.collection === "approvals" && event.action === "Updated" && event.relatedUserId) {
+    return event.relatedUserId === event.actorId ? [] : [event.relatedUserId];
+  }
   if (event.sensitivity === "admin") {
     const admins = data.users.filter((user) => user.role === "Administrator").map((user) => user.id);
     const otherAdmins = admins.filter((id) => id !== event.actorId);
@@ -50,9 +56,19 @@ export function resolveNotificationRecipients(event: AuditEvent, data: Workspace
   recipients.delete(event.actorId); if (!recipients.size && data.users.some((user) => user.id === event.actorId)) recipients.add(event.actorId); return [...recipients].filter((id) => data.users.some((user) => user.id === id));
 }
 
+const changedTo = (event: AuditEvent, field: string, value: string) => event.changes.some((change) => change.field === field && change.after === value);
+
+/** The bell is an action queue. Routine activity stays in Audit and never becomes an in-app/email/SMS action. */
 export function auditEventCreatesNotification(event: AuditEvent) {
-  if (event.module !== "Field tracking") return true;
-  return event.collection === "departureAlerts" && event.action === "Created";
+  if (event.module === "Field tracking") return event.collection === "departureAlerts" && event.action === "Created";
+  if (event.collection === "approvals") {
+    if (event.action === "Created") return changedTo(event, "status", "Pending");
+    return event.action === "Updated" && changedTo(event, "status", "Returned");
+  }
+  if (event.collection === "timecards") return event.action === "Updated" && (changedTo(event, "status", "Submitted") || changedTo(event, "status", "Returned"));
+  if (event.module === "Marketing" && event.collection === "requests") return event.action === "Created" || (event.action === "Updated" && changedTo(event, "status", "Returned"));
+  if (event.module === "HCM" && event.collection === "leaveRequests") return event.action === "Created" || (event.action === "Updated" && changedTo(event, "status", "Returned"));
+  return false;
 }
 
 const collectionNames: Record<string, string> = {

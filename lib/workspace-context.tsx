@@ -12,7 +12,10 @@ import { evaluatePartnerPricing } from "./pricing-engine";
 import { useRuntimeModeValue } from "./runtime-mode-store";
 import { isTerritoryDeviation, normalizePostalCode, territoryForPostalCode, territorySystemEnabled, validateTerritoryDraft, type TerritoryDraft } from "./territory-engine";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
-import type { Account, Activity, Appointment, AppointmentStatus, Approval, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, SalesTerritory, WorkspaceData, WorkspaceUser } from "./types";
+import { canonicalProductDescription } from "./product-catalog";
+import { productsEquivalent } from "./order-lines";
+import { reconcileApprovals, reconcileOrders } from "./order-approval-engine";
+import type { Account, Activity, Appointment, AppointmentStatus, Approval, CustomerAccount, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, SalesTerritory, WorkspaceData, WorkspaceUser } from "./types";
 import { WorkspaceProvider as BaseWorkspaceProvider, useWorkspace as useBaseWorkspace } from "./workspace-context-v5";
 
 const COMMERCIAL_KEY = "momentum-commercial-controls-v1";
@@ -50,7 +53,8 @@ const tropicalLot: InventoryLot = {
   location: "Phoenix demo warehouse",
 };
 
-type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "postalCode" | "latitude" | "longitude" | "geocodePrecision" | "geocodeProvider" | "geocodedAt" | "geocodeFingerprint" | "geocodeStatus" | "territoryId" | "strategic">>;
+type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "postalCode" | "latitude" | "longitude" | "geocodePrecision" | "geocodeProvider" | "geocodedAt" | "geocodeFingerprint" | "geocodeStatus" | "territoryId" | "strategic" | "programPricingLabel" | "programPricePerCase" | "programPricingEffectiveDate" | "programPricingExpirationDate" | "programPricingStatus" | "programPricingOwnerId" | "lastMeaningfulBusinessAt">>;
+type CommercialCustomerPatch = Partial<Pick<CustomerAccount,"name"|"billingContactName"|"billingEmail"|"billingPhone"|"ein"|"accountsPayableContactName"|"accountsPayablePhone"|"accountsPayableEmail"|"az5000Number"|"taxExemptionStatus"|"creditStatus"|"paymentTerms"|"customPaymentTerms"|"onboardingPackageStatus"|"onboardingPackagePreparedAt"|"onboardingPackagePreparedBy"|"onboardingProviderStatus"|"notes">>;
 
 /**
  * The only fields the territory/geocoding layer may write on a business location.
@@ -62,6 +66,7 @@ export type AccountLocationPatch = Partial<Pick<Account, "latitude" | "longitude
 type CommercialState = {
   version: 1;
   accountPatches: Record<string, CommercialAccountPatch>;
+  customerPatches: Record<string,CommercialCustomerPatch>;
   orders: Order[];
   appointments: Appointment[];
   approvals: Approval[];
@@ -70,8 +75,9 @@ type CommercialState = {
   territories: SalesTerritory[];
 };
 
-type EnhancedOrderInput = { accountId: string; cases: number; pricePerCase?: number; product?: string; inventoryAvailableAtOrder?: number; sourcePlacementId?: string };
-type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string; categoryReviewDate?: string; pricingTier?: PricingTier; postalCode?: string };
+type EnhancedOrderLineInput={product:string;cases:number;inventoryAvailableAtOrder?:number;sourcePlacementId?:string};
+type EnhancedOrderInput = { accountId: string; cases?: number; pricePerCase?: number; product?: string; inventoryAvailableAtOrder?: number; sourcePlacementId?: string; lines?:EnhancedOrderLineInput[] };
+type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string; categoryReviewDate?: string; pricingTier?: PricingTier; postalCode?: string; programPricingLabel?:string; programPricePerCase?:number; programPricingEffectiveDate?:string; programPricingExpirationDate?:string; programPricingStatus?:Account["programPricingStatus"] };
 type TerritoryInput = Omit<TerritoryDraft,"id"> & {id?:string};
 type TerritoryMutationResult = {ok:boolean;message?:string;id?:string};
 type BaseWorkspace = ReturnType<typeof useBaseWorkspace>;
@@ -98,7 +104,10 @@ type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | 
   decideApproval: (id: string, decision: "Approved" | "Returned") => void;
   setOrderStatus: (id: string, status: OrderStatus) => void;
   reconcileOrderPayment: (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => void;
-  updateAccountCommercial: (accountId: string, patch: CommercialAccountInput) => boolean;
+  updateAccountCommercial: (accountId: string, patch: CommercialAccountInput & Partial<Pick<Account,"programPricingLabel"|"programPricePerCase"|"programPricingEffectiveDate"|"programPricingExpirationDate"|"programPricingStatus">>) => boolean;
+  updateCustomerCommercial:(customerId:string,patch:CommercialCustomerPatch)=>boolean;
+  claimUnassignedProspect:(accountId:string)=>boolean;
+  releaseProspectOwnership:(accountId:string,reason:string)=>boolean;
   /** Geocode and territory results only. Cannot touch ownership, stage, or any attribution field. */
   patchAccountLocation: (accountId: string, patch: AccountLocationPatch) => boolean;
   transferAccountResponsibility: (accountId: string, toUserId: string, reason: string) => boolean;
@@ -127,7 +136,7 @@ function seedCommercial(data: WorkspaceData): CommercialState {
       postalCode: normalizePostalCode(account.postalCode) || undefined,
     };
   }
-  return { version: 1, accountPatches, orders: [], appointments: [], approvals: [], activities: [], inventoryLots: [], territories: data.territories??[] };
+  return { version: 1, accountPatches, customerPatches:{}, orders: [], appointments: [], approvals: [], activities: [], inventoryLots: [], territories: data.territories??[] };
 }
 
 function readCommercial(data: WorkspaceData): CommercialState {
@@ -178,6 +187,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const extraLotIds = new Set(extraLots.map((lot) => lot.id));
     const inventory = [...extraLots, ...base.data.inventory.filter((lot) => !extraLotIds.has(lot.id))];
     // Geographic territory is a routing suggestion only. Never rewrite explicit account responsibility from ZIP.
+    const customers=(base.data.customers??[]).map((customer)=>({...customer,...(commercial.customerPatches[customer.id]??{}),paymentTerms:(commercial.customerPatches[customer.id]?.paymentTerms??customer.paymentTerms??"COD")}));
     const accounts = base.data.accounts.map((account) => ({ ...account, ...(commercial.accountPatches[account.id] ?? {}) }));
     const salesRepIds = new Set(users.filter((user) => user.role === "Sales Representative").map((user) => user.id));
     const baseOrders = base.data.orders.map((order) => ({
@@ -185,17 +195,19 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       product: order.product ?? base.data.placements.find((placement) => placement.accountId === order.accountId)?.product ?? base.data.inventory[0]?.product ?? "Golden Eagle",
       creditedRepId: order.creditedRepId ?? (salesRepIds.has(order.ownerId) ? order.ownerId : undefined),
     }));
-    const orderIds = new Set(commercial.orders.map((order) => order.id));
     const appointmentIds = new Set(commercial.appointments.map((item) => item.id));
+    const approvals = reconcileApprovals(commercial.approvals, base.data.approvals);
+    const orders = reconcileOrders(commercial.orders, baseOrders, approvals);
     return {
       ...base.data,
       users,
+      customers,
       inventory,
       accounts,
       territories:commercial.territories,
-      orders: [...commercial.orders, ...baseOrders.filter((order) => !orderIds.has(order.id))],
+      orders,
       appointments: [...commercial.appointments, ...base.data.appointments.filter((item) => !appointmentIds.has(item.id))],
-      approvals: [...commercial.approvals, ...base.data.approvals.filter((approval) => !commercial.approvals.some((entry) => entry.id === approval.id))],
+      approvals,
       activities: [...commercial.activities, ...base.data.activities],
     };
   }, [base.data, commercial, demoMode]);
@@ -335,7 +347,13 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       postalCode=normalizePostalCode(patch.postalCode);
       if(!postalCode||currentUser.role==="Sales Representative")return false;
     }
-    const cleanPatch: CommercialAccountInput = { ...patch, ...(patch.businessType !== undefined ? { businessType: patch.businessType.trim() } : {}), ...(postalCode?{postalCode}:{}) };
+    const programChanged="programPricePerCase" in patch||"programPricingEffectiveDate" in patch||"programPricingExpirationDate" in patch||"programPricingStatus" in patch||"programPricingLabel" in patch;
+    if(programChanged&&currentUser.role==="Sales Representative")return false;
+    if(patch.programPricePerCase!==undefined&&(!Number.isFinite(patch.programPricePerCase)||patch.programPricePerCase<=0))return false;
+    if(patch.programPricingEffectiveDate&&!isValidCalendarDateKey(patch.programPricingEffectiveDate))return false;
+    if(patch.programPricingExpirationDate&&!isValidCalendarDateKey(patch.programPricingExpirationDate))return false;
+    if(patch.programPricingEffectiveDate&&patch.programPricingExpirationDate&&patch.programPricingExpirationDate<patch.programPricingEffectiveDate)return false;
+    const cleanPatch = { ...patch, ...(patch.businessType !== undefined ? { businessType: patch.businessType.trim() } : {}), ...(postalCode?{postalCode}:{}) } as CommercialAccountPatch;
     setCommercial((state) => ({
       ...state,
       accountPatches: {
@@ -344,11 +362,33 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
           ...(state.accountPatches[accountId] ?? {}),
           ...cleanPatch,
           ...(pricingChanged ? { pricingUpdatedAt: now(), pricingUpdatedBy: currentUser.id } : {}),
+          ...(programChanged?{programPricingOwnerId:currentUser.id}:{})
         },
       },
       activities: [{ id: uid("act-commercial"), accountId, type: "note", title: postalCode&&postalCode!==account.postalCode?"Account geographic suggestion updated":pricingChanged ? "Pricing tier changed" : "Account classification updated", detail: postalCode&&postalCode!==account.postalCode?`ZIP code updated to ${postalCode}; suggested territory recalculated. Explicit account responsibility was not changed.`:pricingChanged ? `Pricing tier ${account.pricingTier ?? "Unassigned"} → ${patch.pricingTier}.` : "Commercial account fields updated.", at: now(), userId: currentUser.id }, ...state.activities],
     }));
     return true;
+  };
+
+  const updateCustomerCommercial=(customerId:string,patch:CommercialCustomerPatch)=>{
+    if(!currentUser||!["Administrator","Sales Manager"].includes(currentUser.role))return false;
+    const customer=(data.customers??[]).find((item)=>item.id===customerId);if(!customer)return false;
+    if(patch.paymentTerms==="Net 30"&&patch.creditStatus!=="Net 30 Approved"&&customer.creditStatus!=="Net 30 Approved")return false;
+    if(patch.paymentTerms==="Custom"&&!patch.customPaymentTerms?.trim())return false;
+    const clean={...patch,...(patch.paymentTerms?{}:{paymentTerms:customer.paymentTerms??"COD"})};
+    setCommercial((state)=>({...state,customerPatches:{...state.customerPatches,[customerId]:{...(state.customerPatches[customerId]??{}),...clean}},activities:[{id:uid("act-customer-commercial"),type:"note",title:"Customer commercial setup updated",detail:`${customer.name} commercial setup updated by ${currentUser.name}.`,at:now(),userId:currentUser.id},...state.activities]}));return true;
+  };
+
+  const claimUnassignedProspect=(accountId:string)=>{
+    if(!currentUser||currentUser.role!=="Sales Representative")return false;const account=data.accounts.find((item)=>item.id===accountId);
+    if(!account||account.stage!=="Prospect"||account.ownerId)return false;
+    setCommercial((state)=>({...state,accountPatches:{...state.accountPatches,[accountId]:{...(state.accountPatches[accountId]??{}),ownerId:currentUser.id,accountManagerId:currentUser.id,responsibilityStartedAt:now(),lastActivity:`Prospect claimed by ${currentUser.name}`}},activities:[{id:uid("act-claim"),accountId,type:"note",title:"Unassigned prospect claimed",detail:`${currentUser.name} claimed the existing prospect record. No duplicate was created.`,at:now(),userId:currentUser.id},...state.activities]}));return true;
+  };
+  const releaseProspectOwnership=(accountId:string,reason:string)=>{
+    if(!currentUser||reason.trim().length<3)return false;const account=data.accounts.find((item)=>item.id===accountId);
+    if(!account||account.stage!=="Prospect"||!account.ownerId)return false;
+    const allowed=currentUser.role==="Administrator"||currentUser.role==="Sales Manager"||account.ownerId===currentUser.id;if(!allowed)return false;
+    setCommercial((state)=>({...state,accountPatches:{...state.accountPatches,[accountId]:{...(state.accountPatches[accountId]??{}),ownerId:"",accountManagerId:"",responsibilityStartedAt:now(),lastActivity:`Prospect released: ${reason.trim()}`}},activities:[{id:uid("act-release"),accountId,type:"note",title:"Prospect returned to unassigned pool",detail:reason.trim(),at:now(),userId:currentUser.id},...state.activities]}));return true;
   };
 
   const saveTerritory=(input:TerritoryInput):TerritoryMutationResult=>{
@@ -480,27 +520,37 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     return base.correctTimeEntry(id, values, reason);
   };
 
-  const createOrder = ({ accountId, cases, product, inventoryAvailableAtOrder, sourcePlacementId }: EnhancedOrderInput) => {
-    if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role) || !Number.isInteger(cases) || cases < 1 || typeof inventoryAvailableAtOrder !== "number" || !Number.isFinite(inventoryAvailableAtOrder) || inventoryAvailableAtOrder < 0) return null;
+  const createOrder = (input: EnhancedOrderInput) => {
+    const {accountId}=input;
+    if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role)) return null;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
     if(currentUser.role==="Sales Representative"&&!documentTerritoryDeviation(account,currentUser.id,"placing an order"))return null;
-    const selectedProduct = product?.trim() || data.inventory[0]?.product || "Golden Eagle";
-    if (!data.inventory.some((lot) => lot.product === selectedProduct)) return null;
-    const sourcePlacement = sourcePlacementId ? data.placements.find((placement) => placement.id === sourcePlacementId) : undefined;
-    if (sourcePlacementId && (!sourcePlacement || sourcePlacement.accountId !== accountId || sourcePlacement.product !== selectedProduct)) return null;
-    const pricing = evaluatePartnerPricing(data, accountId);
-    const price = pricing.currentPricePerCase;
-    if (!Number.isFinite(price) || !price || price <= 0) return null;
-    const available = inventoryAvailableAtOrder;
-    const lowStock = available < 50;
-    const id = uid("ord");
-    const number = `GE-${data.orders.length + 1050}`;
-    const creditedRepId = currentUser.role === "Sales Representative" ? currentUser.id : undefined;
-    const priceBasis = pricing.effectiveTier ? `Tier ${pricing.effectiveTier} · ${pricing.status}` : pricing.status;
-    const order: Order = { id, number, accountId, cases, pricePerCase: price, amount: cases * price, status: "Awaiting approval", placedAt: today(), ownerId: currentUser.id, creditedRepId, sourcePlacementId: sourcePlacement?.id, product: selectedProduct, inventoryAvailableAtOrder: available, lowStockApprovalRequired: lowStock, priceBasis, paymentStatus: "Not invoiced" };
-    const approval: Approval = { id: uid("apr"), type: lowStock ? "Low stock sale" : "Order", title: lowStock ? `Low-stock approval · ${number}` : `Review order ${number}`, detail: `${selectedProduct} · ${cases} cases · ${available} available sellable cases · ${account.locationName ?? account.name}`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.role === "Customer" ? "Sales" : currentUser.team, submittedAt: now(), dueAt: new Date(Date.now() + 86400000).toISOString(), priority: lowStock ? "Urgent" : "High", status: "Pending" };
-    setCommercial((state) => ({ ...state, orders: [order, ...state.orders], approvals: [approval, ...state.approvals], accountPatches: { ...state.accountPatches, [accountId]: { ...(state.accountPatches[accountId] ?? {}), stage: "Opening order", lastActivity: `Order request ${number} submitted` } }, activities: [{ id: uid("act-order"), accountId, type: "order", title: lowStock ? "Low-stock order submitted" : "Order submitted", detail: `${number} · ${selectedProduct} · ${cases} cases · Tier ${pricing.effectiveTier ?? "unassigned"} · ${price.toFixed(2)}/case · ${available} available at submission${sourcePlacement ? ` · source placement ${sourcePlacement.id}` : ""}.`, at: now(), userId: currentUser.id }, ...state.activities] }));
+    const pricing=evaluatePartnerPricing(data,accountId);const price=pricing.currentPricePerCase;
+    if(!Number.isFinite(price)||!price||price<=0)return null;
+    const supplied=input.lines?.length?input.lines:[{product:input.product?.trim()||data.inventory[0]?.product||"Golden Eagle",cases:input.cases??0,inventoryAvailableAtOrder:input.inventoryAvailableAtOrder,sourcePlacementId:input.sourcePlacementId}];
+    const grouped=new Map<string,EnhancedOrderLineInput>();
+    for(const candidate of supplied){
+      const product=canonicalProductDescription(candidate.product);const cases=Number(candidate.cases);
+      if(!product||!Number.isInteger(cases)||cases<1)return null;
+      const key=product.toLowerCase();const existing=grouped.get(key);
+      grouped.set(key,{product,cases:(existing?.cases??0)+cases,inventoryAvailableAtOrder:Math.min(existing?.inventoryAvailableAtOrder??Number.POSITIVE_INFINITY,typeof candidate.inventoryAvailableAtOrder==="number"&&Number.isFinite(candidate.inventoryAvailableAtOrder)&&candidate.inventoryAvailableAtOrder>=0?candidate.inventoryAvailableAtOrder:0),sourcePlacementId:candidate.sourcePlacementId??existing?.sourcePlacementId});
+    }
+    const lineInputs=[...grouped.values()];if(!lineInputs.length)return null;
+    const id=uid("ord");const number=`GE-${Date.now().toString().slice(-9)}`;const creditedRepId=currentUser.role==="Sales Representative"?currentUser.id:undefined;
+    const priceBasis=pricing.effectiveTier?`Tier ${pricing.effectiveTier} · ${pricing.status}`:pricing.status;
+    const lines=lineInputs.map((line,index)=>{
+      const sourcePlacement=line.sourcePlacementId?data.placements.find((placement)=>placement.id===line.sourcePlacementId&&placement.accountId===accountId&&productsEquivalent(placement.product,line.product)):undefined;
+      const available=Number.isFinite(line.inventoryAvailableAtOrder)?Number(line.inventoryAvailableAtOrder):0;
+      return{id:`${id}-line-${index+1}`,product:line.product,cases:line.cases,pricePerCase:price,amount:line.cases*price,inventoryAvailableAtOrder:available,sourcePlacementId:sourcePlacement?.id,lowStockApprovalRequired:available<50};
+    });
+    const cases=lines.reduce((sum,line)=>sum+line.cases,0);const amount=lines.reduce((sum,line)=>sum+line.amount,0);const lowStock=lines.some((line)=>line.lowStockApprovalRequired);const available=Math.min(...lines.map((line)=>line.inventoryAvailableAtOrder??0));
+    const product=lines.length===1?lines[0].product:"Multiple products";
+    const order:Order={id,number,accountId,cases,pricePerCase:price,amount,status:"Awaiting approval",placedAt:today(),ownerId:currentUser.id,creditedRepId,sourcePlacementId:lines.length===1?lines[0].sourcePlacementId:undefined,product,inventoryAvailableAtOrder:available,lowStockApprovalRequired:lowStock,priceBasis,paymentStatus:"Not invoiced",lines};
+    const lineSummary=lines.map((line)=>`${line.cases} ${line.product}`).join(" · ");
+    const approval:Approval={id:uid("apr"),type:lowStock?"Low stock sale":"Order",title:lowStock?`Low-stock approval · ${number}`:`Review order ${number}`,detail:`${lineSummary} · ${cases} total cases · ${account.locationName??account.name}`,requestedBy:currentUser.name,requesterId:currentUser.id,recordId:id,team:currentUser.role==="Customer"?"Sales":currentUser.team,submittedAt:now(),dueAt:new Date(Date.now()+86400000).toISOString(),priority:lowStock?"Urgent":"High",status:"Pending"};
+    setCommercial((state)=>({...state,orders:[order,...state.orders],approvals:[approval,...state.approvals],accountPatches:{...state.accountPatches,[accountId]:{...(state.accountPatches[accountId]??{}),stage:"Opening order",lastActivity:`Order request ${number} submitted`}},activities:[{id:uid("act-order"),accountId,type:"order",title:lowStock?"Low-stock order submitted":"Order submitted",detail:`${number} · ${lineSummary} · ${cases} total cases · ${price.toFixed(2)}/case.`,at:now(),userId:currentUser.id},...state.activities]}));
+    window.setTimeout(()=>void momentumStorage.flush(),0);
     return id;
   };
 
@@ -522,7 +572,20 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       setCommercial((state)=>({...state,approvals:state.approvals.map((item)=>item.id===id?{...item,status:decision}:item),activities:accountId?[{id:uid("act-territory-review"),accountId,type:"note",title:decision==="Approved"?"Territory exception validated":"Territory exception returned",detail:decision==="Approved"?`${approval.detail} Reviewed and approved by ${currentUser.name}.`:`${approval.detail} Returned by ${currentUser.name}: ${returnReason}`,at:now(),userId:currentUser.id},...state.activities]:state.activities}));
       return;
     }
-    setCommercial((state) => ({ ...state, approvals: state.approvals.map((item) => item.id === id ? { ...item, status: decision } : item), orders: state.orders.map((order) => order.id === approval.recordId ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order) }));
+    let returnReason: string | undefined;
+    if (decision === "Returned") {
+      if (typeof window === "undefined") return;
+      returnReason = window.prompt("What needs to be corrected before this order can be approved?")?.trim();
+      if (!returnReason || returnReason.length < 3) return;
+    }
+    const decidedAt = now();
+    setCommercial((state) => ({
+      ...state,
+      approvals: state.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt, returnReason } : item),
+      orders: state.orders.map((order) => order.id === approval.recordId ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
+      activities: approval.recordId ? [{ id: uid("act-approval"), accountId: state.orders.find((order) => order.id === approval.recordId)?.accountId, type: "order", title: decision === "Approved" ? "Order approved" : "Order returned for edits", detail: decision === "Approved" ? `${approval.title} approved by ${currentUser.name}.` : `${approval.title} returned by ${currentUser.name}: ${returnReason}`, at: decidedAt, userId: currentUser.id }, ...state.activities] : state.activities,
+    }));
+    window.setTimeout(() => void momentumStorage.flush(), 0);
   };
 
   const setOrderStatus = (id: string, status: OrderStatus) => {
@@ -590,7 +653,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, updateAccountCommercial, patchAccountLocation, transferAccountResponsibility, saveTerritory, importInventoryLots, resetDemo };
+  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, updateAccountCommercial, updateCustomerCommercial, claimUnassignedProspect, releaseProspectOwnership, patchAccountLocation, transferAccountResponsibility, saveTerritory, importInventoryLots, resetDemo };
   return <EnhancedWorkspaceContext.Provider value={value}>{children}</EnhancedWorkspaceContext.Provider>;
 }
 

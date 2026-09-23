@@ -103,8 +103,8 @@ export function normalizeCrmState(input:unknown,data:WorkspaceData):CrmState{
 
   const seedContactIds=new Set(seed.contacts.map((contact)=>contact.id));
   const extraContacts=uniqueById((Array.isArray(state.contacts)?state.contacts:[]).filter((contact):contact is CrmContact=>{
-    if(!contact?.id||seedContactIds.has(contact.id)||!contactScopes.has(contact.scope)||!customerIds.has(contact.customerId)||!contact.name?.trim()||!contact.role?.trim()||!decisionRoles.has(contact.decisionRole)||typeof contact.primary!=="boolean"||typeof contact.active!=="boolean"||!validTimestamp(contact.createdAt)||!(contact.createdBy==="system"||employeeIds.has(contact.createdBy)))return false;
-    if(contact.scope==="Location"){const location=contact.locationId?locationById.get(contact.locationId):undefined;if(!location||location.customerId!==contact.customerId)return false;}
+    if(!contact?.id||seedContactIds.has(contact.id)||!contactScopes.has(contact.scope)||!contact.customerId||!contact.name?.trim()||!contact.role?.trim()||!decisionRoles.has(contact.decisionRole)||typeof contact.primary!=="boolean"||typeof contact.active!=="boolean"||!validTimestamp(contact.createdAt)||!contact.createdBy)return false;
+    if(contact.scope==="Location"&&!contact.locationId)return false;
     if(contact.scope==="Customer"&&contact.locationId)return false;
     return true;
   }));
@@ -115,11 +115,10 @@ export function normalizeCrmState(input:unknown,data:WorkspaceData):CrmState{
 
   const seedInteractionIds=new Set(seed.interactions.map((interaction)=>interaction.id));
   const extraInteractions=uniqueById((Array.isArray(state.interactions)?state.interactions:[]).filter((interaction):interaction is CrmInteraction=>{
-    const location=interaction&&locationById.get(interaction.locationId);
-    if(!interaction?.id||seedInteractionIds.has(interaction.id)||!location||!employeeIds.has(interaction.userId)||!interactionTypes.has(interaction.type)||!validTimestamp(interaction.occurredAt)||!interaction.summary?.trim())return false;
+    if(!interaction?.id||seedInteractionIds.has(interaction.id)||!interaction.locationId||!interaction.userId||!interactionTypes.has(interaction.type)||!validTimestamp(interaction.occurredAt)||!interaction.summary?.trim())return false;
     if(Boolean(interaction.nextAction?.trim())!==Boolean(interaction.nextActionDate))return false;
     if(interaction.nextActionDate&&!validDateKey(interaction.nextActionDate))return false;
-    if(interaction.contactId){const contact=contactById.get(interaction.contactId);if(!contact||!contact.active||!(contact.scope==="Location"?contact.locationId===location.id&&contact.customerId===location.customerId:contact.customerId===location.customerId))return false;}
+    if(interaction.contactId){const contact=contactById.get(interaction.contactId);if(contact&&!contact.active)return false;}
     if(!validRating(interaction.prospectRating)||!validSampleQuantity(interaction.sampleQuantity))return false;
     if(interaction.prospectRating!==undefined&&interaction.type!=="Visit")return false;
     if(interaction.visitUnsuccessful!==undefined&&interaction.type!=="Visit")return false;
@@ -137,8 +136,7 @@ export function normalizeCrmState(input:unknown,data:WorkspaceData):CrmState{
   const interactions=[...seed.interactions,...extraInteractions];
 
   const opportunities=uniqueById((Array.isArray(state.opportunities)?state.opportunities:[]).filter((opportunity):opportunity is Opportunity=>{
-    const location=opportunity&&locationById.get(opportunity.locationId);
-    if(!opportunity?.id||!location||location.customerId!==opportunity.customerId||!opportunity.name?.trim()||!opportunityStages.has(opportunity.stage)||!opportunityStatuses.has(opportunity.status)||!responsibilityUsers.has(opportunity.ownerId)||!employeeIds.has(opportunity.createdBy)||!validTimestamp(opportunity.createdAt)||!validTimestamp(opportunity.updatedAt))return false;
+    if(!opportunity?.id||!opportunity.locationId||!opportunity.customerId||!opportunity.ownerId||!opportunity.name?.trim()||!opportunityStages.has(opportunity.stage)||!opportunityStatuses.has(opportunity.status)||!opportunity.createdBy||!validTimestamp(opportunity.createdAt)||!validTimestamp(opportunity.updatedAt))return false;
     if(opportunity.estimatedCases!==undefined&&(!Number.isFinite(opportunity.estimatedCases)||opportunity.estimatedCases<0))return false;
     if(opportunity.expectedCloseDate&&!validDateKey(opportunity.expectedCloseDate))return false;
     if(opportunity.status==="Open"&&(!opportunity.nextAction?.trim()||!validDateKey(opportunity.nextActionDate)||terminalStage(opportunity.stage)))return false;
@@ -147,7 +145,7 @@ export function normalizeCrmState(input:unknown,data:WorkspaceData):CrmState{
     return true;
   }));
 
-  const storedResponsibility=uniqueById((Array.isArray(state.responsibilityHistory)?state.responsibilityHistory:[]).filter((event):event is ResponsibilityEvent=>Boolean(event?.id&&locationById.has(event.locationId)&&responsibilityUsers.has(event.toUserId)&&(!event.fromUserId||responsibilityUsers.has(event.fromUserId))&&event.fromUserId!==event.toUserId&&validTimestamp(event.effectiveAt)&&event.reason?.trim()&&(event.changedBy==="system"||employeeIds.has(event.changedBy))&&(!event.acceptedAt||validTimestamp(event.acceptedAt)))));
+  const storedResponsibility=uniqueById((Array.isArray(state.responsibilityHistory)?state.responsibilityHistory:[]).filter((event):event is ResponsibilityEvent=>Boolean(event?.id&&event.locationId&&event.toUserId&&event.fromUserId!==event.toUserId&&validTimestamp(event.effectiveAt)&&event.reason?.trim()&&event.changedBy&&(!event.acceptedAt||validTimestamp(event.acceptedAt)))));
   const responsibilityBase=[...seed.responsibilityHistory];
   for(const storedEvent of storedResponsibility){
     const existingIndex=responsibilityBase.findIndex((event)=>event.id===storedEvent.id);

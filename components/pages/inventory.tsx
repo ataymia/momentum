@@ -4,13 +4,14 @@ import { Boxes, CalendarClock, CheckCircle2, ChevronRight, ClipboardCheck, Packa
 import { FormEvent, useEffect, useState } from "react";
 import { arizonaDateKey, isValidCalendarDateKey } from "../../lib/date-time";
 import { holdNodeId, nodeLotBalance, warehouseAvailable } from "../../lib/inventory-ledger";
+import { GOLDEN_EAGLE_SKUS } from "../../lib/product-catalog";
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import type { InventoryLot } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Modal, PageHeader, Section, StatusPill, formatDate } from "../ui";
 
 const companyCustodyTypes=new Set(["Warehouse","Bin","Vehicle","Employee custody","Quality hold"]);
-const quickProducts=["Tropical","Sugar Free","Original","Red","Blue"] as const;
+const quickProducts=GOLDEN_EAGLE_SKUS.filter((sku)=>sku.active).map((sku)=>sku.description);
 type QuickInventoryRow={product:string;cases:string;lotCode:string;bestBy:string};
 const freshQuickRows=():QuickInventoryRow[]=>quickProducts.map((product)=>({product,cases:"",lotCode:"",bestBy:""}));
 
