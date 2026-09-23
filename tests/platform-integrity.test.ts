@@ -40,3 +40,10 @@ test("weekly management view is source-derived",()=>{
 });
 
 test("program pricing enters the action window at 30 days",()=>{const account={id:"a",name:"A",location:"Phoenix",channel:"Retail",stage:"Prospect",ownerId:REP,contactName:"x",contactRole:"x",phone:"",email:"",lastActivity:"",nextAction:"",nextActionDate:"2026-09-23",health:"New",lifetimeCases:0,reorderCount:0,notes:"",programPricingExpirationDate:"2026-10-23",programPricingStatus:"Active"} as const;assert.equal(programPricingDaysRemaining(account,"2026-09-23"),30)});
+
+test("date-only Sunday stays in its Arizona business week",()=>{
+  const account={id:"acc-sun",name:"Sunday Shop",location:"Phoenix",channel:"Retail",stage:"Prospect" as const,ownerId:REP,contactName:"Owner",contactRole:"Owner",phone:"1",email:"x@y.com",lastActivity:"",nextAction:"",nextActionDate:"2026-09-27",health:"New" as const,lifetimeCases:0,reorderCount:0,notes:""};
+  const sunday:Order={id:"sun-order",number:"GE-SUN",accountId:account.id,cases:10,pricePerCase:24,amount:240,status:"Awaiting approval",placedAt:"2026-09-27",ownerId:REP,creditedRepId:REP,priceBasis:"Tier A",paymentStatus:"Not invoiced"};
+  const weekly:WorkspaceData={...data,accounts:[account],orders:[sunday]};
+  const summary=weeklySalesManagementSummary(weekly,[],REP,"2026-09-27");assert.equal(summary.weekStart,"2026-09-21");assert.equal(summary.weekEnd,"2026-09-27");assert.equal(summary.orders,1);
+});

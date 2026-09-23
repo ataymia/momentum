@@ -104,7 +104,7 @@ export function customerOwnershipReview(data: WorkspaceData, account: Account, a
   if (["Prospect", "Qualified", "Sampled", "Opening order"].includes(account.stage)) return undefined;
   const commercialDates = data.orders
     .filter((order) => order.accountId === account.id && (order.paymentStatus === "Paid" || ["Delivered", "Paid"].includes(order.status)))
-    .map((order) => arizonaDateKey(order.paidAt ?? order.placedAt));
+    .map((order) => { const value=order.paidAt ?? order.placedAt; return value.length===10?value:arizonaDateKey(value); });
   const accountWithMeaningful = account as Account & { lastMeaningfulBusinessAt?: string };
   if (accountWithMeaningful.lastMeaningfulBusinessAt) commercialDates.push(arizonaDateKey(accountWithMeaningful.lastMeaningfulBusinessAt));
   const last = commercialDates.sort().at(-1);
@@ -119,7 +119,7 @@ export type WeeklySalesManagementSummary = {
 };
 
 export function weeklySalesManagementSummary(data:WorkspaceData,interactions:CrmInteraction[],userId:string,asOf=arizonaDateKey()):WeeklySalesManagementSummary{
-  const weekStart=startOfLocalWeek(asOf);const weekEnd=addCalendarDays(weekStart,6);const inWeek=(value:string|undefined)=>{if(!value)return false;const date=arizonaDateKey(value);return date>=weekStart&&date<=weekEnd;};
+  const weekStart=startOfLocalWeek(asOf);const weekEnd=addCalendarDays(weekStart,6);const inWeek=(value:string|undefined)=>{if(!value)return false;const date=value.length===10?value:arizonaDateKey(value);return date>=weekStart&&date<=weekEnd;};
   const visits=weeklyVisitSummary(interactions,userId,asOf).completed;
   const orders=data.orders.filter((order)=>(order.creditedRepId===userId||(!order.creditedRepId&&order.ownerId===userId))&&inWeek(order.placedAt));
   const reorders=orders.filter((order)=>data.orders.some((prior)=>prior.accountId===order.accountId&&prior.id!==order.id&&prior.placedAt<order.placedAt)).length;
