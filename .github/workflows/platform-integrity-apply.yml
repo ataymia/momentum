@@ -5,7 +5,7 @@ on:
     branches:
       - platform-integrity-workflows-2026-09-22
     paths:
-      - scripts/apply-platform-refinements-v5.py
+      - scripts/apply-platform-refinements-v6.py
       - .github/workflows/platform-integrity-apply.yml
 
 permissions:
@@ -35,50 +35,64 @@ jobs:
           java-version: "21"
 
       - name: Apply final application refinements
-        id: patch
         shell: bash
         run: |
-          set +e
-          python3 scripts/apply-platform-refinements-v5.py > platform-refinements.log 2>&1
-          code=$?
-          cat platform-refinements.log
-          exit $code
+          set -o pipefail
+          python3 scripts/apply-platform-refinements-v6.py 2>&1 | tee platform-validation.log
 
-      - name: Upload patch diagnostics
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee -a platform-validation.log
+
+      - name: Typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee -a platform-validation.log
+
+      - name: Lint
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee -a platform-validation.log
+
+      - name: Logic regression tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:logic 2>&1 | tee -a platform-validation.log
+
+      - name: Firestore rules regression tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:rules 2>&1 | tee -a platform-validation.log
+
+      - name: Production build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee -a platform-validation.log
+
+      - name: Upload validation diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: platform-refinement-diagnostics-${{ github.run_number }}
-          path: platform-refinements.log
+          name: platform-validation-${{ github.run_number }}
+          path: platform-validation.log
           if-no-files-found: ignore
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Logic regression tests
-        run: npm run test:logic
-
-      - name: Firestore rules regression tests
-        run: npm run test:rules
-
-      - name: Production build
-        run: npm run build
 
       - name: Commit validated application changes
         run: |
           git config user.name "Momentum Platform Automation"
           git config user.email "actions@users.noreply.github.com"
-          rm -f platform-refinements.log
+          rm -f platform-validation.log
           git add -A
           if git diff --cached --quiet; then
             echo "No source changes to commit."
             exit 0
           fi
-          git commit -m "Refine account setup, approvals, and invoice workflows"
+          git commit -m "Finalize platform integrity and commercial workflows"
           git push origin HEAD:platform-integrity-workflows-2026-09-22
