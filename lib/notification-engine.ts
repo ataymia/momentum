@@ -12,6 +12,12 @@ export function createNotificationSeed(users: WorkspaceUser[]): NotificationStat
 const channels = new Set<NotificationChannel>(["In app", "Email", "SMS"]);
 const tones = new Set<NotificationDelivery["tone"]>(["info", "warning", "success"]);
 const statuses = new Set<NotificationDelivery["status"]>(["Unread", "Read", "Awaiting integration", "Sent", "Failed"]);
+export const NOTIFICATION_DELIVERY_RETENTION_LIMIT = 400;
+export function compactNotificationDeliveries(deliveries: NotificationDelivery[]) {
+  const active = deliveries.filter((item) => ["Unread", "Awaiting integration", "Failed"].includes(item.status)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const settled = deliveries.filter((item) => !["Unread", "Awaiting integration", "Failed"].includes(item.status)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return [...active, ...settled].slice(0, NOTIFICATION_DELIVERY_RETENTION_LIMIT);
+}
 const validInstant = (value?: string) => Boolean(value && !Number.isNaN(new Date(value).getTime()));
 
 export function normalizeNotificationState(input: unknown, users: WorkspaceUser[]): NotificationState {
@@ -33,8 +39,9 @@ export function normalizeNotificationState(input: unknown, users: WorkspaceUser[
     if (delivery.status === "Read" && !delivery.readAt) return false;
     seen.add(delivery.id); return true;
   });
+  const compactedDeliveries = compactNotificationDeliveries(deliveries);
   const escalationHours = typeof state.escalationHours === "number" && Number.isFinite(state.escalationHours) && state.escalationHours >= 1 && state.escalationHours <= 168 ? Math.round(state.escalationHours) : 24;
-  return { version: 1, escalationHours, preferences, deliveries };
+  return { version: 1, escalationHours, preferences, deliveries: compactedDeliveries };
 }
 
 export function resolveNotificationRecipients(event: AuditEvent, data: WorkspaceData): string[] {

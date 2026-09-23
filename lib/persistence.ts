@@ -261,7 +261,8 @@ class FirestoreBackend{
           await this.isolateDenied(writes,pathKey,nextDocs);
           break;
         }
-        throw new Error(result.message||`Firestore commit failed (${result.status}).`);
+        await this.isolateFailedWrites(writes,pathKey,nextDocs);
+        break;
       }
     }catch(error){
       for(const key of keys)this.dirty.add(key);
@@ -273,6 +274,34 @@ class FirestoreBackend{
       setStatus({flushing:false,pending:this.dirty.size,deniedDocuments:[...this.denied]});
       if(this.dirty.size&&!this.retryDelay)this.scheduleFlush(200);
     }
+  }
+
+  /** A non-rules batch failure must not make an unrelated business record disappear. Retry each document
+   * independently with its own version marker. Healthy writes (especially orders) can land even when an
+   * auxiliary domain such as notifications is malformed or temporarily over a provider limit. */
+  private async isolateFailedWrites(writes:FirestoreWrite[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>){
+    const failedKeys=new Set<string>();let failures=0;let successes=0;
+    for(const write of writes){
+      const key=pathKey.get(write.path);
+      const stamp=`${new Date().toISOString()}#${Math.random().toString(36).slice(2,8)}`;
+      const versionEntry=metaVersionKey(write.path);
+      const metaWrite:FirestoreWrite={kind:"merge",path:PLATFORM_META_DOCUMENT,data:{versions:{[versionEntry]:stamp}},fieldPaths:[`versions.${versionEntry}`]};
+      const result=await commitFirestoreWrites([write,metaWrite]);
+      if(result.ok){
+        this.docs.set(write.path,{data:nextDocs.get(write.path)??null,updateTime:result.updateTimes[write.path]});
+        this.metaVersions[versionEntry]=stamp;successes+=1;continue;
+      }
+      if(isFirestorePermissionDenied(result)){
+        this.denied.add(write.path);
+        console.warn(`[momentum] Firestore denied isolated write to ${write.path} for ${key}; unrelated records continued syncing.`);
+        continue;
+      }
+      if(key)failedKeys.add(key);failures+=1;
+      console.error(`[momentum] Isolated Firestore write failed for ${write.path}: ${result.message}`);
+    }
+    for(const key of failedKeys)this.dirty.add(key);
+    if(successes)setStatus({lastSyncedAt:new Date().toISOString()});
+    if(failures)setStatus({lastError:`${failures} document${failures===1?"":"s"} could not sync. Other records were preserved and synced; the failed domain will retry.`});
   }
 
   /** A batch failed on rules. Retry one document at a time so the offending shard is identified and parked. */

@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "rules:build": "tsx scripts/generate-firestore-rules.ts",
-    "test:logic": "node --import tsx --test tests/provisioning.test.ts tests/post-launch-regressions.test.ts tests/territory-exception.test.ts tests/sales-commission-policy.test.ts tests/brand-ambassador-onboarding.test.ts tests/notification-copy.test.ts tests/username.test.ts tests/username-migration.test.ts tests/firebase-auth-routing.test.ts tests/delivery-driver.test.ts tests/platform-integrity.test.ts tests/platform-workflows-v3.test.ts tests/platform-critical-invariants.test.ts",
+    "test:logic": "node --import tsx --test tests/provisioning.test.ts tests/post-launch-regressions.test.ts tests/territory-exception.test.ts tests/sales-commission-policy.test.ts tests/brand-ambassador-onboarding.test.ts tests/notification-copy.test.ts tests/username.test.ts tests/username-migration.test.ts tests/firebase-auth-routing.test.ts tests/delivery-driver.test.ts tests/platform-integrity.test.ts tests/platform-workflows-v3.test.ts tests/platform-critical-invariants.test.ts tests/order-notification-hotfix.test.ts",
     "test:rules": "npm run rules:build && npx --yes firebase-tools@15.30.1 emulators:exec --only firestore --project momentum-rules-test \"node --import tsx --test tests/firestore-rules.test.ts\"",
     "test": "npm run typecheck && npm run lint && npm run test:logic && npm run test:rules",
     "deploy": "next build && firebase deploy --only hosting",
