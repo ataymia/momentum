@@ -1,0 +1,68 @@
+name: Apply platform integrity workflows
+
+on:
+  push:
+    branches:
+      - platform-integrity-workflows-2026-09-22
+    paths:
+      - scripts/apply-platform-integrity-v3.py
+      - .github/workflows/platform-integrity-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out side branch
+        uses: actions/checkout@v4
+        with:
+          ref: platform-integrity-workflows-2026-09-22
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+          cache: npm
+
+      - name: Set up Java for Firestore emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Apply application patch
+        run: python3 scripts/apply-platform-integrity-v3.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Logic regression tests
+        run: npm run test:logic
+
+      - name: Firestore rules regression tests
+        run: npm run test:rules
+
+      - name: Production build
+        run: npm run build
+
+      - name: Commit validated application changes
+        run: |
+          git config user.name "Momentum Platform Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git commit -m "Apply platform integrity and workflow improvements"
+          git push origin HEAD:platform-integrity-workflows-2026-09-22
