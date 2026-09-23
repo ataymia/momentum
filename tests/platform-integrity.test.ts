@@ -47,3 +47,20 @@ test("date-only Sunday stays in its Arizona business week",()=>{
   const weekly:WorkspaceData={...data,accounts:[account],orders:[sunday]};
   const summary=weeklySalesManagementSummary(weekly,[],REP,"2026-09-27");assert.equal(summary.weekStart,"2026-09-21");assert.equal(summary.weekEnd,"2026-09-27");assert.equal(summary.orders,1);
 });
+
+
+import { GOLDEN_EAGLE_SKUS, HISTORICAL_PURCHASE_ORDER_POLICY, skuForProductName } from "../lib/product-catalog";
+
+test("canonical Golden Eagle SKU master keeps historical PO quantities separate from stock",()=>{
+  assert.deepEqual(GOLDEN_EAGLE_SKUS.map((sku)=>[sku.description,sku.historicalPurchaseOrderCases]),[
+    ["0.25L (8.4oz) Golden Eagle Energy Drink (24pack)",5400],
+    ["0.25L (8.4oz) Golden Eagle SugarFree (24pack)",1890],
+    ["0.25L (8.4oz) Golden Eagle Tropical Edition (24pack)",945],
+    ["0.25L (8.4oz) Golden Eagle RED Edition (24pack)",945],
+    ["0.25L (8.4oz) Golden Eagle Blue (Zero) Edition (24pack)",540],
+    ["0.25L (8.4oz) Golden Eagle Strawberry Edition (24pack)",0],
+  ]);
+  assert.match(HISTORICAL_PURCHASE_ORDER_POLICY,/never populate current on-hand/i);
+  assert.equal(skuForProductName("Regular")?.description,"0.25L (8.4oz) Golden Eagle Energy Drink (24pack)");
+  assert.equal(skuForProductName("Made Up Flavor"),undefined);
+});

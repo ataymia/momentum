@@ -3,17 +3,20 @@ export type ProductSku = {
   description: string;
   shortName: string;
   casePack: number;
+  /** Verified case-level barcode only. Can/unit UPCs are intentionally excluded for wholesale scanning. */
   caseBarcode?: string;
+  /** Flo's historical purchase-order quantity. Reference only, never a current inventory balance. */
+  historicalPurchaseOrderCases?: number;
   active: boolean;
 };
 
 export const GOLDEN_EAGLE_SKUS: ProductSku[] = [
-  { id: "ge-original-250ml-24", shortName: "Original", description: "0.25L (8.4oz) Golden Eagle Energy Drink (24pack)", casePack: 24, active: true },
-  { id: "ge-sugarfree-250ml-24", shortName: "Sugar Free", description: "0.25L (8.4oz) Golden Eagle SugarFree (24pack)", casePack: 24, active: true },
-  { id: "ge-tropical-250ml-24", shortName: "Tropical", description: "0.25L (8.4oz) Golden Eagle Tropical Edition (24pack)", casePack: 24, active: true },
-  { id: "ge-red-250ml-24", shortName: "Red", description: "0.25L (8.4oz) Golden Eagle RED Edition (24pack)", casePack: 24, active: true },
-  { id: "ge-blue-zero-250ml-24", shortName: "Blue", description: "0.25L (8.4oz) Golden Eagle Blue (Zero) Edition (24pack)", casePack: 24, active: true },
-  { id: "ge-strawberry-250ml-24", shortName: "Strawberry", description: "0.25L (8.4oz) Golden Eagle Strawberry Edition (24pack)", casePack: 24, active: true },
+  { id: "ge-original-250ml-24", shortName: "Original", description: "0.25L (8.4oz) Golden Eagle Energy Drink (24pack)", casePack: 24, historicalPurchaseOrderCases: 5400, active: true },
+  { id: "ge-sugarfree-250ml-24", shortName: "Sugar Free", description: "0.25L (8.4oz) Golden Eagle SugarFree (24pack)", casePack: 24, historicalPurchaseOrderCases: 1890, active: true },
+  { id: "ge-tropical-250ml-24", shortName: "Tropical", description: "0.25L (8.4oz) Golden Eagle Tropical Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 945, active: true },
+  { id: "ge-red-250ml-24", shortName: "Red", description: "0.25L (8.4oz) Golden Eagle RED Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 945, active: true },
+  { id: "ge-blue-zero-250ml-24", shortName: "Blue", description: "0.25L (8.4oz) Golden Eagle Blue (Zero) Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 540, active: true },
+  { id: "ge-strawberry-250ml-24", shortName: "Strawberry", description: "0.25L (8.4oz) Golden Eagle Strawberry Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 0, active: true },
 ];
 
 const aliases = new Map<string, string>([
@@ -69,3 +72,6 @@ export function barcodeCatalogReady() {
  * must never seed current inventory balances.
  */
 export const PRODUCT_CATALOG_INVENTORY_POLICY = "Product master only. Current on-hand stock must come from verified physical inventory receipts.";
+
+export const HISTORICAL_PURCHASE_ORDER_POLICY = "Historical purchase-order quantities are reference only. They must never populate current on-hand, available, reserved, or sellable inventory.";
+export const WHOLESALE_BARCODE_POLICY = "Momentum scans and stores verified case barcodes only. Can/unit barcodes are not used for wholesale inventory control.";

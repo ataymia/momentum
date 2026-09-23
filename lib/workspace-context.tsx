@@ -12,7 +12,7 @@ import { evaluatePartnerPricing } from "./pricing-engine";
 import { useRuntimeModeValue } from "./runtime-mode-store";
 import { isTerritoryDeviation, normalizePostalCode, territoryForPostalCode, territorySystemEnabled, validateTerritoryDraft, type TerritoryDraft } from "./territory-engine";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
-import { canonicalProductDescription } from "./product-catalog";
+import { canonicalProductDescription, skuForProductName } from "./product-catalog";
 import { productsEquivalent } from "./order-lines";
 import { reconcileApprovals, reconcileOrders } from "./order-approval-engine";
 import type { Account, Activity, Appointment, AppointmentStatus, Approval, CustomerAccount, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, SalesTerritory, WorkspaceData, WorkspaceUser } from "./types";
@@ -549,8 +549,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const supplied=input.lines?.length?input.lines:[{product:input.product?.trim()||data.inventory[0]?.product||"Golden Eagle",cases:input.cases??0,inventoryAvailableAtOrder:input.inventoryAvailableAtOrder,sourcePlacementId:input.sourcePlacementId}];
     const grouped=new Map<string,EnhancedOrderLineInput>();
     for(const candidate of supplied){
-      const product=canonicalProductDescription(candidate.product);const cases=Number(candidate.cases);
-      if(!product||!Number.isInteger(cases)||cases<1)return null;
+      const sku=skuForProductName(candidate.product);
+      if(!sku?.active)return null;
+      const product=sku.description;const cases=Number(candidate.cases);
+      if(!Number.isInteger(cases)||cases<1)return null;
       const key=product.toLowerCase();const existing=grouped.get(key);
       grouped.set(key,{product,cases:(existing?.cases??0)+cases,inventoryAvailableAtOrder:Math.min(existing?.inventoryAvailableAtOrder??Number.POSITIVE_INFINITY,typeof candidate.inventoryAvailableAtOrder==="number"&&Number.isFinite(candidate.inventoryAvailableAtOrder)&&candidate.inventoryAvailableAtOrder>=0?candidate.inventoryAvailableAtOrder:0),sourcePlacementId:candidate.sourcePlacementId??existing?.sourcePlacementId});
     }
@@ -651,9 +653,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const valid: InventoryLot[] = [];
     for (const lot of lots) {
       const code = lot.lotCode.trim().toLowerCase();
-      if (!code || !lot.product.trim() || !lot.location.trim() || !Number.isInteger(lot.onHand) || lot.onHand < 0 || !Number.isFinite(lot.reserved) || lot.reserved !== 0 || !["Available", "Quality hold", "Low stock"].includes(lot.status) || !isValidCalendarDateKey(lot.receivedAt) || !isValidCalendarDateKey(lot.bestBy) || seenCodes.has(code)) continue;
+      const sku=skuForProductName(lot.product);
+      if (!code || !sku?.active || !lot.location.trim() || !Number.isInteger(lot.onHand) || lot.onHand < 0 || !Number.isFinite(lot.reserved) || lot.reserved !== 0 || !["Available", "Quality hold", "Low stock"].includes(lot.status) || !isValidCalendarDateKey(lot.receivedAt) || !isValidCalendarDateKey(lot.bestBy) || seenCodes.has(code)) continue;
       seenCodes.add(code);
-      valid.push({ ...lot, id: lot.id || uid("lot-import"), product: lot.product.trim(), location: lot.location.trim(), reserved: 0, available: lot.status === "Quality hold" ? 0 : lot.onHand });
+      valid.push({ ...lot, id: lot.id || uid("lot-import"), product: sku.description, location: lot.location.trim(), reserved: 0, available: lot.status === "Quality hold" ? 0 : lot.onHand });
     }
     if (!valid.length) return 0;
     setCommercial((state) => ({ ...state, inventoryLots: [...valid, ...state.inventoryLots] }));
