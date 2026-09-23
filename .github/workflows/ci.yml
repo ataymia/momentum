@@ -1,22 +1,26 @@
-name: Momentum CI
+name: Momentum Full Platform Audit
 
 on:
   pull_request:
   push:
-    branches:
-      - main
-      - post-launch-fixes-2026-09-15
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: momentum-audit-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate:
+  full-audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -33,17 +37,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck
+      - name: Git integrity check
+        run: git diff --check
+
+      - name: Typecheck application
         run: npm run typecheck
 
-      - name: Lint
+      - name: Lint application
         run: npm run lint
 
-      - name: Logic regression tests
+      - name: Critical and full logic regression tests
         run: npm run test:logic
 
-      - name: Firestore security rules tests
+      - name: Firestore security rules regression tests
         run: npm run test:rules
+
+      - name: Verify generated Firestore rules are committed
+        run: git diff --exit-code -- firestore.rules
+
+      - name: Compile Firebase Functions
+        run: npm --prefix functions run build
+
+      - name: Lint Firebase Functions
+        run: npm --prefix functions run lint
 
       - name: Production build
         run: npm run build
+
+      - name: Verify audit did not mutate tracked source
+        run: git diff --exit-code
