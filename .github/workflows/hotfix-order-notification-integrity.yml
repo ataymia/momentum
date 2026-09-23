@@ -1,0 +1,77 @@
+name: Validate urgent order persistence hotfix
+
+on:
+  push:
+    branches:
+      - hotfix-order-notification-integrity-2026-09-23
+    paths:
+      - scripts/apply-order-notification-hotfix.py
+      - .github/workflows/hotfix-order-notification-integrity.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out hotfix branch
+        uses: actions/checkout@v4
+        with:
+          ref: hotfix-order-notification-integrity-2026-09-23
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+          cache: npm
+
+      - name: Set up Java for Firestore emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Apply urgent hotfix
+        run: python3 scripts/apply-order-notification-hotfix.py
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Install Functions dependencies
+        run: npm --prefix functions ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Logic regression tests
+        run: npm run test:logic
+
+      - name: Firestore rules regression tests
+        run: npm run test:rules
+
+      - name: Functions build
+        run: npm --prefix functions run build
+
+      - name: Functions lint
+        run: npm --prefix functions run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Commit validated hotfix
+        run: |
+          git config user.name "Momentum Platform Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git commit -m "Fix order sync blockage and notification overflow"
+          git push origin HEAD:hotfix-order-notification-integrity-2026-09-23
