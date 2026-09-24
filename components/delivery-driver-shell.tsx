@@ -1,19 +1,21 @@
 "use client";
 
-import { Boxes, CircleHelp, Clock3, LogOut, Truck, UsersRound } from "lucide-react";
+import { Boxes, CircleHelp, Clock3, LogOut, Megaphone, Truck, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { useWorkspace } from "../lib/workspace-context";
 import { EmployeeDirectory } from "./hcm/employee-directory";
+import { DeliveryRequestsPage } from "./pages/delivery-requests";
 import { DeliveriesPage } from "./pages/deliveries";
 import { HelpPage } from "./pages/help";
 import { InventoryPage } from "./pages/inventory";
 import { PeoplePage } from "./pages/people";
 import { Avatar, BrandMark, Button } from "./ui";
 
-type DriverTab = "deliveries" | "inventory" | "time" | "directory" | "help";
+type DriverTab = "deliveries" | "requests" | "inventory" | "time" | "directory" | "help";
 
 const tabs: Array<{ key: DriverTab; label: string; icon: typeof Truck }> = [
   { key: "deliveries", label: "Deliveries", icon: Truck },
+  { key: "requests", label: "Requests", icon: Megaphone },
   { key: "inventory", label: "Inventory", icon: Boxes },
   { key: "time", label: "Time & HR", icon: Clock3 },
   { key: "directory", label: "Directory", icon: UsersRound },
@@ -35,6 +37,7 @@ export function DeliveryDriverShell() {
     </nav>
     <main style={{minHeight:"calc(100vh - 116px)"}}>
       {tab==="deliveries"&&<DeliveriesPage/>}
+      {tab==="requests"&&<DeliveryRequestsPage/>}
       {tab==="inventory"&&<InventoryPage/>}
       {tab==="time"&&<PeoplePage/>}
       {tab==="directory"&&<div className="page page--focused-tool"><EmployeeDirectory/></div>}
