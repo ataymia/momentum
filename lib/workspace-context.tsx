@@ -18,7 +18,7 @@ import { reconcileApprovals, reconcileOrders } from "./order-approval-engine";
 import type { Account, Activity, Appointment, AppointmentStatus, Approval, CustomerAccount, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, SalesTerritory, WorkspaceData, WorkspaceUser } from "./types";
 import { WorkspaceProvider as BaseWorkspaceProvider, useWorkspace as useBaseWorkspace } from "./workspace-context-v5";
 
-const COMMERCIAL_KEY = "momentum-commercial-controls-v1";
+export const COMMERCIAL_KEY = "momentum-commercial-controls-v1";
 const WAREHOUSE_SESSION_KEY = "momentum-warehouse-session-v1";
 const today = () => arizonaDateKey();
 const now = () => new Date().toISOString();
@@ -569,8 +569,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const order:Order={id,number,accountId,cases,pricePerCase:price,amount,status:"Awaiting approval",placedAt:today(),ownerId:currentUser.id,creditedRepId,sourcePlacementId:lines.length===1?lines[0].sourcePlacementId:undefined,product,inventoryAvailableAtOrder:available,lowStockApprovalRequired:lowStock,priceBasis,paymentStatus:"Not invoiced",lines};
     const lineSummary=lines.map((line)=>`${line.cases} ${line.product}`).join(" · ");
     const approval:Approval={id:uid("apr"),type:lowStock?"Low stock sale":"Order",title:lowStock?`Low-stock approval · ${number}`:`Review order ${number}`,detail:`${lineSummary} · ${cases} total cases · ${account.locationName??account.name}`,requestedBy:currentUser.name,requesterId:currentUser.id,recordId:id,team:currentUser.role==="Customer"?"Sales":currentUser.team,submittedAt:now(),dueAt:new Date(Date.now()+86400000).toISOString(),priority:lowStock?"Urgent":"High",status:"Pending"};
-    setCommercial((state)=>({...state,orders:[order,...state.orders],approvals:[approval,...state.approvals],accountPatches:{...state.accountPatches,[accountId]:{...(state.accountPatches[accountId]??{}),stage:"Opening order",lastActivity:`Order request ${number} submitted`}},activities:[{id:uid("act-order"),accountId,type:"order",title:lowStock?"Low-stock order submitted":"Order submitted",detail:`${number} · ${lineSummary} · ${cases} total cases · ${price.toFixed(2)}/case.`,at:now(),userId:currentUser.id},...state.activities]}));
-    window.setTimeout(()=>void momentumStorage.flush(),0);
+    const nextCommercial:CommercialState={...commercial,orders:[order,...commercial.orders],approvals:[approval,...commercial.approvals],accountPatches:{...commercial.accountPatches,[accountId]:{...(commercial.accountPatches[accountId]??{}),stage:"Opening order",lastActivity:`Order request ${number} submitted`}},activities:[{id:uid("act-order"),accountId,type:"order",title:lowStock?"Low-stock order submitted":"Order submitted",detail:`${number} · ${lineSummary} · ${cases} total cases · ${price.toFixed(2)}/case.`,at:now(),userId:currentUser.id},...commercial.activities]};
+    // Persist immediately. The UI will not call this submitted until Firestore acknowledges this exact key.
+    momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
+    setCommercial(nextCommercial);
     return id;
   };
 

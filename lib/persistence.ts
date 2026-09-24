@@ -56,6 +56,11 @@ export const momentumStorage={
   subscribe:subscribeStorageKey,
   /** Force pending Firestore writes now (used before sign-out). */
   async flush(){await backend?.flush();},
+  /** Confirm that one storage key actually reached Firestore. Local/demo mode succeeds immediately. */
+  async flushAndConfirm(key:string,timeoutMs=12_000):Promise<{ok:boolean;message?:string}>{
+    if(!backend)return{ok:true};
+    return backend.flushAndConfirm(key,timeoutMs);
+  },
 };
 
 export function getSyncStatus(){return status;}
@@ -201,6 +206,16 @@ class FirestoreBackend{
   }
 
   getItem(key:string){return this.cache.get(key)??null;}
+
+  async flushAndConfirm(key:string,timeoutMs:number){
+    const started=Date.now();
+    while(Date.now()-started<timeoutMs){
+      if(!this.flushing&&this.dirty.has(key))await this.flush();
+      if(!this.flushing&&!this.dirty.has(key))return{ok:true};
+      await new Promise((resolve)=>setTimeout(resolve,75));
+    }
+    return{ok:false,message:status.lastError??"Momentum cloud did not confirm this change before the safety timeout."};
+  }
 
   setItem(key:string,value:string){
     if(this.cache.get(key)===value)return;
