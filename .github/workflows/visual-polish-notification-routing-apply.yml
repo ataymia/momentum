@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/apply-visual-polish-notification-routing.py
       - scripts/fix-visual-polish-patch-runner.py
+      - scripts/apply-visual-polish-lint-fixes.py
       - .github/workflows/visual-polish-notification-routing-apply.yml
 
 permissions:
@@ -40,6 +41,9 @@ jobs:
 
       - name: Apply visual and workflow refinements
         run: python3 scripts/apply-visual-polish-notification-routing.py
+
+      - name: Apply lint cleanup
+        run: python3 scripts/apply-visual-polish-lint-fixes.py
 
       - name: Install dependencies
         run: npm ci
