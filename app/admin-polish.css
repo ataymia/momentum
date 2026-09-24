@@ -63,6 +63,7 @@
 .firebase-access-section .provisioning-row-actions {
   flex-wrap:wrap;
   justify-content:flex-end;
+  gap:8px;
 }
 .settings-security-banner {
   grid-template-columns:auto minmax(0,1fr) auto;
@@ -79,20 +80,24 @@
   overflow-wrap:anywhere;
 }
 .settings-security-banner>.status-pill {
-  max-width:100%;
+  max-width:none;
   justify-self:end;
-  white-space:normal;
+  white-space:nowrap!important;
 }
 
-@media (max-width:1150px) {
+/* Administration is commonly used on 13–15 inch laptops. Give identities and actions
+   a second row before controls begin compressing into unreadable columns. */
+@media (max-width:1360px) {
   .firebase-access-summary {
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
   .firebase-access-section .provisioning-queue article {
     grid-template-columns:auto minmax(0,1fr) auto;
+    align-items:start;
   }
   .firebase-access-section .provisioning-row-actions {
     grid-column:2/-1;
+    justify-content:flex-start;
   }
 }
 
@@ -107,5 +112,11 @@
   .settings-security-banner>.status-pill {
     grid-column:2;
     justify-self:start;
+  }
+  .firebase-access-section .provisioning-queue article {
+    grid-template-columns:auto minmax(0,1fr);
+  }
+  .firebase-access-section .provisioning-row-actions {
+    grid-column:1/-1;
   }
 }
