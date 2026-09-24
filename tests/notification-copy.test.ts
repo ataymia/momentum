@@ -20,7 +20,7 @@ const baseEvent: AuditEvent = {
   summary: "appointment-technical-id-123456 updated: startTime",
   sensitivity: "operational",
   relatedAccountId: "acc-101",
-  changes: [{ field: "startTime", before: "13:00", after: "14:00" }],
+  changes: [{ field: "startTime", before: "13:00", after: "14:00" }, { field: "updatedBy", after: "usr-mia" }],
 };
 
 test("appointment notifications use business language and human time", () => {

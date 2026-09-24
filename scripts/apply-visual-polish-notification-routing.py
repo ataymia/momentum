@@ -164,21 +164,15 @@ replace_once(
     '''{generated.currentUserItems.slice(0, 12).map((notification) => <button type="button" key={notification.id} className={`notification-item ${notification.status === "Unread" ? "is-unread" : ""}`} onClick={()=>openNotification(notification)}><i className={`notification-dot notification-dot--${notification.tone}`}/><div><strong>{notification.title}</strong><p>{notification.detail}</p><small>{formatDate(notification.createdAt, { hour: "numeric", minute: "2-digit" })} · {notification.actionLabel??"Open action"}</small></div><ChevronRight size={16}/></button>)}''',
 )
 
-replace_once(
-    "lib/access.ts",
-    '"accountHealth","crmTools","dispatch"',
-    '"accountHealth","dispatch"',
-)
-replace_once(
-    "lib/access.ts",
-    '"accountHealth","crmTools","dispatch"',
-    '"accountHealth","dispatch"',
-)
-replace_once(
-    "lib/access.ts",
-    '"accountHealth","crmTools","dispatch"',
-    '"accountHealth","dispatch"',
-)
+target = ROOT / "lib/access.ts"
+text = target.read_text()
+old_access = '"accountHealth","crmTools","dispatch"'
+new_access = '"accountHealth","dispatch"'
+count = text.count(old_access)
+if count != 3:
+    raise SystemExit(f"PATCH FAILED: expected three CRM Tools access entries, found {count}")
+target.write_text(text.replace(old_access, new_access))
+print("patched lib/access.ts (retired CRM Tools for three roles)")
 
 # ---------------------------------------------------------------------------
 # 5. Focused order notifications reopen the exact full-order modal.

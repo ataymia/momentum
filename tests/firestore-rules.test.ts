@@ -49,6 +49,7 @@ const MANAGER = "uid-manager";
 const REP = "uid-rep";
 const OTHER_REP = "uid-other-rep";
 const OPS = "uid-ops";
+const DRIVER = "uid-driver";
 const ONBOARDING = "uid-onboarding";
 /** Brand Ambassadors, one per Sales Representative, to prove supervision is scoped to the reporting line. */
 const BA_OF_REP = "uid-ba-of-rep";
@@ -82,6 +83,7 @@ const ACCESS: UserAccessRecord[] = [
   accessRecord(REP, "Sales Representative", "Sales", { managerId: MANAGER }),
   accessRecord(OTHER_REP, "Sales Representative", "Sales", { managerId: ADMIN, team: "Operations" }),
   accessRecord(OPS, "Operations", "Operations"),
+  accessRecord(DRIVER, "Delivery Driver", "Operations"),
   accessRecord(ONBOARDING, "Sales Representative", "Sales", {
     managerId: MANAGER,
     accountState: "Onboarding",
@@ -449,7 +451,7 @@ describe("first-Administrator bootstrap", () => {
  * denied writes.
  */
 describe("domain sharding matches the rules", () => {
-  for (const uid of [ADMIN, MANAGER, REP, OPS, ONBOARDING, BA_OF_REP]) {
+  for (const uid of [ADMIN, MANAGER, REP, OPS, DRIVER, ONBOARDING, BA_OF_REP]) {
     test(`reads planned by the client succeed for ${uid}`, async () => {
       const scope = scopeFor(uid);
       const db = dbFor(uid);
@@ -679,5 +681,14 @@ describe("cross-employee isolation", () => {
     await assertFails(getDoc(doc(db, "domains/notARealDomain/fields/_root")));
     await assertFails(setDoc(doc(db, `userDomains/${ADMIN}/hcm/notARealField`), { items: [] }));
     await assertFails(getDoc(doc(db, "someOtherCollection/someDoc")));
+  });
+});
+
+describe("Delivery Driver approved marketing visibility", () => {
+  test("driver can read the shared delivery notice projection but cannot write it or read campaign administration", async () => {
+    const db=dbFor(DRIVER);
+    await assertSucceeds(getDoc(doc(db,"domains/marketing/fields/deliveryNotices")));
+    await assertFails(setDoc(doc(db,"domains/marketing/fields/deliveryNotices"),{items:[]}));
+    await assertFails(getDoc(doc(db,"domains/marketing/fields/campaigns")));
   });
 });

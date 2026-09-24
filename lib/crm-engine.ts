@@ -96,11 +96,6 @@ export function normalizeCrmState(input:unknown,data:WorkspaceData):CrmState{
   const seed=createCrmSeed(data);
   if(!input||typeof input!=="object")return seed;
   const state=input as Partial<CrmState>;
-  const customerIds=new Set((data.customers??[]).map((customer)=>customer.id));
-  const locationById=new Map(data.accounts.map((location)=>[location.id,location]));
-  const employeeIds=new Set(data.users.filter((user)=>user.role!=="Customer").map((user)=>user.id));
-  const responsibilityUsers=new Set(data.users.filter((user)=>["Administrator","Sales Manager","Sales Representative"].includes(user.role)).map((user)=>user.id));
-
   const seedContactIds=new Set(seed.contacts.map((contact)=>contact.id));
   const extraContacts=uniqueById((Array.isArray(state.contacts)?state.contacts:[]).filter((contact):contact is CrmContact=>{
     if(!contact?.id||seedContactIds.has(contact.id)||!contactScopes.has(contact.scope)||!contact.customerId||!contact.name?.trim()||!contact.role?.trim()||!decisionRoles.has(contact.decisionRole)||typeof contact.primary!=="boolean"||typeof contact.active!=="boolean"||!validTimestamp(contact.createdAt)||!contact.createdBy)return false;

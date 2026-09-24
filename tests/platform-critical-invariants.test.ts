@@ -4,9 +4,11 @@ import test, { describe } from "node:test";
 import { reconcileApprovals, reconcileOrders } from "../lib/order-approval-engine";
 import { mergeDocument } from "../lib/persistence";
 import { GOLDEN_EAGLE_SKUS, HISTORICAL_PURCHASE_ORDER_POLICY, PRODUCT_CATALOG_INVENTORY_POLICY, WHOLESALE_BARCODE_POLICY } from "../lib/product-catalog";
-import { MAX_PERSISTED_NOTIFICATION_BYTES, MAX_PERSISTED_NOTIFICATION_DELIVERIES, auditEventCreatesNotification, compactNotificationDeliveries } from "../lib/notification-engine";
+import { MAX_PERSISTED_NOTIFICATION_BYTES, MAX_PERSISTED_NOTIFICATION_DELIVERIES, auditEventCreatesNotification, compactNotificationDeliveries, notificationTarget } from "../lib/notification-engine";
+import { collectAuditableRecords, diffAuditableRecords } from "../lib/audit-engine";
+import { normalizeMarketingState } from "../lib/marketing-engine";
 import { documentReplacesOnWrite } from "../lib/firestore-domains";
-import type { Approval, Order } from "../lib/types";
+import type { Approval, Order, WorkspaceData } from "../lib/types";
 
 const pending: Approval = {
   id: "apr-1", type: "Order", title: "Review GE-1", detail: "10 cases", requestedBy: "Matt",
@@ -153,5 +155,67 @@ describe("production persistence incident guards", () => {
     assert.match(shell, /SyncStatusPill/);
     assert.match(css, /sidebar__nav::-webkit-scrollbar/);
     assert.match(css, /scrollbar-width:none/);
+  });
+});
+
+describe("notification routing and actor integrity", () => {
+  test("an unrelated update is never attributed to a stale requester", () => {
+    const before=collectAuditableRecords("Marketing",{requests:[{id:"req-1",requesterId:"megan",title:"Mini fridge",detail:"Deliver with order",status:"Submitted"}]});
+    const after=collectAuditableRecords("Marketing",{requests:[{id:"req-1",requesterId:"megan",title:"Mini fridge",detail:"Deliver with approved order",status:"Submitted"}]});
+    const events=diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-09-24T18:00:00.000Z",[]);
+    assert.equal(events.length,1);
+    assert.equal(events[0].actorId,"system");
+  });
+
+  test("an explicit decision actor remains the actor", () => {
+    const before=collectAuditableRecords("Workspace",{approvals:[{id:"apr-9",title:"Review order",requesterId:"matt",status:"Pending"}]});
+    const after=collectAuditableRecords("Workspace",{approvals:[{id:"apr-9",title:"Review order",requesterId:"matt",status:"Approved",decidedBy:"mia"}]});
+    const events=diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-09-24T18:00:00.000Z",[{id:"mia",name:"Mia",firstName:"Mia",email:"mia@test.co",initials:"MM",title:"Director",role:"Administrator",team:"Leadership",accent:"#000"} as never]);
+    assert.equal(events[0].actorId,"mia");
+  });
+
+  test("resolved or orphaned order approvals cannot survive as ghost action notifications", () => {
+    const event={id:"audit-order",at:"2026-09-24T18:00:00.000Z",actorId:"matt",actorRole:"Sales Representative",action:"Created" as const,module:"Workspace",collection:"approvals",entityType:"Workspace.approvals",entityId:"apr-1",label:"Review GE-1",summary:"Approval created",sensitivity:"manager" as const,changes:[{field:"status",after:"Pending"}]};
+    const empty={users:[],accounts:[],orders:[],approvals:[],timecards:[]} as unknown as WorkspaceData;
+    assert.equal(notificationTarget(event,empty),null);
+    const live={...empty,orders:[order],approvals:[pending]} as WorkspaceData;
+    assert.deepEqual(notificationTarget(event,live),{targetPage:"orders",targetRecordId:"ord-1",actionLabel:"Review order"});
+    const resolved={...live,approvals:[{...pending,status:"Approved" as const,decidedBy:"mia",decidedAt:"2026-09-24T18:01:00.000Z"}]} as WorkspaceData;
+    assert.equal(notificationTarget(event,resolved),null);
+  });
+
+  test("notification UI routes directly to its action target and supports individual read state", () => {
+    const shell=readFileSync(new URL("../components/app-shell-v4.tsx",import.meta.url),"utf8");
+    const context=readFileSync(new URL("../lib/notification-context-v2.tsx",import.meta.url),"utf8");
+    assert.match(shell,/openNotification/);
+    assert.match(shell,/targetRecordId/);
+    assert.match(context,/markRead/);
+  });
+});
+
+describe("delivery marketing projection and visual QA", () => {
+  test("approved marketing requests derive a delivery-safe projection", () => {
+    const state=normalizeMarketingState({requests:[{id:"req-1",requesterId:"matt",type:"Creative",accountId:"acc-1",title:"Mini fridge",detail:"Deliver with order",status:"Approved",submittedAt:"2026-09-24T17:00:00.000Z",decidedAt:"2026-09-24T17:05:00.000Z",decidedBy:"mia"}]});
+    assert.equal(state.deliveryNotices.length,1);
+    assert.equal(state.deliveryNotices[0].requestId,"req-1");
+    assert.equal(state.deliveryNotices[0].status,"Approved");
+  });
+
+  test("delivery page surfaces approved requests and the order modal uses the fixed detail layout", () => {
+    const delivery=readFileSync(new URL("../components/pages/deliveries.tsx",import.meta.url),"utf8");
+    const orders=readFileSync(new URL("../components/pages/orders-v3.tsx",import.meta.url),"utf8");
+    const css=readFileSync(new URL("../app/visual-polish-v2.css",import.meta.url),"utf8");
+    assert.match(delivery,/Approved marketing \/ delivery requests/);
+    assert.match(delivery,/deliveryNotices/);
+    assert.match(orders,/order-full-detail/);
+    assert.match(css,/grid-template-columns:40px minmax\(0,1fr\)/);
+    assert.match(css,/permission-table/);
+  });
+
+  test("CRM Tools is retired from navigation and role access", () => {
+    const shell=readFileSync(new URL("../components/app-shell-v4.tsx",import.meta.url),"utf8");
+    const access=readFileSync(new URL("../lib/access.ts",import.meta.url),"utf8");
+    assert.doesNotMatch(shell,/label:"CRM tools"/);
+    assert.doesNotMatch(access,/"crmTools"/);
   });
 });

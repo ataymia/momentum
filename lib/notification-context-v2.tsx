@@ -4,13 +4,13 @@ import { ReactNode, createContext, useContext, useEffect, useMemo, useState } fr
 import { useAudit } from "./audit-context";
 import { inventoryProductStatuses } from "./inventory-ledger";
 import { useInventoryLedger } from "./inventory-ledger-context";
-import { NOTIFICATION_STORAGE_KEY, NotificationDelivery, NotificationPreference, NotificationState, auditEventCreatesNotification, compactNotificationDeliveries, createNotificationSeed, deliveryKey, enabledChannels, normalizeNotificationState, notificationCopy, programPricingDaysRemaining, resolveNotificationRecipients } from "./notification-engine";
+import { NOTIFICATION_STORAGE_KEY, NotificationDelivery, NotificationPreference, NotificationState, auditEventCreatesNotification, compactNotificationDeliveries, createNotificationSeed, deliveryKey, enabledChannels, normalizeNotificationState, notificationCopy, notificationTarget, programPricingDaysRemaining, resolveNotificationRecipients } from "./notification-engine";
 import { arizonaDateKey } from "./date-time";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
-type NotificationContextValue = { state: NotificationState; currentUserItems: NotificationDelivery[]; unreadCount: number; updatePreference: (userId: string, patch: Partial<NotificationPreference>) => boolean; setEscalationHours: (hours: number) => boolean; markAllRead: () => void; resetNotifications: () => boolean };
+type NotificationContextValue = { state: NotificationState; currentUserItems: NotificationDelivery[]; unreadCount: number; updatePreference: (userId: string, patch: Partial<NotificationPreference>) => boolean; setEscalationHours: (hours: number) => boolean; markRead: (id:string) => void; markAllRead: () => void; resetNotifications: () => boolean };
 const NotificationContext = createContext<NotificationContextValue | null>(null);
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 function readState(users: ReturnType<typeof useWorkspace>["data"]["users"]) { if (typeof window === "undefined") return createNotificationSeed(users); try { return normalizeNotificationState(JSON.parse(momentumStorage.getItem(NOTIFICATION_STORAGE_KEY) ?? "null"), users); } catch { return createNotificationSeed(users); } }
@@ -28,7 +28,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handle = window.setTimeout(() => setState((current) => {
       const auditWindow = audit.events;
-      const sourceEvents = auditWindow.filter(auditEventCreatesNotification).slice(0,500);
+      const sourceEvents = auditWindow.filter((event)=>auditEventCreatesNotification(event)&&notificationTarget(event,data)!==null).slice(0,500);
       const eventById = new Map(sourceEvents.map((event) => [event.id, event]));
       const auditEventIds = new Set(auditWindow.map((event) => event.id));
       // Remove only old bell deliveries derived from routine audit events. The audit source itself is preserved.
@@ -41,15 +41,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const event = eventById.get(delivery.sourceEventId);
         if (!event) return delivery;
         const copy = notificationCopy(event, data);
-        if (delivery.title === copy.title && delivery.detail === copy.detail && delivery.tone === copy.tone) return delivery;
+        const target=notificationTarget(event,data);
+        if(!target)return delivery;
+        if (delivery.title === copy.title && delivery.detail === copy.detail && delivery.tone === copy.tone && delivery.targetPage===target.targetPage && delivery.targetRecordId===target.targetRecordId && delivery.actionLabel===target.actionLabel) return delivery;
         copyChanged = true;
-        return { ...delivery, title: copy.title, detail: copy.detail, tone: copy.tone };
+        return { ...delivery, title: copy.title, detail: copy.detail, tone: copy.tone, ...target };
       });
 
       const existing = new Set(refreshed.map((item) => deliveryKey(item.sourceEventId, item.recipientUserId, item.channel)));
       const additions: NotificationDelivery[] = [];
       for (const event of sourceEvents) {
         const copy = notificationCopy(event, data);
+        const target=notificationTarget(event,data);if(!target)continue;
         for (const userId of resolveNotificationRecipients(event, data)) {
           const preference = current.preferences.find((item) => item.userId === userId);
           if (!preference) continue;
@@ -57,7 +60,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             const key = deliveryKey(event.id, userId, channel);
             if (existing.has(key)) continue;
             existing.add(key);
-            additions.push({ id: uid("notice"), sourceEventId: event.id, recipientUserId: userId, channel, title: copy.title, detail: copy.detail, tone: copy.tone, createdAt: event.at, status: channel === "In app" ? "Unread" : "Awaiting integration" });
+            additions.push({ id: uid("notice"), sourceEventId: event.id, recipientUserId: userId, channel, title: copy.title, detail: copy.detail, tone: copy.tone, createdAt: event.at, status: channel === "In app" ? "Unread" : "Awaiting integration", ...target });
           }
         }
       }
@@ -82,7 +85,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           const preference = current.preferences.find((item) => item.userId === recipientUserId); if (!preference) continue;
           for (const channel of enabledChannels(preference)) {
             const key = deliveryKey(sourceEventId, recipientUserId, channel); if (existing.has(key)) continue; existing.add(key);
-            additions.push({ id: uid("stock-alert"), sourceEventId, recipientUserId, channel, title, detail, tone: "warning", createdAt: new Date().toISOString(), status: channel === "In app" ? "Unread" : "Awaiting integration" });
+            additions.push({ id: uid("stock-alert"), sourceEventId, recipientUserId, channel, title, detail, tone: "warning", createdAt: new Date().toISOString(), status: channel === "In app" ? "Unread" : "Awaiting integration", targetPage:"inventory", actionLabel:"Open inventory fulfillment" });
           }
         }
       }
@@ -103,11 +106,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const sourceEventId=`program-pricing-expiry:${account.id}:${account.programPricingExpirationDate}`;const owner=data.users.find((user)=>user.id===account.ownerId);const recipients=new Set(data.users.filter((user)=>user.role==="Administrator").map((user)=>user.id));
         if(account.accountManagerId)recipients.add(account.accountManagerId);if(account.ownerId)recipients.add(account.ownerId);if(owner?.managerId)recipients.add(owner.managerId);
         const title=`Program pricing expires in ${days} day${days===1?"":"s"}`;const detail=`${account.locationName??account.name}${account.programPricingLabel?` · ${account.programPricingLabel}`:""} expires ${account.programPricingExpirationDate}. Review renewal, replacement pricing, or expiration.`;
-        for(const recipientUserId of recipients){const preference=current.preferences.find((item)=>item.userId===recipientUserId);if(!preference)continue;for(const channel of enabledChannels(preference)){const key=deliveryKey(sourceEventId,recipientUserId,channel);if(existing.has(key))continue;existing.add(key);additions.push({id:uid("pricing-alert"),sourceEventId,recipientUserId,channel,title,detail,tone:"warning",createdAt:new Date().toISOString(),status:channel==="In app"?"Unread":"Awaiting integration"});}}
+        for(const recipientUserId of recipients){const preference=current.preferences.find((item)=>item.userId===recipientUserId);if(!preference)continue;for(const channel of enabledChannels(preference)){const key=deliveryKey(sourceEventId,recipientUserId,channel);if(existing.has(key))continue;existing.add(key);additions.push({id:uid("pricing-alert"),sourceEventId,recipientUserId,channel,title,detail,tone:"warning",createdAt:new Date().toISOString(),status:channel==="In app"?"Unread":"Awaiting integration",targetPage:"accounts",targetRecordId:account.id,actionLabel:"Open account"});}}
       }
       return additions.length||retained.length!==current.deliveries.length?{...current,deliveries:compactNotificationDeliveries([...additions,...retained])}:current;
     }),0);return()=>window.clearTimeout(handle);
-  },[data.accounts,data.users]);
+  },[data,data.accounts,data.users]);
 
   useEffect(() => {
     const evaluateEscalations = () => {
@@ -119,7 +122,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           const user = data.users.find((item) => item.id === delivery.recipientUserId);
           const recipients = new Set(data.users.filter((item) => item.role === "Administrator" || item.id === user?.managerId).map((item) => item.id)); recipients.delete(delivery.recipientUserId);
           let created = false;
-          for (const recipientUserId of recipients) { additions.push({ id: uid("escalation"), sourceEventId: delivery.sourceEventId, recipientUserId, channel: "In app", title: `Needs attention: ${delivery.title}`, detail: `${user?.name ?? "A team member"} has not opened this notification within the ${current.escalationHours}-hour follow-up window.`, tone: "warning", createdAt: checkedAt, status: "Unread", escalationOf: delivery.id }); created = true; }
+          for (const recipientUserId of recipients) { additions.push({ id: uid("escalation"), sourceEventId: delivery.sourceEventId, recipientUserId, channel: "In app", title: `Needs attention: ${delivery.title}`, detail: `${user?.name ?? "A team member"} has not opened this notification within the ${current.escalationHours}-hour follow-up window.`, tone: "warning", createdAt: checkedAt, status: "Unread", escalationOf: delivery.id, targetPage:delivery.targetPage, targetRecordId:delivery.targetRecordId, actionLabel:delivery.actionLabel }); created = true; }
           if (!created) return delivery; changed = true; return { ...delivery, escalatedAt: checkedAt };
         });
         return changed ? { ...current, deliveries: compactNotificationDeliveries([...additions, ...updated]) } : current;
@@ -149,8 +152,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if(before!==rounded)recordManualAudit({module:"Notifications",collection:"settings",entityType:"Notifications.settings",entityId:"notification-policy",label:"Notification escalation policy",summary:`Unread notification escalation window changed from ${before} to ${rounded} hours.`,sensitivity:"admin",changes:[{field:"escalationHours",before:String(before),after:String(rounded)}]});
     return true;
   };
+  const markRead = (id:string) => { if(!currentUser)return;const at=new Date().toISOString();setState((current)=>({...current,deliveries:current.deliveries.map((item)=>item.id===id&&item.recipientUserId===currentUser.id&&item.channel==="In app"&&item.status==="Unread"?{...item,status:"Read",readAt:at}:item)})); };
   const markAllRead = () => { if (!currentUser) return; const at = new Date().toISOString(); setState((current) => ({ ...current, deliveries: current.deliveries.map((item) => item.recipientUserId === currentUser.id && item.channel === "In app" && item.status === "Unread" ? { ...item, status: "Read", readAt: at } : item) })); };
   const resetNotifications = () => { if (!runtime.isDemo || currentUser?.role !== "Administrator") return false; setState(createNotificationSeed(data.users)); return true; };
-  return <NotificationContext.Provider value={{ state, currentUserItems, unreadCount, updatePreference, setEscalationHours, markAllRead, resetNotifications }}>{children}</NotificationContext.Provider>;
+  return <NotificationContext.Provider value={{ state, currentUserItems, unreadCount, updatePreference, setEscalationHours, markRead, markAllRead, resetNotifications }}>{children}</NotificationContext.Provider>;
 }
 export function useNotifications() { const value = useContext(NotificationContext); if (!value) throw new Error("useNotifications must be used inside NotificationProvider"); return value; }

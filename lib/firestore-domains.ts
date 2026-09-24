@@ -73,7 +73,7 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-delivery-v1",id:"delivery",read:DELIVERY_READ,write:DELIVERY_WRITE,fields:{tasks:{}}},
   {key:"momentum-finance-v3",id:"finance",read:ADMIN,write:ADMIN,fields:{expenses:perUser("requesterId")}},
   {key:"momentum-accounting-v1",id:"accounting",read:ADMIN,write:ADMIN,fields:{accounts:{},rules:{},journals:{},reconciliations:{}}},
-  {key:"momentum-marketing-v3",id:"marketing",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{requests:perUser("requesterId"),campaigns:{},spend:{},assets:{},materials:{},materialMovements:{},touches:{},attributions:{},partnerships:{}}},
+  {key:"momentum-marketing-v3",id:"marketing",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{requests:perUser("requesterId"),deliveryNotices:{read:[...OPERATIONAL,"Delivery Driver"],write:ADMIN_MANAGER},campaigns:{},spend:{},assets:{},materials:{},materialMovements:{},touches:{},attributions:{},partnerships:{}}},
   {key:"momentum-payroll-v5",id:"payroll",read:ADMIN,write:ADMIN,fields:{payGroups:{},employerTaxRules:{},benefitTaxRules:{},runs:{},liabilities:{},employees:adminOwned(),withholdingProfiles:adminOwned(),disbursements:adminOwned()}},
   {key:"momentum-field-tracking-v1",id:"fieldTracking",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{geofences:{},sessions:perUser(),samples:perUser(),appointmentEvents:perUser(),exceptions:perUser(),departureAlerts:perUser()}},
   {key:"momentum-audit-v1",id:"audit",read:ADMIN,write:ADMIN,fields:{events:perUser("actorId",{managerWrite:false,managerRead:false})}},
