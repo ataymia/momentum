@@ -17,6 +17,7 @@ type DeliveryContextValue = {
   claimDelivery: (orderId: string) => MutationResult;
   assignDelivery: (orderId: string, driverId: string) => MutationResult;
   cancelDelivery: (orderId: string, reason: string) => MutationResult;
+  prepareDelivery: (orderId: string) => MutationResult;
   markLoaded: (orderId: string) => MutationResult;
   startDelivery: (orderId: string) => MutationResult;
   markDelivered: (orderId: string, note?: string) => MutationResult;
@@ -96,6 +97,17 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     return undefined;
   };
 
+  const prepareDelivery = (orderId: string): MutationResult => {
+    const task = taskForActor(orderId);
+    if (!task || task.status !== "Accepted") return { ok: false, message: "Claim or assign the delivery before packing it." };
+    const order = data.orders.find((item) => item.id === orderId);
+    if (!order) return { ok: false, message: "Order not found." };
+    if (order.status === "Allocated") return { ok: true };
+    if (order.status !== "Approved") return { ok: false, message: "Only an approved order can be packed." };
+    if (!inventory.prepareOrderForDelivery(orderId)) return { ok: false, message: "The full SKU mix is not available in sellable warehouse inventory. No partial packing was saved." };
+    return { ok: true };
+  };
+
   const markLoaded = (orderId: string): MutationResult => {
     const task = taskForActor(orderId);
     if (!task || task.status !== "Accepted") return { ok: false, message: "Accept or assign the delivery before loading it." };
@@ -134,9 +146,11 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
   };
 
   const cancelDelivery = (orderId: string, reason: string): MutationResult => {
-    if (!canManage || !currentUser || reason.trim().length < 3) return { ok: false, message: "Management must enter a reason to cancel or reassign a delivery." };
+    if (!currentUser || reason.trim().length < 3) return { ok: false, message: "Enter a reason to release or cancel the delivery assignment." };
     const task = taskForOrder(orderId);
-    if (!task || ["In transit", "Delivered"].includes(task.status)) return { ok: false, message: "An in-transit or delivered task cannot be cancelled here." };
+    const ownAccepted = Boolean(isDriver && task?.driverId === currentUser.id && task.status === "Accepted");
+    if (!canManage && !ownAccepted) return { ok: false, message: "Only management or the driver holding an unstarted assignment can release it." };
+    if (!task || ["Loaded", "In transit", "Delivered"].includes(task.status)) return { ok: false, message: "A loaded, in-transit, or delivered task cannot be released here." };
     const stamp = now();
     setState((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, status: "Cancelled", cancelledAt: stamp, cancelledBy: currentUser.id }, { type: "Cancelled", actorId: currentUser.id, note: reason.trim() }) : item) }));
     return { ok: true };
@@ -146,7 +160,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     if (runtime.isDemo && currentUser?.role === "Administrator") setState(createDeliverySeed());
   };
 
-  return <DeliveryContext.Provider value={{ state, taskForOrder, claimDelivery, assignDelivery, cancelDelivery, markLoaded, startDelivery, markDelivered, addDeliveryNote, resetDelivery }}>{children}</DeliveryContext.Provider>;
+  return <DeliveryContext.Provider value={{ state, taskForOrder, claimDelivery, assignDelivery, cancelDelivery, prepareDelivery, markLoaded, startDelivery, markDelivered, addDeliveryNote, resetDelivery }}>{children}</DeliveryContext.Provider>;
 }
 
 export function useDelivery() {

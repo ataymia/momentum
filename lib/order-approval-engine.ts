@@ -8,6 +8,7 @@ const fulfillmentRank: Record<Order["status"], number> = {
   "Out for delivery": 4,
   Delivered: 5,
   Paid: 6,
+  Cancelled: 7,
 };
 
 const instant = (value?: string) => value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).getTime() : 0;
@@ -42,6 +43,8 @@ export function approvalForOrder(approvals: Approval[], orderId: string) {
 }
 
 export function reconcileOrderWithApproval(order: Order, approval?: Approval): Order {
+  // Cancellation is terminal for an undelivered order. A stale approval must never resurrect it.
+  if (order.status === "Cancelled") return order;
   if (!approval) return order;
   if (approval.status === "Approved" && fulfillmentRank[order.status] < fulfillmentRank.Approved) return { ...order, status: "Approved" };
   if (approval.status === "Returned" && fulfillmentRank[order.status] <= fulfillmentRank.Approved) return { ...order, status: "Draft" };
@@ -53,6 +56,15 @@ export function reconcileOrders(primary: Order[], secondary: Order[], approvals:
   for (const order of [...secondary, ...primary]) {
     const existing = byId.get(order.id);
     if (!existing) { byId.set(order.id, order); continue; }
+    // Cancellation and fulfillment are separate terminal branches. Delivery/payment evidence wins over
+    // a stale cancellation replica; otherwise cancellation wins over any pre-delivery replica.
+    if (order.status === "Cancelled" || existing.status === "Cancelled") {
+      const delivered = [order, existing].find((candidate) => ["Delivered", "Paid"].includes(candidate.status));
+      const cancelled = order.status === "Cancelled" ? order : existing;
+      const other = cancelled === order ? existing : order;
+      byId.set(order.id, delivered ?? { ...other, ...cancelled });
+      continue;
+    }
     const advanced = fulfillmentRank[order.status] >= fulfillmentRank[existing.status] ? order : existing;
     const other = advanced === order ? existing : order;
     byId.set(order.id, { ...other, ...advanced });

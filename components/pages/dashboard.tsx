@@ -14,7 +14,7 @@ const bulletinTone = (priority: Bulletin["priority"]) => priority === "Urgent" ?
 function CustomerDashboard() {
   const { scope, currentUser, navigate } = useWorkspace();
   const account = scope.accounts[0];
-  const open = scope.orders.filter(order => !["Delivered","Paid"].includes(order.status));
+  const open = scope.orders.filter(order => !["Delivered","Paid","Cancelled"].includes(order.status));
   const recent = [...scope.orders].sort((a,b) => b.placedAt.localeCompare(a.placedAt)).slice(0,4);
   const delivered = recent.find(order => ["Delivered","Paid"].includes(order.status));
   const openOrder = (orderId: string) => { window.sessionStorage.setItem("momentum-focus-record", orderId); navigate("orders"); };

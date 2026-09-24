@@ -121,7 +121,7 @@ export type WeeklySalesManagementSummary = {
 export function weeklySalesManagementSummary(data:WorkspaceData,interactions:CrmInteraction[],userId:string,asOf=arizonaDateKey()):WeeklySalesManagementSummary{
   const weekStart=startOfLocalWeek(asOf);const weekEnd=addCalendarDays(weekStart,6);const inWeek=(value:string|undefined)=>{if(!value)return false;const date=value.length===10?value:arizonaDateKey(value);return date>=weekStart&&date<=weekEnd;};
   const visits=weeklyVisitSummary(interactions,userId,asOf).completed;
-  const orders=data.orders.filter((order)=>(order.creditedRepId===userId||(!order.creditedRepId&&order.ownerId===userId))&&inWeek(order.placedAt));
+  const orders=data.orders.filter((order)=>order.status!=="Cancelled"&&(order.creditedRepId===userId||(!order.creditedRepId&&order.ownerId===userId))&&inWeek(order.placedAt));
   const reorders=orders.filter((order)=>data.orders.some((prior)=>prior.accountId===order.accountId&&prior.id!==order.id&&prior.placedAt<order.placedAt)).length;
   const newAccounts=new Set(data.activities.filter((activity)=>activity.userId===userId&&activity.accountId&&activity.title==="Customer location created"&&inWeek(activity.at)).map((activity)=>activity.accountId)).size;
   const promisingProspects=data.accounts.filter((account)=>account.ownerId===userId&&["Prospect","Qualified","Sampled"].includes(account.stage)&&(latestProspectRating(interactions,account.id)??0)>=7).length;
