@@ -77,6 +77,7 @@ type CommercialState = {
 
 type EnhancedOrderLineInput={product:string;cases:number;inventoryAvailableAtOrder?:number;sourcePlacementId?:string};
 type EnhancedOrderInput = { accountId: string; cases?: number; pricePerCase?: number; product?: string; inventoryAvailableAtOrder?: number; sourcePlacementId?: string; lines?:EnhancedOrderLineInput[] };
+type OrderEditResult={ok:boolean;message?:string;status?:OrderStatus};
 type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string; categoryReviewDate?: string; pricingTier?: PricingTier; postalCode?: string; programPricingLabel?:string; programPricePerCase?:number; programPricingEffectiveDate?:string; programPricingExpirationDate?:string; programPricingStatus?:Account["programPricingStatus"] };
 type TerritoryInput = Omit<TerritoryDraft,"id"> & {id?:string};
 type TerritoryMutationResult = {ok:boolean;message?:string;id?:string};
@@ -94,6 +95,7 @@ type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | 
   switchUser: (userId: string) => void;
   createAccount: (account: NewAccountInput, territoryExceptionReason?: string) => string | null;
   createOrder: (order: EnhancedOrderInput) => string | null;
+  editOrder: (id:string, order:EnhancedOrderInput) => OrderEditResult;
   createAppointment: (appointment: NewAppointmentInput) => string | null;
   advanceAppointment: (id: string) => void;
   completeAppointment: (id: string, closeout: AppointmentCloseout) => boolean;
@@ -577,6 +579,38 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     return id;
   };
 
+  const editOrder=(id:string,input:EnhancedOrderInput):OrderEditResult=>{
+    if(!currentUser)return{ok:false,message:"Sign in before editing an order."};
+    const order=commercial.orders.find((item)=>item.id===id);
+    if(!order)return{ok:false,message:"This order is not available in the shared order record."};
+    if(!["Draft","Awaiting approval","Approved"].includes(order.status))return{ok:false,message:"This order can no longer be edited because fulfillment has started."};
+    const ownOrder=order.ownerId===currentUser.id&&["Sales Representative","Sales Manager","Customer"].includes(currentUser.role);
+    if(currentUser.role!=="Administrator"&&!ownOrder)return{ok:false,message:"Only an Administrator or the person who submitted this order can edit it before fulfillment."};
+    if(input.accountId&&input.accountId!==order.accountId)return{ok:false,message:"Move the order by cancelling and recreating it. An existing order cannot be reassigned to a different account."};
+    const account=data.accounts.find((item)=>item.id===order.accountId);
+    if(!account||!accountIsVisible(data,currentUser,account))return{ok:false,message:"The linked account is outside your access scope."};
+    const price=order.pricePerCase;
+    if(!Number.isFinite(price)||price<=0)return{ok:false,message:"The existing approved order price is invalid. Correct account pricing before editing."};
+    const supplied=input.lines?.length?input.lines:[{product:input.product?.trim()||order.product||"Golden Eagle",cases:input.cases??order.cases,inventoryAvailableAtOrder:input.inventoryAvailableAtOrder,sourcePlacementId:input.sourcePlacementId}];
+    const grouped=new Map<string,EnhancedOrderLineInput>();
+    for(const candidate of supplied){
+      const sku=skuForProductName(candidate.product);if(!sku?.active)return{ok:false,message:"Every edited line must use an active approved SKU."};
+      const product=sku.description;const cases=Number(candidate.cases);if(!Number.isInteger(cases)||cases<1)return{ok:false,message:"Every edited order line needs a whole-number case quantity of at least 1."};
+      const key=product.toLowerCase();const existing=grouped.get(key);
+      grouped.set(key,{product,cases:(existing?.cases??0)+cases,inventoryAvailableAtOrder:Math.min(existing?.inventoryAvailableAtOrder??Number.POSITIVE_INFINITY,typeof candidate.inventoryAvailableAtOrder==="number"&&Number.isFinite(candidate.inventoryAvailableAtOrder)&&candidate.inventoryAvailableAtOrder>=0?candidate.inventoryAvailableAtOrder:0),sourcePlacementId:candidate.sourcePlacementId??existing?.sourcePlacementId});
+    }
+    const lineInputs=[...grouped.values()];if(!lineInputs.length)return{ok:false,message:"Add at least one product line."};
+    const lines=lineInputs.map((line,index)=>{const sourcePlacement=line.sourcePlacementId?data.placements.find((placement)=>placement.id===line.sourcePlacementId&&placement.accountId===order.accountId&&productsEquivalent(placement.product,line.product)):undefined;const available=Number.isFinite(line.inventoryAvailableAtOrder)?Number(line.inventoryAvailableAtOrder):0;return{id:`${id}-line-${index+1}`,product:line.product,cases:line.cases,pricePerCase:price,amount:line.cases*price,inventoryAvailableAtOrder:available,sourcePlacementId:sourcePlacement?.id,lowStockApprovalRequired:available<50};});
+    const cases=lines.reduce((sum,line)=>sum+line.cases,0);const amount=lines.reduce((sum,line)=>sum+line.amount,0);const lowStock=lines.some((line)=>line.lowStockApprovalRequired);const available=Math.min(...lines.map((line)=>line.inventoryAvailableAtOrder??0));const product=lines.length===1?lines[0].product:"Multiple products";const lineSummary=lines.map((line)=>`${line.cases} ${line.product}`).join(" · ");
+    const stamp=now();const adminApprovedAmendment=currentUser.role==="Administrator"&&order.status==="Approved";const nextStatus:OrderStatus=adminApprovedAmendment?"Approved":"Awaiting approval";
+    const revisedOrder:Order={...order,cases,amount,status:nextStatus,product,inventoryAvailableAtOrder:available,lowStockApprovalRequired:lowStock,sourcePlacementId:lines.length===1?lines[0].sourcePlacementId:undefined,lines};
+    const approval:Approval={id:uid(adminApprovedAmendment?"apr-amend":"apr-resubmit"),type:lowStock?"Low stock sale":"Order",title:adminApprovedAmendment?`Order amendment approved · ${order.number}`:lowStock?`Low-stock approval · ${order.number}`:`Review order ${order.number}`,detail:`${lineSummary} · ${cases} total cases · ${account.locationName??account.name}`,requestedBy:currentUser.name,requesterId:currentUser.id,recordId:id,team:currentUser.role==="Customer"?"Sales":currentUser.team,submittedAt:stamp,dueAt:new Date(Date.now()+86400000).toISOString(),priority:lowStock?"Urgent":"High",status:adminApprovedAmendment?"Approved":"Pending",...(adminApprovedAmendment?{decidedBy:currentUser.id,decidedAt:stamp}:{})};
+    const superseded=commercial.approvals.map((item)=>item.recordId===id&&["Order","Low stock sale"].includes(item.type)&&item.status==="Pending"?{...item,status:"Returned" as const,decidedBy:currentUser.id,decidedAt:stamp,returnReason:"Superseded by an edited order version."}:item);
+    const action=adminApprovedAmendment?"Order amended after approval":order.status==="Draft"?"Returned order corrected and resubmitted":"Order edited and resubmitted";
+    const nextCommercial:CommercialState={...commercial,orders:commercial.orders.map((item)=>item.id===id?revisedOrder:item),approvals:[approval,...superseded],accountPatches:{...commercial.accountPatches,[order.accountId]:{...(commercial.accountPatches[order.accountId]??{}),lastActivity:`${order.number} edited by ${currentUser.name}`}},activities:[{id:uid("act-order-edit"),accountId:order.accountId,type:"order",title:action,detail:`${order.number} changed by ${currentUser.name}: ${lineSummary} · ${cases} total cases · ${price.toFixed(2)}/case.${adminApprovedAmendment?" Administrator amendment remains approved.":" Administrator approval is required before fulfillment."}`,at:stamp,userId:currentUser.id},...commercial.activities]};
+    momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));setCommercial(nextCommercial);window.setTimeout(()=>void momentumStorage.flush(),0);return{ok:true,status:nextStatus};
+  };
+
   const decideApproval = (id: string, decision: "Approved" | "Returned") => {
     const approval = commercial.approvals.find((item) => item.id === id);
     if (!approval) {
@@ -696,7 +730,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, cancelOrder, updateAccountCommercial, updateCustomerCommercial, claimUnassignedProspect, releaseProspectOwnership, patchAccountLocation, transferAccountResponsibility, saveTerritory, importInventoryLots, resetDemo };
+  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, editOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, cancelOrder, updateAccountCommercial, updateCustomerCommercial, claimUnassignedProspect, releaseProspectOwnership, patchAccountLocation, transferAccountResponsibility, saveTerritory, importInventoryLots, resetDemo };
   return <EnhancedWorkspaceContext.Provider value={value}>{children}</EnhancedWorkspaceContext.Provider>;
 }
 
