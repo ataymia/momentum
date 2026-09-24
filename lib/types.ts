@@ -267,7 +267,8 @@ export type OrderStatus =
   | "Allocated"
   | "Out for delivery"
   | "Delivered"
-  | "Paid";
+  | "Paid"
+  | "Cancelled";
 
 export type PaymentStatus = "Not invoiced" | "Open" | "Partially paid" | "Paid";
 
@@ -306,6 +307,10 @@ export type Order = {
   lowStockApprovalRequired?: boolean;
   /** Authoritative SKU breakdown. Legacy single-SKU orders may omit this and are treated as one line. */
   lines?: OrderLine[];
+  /** Terminal cancellation evidence. Cancelled orders are retained, never deleted. */
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancellationReason?: string;
 };
 
 export type PlacementSource = "Physical count" | "Customer estimate" | "Demo POS feed";

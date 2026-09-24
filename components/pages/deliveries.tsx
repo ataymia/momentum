@@ -1,95 +1,31 @@
 "use client";
-
-import { CheckCircle2, MapPin, PackageCheck, PackageOpen, Phone, Route, Truck, UserCheck } from "lucide-react";
+import { Box, CheckCircle2, Mail, MapPin, PackageCheck, PackageOpen, Phone, Route, Truck, UserCheck, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { deliveryStatusForOrder, processedForDelivery } from "../../lib/delivery-engine";
 import { useDelivery } from "../../lib/delivery-context";
+import { orderLinesFor } from "../../lib/order-lines";
 import { useSyncStatus } from "../../lib/persistence";
 import { useWorkspace } from "../../lib/workspace-context";
-import { Button, PageHeader, Section, StatusPill } from "../ui";
-
-const tone = (status: string) => status === "Delivered" ? "success" as const : status === "In transit" || status === "Loaded" ? "info" as const : status.includes("ready") || status === "Accepted" ? "warning" as const : "neutral" as const;
-
-export function DeliveriesPage() {
-  const { data, currentUser, navigate } = useWorkspace();
-  const { state, taskForOrder, claimDelivery, assignDelivery, cancelDelivery, markLoaded, startDelivery, markDelivered } = useDelivery();
-  const sync = useSyncStatus();
-  const [driverByOrder, setDriverByOrder] = useState<Record<string, string>>({});
-  const [notice, setNotice] = useState("");
-  const isDriver = currentUser?.role === "Delivery Driver";
-  const canManage = Boolean(currentUser && ["Administrator", "Operations"].includes(currentUser.role));
-  const drivers = data.users.filter((user) => user.role === "Delivery Driver");
-
-  const eligible = useMemo(() => data.orders.filter(processedForDelivery).sort((a, b) => b.placedAt.localeCompare(a.placedAt)), [data.orders]);
-  const visible = eligible.filter((order) => {
-    const task = taskForOrder(order.id);
-    if (!isDriver) return true;
-    return !task || task.driverId === currentUser?.id;
-  });
-  const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
-  const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
-  const complete = visible.filter((order) => taskForOrder(order.id)?.status === "Delivered");
-
-  const run = (result: { ok: boolean; message?: string }, success: string) => {
-    setNotice(result.ok ? success : result.message ?? "The delivery update was not accepted.");
-  };
-
-  const syncText = sync.lastError ? `Sync issue: ${sync.lastError}` : sync.pending || sync.flushing ? `Saving ${sync.pending || 1} change${sync.pending === 1 ? "" : "s"}…` : sync.mode === "firestore" ? "Cloud synced" : "Local demo";
-
-  const card = (orderId: string) => {
-    const order = data.orders.find((item) => item.id === orderId)!;
-    const task = taskForOrder(order.id);
-    const account = data.accounts.find((item) => item.id === order.accountId);
-    const driver = task ? data.users.find((user) => user.id === task.driverId) : undefined;
-    const status = deliveryStatusForOrder(state, order);
-    const address = account ? [account.streetAddress, account.city || account.location, account.state, account.postalCode].filter(Boolean).join(", ") : "Location unavailable";
-    const ownTask = isDriver && task?.driverId === currentUser?.id;
-    const selectedDriver = driverByOrder[order.id] ?? drivers[0]?.id ?? "";
-    return <article key={order.id} className="company-request-list__item" style={{display:"grid",gap:12}}>
-      <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
-        <div>
-          <small>{order.number} · {order.product ?? "Golden Eagle"}</small>
-          <strong style={{display:"block",fontSize:"1.05rem"}}>{account?.locationName ?? account?.name ?? "Unknown customer"}</strong>
-          <p style={{margin:"4px 0"}}><MapPin size={14} style={{verticalAlign:"-2px"}}/> {address}</p>
-          {account?.phone && <p style={{margin:"4px 0"}}><Phone size={14} style={{verticalAlign:"-2px"}}/> {account.phone}</p>}
-        </div>
-        <StatusPill tone={tone(status)}>{status}</StatusPill>
-      </div>
-      <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-        <span><b>{order.cases}</b> cases</span>
-        <span><b>{order.status}</b> order status</span>
-        <span><b>{driver?.name ?? "Unassigned"}</b> driver</span>
-      </div>
-      {!task && isDriver && <div><Button size="sm" icon={<UserCheck size={15}/>} onClick={() => run(claimDelivery(order.id), `${order.number} accepted.`)}>Accept delivery</Button></div>}
-      {!task && canManage && <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        <select value={selectedDriver} onChange={(event)=>setDriverByOrder((current)=>({...current,[order.id]:event.target.value}))}>
-          {drivers.map((item)=><option value={item.id} key={item.id}>{item.name}</option>)}
-        </select>
-        <Button size="sm" disabled={!selectedDriver} onClick={() => run(assignDelivery(order.id, selectedDriver), `${order.number} assigned.`)}>Assign driver</Button>
-      </div>}
-      {task?.status === "Accepted" && (ownTask || canManage) && <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-        {order.status === "Allocated" ? <Button size="sm" icon={<PackageOpen size={15}/>} onClick={() => run(markLoaded(order.id), `${order.number} loaded into driver custody.`)}>Mark loaded</Button> : <span>Waiting for warehouse reservation / allocation before loading.</span>}
-        {canManage && <Button size="sm" variant="ghost" onClick={() => { const reason = window.prompt("Why is this delivery being cancelled or reassigned?")?.trim() ?? ""; if (reason) run(cancelDelivery(order.id, reason), `${order.number} returned to the delivery queue.`); }}>Cancel assignment</Button>}
-      </div>}
-      {task?.status === "Loaded" && (ownTask || canManage) && <Button size="sm" icon={<Truck size={15}/>} onClick={() => run(startDelivery(order.id), `${order.number} is now in transit.`)}>Start delivery</Button>}
-      {task?.status === "In transit" && (ownTask || canManage) && <Button size="sm" icon={<CheckCircle2 size={15}/>} onClick={() => { if (window.confirm(`Confirm ${order.number} was delivered to ${account?.locationName ?? account?.name ?? "the customer"}?`)) run(markDelivered(order.id), `${order.number} delivered and inventory posted to the customer.`); }}>Mark delivered</Button>}
-      {task?.history?.length ? <details><summary>Delivery history ({task.history.length})</summary><div style={{display:"grid",gap:6,marginTop:8}}>{task.history.map((event)=><small key={event.id}>{new Date(event.at).toLocaleString()} · {event.type}{event.note?` · ${event.note}`:""}</small>)}</div></details> : null}
-    </article>;
-  };
-
-  return <div className="page page--deliveries">
-    <PageHeader title={isDriver ? "My deliveries" : "Delivery operations"} actions={<StatusPill tone={sync.lastError ? "danger" : sync.pending || sync.flushing ? "warning" : "success"}>{syncText}</StatusPill>}/>
-    {notice && <p className="form-error" role="status">{notice}</p>}
-    <div className="company-rule-facts">
-      <div><span>Ready / accepted</span><strong>{ready.length}</strong><small>Approved or packed orders</small></div>
-      <div><span>Loaded / in transit</span><strong>{active.length}</strong><small>Active driver custody</small></div>
-      <div><span>Delivered</span><strong>{complete.length}</strong><small>Delivery records in this workspace</small></div>
-      <div><span>Drivers</span><strong>{drivers.length}</strong><small>{drivers.length ? "Provisioned delivery users" : "No delivery drivers provisioned yet"}</small></div>
-    </div>
-    <Section title="Delivery queue" description="Only processed orders appear here. A driver accepts or is assigned an order, loads reserved inventory into driver custody, starts the route, then posts delivery to the customer location.">
-      <div className="company-request-list">{visible.filter((order)=>taskForOrder(order.id)?.status!=="Delivered").map((order)=>card(order.id))}{visible.filter((order)=>taskForOrder(order.id)?.status!=="Delivered").length===0&&<div className="review-empty"><Route size={23}/><p>No active deliveries in your scope.</p></div>}</div>
-    </Section>
-    {complete.length>0&&<Section title="Completed deliveries"><div className="company-request-list">{complete.slice(0,25).map((order)=>card(order.id))}</div></Section>}
-    {!isDriver&&<Section title="Fulfillment handoff" description="Warehouse allocation remains a controlled inventory step. If an accepted delivery says it is waiting for allocation, open Inventory and reserve the exact lots before loading."><Button variant="secondary" icon={<PackageCheck size={15}/>} onClick={()=>navigate("inventory")}>Open inventory fulfillment</Button></Section>}
-  </div>;
+import { Button, PageHeader, Section, StatusPill, formatMoney } from "../ui";
+const tone=(status:string)=>status==="Delivered"?"success" as const:status==="In transit"||status==="Loaded"?"info" as const:status.includes("ready")||status==="Accepted"?"warning" as const:"neutral" as const;
+const fullAddress=(account:{streetAddress?:string;city?:string;state?:string;postalCode?:string;location:string})=>[account.streetAddress,account.city||account.location,account.state,account.postalCode].filter(Boolean).join(", ");
+export function DeliveriesPage(){
+ const{data,currentUser,navigate}=useWorkspace();const{state,taskForOrder,claimDelivery,assignDelivery,cancelDelivery,prepareDelivery,markLoaded,startDelivery,markDelivered,addDeliveryNote}=useDelivery();const sync=useSyncStatus();const[driverByOrder,setDriverByOrder]=useState<Record<string,string>>({});const[notice,setNotice]=useState("");
+ const isDriver=currentUser?.role==="Delivery Driver";const canManage=Boolean(currentUser&&["Administrator","Operations"].includes(currentUser.role));const drivers=data.users.filter((u)=>u.role==="Delivery Driver");
+ const eligible=useMemo(()=>data.orders.filter(processedForDelivery).sort((a,b)=>b.placedAt.localeCompare(a.placedAt)),[data.orders]);
+ const visible=eligible.filter((order)=>{const task=taskForOrder(order.id);if(!isDriver)return true;return!task||task.driverId===currentUser?.id});
+ const ready=visible.filter((order)=>!taskForOrder(order.id)||taskForOrder(order.id)?.status==="Accepted");const active=visible.filter((order)=>["Loaded","In transit"].includes(taskForOrder(order.id)?.status??""));const complete=visible.filter((order)=>taskForOrder(order.id)?.status==="Delivered");
+ const run=(result:{ok:boolean;message?:string},success:string)=>setNotice(result.ok?success:result.message??"The delivery update was not accepted.");
+ const syncText=sync.lastError?`Sync issue: ${sync.lastError}`:sync.pending||sync.flushing?`Saving ${sync.pending||1} change${sync.pending===1?"":"s"}…`:sync.mode==="firestore"?"Cloud synced":"Local demo";
+ const card=(orderId:string)=>{const order=data.orders.find((i)=>i.id===orderId)!;const task=taskForOrder(order.id);const account=data.accounts.find((i)=>i.id===order.accountId);const customer=account?.customerId?(data.customers??[]).find((c)=>c.id===account.customerId):undefined;const driver=task?data.users.find((u)=>u.id===task.driverId):undefined;const status=deliveryStatusForOrder(state,order);const ownTask=Boolean(isDriver&&task?.driverId===currentUser?.id);const selectedDriver=driverByOrder[order.id]??drivers[0]?.id??"";const lines=orderLinesFor(order);
+ return <article key={order.id} className="company-request-list__item" style={{display:"grid",gap:14}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}><div><small>{order.number}</small><strong style={{display:"block",fontSize:"1.08rem"}}>{account?.locationName??account?.name??"Unknown customer"}</strong><p style={{margin:"4px 0"}}><MapPin size={14} style={{verticalAlign:"-2px"}}/> {account?fullAddress(account):"Location unavailable"}</p>{account?.phone&&<p style={{margin:"4px 0"}}><Phone size={14} style={{verticalAlign:"-2px"}}/> {account.phone}</p>}</div><StatusPill tone={tone(status)}>{status}</StatusPill></div>
+ <div className="company-rule-facts"><div><span>Cases</span><strong>{order.cases}</strong><small>{lines.length} SKU{lines.length===1?"":"s"}</small></div><div><span>Order total</span><strong>{formatMoney(order.amount)}</strong><small>{order.paymentStatus}</small></div><div><span>Driver</span><strong>{driver?.name??"Unassigned"}</strong><small>{task?"Claimed":"Available to claim"}</small></div><div><span>Terms</span><strong>{customer?.paymentTerms??"COD"}</strong><small>Order {order.status}</small></div></div>
+ <details open={Boolean(ownTask||task?.status==="In transit")}><summary>Delivery details</summary><div style={{display:"grid",gap:10,marginTop:10}}><div className="company-request-list">{lines.map((line)=><article key={line.id}><span><Box size={15}/></span><div><strong>{line.product}</strong><p>{line.cases} cases · {formatMoney(line.amount)}</p></div></article>)}</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10}}><div><small>Primary contact</small><p><UserRound size={14}/> {account?.contactName||"Not recorded"}{account?.contactRole?` · ${account.contactRole}`:""}</p><p>{account?.phone||"No phone"}{account?.email?` · ${account.email}`:""}</p></div>{customer&&(customer.billingContactName||customer.accountsPayableContactName)&&<div><small>Billing / A/P contact</small><p><Mail size={14}/> {customer.accountsPayableContactName??customer.billingContactName}</p><p>{customer.accountsPayablePhone??customer.billingPhone??""}</p></div>}<div><small>Delivery note / location note</small><p>{task?.note??account?.notes??"No delivery note recorded."}</p></div></div></div></details>
+ {!task&&isDriver&&<Button size="sm" icon={<UserCheck size={15}/>} onClick={()=>run(claimDelivery(order.id),`${order.number} claimed. You can now pack it.`)}>Claim delivery</Button>}
+ {!task&&canManage&&<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><select value={selectedDriver} onChange={(e)=>setDriverByOrder((c)=>({...c,[order.id]:e.target.value}))}>{drivers.map((d)=><option value={d.id} key={d.id}>{d.name}</option>)}</select><Button size="sm" disabled={!selectedDriver} onClick={()=>run(assignDelivery(order.id,selectedDriver),`${order.number} assigned.`)}>Assign driver</Button></div>}
+ {task?.status==="Accepted"&&(ownTask||canManage)&&<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>{order.status==="Approved"&&<Button size="sm" icon={<PackageCheck size={15}/>} onClick={()=>run(prepareDelivery(order.id),`${order.number} packed and inventory reserved.`)}>Pack / reserve inventory</Button>}{order.status==="Allocated"&&<Button size="sm" icon={<PackageOpen size={15}/>} onClick={()=>run(markLoaded(order.id),`${order.number} loaded into driver custody.`)}>Mark loaded</Button>}<Button size="sm" variant="ghost" onClick={()=>{const reason=window.prompt("Why is this delivery assignment being released?")?.trim()??"";if(reason)run(cancelDelivery(order.id,reason),`${order.number} returned to the delivery queue.`)}}>{ownTask?"Release assignment":"Cancel assignment"}</Button></div>}
+ {task?.status==="Loaded"&&(ownTask||canManage)&&<Button size="sm" icon={<Truck size={15}/>} onClick={()=>run(startDelivery(order.id),`${order.number} is now in transit.`)}>Start delivery</Button>}
+ {task?.status==="In transit"&&(ownTask||canManage)&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}><Button size="sm" icon={<CheckCircle2 size={15}/>} onClick={()=>{if(window.confirm(`Confirm ${order.number} was delivered to ${account?.locationName??account?.name??"the customer"}?`))run(markDelivered(order.id),`${order.number} delivered and inventory posted to the customer.`)}}>Mark delivered</Button><Button size="sm" variant="secondary" onClick={()=>{const note=window.prompt("Add a delivery note")?.trim()??"";if(note)run(addDeliveryNote(order.id,note),"Delivery note saved.")}}>Add note</Button></div>}
+ {task?.history?.length?<details><summary>Delivery history ({task.history.length})</summary><div style={{display:"grid",gap:6,marginTop:8}}>{task.history.map((event)=><small key={event.id}>{new Date(event.at).toLocaleString()} · {event.type}{event.note?` · ${event.note}`:""}</small>)}</div></details>:null}</article>};
+ return <div className="page page--deliveries"><PageHeader title={isDriver?"My deliveries":"Delivery operations"} description={isDriver?"Claim any unassigned approved order, pack the exact SKU mix, load it into your custody, start the route and confirm delivery.":"Assign, monitor and reconcile the delivery queue."} actions={<StatusPill tone={sync.lastError?"danger":sync.pending||sync.flushing?"warning":"success"}>{syncText}</StatusPill>}/>{notice&&<p className="form-notice" role="status">{notice}</p>}<div className="company-rule-facts"><div><span>Available / accepted</span><strong>{ready.length}</strong><small>Orders ready for driver action</small></div><div><span>Loaded / in transit</span><strong>{active.length}</strong><small>Active driver custody</small></div><div><span>Delivered</span><strong>{complete.length}</strong><small>Completed delivery records</small></div><div><span>Drivers</span><strong>{drivers.length}</strong><small>{drivers.length?"Provisioned delivery users":"No delivery drivers provisioned"}</small></div></div><Section title="Delivery queue" description="Unassigned approved orders are visible to every Delivery Driver. Claiming prevents another driver from taking the same active task."><div className="company-request-list">{visible.filter((o)=>taskForOrder(o.id)?.status!=="Delivered").map((o)=>card(o.id))}{visible.filter((o)=>taskForOrder(o.id)?.status!=="Delivered").length===0&&<div className="review-empty"><Route size={23}/><p>No active deliveries in your scope.</p></div>}</div></Section>{complete.length>0&&<Section title="Completed deliveries"><div className="company-request-list">{complete.slice(0,25).map((o)=>card(o.id))}</div></Section>}{!isDriver&&<Section title="Inventory fulfillment" description="Inventory reservations and custody remain auditable. Open Inventory for manual exceptions, counts, holds and reconciliation."><Button variant="secondary" icon={<PackageCheck size={15}/>} onClick={()=>navigate("inventory")}>Open inventory fulfillment</Button></Section>}</div>;
 }

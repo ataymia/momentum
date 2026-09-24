@@ -186,8 +186,8 @@ service cloud.firestore {
 
     // momentum-commercial-controls-v1
     match /commercial/fields/{field} {
-      allow get, list: if field in ['_root', 'activities', 'appointments', 'approvals', 'inventoryLots', 'orders', 'territories'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
-      allow write: if field in ['_root', 'activities', 'appointments', 'approvals', 'inventoryLots', 'orders', 'territories'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
+      allow get, list: if field in ['_root', 'activities', 'appointments', 'approvals', 'inventoryLots', 'orders', 'territories'] && (field in ['inventoryLots', 'orders'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
+      allow write: if field in ['_root', 'activities', 'appointments', 'approvals', 'inventoryLots', 'orders', 'territories'] && (field in ['orders'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
     }
 
     // momentum-crm-v1

@@ -18,7 +18,7 @@ const activityTypes = new Set(["call", "visit", "sample", "order", "placement", 
 const appointmentTypes = new Set(["First visit", "Revisit", "Sample drop", "Placement check", "Reorder", "Delivery"]);
 const appointmentStatuses = new Set(["Scheduled", "Dispatched", "En route", "Arrived", "Completed", "Needs follow-up"]);
 const appointmentOutcomes = new Set(["Order placed", "Follow-up scheduled", "Placement verified", "No decision", "Closed lost", "Delivery completed"]);
-const orderStatuses = new Set(["Draft", "Awaiting approval", "Approved", "Allocated", "Out for delivery", "Delivered", "Paid"]);
+const orderStatuses = new Set(["Draft", "Awaiting approval", "Approved", "Allocated", "Out for delivery", "Delivered", "Paid", "Cancelled"]);
 const paymentStatuses = new Set(["Not invoiced", "Open", "Partially paid", "Paid"]);
 const placementSources = new Set(["Physical count", "Customer estimate", "Demo POS feed"]);
 const placementStatuses = new Set(["Healthy", "Check soon", "Out of stock"]);
@@ -115,7 +115,8 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
     const id = text(value.id); const accountId = text(value.accountId); const ownerId = text(value.ownerId); const status = text(value.status); const paymentStatus = text(value.paymentStatus); const price = Number(value.pricePerCase); const cases = Number(value.cases); const amount = Number(value.amount);
     const owner = users.find((user) => user.id === ownerId);
     if (!id || !text(value.number) || !accountId || !owner || (owner.role === "Customer" && !(owner.accountIds ?? []).includes(accountId)) || !wholePositive(cases) || !finite(price) || price <= 0 || !finite(amount) || amount < 0 || Math.abs(amount - cases * price) > 0.01 || !orderStatuses.has(status) || !paymentStatuses.has(paymentStatus) || !validDateOrInstant(value.placedAt) || !text(value.priceBasis)) return [];
-    if (!optionalValidDate(value.paidAt) || !optionalValidDate(value.firstSettledAt) || !optionalFinite(value.inventoryAvailableAtOrder)) return [];
+    if (!optionalValidDate(value.paidAt) || !optionalValidDate(value.firstSettledAt) || !optionalFinite(value.inventoryAvailableAtOrder) || !optionalValidInstant(value.cancelledAt)) return [];
+    if (status === "Cancelled" && (!optionalText(value.cancelledBy) || !optionalText(value.cancellationReason) || !optionalText(value.cancelledAt))) return [];
     const settlementEvidence = optionalText(value.firstSettledAt) || optionalText(value.paidAt);
     const safePaymentStatus = paymentStatus === "Paid" && !settlementEvidence ? "Open" : paymentStatus;
     const safeStatus = status === "Paid" && safePaymentStatus !== "Paid" ? "Delivered" : status;
@@ -123,7 +124,7 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
     if (creditedRepId && users.find((user) => user.id === creditedRepId)?.role !== "Sales Representative") return [];
     const lines=normalizeStoredOrderLines(value.lines);
     if(lines&&(lines.reduce((sum,line)=>sum+line.cases,0)!==cases||Math.abs(lines.reduce((sum,line)=>sum+line.amount,0)-amount)>0.01))return [];
-    return [{ id, number: text(value.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(value.placedAt), ownerId, paidAt: optionalText(value.paidAt), firstSettledAt: optionalText(value.firstSettledAt), priceBasis: text(value.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product: optionalText(value.product), creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: finite(value.inventoryAvailableAtOrder) ? Number(value.inventoryAvailableAtOrder) : undefined, lowStockApprovalRequired: typeof value.lowStockApprovalRequired === "boolean" ? value.lowStockApprovalRequired : undefined, lines }];
+    return [{ id, number: text(value.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(value.placedAt), ownerId, paidAt: optionalText(value.paidAt), firstSettledAt: optionalText(value.firstSettledAt), priceBasis: text(value.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product: optionalText(value.product), creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: finite(value.inventoryAvailableAtOrder) ? Number(value.inventoryAvailableAtOrder) : undefined, lowStockApprovalRequired: typeof value.lowStockApprovalRequired === "boolean" ? value.lowStockApprovalRequired : undefined, lines, cancelledAt: optionalText(value.cancelledAt), cancelledBy: optionalText(value.cancelledBy), cancellationReason: optionalText(value.cancellationReason) }];
   }));
 
   const inventory = uniqueById(list(root, "inventory", fallback.inventory).flatMap((value): InventoryLot[] => {

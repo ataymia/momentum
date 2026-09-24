@@ -104,6 +104,7 @@ type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | 
   decideApproval: (id: string, decision: "Approved" | "Returned") => void;
   setOrderStatus: (id: string, status: OrderStatus) => void;
   reconcileOrderPayment: (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => void;
+  cancelOrder: (id: string, reason: string) => { ok: boolean; message?: string };
   updateAccountCommercial: (accountId: string, patch: CommercialAccountInput & Partial<Pick<Account,"programPricingLabel"|"programPricePerCase"|"programPricingEffectiveDate"|"programPricingExpirationDate"|"programPricingStatus">>) => boolean;
   updateCustomerCommercial:(customerId:string,patch:CommercialCustomerPatch)=>boolean;
   claimUnassignedProspect:(accountId:string)=>boolean;
@@ -121,7 +122,7 @@ const nextAppointment: Record<AppointmentStatus, AppointmentStatus> = { Schedule
 const nextFulfillment: Partial<Record<OrderStatus, OrderStatus>> = { Approved: "Allocated", Allocated: "Out for delivery", "Out for delivery": "Delivered" };
 
 function inferredTier(data: WorkspaceData, accountId: string): PricingTier | undefined {
-  const price = data.orders.filter((order) => order.accountId === accountId && Number.isFinite(order.pricePerCase) && order.pricePerCase > 0).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0]?.pricePerCase;
+  const price = data.orders.filter((order) => order.accountId === accountId && order.status !== "Cancelled" && Number.isFinite(order.pricePerCase) && order.pricePerCase > 0).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0]?.pricePerCase;
   return price === 24 ? "A" : price === 27 ? "B" : price === 30 ? "C" : undefined;
 }
 
@@ -620,6 +621,25 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     setCommercial((state) => ({ ...state, orders: state.orders.map((item) => item.id === id ? { ...item, status, paymentStatus: status === "Delivered" && item.paymentStatus === "Not invoiced" ? "Open" : item.paymentStatus } : item) }));
   };
 
+  const cancelOrder = (id: string, reason: string) => {
+    if (!currentUser || currentUser.role !== "Administrator") return { ok: false, message: "Administrator access is required to cancel an order." };
+    const cleanReason = reason.trim();
+    if (cleanReason.length < 3) return { ok: false, message: "Enter a cancellation reason." };
+    const order = commercial.orders.find((item) => item.id === id);
+    if (!order) return { ok: false, message: "Only shared commercial orders can be cancelled from this screen." };
+    if (["Allocated", "Out for delivery", "Delivered", "Paid"].includes(order.status)) return { ok: false, message: "Fulfillment has already started. Use the delivery/return exception workflow instead of cancelling this order." };
+    if (order.status === "Cancelled") return { ok: true };
+    const stamp = now();
+    setCommercial((state) => ({
+      ...state,
+      orders: state.orders.map((item) => item.id === id ? { ...item, status: "Cancelled", cancelledAt: stamp, cancelledBy: currentUser.id, cancellationReason: cleanReason } : item),
+      approvals: state.approvals.map((item) => item.recordId === id && ["Order", "Low stock sale"].includes(item.type) && item.status === "Pending" ? { ...item, status: "Returned", decidedBy: currentUser.id, decidedAt: stamp, returnReason: `Order cancelled: ${cleanReason}` } : item),
+      accountPatches: { ...state.accountPatches, [order.accountId]: { ...(state.accountPatches[order.accountId] ?? {}), lastActivity: `Order ${order.number} cancelled` } },
+      activities: [{ id: uid("act-order-cancel"), accountId: order.accountId, type: "order", title: "Order cancelled", detail: `${order.number} cancelled by ${currentUser.name}: ${cleanReason}`, at: stamp, userId: currentUser.id }, ...state.activities],
+    }));
+    return { ok: true };
+  };
+
   const reconcileOrderPayment = (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => {
     if (!canReconcileOrderPayment(currentUser)) return;
     if (status === "Paid" && paidAt !== undefined && !isValidCalendarDateKey(paidAt)) return;
@@ -676,7 +696,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, updateAccountCommercial, updateCustomerCommercial, claimUnassignedProspect, releaseProspectOwnership, patchAccountLocation, transferAccountResponsibility, saveTerritory, importInventoryLots, resetDemo };
+  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, cancelOrder, updateAccountCommercial, updateCustomerCommercial, claimUnassignedProspect, releaseProspectOwnership, patchAccountLocation, transferAccountResponsibility, saveTerritory, importInventoryLots, resetDemo };
   return <EnhancedWorkspaceContext.Provider value={value}>{children}</EnhancedWorkspaceContext.Provider>;
 }
 
