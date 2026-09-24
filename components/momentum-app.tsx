@@ -58,6 +58,7 @@ function MomentumExperience(){
   const firebase=useFirebaseSessionOptional();
   const activeAdministrator=currentUser?.role==="Administrator"&&firebase?.access?.role==="Administrator"&&firebase.access.accountState==="Active";
   if(!currentUser)return <LoginScreen/>;
+  if(firebase&&currentUser.role!=="Customer"&&firebase.access?.accountState!=="Active")return <OnboardingPortal/>;
   if(currentUser.role!=="Customer"&&currentRecord?.state!=="Active"&&!activeAdministrator)return <OnboardingPortal/>;
   return <><AppShell/><DeparturePrompt/></>;
 }
