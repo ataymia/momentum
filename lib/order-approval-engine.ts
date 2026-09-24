@@ -21,7 +21,11 @@ export function canonicalApproval(a: Approval, b: Approval): Approval {
   const aAt = effectiveAt(a);
   const bAt = effectiveAt(b);
   if (aAt !== bAt) return bAt > aAt ? b : a;
-  if (isFinal(a) !== isFinal(b)) return isFinal(a) ? a : b;
+  // Same record id means two replicas of one approval cycle; a final decision wins over its stale Pending copy.
+  if (a.id === b.id && isFinal(a) !== isFinal(b)) return isFinal(a) ? a : b;
+  // Different ids mean different approval cycles. At an exact timestamp tie, the newly encountered cycle wins.
+  // reconcileApprovals iterates secondary then primary, so the editable shared order stream can supersede a stale cycle.
+  if (a.id !== b.id) return b;
   return b.submittedAt > a.submittedAt ? b : a;
 }
 
