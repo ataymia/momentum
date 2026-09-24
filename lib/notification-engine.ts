@@ -1,10 +1,10 @@
 import type { AuditEvent, AuditChange } from "./audit-engine";
-import type { Account, WorkspaceData, WorkspaceUser } from "./types";
+import type { Account, PageKey, WorkspaceData, WorkspaceUser } from "./types";
 
 export const NOTIFICATION_STORAGE_KEY = "momentum-notification-rules-v1";
 export type NotificationChannel = "In app" | "Email" | "SMS";
 export type NotificationPreference = { userId: string; inApp: boolean; email: boolean; sms: boolean; emailAddress?: string; smsNumber?: string };
-export type NotificationDelivery = { id: string; sourceEventId: string; recipientUserId: string; channel: NotificationChannel; title: string; detail: string; tone: "info" | "warning" | "success"; createdAt: string; status: "Unread" | "Read" | "Awaiting integration" | "Sent" | "Failed"; readAt?: string; escalatedAt?: string; escalationOf?: string };
+export type NotificationDelivery = { id: string; sourceEventId: string; recipientUserId: string; channel: NotificationChannel; title: string; detail: string; tone: "info" | "warning" | "success"; createdAt: string; status: "Unread" | "Read" | "Awaiting integration" | "Sent" | "Failed"; readAt?: string; escalatedAt?: string; escalationOf?: string; targetPage?: PageKey; targetRecordId?: string; actionLabel?: string };
 export type NotificationState = { version: 1; escalationHours: number; preferences: NotificationPreference[]; deliveries: NotificationDelivery[] };
 export const defaultNotificationPreference = (user: WorkspaceUser): NotificationPreference => ({ userId: user.id, inApp: user.role !== "Customer", email: false, sms: false, emailAddress: user.email });
 export function createNotificationSeed(users: WorkspaceUser[]): NotificationState { return { version: 1, escalationHours: 24, preferences: users.map(defaultNotificationPreference), deliveries: [] }; }
@@ -93,6 +93,32 @@ export function auditEventCreatesNotification(event: AuditEvent) {
   return false;
 }
 
+export type NotificationTarget={targetPage:PageKey;targetRecordId?:string;actionLabel:string};
+export function notificationTarget(event:AuditEvent,data:WorkspaceData):NotificationTarget|null{
+  if(event.collection==="approvals"){
+    const approval=data.approvals.find((item)=>item.id===event.entityId);
+    if(!approval)return null;
+    if(event.action==="Created"&&approval.status!=="Pending")return null;
+    if(event.action==="Updated"&&changedTo(event,"status","Returned")&&approval.status!=="Returned")return null;
+    if(["Order","Low stock sale"].includes(approval.type)){
+      if(!approval.recordId||!data.orders.some((order)=>order.id===approval.recordId))return null;
+      return{targetPage:"orders",targetRecordId:approval.recordId,actionLabel:approval.status==="Pending"?"Review order":"Open order"};
+    }
+    if(approval.type==="Territory exception")return{targetPage:"salesMap",targetRecordId:approval.recordId,actionLabel:"Review territory exception"};
+    return{targetPage:"work",targetRecordId:approval.id,actionLabel:"Open approval"};
+  }
+  if(event.collection==="timecards"){
+    const card=data.timecards.find((item)=>item.id===event.entityId);if(!card)return null;
+    if(changedTo(event,"status","Submitted")&&card.status!=="Submitted")return null;
+    if(changedTo(event,"status","Returned")&&card.status!=="Returned")return null;
+    return{targetPage:"timekeeping",targetRecordId:card.id,actionLabel:"Open timecard"};
+  }
+  if(event.module==="Marketing"&&event.collection==="requests")return{targetPage:"marketing",targetRecordId:event.entityId,actionLabel:"Open marketing request"};
+  if(event.module==="HCM"&&event.collection==="leaveRequests")return{targetPage:"people",targetRecordId:event.entityId,actionLabel:"Open HR request"};
+  if(event.module==="Field tracking"&&event.collection==="departureAlerts")return{targetPage:"dispatch",targetRecordId:event.entityId,actionLabel:"Open dispatch"};
+  return null;
+}
+
 const collectionNames: Record<string, string> = {
   accounts: "account",
   appointments: "appointment",
@@ -155,11 +181,14 @@ const fieldLabels: Record<string, string> = {
   requiredForTeams: "team audience",
 };
 
-const ignoredNotificationFields = new Set(["id", "updatedAt", "createdAt", "readBy", "acknowledgedBy", "passwordChangedAt", "provisionedAt"]);
+const ignoredNotificationFields = new Set(["id", "updatedAt", "createdAt", "readBy", "acknowledgedBy", "passwordChangedAt", "provisionedAt", "createdBy", "submittedBy", "requesterId", "actorId", "updatedBy", "changedBy", "decidedBy", "approvedBy", "fulfilledBy", "reviewedBy", "resolvedBy", "returnedBy", "cancelledBy", "deletedBy", "approverId", "assignedBy", "claimedBy", "completedBy"]);
 
 const titleCase = (value: string) => value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replaceAll("_", " ").replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const entityName = (event: AuditEvent) => collectionNames[event.collection] ?? titleCase(event.collection || event.entityType).toLowerCase();
-const actorName = (event: AuditEvent, data?: WorkspaceData) => data?.users.find((user) => user.id === event.actorId)?.firstName || data?.users.find((user) => user.id === event.actorId)?.name || "A team member";
+const notificationCreationActors=new Set(["createdBy","submittedBy","requesterId","ownerId","userId","actorId","provisionedBy"]);
+const notificationMutationActors=new Set(["decidedBy","approvedBy","fulfilledBy","reviewedBy","resolvedBy","returnedBy","cancelledBy","deletedBy","approverId","updatedBy","changedBy","actorId","assignedBy","claimedBy","completedBy"]);
+const notificationActorVerified=(event:AuditEvent)=>{if(event.actorId==="system")return false;if(event.id.startsWith("audit-manual-"))return true;const fields=event.action==="Created"?notificationCreationActors:notificationMutationActors;return event.changes.some((change)=>fields.has(change.field)&&change.after===event.actorId);};
+const actorName = (event: AuditEvent, data?: WorkspaceData) => notificationActorVerified(event) ? (data?.users.find((user) => user.id === event.actorId)?.firstName || data?.users.find((user) => user.id === event.actorId)?.name || "A team member") : "A team member";
 const accountName = (event: AuditEvent, data?: WorkspaceData) => {
   const account = event.relatedAccountId ? data?.accounts.find((item) => item.id === event.relatedAccountId) : undefined;
   return account?.locationName || account?.name;

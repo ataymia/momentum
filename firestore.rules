@@ -270,8 +270,8 @@ service cloud.firestore {
 
     // momentum-marketing-v3
     match /marketing/fields/{field} {
-      allow get, list: if field in ['_root', 'assets', 'attributions', 'campaigns', 'materialMovements', 'materials', 'partnerships', 'requests', 'spend', 'touches'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
-      allow write: if field in ['_root', 'assets', 'attributions', 'campaigns', 'materialMovements', 'materials', 'partnerships', 'requests', 'spend', 'touches'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
+      allow get, list: if field in ['_root', 'assets', 'attributions', 'campaigns', 'deliveryNotices', 'materialMovements', 'materials', 'partnerships', 'requests', 'spend', 'touches'] && (field in ['deliveryNotices'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
+      allow write: if field in ['_root', 'assets', 'attributions', 'campaigns', 'deliveryNotices', 'materialMovements', 'materials', 'partnerships', 'requests', 'spend', 'touches'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
     }
 
     // momentum-payroll-v5

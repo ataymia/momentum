@@ -12,7 +12,7 @@ import { evaluatePartnerPricing } from "./pricing-engine";
 import { useRuntimeModeValue } from "./runtime-mode-store";
 import { isTerritoryDeviation, normalizePostalCode, territoryForPostalCode, territorySystemEnabled, validateTerritoryDraft, type TerritoryDraft } from "./territory-engine";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
-import { canonicalProductDescription, skuForProductName } from "./product-catalog";
+import { skuForProductName } from "./product-catalog";
 import { productsEquivalent } from "./order-lines";
 import { reconcileApprovals, reconcileOrders } from "./order-approval-engine";
 import type { Account, Activity, Appointment, AppointmentStatus, Approval, CustomerAccount, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, SalesTerritory, WorkspaceData, WorkspaceUser } from "./types";
