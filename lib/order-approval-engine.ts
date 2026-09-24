@@ -13,6 +13,7 @@ const fulfillmentRank: Record<Order["status"], number> = {
 
 const instant = (value?: string) => value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).getTime() : 0;
 const isFinal = (approval: Approval) => approval.status !== "Pending";
+const supersededByEdit = (approval: Approval) => approval.status === "Returned" && approval.returnReason === "Superseded by an edited order version.";
 const effectiveAt = (approval: Approval) => isFinal(approval) ? instant(approval.decidedAt) || instant(approval.submittedAt) : instant(approval.submittedAt);
 
 export function canonicalApproval(a: Approval, b: Approval): Approval {
@@ -23,9 +24,13 @@ export function canonicalApproval(a: Approval, b: Approval): Approval {
   if (aAt !== bAt) return bAt > aAt ? b : a;
   // Same record id means two replicas of one approval cycle; a final decision wins over its stale Pending copy.
   if (a.id === b.id && isFinal(a) !== isFinal(b)) return isFinal(a) ? a : b;
-  // Different ids mean different approval cycles. At an exact timestamp tie, the newly encountered cycle wins.
-  // reconcileApprovals iterates secondary then primary, so the editable shared order stream can supersede a stale cycle.
-  if (a.id !== b.id) return b;
+  // Editing may close an old Pending cycle and open the corrected Pending cycle in the same millisecond.
+  // The explicit superseded marker makes that relationship unambiguous without relying on array order.
+  if (a.id !== b.id) {
+    if (a.status === "Pending" && supersededByEdit(b)) return a;
+    if (b.status === "Pending" && supersededByEdit(a)) return b;
+    return b;
+  }
   return b.submittedAt > a.submittedAt ? b : a;
 }
 
