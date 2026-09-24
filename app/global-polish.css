@@ -251,6 +251,23 @@
   max-width:320px!important;
 }
 
+/* Administration status labels are short control states. Let the panel stack before
+   letting a pill collapse into one letter per line. */
+.integration-list .status-pill,
+.security-checklist .status-pill,
+.settings-users .status-pill,
+.settings-security-banner>.status-pill {
+  width:max-content;
+  max-width:none;
+  white-space:nowrap!important;
+  flex-shrink:0;
+}
+.integration-list article,
+.security-checklist>div,
+.settings-users article {
+  overflow:visible;
+}
+
 /* Action areas can wrap rather than collide with content. */
 .provisioning-row-actions,
 .data-exchange-actions,
@@ -259,6 +276,12 @@
 .page-header__actions,
 .panel__action {
   flex-wrap:wrap;
+}
+
+@media (max-width:1360px) {
+  .settings-grid {
+    grid-template-columns:1fr!important;
+  }
 }
 
 @media (max-width:1100px) {
@@ -298,5 +321,16 @@
   .notification-destination,
   .transport-state {
     grid-column:auto!important;
+  }
+  .integration-list article,
+  .security-checklist>div,
+  .settings-users article {
+    grid-template-columns:40px minmax(0,1fr)!important;
+  }
+  .integration-list .status-pill,
+  .security-checklist .status-pill,
+  .settings-users .status-pill {
+    grid-column:2;
+    justify-self:start!important;
   }
 }
