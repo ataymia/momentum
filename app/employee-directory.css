@@ -344,6 +344,21 @@
 .employee-profile-card .section {
   margin:0;
 }
+.employee-profile-edit-form {
+  align-items:end;
+}
+.employee-profile-edit-actions {
+  align-items:center;
+  flex-wrap:wrap;
+  gap:10px;
+  display:flex;
+}
+.employee-profile-edit-actions p {
+  color:var(--muted);
+  margin:0;
+  font-size:11px;
+  line-height:1.4;
+}
 @media (max-width:1050px) {
   .employee-profile-info-grid,
   .employee-manager-summary,
