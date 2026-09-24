@@ -1,0 +1,83 @@
+name: Apply visual polish and notification routing
+
+on:
+  push:
+    branches:
+      - visual-polish-marketing-delivery-2026-09-24
+    paths:
+      - scripts/apply-visual-polish-notification-routing.py
+      - .github/workflows/visual-polish-notification-routing-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out side branch
+        uses: actions/checkout@v4
+        with:
+          ref: visual-polish-marketing-delivery-2026-09-24
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+          cache: npm
+
+      - name: Set up Java for Firestore emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Apply visual and workflow refinements
+        run: python3 scripts/apply-visual-polish-notification-routing.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Functions dependencies
+        run: npm --prefix functions ci
+
+      - name: Regenerate Firestore rules
+        run: npm run rules:build
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Logic regression tests
+        run: npm run test:logic
+
+      - name: Firestore rules regression tests
+        run: npm run test:rules
+
+      - name: Functions lint
+        run: npm --prefix functions run lint
+
+      - name: Functions build
+        run: npm --prefix functions run build
+
+      - name: Production build
+        run: npm run build
+
+      - name: Diff safety check
+        run: git diff --check
+
+      - name: Commit validated changes
+        run: |
+          git config user.name "Momentum Platform Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git commit -m "Polish production UI and tighten notification routing"
+          git push origin HEAD:visual-polish-marketing-delivery-2026-09-24
