@@ -6,6 +6,7 @@ on:
       - visual-polish-marketing-delivery-2026-09-24
     paths:
       - scripts/apply-visual-polish-notification-routing.py
+      - scripts/fix-visual-polish-patch-runner.py
       - .github/workflows/visual-polish-notification-routing-apply.yml
 
 permissions:
@@ -29,10 +30,13 @@ jobs:
           cache: npm
 
       - name: Set up Java for Firestore emulator
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
+
+      - name: Repair patch runner if needed
+        run: python3 scripts/fix-visual-polish-patch-runner.py
 
       - name: Apply visual and workflow refinements
         run: python3 scripts/apply-visual-polish-notification-routing.py
