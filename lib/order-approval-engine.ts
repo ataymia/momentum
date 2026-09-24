@@ -13,15 +13,19 @@ const fulfillmentRank: Record<Order["status"], number> = {
 
 const instant = (value?: string) => value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).getTime() : 0;
 const isFinal = (approval: Approval) => approval.status !== "Pending";
+const effectiveAt = (approval: Approval) => isFinal(approval) ? instant(approval.decidedAt) || instant(approval.submittedAt) : instant(approval.submittedAt);
 
 export function canonicalApproval(a: Approval, b: Approval): Approval {
+  // A newer resubmission is a new approval cycle. A stale Pending replica from the original
+  // submission still loses to the later final decision because its submittedAt predates decidedAt.
+  const aAt = effectiveAt(a);
+  const bAt = effectiveAt(b);
+  if (aAt !== bAt) return bAt > aAt ? b : a;
   if (isFinal(a) !== isFinal(b)) return isFinal(a) ? a : b;
-  const aAt = instant(a.decidedAt) || instant(a.submittedAt);
-  const bAt = instant(b.decidedAt) || instant(b.submittedAt);
-  return bAt > aAt ? b : a;
+  return b.submittedAt > a.submittedAt ? b : a;
 }
 
-/** One operational approval per order. Source replicas remain in persistence/audit, but stale Pending copies do not create a second task. */
+/** One active operational approval per order. Earlier approval cycles remain in persistence/audit, but only the newest cycle becomes actionable. */
 export function reconcileApprovals(primary: Approval[], secondary: Approval[]): Approval[] {
   const byId = new Map<string, Approval>();
   for (const approval of [...secondary, ...primary]) {
@@ -47,6 +51,7 @@ export function reconcileOrderWithApproval(order: Order, approval?: Approval): O
   if (order.status === "Cancelled") return order;
   if (!approval) return order;
   if (approval.status === "Approved" && fulfillmentRank[order.status] < fulfillmentRank.Approved) return { ...order, status: "Approved" };
+  if (approval.status === "Pending" && fulfillmentRank[order.status] <= fulfillmentRank.Approved) return { ...order, status: "Awaiting approval" };
   if (approval.status === "Returned" && fulfillmentRank[order.status] <= fulfillmentRank.Approved) return { ...order, status: "Draft" };
   return order;
 }
