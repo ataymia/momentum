@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import type { PaymentMethod } from "./commerce-engine";
 import { DELIVERY_STORAGE_KEY, DeliveryEvent, DeliveryState, DeliveryTask, createDeliverySeed, deliveryTaskForOrder, normalizeDeliveryState, processedForDelivery } from "./delivery-engine";
 import { useInventoryLedger } from "./inventory-ledger-context";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
@@ -21,6 +22,7 @@ type DeliveryContextValue = {
   markLoaded: (orderId: string) => MutationResult;
   startDelivery: (orderId: string) => MutationResult;
   markDelivered: (orderId: string, note?: string) => MutationResult;
+  recordDeliveryCollection: (orderId: string, amount: number, method: PaymentMethod, reference?: string) => MutationResult;
   addDeliveryNote: (orderId: string, note: string) => MutationResult;
   resetDelivery: () => void;
 };
@@ -74,6 +76,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
       status: "Accepted",
       acceptedAt: stamp,
       acceptedBy: currentUser.id,
+      collections: [],
       history: [{ id: uid("delivery-event"), type, at: stamp, actorId: currentUser.id, note: type === "Assigned" ? `Assigned to ${driver.name}.` : `${driver.name} accepted the delivery.` }],
     };
     setState((current) => ({ ...current, tasks: [record, ...current.tasks] }));
@@ -138,6 +141,20 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
+  const recordDeliveryCollection = (orderId: string, amount: number, method: PaymentMethod, reference?: string): MutationResult => {
+    const task = taskForActor(orderId);
+    if (!task || !["In transit", "Delivered"].includes(task.status)) return { ok: false, message: "Payment collection can be recorded only while completing or after completing this delivery." };
+    const order = data.orders.find((item) => item.id === orderId);
+    if (!order) return { ok: false, message: "Order not found." };
+    if (!Number.isFinite(amount) || amount <= 0) return { ok: false, message: "Enter a valid amount collected." };
+    if (method === "Check" && !reference?.trim()) return { ok: false, message: "Enter the check number before saving a check collection." };
+    const collected = (task.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
+    if (collected + amount > order.amount + 0.005) return { ok: false, message: "The recorded collection would exceed the order total." };
+    const record = { id: uid("delivery-collection"), amount, method, reference: reference?.trim() || undefined, recordedAt: now(), recordedBy: currentUser!.id };
+    setState((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, collections: [record, ...(item.collections ?? [])] }, { type: "Payment collected", actorId: currentUser!.id, note: `${method} · $${amount.toFixed(2)}${record.reference ? ` · ${record.reference}` : ""}. Pending Finance reconciliation.` }) : item) }));
+    return { ok: true };
+  };
+
   const addDeliveryNote = (orderId: string, note: string): MutationResult => {
     const task = taskForActor(orderId);
     if (!task || !note.trim()) return { ok: false, message: "Enter a delivery note." };
@@ -160,7 +177,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     if (runtime.isDemo && currentUser?.role === "Administrator") setState(createDeliverySeed());
   };
 
-  return <DeliveryContext.Provider value={{ state, taskForOrder, claimDelivery, assignDelivery, cancelDelivery, prepareDelivery, markLoaded, startDelivery, markDelivered, addDeliveryNote, resetDelivery }}>{children}</DeliveryContext.Provider>;
+  return <DeliveryContext.Provider value={{ state, taskForOrder, claimDelivery, assignDelivery, cancelDelivery, prepareDelivery, markLoaded, startDelivery, markDelivered, recordDeliveryCollection, addDeliveryNote, resetDelivery }}>{children}</DeliveryContext.Provider>;
 }
 
 export function useDelivery() {
