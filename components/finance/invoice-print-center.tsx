@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { CheckSquare2, FileText, Printer, Square } from "lucide-react";
 import { useMemo, useState } from "react";
 import { computedInvoiceStatus, invoiceBalance, invoiceCreditAmount, invoicePaidAmount } from "../../lib/commerce-engine";
@@ -9,8 +10,24 @@ import { orderLinesFor } from "../../lib/order-lines";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Modal, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
-const issuerName = "Momentum Distribution Inc.";
-const invoiceContact = "Payment instructions are provided only through an authorized Momentum representative.";
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const company = {
+  name: "Momentum Distribution Inc.",
+  street: "8550 N 91st Ave. Ste #5",
+  cityStateZip: "Peoria, AZ 85345",
+  phone: "602-500-6811",
+  attention: "Florim Ymeri",
+  primaryEmail: "momentumdistributioninc@gmail.com",
+  salesEmail: "sales@momentumdci.com",
+  zelleEmail: "momentumdistributioninc@gmail.com",
+};
+
+const bank = {
+  name: process.env.NEXT_PUBLIC_INVOICE_BANK_NAME?.trim() || "",
+  account: process.env.NEXT_PUBLIC_INVOICE_BANK_ACCOUNT?.trim() || "",
+  routing: process.env.NEXT_PUBLIC_INVOICE_BANK_ROUTING?.trim() || "",
+};
+const hasBankInstructions = Boolean(bank.name && bank.account && bank.routing);
 
 type Copies = 1 | 2;
 type PrintJob = { ids: string[]; copies: Copies } | null;
@@ -65,42 +82,52 @@ export function InvoicePrintCenter() {
     const apName = customer?.accountsPayableContactName || customer?.billingContactName;
     const apEmail = customer?.accountsPayableEmail || customer?.billingEmail;
     const apPhone = customer?.accountsPayablePhone || customer?.billingPhone;
+    const billToAddress = location ? addressFor(location) : "";
 
     return <article className="invoice-sheet" key={`${invoice.id}-${copyIndex}`}>
+      <Image className="invoice-sheet__watermark" src={`${basePath}/momentum-golden-eagle.webp`} width={430} height={430} alt="" aria-hidden="true" />
       <header className="invoice-sheet__header">
-        <div className="invoice-sheet__issuer"><div className="invoice-sheet__mark">M</div><div><strong>{issuerName}</strong><span>Golden Eagle distribution</span></div></div>
+        <div className="invoice-sheet__issuer">
+          <div className="invoice-sheet__mark">M</div>
+          <div><strong>{company.name}</strong><span>Golden Eagle distribution</span><span>{company.street}</span><span>{company.cityStateZip}</span></div>
+        </div>
         <div className="invoice-sheet__title"><h1>INVOICE</h1><strong>{invoice.number}</strong></div>
       </header>
 
+      <section className="invoice-sheet__legacy-grid">
+        <div><small>FROM</small><strong>{company.name}</strong><span>{company.street}</span><span>{company.cityStateZip}</span><span>{company.phone} · {company.attention}</span><span>{company.salesEmail}</span></div>
+        <div><small>BILL TO</small><strong>{customer?.name ?? location?.name ?? "Customer"}</strong>{billToAddress && <span>{billToAddress}</span>}{apName && <span>A/P: {apName}</span>}{apPhone && <span>{apPhone}</span>}{apEmail && <span>{apEmail}</span>}{customer?.az5000Number && <span>AZ-5000: {customer.az5000Number}</span>}</div>
+        <div><small>SHIP TO</small><strong>{location ? locationLabel(location) : "Customer location"}</strong>{location && <span>{addressFor(location)}</span>}{location?.contactName && <span>{location.contactName}{location.contactRole ? ` · ${location.contactRole}` : ""}</span>}{location?.phone && <span>{location.phone}</span>}</div>
+        <div className="invoice-sheet__document-meta"><span>INVOICE #</span><strong>{invoice.number}</strong><span>INVOICE DATE</span><strong>{formatDate(invoice.issuedAt, { month: "2-digit", day: "2-digit", year: "numeric" })}</strong><span>ORDER #</span><strong>{order?.number ?? invoice.orderId}</strong></div>
+      </section>
+
       <section className="invoice-sheet__meta">
-        <div><span>Invoice date</span><strong>{formatDate(invoice.issuedAt, { month: "short", day: "numeric", year: "numeric" })}</strong></div>
-        <div><span>Order</span><strong>{order?.number ?? invoice.orderId}</strong></div>
         <div><span>Terms</span><strong>{invoice.terms}</strong></div>
         <div><span>Due</span><strong>{dueLabel(invoice.terms, invoice.dueDate)}</strong></div>
         <div><span>Status</span><strong>{status}</strong></div>
-      </section>
-
-      <section className="invoice-sheet__parties">
-        <div><small>BILL TO</small><strong>{customer?.name ?? location?.name ?? "Customer"}</strong>{apName && <span>{apName}</span>}{apEmail && <span>{apEmail}</span>}{apPhone && <span>{apPhone}</span>}</div>
-        <div><small>DELIVER TO</small><strong>{location ? locationLabel(location) : "Customer location"}</strong>{location && <span>{addressFor(location)}</span>}{location?.contactName && <span>{location.contactName}{location.contactRole ? ` · ${location.contactRole}` : ""}</span>}{location?.phone && <span>{location.phone}</span>}</div>
+        <div><span>Cases</span><strong>{lines.reduce((sum, line) => sum + line.cases, 0)}</strong></div>
       </section>
 
       <table className="invoice-sheet__table">
-        <thead><tr><th>Description</th><th>Cases</th><th>Price / case</th><th>Amount</th></tr></thead>
-        <tbody>{lines.map((line) => <tr key={line.id}><td>{line.product}</td><td>{line.cases}</td><td>{formatMoney(line.pricePerCase)}</td><td>{formatMoney(line.amount)}</td></tr>)}</tbody>
+        <thead><tr><th>Qty</th><th>Description</th><th>Unit price</th><th>Amount</th></tr></thead>
+        <tbody>{lines.map((line) => <tr key={line.id}><td>{line.cases}</td><td>{line.product}</td><td>{formatMoney(line.pricePerCase)}</td><td>{formatMoney(line.amount)}</td></tr>)}</tbody>
       </table>
 
       <section className="invoice-sheet__totals">
         <div><span>Subtotal</span><strong>{formatMoney(invoice.total)}</strong></div>
         {paid > 0 && <div><span>Payments received</span><strong>-{formatMoney(paid)}</strong></div>}
         {credits > 0 && <div><span>Credits applied</span><strong>-{formatMoney(credits)}</strong></div>}
-        <div className="invoice-sheet__balance"><span>BALANCE DUE</span><strong>{formatMoney(balance)}</strong></div>
+        <div className="invoice-sheet__balance"><span>TOTAL / BALANCE DUE</span><strong>{formatMoney(balance)}</strong></div>
       </section>
 
-      <section className="invoice-sheet__payment">
-        <h2>Payment & delivery instructions</h2>
-        <p><strong>{dueLabel(invoice.terms, invoice.dueDate)}.</strong> Reference invoice {invoice.number} with payment. {invoiceContact}</p>
-        {invoice.terms === "COD" && <p>For COD delivery, the authorized delivery representative may collect payment at delivery and record the method/reference below.</p>}
+      <section className="invoice-sheet__terms">
+        <h2>Terms & conditions</h2>
+        <p><strong>{invoice.terms}</strong> · {dueLabel(invoice.terms, invoice.dueDate)}.</p>
+        <p>Zelle: {company.zelleEmail}</p>
+        {hasBankInstructions ? <p>{bank.name}: Account No. {bank.account}; Routing No. {bank.routing}</p> : <p>Bank transfer / wire: obtain the current remittance instructions from an authorized Momentum representative.</p>}
+        <p>Reference invoice {invoice.number} with every payment. Sales / order support: {company.salesEmail}. Receivables / documentation: {company.primaryEmail}.</p>
+        {invoice.terms === "COD" && <p>COD orders are payable at delivery. The delivery representative may collect payment and document the method/reference below.</p>}
+        {customer?.paymentTerms === "Net 30" && <p>Net terms apply only where Momentum has approved the customer account for credit.</p>}
       </section>
 
       <section className="invoice-sheet__receipt">
@@ -108,7 +135,7 @@ export function InvoicePrintCenter() {
         <div><span>Payment received</span><i /></div><div><span>Method</span><i /></div><div><span>Reference / check no.</span><i /></div>
       </section>
 
-      <footer className="invoice-sheet__footer"><span>{issuerName}</span><span>Invoice {invoice.number}</span><span>Copy {copyIndex + 1}</span></footer>
+      <footer className="invoice-sheet__footer"><span>{company.name} · {company.phone}</span><span>{company.street}, {company.cityStateZip}</span><span>Copy {copyIndex + 1}</span></footer>
     </article>;
   };
 
