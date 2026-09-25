@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { CheckSquare2, FileText, Printer, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { computedInvoiceStatus, invoiceBalance, invoiceCreditAmount, invoicePaidAmount } from "../../lib/commerce-engine";
 import { useCommerce } from "../../lib/commerce-context";
 import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
@@ -80,9 +80,8 @@ export function InvoicePrintCenter() {
       return;
     }
 
-    // Printing must remain inside the user's click gesture. The previous delayed setTimeout could lose
-    // browser user-activation before window.print() ran, making every Print button appear to do nothing.
-    // flushSync guarantees the print-only invoice sheets exist in the DOM before the print dialog opens.
+    // Keep the browser print call inside the user's click gesture and synchronously mount the print sheets.
+    // The old delayed setTimeout could lose user activation and made Print appear dead on some browsers.
     flushSync(() => setPrintJob({ ids: unique, copies }));
     setPrintNotice(`${unique.length} invoice${unique.length === 1 ? "" : "s"} prepared · ${copies} cop${copies === 1 ? "y" : "ies"} each.`);
     window.print();
@@ -162,6 +161,7 @@ export function InvoicePrintCenter() {
 
   const preview = previewId ? invoiceSheet(previewId, 0) : null;
   const printSheets = printJob ? printJob.ids.flatMap((id) => Array.from({ length: printJob.copies }, (_, copyIndex) => invoiceSheet(id, copyIndex))) : [];
+  const printPortal = typeof document !== "undefined" && printSheets.length ? createPortal(<div className="invoice-print-root" aria-hidden="true">{printSheets}</div>, document.body) : null;
 
   return <>
     <Section title="Customer invoices" description="Print a single invoice or select multiple invoices for a delivery run. Browser print also supports Save as PDF.">
@@ -183,6 +183,6 @@ export function InvoicePrintCenter() {
 
     <Modal open={Boolean(previewId)} title={previewId ? commerce.invoices.find((invoice) => invoice.id === previewId)?.number ?? "Invoice" : "Invoice"} description="Print-ready invoice preview" onClose={() => setPreviewId(null)} wide footer={<><Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>Close</Button>{previewId && <Button type="button" icon={<Printer size={15}/>} onClick={() => startPrint([previewId])}>Print / Save PDF</Button>}</>}><div className="invoice-preview-shell">{preview}</div></Modal>
 
-    <div className="invoice-print-root" aria-hidden="true">{printSheets}</div>
+    {printPortal}
   </>;
 }
