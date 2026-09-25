@@ -81,6 +81,24 @@ test("delivery normalization keeps valid driver task history", () => {
   assert.equal(createDeliverySeed().tasks.length, 0);
 });
 
+test("delivery check collections retain check number and collection evidence", () => {
+  const acceptedAt = "2026-09-22T20:00:00.000Z";
+  const deliveredAt = "2026-09-22T21:00:00.000Z";
+  const task = { id: "delivery-check", orderId: data.orders[4].id, driverId: driver.id, status: "Delivered", acceptedAt, acceptedBy: driver.id, loadedAt: "2026-09-22T20:15:00.000Z", departedAt: "2026-09-22T20:30:00.000Z", deliveredAt, collections: [{ id: "collection-1", amount: 72, method: "Check", reference: "CHK-1001", recordedAt: deliveredAt, recordedBy: driver.id }], history: [{ id: "event-1", type: "Accepted", at: acceptedAt, actorId: driver.id }, { id: "event-2", type: "Payment collected", at: deliveredAt, actorId: driver.id, note: "Check · $72.00 · CHK-1001" }] };
+  const state = normalizeDeliveryState({ version: 1, tasks: [task] }, data);
+  assert.equal(state.tasks.length, 1);
+  assert.equal(state.tasks[0].collections?.[0].method, "Check");
+  assert.equal(state.tasks[0].collections?.[0].reference, "CHK-1001");
+});
+
+test("delivery normalization rejects a check collection with no check number", () => {
+  const acceptedAt = "2026-09-22T20:00:00.000Z";
+  const deliveredAt = "2026-09-22T21:00:00.000Z";
+  const task = { id: "delivery-bad-check", orderId: data.orders[4].id, driverId: driver.id, status: "Delivered", acceptedAt, acceptedBy: driver.id, loadedAt: "2026-09-22T20:15:00.000Z", departedAt: "2026-09-22T20:30:00.000Z", deliveredAt, collections: [{ id: "collection-1", amount: 72, method: "Check", recordedAt: deliveredAt, recordedBy: driver.id }], history: [{ id: "event-1", type: "Accepted", at: acceptedAt, actorId: driver.id }] };
+  const state = normalizeDeliveryState({ version: 1, tasks: [task] }, data);
+  assert.equal(state.tasks.length, 0);
+});
+
 test("commercial normalization does not erase an order just because its account shard has not arrived yet", () => {
   const pendingOrder = order("Awaiting approval", "order-eventual-consistency");
   const dataWithoutAccount: WorkspaceData = { ...data, accounts: [], orders: [] };
