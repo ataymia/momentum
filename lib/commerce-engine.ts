@@ -6,7 +6,7 @@ export type InvoiceTerms="Prepaid"|"COD"|"Net 7"|"Net 15"|"Net 30"|"Custom";
 export type InvoiceStatus="Draft"|"Open"|"Partially paid"|"Paid"|"Void";
 export type Invoice={id:string;number:string;orderId:string;accountId:string;issuedAt:string;dueDate?:string;terms:InvoiceTerms;total:number;status:InvoiceStatus;createdAt:string;voidReason?:string};
 export type PaymentStatus="Pending"|"Cleared"|"Failed"|"Reversed";
-export type PaymentMethod="Card"|"ACH"|"Wire"|"Cash"|"Other";
+export type PaymentMethod="Card"|"ACH"|"Wire"|"Cash"|"Check"|"Other";
 export type Payment={id:string;accountId:string;receivedAt:string;amount:number;method:PaymentMethod;status:PaymentStatus;processorReference?:string;note?:string;createdBy:string;createdAt:string;settledAt?:string;settledBy?:string;failedAt?:string;failedBy?:string;failureReason?:string;reversedAt?:string;reversedBy?:string;reversalReason?:string;reversalReference?:string};
 export type PaymentAllocation={id:string;paymentId:string;invoiceId:string;amount:number;createdAt:string;createdBy:string};
 export type CreditMemo={id:string;invoiceId:string;amount:number;reason:string;status:"Draft"|"Approved"|"Applied"|"Void";createdAt:string;createdBy:string;approvedBy?:string;approvedAt?:string;appliedAt?:string;appliedBy?:string};
@@ -24,7 +24,7 @@ const invoiceNumber=(orderNumber:string)=>`INV-${orderNumber.replace(/^GE-/,"")}
 const invoiceTerms=new Set<InvoiceTerms>(["Prepaid","COD","Net 7","Net 15","Net 30","Custom"]);
 const invoiceStatuses=new Set<InvoiceStatus>(["Draft","Open","Partially paid","Paid","Void"]);
 const paymentStatuses=new Set<PaymentStatus>(["Pending","Cleared","Failed","Reversed"]);
-const paymentMethods=new Set<PaymentMethod>(["Card","ACH","Wire","Cash","Other"]);
+const paymentMethods=new Set<PaymentMethod>(["Card","ACH","Wire","Cash","Check","Other"]);
 const creditStatuses=new Set<CreditMemo["status"]>(["Draft","Approved","Applied","Void"]);
 const refundStatuses=new Set<Refund["status"]>(["Requested","Approved","Sent","Settled","Failed"]);
 const uniqueById=<T extends {id:string}>(records:T[])=>{const seen=new Set<string>();return records.filter((record)=>Boolean(record?.id)&&!seen.has(record.id)&&(seen.add(record.id),true));};
@@ -102,7 +102,7 @@ export function paymentCanReverse(state:CommerceState,payment:Payment,reason:str
 export function refundRemainingAmount(state:CommerceState,paymentId:string){const payment=state.payments.find((item)=>item.id===paymentId);if(!payment||!finitePositive(payment.amount))return 0;const allocated=Math.min(payment.amount,state.allocations.filter((allocation)=>allocation.paymentId===paymentId&&finitePositive(allocation.amount)).reduce((sum,item)=>sum+item.amount,0));const committed=state.refunds.filter((refund)=>refund.paymentId===paymentId&&refund.status!=="Failed"&&finitePositive(refund.amount)).reduce((sum,refund)=>sum+refund.amount,0);return Math.max(0,allocated-committed);}
 export function refundCanRequest(state:CommerceState,paymentId:string,amount:number,reason:string,evidence:string){const payment=state.payments.find((item)=>item.id===paymentId);return Boolean(payment&&payment.status==="Cleared"&&finitePositive(amount)&&amount<=refundRemainingAmount(state,paymentId)&&reason.trim()&&evidence.trim());}
 export function creditCanApprove(credit:CreditMemo,actorId:string){return credit.status==="Draft"&&Boolean(actorId)&&credit.createdBy!==actorId;}
-export function creditCanApply(state:CommerceState,credit:CreditMemo){if(credit.status!=="Approved"||!finitePositive(credit.amount))return false;const invoice=state.invoices.find((item)=>item.id===credit.invoiceId);return Boolean(invoice&&computedInvoiceStatus(state,invoice)!=="Void"&&credit.amount<=invoiceRecordableAmount(state,invoice));}
+export function creditCanApply(state:CommerceState,credit:CreditMemo){if(credit.status!=="Approved"||!finitePositive(credit.amount))return false;const invoice=state.invoices.find((item)=>item.id===credit.invoiceId);return Boolean(invoice&&computedInvoiceStatus(state,invoice)!==="Void"&&credit.amount<=invoiceRecordableAmount(state,invoice));}
 export function refundCanApprove(refund:Refund,actorId:string){return refund.status==="Requested"&&Boolean(actorId)&&refund.createdBy!==actorId;}
 export function refundCanSend(refund:Refund,reference:string){return refund.status==="Approved"&&Boolean(reference.trim());}
 export function refundCanSettle(refund:Refund,settlementDate:string){if(refund.status!=="Sent"||!refund.sentAt||!canRecordSettlementDate(settlementDate)||!validDateOrInstant(refund.sentAt))return false;return settlementDate>=businessDateKey(refund.sentAt);}
