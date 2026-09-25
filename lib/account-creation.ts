@@ -14,7 +14,7 @@ export function validateNewAccountContact(input: NewAccountContactInput): Accoun
     return { ok: false, message: "Add the primary contact name and role." };
   }
   if (!present(input.phone) && !present(input.mobilePhone) && !present(input.email)) {
-    return { ok: false, message: "Add a business phone, mobile phone, or email address for the primary contact." };
+    return { ok: false, message: "Add a business or mobile phone number or an email address for the primary contact." };
   }
   return { ok: true };
 }
