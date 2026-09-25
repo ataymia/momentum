@@ -1,5 +1,22 @@
-export type Role = "Administrator" | "Sales Manager" | "Sales Representative" | "Operations" | "Warehouse" | "Delivery Driver" | "Marketing" | "Customer" | "Brand Ambassador";
-export type Team = "Leadership" | "Sales" | "Operations" | "Marketing" | "Customer";
+/**
+ * Canonical workspace record shapes.
+ *
+ * Every engine, context, and panel reads and writes through these types. `lib/workspace-normalization.ts`
+ * is the single runtime gate that proves an untrusted payload (localStorage or Firestore) matches them,
+ * so the literal unions below and the validator's allow-lists must stay in step.
+ */
+
+export type Role =
+  | "Administrator"
+  | "Sales Manager"
+  | "Sales Representative"
+  | "Brand Ambassador"
+  | "Operations"
+  | "Warehouse"
+  | "Delivery Driver"
+  | "Customer";
+
+export type Team = "Leadership" | "Sales" | "Operations" | "Customer";
 
 export type PageKey =
   | "home"
@@ -149,7 +166,12 @@ export type Account = {
   programPricingStatus?: ProgramPricingStatus;
   programPricingOwnerId?: string;
   lastMeaningfulBusinessAt?: string;
-  /** Coordinates for this location, filled in after the address is geocoded. */
+  /**
+   * Coordinates for this location, filled in after the address is geocoded.
+   *
+   * Territory matching and field geofencing both read these, but they remain separate controls: one
+   * decides authorization to work a location, the other decides whether a device is at an appointment.
+   */
   latitude?: number;
   longitude?: number;
   geocodePrecision?: "rooftop" | "street" | "locality" | "postal" | "unknown";
@@ -157,29 +179,53 @@ export type Account = {
   geocodedAt?: string;
   /** Fingerprint of the address these coordinates came from, so a material change can be detected. */
   geocodeFingerprint?: string;
-  geofenceRadiusMiles?: number;
-  geofenceOverrideRequired?: boolean;
+  geocodeStatus?: "ok" | "not-found" | "pending-provider" | "error";
+  /** Derived: the territory this location last resolved to. The engine remains the authority. */
+  territoryId?: string;
+  /** Strategic or national account, owned by management outside normal territory ownership. */
+  strategic?: boolean;
 };
+
+export type ActivityType = "call" | "visit" | "sample" | "order" | "placement" | "note";
 
 export type Activity = {
   id: string;
-  accountId: string;
-  type: "call" | "visit" | "sample" | "order" | "placement" | "note";
+  accountId?: string;
+  type: ActivityType;
   title: string;
   detail: string;
   at: string;
+  /** A workspace user id, or `"system"` for engine-generated entries. */
   userId: string;
 };
 
 export type AppointmentType = "First visit" | "Revisit" | "Sample drop" | "Placement check" | "Reorder" | "Delivery";
-export type AppointmentStatus = "Scheduled" | "Dispatched" | "En route" | "Arrived" | "Completed" | "Needs follow-up";
-export type AppointmentOutcome = "Order placed" | "Follow-up scheduled" | "Placement verified" | "No decision" | "Closed lost" | "Delivery completed";
+
+export type AppointmentStatus =
+  | "Scheduled"
+  | "Dispatched"
+  | "En route"
+  | "Arrived"
+  | "Completed"
+  | "Needs follow-up";
+
+export type AppointmentOutcome =
+  | "Order placed"
+  | "Follow-up scheduled"
+  | "Placement verified"
+  | "No decision"
+  | "Closed lost"
+  | "Delivery completed";
+
+export type AppointmentPriority = "Normal" | "High" | "Urgent";
 
 export type Appointment = {
   id: string;
   accountId: string;
-  customerId?: string;
+  /** Unassigned work stays on the dispatch board with no owner. */
   ownerId?: string;
+  /** Mirrored from the account so customer-portal filtering never needs a join. */
+  customerId?: string;
   date: string;
   startTime: string;
   duration: number;
@@ -192,47 +238,84 @@ export type Appointment = {
   nextAction?: string;
   nextActionDate?: string;
   completedAt?: string;
-  priority?: "Normal" | "High" | "Urgent";
+  priority?: AppointmentPriority;
   tags?: string[];
+  requiredSkills?: string[];
+  confirmed?: boolean;
   arrivalWindow?: string;
   assignedBy?: string;
   assignedAt?: string;
-  dispatchedAt?: string;
-  arrivedAt?: string;
-  departedAt?: string;
+  /** Field-tracking evidence captured by the location engine. */
+  arrivalVerifiedAt?: string;
   arrivalLatitude?: number;
   arrivalLongitude?: number;
-  departureLatitude?: number;
-  departureLongitude?: number;
+  arrivalAccuracyMeters?: number;
   arrivalDistanceMiles?: number;
-  departureDistanceMiles?: number;
-  geofenceOverrideReason?: string;
+  geofenceDepartureAt?: string;
+  geofenceDepartureLatitude?: number;
+  geofenceDepartureLongitude?: number;
+  geofenceDepartureAccuracyMeters?: number;
+  geofenceDepartureDistanceMiles?: number;
+  geofenceExceptionAt?: string;
+  geofenceExceptionBy?: string;
+  geofenceExceptionReason?: string;
 };
 
-export type OrderStatus = "Draft" | "Awaiting approval" | "Approved" | "Allocated" | "Out for delivery" | "Delivered" | "Paid" | "Cancelled";
-export type OrderPaymentStatus = "Not invoiced" | "Open" | "Partially paid" | "Paid";
-export type OrderLine = { id: string; product: string; cases: number; pricePerCase: number; amount: number };
+export type OrderStatus =
+  | "Draft"
+  | "Awaiting approval"
+  | "Approved"
+  | "Allocated"
+  | "Out for delivery"
+  | "Delivered"
+  | "Paid"
+  | "Cancelled";
+
+export type PaymentStatus = "Not invoiced" | "Open" | "Partially paid" | "Paid";
+
+export type OrderLine = {
+  id: string;
+  product: string;
+  cases: number;
+  pricePerCase: number;
+  amount: number;
+  inventoryAvailableAtOrder?: number;
+  sourcePlacementId?: string;
+  lowStockApprovalRequired?: boolean;
+};
+
 export type Order = {
   id: string;
   number: string;
   accountId: string;
   cases: number;
   pricePerCase: number;
+  /** Always `cases * pricePerCase`; the normalizer rejects drifted totals. */
   amount: number;
   status: OrderStatus;
   placedAt: string;
   ownerId: string;
   paidAt?: string;
+  /** First cash application. Required evidence before `paymentStatus` may be "Paid". */
   firstSettledAt?: string;
   priceBasis: string;
-  paymentStatus: OrderPaymentStatus;
+  paymentStatus: PaymentStatus;
   product?: string;
+  /** Sales Representative credited for commission, when different from the owner. */
   creditedRepId?: string;
   sourcePlacementId?: string;
-  inventoryAvailableAtOrder: number;
+  inventoryAvailableAtOrder?: number;
   lowStockApprovalRequired?: boolean;
+  /** Authoritative SKU breakdown. Legacy single-SKU orders may omit this and are treated as one line. */
   lines?: OrderLine[];
+  /** Terminal cancellation evidence. Cancelled orders are retained, never deleted. */
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancellationReason?: string;
 };
+
+export type PlacementSource = "Physical count" | "Customer estimate" | "Demo POS feed";
+export type PlacementStatus = "Healthy" | "Check soon" | "Out of stock";
 
 export type Placement = {
   id: string;
@@ -241,46 +324,83 @@ export type Placement = {
   casesDelivered: number;
   facings: number;
   location: string;
-  observedStock: number;
-  shelfPrice: number;
   cold: boolean;
-  status: "Healthy" | "Watch" | "Action";
+  shelfPrice: number;
+  observedStock: number;
   lastChecked: string;
-  checkedBy: string;
-  photoName?: string;
+  nextCheck: string;
+  source: PlacementSource;
+  status: PlacementStatus;
 };
+
+export type InventoryStatus = "Available" | "Quality hold" | "Low stock";
 
 export type InventoryLot = {
   id: string;
-  product: string;
   lotCode: string;
-  expiresAt: string;
+  product: string;
+  receivedAt: string;
+  bestBy: string;
   onHand: number;
   reserved: number;
+  /** Derived: `onHand - reserved`, forced to 0 while a quality hold is open. */
   available: number;
+  status: InventoryStatus;
   location: string;
-  status: "Available" | "Quality hold" | "Low stock";
-  custody: string;
   holdReason?: string;
-  barcode?: string;
+  holdDecision?: string;
+  holdResolvedAt?: string;
+  holdResolvedBy?: string;
 };
+
+export type ApprovalType =
+  | "Order"
+  | "Low stock sale"
+  | "Territory exception"
+  | "Timecard"
+  | "Price exception"
+  | "Inventory adjustment"
+  | "Leave"
+  | "Expense"
+  | "Marketing spend"
+  | "Compensation";
+
+export type ApprovalPriority = "Normal" | "High" | "Urgent";
+export type ApprovalStatus = "Pending" | "Approved" | "Returned";
 
 export type Approval = {
   id: string;
-  type: "Order" | "Low stock sale" | "Territory exception";
+  type: ApprovalType;
   title: string;
   detail: string;
   requestedBy: string;
-  requesterId: string;
-  recordId: string;
-  team: Team;
+  requesterId?: string;
+  /** Id of the underlying order, account, timecard, or lot this decision concerns. */
+  recordId?: string;
+  team?: Team;
   submittedAt: string;
   dueAt: string;
-  priority: "Normal" | "High" | "Urgent";
-  status: "Pending" | "Approved" | "Returned";
+  priority: ApprovalPriority;
+  status: ApprovalStatus;
   decidedBy?: string;
   decidedAt?: string;
-  decisionNote?: string;
+  returnReason?: string;
+};
+
+export type TimeEntrySource = "Demo mobile" | "Demo desktop" | "Manual correction";
+
+/** Immutable before-image kept whenever a punch is edited. */
+export type TimeEntryCorrection = {
+  at: string;
+  by: string;
+  reason: string;
+  before: {
+    clockIn: string;
+    mealStart?: string;
+    mealEnd?: string;
+    clockOut?: string;
+    breakMinutes: number;
+  };
 };
 
 export type TimeEntry = {
@@ -288,53 +408,81 @@ export type TimeEntry = {
   userId: string;
   date: string;
   clockIn: string;
+  clockOut?: string;
   mealStart?: string;
   mealEnd?: string;
-  clockOut?: string;
   breakMinutes: number;
-  source: string;
+  source: TimeEntrySource;
+  note?: string;
+  corrections?: TimeEntryCorrection[];
 };
+
+export type TimecardStatus = "Open" | "Submitted" | "Manager approved" | "Returned" | "Payroll ready";
 
 export type Timecard = {
   id: string;
   userId: string;
   weekStart: string;
-  hours: number;
-  status: "Open" | "Submitted" | "Approved" | "Returned" | "Payroll ready";
+  weekEnd: string;
+  status: TimecardStatus;
   submittedAt?: string;
-  attested?: boolean;
-  source: string;
-  correctionNote?: string;
-  exception?: string;
-  reviewedBy?: string;
-  reviewedAt?: string;
+  approvedAt?: string;
+  approverId?: string;
+  attested: boolean;
+  returnedAt?: string;
+  returnedBy?: string;
+  returnReason?: string;
 };
+
+export type NotificationTone = "info" | "warning" | "success";
 
 export type Notification = {
   id: string;
-  userId: string;
   title: string;
-  body: string;
-  createdAt: string;
-  read: boolean;
-  tone: "info" | "warning" | "urgent";
+  detail: string;
+  at: string;
+  readBy: string[];
+  tone: NotificationTone;
+  /** Absent means every employee sees it. */
+  audienceUserIds?: string[];
 };
+
+export type BulletinAudience = "Company" | "Team";
+export type BulletinPriority = "Update" | "Important" | "Urgent";
 
 export type Bulletin = {
   id: string;
   title: string;
   body: string;
+  audience: BulletinAudience;
+  /** Required when `audience` is "Team". */
+  team?: Team;
+  priority: BulletinPriority;
   authorId: string;
-  audienceType: "company" | "team";
-  audienceTeam?: Team;
-  priority: "Update" | "Important" | "Urgent";
   publishedAt: string;
   expiresAt?: string;
   acknowledgedBy: string[];
 };
 
+export type TerritoryStatus = "Draft" | "Active" | "Suspended";
+
+export type SalesTerritory = {
+  id: string;
+  name: string;
+  /** Suggested representative for this geographic coverage. This does not lock account ownership. */
+  ownerId?: string;
+  postalCodes: string[];
+  status: TerritoryStatus;
+  notes?: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+};
+
 export type WorkspaceData = {
   users: WorkspaceUser[];
+  /** Billing parents. Optional so pre-CRM workspaces still load. */
   customers?: CustomerAccount[];
   accounts: Account[];
   activities: Activity[];
@@ -347,14 +495,6 @@ export type WorkspaceData = {
   timecards: Timecard[];
   notifications: Notification[];
   bulletins: Bulletin[];
+  /** Owned by the territory engine; optional so pre-territory workspaces still load. */
   territories?: SalesTerritory[];
-};
-
-export type SalesTerritory = {
-  id: string;
-  name: string;
-  ownerId?: string;
-  postalCodes: string[];
-  active: boolean;
-  notes?: string;
 };
