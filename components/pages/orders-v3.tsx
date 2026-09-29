@@ -98,12 +98,13 @@ export function OrdersPage(){
   const reason=cancelReason.trim();
   if(reason.length<3){setError("Enter a cancellation reason before cancelling the order.");return}
   if(selectedHasFinancialActivity){setError("This order has payment or credit activity. Finance must resolve that activity before the order can be cancelled.");return}
+  if(selected.status==="Approved"&&currentUser?.role!=="Administrator"&&reserved>0){setError("Inventory is already reserved for this approved order. Ask an Administrator to cancel it so the reservation can be released safely.");return}
   setCancelling(true);setError("");
   if(selected.status==="Approved"&&!releaseOrderReservationsForEdit(selected.id)){setCancelling(false);setError("This approved order cannot be cancelled because inventory has already moved, the inventory period is locked, or the reservation could not be safely released.");return}
   const result=cancelOrder(selected.id,reason);
   if(!result.ok){setCancelling(false);setError(result.message??"Order cancellation failed.");return}
   const commercialConfirmed=await momentumStorage.flushAndConfirm(COMMERCIAL_KEY);
-  const inventoryConfirmed=selected.status==="Approved"?await momentumStorage.flushAndConfirm(INVENTORY_LEDGER_STORAGE_KEY):{ok:true as const,message:undefined};
+  const inventoryConfirmed=selected.status==="Approved"&&currentUser?.role==="Administrator"?await momentumStorage.flushAndConfirm(INVENTORY_LEDGER_STORAGE_KEY):{ok:true as const,message:undefined};
   setCancelling(false);setCancelOpen(false);setDetailOpen(false);
   if(!commercialConfirmed.ok||!inventoryConfirmed.ok){setError(`${selected.number} is cancelled on this device, but Momentum cloud has not confirmed every cancellation record yet. Do not recreate or cancel it again. ${commercialConfirmed.message??inventoryConfirmed.message??"Use the sync indicator and retry after access/connectivity is corrected."}`);return}
   setError("");

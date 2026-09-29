@@ -83,6 +83,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   }, [data]);
 
   useEffect(() => {
+    if (!canManageCash) return;
     const handle = window.setTimeout(() => {
       setCommerce((state) => {
         let changed = false;
@@ -100,7 +101,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
       });
     }, 0);
     return () => window.clearTimeout(handle);
-  }, [data.orders]);
+  }, [canManageCash, data.orders]);
 
   useEffect(() => {
     if (typeof window !== "undefined") momentumStorage.setItem(COMMERCE_STORAGE_KEY, JSON.stringify(commerce));
@@ -111,7 +112,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
     const handle = window.setTimeout(() => {
       for (const invoice of commerce.invoices) {
         const order = data.orders.find((item) => item.id === invoice.orderId);
-        if (!order) continue;
+        if (!order || order.status === "Cancelled" || invoice.status === "Void") continue;
         const clearedAmount = invoicePaidAmount(commerce, invoice.id);
         const status = clearedAmount >= invoice.total && invoice.total > 0 ? "Paid" : clearedAmount > 0 ? "Partially paid" : "Open";
         if (order.paymentStatus === status) continue;

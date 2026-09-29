@@ -39,6 +39,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     catch { return createDeliverySeed(); }
   };
   const [state, setState] = useState<DeliveryState>(() => read());
+  const canReconcileCancelledDelivery = Boolean(currentUser && ["Administrator", "Operations", "Delivery Driver"].includes(currentUser.role));
 
   useEffect(() => {
     const handle = window.setTimeout(() => setState((current) => {
@@ -46,7 +47,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
       let changed = false;
       const tasks = normalized.tasks.map((task) => {
         const order = data.orders.find((item) => item.id === task.orderId);
-        if (!order || order.status !== "Cancelled" || task.status === "Cancelled" || ["Loaded", "In transit", "Delivered"].includes(task.status)) return task;
+        if (!canReconcileCancelledDelivery || !order || order.status !== "Cancelled" || task.status === "Cancelled" || ["Loaded", "In transit", "Delivered"].includes(task.status)) return task;
         changed = true;
         const cancelledAt = order.cancelledAt ?? now();
         const cancelledBy = order.cancelledBy ?? "system";
@@ -62,7 +63,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
       return changed ? { ...normalized, tasks } : normalized;
     }), 0);
     return () => window.clearTimeout(handle);
-  }, [data]);
+  }, [canReconcileCancelledDelivery, data]);
   useEffect(() => {
     if (typeof window !== "undefined") {
       momentumStorage.setItem(DELIVERY_STORAGE_KEY, JSON.stringify(state));

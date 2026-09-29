@@ -39,8 +39,12 @@ test("order cancellation is evidence-preserving, self-service for the creator, a
   assert.match(page,/flushAndConfirm\(COMMERCIAL_KEY\)/);
   assert.match(page,/flushAndConfirm\(INVENTORY_LEDGER_STORAGE_KEY\)/);
   assert.match(inventory,/status:"Released" as const/);
+  assert.match(commerce,/if \(!canManageCash\) return/);
   assert.match(commerce,/cancelled before fulfillment/);
+  assert.match(commerce,/order.status === "Cancelled" \|\| invoice.status === "Void"/);
+  assert.match(delivery,/canReconcileCancelledDelivery/);
   assert.match(delivery,/order.status !== "Cancelled"/);
+  assert.match(page,/Inventory is already reserved for this approved order/);
 });
 
 test("delivery workflow includes claim, pack, load, route and delivery",()=>{const page=readFileSync("components/pages/deliveries.tsx","utf8");for(const label of ["Claim delivery","Pack / reserve inventory","Mark loaded","Start delivery","Mark delivered"])assert.match(page,new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")))});
