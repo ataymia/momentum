@@ -6,6 +6,7 @@ on:
       - hotfix-self-order-cancellation-2026-09-29
     paths:
       - scripts/apply-self-order-cancellation-hotfix.py
+      - .github/workflows/apply-self-order-cancellation-hotfix.yml
 
 permissions:
   contents: write
