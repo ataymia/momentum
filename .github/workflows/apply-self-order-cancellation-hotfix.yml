@@ -1,0 +1,36 @@
+name: Apply self-order cancellation hotfix
+
+on:
+  push:
+    branches:
+      - hotfix-self-order-cancellation-2026-09-29
+    paths:
+      - scripts/apply-self-order-cancellation-hotfix.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: hotfix-self-order-cancellation-2026-09-29
+          fetch-depth: 0
+
+      - name: Apply hotfix
+        run: python3 scripts/apply-self-order-cancellation-hotfix.py
+
+      - name: Commit generated changes
+        run: |
+          if git diff --quiet && [ -z "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "No generated changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/order-cancellation.ts lib/workspace-context.tsx lib/inventory-ledger-context-v2.tsx lib/commerce-context.tsx lib/delivery-context.tsx components/pages/orders-v3.tsx tests/order-cancellation-delivery.test.ts package.json
+          git commit -m "Allow sales users to cancel their own pre-fulfillment orders"
+          git push origin HEAD:hotfix-self-order-cancellation-2026-09-29
