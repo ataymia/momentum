@@ -14,6 +14,7 @@ import { isTerritoryDeviation, normalizePostalCode, territoryForPostalCode, terr
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import { skuForProductName } from "./product-catalog";
 import { productsEquivalent } from "./order-lines";
+import { canCancelOrder, orderCancellationAccessMessage } from "./order-cancellation";
 import { reconcileApprovals, reconcileOrders } from "./order-approval-engine";
 import type { Account, Activity, Appointment, AppointmentStatus, Approval, CustomerAccount, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, SalesTerritory, WorkspaceData, WorkspaceUser } from "./types";
 import { WorkspaceProvider as BaseWorkspaceProvider, useWorkspace as useBaseWorkspace } from "./workspace-context-v5";
@@ -656,21 +657,25 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const cancelOrder = (id: string, reason: string) => {
-    if (!currentUser || currentUser.role !== "Administrator") return { ok: false, message: "Administrator access is required to cancel an order." };
+    if (!currentUser) return { ok: false, message: "Sign in before cancelling an order." };
     const cleanReason = reason.trim();
     if (cleanReason.length < 3) return { ok: false, message: "Enter a cancellation reason." };
     const order = commercial.orders.find((item) => item.id === id);
     if (!order) return { ok: false, message: "Only shared commercial orders can be cancelled from this screen." };
-    if (["Allocated", "Out for delivery", "Delivered", "Paid"].includes(order.status)) return { ok: false, message: "Fulfillment has already started. Use the delivery/return exception workflow instead of cancelling this order." };
     if (order.status === "Cancelled") return { ok: true };
+    if (!canCancelOrder(currentUser, order)) return { ok: false, message: orderCancellationAccessMessage(currentUser, order) };
+    if (["Partially paid", "Paid"].includes(order.paymentStatus)) return { ok: false, message: "This order has payment activity. Finance must resolve it before the order can be cancelled." };
     const stamp = now();
-    setCommercial((state) => ({
-      ...state,
-      orders: state.orders.map((item) => item.id === id ? { ...item, status: "Cancelled", cancelledAt: stamp, cancelledBy: currentUser.id, cancellationReason: cleanReason } : item),
-      approvals: state.approvals.map((item) => item.recordId === id && ["Order", "Low stock sale"].includes(item.type) && item.status === "Pending" ? { ...item, status: "Returned", decidedBy: currentUser.id, decidedAt: stamp, returnReason: `Order cancelled: ${cleanReason}` } : item),
-      accountPatches: { ...state.accountPatches, [order.accountId]: { ...(state.accountPatches[order.accountId] ?? {}), lastActivity: `Order ${order.number} cancelled` } },
-      activities: [{ id: uid("act-order-cancel"), accountId: order.accountId, type: "order", title: "Order cancelled", detail: `${order.number} cancelled by ${currentUser.name}: ${cleanReason}`, at: stamp, userId: currentUser.id }, ...state.activities],
-    }));
+    const nextCommercial: CommercialState = {
+      ...commercial,
+      orders: commercial.orders.map((item) => item.id === id ? { ...item, status: "Cancelled", cancelledAt: stamp, cancelledBy: currentUser.id, cancellationReason: cleanReason } : item),
+      approvals: commercial.approvals.map((item) => item.recordId === id && ["Order", "Low stock sale"].includes(item.type) && item.status === "Pending" ? { ...item, status: "Returned", decidedBy: currentUser.id, decidedAt: stamp, returnReason: `Order cancelled: ${cleanReason}` } : item),
+      accountPatches: { ...commercial.accountPatches, [order.accountId]: { ...(commercial.accountPatches[order.accountId] ?? {}), lastActivity: `Order ${order.number} cancelled` } },
+      activities: [{ id: uid("act-order-cancel"), accountId: order.accountId, type: "order", title: "Order cancelled", detail: `${order.number} cancelled by ${currentUser.name}: ${cleanReason}`, at: stamp, userId: currentUser.id }, ...commercial.activities],
+    };
+    momentumStorage.setItem(COMMERCIAL_KEY, JSON.stringify(nextCommercial));
+    setCommercial(nextCommercial);
+    void momentumStorage.flush();
     return { ok: true };
   };
 

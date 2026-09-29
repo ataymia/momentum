@@ -83,6 +83,26 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   }, [data]);
 
   useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setCommerce((state) => {
+        let changed = false;
+        const invoices = state.invoices.map((invoice) => {
+          const order = data.orders.find((item) => item.id === invoice.orderId);
+          if (!order || order.status !== "Cancelled" || invoice.status === "Void") return invoice;
+          const paymentIds = new Set(state.allocations.filter((allocation) => allocation.invoiceId === invoice.id).map((allocation) => allocation.paymentId));
+          const hasPaymentActivity = state.payments.some((payment) => paymentIds.has(payment.id) && ["Pending", "Cleared"].includes(payment.status));
+          const hasCreditActivity = state.credits.some((credit) => credit.invoiceId === invoice.id && credit.status !== "Void");
+          if (hasPaymentActivity || hasCreditActivity) return invoice;
+          changed = true;
+          return { ...invoice, status: "Void" as const, voidReason: `Order ${order.number} cancelled before fulfillment${order.cancellationReason ? `: ${order.cancellationReason}` : "."}` };
+        });
+        return changed ? { ...state, invoices } : state;
+      });
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [data.orders]);
+
+  useEffect(() => {
     if (typeof window !== "undefined") momentumStorage.setItem(COMMERCE_STORAGE_KEY, JSON.stringify(commerce));
   }, [commerce]);
   useRemoteStorageSync(COMMERCE_STORAGE_KEY, () => setCommerce(read()));

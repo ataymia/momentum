@@ -41,7 +41,26 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DeliveryState>(() => read());
 
   useEffect(() => {
-    const handle = window.setTimeout(() => setState((current) => normalizeDeliveryState(current, data)), 0);
+    const handle = window.setTimeout(() => setState((current) => {
+      const normalized = normalizeDeliveryState(current, data);
+      let changed = false;
+      const tasks = normalized.tasks.map((task) => {
+        const order = data.orders.find((item) => item.id === task.orderId);
+        if (!order || order.status !== "Cancelled" || task.status === "Cancelled" || ["Loaded", "In transit", "Delivered"].includes(task.status)) return task;
+        changed = true;
+        const cancelledAt = order.cancelledAt ?? now();
+        const cancelledBy = order.cancelledBy ?? "system";
+        const note = `Order cancelled${order.cancellationReason ? `: ${order.cancellationReason}` : "."}`;
+        return {
+          ...task,
+          status: "Cancelled" as const,
+          cancelledAt,
+          cancelledBy,
+          history: [{ id: uid("delivery-event"), type: "Cancelled" as const, at: cancelledAt, actorId: cancelledBy, note }, ...task.history],
+        };
+      });
+      return changed ? { ...normalized, tasks } : normalized;
+    }), 0);
     return () => window.clearTimeout(handle);
   }, [data]);
   useEffect(() => {
