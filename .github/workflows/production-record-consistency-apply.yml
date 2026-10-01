@@ -37,6 +37,10 @@ jobs:
       - name: Apply production repair
         run: python3 scripts/apply-production-record-consistency.py
 
+      - name: Show repaired persistence lines for type diagnostics
+        run: |
+          nl -ba lib/persistence.ts | sed -n '245,420p'
+
       - name: Install application dependencies
         run: npm ci
 
