@@ -67,4 +67,33 @@ test("Administrator approval UI identifies the submitting rep before decision",(
   assert.match(ui,/Sales rep/);
   assert.match(ui,/Submitted by/);
   assert.match(ui,/flushAndConfirm\(COMMERCIAL_KEY\)/);
+  assert.match(ui,/orderApproval\(approval.type\).*Awaiting approval/);
+});
+
+test("stale Pending or Returned approval cannot move an approved order backward",()=>{
+  const approved=order("Approved");
+  assert.equal(reconcileOrders([approved],[],[pending])[0].status,"Approved");
+  const returned={...pending,status:"Returned" as const,decidedBy:admin.id,decidedAt:"2026-10-01T16:05:00.000Z",returnReason:"stale"};
+  assert.equal(reconcileOrders([approved],[],[returned])[0].status,"Approved");
+});
+
+test("every operational order surface identifies the creator and Delivery can print invoices",()=>{
+  const orders=readFileSync("components/pages/orders-v3.tsx","utf8");
+  const work=readFileSync("components/pages/work-v2.tsx","utf8");
+  const delivery=readFileSync("components/pages/deliveries.tsx","utf8");
+  const accounts=readFileSync("components/pages/accounts.tsx","utf8");
+  const invoices=readFileSync("components/finance/invoice-print-center.tsx","utf8");
+  assert.match(orders,/Placed by/);
+  assert.match(work,/Submitted by/);
+  assert.match(delivery,/Placed by/);
+  assert.match(accounts,/Placed by/);
+  assert.match(invoices,/Placed by/);
+  assert.match(delivery,/InvoicePrintCenter/);
+  assert.match(delivery,/flushAndConfirm\(DELIVERY_STORAGE_KEY\)/);
+});
+
+test("Delivery Driver invoice access is read-only in the persistence domain",()=>{
+  const domains=readFileSync("lib/firestore-domains.ts","utf8");
+  assert.match(domains,/momentum-commerce-v1[\s\S]*Delivery Driver/);
+  assert.match(domains,/momentum-commerce-v1[\s\S]*write:ADMIN/);
 });

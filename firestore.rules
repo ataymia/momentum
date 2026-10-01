@@ -240,7 +240,7 @@ service cloud.firestore {
 
     // momentum-commerce-v1
     match /commerce/fields/{field} {
-      allow get, list: if field in ['_root', 'allocations', 'credits', 'invoices', 'notes', 'payments', 'refunds'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations']));
+      allow get, list: if field in ['_root', 'allocations', 'credits', 'invoices', 'notes', 'payments', 'refunds'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Delivery Driver']));
       allow write: if field in ['_root', 'allocations', 'credits', 'invoices', 'notes', 'payments', 'refunds'] && ((isActiveRole('Administrator')));
     }
 

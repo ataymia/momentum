@@ -2809,7 +2809,7 @@ button.account-table.is-selected {
   background:#fff;
   border:0;
   border-bottom:1px solid #edf0f3;
-  grid-template-columns:88px minmax(150px,1fr) 54px 74px 128px 16px;
+  grid-template-columns:88px minmax(150px,1fr) minmax(110px,.75fr) 54px 74px 128px 16px;
   align-items:center;
   gap:8px;
   width:100%;

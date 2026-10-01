@@ -27,7 +27,7 @@ export function WorkPage(){
   const [decisionError,setDecisionError]=useState("");
   const [deciding,setDeciding]=useState(false);
   if(!currentUser)return null;
-  const pending=scope.approvals.filter((approval)=>approval.status==="Pending");
+  const pending=scope.approvals.filter((approval)=>approval.status==="Pending"&&(!orderApproval(approval.type)||scope.orders.find((order)=>order.id===approval.recordId)?.status==="Awaiting approval"));
   const completed=scope.approvals.filter((approval)=>approval.status!=="Pending");
   const reviewApproval=scope.approvals.find((approval)=>approval.id===reviewId)??null;
   const reviewOrder=reviewApproval&&orderApproval(reviewApproval.type)?scope.orders.find((order)=>order.id===reviewApproval.recordId)??null:null;

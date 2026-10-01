@@ -46,10 +46,12 @@ function dueLabel(terms: string, dueDate?: string) {
   return "Due according to approved terms";
 }
 
-export function InvoicePrintCenter() {
+type InvoicePrintCenterProps={allowedOrderIds?:string[];title?:string;description?:string};
+
+export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",description="Print a single invoice or select multiple invoices for a delivery run. Browser print also supports Save as PDF."}:InvoicePrintCenterProps={}) {
   const { data, scope } = useWorkspace();
   const { commerce } = useCommerce();
-  const orderIds = useMemo(() => new Set(scope.orders.map((order) => order.id)), [scope.orders]);
+  const orderIds = useMemo(() => {const scoped=new Set(scope.orders.map((order)=>order.id));return new Set(allowedOrderIds?allowedOrderIds.filter((id)=>scoped.has(id)):[...scoped]);}, [scope.orders,allowedOrderIds]);
   const invoices = useMemo(() => commerce.invoices.filter((invoice) => orderIds.has(invoice.orderId)).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt)), [commerce.invoices, orderIds]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -91,6 +93,7 @@ export function InvoicePrintCenter() {
     const invoice = commerce.invoices.find((item) => item.id === invoiceId);
     if (!invoice) return null;
     const order = data.orders.find((item) => item.id === invoice.orderId);
+    const placedBy = order ? data.users.find((user) => user.id === order.ownerId) : undefined;
     const location = data.accounts.find((item) => item.id === invoice.accountId);
     const customer = location ? customerForLocation(data, location) : undefined;
     const lines = order ? orderLinesFor(order) : [];
@@ -126,6 +129,7 @@ export function InvoicePrintCenter() {
         <div><span>Due</span><strong>{dueLabel(invoice.terms, invoice.dueDate)}</strong></div>
         <div><span>Status</span><strong>{status}</strong></div>
         <div><span>Cases</span><strong>{lines.reduce((sum, line) => sum + line.cases, 0)}</strong></div>
+        <div><span>Placed by</span><strong>{placedBy?.name ?? order?.ownerId ?? "Not recorded"}</strong></div>
       </section>
 
       <table className="invoice-sheet__table">
@@ -164,7 +168,7 @@ export function InvoicePrintCenter() {
   const printPortal = typeof document !== "undefined" && printSheets.length ? createPortal(<div className="invoice-print-root" aria-hidden="true">{printSheets}</div>, document.body) : null;
 
   return <>
-    <Section title="Customer invoices" description="Print a single invoice or select multiple invoices for a delivery run. Browser print also supports Save as PDF.">
+    <Section title={title} description={description}>
       <div className="invoice-print-toolbar">
         <Button type="button" size="sm" variant="secondary" icon={allSelected ? <CheckSquare2 size={15}/> : <Square size={15}/>} onClick={toggleAll}>{allSelected ? "Clear all" : "Select all"}</Button>
         <label className="invoice-copy-select"><span>Copies per invoice</span><select value={copies} onChange={(event) => setCopies(Number(event.target.value) as Copies)}><option value={1}>1 copy</option><option value={2}>2 copies</option></select></label>
@@ -172,12 +176,13 @@ export function InvoicePrintCenter() {
       </div>
       {printNotice && <p className="form-notice invoice-print-notice" role="status">{printNotice}</p>}
 
-      <div className="finance-order-list invoice-register"><div className="finance-order-row finance-order-row--head invoice-register__row"><span>Select</span><span>Invoice</span><span>Location</span><span>Total</span><span>Balance</span><span>Status</span><span>Actions</span></div>{invoices.map((invoice) => {
+      <div className="finance-order-list invoice-register"><div className="finance-order-row finance-order-row--head invoice-register__row"><span>Select</span><span>Invoice</span><span>Location</span><span>Placed by</span><span>Total</span><span>Balance</span><span>Status</span><span>Actions</span></div>{invoices.map((invoice) => {
         const location = data.accounts.find((item) => item.id === invoice.accountId);
         const balance = invoiceBalance(commerce, invoice);
         const status = computedInvoiceStatus(commerce, invoice);
         const checked = selectedSet.has(invoice.id);
-        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill></span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => setPreviewId(invoice.id)}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
+        const order=data.orders.find((item)=>item.id===invoice.orderId);const placedBy=data.users.find((user)=>user.id===order?.ownerId);
+        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{placedBy?.name??order?.ownerId??"Not recorded"}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill></span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => setPreviewId(invoice.id)}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
       })}{invoices.length === 0 && <div className="review-empty"><FileText size={24}/><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}</div>
     </Section>
 

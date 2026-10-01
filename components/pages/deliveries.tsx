@@ -18,12 +18,14 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PaymentMethod } from "../../lib/commerce-engine";
-import { deliveryStatusForOrder, processedForDelivery } from "../../lib/delivery-engine";
+import { DELIVERY_STORAGE_KEY, deliveryStatusForOrder, processedForDelivery } from "../../lib/delivery-engine";
 import { useDelivery } from "../../lib/delivery-context";
+import { INVENTORY_LEDGER_STORAGE_KEY } from "../../lib/inventory-ledger";
 import { orderLinesFor } from "../../lib/order-lines";
-import { useSyncStatus } from "../../lib/persistence";
+import { momentumStorage, useSyncStatus } from "../../lib/persistence";
 import { useMarketing } from "../../lib/marketing-context";
-import { useWorkspace } from "../../lib/workspace-context";
+import { COMMERCIAL_KEY, useWorkspace } from "../../lib/workspace-context";
+import { InvoicePrintCenter } from "../finance/invoice-print-center";
 import { Button, Modal, PageHeader, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const tone = (status: string) => status === "Delivered" ? "success" as const : status === "In transit" || status === "Loaded" ? "info" as const : status.includes("ready") || status === "Accepted" ? "warning" as const : "neutral" as const;
@@ -66,7 +68,7 @@ export function DeliveriesPage() {
   const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
   const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
   const complete = visible.filter((order) => taskForOrder(order.id)?.status === "Delivered");
-  const run = (result: { ok: boolean; message?: string }, success: string) => setNotice(result.ok ? success : result.message ?? "The delivery update was not accepted.");
+  const run = async(result: { ok: boolean; message?: string }, success: string) => {if(!result.ok){setNotice(result.message??"The delivery update was not accepted.");return;}setNotice("Saving delivery change to Momentum cloud…");const checks=await Promise.all([momentumStorage.flushAndConfirm(DELIVERY_STORAGE_KEY),momentumStorage.flushAndConfirm(INVENTORY_LEDGER_STORAGE_KEY),momentumStorage.flushAndConfirm(COMMERCIAL_KEY)]);const failed=checks.find((item)=>!item.ok);setNotice(failed?`Change is still on this device but Momentum cloud has NOT confirmed every record. Do not repeat the action. ${failed.message??"Check the sync status."}`:success);};
   const syncText = sync.lastError ? `Sync issue: ${sync.lastError}` : sync.pending || sync.flushing ? `Saving ${sync.pending || 1} change${sync.pending === 1 ? "" : "s"}…` : sync.mode === "firestore" ? "Cloud synced" : "Local demo";
 
   const card = (orderId: string) => {
@@ -75,6 +77,7 @@ export function DeliveriesPage() {
     const account = data.accounts.find((item) => item.id === order.accountId);
     const customer = account?.customerId ? (data.customers ?? []).find((item) => item.id === account.customerId) : undefined;
     const driver = task ? data.users.find((user) => user.id === task.driverId) : undefined;
+    const placedBy = data.users.find((user) => user.id === order.ownerId);
     const status = deliveryStatusForOrder(state, order);
     const ownTask = Boolean(isDriver && task?.driverId === currentUser?.id);
     const selectedDriver = driverByOrder[order.id] ?? drivers[0]?.id ?? "";
@@ -105,6 +108,7 @@ export function DeliveriesPage() {
       <div className="company-rule-facts">
         <div><span>Cases</span><strong>{order.cases}</strong><small>{lines.length} SKU{lines.length === 1 ? "" : "s"}</small></div>
         <div><span>Order total</span><strong>{formatMoney(order.amount)}</strong><small>{order.paymentStatus}</small></div>
+        <div><span>Placed by</span><strong>{placedBy?.name ?? order.ownerId}</strong><small>Order creator</small></div>
         <div><span>Driver</span><strong>{driver?.name ?? "Unassigned"}</strong><small>{task ? "Claimed" : "Available to claim"}</small></div>
         <div><span>Terms</span><strong>{customer?.paymentTerms ?? "COD"}</strong><small>{collected > 0 ? `${formatMoney(collected)} collected · Finance pending` : `Order ${order.status}`}</small></div>
       </div>
@@ -135,6 +139,7 @@ export function DeliveriesPage() {
   const detailAccount = detailOrder ? data.accounts.find((item) => item.id === detailOrder.accountId) : undefined;
   const detailCustomer = detailAccount?.customerId ? (data.customers ?? []).find((item) => item.id === detailAccount.customerId) : undefined;
   const detailDriver = detailTask ? data.users.find((user) => user.id === detailTask.driverId) : undefined;
+  const detailPlacedBy = detailOrder ? data.users.find((user) => user.id === detailOrder.ownerId) : undefined;
   const detailLines = detailOrder ? orderLinesFor(detailOrder) : [];
   const detailMarketing = detailOrder ? approvedMarketingRequests.filter((request) => request.accountId === detailOrder.accountId) : [];
   const detailCollected = (detailTask?.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
@@ -148,6 +153,8 @@ export function DeliveriesPage() {
 
       {approvedMarketingRequests.length > 0 && <Section title="Approved marketing / delivery requests" description="Approved requests stay visible here and repeat on the matching delivery card."><div className="delivery-marketing-request-list">{approvedMarketingRequests.map((request) => { const account = request.accountId ? data.accounts.find((item) => item.id === request.accountId) : undefined; const requester = data.users.find((item) => item.id === request.requesterId); return <article key={request.id}><span><Megaphone size={17} /></span><div><small>{request.type}{request.neededBy ? ` · needed ${formatDate(request.neededBy, { month: "short", day: "numeric" })}` : ""}</small><strong>{request.title}</strong><p>{request.detail}</p><em>{account ? (account.locationName ?? account.name) : "No location linked"}{requester ? ` · requested by ${requester.name}` : ""}</em></div><StatusPill tone="warning">Approved</StatusPill></article>; })}</div></Section>}
 
+      <InvoicePrintCenter allowedOrderIds={visible.map((order)=>order.id)} title={isDriver?"Delivery invoices":"Delivery-run invoices"} description="Print one invoice or a complete delivery batch directly from the delivery workspace."/>
+
       <Section title="Delivery queue" description="Each card shows the essentials. Use View details for the complete order, contacts, requests, payment record and delivery history."><div className="company-request-list">{visible.filter((order) => taskForOrder(order.id)?.status !== "Delivered").map((order) => card(order.id))}{visible.filter((order) => taskForOrder(order.id)?.status !== "Delivered").length === 0 && <div className="review-empty"><Route size={23} /><p>No active deliveries in your scope.</p></div>}</div></Section>
       {complete.length > 0 && <Section title="Completed deliveries"><div className="company-request-list">{complete.slice(0, 25).map((order) => card(order.id))}</div></Section>}
       {!isDriver && <Section title="Inventory fulfillment" description="Inventory reservations and custody remain auditable. Open Inventory for manual exceptions, counts, holds and reconciliation."><Button type="button" variant="secondary" icon={<PackageCheck size={15} />} onClick={() => navigate("inventory")}>Open inventory fulfillment</Button></Section>}
@@ -157,6 +164,7 @@ export function DeliveriesPage() {
       {detailOrder && <div style={{ display: "grid", gap: 16 }}>
         <div className="company-rule-facts">
           <div><span>Status</span><strong>{detailStatus}</strong><small>Order {detailOrder.status}</small></div>
+          <div><span>Placed by</span><strong>{detailPlacedBy?.name??detailOrder.ownerId}</strong><small>Order creator</small></div>
           <div><span>Cases</span><strong>{detailOrder.cases}</strong><small>{detailLines.length} SKU{detailLines.length === 1 ? "" : "s"}</small></div>
           <div><span>Order total</span><strong>{formatMoney(detailOrder.amount)}</strong><small>{detailOrder.paymentStatus}</small></div>
           <div><span>Driver</span><strong>{detailDriver?.name ?? "Unassigned"}</strong><small>{detailTask?.status ?? "Not claimed"}</small></div>

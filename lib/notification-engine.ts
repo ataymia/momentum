@@ -101,7 +101,10 @@ export function notificationTarget(event:AuditEvent,data:WorkspaceData):Notifica
     if(event.action==="Created"&&approval.status!=="Pending")return null;
     if(event.action==="Updated"&&changedTo(event,"status","Returned")&&approval.status!=="Returned")return null;
     if(["Order","Low stock sale"].includes(approval.type)){
-      if(!approval.recordId||!data.orders.some((order)=>order.id===approval.recordId))return null;
+      if(!approval.recordId)return null;
+      const order=data.orders.find((item)=>item.id===approval.recordId);
+      if(!order)return null;
+      if(approval.status==="Pending"&&order.status!=="Awaiting approval")return null;
       return{targetPage:"orders",targetRecordId:approval.recordId,actionLabel:approval.status==="Pending"?"Review order":"Open order"};
     }
     if(approval.type==="Territory exception")return{targetPage:"salesMap",targetRecordId:approval.recordId,actionLabel:"Review territory exception"};

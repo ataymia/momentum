@@ -68,7 +68,7 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-training-library-v1",id:"trainingLibrary",read:"hasAccess",write:ADMIN,fields:{materials:{},audiences:{}}},
   {key:"momentum-document-templates-v1",id:"documentTemplates",read:"hasAccess",write:ADMIN,fields:{templates:{},packets:perUser()}},
   {key:"momentum-performance-v1",id:"performance",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{goals:perUser(),reports:perUser(),notes:perUser("authorId")}},
-  {key:"momentum-commerce-v1",id:"commerce",read:["Administrator","Sales Manager","Sales Representative","Operations"],write:ADMIN,fields:{invoices:{},payments:{},allocations:{},credits:{},refunds:{},notes:{}}},
+  {key:"momentum-commerce-v1",id:"commerce",read:["Administrator","Sales Manager","Sales Representative","Operations","Delivery Driver"],write:ADMIN,fields:{invoices:{},payments:{},allocations:{},credits:{},refunds:{},notes:{}}},
   {key:"momentum-inventory-ledger-v1",id:"inventoryLedger",read:OPERATIONAL,write:OPERATIONS,fields:{nodes:{read:[...OPERATIONAL,"Delivery Driver"]},movements:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},reservations:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},counts:{read:[...OPERATIONAL,"Delivery Driver"]}}},
   {key:"momentum-delivery-v1",id:"delivery",read:DELIVERY_READ,write:DELIVERY_WRITE,fields:{tasks:{}}},
   {key:"momentum-finance-v3",id:"finance",read:ADMIN,write:ADMIN,fields:{expenses:perUser("requesterId")}},
