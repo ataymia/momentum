@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   accountIsVisible,
   canAccessPage,
@@ -194,12 +194,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const production = Boolean(firebase);
   const directory = firebase?.directory;
   const [data, setData] = useState<WorkspaceData>(() => production ? hydrateProductionWorkspace(directory ?? []) : createNormalizedDemoData());
+  const dataRef = useRef(data);
+  const commitWorkspaceData = (next: WorkspaceData) => {
+    dataRef.current = next;
+    momentumStorage.setItem(DATA_KEY, JSON.stringify(next));
+    setData(next);
+    return momentumStorage.flushAndConfirm(DATA_KEY);
+  };
   const [demoUserId, setDemoUserId] = useState<string | null>(null);
   const [activePage, setActivePage] = useState<PageKey>("home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
   const [ready, setReady] = useState(production);
   const currentUserId = production ? firebase?.session?.uid ?? null : demoUserId;
+  useEffect(() => { dataRef.current = data; }, [data]);
 
   useEffect(() => {
     if (production) {
@@ -235,7 +243,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return () => window.clearTimeout(handle);
   }, [directory, production]);
 
-  useRemoteStorageSync(DATA_KEY, () => { if (production) setData(hydrateProductionWorkspace(directory ?? [])); });
+  useRemoteStorageSync(DATA_KEY, () => { if (production) { const next = hydrateProductionWorkspace(directory ?? []); dataRef.current = next; setData(next); } });
 
   useEffect(() => {
     if (ready) {
@@ -352,11 +360,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const setOrderStatus = useCallback((id: string, status: OrderStatus) => {
     if (!currentUser || !canAdvanceFulfillment(currentUser)) return;
-    setData((current) => {
-      const order = current.orders.find((item) => item.id === id);
-      if (!order || nextFulfillment[order.status] !== status) return current;
-      return { ...current, orders: current.orders.map((item) => item.id === id ? { ...item, status, paymentStatus: status === "Delivered" && item.paymentStatus === "Not invoiced" ? "Open" : item.paymentStatus } : item) };
-    });
+    const current = dataRef.current;
+    const order = current.orders.find((item) => item.id === id);
+    if (!order || nextFulfillment[order.status] !== status) return;
+    const next = { ...current, orders: current.orders.map((item) => item.id === id ? { ...item, status, paymentStatus: status === "Delivered" && item.paymentStatus === "Not invoiced" ? "Open" : item.paymentStatus } : item) };
+    void commitWorkspaceData(next);
   }, [currentUser]);
 
   const reconcileOrderPayment = useCallback((id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => {
@@ -407,17 +415,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const decideApproval = useCallback((id: string, decision: "Approved" | "Returned") => {
     if (!currentUser) return;
-    setData((current) => {
-      const approval = current.approvals.find((item) => item.id === id);
-      if (!approval || approval.status !== "Pending" || !canReviewApproval(current, currentUser, approval)) return current;
-      const decidedAt = nowStamp();
-      return {
-        ...current,
-        approvals: current.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt } : item),
-        orders: current.orders.map((order) => ["Order", "Low stock sale"].includes(approval.type) && (order.id === approval.recordId || approval.title.includes(order.number)) ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
-        activities: approval.recordId ? [{ id: `act-${Date.now()}`, accountId: current.orders.find((order) => order.id === approval.recordId)?.accountId, type: "order", title: decision === "Approved" ? "Order approved" : "Order returned for edits", detail: `${approval.title} ${decision.toLowerCase()} by ${currentUser.name}.`, at: decidedAt, userId: currentUser.id }, ...current.activities] : current.activities,
-      };
-    });
+    const current = dataRef.current;
+    const approval = current.approvals.find((item) => item.id === id);
+    if (!approval || approval.status !== "Pending" || !canReviewApproval(current, currentUser, approval)) return;
+    const decidedAt = nowStamp();
+    const next: WorkspaceData = {
+      ...current,
+      approvals: current.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt } : item),
+      orders: current.orders.map((order) => ["Order", "Low stock sale"].includes(approval.type) && (order.id === approval.recordId || approval.title.includes(order.number)) ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
+    };
+    void commitWorkspaceData(next);
   }, [currentUser]);
 
   const resolveInventoryHold = useCallback((id: string, decision: "Release" | "Retain", reason: string) => {

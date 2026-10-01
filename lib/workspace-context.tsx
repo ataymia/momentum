@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { accountIsVisible, canAdvanceFulfillment, canAssignScheduleUser, canManageSchedule, canReconcileOrderPayment, canReviewApproval, canTransferSalesResponsibility, getWorkspaceScope } from "./access";
 import { validateNewAccountContact } from "./account-creation";
 import { normalizeCommercialState } from "./commercial-state";
@@ -158,7 +158,16 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const runtimeMode = useRuntimeModeValue();
   const demoMode = runtimeMode === "demo";
   const [commercial, setCommercial] = useState<CommercialState>(() => readCommercial(base.data));
+  const commercialRef = useRef(commercial);
   const [warehouseSession, setWarehouseSession] = useState(false);
+  const commitCommercialState = (next: CommercialState) => {
+    commercialRef.current = next;
+    momentumStorage.setItem(COMMERCIAL_KEY, JSON.stringify(next));
+    setCommercial(next);
+    return momentumStorage.flushAndConfirm(COMMERCIAL_KEY);
+  };
+
+  useEffect(() => { commercialRef.current = commercial; }, [commercial]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -167,7 +176,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }, [commercial]);
 
-  useRemoteStorageSync(COMMERCIAL_KEY, () => setCommercial(readCommercial(base.data)));
+  useRemoteStorageSync(COMMERCIAL_KEY, () => { const next = readCommercial(base.data); commercialRef.current = next; setCommercial(next); });
 
   useEffect(() => {
     const handle = window.setTimeout(() => setCommercial((state) => normalizeCommercialState(state, base.data, today())), 0);
@@ -609,11 +618,12 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const superseded=commercial.approvals.map((item)=>item.recordId===id&&["Order","Low stock sale"].includes(item.type)&&item.status==="Pending"?{...item,status:"Returned" as const,decidedBy:currentUser.id,decidedAt:stamp,returnReason:"Superseded by an edited order version."}:item);
     const action=adminApprovedAmendment?"Order amended after approval":order.status==="Draft"?"Returned order corrected and resubmitted":"Order edited and resubmitted";
     const nextCommercial:CommercialState={...commercial,orders:commercial.orders.map((item)=>item.id===id?revisedOrder:item),approvals:[approval,...superseded],accountPatches:{...commercial.accountPatches,[order.accountId]:{...(commercial.accountPatches[order.accountId]??{}),lastActivity:`${order.number} edited by ${currentUser.name}`}},activities:[{id:uid("act-order-edit"),accountId:order.accountId,type:"order",title:action,detail:`${order.number} changed by ${currentUser.name}: ${lineSummary} · ${cases} total cases · ${price.toFixed(2)}/case.${adminApprovedAmendment?" Administrator amendment remains approved.":" Administrator approval is required before fulfillment."}`,at:stamp,userId:currentUser.id},...commercial.activities]};
-    momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));setCommercial(nextCommercial);window.setTimeout(()=>void momentumStorage.flush(),0);return{ok:true,status:nextStatus};
+    void commitCommercialState(nextCommercial);return{ok:true,status:nextStatus};
   };
 
   const decideApproval = (id: string, decision: "Approved" | "Returned") => {
-    const approval = commercial.approvals.find((item) => item.id === id);
+    const current = commercialRef.current;
+    const approval = current.approvals.find((item) => item.id === id);
     if (!approval) {
       base.decideApproval(id, decision);
       return;
@@ -627,7 +637,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
         if(returnReason.length<3)return;
       }
       const accountId=approval.recordId;
-      setCommercial((state)=>({...state,approvals:state.approvals.map((item)=>item.id===id?{...item,status:decision}:item),activities:accountId?[{id:uid("act-territory-review"),accountId,type:"note",title:decision==="Approved"?"Territory exception validated":"Territory exception returned",detail:decision==="Approved"?`${approval.detail} Reviewed and approved by ${currentUser.name}.`:`${approval.detail} Returned by ${currentUser.name}: ${returnReason}`,at:now(),userId:currentUser.id},...state.activities]:state.activities}));
+      const next: CommercialState={...current,approvals:current.approvals.map((item)=>item.id===id?{...item,status:decision,decidedBy:currentUser.id,decidedAt:now(),returnReason:returnReason||undefined}:item),activities:accountId?[{id:uid("act-territory-review"),accountId,type:"note",title:decision==="Approved"?"Territory exception validated":"Territory exception returned",detail:decision==="Approved"?`${approval.detail} Reviewed and approved by ${currentUser.name}.`:`${approval.detail} Returned by ${currentUser.name}: ${returnReason}`,at:now(),userId:currentUser.id},...current.activities]:current.activities};
+      void commitCommercialState(next);
       return;
     }
     let returnReason: string | undefined;
@@ -637,23 +648,25 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       if (!returnReason || returnReason.length < 3) return;
     }
     const decidedAt = now();
-    setCommercial((state) => ({
-      ...state,
-      approvals: state.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt, returnReason } : item),
-      orders: state.orders.map((order) => order.id === approval.recordId ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
-      activities: approval.recordId ? [{ id: uid("act-approval"), accountId: state.orders.find((order) => order.id === approval.recordId)?.accountId, type: "order", title: decision === "Approved" ? "Order approved" : "Order returned for edits", detail: decision === "Approved" ? `${approval.title} approved by ${currentUser.name}.` : `${approval.title} returned by ${currentUser.name}: ${returnReason}`, at: decidedAt, userId: currentUser.id }, ...state.activities] : state.activities,
-    }));
-    window.setTimeout(() => void momentumStorage.flush(), 0);
+    const next: CommercialState = {
+      ...current,
+      approvals: current.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt, returnReason } : item),
+      orders: current.orders.map((order) => order.id === approval.recordId ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
+      activities: approval.recordId ? [{ id: uid("act-approval"), accountId: current.orders.find((order) => order.id === approval.recordId)?.accountId, type: "order", title: decision === "Approved" ? "Order approved" : "Order returned for edits", detail: decision === "Approved" ? `${approval.title} approved by ${currentUser.name}.` : `${approval.title} returned by ${currentUser.name}: ${returnReason}`, at: decidedAt, userId: currentUser.id }, ...current.activities] : current.activities,
+    };
+    void commitCommercialState(next);
   };
 
   const setOrderStatus = (id: string, status: OrderStatus) => {
-    const order = commercial.orders.find((item) => item.id === id);
+    const current = commercialRef.current;
+    const order = current.orders.find((item) => item.id === id);
     if (!order) {
       base.setOrderStatus(id, status);
       return;
     }
     if (!currentUser || !canAdvanceFulfillment(currentUser) || nextFulfillment[order.status] !== status) return;
-    setCommercial((state) => ({ ...state, orders: state.orders.map((item) => item.id === id ? { ...item, status, paymentStatus: status === "Delivered" && item.paymentStatus === "Not invoiced" ? "Open" : item.paymentStatus } : item) }));
+    const next: CommercialState = { ...current, orders: current.orders.map((item) => item.id === id ? { ...item, status, paymentStatus: status === "Delivered" && item.paymentStatus === "Not invoiced" ? "Open" : item.paymentStatus } : item) };
+    void commitCommercialState(next);
   };
 
   const cancelOrder = (id: string, reason: string) => {
@@ -673,9 +686,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       accountPatches: { ...commercial.accountPatches, [order.accountId]: { ...(commercial.accountPatches[order.accountId] ?? {}), lastActivity: `Order ${order.number} cancelled` } },
       activities: [{ id: uid("act-order-cancel"), accountId: order.accountId, type: "order", title: "Order cancelled", detail: `${order.number} cancelled by ${currentUser.name}: ${cleanReason}`, at: stamp, userId: currentUser.id }, ...commercial.activities],
     };
-    momentumStorage.setItem(COMMERCIAL_KEY, JSON.stringify(nextCommercial));
-    setCommercial(nextCommercial);
-    void momentumStorage.flush();
+    void commitCommercialState(nextCommercial);
     return { ok: true };
   };
 
