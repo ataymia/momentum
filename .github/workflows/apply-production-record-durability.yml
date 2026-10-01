@@ -22,8 +22,10 @@ jobs:
         run: python scripts/apply-production-record-durability.py || true
       - name: Finish approval UI and regression patch
         run: python scripts/finish-production-record-durability.py
-      - name: Finish delivery durability and order attribution
-        run: python scripts/finish-delivery-durability.py
+      - name: Apply delivery durability and creator attribution
+        run: python scripts/finish-delivery-durability.py || true
+      - name: Finish delivery detail and order creator attribution
+        run: python scripts/finish-delivery-durability-tail.py
       - name: Commit source changes
         run: |
           if git diff --quiet; then
