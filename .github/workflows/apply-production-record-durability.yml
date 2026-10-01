@@ -30,6 +30,6 @@ jobs:
           fi
           git config user.name "ataymia"
           git config user.email "ataymia.murray@allstarservicesnow.com"
-          git add lib/workspace-context.tsx lib/workspace-context-v5.tsx components/pages/work-v2.tsx tests/production-record-consistency.test.ts
+          git add lib/workspace-context.tsx lib/workspace-context-v5.tsx components/pages/work-v2.tsx tests/production-record-durability.test.ts package.json
           git commit -m "Make production order lifecycle writes immediately durable"
           git push origin HEAD:production-record-durability-2026-10-01
