@@ -610,6 +610,178 @@ const requireAdministrator = async (
   return {uid};
 };
 
+export const updateAccountEmail = onRequest(
+  {
+    cors: true,
+    region: "us-central1",
+  },
+  async (request, response) => {
+    if (request.method !== "POST") {
+      json(response, 405, {ok: false, message: "Method not allowed."});
+      return;
+    }
+
+    const authorization = request.headers.authorization ?? "";
+    const token = authorization.startsWith("Bearer ") ?
+      authorization.slice("Bearer ".length).trim() :
+      "";
+
+    if (!token) {
+      json(response, 401, {ok: false, message: "Sign in first."});
+      return;
+    }
+
+    const uid = textValue(request.body?.uid);
+    const email = textValue(request.body?.email).toLowerCase();
+    if (!uid || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      json(response, 400, {ok: false, message: "Enter a valid e-mail address."});
+      return;
+    }
+
+    let decoded: Awaited<ReturnType<ReturnType<typeof getAuth>["verifyIdToken"]>>;
+    try {
+      decoded = await getAuth().verifyIdToken(token);
+    } catch {
+      json(response, 401, {ok: false, message: "Your session has expired. Sign in again."});
+      return;
+    }
+
+    try {
+      const callerAccess = await db.collection(USER_ACCESS).doc(decoded.uid).get();
+      const callerData = callerAccess.data() ?? {};
+      const callerIsAdministrator = callerAccess.exists &&
+        callerData.role === "Administrator" &&
+        callerData.accountState === "Active";
+      const selfChange = decoded.uid === uid;
+
+      if (!selfChange && !callerIsAdministrator) {
+        json(response, 403, {ok: false, message: "Only an Administrator can change another employee's sign-in e-mail."});
+        return;
+      }
+      if (selfChange && callerData.accountState !== "Active") {
+        json(response, 403, {ok: false, message: "This account is not active."});
+        return;
+      }
+      if (selfChange && !callerIsAdministrator) {
+        const authTime = typeof decoded.auth_time === "number" ? decoded.auth_time : 0;
+        const ageSeconds = Math.floor(Date.now() / 1000) - authTime;
+        if (!authTime || ageSeconds > 10 * 60) {
+          json(response, 401, {ok: false, message: "For security, recently sign in again before changing your sign-in e-mail."});
+          return;
+        }
+      }
+
+      const accessRef = db.collection(USER_ACCESS).doc(uid);
+      const directoryRef = db.collection(EMPLOYEE_DIRECTORY).doc(uid);
+      const [targetAuth, targetAccess, targetDirectory] = await Promise.all([
+        getAuth().getUser(uid),
+        accessRef.get(),
+        directoryRef.get(),
+      ]);
+      if (!targetAccess.exists || !targetDirectory.exists) {
+        json(response, 404, {ok: false, message: "That Momentum account could not be found."});
+        return;
+      }
+
+      const previousEmail = textValue(targetAuth.email).toLowerCase();
+      if (!previousEmail) {
+        json(response, 409, {ok: false, message: "The Firebase identity has no e-mail address to replace."});
+        return;
+      }
+      if (previousEmail === email) {
+        json(response, 200, {ok: true, uid, email, previousEmail});
+        return;
+      }
+
+      try {
+        const duplicate = await getAuth().getUserByEmail(email);
+        if (duplicate.uid !== uid) {
+          json(response, 409, {ok: false, message: "That e-mail address already belongs to another Momentum account."});
+          return;
+        }
+      } catch (error) {
+        const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+        if (code !== "auth/user-not-found") throw error;
+      }
+
+      const accessData = targetAccess.data() ?? {};
+      const directoryData = targetDirectory.data() ?? {};
+      const username = normalizeUsername(accessData.username ?? directoryData.username);
+      const history = Array.isArray(accessData.emailChangeHistory) ? accessData.emailChangeHistory.slice(-24) : [];
+      const at = new Date().toISOString();
+      const changeEvent = {
+        previousEmail,
+        email,
+        changedAt: at,
+        changedBy: decoded.uid,
+        source: selfChange ? "Self-service" : "Administrator",
+      };
+
+      await getAuth().updateUser(uid, {
+        email,
+        emailVerified: false,
+      });
+
+      try {
+        await db.runTransaction(async (transaction) => {
+          let usernameRef = null;
+          if (username) {
+            usernameRef = db.collection("usernames").doc(username);
+            const usernameRecord = await transaction.get(usernameRef);
+            const indexedUid = usernameRecord.exists ? textValue(usernameRecord.data()?.uid) : "";
+            if (indexedUid && indexedUid !== uid) {
+              throw new Error("MOMENTUM_USERNAME_INDEX_COLLISION");
+            }
+          }
+
+          transaction.set(accessRef, {
+            email,
+            emailChangedAt: at,
+            emailChangedBy: decoded.uid,
+            emailChangeHistory: [...history, changeEvent],
+            updatedAt: at,
+            updatedBy: decoded.uid,
+          }, {merge: true});
+          transaction.set(directoryRef, {email, updatedAt: at}, {merge: true});
+          if (usernameRef) {
+            transaction.set(usernameRef, {
+              uid,
+              email,
+              updatedAt: at,
+              updatedBy: decoded.uid,
+            }, {merge: true});
+          }
+        });
+      } catch (error) {
+        let rollbackSucceeded = true;
+        try {
+          await getAuth().updateUser(uid, {
+            email: previousEmail,
+            emailVerified: targetAuth.emailVerified,
+          });
+        } catch (rollbackError) {
+          rollbackSucceeded = false;
+          console.error("updateAccountEmail rollback failed", rollbackError);
+        }
+        console.error("updateAccountEmail Firestore coordination failed", error);
+        json(response, 502, {
+          ok: false,
+          message: rollbackSucceeded ?
+            "The e-mail change could not be saved. The original sign-in e-mail was restored." :
+            "The e-mail change hit a synchronization error. An Administrator must review Firebase Authentication and the employee directory before another change is attempted.",
+        });
+        return;
+      }
+
+      await stampMeta(["employeeDirectory"]);
+      json(response, 200, {ok: true, uid, email, previousEmail});
+    } catch (error) {
+      console.error("updateAccountEmail failed", error);
+      json(response, 500, {ok: false, message: "The e-mail address could not be changed. Try again."});
+    }
+  },
+);
+
 const stampMeta = async (keys: string[]) => {
   const stamp =
     `${new Date().toISOString()}#${crypto.randomUUID().slice(0, 6)}`;

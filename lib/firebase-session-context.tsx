@@ -4,7 +4,8 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, 
 import { EMPLOYEE_DIRECTORY_COLLECTION, PLATFORM_BOOTSTRAP_DOCUMENT, PLATFORM_META_DOCUMENT, USER_ACCESS_COLLECTION, buildPersistenceScope, directoryDocument, normalizeDirectoryEntry, normalizeUserAccess, userAccessDocument, type UserAccessRecord } from "./firebase-access";
 import { ProvisioningError, createFirebaseIdentityAsAdministrator, deleteEmployeeIdentity, lookupProvisioningStatus, type CreatedFirebaseIdentity } from "./firebase-admin-provisioning";
 import { isProvisionableRole, type ProvisionEmployeeProfile, type ProvisioningStage, type ProvisioningStatusSuccess } from "./provisioning-contract";
-import { FirebaseAuthSession, currentFirebaseSession, lookupFirebaseAccount, refreshFirebaseSession, requestPasswordResetByUsername, requestUsernameReminder, sendFirebaseEmailVerification, sendFirebasePasswordReset, signInWithFirebasePassword, signInWithUsername, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
+import { FirebaseAuthSession, currentFirebaseSession, lookupFirebaseAccount, persistFirebaseSession, refreshFirebaseSession, requestPasswordResetByUsername, requestUsernameReminder, sendFirebaseEmailVerification, sendFirebasePasswordReset, signInWithFirebasePassword, signInWithUsername, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
+import { updateMomentumAccountEmail } from "./firebase-account-management";
 import { SIGN_IN_REJECTED, classifyLoginIdentifier } from "./auth-contract";
 import { firebaseConfigurationStatus } from "./firebase-config";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, listFirestoreSnapshots, type FirestoreWrite } from "./firebase-firestore-rest";
@@ -37,6 +38,9 @@ export type FirebaseSessionValue={
   signOut:()=>Promise<void>;
   retry:()=>Promise<void>;
   changePassword:(newPassword:string)=>Promise<ActionResult>;
+  changeOwnEmail:(newEmail:string,currentPassword:string)=>Promise<ActionResult>;
+  /** Administrator-only when uid is another user. Updates Firebase Auth and every Momentum login/profile e-mail reference together. */
+  changeUserEmail:(uid:string,newEmail:string)=>Promise<ActionResult>;
   /** Forgot password. A username resolves privately and reveals only a masked recovery address. */
   sendPasswordReset:(identifier:string)=>Promise<ActionResult>;
   /** Forgot username: files an Administrator task. Answers identically whether or not the e-mail matches. */
@@ -187,6 +191,28 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     try{const updated=await updateFirebasePassword(session,newPassword);setSession(updated);return{ok:true};}
     catch(caught){return{ok:false,message:message(caught,"Password change failed.")};}
   },[session]);
+
+  const changeOwnEmail=useCallback(async(newEmail:string,currentPassword:string):Promise<ActionResult>=>{
+    if(!session||!access)return{ok:false,message:"Sign in first."};
+    const normalizedEmail=newEmail.trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))return{ok:false,message:"Enter a valid e-mail address."};
+    if(normalizedEmail===session.email.toLowerCase())return{ok:false,message:"That is already your sign-in e-mail."};
+    if(!currentPassword)return{ok:false,message:"Enter your current password to change your sign-in e-mail."};
+    try{
+      const fresh=await signInWithFirebasePassword(session.email,currentPassword);
+      if(fresh.uid!==session.uid)return{ok:false,message:"Reauthentication returned a different account. Sign out and try again."};
+      setSession(fresh);
+      const result=await updateMomentumAccountEmail(fresh,session.uid,normalizedEmail);
+      let updated:FirebaseAuthSession;
+      try{updated=await signInWithFirebasePassword(result.email,currentPassword);}
+      catch{updated={...fresh,email:result.email};persistFirebaseSession(updated);}
+      setSession(updated);
+      setEmailVerified(false);
+      await loadWorkspace(updated);
+      const verificationSent=await sendFirebaseEmailVerification(updated).then(()=>true).catch(()=>false);
+      return{ok:true,message:verificationSent?`Sign-in e-mail changed to ${result.email}. A verification e-mail was sent to the new address.`:`Sign-in e-mail changed to ${result.email}. You can send a verification e-mail from your account later.`};
+    }catch(caught){return{ok:false,message:message(caught,"The sign-in e-mail could not be changed.")};}
+  },[access,loadWorkspace,session]);
 
   const sendPasswordReset=useCallback(async(identifier:string):Promise<ActionResult>=>{
     const login=classifyLoginIdentifier(identifier);
@@ -344,6 +370,22 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
 
   const setAccountState=useCallback((uid:string,state:AccountAccessState)=>writeAccess(uid,{accountState:state},null),[writeAccess]);
 
+  const changeUserEmail=useCallback(async(uid:string,newEmail:string):Promise<ActionResult>=>{
+    const denied=requireAdministrator();if(denied)return denied;
+    if(!session)return{ok:false,message:"Sign in first."};
+    const normalizedEmail=newEmail.trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))return{ok:false,message:"Enter a valid e-mail address."};
+    try{
+      const result=await updateMomentumAccountEmail(session,uid,normalizedEmail);
+      if(uid===session.uid){
+        const updated={...session,email:result.email};persistFirebaseSession(updated);setSession(updated);setEmailVerified(false);await loadWorkspace(updated);
+      }else{
+        const current=accessRef.current??access;if(current)await loadDirectory(current);
+      }
+      return{ok:true,message:`Sign-in e-mail changed to ${result.email}.`};
+    }catch(caught){return{ok:false,message:message(caught,"The employee e-mail could not be changed.")};}
+  },[access,loadDirectory,loadWorkspace,requireAdministrator,session]);
+
   const updateUserAccess=useCallback((uid:string,patch:UserAccessPatch)=>{
     const accessPatch:Record<string,unknown>={};const directoryPatch:Record<string,unknown>={};
     if(patch.role){accessPatch.role=patch.role;directoryPatch.role=patch.role;}
@@ -359,8 +401,8 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
 
   const value=useMemo<FirebaseSessionValue>(()=>({
     configured:configuration.configured,projectId:configuration.projectId,status,error,session,access,emailVerified,directory,accessRecords,
-    signIn,signOut,retry:boot,changePassword,sendPasswordReset,recoverUsername,sendVerificationEmail,refreshVerification,claimAdministrator,createEmployeeAccount,provisioningStatus,deleteEmployeeAccount,setAccountState,updateUserAccess,grantAdministrator,
-  }),[access,accessRecords,boot,changePassword,claimAdministrator,configuration.configured,configuration.projectId,createEmployeeAccount,deleteEmployeeAccount,directory,emailVerified,error,grantAdministrator,provisioningStatus,recoverUsername,refreshVerification,sendPasswordReset,sendVerificationEmail,session,setAccountState,signIn,signOut,status,updateUserAccess]);
+    signIn,signOut,retry:boot,changePassword,changeOwnEmail,changeUserEmail,sendPasswordReset,recoverUsername,sendVerificationEmail,refreshVerification,claimAdministrator,createEmployeeAccount,provisioningStatus,deleteEmployeeAccount,setAccountState,updateUserAccess,grantAdministrator,
+  }),[access,accessRecords,boot,changeOwnEmail,changePassword,changeUserEmail,claimAdministrator,configuration.configured,configuration.projectId,createEmployeeAccount,deleteEmployeeAccount,directory,emailVerified,error,grantAdministrator,provisioningStatus,recoverUsername,refreshVerification,sendPasswordReset,sendVerificationEmail,session,setAccountState,signIn,signOut,status,updateUserAccess]);
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

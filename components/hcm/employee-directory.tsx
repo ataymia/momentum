@@ -93,6 +93,7 @@ export function EmployeeDirectory() {
     if (!firebase || !adminPrivate) return;
     const form = new FormData(event.currentTarget);
     const title = String(form.get("title") ?? "").trim() || selected.title;
+    const email = String(form.get("email") ?? "").trim().toLowerCase();
     const phone = String(form.get("phone") ?? "").trim();
     const department = String(form.get("department") ?? "").trim() || employment?.department || selected.team;
     const location = String(form.get("location") ?? "").trim();
@@ -104,9 +105,22 @@ export function EmployeeDirectory() {
       return;
     }
 
+    const emailChanged = email !== selected.email.toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEditMessage("Enter a valid work e-mail address.");
+      return;
+    }
+    if (emailChanged) {
+      const emailResult = await firebase.changeUserEmail(selected.id,email);
+      if (!emailResult.ok) {
+        setEditMessage(emailResult.message ?? "Employee sign-in e-mail could not be updated.");
+        return;
+      }
+    }
+
     const accessResult = await firebase.updateUserAccess(selected.id, { title, phone, managerId });
     if (!accessResult.ok) {
-      setEditMessage(accessResult.message ?? "Employee access profile could not be updated.");
+      setEditMessage(emailChanged ? `Work e-mail changed, but other profile fields could not be saved: ${accessResult.message ?? "update failed"}` : accessResult.message ?? "Employee access profile could not be updated.");
       return;
     }
 
@@ -130,7 +144,7 @@ export function EmployeeDirectory() {
         entityId: selected.id,
         reason: "Administrator directory edit",
       }));
-      setEditMessage("Employee profile updated.");
+      setEditMessage(emailChanged ? "Employee profile and sign-in e-mail updated." : "Employee profile updated.");
     } else {
       setEditMessage("Directory access details were updated. This employee does not yet have an HR employment record for department, location, or weekly hours.");
     }
@@ -219,9 +233,10 @@ export function EmployeeDirectory() {
           </form>
         </Section>}
 
-        {adminPrivate && firebase && <Section title="Edit employee profile" description="Administrators can maintain the employee's operational profile. Role and account-state controls remain in Administration.">
+        {adminPrivate && firebase && <Section title="Edit employee profile" description="Administrators can maintain the employee's operational profile, including the work e-mail used to sign in. Role and account-state controls remain in Administration.">
           <form key={`${selected.id}-${employment?.updatedAt ?? "directory"}`} className="form-grid employee-profile-edit-form" onSubmit={submitAdminEdit}>
             <Field label="Job title"><input name="title" defaultValue={employment?.jobTitle ?? selected.title}/></Field>
+            <Field label="Work email"><input name="email" type="email" required defaultValue={selected.email}/></Field>
             <Field label="Work phone"><input name="phone" defaultValue={selected.phone ?? ""} placeholder="602-555-0000"/></Field>
             <Field label="Department"><input name="department" defaultValue={employment?.department ?? selected.team}/></Field>
             <Field label="Manager"><select name="managerId" defaultValue={employment?.managerId ?? selected.managerId ?? ""}><option value="">Not assigned</option>{employees.filter((user) => user.id !== selected.id && ["Administrator", "Sales Manager"].includes(user.role)).map((user) => <option value={user.id} key={user.id}>{user.name} · {user.title}</option>)}</select></Field>
