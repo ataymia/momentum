@@ -11,3 +11,5 @@ Momentum employee accounts may change the work e-mail that is also used for Fire
 - A changed Firebase Authentication e-mail is marked unverified. Self-service attempts to send a fresh verification message after the change.
 - Duplicate e-mail addresses are rejected.
 - If the Firestore coordination step fails after Firebase Authentication changes, the Function attempts to restore the original Authentication e-mail and reports the failure rather than silently leaving mismatched identity records.
+
+The account e-mail workflow is covered by the platform regression suite, Firebase Functions TypeScript/lint checks, and the production build gate before release.
