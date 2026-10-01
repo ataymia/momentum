@@ -634,20 +634,31 @@ export const updateAccountEmail = onRequest(
     const uid = textValue(request.body?.uid);
     const email = textValue(request.body?.email).toLowerCase();
     if (!uid || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      json(response, 400, {ok: false, message: "Enter a valid e-mail address."});
+      json(response, 400, {
+        ok: false,
+        message: "Enter a valid e-mail address.",
+      });
       return;
     }
 
-    let decoded: Awaited<ReturnType<ReturnType<typeof getAuth>["verifyIdToken"]>>;
+    let decoded: Awaited<
+      ReturnType<ReturnType<typeof getAuth>["verifyIdToken"]>
+    >;
     try {
       decoded = await getAuth().verifyIdToken(token);
     } catch {
-      json(response, 401, {ok: false, message: "Your session has expired. Sign in again."});
+      json(response, 401, {
+        ok: false,
+        message: "Your session has expired. Sign in again.",
+      });
       return;
     }
 
     try {
-      const callerAccess = await db.collection(USER_ACCESS).doc(decoded.uid).get();
+      const callerAccess = await db
+        .collection(USER_ACCESS)
+        .doc(decoded.uid)
+        .get();
       const callerData = callerAccess.data() ?? {};
       const callerIsAdministrator = callerAccess.exists &&
         callerData.role === "Administrator" &&
@@ -655,18 +666,30 @@ export const updateAccountEmail = onRequest(
       const selfChange = decoded.uid === uid;
 
       if (!selfChange && !callerIsAdministrator) {
-        json(response, 403, {ok: false, message: "Only an Administrator can change another employee's sign-in e-mail."});
+        json(response, 403, {
+          ok: false,
+          message: "Only an Administrator can change another employee's " +
+            "sign-in e-mail.",
+        });
         return;
       }
       if (selfChange && callerData.accountState !== "Active") {
-        json(response, 403, {ok: false, message: "This account is not active."});
+        json(response, 403, {
+          ok: false,
+          message: "This account is not active.",
+        });
         return;
       }
       if (selfChange && !callerIsAdministrator) {
-        const authTime = typeof decoded.auth_time === "number" ? decoded.auth_time : 0;
+        const authTime =
+          typeof decoded.auth_time === "number" ? decoded.auth_time : 0;
         const ageSeconds = Math.floor(Date.now() / 1000) - authTime;
         if (!authTime || ageSeconds > 10 * 60) {
-          json(response, 401, {ok: false, message: "For security, recently sign in again before changing your sign-in e-mail."});
+          json(response, 401, {
+            ok: false,
+            message: "For security, recently sign in again before changing " +
+              "your sign-in e-mail.",
+          });
           return;
         }
       }
@@ -679,13 +702,19 @@ export const updateAccountEmail = onRequest(
         directoryRef.get(),
       ]);
       if (!targetAccess.exists || !targetDirectory.exists) {
-        json(response, 404, {ok: false, message: "That Momentum account could not be found."});
+        json(response, 404, {
+          ok: false,
+          message: "That Momentum account could not be found.",
+        });
         return;
       }
 
       const previousEmail = textValue(targetAuth.email).toLowerCase();
       if (!previousEmail) {
-        json(response, 409, {ok: false, message: "The Firebase identity has no e-mail address to replace."});
+        json(response, 409, {
+          ok: false,
+          message: "The Firebase identity has no e-mail address to replace.",
+        });
         return;
       }
       if (previousEmail === email) {
@@ -696,18 +725,29 @@ export const updateAccountEmail = onRequest(
       try {
         const duplicate = await getAuth().getUserByEmail(email);
         if (duplicate.uid !== uid) {
-          json(response, 409, {ok: false, message: "That e-mail address already belongs to another Momentum account."});
+          json(response, 409, {
+            ok: false,
+            message: "That e-mail address already belongs to another " +
+              "Momentum account.",
+          });
           return;
         }
       } catch (error) {
-        const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+        const code =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error ? String(error.code) : "";
         if (code !== "auth/user-not-found") throw error;
       }
 
       const accessData = targetAccess.data() ?? {};
       const directoryData = targetDirectory.data() ?? {};
-      const username = normalizeUsername(accessData.username ?? directoryData.username);
-      const history = Array.isArray(accessData.emailChangeHistory) ? accessData.emailChangeHistory.slice(-24) : [];
+      const username = normalizeUsername(
+        accessData.username ?? directoryData.username,
+      );
+      const history = Array.isArray(accessData.emailChangeHistory) ?
+        accessData.emailChangeHistory.slice(-24) :
+        [];
       const at = new Date().toISOString();
       const changeEvent = {
         previousEmail,
@@ -728,7 +768,9 @@ export const updateAccountEmail = onRequest(
           if (username) {
             usernameRef = db.collection("usernames").doc(username);
             const usernameRecord = await transaction.get(usernameRef);
-            const indexedUid = usernameRecord.exists ? textValue(usernameRecord.data()?.uid) : "";
+            const indexedUid = usernameRecord.exists ?
+              textValue(usernameRecord.data()?.uid) :
+              "";
             if (indexedUid && indexedUid !== uid) {
               throw new Error("MOMENTUM_USERNAME_INDEX_COLLISION");
             }
@@ -742,7 +784,11 @@ export const updateAccountEmail = onRequest(
             updatedAt: at,
             updatedBy: decoded.uid,
           }, {merge: true});
-          transaction.set(directoryRef, {email, updatedAt: at}, {merge: true});
+          transaction.set(
+            directoryRef,
+            {email, updatedAt: at},
+            {merge: true},
+          );
           if (usernameRef) {
             transaction.set(usernameRef, {
               uid,
@@ -761,14 +807,23 @@ export const updateAccountEmail = onRequest(
           });
         } catch (rollbackError) {
           rollbackSucceeded = false;
-          console.error("updateAccountEmail rollback failed", rollbackError);
+          console.error(
+            "updateAccountEmail rollback failed",
+            rollbackError,
+          );
         }
-        console.error("updateAccountEmail Firestore coordination failed", error);
+        console.error(
+          "updateAccountEmail Firestore coordination failed",
+          error,
+        );
         json(response, 502, {
           ok: false,
           message: rollbackSucceeded ?
-            "The e-mail change could not be saved. The original sign-in e-mail was restored." :
-            "The e-mail change hit a synchronization error. An Administrator must review Firebase Authentication and the employee directory before another change is attempted.",
+            "The e-mail change could not be saved. The original sign-in " +
+              "e-mail was restored." :
+            "The e-mail change hit a synchronization error. An " +
+              "Administrator must review Firebase Authentication and the " +
+              "employee directory before another change is attempted.",
         });
         return;
       }
@@ -777,7 +832,10 @@ export const updateAccountEmail = onRequest(
       json(response, 200, {ok: true, uid, email, previousEmail});
     } catch (error) {
       console.error("updateAccountEmail failed", error);
-      json(response, 500, {ok: false, message: "The e-mail address could not be changed. Try again."});
+      json(response, 500, {
+        ok: false,
+        message: "The e-mail address could not be changed. Try again.",
+      });
     }
   },
 );
