@@ -18,12 +18,13 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PaymentMethod } from "../../lib/commerce-engine";
-import { deliveryStatusForOrder, processedForDelivery } from "../../lib/delivery-engine";
+import { DELIVERY_STORAGE_KEY, deliveryStatusForOrder, processedForDelivery } from "../../lib/delivery-engine";
 import { useDelivery } from "../../lib/delivery-context";
+import { INVENTORY_LEDGER_STORAGE_KEY } from "../../lib/inventory-ledger";
 import { orderLinesFor } from "../../lib/order-lines";
-import { useSyncStatus } from "../../lib/persistence";
+import { momentumStorage, useSyncStatus } from "../../lib/persistence";
 import { useMarketing } from "../../lib/marketing-context";
-import { useWorkspace } from "../../lib/workspace-context";
+import { COMMERCIAL_KEY, useWorkspace } from "../../lib/workspace-context";
 import { Button, Modal, PageHeader, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const tone = (status: string) => status === "Delivered" ? "success" as const : status === "In transit" || status === "Loaded" ? "info" as const : status.includes("ready") || status === "Accepted" ? "warning" as const : "neutral" as const;
@@ -66,7 +67,7 @@ export function DeliveriesPage() {
   const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
   const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
   const complete = visible.filter((order) => taskForOrder(order.id)?.status === "Delivered");
-  const run = (result: { ok: boolean; message?: string }, success: string) => setNotice(result.ok ? success : result.message ?? "The delivery update was not accepted.");
+  const run = async (result: { ok: boolean; message?: string }, success: string) => { if(!result.ok){setNotice(result.message??"The delivery update was not accepted.");return;} setNotice("Saving to Momentum cloud…"); const delivery=await momentumStorage.flushAndConfirm(DELIVERY_STORAGE_KEY); const inventory=await momentumStorage.flushAndConfirm(INVENTORY_LEDGER_STORAGE_KEY); const commercial=await momentumStorage.flushAndConfirm(COMMERCIAL_KEY); const failed=[delivery,inventory,commercial].find((item)=>!item.ok); setNotice(failed?`The change is safely queued on this device but is NOT fully cloud-confirmed. Do not repeat the action. ${failed.message??"Check the sync indicator."}`:success); };
   const syncText = sync.lastError ? `Sync issue: ${sync.lastError}` : sync.pending || sync.flushing ? `Saving ${sync.pending || 1} change${sync.pending === 1 ? "" : "s"}…` : sync.mode === "firestore" ? "Cloud synced" : "Local demo";
 
   const card = (orderId: string) => {
@@ -75,6 +76,7 @@ export function DeliveriesPage() {
     const account = data.accounts.find((item) => item.id === order.accountId);
     const customer = account?.customerId ? (data.customers ?? []).find((item) => item.id === account.customerId) : undefined;
     const driver = task ? data.users.find((user) => user.id === task.driverId) : undefined;
+    const orderCreator = data.users.find((user) => user.id === order.ownerId);
     const status = deliveryStatusForOrder(state, order);
     const ownTask = Boolean(isDriver && task?.driverId === currentUser?.id);
     const selectedDriver = driverByOrder[order.id] ?? drivers[0]?.id ?? "";
@@ -106,6 +108,7 @@ export function DeliveriesPage() {
         <div><span>Cases</span><strong>{order.cases}</strong><small>{lines.length} SKU{lines.length === 1 ? "" : "s"}</small></div>
         <div><span>Order total</span><strong>{formatMoney(order.amount)}</strong><small>{order.paymentStatus}</small></div>
         <div><span>Driver</span><strong>{driver?.name ?? "Unassigned"}</strong><small>{task ? "Claimed" : "Available to claim"}</small></div>
+        <div><span>Placed by</span><strong>{orderCreator?.name ?? order.ownerId}</strong><small>{order.placedAt}</small></div>
         <div><span>Terms</span><strong>{customer?.paymentTerms ?? "COD"}</strong><small>{collected > 0 ? `${formatMoney(collected)} collected · Finance pending` : `Order ${order.status}`}</small></div>
       </div>
 
@@ -113,11 +116,11 @@ export function DeliveriesPage() {
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <Button type="button" size="sm" variant="secondary" icon={<Eye size={15} />} onClick={() => setDetailOrderId(order.id)}>View details</Button>
-        {!task && isDriver && <Button type="button" size="sm" icon={<UserCheck size={15} />} onClick={() => run(claimDelivery(order.id), `${order.number} claimed. You can now pack it.`)}>Claim delivery</Button>}
-        {!task && canManage && <><select value={selectedDriver} onChange={(event) => setDriverByOrder((current) => ({ ...current, [order.id]: event.target.value }))}>{drivers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><Button type="button" size="sm" disabled={!selectedDriver} onClick={() => run(assignDelivery(order.id, selectedDriver), `${order.number} assigned.`)}>Assign driver</Button></>}
-        {task?.status === "Accepted" && (ownTask || canManage) && <>{order.status === "Approved" && <Button type="button" size="sm" icon={<PackageCheck size={15} />} onClick={() => run(prepareDelivery(order.id), `${order.number} packed and inventory reserved.`)}>Pack / reserve</Button>}{order.status === "Allocated" && <Button type="button" size="sm" icon={<PackageOpen size={15} />} onClick={() => run(markLoaded(order.id), `${order.number} loaded into driver custody.`)}>Mark loaded</Button>}<Button type="button" size="sm" variant="ghost" onClick={() => { const reason = window.prompt("Why is this delivery assignment being released?")?.trim() ?? ""; if (reason) run(cancelDelivery(order.id, reason), `${order.number} returned to the delivery queue.`); }}>{ownTask ? "Release assignment" : "Cancel assignment"}</Button></>}
-        {task?.status === "Loaded" && (ownTask || canManage) && <Button type="button" size="sm" icon={<Truck size={15} />} onClick={() => run(startDelivery(order.id), `${order.number} is now in transit.`)}>Start delivery</Button>}
-        {task?.status === "In transit" && (ownTask || canManage) && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => { if (window.confirm(`Confirm ${order.number} was delivered to ${account?.locationName ?? account?.name ?? "the customer"}?`)) run(markDelivered(order.id), `${order.number} delivered and inventory posted to the customer.`); }}>Mark delivered</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) run(addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
+        {!task && isDriver && <Button type="button" size="sm" icon={<UserCheck size={15} />} onClick={() => void run(claimDelivery(order.id), `${order.number} claimed. You can now pack it.`)}>Claim delivery</Button>}
+        {!task && canManage && <><select value={selectedDriver} onChange={(event) => setDriverByOrder((current) => ({ ...current, [order.id]: event.target.value }))}>{drivers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><Button type="button" size="sm" disabled={!selectedDriver} onClick={() => void run(assignDelivery(order.id, selectedDriver), `${order.number} assigned.`)}>Assign driver</Button></>}
+        {task?.status === "Accepted" && (ownTask || canManage) && <>{order.status === "Approved" && <Button type="button" size="sm" icon={<PackageCheck size={15} />} onClick={() => void run(prepareDelivery(order.id), `${order.number} packed and inventory reserved.`)}>Pack / reserve</Button>}{order.status === "Allocated" && <Button type="button" size="sm" icon={<PackageOpen size={15} />} onClick={() => void run(markLoaded(order.id), `${order.number} loaded into driver custody.`)}>Mark loaded</Button>}<Button type="button" size="sm" variant="ghost" onClick={() => { const reason = window.prompt("Why is this delivery assignment being released?")?.trim() ?? ""; if (reason) void run(cancelDelivery(order.id, reason), `${order.number} returned to the delivery queue.`); }}>{ownTask ? "Release assignment" : "Cancel assignment"}</Button></>}
+        {task?.status === "Loaded" && (ownTask || canManage) && <Button type="button" size="sm" icon={<Truck size={15} />} onClick={() => void run(startDelivery(order.id), `${order.number} is now in transit.`)}>Start delivery</Button>}
+        {task?.status === "In transit" && (ownTask || canManage) && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => { if (window.confirm(`Confirm ${order.number} was delivered to ${account?.locationName ?? account?.name ?? "the customer"}?`)) void run(markDelivered(order.id), `${order.number} delivered and inventory posted to the customer.`); }}>Mark delivered</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) void run(addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
       </div>
 
       {canRecordCollection && <div className="delivery-payment-collection" style={{ display: "grid", gridTemplateColumns: "minmax(120px,1fr) minmax(130px,1fr) minmax(170px,1.4fr) auto", gap: 8, alignItems: "end" }}>
@@ -135,6 +138,7 @@ export function DeliveriesPage() {
   const detailAccount = detailOrder ? data.accounts.find((item) => item.id === detailOrder.accountId) : undefined;
   const detailCustomer = detailAccount?.customerId ? (data.customers ?? []).find((item) => item.id === detailAccount.customerId) : undefined;
   const detailDriver = detailTask ? data.users.find((user) => user.id === detailTask.driverId) : undefined;
+  const detailOrderCreator = detailOrder ? data.users.find((user) => user.id === detailOrder.ownerId) : undefined;
   const detailLines = detailOrder ? orderLinesFor(detailOrder) : [];
   const detailMarketing = detailOrder ? approvedMarketingRequests.filter((request) => request.accountId === detailOrder.accountId) : [];
   const detailCollected = (detailTask?.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
@@ -160,6 +164,7 @@ export function DeliveriesPage() {
           <div><span>Cases</span><strong>{detailOrder.cases}</strong><small>{detailLines.length} SKU{detailLines.length === 1 ? "" : "s"}</small></div>
           <div><span>Order total</span><strong>{formatMoney(detailOrder.amount)}</strong><small>{detailOrder.paymentStatus}</small></div>
           <div><span>Driver</span><strong>{detailDriver?.name ?? "Unassigned"}</strong><small>{detailTask?.status ?? "Not claimed"}</small></div>
+          <div><span>Placed by</span><strong>{detailOrderCreator?.name ?? detailOrder.ownerId}</strong><small>{detailOrder.placedAt}</small></div>
         </div>
 
         <Section title="Items"><div className="company-request-list">{detailLines.map((line) => <article key={line.id}><span><Box size={15} /></span><div><strong>{line.product}</strong><p>{line.cases} cases · {formatMoney(line.pricePerCase)} / case · {formatMoney(line.amount)}</p></div></article>)}</div></Section>

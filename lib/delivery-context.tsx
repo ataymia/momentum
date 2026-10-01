@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { PaymentMethod } from "./commerce-engine";
 import { DELIVERY_STORAGE_KEY, DeliveryEvent, DeliveryState, DeliveryTask, createDeliverySeed, deliveryTaskForOrder, normalizeDeliveryState, processedForDelivery } from "./delivery-engine";
 import { useInventoryLedger } from "./inventory-ledger-context";
@@ -39,6 +39,9 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     catch { return createDeliverySeed(); }
   };
   const [state, setState] = useState<DeliveryState>(() => read());
+  const stateRef = useRef(state);
+  const commitDeliveryState = (next: DeliveryState) => { stateRef.current = next; momentumStorage.setItem(DELIVERY_STORAGE_KEY, JSON.stringify(next)); setState(next); return momentumStorage.flushAndConfirm(DELIVERY_STORAGE_KEY); };
+  useEffect(() => { stateRef.current = state; }, [state]);
   const canReconcileCancelledDelivery = Boolean(currentUser && ["Administrator", "Operations", "Delivery Driver"].includes(currentUser.role));
 
   useEffect(() => {
@@ -70,7 +73,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
       void momentumStorage.flush();
     }
   }, [state]);
-  useRemoteStorageSync(DELIVERY_STORAGE_KEY, () => setState(read()));
+  useRemoteStorageSync(DELIVERY_STORAGE_KEY, () => { const next = read(); stateRef.current = next; setState(next); });
 
   const taskForOrder = (orderId: string) => deliveryTaskForOrder(state, orderId);
   const drivers = useMemo(() => data.users.filter((user) => user.role === "Delivery Driver"), [data.users]);
@@ -99,7 +102,8 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
       collections: [],
       history: [{ id: uid("delivery-event"), type, at: stamp, actorId: currentUser.id, note: type === "Assigned" ? `Assigned to ${driver.name}.` : `${driver.name} accepted the delivery.` }],
     };
-    setState((current) => ({ ...current, tasks: [record, ...current.tasks] }));
+    const current = stateRef.current;
+    void commitDeliveryState({ ...current, tasks: [record, ...current.tasks] });
     return { ok: true };
   };
 
@@ -139,7 +143,8 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     if (order.status !== "Allocated") return { ok: false, message: "Warehouse must reserve and allocate the full order before the driver can load it." };
     if (!inventory.loadOrderForDelivery(orderId, task.driverId)) return { ok: false, message: "The reserved inventory could not be transferred into driver custody. Check the allocation and lot balances." };
     const stamp = now();
-    setState((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, status: "Loaded", loadedAt: stamp }, { type: "Loaded", actorId: currentUser!.id }) : item) }));
+    const current = stateRef.current;
+    void commitDeliveryState({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, status: "Loaded", loadedAt: stamp }, { type: "Loaded", actorId: currentUser!.id }) : item) });
     return { ok: true };
   };
 
@@ -148,7 +153,8 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     if (!task || task.status !== "Loaded") return { ok: false, message: "The order must be loaded before departure." };
     if (!inventory.startOrderDelivery(orderId, task.driverId)) return { ok: false, message: "Momentum could not start the delivery. Confirm all cases are in driver custody." };
     const stamp = now();
-    setState((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, status: "In transit", departedAt: stamp }, { type: "Departed", actorId: currentUser!.id }) : item) }));
+    const current = stateRef.current;
+    void commitDeliveryState({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, status: "In transit", departedAt: stamp }, { type: "Departed", actorId: currentUser!.id }) : item) });
     return { ok: true };
   };
 
@@ -157,7 +163,8 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     if (!task || task.status !== "In transit") return { ok: false, message: "The delivery must be in transit before it can be completed." };
     if (!inventory.completeOrderDelivery(orderId, task.driverId)) return { ok: false, message: "Delivery inventory could not be posted. Confirm the driver has the full order in custody." };
     const stamp = now();
-    setState((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, status: "Delivered", deliveredAt: stamp, note: note?.trim() || item.note }, { type: "Delivered", actorId: currentUser!.id, note: note?.trim() || undefined }) : item) }));
+    const current = stateRef.current;
+    void commitDeliveryState({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, status: "Delivered", deliveredAt: stamp, note: note?.trim() || item.note }, { type: "Delivered", actorId: currentUser!.id, note: note?.trim() || undefined }) : item) });
     return { ok: true };
   };
 
@@ -171,14 +178,16 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     const collected = (task.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
     if (collected + amount > order.amount + 0.005) return { ok: false, message: "The recorded collection would exceed the order total." };
     const record = { id: uid("delivery-collection"), amount, method, reference: reference?.trim() || undefined, recordedAt: now(), recordedBy: currentUser!.id };
-    setState((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, collections: [record, ...(item.collections ?? [])] }, { type: "Payment collected", actorId: currentUser!.id, note: `${method} · $${amount.toFixed(2)}${record.reference ? ` · ${record.reference}` : ""}. Pending Finance reconciliation.` }) : item) }));
+    const current = stateRef.current;
+    void commitDeliveryState({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, collections: [record, ...(item.collections ?? [])] }, { type: "Payment collected", actorId: currentUser!.id, note: `${method} · $${amount.toFixed(2)}${record.reference ? ` · ${record.reference}` : ""}. Pending Finance reconciliation.` }) : item) });
     return { ok: true };
   };
 
   const addDeliveryNote = (orderId: string, note: string): MutationResult => {
     const task = taskForActor(orderId);
     if (!task || !note.trim()) return { ok: false, message: "Enter a delivery note." };
-    setState((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, note: note.trim() }, { type: "Note", actorId: currentUser!.id, note: note.trim() }) : item) }));
+    const current = stateRef.current;
+    void commitDeliveryState({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, note: note.trim() }, { type: "Note", actorId: currentUser!.id, note: note.trim() }) : item) });
     return { ok: true };
   };
 
@@ -189,7 +198,8 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     if (!canManage && !ownAccepted) return { ok: false, message: "Only management or the driver holding an unstarted assignment can release it." };
     if (!task || ["Loaded", "In transit", "Delivered"].includes(task.status)) return { ok: false, message: "A loaded, in-transit, or delivered task cannot be released here." };
     const stamp = now();
-    setState((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, status: "Cancelled", cancelledAt: stamp, cancelledBy: currentUser.id }, { type: "Cancelled", actorId: currentUser.id, note: reason.trim() }) : item) }));
+    const current = stateRef.current;
+    void commitDeliveryState({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, status: "Cancelled", cancelledAt: stamp, cancelledBy: currentUser.id }, { type: "Cancelled", actorId: currentUser.id, note: reason.trim() }) : item) });
     return { ok: true };
   };
 
