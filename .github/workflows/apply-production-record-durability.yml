@@ -1,0 +1,33 @@
+name: Apply production record durability
+
+on:
+  push:
+    branches:
+      - production-record-durability-2026-10-01
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply durability patch
+        run: python scripts/apply-production-record-durability.py
+      - name: Commit source changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git config user.name "ataymia"
+          git config user.email "ataymia.murray@allstarservicesnow.com"
+          git add lib/workspace-context.tsx lib/workspace-context-v5.tsx components/pages/work-v2.tsx tests/production-record-consistency.test.ts
+          git commit -m "Make production order lifecycle writes immediately durable"
+          git push origin HEAD:production-record-durability-2026-10-01
