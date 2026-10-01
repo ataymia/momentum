@@ -1,0 +1,55 @@
+name: Promote validated production integrity repair
+
+on:
+  push:
+    branches:
+      - production-integrity-final-2026-10-01
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Remove one-time repair tooling
+        run: |
+          rm -f .github/workflows/production-integrity-final.yml
+          rm -f .github/workflows/promote-production-integrity.yml
+          rm -f scripts/apply-production-integrity-final-2026-10-01.py
+      - name: Install application dependencies
+        run: npm ci
+      - name: Validate cleaned production source
+        run: npm test
+      - name: Validate Firebase Functions
+        run: |
+          npm --prefix functions ci
+          npm --prefix functions run lint
+          npm --prefix functions run build
+      - name: Validate production build
+        run: npm run build
+      - name: Confirm main has not moved
+        run: |
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "09a528431d67b2456d8b4168b9d41286f339e6b9" || { echo "main moved; refusing automatic promotion"; exit 1; }
+      - name: Commit cleanup and promote to main
+        run: |
+          git config user.name 'Momentum Platform Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'Finalize production record integrity repair'
+          fi
+          git push origin HEAD:production-integrity-final-2026-10-01
+          git push origin HEAD:main
