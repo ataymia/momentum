@@ -14,7 +14,7 @@ const accountStages = new Set(["Prospect", "Qualified", "Sampled", "Opening orde
 const appointmentTypes = new Set(["First visit", "Revisit", "Sample drop", "Placement check", "Reorder", "Delivery"]);
 const appointmentStatuses = new Set(["Scheduled", "Dispatched", "En route", "Arrived", "Completed", "Needs follow-up"]);
 const appointmentOutcomes = new Set(["Order placed", "Follow-up scheduled", "Placement verified", "No decision", "Closed lost", "Delivery completed"]);
-const orderStatuses = new Set(["Draft", "Awaiting approval", "Approved", "Allocated", "Out for delivery", "Delivered", "Paid"]);
+const orderStatuses = new Set(["Draft", "Awaiting approval", "Approved", "Allocated", "Out for delivery", "Delivered", "Paid", "Cancelled"]);
 const paymentStatuses = new Set(["Not invoiced", "Open", "Partially paid", "Paid"]);
 const approvalTypes = new Set(["Order", "Low stock sale", "Territory exception"]);
 const approvalPriorities = new Set(["Normal", "High", "Urgent"]);
@@ -53,9 +53,7 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
   const userById = new Map(data.users.map((user) => [user.id, user]));
   const internalSalesIds = new Set(data.users.filter((user) => ["Administrator", "Sales Manager", "Sales Representative"].includes(user.role)).map((user) => user.id));
   const salesRepIds = new Set(data.users.filter((user) => user.role === "Sales Representative").map((user) => user.id));
-  const baseOrderIds = new Set(data.orders.map((record) => record.id));
   const baseAppointmentIds = new Set(data.appointments.map((record) => record.id));
-  const baseApprovalIds = new Set(data.approvals.map((record) => record.id));
   const baseActivityIds = new Set(data.activities.map((record) => record.id));
   const baseInventoryIds = new Set(data.inventory.map((record) => record.id));
   const baseLotCodes = new Set(data.inventory.map((record) => record.lotCode.trim().toLowerCase()));
@@ -106,7 +104,7 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     if (!object(raw)) return [];
     const id = text(raw.id); const accountId = text(raw.accountId); const ownerId = text(raw.ownerId); const status = text(raw.status); const paymentStatus = text(raw.paymentStatus); const product = text(raw.product); const cases = Number(raw.cases); const price = Number(raw.pricePerCase); const amount = Number(raw.amount);
     const owner = userById.get(ownerId);
-    if (!id || baseOrderIds.has(id) || !text(raw.number) || !accountId || !owner || (owner.role === "Customer" && !(owner.accountIds ?? []).includes(accountId)) || !wholePositive(cases) || !finite(price) || price <= 0 || !finite(amount) || amount < 0 || Math.abs(amount - cases * price) > 0.01 || !orderStatuses.has(status) || !paymentStatuses.has(paymentStatus) || !validDateOrInstant(raw.placedAt) || !text(raw.priceBasis) || !product || !finite(raw.inventoryAvailableAtOrder) || Number(raw.inventoryAvailableAtOrder) < 0) return [];
+    if (!id || !text(raw.number) || !accountId || !owner || (owner.role === "Customer" && !(owner.accountIds ?? []).includes(accountId)) || !wholePositive(cases) || !finite(price) || price <= 0 || !finite(amount) || amount < 0 || Math.abs(amount - cases * price) > 0.01 || !orderStatuses.has(status) || !paymentStatuses.has(paymentStatus) || !validDateOrInstant(raw.placedAt) || !text(raw.priceBasis) || !product || !finite(raw.inventoryAvailableAtOrder) || Number(raw.inventoryAvailableAtOrder) < 0) return [];
     if (!optionalValidDate(raw.paidAt) || !optionalValidDate(raw.firstSettledAt)) return [];
     const creditedRepId = optionalText(raw.creditedRepId); if (creditedRepId && !salesRepIds.has(creditedRepId)) return [];
     const sourcePlacementId = optionalText(raw.sourcePlacementId);
@@ -115,7 +113,7 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     const settlementEvidence = optionalText(raw.firstSettledAt) || optionalText(raw.paidAt);
     const safePaymentStatus = paymentStatus === "Paid" && !settlementEvidence ? "Open" : paymentStatus;
     const safeStatus = status === "Paid" && safePaymentStatus !== "Paid" ? "Delivered" : status;
-    return [{ id, number: text(raw.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(raw.placedAt), ownerId, paidAt: optionalText(raw.paidAt), firstSettledAt: optionalText(raw.firstSettledAt), priceBasis: text(raw.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product, creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: Number(raw.inventoryAvailableAtOrder), lowStockApprovalRequired: typeof raw.lowStockApprovalRequired === "boolean" ? raw.lowStockApprovalRequired : undefined, lines }];
+    return [{ id, number: text(raw.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(raw.placedAt), ownerId, paidAt: optionalText(raw.paidAt), firstSettledAt: optionalText(raw.firstSettledAt), priceBasis: text(raw.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product, creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: Number(raw.inventoryAvailableAtOrder), lowStockApprovalRequired: typeof raw.lowStockApprovalRequired === "boolean" ? raw.lowStockApprovalRequired : undefined, lines, cancelledAt: optionalText(raw.cancelledAt), cancelledBy: optionalText(raw.cancelledBy), cancellationReason: optionalText(raw.cancellationReason) }];
   }));
 
   const rawAppointments = Array.isArray(input.appointments) ? input.appointments : [];
@@ -132,7 +130,7 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     if (!object(raw)) return [];
     const id = text(raw.id); const type = text(raw.type); const requesterId = optionalText(raw.requesterId); const recordId = optionalText(raw.recordId); const priority = text(raw.priority); const status = text(raw.status);
     const linkedRecordValid = Boolean(recordId);
-    if (!id || baseApprovalIds.has(id) || !approvalTypes.has(type) || !text(raw.title) || !text(raw.detail) || !text(raw.requestedBy) || !linkedRecordValid || !validInstant(raw.submittedAt) || !validInstant(raw.dueAt) || !approvalPriorities.has(priority) || !approvalStatuses.has(status)) return [];
+    if (!id || !approvalTypes.has(type) || !text(raw.title) || !text(raw.detail) || !text(raw.requestedBy) || !linkedRecordValid || !validInstant(raw.submittedAt) || !validInstant(raw.dueAt) || !approvalPriorities.has(priority) || !approvalStatuses.has(status)) return [];
     const decidedBy = optionalText(raw.decidedBy);
     if (!optionalValidInstant(raw.decidedAt)) return [];
     return [{ id, type: type as Approval["type"], title: text(raw.title), detail: text(raw.detail), requestedBy: text(raw.requestedBy), requesterId, recordId, team: raw.team === "Customer" ? "Sales" : ["Leadership", "Sales", "Operations"].includes(text(raw.team)) ? text(raw.team) as Approval["team"] : undefined, submittedAt: text(raw.submittedAt), dueAt: text(raw.dueAt), priority: priority as Approval["priority"], status: status as Approval["status"], decidedBy, decidedAt: optionalText(raw.decidedAt), returnReason: optionalText(raw.returnReason) }];

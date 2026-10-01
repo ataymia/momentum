@@ -627,7 +627,11 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
         if(returnReason.length<3)return;
       }
       const accountId=approval.recordId;
-      setCommercial((state)=>({...state,approvals:state.approvals.map((item)=>item.id===id?{...item,status:decision}:item),activities:accountId?[{id:uid("act-territory-review"),accountId,type:"note",title:decision==="Approved"?"Territory exception validated":"Territory exception returned",detail:decision==="Approved"?`${approval.detail} Reviewed and approved by ${currentUser.name}.`:`${approval.detail} Returned by ${currentUser.name}: ${returnReason}`,at:now(),userId:currentUser.id},...state.activities]:state.activities}));
+      const decidedAt=now();
+      const nextCommercial:CommercialState={...commercial,approvals:commercial.approvals.map((item)=>item.id===id?{...item,status:decision,decidedBy:currentUser.id,decidedAt,returnReason:returnReason||undefined}:item),activities:accountId?[{id:uid("act-territory-review"),accountId,type:"note",title:decision==="Approved"?"Territory exception validated":"Territory exception returned",detail:decision==="Approved"?`${approval.detail} Reviewed and approved by ${currentUser.name}.`:`${approval.detail} Returned by ${currentUser.name}: ${returnReason}`,at:decidedAt,userId:currentUser.id},...commercial.activities]:commercial.activities};
+      momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
+      setCommercial(nextCommercial);
+      void momentumStorage.flush();
       return;
     }
     let returnReason: string | undefined;
@@ -637,13 +641,15 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       if (!returnReason || returnReason.length < 3) return;
     }
     const decidedAt = now();
-    setCommercial((state) => ({
-      ...state,
-      approvals: state.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt, returnReason } : item),
-      orders: state.orders.map((order) => order.id === approval.recordId ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
-      activities: approval.recordId ? [{ id: uid("act-approval"), accountId: state.orders.find((order) => order.id === approval.recordId)?.accountId, type: "order", title: decision === "Approved" ? "Order approved" : "Order returned for edits", detail: decision === "Approved" ? `${approval.title} approved by ${currentUser.name}.` : `${approval.title} returned by ${currentUser.name}: ${returnReason}`, at: decidedAt, userId: currentUser.id }, ...state.activities] : state.activities,
-    }));
-    window.setTimeout(() => void momentumStorage.flush(), 0);
+    const nextCommercial:CommercialState={
+      ...commercial,
+      approvals:commercial.approvals.map((item)=>item.id===id?{...item,status:decision,decidedBy:currentUser.id,decidedAt,returnReason}:item),
+      orders:commercial.orders.map((order)=>order.id===approval.recordId?{...order,status:decision==="Approved"?"Approved":"Draft"}:order),
+      activities:approval.recordId?[{id:uid("act-approval"),accountId:commercial.orders.find((order)=>order.id===approval.recordId)?.accountId,type:"order",title:decision==="Approved"?"Order approved":"Order returned for edits",detail:decision==="Approved"?`${approval.title} approved by ${currentUser.name}.`:`${approval.title} returned by ${currentUser.name}: ${returnReason}`,at:decidedAt,userId:currentUser.id},...commercial.activities]:commercial.activities,
+    };
+    momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
+    setCommercial(nextCommercial);
+    void momentumStorage.flush();
   };
 
   const setOrderStatus = (id: string, status: OrderStatus) => {
@@ -653,7 +659,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!currentUser || !canAdvanceFulfillment(currentUser) || nextFulfillment[order.status] !== status) return;
-    setCommercial((state) => ({ ...state, orders: state.orders.map((item) => item.id === id ? { ...item, status, paymentStatus: status === "Delivered" && item.paymentStatus === "Not invoiced" ? "Open" : item.paymentStatus } : item) }));
+    const nextCommercial:CommercialState={...commercial,orders:commercial.orders.map((item)=>item.id===id?{...item,status,paymentStatus:status==="Delivered"&&item.paymentStatus==="Not invoiced"?"Open":item.paymentStatus}:item)};
+    momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
+    setCommercial(nextCommercial);
+    void momentumStorage.flush();
   };
 
   const cancelOrder = (id: string, reason: string) => {
