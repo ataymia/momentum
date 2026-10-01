@@ -63,7 +63,7 @@ jobs:
         run: npm run test:rules
 
       - name: Verify generated Firestore rules are committed
-        run: npm run rules:check
+        run: git diff --exit-code -- firestore.rules
 
       - name: Compile Firebase Functions
         run: npm --prefix functions run build
