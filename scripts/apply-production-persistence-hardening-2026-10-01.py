@@ -5,19 +5,20 @@ ROOT=Path(__file__).resolve().parents[1]
 def read(path:str)->str:return (ROOT/path).read_text()
 def write(path:str,text:str)->None:(ROOT/path).write_text(text)
 def replace_once(path:str,old:str,new:str)->None:
-    text=read(path);count=text.count(old)
+    text=read(path)
+    if new in text:return
+    count=text.count(old)
     if count!=1:raise SystemExit(f"{path}: expected one anchor, found {count}: {old[:220]!r}")
     write(path,text.replace(old,new,1))
 def replace_between(path:str,start:str,end:str,new:str)->None:
-    text=read(path);a=text.find(start)
+    text=read(path)
+    if new.strip() in text:return
+    a=text.find(start)
     if a<0:raise SystemExit(f"{path}: start anchor missing: {start!r}")
     b=text.find(end,a+len(start))
     if b<0:raise SystemExit(f"{path}: end anchor missing: {end!r}")
     write(path,text[:a]+new+text[b:])
 
-# Keep payment reconciliation under the exact same immediate persistence rule
-# as create/edit/approve/cancel/fulfillment. This prevents a successful-looking
-# UI mutation from existing only in React memory until a later effect happens.
 replace_between(
     "lib/workspace-context.tsx",
     '  const reconcileOrderPayment = (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => {',
@@ -47,7 +48,6 @@ replace_between(
 
 ''')
 
-# Order creator visibility on the remaining concrete order surfaces.
 replace_once("components/pages/dashboard.tsx",'  const { scope, currentUser, navigate } = useWorkspace();','  const { data, scope, currentUser, navigate } = useWorkspace();')
 replace_once("components/pages/dashboard.tsx",'<div><strong>{order.number}</strong><p>{order.cases} cases · {formatMoney(order.amount)}</p></div>','<div><strong>{order.number}</strong><p>{order.cases} cases · {formatMoney(order.amount)} · Placed by {data.users.find((user)=>user.id===order.ownerId)?.name??order.ownerId}</p></div>')
 replace_once("components/inventory/inventory-ledger-panel-v2.tsx",'<p>{item.reason}{order ? ` · ${order.number}` : ""}</p>','<p>{item.reason}{order ? ` · ${order.number} · Placed by ${data.users.find((user)=>user.id===order.ownerId)?.name??order.ownerId}` : ""}</p>')
