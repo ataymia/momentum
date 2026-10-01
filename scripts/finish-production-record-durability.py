@@ -58,14 +58,17 @@ replace_once(
     '        {!reviewOrder&&!reviewTimecard&&<div className="record-review__section"><AlertTriangle size={20}/><h3>{reviewApproval.type}</h3><p>{reviewApproval.detail}</p></div>}\n        {decisionError&&<p className="form-error" role="alert">{decisionError}</p>}\n      </div>}',
 )
 
-# Add permanent regressions for the production incident and attribution requirement.
-p = Path("tests/production-record-consistency.test.ts")
-s = p.read_text()
-anchor = 'test("Delivery Driver invoice access is read-only in the persistence domain",()=>{'
-insert = '''test("critical approval and fulfillment changes enter persistence before cloud confirmation is checked",()=>{\n  const commercial=readFileSync("lib/workspace-context.tsx","utf8");\n  const base=readFileSync("lib/workspace-context-v5.tsx","utf8");\n  assert.match(commercial,/const commitCommercialState =/);\n  assert.match(commercial,/momentumStorage\\.setItem\\(COMMERCIAL_KEY, JSON\\.stringify\\(next\\)\\)/);\n  assert.match(commercial,/void commitCommercialState\\(next\\)/);\n  assert.match(base,/const commitWorkspaceData =/);\n  assert.match(base,/momentumStorage\\.setItem\\(DATA_KEY, JSON\\.stringify\\(next\\)\\)/);\n  assert.match(base,/void commitWorkspaceData\\(next\\)/);\n});\n\ntest("approval review identifies the original order creator separately from later approval submitters",()=>{\n  const work=readFileSync("components/pages/work-v2.tsx","utf8");\n  assert.match(work,/Placed by/);\n  assert.match(work,/Approval submitted by/);\n  assert.match(work,/Sales credit/);\n  assert.match(work,/linkedOrder\\.ownerId/);\n  assert.match(work,/flushAndConfirm\\(COMMERCIAL_KEY\\)/);\n});\n\n'''
-if 'critical approval and fulfillment changes enter persistence' not in s:
-    if anchor not in s:
-        raise SystemExit("Regression test insertion anchor not found")
-    p.write_text(s.replace(anchor, insert + anchor, 1))
+# Permanent regression coverage for this exact production incident.
+test_path = Path("tests/production-record-durability.test.ts")
+test_path.write_text('''import assert from "node:assert/strict";\nimport { readFileSync } from "node:fs";\nimport test from "node:test";\n\ntest("critical commercial order lifecycle changes enter persistence synchronously",()=>{\n  const source=readFileSync("lib/workspace-context.tsx","utf8");\n  assert.match(source,/const commitCommercialState =/);\n  assert.match(source,/momentumStorage\\.setItem\\(COMMERCIAL_KEY, JSON\\.stringify\\(next\\)\\)/);\n  assert.match(source,/commercialRef\\.current = next/);\n  assert.match(source,/void commitCommercialState\\(next\\)/);\n  assert.match(source,/void commitCommercialState\\(nextCommercial\\)/);\n});\n\ntest("legacy workspace approval and fulfillment mutations use the same durable write boundary",()=>{\n  const source=readFileSync("lib/workspace-context-v5.tsx","utf8");\n  assert.match(source,/const commitWorkspaceData =/);\n  assert.match(source,/momentumStorage\\.setItem\\(DATA_KEY, JSON\\.stringify\\(next\\)\\)/);\n  assert.match(source,/dataRef\\.current = next/);\n  assert.match(source,/void commitWorkspaceData\\(next\\)/);\n});\n\ntest("approval UI waits for cloud confirmation and names the original order creator",()=>{\n  const source=readFileSync("components/pages/work-v2.tsx","utf8");\n  assert.match(source,/flushAndConfirm\\(COMMERCIAL_KEY\\)/);\n  assert.match(source,/Placed by/);\n  assert.match(source,/Approval submitted by/);\n  assert.match(source,/Sales credit/);\n  assert.match(source,/linkedOrder\\.ownerId/);\n});\n\ntest("all primary order surfaces retain creator attribution",()=>{\n  const orders=readFileSync("components/pages/orders-v3.tsx","utf8");\n  const delivery=readFileSync("components/pages/deliveries.tsx","utf8");\n  assert.match(orders,/Placed by/);\n  assert.match(delivery,/Placed by/);\n});\n\ntest("delivery actions require cloud confirmation of delivery inventory and commercial records",()=>{\n  const source=readFileSync("components/pages/deliveries.tsx","utf8");\n  assert.match(source,/flushAndConfirm\\(DELIVERY_STORAGE_KEY\\)/);\n  assert.match(source,/flushAndConfirm\\(INVENTORY_LEDGER_STORAGE_KEY\\)/);\n  assert.match(source,/flushAndConfirm\\(COMMERCIAL_KEY\\)/);\n});\n''')
+
+package_path = Path("package.json")
+package = package_path.read_text()
+needle = "tests/account-email-management.test.ts tests/delivery-driver.test.ts"
+replacement = "tests/account-email-management.test.ts tests/production-record-durability.test.ts tests/delivery-driver.test.ts"
+if replacement not in package:
+    if needle not in package:
+        raise SystemExit("package.json logic test anchor not found")
+    package_path.write_text(package.replace(needle, replacement, 1))
 
 print("Production record durability finish patch applied.")
