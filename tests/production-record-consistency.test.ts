@@ -97,3 +97,20 @@ test("Delivery Driver invoice access is read-only in the persistence domain",()=
   assert.match(domains,/momentum-commerce-v1[\s\S]*Delivery Driver/);
   assert.match(domains,/momentum-commerce-v1[\s\S]*write:ADMIN/);
 });
+
+
+test("every commercial order state mutation writes through the persistence boundary",()=>{
+  const workspace=readFileSync("lib/workspace-context.tsx","utf8");
+  assert.match(workspace,/Order approved[\s\S]*momentumStorage\.setItem\(COMMERCIAL_KEY,JSON\.stringify\(nextCommercial\)\)/);
+  assert.match(workspace,/nextFulfillment\[order\.status\][\s\S]*momentumStorage\.setItem\(COMMERCIAL_KEY/);
+  assert.match(workspace,/const reconcileOrderPayment[\s\S]*momentumStorage\.setItem\(COMMERCIAL_KEY,JSON\.stringify\(nextCommercial\)\)/);
+});
+
+test("secondary order surfaces identify who placed each concrete order",()=>{
+  const dashboard=readFileSync("components/pages/dashboard.tsx","utf8");
+  const inventory=readFileSync("components/inventory/inventory-ledger-panel-v2.tsx","utf8");
+  const marketing=readFileSync("components/pages/marketing.tsx","utf8");
+  assert.match(dashboard,/Placed by/);
+  assert.match(inventory,/Placed by/);
+  assert.match(marketing,/Placed by/);
+});

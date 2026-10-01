@@ -700,20 +700,15 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const lostPaid = order.paymentStatus === "Paid" && status !== "Paid";
     const paidStatusChanged = becamePaid || lostPaid;
     const rollup = paidStatusChanged ? paidAccountRollupAfterPayment(data, order.accountId, order.id, status) : undefined;
-    setCommercial((state) => ({
-      ...state,
-      orders: state.orders.map((item) => item.id === id ? { ...item, paymentStatus: status, paidAt: status === "Paid" ? paidAt ?? today() : undefined } : item),
-      accountPatches: paidStatusChanged && rollup ? {
-        ...state.accountPatches,
-        [order.accountId]: {
-          ...(state.accountPatches[order.accountId] ?? {}),
-          lastActivity: becamePaid ? `Payment cleared for ${order.number}` : `Payment status changed for ${order.number}: ${status}`,
-          lifetimeCases: rollup.lifetimeCases,
-          reorderCount: rollup.reorderCount,
-        },
-      } : state.accountPatches,
-      activities: paidStatusChanged ? [{ id: uid(becamePaid ? "act-paid" : "act-payment-reversal"), accountId: order.accountId, type: "order", title: becamePaid ? "Payment cleared" : "Cleared payment reduced or reversed", detail: becamePaid ? `${order.number} settled. Credit remains with ${order.creditedRepId ? data.users.find((user) => user.id === order.creditedRepId)?.name ?? "the creating rep" : "the recorded order source"}.` : `${order.number} changed from Paid to ${status}. Paid-case totals, pricing eligibility, sales incentives, and downstream payroll must revalidate from the revised source state.`, at: now(), userId: currentUser!.id }, ...state.activities] : state.activities,
-    }));
+    const nextCommercial:CommercialState={
+      ...commercial,
+      orders:commercial.orders.map((item)=>item.id===id?{...item,paymentStatus:status,paidAt:status==="Paid"?paidAt??today():undefined}:item),
+      accountPatches:paidStatusChanged&&rollup?{...commercial.accountPatches,[order.accountId]:{...(commercial.accountPatches[order.accountId]??{}),lastActivity:becamePaid?`Payment cleared for ${order.number}`:`Payment status changed for ${order.number}: ${status}`,lifetimeCases:rollup.lifetimeCases,reorderCount:rollup.reorderCount}}:commercial.accountPatches,
+      activities:paidStatusChanged?[{id:uid(becamePaid?"act-paid":"act-payment-reversal"),accountId:order.accountId,type:"order",title:becamePaid?"Payment cleared":"Cleared payment reduced or reversed",detail:becamePaid?`${order.number} settled. Credit remains with ${order.creditedRepId?data.users.find((user)=>user.id===order.creditedRepId)?.name??"the creating rep":"the recorded order source"}.`:`${order.number} changed from Paid to ${status}. Paid-case totals, pricing eligibility, sales incentives, and downstream payroll must revalidate from the revised source state.`,at:now(),userId:currentUser!.id},...commercial.activities]:commercial.activities,
+    };
+    momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
+    setCommercial(nextCommercial);
+    void momentumStorage.flush();
   };
 
   const importInventoryLots = (lots: InventoryLot[]) => {
