@@ -1,0 +1,53 @@
+name: Production record integrity
+
+on:
+  push:
+    branches:
+      - production-record-integrity-2026-10-01
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply source patch once
+        run: |
+          if grep -q 'journalVersion:2' lib/persistence.ts; then
+            echo 'Patch already applied.'
+          else
+            python scripts/apply-production-record-integrity-2026-10-01.py
+          fi
+      - name: Install dependencies
+        run: npm ci
+      - name: Full application audit
+        run: npm test
+      - name: Firebase Functions audit
+        run: |
+          npm --prefix functions ci
+          npm --prefix functions run lint
+          npm --prefix functions run build
+      - name: Production build
+        run: npm run build
+      - name: Commit validated source and generated rules
+        run: |
+          if git diff --quiet; then
+            echo 'No source changes to commit.'
+            exit 0
+          fi
+          git config user.name 'ataymia'
+          git config user.email 'ataymia.murray@allstarservicesnow.com'
+          git add lib/persistence.ts lib/order-approval-engine.ts lib/workspace-context-v5.tsx lib/workspace-context.tsx lib/delivery-context.tsx lib/inventory-ledger-context-v2.tsx lib/notification-engine.ts lib/firestore-domains.ts components/pages/work-v2.tsx components/pages/orders-v3.tsx components/pages/deliveries.tsx components/finance/invoice-print-center.tsx app/globals.css tests/platform-critical-invariants.test.ts firestore.rules
+          git commit -m 'Harden production record sync and delivery invoice workflow'
+          git push origin HEAD:production-record-integrity-2026-10-01
