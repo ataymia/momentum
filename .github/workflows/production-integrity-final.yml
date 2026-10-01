@@ -1,0 +1,53 @@
+name: Validate final production integrity repair
+
+on:
+  push:
+    branches:
+      - production-integrity-final-2026-10-01
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply final patch once
+        run: |
+          if grep -q 'Delivery invoices' components/pages/deliveries.tsx; then
+            echo 'Final patch already applied.'
+          else
+            python scripts/apply-production-integrity-final-2026-10-01.py
+          fi
+      - name: Install dependencies and compile
+        run: npm ci
+      - name: Full platform audit
+        run: npm test
+      - name: Firebase Functions audit
+        run: |
+          npm --prefix functions ci
+          npm --prefix functions run lint
+          npm --prefix functions run build
+      - name: Production build
+        run: npm run build
+      - name: Commit validated source
+        run: |
+          if git diff --quiet; then
+            echo 'No source changes to commit.'
+            exit 0
+          fi
+          git config user.name 'Momentum Platform Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/order-approval-engine.ts lib/delivery-context.tsx lib/inventory-ledger-context-v2.tsx lib/notification-engine.ts lib/firestore-domains.ts components/pages/work-v2.tsx components/pages/orders-v3.tsx components/pages/accounts.tsx components/pages/deliveries.tsx components/finance/invoice-print-center.tsx app/globals.css package.json tests/production-record-consistency.test.ts firestore.rules
+          git commit -m 'Finish production consistency and delivery invoice controls'
+          git push origin HEAD:production-integrity-final-2026-10-01
