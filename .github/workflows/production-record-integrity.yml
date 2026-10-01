@@ -25,10 +25,11 @@ jobs:
       - name: Apply source patch once
         run: |
           if grep -q 'journalVersion:2' lib/persistence.ts; then
-            echo 'Patch already applied.'
+            echo 'Main patch already applied.'
           else
             python scripts/apply-production-record-integrity-2026-10-01.py
           fi
+          python scripts/fix-production-record-integrity-patch.py
       - name: Install dependencies
         run: npm ci
       - name: Full application audit
@@ -48,6 +49,6 @@ jobs:
           fi
           git config user.name 'ataymia'
           git config user.email 'ataymia.murray@allstarservicesnow.com'
-          git add lib/persistence.ts lib/order-approval-engine.ts lib/workspace-context-v5.tsx lib/workspace-context.tsx lib/delivery-context.tsx lib/inventory-ledger-context-v2.tsx lib/notification-engine.ts lib/firestore-domains.ts components/pages/work-v2.tsx components/pages/orders-v3.tsx components/pages/deliveries.tsx components/finance/invoice-print-center.tsx app/globals.css tests/platform-critical-invariants.test.ts firestore.rules
+          git add lib/persistence.ts lib/order-approval-engine.ts lib/workspace-context-v5.tsx lib/workspace-context.tsx lib/delivery-context.tsx lib/inventory-ledger-context-v2.tsx lib/notification-engine.ts lib/firestore-domains.ts components/pages/work-v2.tsx components/pages/orders-v3.tsx components/pages/deliveries.tsx components/pages/accounts.tsx components/finance/invoice-print-center.tsx app/globals.css tests/platform-critical-invariants.test.ts firestore.rules
           git commit -m 'Harden production record sync and delivery invoice workflow'
           git push origin HEAD:production-record-integrity-2026-10-01
