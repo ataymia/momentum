@@ -1,0 +1,33 @@
+name: Apply account email management patch
+
+on:
+  push:
+    branches:
+      - account-email-profile-management-2026-10-01
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply patch
+        run: python scripts/apply-account-email-management-patch.py
+      - name: Commit patched source
+        run: |
+          if git diff --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git config user.name "ataymia"
+          git config user.email "ataymia.murray@allstarservicesnow.com"
+          git add components/app-shell-v4.tsx components/hcm/employee-directory.tsx lib/firebase-session-context.tsx functions/src/index.ts package.json
+          git commit -m "Add editable account login email workflow"
+          git push origin HEAD:account-email-profile-management-2026-10-01
