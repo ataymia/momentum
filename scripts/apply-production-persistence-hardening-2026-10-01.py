@@ -10,59 +10,10 @@ def replace_once(path:str,old:str,new:str)->None:
     if count!=1: raise SystemExit(f"{path}: expected one anchor, found {count}: {old[:220]!r}")
     write(path,text.replace(old,new,1))
 
-# ---------------------------------------------------------------------------
-# 1. Make administrator decisions and fulfillment transitions durable BEFORE
-#    the UI asks Firestore to confirm them. This removes the React-effect race
-#    that could report success while no commercial journal/write existed yet.
-# ---------------------------------------------------------------------------
-replace_once(
-    "lib/workspace-context.tsx",
-'''      setCommercial((state)=>({...state,approvals:state.approvals.map((item)=>item.id===id?{...item,status:decision}:item),activities:accountId?[{id:uid("act-territory-review"),accountId,type:"note",title:decision==="Approved"?"Territory exception validated":"Territory exception returned",detail:decision==="Approved"?`${approval.detail} Reviewed and approved by ${currentUser.name}.`:`${approval.detail} Returned by ${currentUser.name}: ${returnReason}`,at:now(),userId:currentUser.id},...state.activities]:state.activities}));
-      return;''',
-'''      const nextCommercial:CommercialState={...commercial,approvals:commercial.approvals.map((item)=>item.id===id?{...item,status:decision}:item),activities:accountId?[{id:uid("act-territory-review"),accountId,type:"note",title:decision==="Approved"?"Territory exception validated":"Territory exception returned",detail:decision==="Approved"?`${approval.detail} Reviewed and approved by ${currentUser.name}.`:`${approval.detail} Returned by ${currentUser.name}: ${returnReason}`,at:now(),userId:currentUser.id},...commercial.activities]:commercial.activities};
-      momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
-      setCommercial(nextCommercial);
-      void momentumStorage.flush();
-      return;'''
-)
-
-replace_once(
-    "lib/workspace-context.tsx",
-'''    const decidedAt = now();
-    setCommercial((state) => ({
-      ...state,
-      approvals: state.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt, returnReason } : item),
-      orders: state.orders.map((order) => order.id === approval.recordId ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
-      activities: approval.recordId ? [{ id: uid("act-approval"), accountId: state.orders.find((order) => order.id === approval.recordId)?.accountId, type: "order", title: decision === "Approved" ? "Order approved" : "Order returned for edits", detail: decision === "Approved" ? `${approval.title} approved by ${currentUser.name}.` : `${approval.title} returned by ${currentUser.name}: ${returnReason}`, at: decidedAt, userId: currentUser.id }, ...state.activities] : state.activities,
-    }));
-    window.setTimeout(() => void momentumStorage.flush(), 0);''',
-'''    const decidedAt = now();
-    const nextCommercial:CommercialState={
-      ...commercial,
-      approvals:commercial.approvals.map((item)=>item.id===id?{...item,status:decision,decidedBy:currentUser.id,decidedAt,returnReason}:item),
-      orders:commercial.orders.map((order)=>order.id===approval.recordId?{...order,status:decision==="Approved"?"Approved":"Draft"}:order),
-      activities:approval.recordId?[{id:uid("act-approval"),accountId:commercial.orders.find((order)=>order.id===approval.recordId)?.accountId,type:"order",title:decision==="Approved"?"Order approved":"Order returned for edits",detail:decision==="Approved"?`${approval.title} approved by ${currentUser.name}.`:`${approval.title} returned by ${currentUser.name}: ${returnReason}`,at:decidedAt,userId:currentUser.id},...commercial.activities]:commercial.activities,
-    };
-    momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
-    setCommercial(nextCommercial);
-    void momentumStorage.flush();'''
-)
-
-replace_once(
-    "lib/workspace-context.tsx",
-'''    if (!currentUser || !canAdvanceFulfillment(currentUser) || nextFulfillment[order.status] !== status) return;
-    setCommercial((state) => ({ ...state, orders: state.orders.map((item) => item.id === id ? { ...item, status, paymentStatus: status === "Delivered" && item.paymentStatus === "Not invoiced" ? "Open" : item.paymentStatus } : item) }));
-  };''',
-'''    if (!currentUser || !canAdvanceFulfillment(currentUser) || nextFulfillment[order.status] !== status) return;
-    const nextCommercial:CommercialState={...commercial,orders:commercial.orders.map((item)=>item.id===id?{...item,status,paymentStatus:status==="Delivered"&&item.paymentStatus==="Not invoiced"?"Open":item.paymentStatus}:item)};
-    momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
-    setCommercial(nextCommercial);
-    void momentumStorage.flush();
-  };'''
-)
-
-# Payment status is also a business-state mutation. Persist it through the same
-# synchronous boundary so reload/cross-account visibility cannot race React.
+# Main already contains the durable synchronous write path for Administrator
+# approvals, territory decisions, cancellation, and fulfillment transitions.
+# Complete the same guarantee for payment reconciliation so every order-state
+# mutation follows one persistence rule instead of relying on a later effect.
 old='''    setCommercial((state) => ({
       ...state,
       orders: state.orders.map((item) => item.id === id ? { ...item, paymentStatus: status, paidAt: status === "Paid" ? paidAt ?? today() : undefined } : item),
@@ -88,10 +39,7 @@ new='''    const nextCommercial:CommercialState={
     void momentumStorage.flush();'''
 replace_once("lib/workspace-context.tsx",old,new)
 
-# ---------------------------------------------------------------------------
-# 2. Order creator must be visible anywhere a person is looking at a concrete
-#    order, including customer dashboard, warehouse controls, and attribution.
-# ---------------------------------------------------------------------------
+# Order creator visibility on every remaining concrete order surface.
 replace_once(
     "components/pages/dashboard.tsx",
     '  const { scope, currentUser, navigate } = useWorkspace();',
@@ -130,14 +78,11 @@ replace_once(
     'data.orders.filter((order)=>order.accountId===accountId).map((order)=>({id:order.id,label:`${order.number} · ${order.cases} cases · ${order.paymentStatus} · Placed by ${data.users.find((user)=>user.id===order.ownerId)?.name??order.ownerId}`}))'
 )
 
-# ---------------------------------------------------------------------------
-# 3. Extend incident regression coverage so future feature work cannot quietly
-#    reintroduce the exact race or hide creator attribution on a side screen.
-# ---------------------------------------------------------------------------
+# Regression coverage for both incident classes.
 path="tests/production-record-consistency.test.ts"
 text=read(path)
-append='''\n\ntest("commercial approval and fulfillment writes exist before cloud confirmation is requested",()=>{\n  const workspace=readFileSync("lib/workspace-context.tsx","utf8");\n  assert.match(workspace,/const nextCommercial:CommercialState=\\{[\\s\\S]*Order approved/);\n  assert.match(workspace,/momentumStorage\\.setItem\\(COMMERCIAL_KEY,JSON\\.stringify\\(nextCommercial\\)\\);[\\s\\S]*setCommercial\\(nextCommercial\\)/);\n  assert.match(workspace,/nextFulfillment\\[order\\.status\\][\\s\\S]*momentumStorage\\.setItem\\(COMMERCIAL_KEY/);\n});\n\ntest("secondary order surfaces also identify who placed the order",()=>{\n  const dashboard=readFileSync("components/pages/dashboard.tsx","utf8");\n  const inventory=readFileSync("components/inventory/inventory-ledger-panel-v2.tsx","utf8");\n  const marketing=readFileSync("components/pages/marketing.tsx","utf8");\n  assert.match(dashboard,/Placed by/);\n  assert.match(inventory,/Placed by/);\n  assert.match(marketing,/Placed by/);\n});\n'''
-if 'commercial approval and fulfillment writes exist before cloud confirmation is requested' not in text:
+append='''\n\ntest("every commercial order state mutation writes through the persistence boundary",()=>{\n  const workspace=readFileSync("lib/workspace-context.tsx","utf8");\n  assert.match(workspace,/Order approved[\\s\\S]*momentumStorage\\.setItem\\(COMMERCIAL_KEY,JSON\\.stringify\\(nextCommercial\\)\\)/);\n  assert.match(workspace,/nextFulfillment\\[order\\.status\\][\\s\\S]*momentumStorage\\.setItem\\(COMMERCIAL_KEY/);\n  assert.match(workspace,/const reconcileOrderPayment[\\s\\S]*momentumStorage\\.setItem\\(COMMERCIAL_KEY,JSON\\.stringify\\(nextCommercial\\)\\)/);\n});\n\ntest("secondary order surfaces identify who placed each concrete order",()=>{\n  const dashboard=readFileSync("components/pages/dashboard.tsx","utf8");\n  const inventory=readFileSync("components/inventory/inventory-ledger-panel-v2.tsx","utf8");\n  const marketing=readFileSync("components/pages/marketing.tsx","utf8");\n  assert.match(dashboard,/Placed by/);\n  assert.match(inventory,/Placed by/);\n  assert.match(marketing,/Placed by/);\n});\n'''
+if 'every commercial order state mutation writes through the persistence boundary' not in text:
     write(path,text+append)
 
 print("Production persistence hardening patch applied.")
