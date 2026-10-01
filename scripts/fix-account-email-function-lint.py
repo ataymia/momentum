@@ -4,6 +4,10 @@ path = Path("functions/src/index.ts")
 text = path.read_text()
 
 replacements = {
+'''      json(response, 400, {ok: false, message: "Enter a valid e-mail address."});''': '''      json(response, 400, {
+        ok: false,
+        message: "Enter a valid e-mail address.",
+      });''',
 '''    let decoded: Awaited<ReturnType<ReturnType<typeof getAuth>["verifyIdToken"]>>;''': '''    let decoded: Awaited<
       ReturnType<ReturnType<typeof getAuth>["verifyIdToken"]>
     >;''',
@@ -91,10 +95,6 @@ path.write_text(text)
 # Protect against another max-len miss in the newly added function before CI.
 start = text.index("export const updateAccountEmail = onRequest(")
 end = text.index("\nconst stampMeta =", start)
-long_lines = [
-    (number, line)
-    for number, line in enumerate(text[:start].splitlines(), 1)
-]
 base_line = text[:start].count("\n") + 1
 function_lines = text[start:end].splitlines()
 violations = [
@@ -103,7 +103,14 @@ violations = [
     if len(line) > 80
 ]
 if violations:
-    detail = "\n".join(f"{number}: {len(line)} {line}" for number, line in violations)
-    raise SystemExit(f"Account email function still has >80 character lines:\n{detail}")
+    detail = "\n".join(
+        f"{number}: {len(line)} {line}" for number, line in violations
+    )
+    raise SystemExit(
+        f"Account email function still has >80 character lines:\n{detail}"
+    )
 
-print("Account email Firebase Function lint cleanup applied with no >80 character lines.")
+print(
+    "Account email Firebase Function lint cleanup applied with no >80 "
+    "character lines."
+)
