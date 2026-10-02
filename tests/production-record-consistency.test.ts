@@ -99,11 +99,23 @@ test("Delivery Driver invoice access is read-only in the persistence domain",()=
 });
 
 
-test("every commercial order state mutation writes through the persistence boundary",()=>{
+test("every authoritative commercial order mutation persists its own snapshot before returning",()=>{
   const workspace=readFileSync("lib/workspace-context.tsx","utf8");
-  assert.match(workspace,/Order approved[\s\S]*momentumStorage\.setItem\(COMMERCIAL_KEY,JSON\.stringify\(nextCommercial\)\)/);
-  assert.match(workspace,/nextFulfillment\[order\.status\][\s\S]*momentumStorage\.setItem\(COMMERCIAL_KEY/);
-  assert.match(workspace,/const reconcileOrderPayment[\s\S]*momentumStorage\.setItem\(COMMERCIAL_KEY,JSON\.stringify\(nextCommercial\)\)/);
+  const decide=workspace.slice(workspace.indexOf("const decideApproval"),workspace.indexOf("const setOrderStatus"));
+  const fulfillment=workspace.slice(workspace.indexOf("const setOrderStatus"),workspace.indexOf("const cancelOrder"));
+  const payment=workspace.slice(workspace.indexOf("const reconcileOrderPayment"),workspace.indexOf("const importInventoryLots"));
+  assert.match(decide,/const nextCommercial:[^=]*=/);
+  assert.match(decide,/momentumStorage\.setItem\(COMMERCIAL_KEY,JSON\.stringify\(nextCommercial\)\)/);
+  assert.match(fulfillment,/momentumStorage\.setItem\(COMMERCIAL_KEY,JSON\.stringify\(nextCommercial\)\)/);
+  assert.match(payment,/momentumStorage\.setItem\(COMMERCIAL_KEY,JSON\.stringify\(nextCommercial\)\)/);
+});
+
+test("delivery mutations enter persistence before the page can ask for cloud confirmation",()=>{
+  const delivery=readFileSync("lib/delivery-context.tsx","utf8");
+  const commit=delivery.slice(delivery.indexOf("const commitState"),delivery.indexOf("const canReconcileCancelledDelivery"));
+  assert.match(commit,/momentumStorage\.setItem\(DELIVERY_STORAGE_KEY,JSON\.stringify\(next\)\)/);
+  assert.match(commit,/setState\(next\)/);
+  assert.doesNotMatch(commit,/setState\(\(current\)=>/);
 });
 
 test("secondary order surfaces identify who placed each concrete order",()=>{

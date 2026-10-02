@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { PaymentMethod } from "./commerce-engine";
 import { DELIVERY_STORAGE_KEY, DeliveryEvent, DeliveryState, DeliveryTask, createDeliverySeed, deliveryTaskForOrder, normalizeDeliveryState, processedForDelivery } from "./delivery-engine";
 import { useInventoryLedger } from "./inventory-ledger-context";
@@ -39,7 +39,18 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     catch { return createDeliverySeed(); }
   };
   const [state, setState] = useState<DeliveryState>(() => read());
-  const commitState=(updater:(current:DeliveryState)=>DeliveryState)=>setState((current)=>{const next=updater(current);if(next!==current){momentumStorage.setItem(DELIVERY_STORAGE_KEY,JSON.stringify(next));void momentumStorage.flush();}return next;});
+  const stateRef = useRef(state);
+  const commitState=(updater:(current:DeliveryState)=>DeliveryState)=>{
+    const current=stateRef.current;
+    const next=updater(current);
+    if(next===current)return current;
+    stateRef.current=next;
+    momentumStorage.setItem(DELIVERY_STORAGE_KEY,JSON.stringify(next));
+    setState(next);
+    void momentumStorage.flush();
+    return next;
+  };
+  useEffect(()=>{stateRef.current=state;},[state]);
   const canReconcileCancelledDelivery = Boolean(currentUser && ["Administrator", "Operations", "Delivery Driver"].includes(currentUser.role));
 
   useEffect(() => {
@@ -71,7 +82,11 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
       void momentumStorage.flush();
     }
   }, [state]);
-  useRemoteStorageSync(DELIVERY_STORAGE_KEY, () => setState(read()));
+  useRemoteStorageSync(DELIVERY_STORAGE_KEY, () => {
+    const next=read();
+    stateRef.current=next;
+    setState(next);
+  });
 
   const taskForOrder = (orderId: string) => deliveryTaskForOrder(state, orderId);
   const drivers = useMemo(() => data.users.filter((user) => user.role === "Delivery Driver"), [data.users]);
