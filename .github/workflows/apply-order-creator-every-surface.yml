@@ -1,0 +1,33 @@
+name: Apply order creator every-surface patch
+
+on:
+  push:
+    branches:
+      - order-creator-every-surface-2026-10-03
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply patch
+        run: python scripts/apply-order-creator-every-surface.py
+      - name: Commit patched source
+        run: |
+          if git diff --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git config user.name "ataymia"
+          git config user.email "ataymia.murray@allstarservicesnow.com"
+          git add components/commerce/order-cash-panel-v2.tsx tests/production-record-consistency.test.ts
+          git commit -m "Show order creator on remaining finance surface"
+          git push origin HEAD:order-creator-every-surface-2026-10-03
