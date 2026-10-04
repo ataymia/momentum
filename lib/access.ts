@@ -4,10 +4,10 @@ const pageAccess: Record<WorkspaceUser["role"], PageKey[]> = {
   Administrator: ["home","work","actions","accounts","quickVisit","salesMap","accountSetup","accountHealth","dispatch","retail","orders","orderCash","inventory","inventoryLedger","products","marketing","brandAmbassadors","people","employees","newHire","onboarding","trainingAdmin","timekeeping","materials","payroll","finance","accounting","reports","performance","reportingCenter","audit","settings","dataExchange","help"],
   "Sales Manager": ["home","work","actions","accounts","quickVisit","salesMap","accountSetup","accountHealth","dispatch","retail","orders","orderCash","products","marketing","people","employees","timekeeping","materials","payroll","finance","reports","performance","reportingCenter","help"],
   "Sales Representative": ["home","work","actions","accounts","quickVisit","salesMap","accountSetup","accountHealth","dispatch","retail","orders","orderCash","products","marketing","brandAmbassadors","people","employees","timekeeping","materials","payroll","finance","reports","performance","reportingCenter","help"],
-  "Brand Ambassador": ["home","brandAmbassadors","timekeeping","materials","help"],
-  Operations: ["home","work","actions","dispatch","orders","orderCash","inventory","inventoryLedger","products","marketing","people","employees","timekeeping","materials","payroll","finance","help"],
-  Warehouse: ["home","work","actions","orders","inventory","inventoryLedger","products","people","employees","timekeeping","materials","payroll","help"],
-  "Delivery Driver": ["home","orders","inventory","inventoryLedger","people","employees","timekeeping","materials","help"],
+  "Brand Ambassador": ["home","work","actions","brandAmbassadors","timekeeping","materials","reports","reportingCenter","help"],
+  Operations: ["home","work","actions","dispatch","orders","orderCash","inventory","inventoryLedger","products","marketing","people","employees","timekeeping","materials","payroll","finance","reports","reportingCenter","help"],
+  Warehouse: ["home","work","actions","orders","inventory","inventoryLedger","products","people","employees","timekeeping","materials","payroll","reports","reportingCenter","help"],
+  "Delivery Driver": ["home","work","actions","orders","inventory","inventoryLedger","people","employees","timekeeping","materials","reports","reportingCenter","help"],
   Customer: ["home","accounts","orders","help"],
 };
 
@@ -48,7 +48,7 @@ export const canSuperviseBrandAmbassador = (data: WorkspaceData, actor: Workspac
 export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
   if (!actor) return false;
   const target = data.users.find((user) => user.id === targetUserId);
-  if (!target || target.role === "Customer" || target.role === "Warehouse" || target.role === "Brand Ambassador") return false;
+  if (!target || user.role === "Customer" || target.role === "Warehouse" || target.role === "Brand Ambassador") return false;
   if (actor.role === "Administrator") return ["Sales", "Operations", "Leadership"].includes(target.team);
   if (actor.role === "Operations") return target.team === "Operations";
   if (actor.role === "Sales Manager") return target.team === "Sales" && canManageUser(data, actor, target.id, true);
