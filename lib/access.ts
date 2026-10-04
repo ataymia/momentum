@@ -48,7 +48,7 @@ export const canSuperviseBrandAmbassador = (data: WorkspaceData, actor: Workspac
 export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
   if (!actor) return false;
   const target = data.users.find((user) => user.id === targetUserId);
-  if (!target || user.role === "Customer" || target.role === "Warehouse" || target.role === "Brand Ambassador") return false;
+  if (!target || target.role === "Customer" || target.role === "Warehouse" || target.role === "Brand Ambassador") return false;
   if (actor.role === "Administrator") return ["Sales", "Operations", "Leadership"].includes(target.team);
   if (actor.role === "Operations") return target.team === "Operations";
   if (actor.role === "Sales Manager") return target.team === "Sales" && canManageUser(data, actor, target.id, true);
