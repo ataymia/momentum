@@ -1,9 +1,10 @@
 import { canManageUser } from "./access";
 import { evaluateSalesRepAccountBonuses } from "./bonus-engine";
-import { arizonaDateKey, endOfLocalWeek, isValidCalendarDateKey, startOfLocalWeek } from "./date-time";
+import { addCalendarDays, arizonaDateKey, endOfLocalWeek, isValidCalendarDateKey, startOfLocalWeek } from "./date-time";
 import type { WorkspaceData, WorkspaceUser } from "./types";
 
 export const PERFORMANCE_STORAGE_KEY = "momentum-performance-v1";
+export const WEEKLY_REPORTING_LAUNCH_DATE = "2026-10-05";
 
 export type GoalPeriod = "Weekly" | "Monthly" | "Quarterly";
 export type GoalMetric = "Paid cases" | "Completed appointments" | "Paid orders" | "New paid accounts" | "Collected revenue" | "Manual";
@@ -29,9 +30,21 @@ export type ManagerWeeklyReport = {
   reviewerId?:string; reviewedAt?:string; reviewerNotes?:string;
 };
 
-export type WorkReport = DailyWorkReport | ManagerWeeklyReport;
+export type WeeklyGoalResult = { goal:string; actual:string; notes:string };
+export type WeeklyProgressDraft = {
+  id:string; userId:string; weekStart:string; weekEnd:string; dueDate:string; createdAt:string; updatedAt:string;
+  goals:WeeklyGoalResult[]; summary:string; nextWeekGoals:string[];
+};
+export type WeeklyProgressReport = {
+  id:string; type:"Weekly progress"; userId:string; weekStart:string; weekEnd:string; dueDate:string; submittedAt:string; status:"Submitted"|"Reviewed";
+  goals:WeeklyGoalResult[]; summary:string; nextWeekGoals:string[];
+  reviewerId?:string; reviewedAt?:string; reviewerNotes?:string;
+};
+
+export type WorkReport = DailyWorkReport | ManagerWeeklyReport | WeeklyProgressReport;
 export type ReportNote = { id:string; reportId:string; authorId:string; note:string; createdAt:string };
-export type PerformanceState = { version:1; goals:PerformanceGoal[]; reports:WorkReport[]; notes:ReportNote[] };
+export type PerformanceState = { version:1; goals:PerformanceGoal[]; reports:WorkReport[]; notes:ReportNote[]; weeklyDrafts:WeeklyProgressDraft[] };
+export type WeeklyReportingPeriod = { weekStart:string; weekEnd:string; dueDate:string; overdue:boolean; dueToday:boolean };
 
 const today=()=>arizonaDateKey();
 const orderDate=(order:WorkspaceData["orders"][number])=>(order.paidAt??order.placedAt).slice(0,10);
@@ -43,24 +56,28 @@ const finiteNonNegative=(value:number)=>Number.isFinite(value)&&value>=0;
 const goalPeriods=new Set<GoalPeriod>(["Weekly","Monthly","Quarterly"]);
 const goalMetrics=new Set<GoalMetric>(["Paid cases","Completed appointments","Paid orders","New paid accounts","Collected revenue","Manual"]);
 const goalStatuses=new Set<GoalStatus>(["Active","Achieved","Missed","Cancelled"]);
-const reportStatuses=new Set<WorkReport["status"]>(["Submitted","Reviewed"]);
+const reportStatuses=new Set<"Submitted"|"Reviewed">(["Submitted","Reviewed"]);
 const uniqueById=<T extends {id:string}>(records:T[])=>{const seen=new Set<string>();return records.filter((record)=>Boolean(record?.id)&&!seen.has(record.id)&&(seen.add(record.id),true));};
-const reportMetricsValid=(report:WorkReport)=>[report.completedAppointments,report.paidCases,report.paidOrders,report.newPaidAccounts,report.collectedRevenue].every(finiteNonNegative);
+const reportMetricsValid=(report:DailyWorkReport|ManagerWeeklyReport)=>[report.completedAppointments,report.paidCases,report.paidOrders,report.newPaidAccounts,report.collectedRevenue].every(finiteNonNegative);
+const validGoalLines=(value:unknown)=>Array.isArray(value)&&value.length===3&&value.every((line)=>Boolean(line&&typeof line==="object"&&typeof (line as WeeklyGoalResult).goal==="string"&&typeof (line as WeeklyGoalResult).actual==="string"&&typeof (line as WeeklyGoalResult).notes==="string"));
+const validNextGoals=(value:unknown)=>Array.isArray(value)&&value.length===3&&value.every((goal)=>typeof goal==="string");
 
-export function createPerformanceSeed():PerformanceState{return{version:1,goals:[],reports:[],notes:[]};}
+export function createPerformanceSeed():PerformanceState{return{version:1,goals:[],reports:[],notes:[],weeklyDrafts:[]};}
 export function normalizePerformanceState(input:unknown):PerformanceState{
   const seed=createPerformanceSeed();if(!input||typeof input!=="object")return seed;const state=input as Partial<PerformanceState>;
   const goals=uniqueById((Array.isArray(state.goals)?state.goals:[]).filter((goal):goal is PerformanceGoal=>Boolean(goal?.id&&goal.userId&&goalPeriods.has(goal.period)&&goal.title?.trim()&&goalMetrics.has(goal.metric)&&finiteNonNegative(goal.target)&&finiteNonNegative(goal.manualValue)&&goal.unit?.trim()&&goalStatuses.has(goal.status)&&isValidCalendarDateKey(goal.periodStart)&&isValidCalendarDateKey(goal.periodEnd)&&goal.periodEnd>=goal.periodStart&&goal.createdBy&&validInstant(goal.createdAt)&&validInstant(goal.updatedAt))));
   const reports=uniqueById((Array.isArray(state.reports)?state.reports:[]).filter((report):report is WorkReport=>{
-    if(!report?.id||!report.userId||!report.summary?.trim()||!validInstant(report.submittedAt)||!reportStatuses.has(report.status)||!reportMetricsValid(report)||!Array.isArray(report.sourceAppointmentIds)||!Array.isArray(report.sourceOrderIds)||new Set(report.sourceAppointmentIds).size!==report.sourceAppointmentIds.length||new Set(report.sourceOrderIds).size!==report.sourceOrderIds.length)return false;
+    if(!report?.id||!report.userId||!validInstant(report.submittedAt)||!reportStatuses.has(report.status))return false;
     if(report.status==="Reviewed"&&(!report.reviewerId||!report.reviewedAt||!validInstant(report.reviewedAt)))return false;
-    if(report.type==="Daily")return isValidCalendarDateKey(report.workDate);
-    if(report.type==="Manager weekly")return Boolean(isValidCalendarDateKey(report.weekStart)&&isValidCalendarDateKey(report.weekEnd)&&report.weekEnd>=report.weekStart&&finiteNonNegative(report.repReportsExpected)&&finiteNonNegative(report.repReportsSubmitted)&&Array.isArray(report.sourceUserIds)&&new Set(report.sourceUserIds).size===report.sourceUserIds.length);
+    if(report.type==="Daily")return Boolean(report.summary?.trim()&&isValidCalendarDateKey(report.workDate)&&reportMetricsValid(report)&&Array.isArray(report.sourceAppointmentIds)&&Array.isArray(report.sourceOrderIds)&&new Set(report.sourceAppointmentIds).size===report.sourceAppointmentIds.length&&new Set(report.sourceOrderIds).size===report.sourceOrderIds.length);
+    if(report.type==="Manager weekly")return Boolean(report.summary?.trim()&&isValidCalendarDateKey(report.weekStart)&&isValidCalendarDateKey(report.weekEnd)&&report.weekEnd>=report.weekStart&&reportMetricsValid(report)&&finiteNonNegative(report.repReportsExpected)&&finiteNonNegative(report.repReportsSubmitted)&&Array.isArray(report.sourceUserIds)&&Array.isArray(report.sourceAppointmentIds)&&Array.isArray(report.sourceOrderIds)&&new Set(report.sourceUserIds).size===report.sourceUserIds.length);
+    if(report.type==="Weekly progress")return Boolean(report.summary?.trim()&&isValidCalendarDateKey(report.weekStart)&&isValidCalendarDateKey(report.weekEnd)&&isValidCalendarDateKey(report.dueDate)&&report.weekEnd>=report.weekStart&&report.dueDate>report.weekEnd&&validGoalLines(report.goals)&&validNextGoals(report.nextWeekGoals));
     return false;
   }));
   const reportIds=new Set(reports.map((report)=>report.id));
   const notes=uniqueById((Array.isArray(state.notes)?state.notes:[]).filter((note):note is ReportNote=>Boolean(note?.id&&reportIds.has(note.reportId)&&note.authorId&&note.note?.trim()&&validInstant(note.createdAt))));
-  return{version:1,goals,reports,notes};
+  const weeklyDrafts=uniqueById((Array.isArray(state.weeklyDrafts)?state.weeklyDrafts:[]).filter((draft):draft is WeeklyProgressDraft=>Boolean(draft?.id&&draft.userId&&isValidCalendarDateKey(draft.weekStart)&&isValidCalendarDateKey(draft.weekEnd)&&isValidCalendarDateKey(draft.dueDate)&&draft.weekEnd>=draft.weekStart&&draft.dueDate>draft.weekEnd&&validInstant(draft.createdAt)&&validInstant(draft.updatedAt)&&validGoalLines(draft.goals)&&validNextGoals(draft.nextWeekGoals)&&typeof draft.summary==="string")));
+  return{version:1,goals,reports,notes,weeklyDrafts};
 }
 
 export function periodRange(period:GoalPeriod,anchor=today()){
@@ -73,6 +90,22 @@ export function periodRange(period:GoalPeriod,anchor=today()){
 }
 
 export function weekRange(anchor=today()){return periodRange("Weekly",anchor);}
+export function weeklyReportingPeriod(weekStart:string){return{weekStart,weekEnd:addCalendarDays(weekStart,6),dueDate:addCalendarDays(weekStart,7)};}
+export function weeklyProgressReportFor(state:PerformanceState,userId:string,weekStart:string){return state.reports.find((report):report is WeeklyProgressReport=>report.type==="Weekly progress"&&report.userId===userId&&report.weekStart===weekStart);}
+export function weeklyProgressDraftFor(state:PerformanceState,userId:string,weekStart:string){return state.weeklyDrafts.find((draft)=>draft.userId===userId&&draft.weekStart===weekStart);}
+export function weeklyCarryForwardGoals(state:PerformanceState,userId:string,weekStart:string){
+  const prior=state.reports.filter((report):report is WeeklyProgressReport=>report.type==="Weekly progress"&&report.userId===userId&&report.weekStart<weekStart).sort((a,b)=>b.weekStart.localeCompare(a.weekStart))[0];
+  return prior?.nextWeekGoals?.length===3?prior.nextWeekGoals.map((goal)=>goal.trim()||"N/A"):["N/A","N/A","N/A"];
+}
+export function weeklyReportingObligations(state:PerformanceState,userId:string,asOf=today()):WeeklyReportingPeriod[]{
+  if(!isValidCalendarDateKey(asOf)||asOf<WEEKLY_REPORTING_LAUNCH_DATE)return[];
+  const currentStart=startOfLocalWeek(asOf);const periods:WeeklyReportingPeriod[]=[];
+  for(let weekStart=WEEKLY_REPORTING_LAUNCH_DATE;weekStart<=currentStart;weekStart=addCalendarDays(weekStart,7)){
+    if(weeklyProgressReportFor(state,userId,weekStart))continue;
+    const period=weeklyReportingPeriod(weekStart);periods.push({...period,overdue:asOf>period.dueDate,dueToday:asOf===period.dueDate});
+  }
+  return periods;
+}
 
 export function userCommercialMetrics(data:WorkspaceData,userId:string,start:string,end:string){
   const creditedOrders=data.orders.filter((order)=>orderCreditUser(order)===userId&&inRange(orderDate(order),start,end));
@@ -106,9 +139,15 @@ export function canViewPerformanceRecord(actor:WorkspaceUser|null|undefined,targ
 }
 
 export function reportVisibleTo(actor:WorkspaceUser|null|undefined,report:WorkReport,data:WorkspaceData){
+  if(report.type==="Weekly progress")return false;
   if(!actor)return false;if(actor.role==="Administrator")return true;if(report.userId===actor.id)return true;
   if(actor.role!=="Sales Manager"||report.type==="Manager weekly")return false;
   return canViewPerformanceRecord(actor,report.userId,data);
+}
+
+export function weeklyProgressVisibleTo(actor:WorkspaceUser|null|undefined,report:WeeklyProgressReport,data:WorkspaceData){
+  if(!actor)return false;if(actor.role==="Administrator")return true;if(report.userId===actor.id)return true;
+  return actor.role==="Sales Manager"&&canViewPerformanceRecord(actor,report.userId,data);
 }
 
 export function workedOnDate(data:WorkspaceData,userId:string,date:string){
