@@ -234,8 +234,8 @@ service cloud.firestore {
 
     // momentum-performance-v1
     match /performance/fields/{field} {
-      allow get, list: if field in ['_root', 'goals', 'notes', 'reports'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
-      allow write: if field in ['_root', 'goals', 'notes', 'reports'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
+      allow get, list: if field in ['_root', 'goals', 'notes', 'reports', 'weeklyDrafts'] && ((activeEmployee()));
+      allow write: if field in ['_root', 'goals', 'notes', 'reports', 'weeklyDrafts'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
     }
 
     // momentum-commerce-v1
@@ -359,9 +359,9 @@ service cloud.firestore {
 
     // momentum-performance-v1
     match /{uid}/performance/{field} {
-      allow get, list: if field in ['goals', 'notes', 'reports']
+      allow get, list: if field in ['goals', 'notes', 'reports', 'weeklyDrafts']
         && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
-      allow write: if field in ['goals', 'notes', 'reports']
+      allow write: if field in ['goals', 'notes', 'reports', 'weeklyDrafts']
         && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
 

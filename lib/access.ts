@@ -4,10 +4,10 @@ const pageAccess: Record<WorkspaceUser["role"], PageKey[]> = {
   Administrator: ["home","work","actions","accounts","quickVisit","salesMap","accountSetup","accountHealth","dispatch","retail","orders","orderCash","inventory","inventoryLedger","products","marketing","brandAmbassadors","people","employees","newHire","onboarding","trainingAdmin","timekeeping","materials","payroll","finance","accounting","reports","performance","reportingCenter","audit","settings","dataExchange","help"],
   "Sales Manager": ["home","work","actions","accounts","quickVisit","salesMap","accountSetup","accountHealth","dispatch","retail","orders","orderCash","products","marketing","people","employees","timekeeping","materials","payroll","finance","reports","performance","reportingCenter","help"],
   "Sales Representative": ["home","work","actions","accounts","quickVisit","salesMap","accountSetup","accountHealth","dispatch","retail","orders","orderCash","products","marketing","brandAmbassadors","people","employees","timekeeping","materials","payroll","finance","reports","performance","reportingCenter","help"],
-  "Brand Ambassador": ["home","brandAmbassadors","timekeeping","materials","help"],
-  Operations: ["home","work","actions","dispatch","orders","orderCash","inventory","inventoryLedger","products","marketing","people","employees","timekeeping","materials","payroll","finance","help"],
-  Warehouse: ["home","work","actions","orders","inventory","inventoryLedger","products","people","employees","timekeeping","materials","payroll","help"],
-  "Delivery Driver": ["home","orders","inventory","inventoryLedger","people","employees","timekeeping","materials","help"],
+  "Brand Ambassador": ["home","work","actions","brandAmbassadors","timekeeping","materials","reports","reportingCenter","help"],
+  Operations: ["home","work","actions","dispatch","orders","orderCash","inventory","inventoryLedger","products","marketing","people","employees","timekeeping","materials","payroll","finance","reports","reportingCenter","help"],
+  Warehouse: ["home","work","actions","orders","inventory","inventoryLedger","products","people","employees","timekeeping","materials","payroll","reports","reportingCenter","help"],
+  "Delivery Driver": ["home","work","actions","orders","inventory","inventoryLedger","people","employees","timekeeping","materials","reports","reportingCenter","help"],
   Customer: ["home","accounts","orders","help"],
 };
 

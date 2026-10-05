@@ -11,6 +11,7 @@ import { TrainingAdminPage } from "../hcm/training-admin";
 import { InventoryLedgerPanel } from "../inventory/inventory-ledger-panel";
 import { DashboardPerformance } from "../performance/dashboard-performance";
 import { ReportingCenter } from "../performance/reporting-center";
+import { WeeklyReportCenter } from "../performance/weekly-report-center";
 import { DataExchangeCenter } from "../settings/data-exchange-center";
 import { PageHeader } from "../ui";
 import { ActionCenter } from "../work/action-center";
@@ -26,6 +27,6 @@ export function OnboardingQueuePage(){return <NewHireProvisioning view="queue"/>
 export function TrainingSetupPage(){return <TrainingAdminPage/>;}
 export function AccountingWorkspacePage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Finance & accounting" title="Accounting" description="Chart of accounts, journals, reconciliations, and accounting controls."/><AccountingPanel/></div>;}
 export function PerformanceWorkspacePage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Performance & reports" title="Performance" description="Operational performance signals and management scorecards."/><DashboardPerformance/></div>;}
-export function ReportingCenterPage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Performance & reports" title="Reporting center" description="Create, review, and trace recurring employee and management reports."/><ReportingCenter/></div>;}
+export function ReportingCenterPage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Performance & reports" title="Reporting center" description="Create, review, and trace recurring employee and management reports."/><WeeklyReportCenter/><ReportingCenter/></div>;}
 export function AuditWorkspacePage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Performance & reports" title="Audit trail" description="Review system actions and evidence without mixing audit history into performance reporting."/><AuditCenter/></div>;}
 export function DataExchangePage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Administration" title="Data exchange" description="Import, export, and move controlled data separately from system settings."/><DataExchangeCenter/></div>;}
