@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { canManageUser } from "./access";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import {
   CRM_STORAGE_KEY,
@@ -17,6 +18,7 @@ import {
   opportunityOwnerForLocation,
 } from "./crm-engine";
 import { isValidCalendarDateKey } from "./date-time";
+import { isQuickVisitLocationId } from "./quick-visit";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 import { prospectOwnershipReleaseReason } from "./sales-field-engine";
@@ -29,8 +31,9 @@ const contactScopes = new Set<CrmContact["scope"]>(["Customer", "Location"]);
 const decisionRoles = new Set<CrmContact["decisionRole"]>(["Decision maker", "Influencer", "Billing", "Operations", "Other"]);
 const interactionTypes = new Set<CrmInteraction["type"]>(["Call", "Email", "Text", "Visit", "Sample", "Note"]);
 
+type StoredInteraction = CrmInteraction & { quickVisitBusinessName?: string; sampleUnit?: "can" | "case" };
 type NewContact = Omit<CrmContact, "id" | "createdAt" | "createdBy">;
-type NewInteraction = Omit<CrmInteraction, "id" | "userId" | "occurredAt"> & { occurredAt?: string };
+type NewInteraction = Omit<StoredInteraction, "id" | "userId" | "occurredAt"> & { occurredAt?: string };
 type NewOpportunity = Omit<Opportunity, "id" | "createdAt" | "createdBy" | "updatedAt">;
 type NewResponsibility = Pick<ResponsibilityEvent, "locationId" | "fromUserId" | "toUserId" | "reason">;
 type MutationResult = { ok: boolean; message?: string };
@@ -86,11 +89,11 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     return {
       ...state,
       contacts: state.contacts.filter((contact) => contact.locationId ? locationIds.has(contact.locationId) : customerIds.has(contact.customerId)),
-      interactions: state.interactions.filter((interaction) => locationIds.has(interaction.locationId)),
+      interactions: state.interactions.filter((interaction) => locationIds.has(interaction.locationId) || (isQuickVisitLocationId(interaction.locationId) && canManageUser(data, currentUser, interaction.userId, true))),
       opportunities: state.opportunities.filter((opportunity) => locationIds.has(opportunity.locationId)),
       responsibilityHistory: state.responsibilityHistory.filter((event) => locationIds.has(event.locationId)),
     };
-  }, [currentUser?.role, customerIds, locationIds, salesRole, state]);
+  }, [currentUser, customerIds, data, locationIds, salesRole, state]);
 
   const addContact = (input: NewContact) => {
     if (!salesRole || !currentUser || !contactScopes.has(input.scope) || !decisionRoles.has(input.decisionRole) || typeof input.primary !== "boolean" || typeof input.active !== "boolean" || !customerInScope(input.customerId) || !input.name.trim() || !input.role.trim()) return "";
@@ -112,15 +115,29 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   };
 
   const addInteraction = (input: NewInteraction) => {
-    if (!salesRole || !currentUser || !locationInScope(input.locationId) || !interactionTypes.has(input.type) || !input.summary.trim()) return "";
-    if (input.contactId && !contactMatchesLocation(state, input.contactId, input.locationId, data)) return "";
+    const quickVisit = isQuickVisitLocationId(input.locationId) && ["Visit", "Sample"].includes(input.type) && Boolean(input.quickVisitBusinessName?.trim());
+    if (!salesRole || !currentUser || (!locationInScope(input.locationId) && !quickVisit) || !interactionTypes.has(input.type) || !input.summary.trim()) return "";
+    if (input.contactId && (!locationInScope(input.locationId) || !contactMatchesLocation(state, input.contactId, input.locationId, data))) return "";
+    if (input.sampleUnit && (input.type !== "Sample" || !["can", "case"].includes(input.sampleUnit))) return "";
     const hasNextAction = Boolean(input.nextAction?.trim());
     const hasNextDate = Boolean(input.nextActionDate);
     if (hasNextAction !== hasNextDate || (input.nextActionDate && !validDateKey(input.nextActionDate))) return "";
     const occurredAt = input.occurredAt ?? now();
     if (!validTimestamp(occurredAt)) return "";
     const id = uid("interaction");
-    const record: CrmInteraction = { ...input, id, summary: input.summary.trim(), outcome: input.outcome?.trim() || undefined, nextAction: input.nextAction?.trim() || undefined, nextActionDate: input.nextActionDate || undefined, contactId: input.contactId || undefined, userId: currentUser.id, occurredAt };
+    const record: StoredInteraction = {
+      ...input,
+      id,
+      summary: input.summary.trim(),
+      outcome: input.outcome?.trim() || undefined,
+      nextAction: input.nextAction?.trim() || undefined,
+      nextActionDate: input.nextActionDate || undefined,
+      contactId: input.contactId || undefined,
+      quickVisitBusinessName: input.quickVisitBusinessName?.trim() || undefined,
+      sampleUnit: input.type === "Sample" ? input.sampleUnit : undefined,
+      userId: currentUser.id,
+      occurredAt,
+    };
     setCrm((current) => ({ ...current, interactions: [record, ...current.interactions] }));
     return id;
   };
