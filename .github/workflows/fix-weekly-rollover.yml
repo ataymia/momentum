@@ -21,14 +21,12 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           engine = Path("lib/performance-engine.ts")
           text = engine.read_text()
-          old = '''export function weeklyCarryForwardGoals(state:PerformanceState,userId:string,weekStart:string){
-            const prior=state.reports.filter((report):report is WeeklyProgressReport=>report.type==="Weekly progress"&&report.userId===userId&&report.weekStart<weekStart).sort((a,b)=>b.weekStart.localeCompare(a.weekStart))[0];
-            return prior?.nextWeekGoals?.length===3?prior.nextWeekGoals.map((goal)=>goal.trim()||"N/A"):["N/A","N/A","N/A"];
-          }'''.replace("          ", "")
-          new = '''export function weeklyCarryForwardGoals(state:PerformanceState,userId:string,weekStart:string){
+          pattern = re.compile(r'export function weeklyCarryForwardGoals\(state:PerformanceState,userId:string,weekStart:string\)\{.*?\n\}', re.S)
+          replacement = '''export function weeklyCarryForwardGoals(state:PerformanceState,userId:string,weekStart:string){
             const priorWeekStart=addCalendarDays(weekStart,-7);
             const prior=weeklyProgressReportFor(state,userId,priorWeekStart);
             return prior?.nextWeekGoals?.length===3?prior.nextWeekGoals.map((goal)=>goal.trim()||"N/A"):["N/A","N/A","N/A"];
@@ -41,9 +39,10 @@ jobs:
               return current?.goal.trim()===goal?{...current,goal}:{goal,actual:goal==="N/A"?"N/A":"",notes:""};
             }),updatedAt};
           }'''.replace("          ", "")
-          if old not in text:
-              raise SystemExit("weeklyCarryForwardGoals block not found")
-          engine.write_text(text.replace(old,new,1))
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f"weeklyCarryForwardGoals replacement count={count}")
+          engine.write_text(text)
 
           context = Path("lib/performance-context.tsx")
           text = context.read_text()
@@ -52,17 +51,18 @@ jobs:
           if old_import not in text:
               raise SystemExit("performance context import not found")
           text = text.replace(old_import,new_import,1)
-          old_submit = '''    const id=uid("weekly-report");const report:WeeklyProgressReport={id,type:"Weekly progress",userId:currentUser.id,weekStart:draft.weekStart,weekEnd:draft.weekEnd,dueDate:draft.dueDate,submittedAt:now(),status:"Submitted",goals,summary:draft.summary.trim(),nextWeekGoals};
-            commit((state)=>({...state,reports:[report,...state.reports],weeklyDrafts:state.weeklyDrafts.filter((item)=>item.id!==draftId)}));return id;'''.replace("          ", "")
-          new_submit = '''    const id=uid("weekly-report");const submittedAt=now();const report:WeeklyProgressReport={id,type:"Weekly progress",userId:currentUser.id,weekStart:draft.weekStart,weekEnd:draft.weekEnd,dueDate:draft.dueDate,submittedAt,status:"Submitted",goals,summary:draft.summary.trim(),nextWeekGoals};
+          submit_pattern = re.compile(r'    const id=uid\("weekly-report"\);const report:WeeklyProgressReport=\{id,type:"Weekly progress",userId:currentUser\.id,weekStart:draft\.weekStart,weekEnd:draft\.weekEnd,dueDate:draft\.dueDate,submittedAt:now\(\),status:"Submitted",goals,summary:draft\.summary\.trim\(\),nextWeekGoals\};\n    commit\(\(state\)=>\(\{\.\.\.state,reports:\[report,\.\.\.state\.reports\],weeklyDrafts:state\.weeklyDrafts\.filter\(\(item\)=>item\.id!==draftId\)\}\)\);return id;')
+          submit_replacement = '''    const id=uid("weekly-report");const submittedAt=now();const report:WeeklyProgressReport={id,type:"Weekly progress",userId:currentUser.id,weekStart:draft.weekStart,weekEnd:draft.weekEnd,dueDate:draft.dueDate,submittedAt,status:"Submitted",goals,summary:draft.summary.trim(),nextWeekGoals};
             commit((state)=>({...state,reports:[report,...state.reports],weeklyDrafts:state.weeklyDrafts.filter((item)=>item.id!==draftId).map((item)=>item.userId===currentUser.id&&item.weekStart===draft.dueDate?rollForwardNextWeekDraft(item,nextWeekGoals,submittedAt):item)}));return id;'''.replace("          ", "")
-          if old_submit not in text:
-              raise SystemExit("weekly submit block not found")
-          context.write_text(text.replace(old_submit,new_submit,1))
+          text, count = submit_pattern.subn(submit_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f"weekly submit replacement count={count}")
+          context.write_text(text)
 
           tests = Path("tests/weekly-reporting.test.ts")
           text = tests.read_text()
-          text = text.replace('  normalizePerformanceState,\n', '  normalizePerformanceState,\n  rollForwardNextWeekDraft,\n', 1)
+          if 'rollForwardNextWeekDraft,' not in text:
+              text = text.replace('  normalizePerformanceState,\n', '  normalizePerformanceState,\n  rollForwardNextWeekDraft,\n', 1)
           marker = '''test("next-week goals carry into the next weekly report",()=>{
             const state:PerformanceState={...createPerformanceSeed(),reports:[submittedReport("2026-10-05",["Close 3 accounts","Complete 80 visits","Get 2 reorders"])]};
             assert.deepEqual(weeklyCarryForwardGoals(state,"usr-rep","2026-10-12"),["Close 3 accounts","Complete 80 visits","Get 2 reorders"]);
@@ -89,9 +89,11 @@ jobs:
             ]);
             assert.deepEqual(repaired.nextWeekGoals,["Future 1","Future 2","Future 3"]);
           });'''.replace("          ", "")
-          if marker not in text:
-              raise SystemExit("weekly rollover test marker not found")
-          tests.write_text(text.replace(marker,addition,1))
+          if 'carry-forward never skips a missing immediately previous week' not in text:
+              if marker not in text:
+                  raise SystemExit("weekly rollover test marker not found")
+              text = text.replace(marker,addition,1)
+          tests.write_text(text)
           PY
       - name: Commit rollover guard
         run: |
