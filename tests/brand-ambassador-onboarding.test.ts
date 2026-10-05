@@ -124,10 +124,10 @@ describe("Brand Ambassador role normalization", () => {
     }).ok, false, "Administrator must never be provisionable");
   });
 
-  test("Brand Ambassador page access stays tiny and excludes the commercial platform", () => {
-    const allowed: PageKey[] = ["home", "brandAmbassadors", "help"];
+  test("Brand Ambassador access stays narrow while allowing required weekly reporting", () => {
+    const allowed: PageKey[] = ["home", "work", "actions", "brandAmbassadors", "reports", "reportingCenter", "help"];
     for (const page of allowed) assert.equal(canAccessPage(baA, page), true, `${page} must be available`);
-    for (const page of ["accounts", "crmTools", "orders", "orderCash", "inventory", "inventoryLedger", "finance", "payroll", "people", "employees", "settings", "work", "marketing", "dispatch", "trainingAdmin"] as PageKey[]) {
+    for (const page of ["accounts", "crmTools", "orders", "orderCash", "inventory", "inventoryLedger", "finance", "payroll", "people", "employees", "settings", "marketing", "dispatch", "trainingAdmin"] as PageKey[]) {
       assert.equal(canAccessPage(baA, page), false, `${page} must stay closed to a Brand Ambassador`);
     }
   });
@@ -143,11 +143,14 @@ describe("Brand Ambassador role normalization", () => {
 
   test("Firestore domain rules deny a Brand Ambassador the CRM, order, and finance domains", () => {
     const scope = buildPersistenceScope({ uid: BA_A, email: baA.email, role: "Brand Ambassador", team: "Sales", managerId: REP_A, accountState: "Active", updatedAt: "2026-01-01T00:00:00.000Z", updatedBy: ADMIN_ID }, data.users);
-    const denied = ["workspace", "commercial", "crm", "commerce", "inventoryLedger", "marketing", "finance", "accounting", "payroll", "identity", "performance", "fieldTracking"];
+    const denied = ["workspace", "commercial", "crm", "commerce", "inventoryLedger", "marketing", "finance", "accounting", "payroll", "identity", "fieldTracking"];
     for (const id of denied) {
       const spec = DOMAIN_SPECS.find((item) => item.id === id)!;
       assert.equal(roleAllows(spec.read, scope), false, `${id} must not be readable by a Brand Ambassador`);
     }
+    const performance = DOMAIN_SPECS.find((item) => item.id === "performance")!;
+    assert.equal(roleAllows(performance.read, scope), true, "an active Brand Ambassador must read their own weekly-report domain");
+    assert.equal(roleAllows(performance.write, scope), false, "shared performance records stay manager-owned; self writes use the employee shard");
     const training = DOMAIN_SPECS.find((item) => item.id === "trainingLibrary")!;
     assert.equal(roleAllows(training.read, scope), true, "a Brand Ambassador must still read their training library");
     assert.equal(roleAllows(training.write, scope), false, "a Brand Ambassador must never write the training library");
