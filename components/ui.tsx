@@ -100,9 +100,16 @@ export function Field({ label, hint, children, className = "" }: { label: string
   return <label className={`field ${className}`.trim()}><span className="field__label">{label}</span>{children}{hint && <small>{hint}</small>}</label>;
 }
 
-export function formatDate(value: string, options?: Intl.DateTimeFormatOptions) {
+export function formatDate(value: string | null | undefined, options?: Intl.DateTimeFormatOptions) {
+  if (typeof value !== "string" || !value.trim()) return "Not recorded";
   const normalized = value.length === 10 ? `${value}T12:00:00` : value;
-  return new Intl.DateTimeFormat("en-US", options ?? { month: "short", day: "numeric", year: "numeric" }).format(new Date(normalized));
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  try {
+    return new Intl.DateTimeFormat("en-US", options ?? { month: "short", day: "numeric", year: "numeric" }).format(date);
+  } catch {
+    return "Not recorded";
+  }
 }
 
 export function formatMoney(value: number) {
@@ -116,6 +123,6 @@ export function hoursBetween(clockIn: string, clockOut?: string, breakMinutes = 
   return Math.max(0, (endHours * 60 + endMinutes - startHours * 60 - startMinutes - breakMinutes) / 60);
 }
 
-export function EmptyState({ title, description }: { title: string; description: string; }) {
+export function EmptyState({ title, description }: { title: string; description: string }) {
   return <div className="empty-state"><span aria-hidden="true">✦</span><h3>{title}</h3><p>{description}</p></div>;
 }

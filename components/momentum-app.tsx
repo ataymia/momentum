@@ -31,6 +31,7 @@ import { DeparturePrompt } from "./field-tracking/departure-prompt";
 import { FirebaseGate } from "./firebase-gate";
 import { OnboardingPortal } from "./hcm/onboarding-portal";
 import { LoginScreen } from "./login-screen";
+import { RuntimeErrorListeners } from "./runtime-error-listeners";
 
 const PRESENTATION_SEED_KEY = "momentum-presentation-seed-2026-08-31";
 const PRESENTATION_RESET_KEYS = [
@@ -75,6 +76,6 @@ function MomentumProviders(){
 export function MomentumApp(){
   ensurePresentationSeed();
   const runtimeMode=useRuntimeModeValue();
-  if(runtimeMode==="demo")return <MomentumProviders/>;
-  return <FirebaseSessionProvider><FirebaseGate><MomentumProviders/></FirebaseGate></FirebaseSessionProvider>;
+  if(runtimeMode==="demo")return <><RuntimeErrorListeners/><MomentumProviders/></>;
+  return <><RuntimeErrorListeners/><FirebaseSessionProvider><FirebaseGate><MomentumProviders/></FirebaseGate></FirebaseSessionProvider></>;
 }
