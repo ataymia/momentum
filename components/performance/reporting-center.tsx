@@ -21,7 +21,7 @@ export function ReportingCenter(){
   useEffect(()=>{if(!focusId)return;const handle=window.setTimeout(()=>document.getElementById(`report-detail-${focusId}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);window.sessionStorage.removeItem("momentum-focus-record");return()=>window.clearTimeout(handle);},[focusId]);
   if(!currentUser||currentUser.role==="Customer")return null;
   const manager=currentUser.role==="Sales Manager"||currentUser.role==="Administrator";
-  const visibleReports=performance.reports.filter((report)=>reportVisibleTo(currentUser,report,data)).sort((a,b)=>b.submittedAt.localeCompare(a.submittedAt));
+  const visibleReports=performance.reports.filter((report):report is DailyWorkReport|ManagerWeeklyReport=>reportVisibleTo(currentUser,report,data)).sort((a,b)=>b.submittedAt.localeCompare(a.submittedAt));
   const selected=visibleReports.find((report)=>report.id===selectedId);
   const ownDailyToday=performance.reports.find((report)=>report.type==="Daily"&&report.userId===currentUser.id&&report.workDate===today());
   const dailyDuplicate=performance.reports.some((report)=>report.type==="Daily"&&report.userId===currentUser.id&&report.workDate===daily.workDate);
