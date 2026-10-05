@@ -20,6 +20,7 @@ import { MarketingProvider } from "../lib/marketing-context";
 import { NotificationProvider } from "../lib/notification-context";
 import { PayrollProvider } from "../lib/payroll-context";
 import { PerformanceProvider } from "../lib/performance-context";
+import { installPendingJournalStorageGuard } from "../lib/pending-journal-storage-guard";
 import { PeriodLockProvider } from "../lib/period-lock-context";
 import { RuntimeModeProvider } from "../lib/runtime-mode";
 import { currentRuntimeMode, useRuntimeModeValue } from "../lib/runtime-mode-store";
@@ -74,6 +75,7 @@ function MomentumProviders(){
  * access record is verified and every Firestore document they may read has been cached.
  */
 export function MomentumApp(){
+  installPendingJournalStorageGuard();
   ensurePresentationSeed();
   const runtimeMode=useRuntimeModeValue();
   if(runtimeMode==="demo")return <><RuntimeErrorListeners/><MomentumProviders/></>;
