@@ -4,6 +4,7 @@ import {
   WEEKLY_REPORTING_LAUNCH_DATE,
   createPerformanceSeed,
   normalizePerformanceState,
+  rollForwardNextWeekDraft,
   weeklyCarryForwardGoals,
   weeklyReportingObligations,
   type PerformanceState,
@@ -52,6 +53,27 @@ test("the first report starts with N/A goals",()=>{
 test("next-week goals carry into the next weekly report",()=>{
   const state:PerformanceState={...createPerformanceSeed(),reports:[submittedReport("2026-10-05",["Close 3 accounts","Complete 80 visits","Get 2 reorders"])]};
   assert.deepEqual(weeklyCarryForwardGoals(state,"usr-rep","2026-10-12"),["Close 3 accounts","Complete 80 visits","Get 2 reorders"]);
+});
+
+test("carry-forward never skips a missing immediately previous week",()=>{
+  const state:PerformanceState={...createPerformanceSeed(),reports:[submittedReport("2026-10-05",["A","B","C"])]};
+  assert.deepEqual(weeklyCarryForwardGoals(state,"usr-rep","2026-10-19"),["N/A","N/A","N/A"]);
+});
+
+test("late submission repairs an already-open next-week draft without erasing future planning",()=>{
+  const draft={
+    id:"draft-next",userId:"usr-rep",weekStart:"2026-10-12",weekEnd:"2026-10-18",dueDate:"2026-10-19",
+    createdAt:"2026-10-12T08:00:00.000Z",updatedAt:"2026-10-12T08:00:00.000Z",
+    goals:[{goal:"N/A",actual:"N/A",notes:""},{goal:"N/A",actual:"N/A",notes:""},{goal:"N/A",actual:"N/A",notes:""}],
+    summary:"",nextWeekGoals:["Future 1","Future 2","Future 3"],
+  };
+  const repaired=rollForwardNextWeekDraft(draft,["Close 3 accounts","Complete 80 visits","Get 2 reorders"],"2026-10-12T12:00:00.000Z");
+  assert.deepEqual(repaired.goals,[
+    {goal:"Close 3 accounts",actual:"",notes:""},
+    {goal:"Complete 80 visits",actual:"",notes:""},
+    {goal:"Get 2 reorders",actual:"",notes:""},
+  ]);
+  assert.deepEqual(repaired.nextWeekGoals,["Future 1","Future 2","Future 3"]);
 });
 
 test("an unsubmitted prior week stays due when the new Monday begins",()=>{

@@ -94,8 +94,17 @@ export function weeklyReportingPeriod(weekStart:string){return{weekStart,weekEnd
 export function weeklyProgressReportFor(state:PerformanceState,userId:string,weekStart:string){return state.reports.find((report):report is WeeklyProgressReport=>report.type==="Weekly progress"&&report.userId===userId&&report.weekStart===weekStart);}
 export function weeklyProgressDraftFor(state:PerformanceState,userId:string,weekStart:string){return state.weeklyDrafts.find((draft)=>draft.userId===userId&&draft.weekStart===weekStart);}
 export function weeklyCarryForwardGoals(state:PerformanceState,userId:string,weekStart:string){
-  const prior=state.reports.filter((report):report is WeeklyProgressReport=>report.type==="Weekly progress"&&report.userId===userId&&report.weekStart<weekStart).sort((a,b)=>b.weekStart.localeCompare(a.weekStart))[0];
+  const priorWeekStart=addCalendarDays(weekStart,-7);
+  const prior=weeklyProgressReportFor(state,userId,priorWeekStart);
   return prior?.nextWeekGoals?.length===3?prior.nextWeekGoals.map((goal)=>goal.trim()||"N/A"):["N/A","N/A","N/A"];
+}
+export function rollForwardNextWeekDraft(draft:WeeklyProgressDraft,nextWeekGoals:string[],updatedAt:string):WeeklyProgressDraft{
+  const normalized=nextWeekGoals.slice(0,3).map((goal)=>goal.trim()||"N/A");
+  if(normalized.length!==3)return draft;
+  return{...draft,goals:normalized.map((goal,index)=>{
+    const current=draft.goals[index];
+    return current?.goal.trim()===goal?{...current,goal}:{goal,actual:goal==="N/A"?"N/A":"",notes:""};
+  }),updatedAt};
 }
 export function weeklyReportingObligations(state:PerformanceState,userId:string,asOf=today()):WeeklyReportingPeriod[]{
   if(!isValidCalendarDateKey(asOf)||asOf<WEEKLY_REPORTING_LAUNCH_DATE)return[];
