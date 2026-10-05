@@ -1,0 +1,36 @@
+name: Generate weekly-report Firestore rules
+
+on:
+  push:
+    branches:
+      - weekly-report-goals-2026-10-04
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: weekly-report-goals-2026-10-04
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run rules:build
+      - name: Commit generated rules when changed
+        run: |
+          if git diff --quiet -- firestore.rules; then
+            echo "firestore.rules already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add firestore.rules
+          git commit -m "Regenerate Firestore rules for weekly reports"
+          git push origin HEAD:weekly-report-goals-2026-10-04
