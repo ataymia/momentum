@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useRef, useState } from "react";
-import { DailyWorkReport, ManagerWeeklyReport, PERFORMANCE_STORAGE_KEY, PerformanceGoal, PerformanceState, WeeklyGoalResult, WeeklyProgressDraft, WeeklyProgressReport, WorkReport, ReportNote, canViewPerformanceRecord, createPerformanceSeed, managerWeeklyMetrics, normalizePerformanceState, userCommercialMetrics, weeklyCarryForwardGoals, weeklyProgressDraftFor, weeklyProgressReportFor, weeklyReportingPeriod } from "./performance-engine";
+import { DailyWorkReport, ManagerWeeklyReport, PERFORMANCE_STORAGE_KEY, PerformanceGoal, PerformanceState, WeeklyGoalResult, WeeklyProgressDraft, WeeklyProgressReport, WorkReport, ReportNote, canViewPerformanceRecord, createPerformanceSeed, managerWeeklyMetrics, normalizePerformanceState, rollForwardNextWeekDraft, userCommercialMetrics, weeklyCarryForwardGoals, weeklyProgressDraftFor, weeklyProgressReportFor, weeklyReportingPeriod } from "./performance-engine";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
@@ -59,8 +59,8 @@ export function PerformanceProvider({children}:{children:ReactNode}){
   const submitWeeklyProgress=(draftId:string)=>{
     if(!currentUser)return null;const draft=stateRef.current.weeklyDrafts.find((item)=>item.id===draftId);if(!draft||draft.userId!==currentUser.id||weeklyProgressReportFor(stateRef.current,currentUser.id,draft.weekStart))return null;
     const goals=cleanGoalLines(draft.goals);const nextWeekGoals=cleanNextGoals(draft.nextWeekGoals);if(!draft.summary.trim()||goals.length!==3||goals.some((line)=>!line.goal||!line.actual)||nextWeekGoals.length!==3||nextWeekGoals.some((goal)=>!goal))return null;
-    const id=uid("weekly-report");const report:WeeklyProgressReport={id,type:"Weekly progress",userId:currentUser.id,weekStart:draft.weekStart,weekEnd:draft.weekEnd,dueDate:draft.dueDate,submittedAt:now(),status:"Submitted",goals,summary:draft.summary.trim(),nextWeekGoals};
-    commit((state)=>({...state,reports:[report,...state.reports],weeklyDrafts:state.weeklyDrafts.filter((item)=>item.id!==draftId)}));return id;
+    const id=uid("weekly-report");const submittedAt=now();const report:WeeklyProgressReport={id,type:"Weekly progress",userId:currentUser.id,weekStart:draft.weekStart,weekEnd:draft.weekEnd,dueDate:draft.dueDate,submittedAt,status:"Submitted",goals,summary:draft.summary.trim(),nextWeekGoals};
+  commit((state)=>({...state,reports:[report,...state.reports],weeklyDrafts:state.weeklyDrafts.filter((item)=>item.id!==draftId).map((item)=>item.userId===currentUser.id&&item.weekStart===draft.dueDate?rollForwardNextWeekDraft(item,nextWeekGoals,submittedAt):item)}));return id;
   };
   const reviewReport=(reportId:string,note:string)=>{if(!currentUser||!["Sales Manager","Administrator"].includes(currentUser.role))return false;const report=stateRef.current.reports.find((item)=>item.id===reportId);if(!report||report.userId===currentUser.id||!canViewPerformanceRecord(currentUser,report.userId,data))return false;commit((state)=>({...state,reports:state.reports.map((item)=>item.id===reportId?{...item,status:"Reviewed",reviewerId:currentUser.id,reviewedAt:now(),reviewerNotes:note.trim()||undefined}:item)}));return true;};
   const addReportNote=(reportId:string,note:string)=>{if(!currentUser||!["Sales Manager","Administrator"].includes(currentUser.role)||!note.trim())return false;const report=stateRef.current.reports.find((item)=>item.id===reportId);if(!report||report.userId===currentUser.id||!canViewPerformanceRecord(currentUser,report.userId,data))return false;const record:ReportNote={id:uid("report-note"),reportId,authorId:currentUser.id,note:note.trim(),createdAt:now()};commit((state)=>({...state,notes:[record,...state.notes]}));return true;};
