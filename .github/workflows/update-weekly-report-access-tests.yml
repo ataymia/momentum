@@ -1,0 +1,43 @@
+name: Update weekly report access regressions
+
+on:
+  push:
+    branches:
+      - weekly-report-goals-2026-10-04
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: weekly-report-goals-2026-10-04
+          fetch-depth: 0
+      - name: Update Brand Ambassador reporting expectations
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("tests/brand-ambassador-onboarding.test.ts")
+          text = path.read_text()
+          old = '''  test("Brand Ambassador page access stays tiny and excludes the commercial platform", () => {\n    const allowed: PageKey[] = ["home", "brandAmbassadors", "help"];\n    for (const page of allowed) assert.equal(canAccessPage(baA, page), true, `${page} must be available`);\n    for (const page of ["accounts", "crmTools", "orders", "orderCash", "inventory", "inventoryLedger", "finance", "payroll", "people", "employees", "settings", "work", "marketing", "dispatch", "trainingAdmin"] as PageKey[]) {\n      assert.equal(canAccessPage(baA, page), false, `${page} must stay closed to a Brand Ambassador`);\n    }\n  });'''
+          new = '''  test("Brand Ambassador access stays narrow while allowing required weekly reporting", () => {\n    const allowed: PageKey[] = ["home", "work", "actions", "brandAmbassadors", "reports", "reportingCenter", "help"];\n    for (const page of allowed) assert.equal(canAccessPage(baA, page), true, `${page} must be available`);\n    for (const page of ["accounts", "crmTools", "orders", "orderCash", "inventory", "inventoryLedger", "finance", "payroll", "people", "employees", "settings", "marketing", "dispatch", "trainingAdmin"] as PageKey[]) {\n      assert.equal(canAccessPage(baA, page), false, `${page} must stay closed to a Brand Ambassador`);\n    }\n  });'''
+          if old not in text:
+              raise SystemExit("Brand Ambassador page-access test block not found")
+          text = text.replace(old, new, 1)
+          old = '''    const denied = ["workspace", "commercial", "crm", "commerce", "inventoryLedger", "marketing", "finance", "accounting", "payroll", "identity", "performance", "fieldTracking"];\n    for (const id of denied) {\n      const spec = DOMAIN_SPECS.find((item) => item.id === id)!;\n      assert.equal(roleAllows(spec.read, scope), false, `${id} must not be readable by a Brand Ambassador`);\n    }\n    const training = DOMAIN_SPECS.find((item) => item.id === "trainingLibrary")!;'''
+          new = '''    const denied = ["workspace", "commercial", "crm", "commerce", "inventoryLedger", "marketing", "finance", "accounting", "payroll", "identity", "fieldTracking"];\n    for (const id of denied) {\n      const spec = DOMAIN_SPECS.find((item) => item.id === id)!;\n      assert.equal(roleAllows(spec.read, scope), false, `${id} must not be readable by a Brand Ambassador`);\n    }\n    const performance = DOMAIN_SPECS.find((item) => item.id === "performance")!;\n    assert.equal(roleAllows(performance.read, scope), true, "an active Brand Ambassador must read their own weekly-report domain");\n    assert.equal(roleAllows(performance.write, scope), false, "shared performance records stay manager-owned; self writes use the employee shard");\n    const training = DOMAIN_SPECS.find((item) => item.id === "trainingLibrary")!;'''
+          if old not in text:
+              raise SystemExit("Brand Ambassador domain-access test block not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit test update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/brand-ambassador-onboarding.test.ts
+          git commit -m "Align Brand Ambassador tests with weekly reporting access"
+          git push origin HEAD:weekly-report-goals-2026-10-04
