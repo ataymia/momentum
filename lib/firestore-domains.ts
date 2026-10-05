@@ -23,11 +23,9 @@ const ADMIN_MANAGER:Role[]=["Administrator","Sales Manager"];
 const SALES:Role[]=["Administrator","Sales Manager","Sales Representative"];
 const OPERATIONS:Role[]=["Administrator","Operations","Warehouse"];
 /**
- * Every active employee role except Brand Ambassador.
- *
- * A Brand Ambassador is an event worker, not a member of the commercial platform: no CRM, accounts, orders,
- * inventory, marketing, or performance data. Filtering that out in the UI is not enough, so the domains that
- * carry those records are denied at the rules layer instead of gated on `activeEmployee`.
+ * Commercial/operational roles used by CRM, inventory, field tracking, and other business domains.
+ * Brand Ambassadors and Delivery Drivers stay outside those broad domains unless a specific domain grants
+ * narrower access. Employee performance reporting is separately gated by activeEmployee.
  */
 const OPERATIONAL:Role[]=["Administrator","Sales Manager","Sales Representative","Operations","Warehouse"];
 const DELIVERY_READ:Role[]=["Administrator","Operations","Warehouse","Delivery Driver"];
@@ -67,7 +65,7 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-brand-ambassador-v1",id:"brandAmbassador",read:"hasAccess",write:ADMIN,fields:{assignments:perUser("ambassadorId",{selfWrite:false,managerWrite:false,managerRead:false,salesRepSupervise:true,read:ADMIN,write:ADMIN})}},
   {key:"momentum-training-library-v1",id:"trainingLibrary",read:"hasAccess",write:ADMIN,fields:{materials:{},audiences:{}}},
   {key:"momentum-document-templates-v1",id:"documentTemplates",read:"hasAccess",write:ADMIN,fields:{templates:{},packets:perUser()}},
-  {key:"momentum-performance-v1",id:"performance",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{goals:perUser(),reports:perUser(),notes:perUser("authorId")}},
+  {key:"momentum-performance-v1",id:"performance",read:"activeEmployee",write:ADMIN_MANAGER,fields:{goals:perUser(),reports:perUser(),notes:perUser("authorId"),weeklyDrafts:perUser()}},
   {key:"momentum-commerce-v1",id:"commerce",read:["Administrator","Sales Manager","Sales Representative","Operations","Delivery Driver"],write:ADMIN,fields:{invoices:{},payments:{},allocations:{},credits:{},refunds:{},notes:{}}},
   {key:"momentum-inventory-ledger-v1",id:"inventoryLedger",read:OPERATIONAL,write:OPERATIONS,fields:{nodes:{read:[...OPERATIONAL,"Delivery Driver"]},movements:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},reservations:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},counts:{read:[...OPERATIONAL,"Delivery Driver"]}}},
   {key:"momentum-delivery-v1",id:"delivery",read:DELIVERY_READ,write:DELIVERY_WRITE,fields:{tasks:{}}},
