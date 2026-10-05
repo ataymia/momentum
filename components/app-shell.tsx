@@ -8,6 +8,7 @@ import type { WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
 import { DeliveryDriverShell } from "./delivery-driver-shell";
 import { AppShell as BaseAppShell } from "./app-shell-v4";
+import { RuntimeErrorBoundary } from "./runtime-error-boundary";
 
 const FOUNDER_PROFILES:Record<string,{name:string;firstName:string;initials:string;title:string;accent:string}>={
   "vixarynholdings@gmail.com":{name:"Ataymia Murray",firstName:"Ataymia",initials:"AM",title:"Director of Operations",accent:"#e49e13"},
@@ -61,6 +62,7 @@ function FoundingProfileRepair(){
 }
 
 export function AppShell(){
-  const {currentUser}=useWorkspace();
-  return <><FoundingProfileRepair/>{currentUser?.role==="Delivery Driver"?<DeliveryDriverShell/>:<BaseAppShell/>}</>;
+  const {currentUser,activePage,navigate}=useWorkspace();
+  const scope=`shell:${currentUser?.role??"unknown"}:${activePage}`;
+  return <RuntimeErrorBoundary scope={scope} onRecover={()=>navigate("home")}><FoundingProfileRepair/>{currentUser?.role==="Delivery Driver"?<DeliveryDriverShell/>:<BaseAppShell/>}</RuntimeErrorBoundary>;
 }
