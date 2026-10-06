@@ -18,8 +18,8 @@ describe("order approval coherence",()=>{
 });
 
 describe("audit actor integrity",()=>{
-  test("passive changes without provenance are System, never the viewer",()=>{const before=collectAuditableRecords("Workspace",{orders:[{id:"ord",number:"GE-1",status:"Awaiting approval"}]});const after=collectAuditableRecords("Workspace",{orders:[{id:"ord",number:"GE-1",status:"Approved"}]});const[event]=diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-09-22T17:00:00.000Z",users);assert.equal(event.actorId,"system");});
-  test("explicit decidedBy identifies the actual actor",()=>{const before=collectAuditableRecords("Workspace",{approvals:[{id:"apr",title:"Review",status:"Pending",requesterId:REP}]});const after=collectAuditableRecords("Workspace",{approvals:[{id:"apr",title:"Review",status:"Approved",requesterId:REP,decidedBy:ADMIN}]});const[event]=diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-09-22T17:00:00.000Z",users);assert.equal(event.actorId,ADMIN);});
+  test("passive changes without actor and source time do not manufacture history",()=>{const before=collectAuditableRecords("Workspace",{orders:[{id:"ord",number:"GE-1",status:"Awaiting approval"}]});const after=collectAuditableRecords("Workspace",{orders:[{id:"ord",number:"GE-1",status:"Approved"}]});const events=diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-09-22T17:00:00.000Z",users);assert.equal(events.length,0);});
+  test("explicit decision provenance identifies the actor and the real decision time",()=>{const before=collectAuditableRecords("Workspace",{approvals:[{id:"apr",title:"Review",status:"Pending",requesterId:REP}]});const after=collectAuditableRecords("Workspace",{approvals:[{id:"apr",title:"Review",status:"Approved",requesterId:REP,decidedBy:ADMIN,decidedAt:"2026-09-22T16:05:00.000Z"}]});const[event]=diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-09-22T17:00:00.000Z",users);assert.equal(event.actorId,ADMIN);assert.equal(event.at,"2026-09-22T16:05:00.000Z");});
 });
 
 describe("notification classification",()=>{

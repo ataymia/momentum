@@ -60,7 +60,7 @@ export function BrandAmbassadorProvider({ children }: { children: ReactNode }) {
           id: id("ba-assignment"), eventGroupId, ambassadorId,
           title: draft.title.trim(), date: draft.date, startTime: draft.startTime, endTime: draft.endTime,
           address: draft.address.trim(), requiredStaff: draft.requiredStaff, notes: draft.notes?.trim() || undefined,
-          status: "Scheduled" as const, createdBy: currentUser!.id, createdAt: now, updatedAt: now,
+          status: "Scheduled" as const, createdBy: currentUser!.id, createdAt: now, updatedAt: now, updatedBy: currentUser!.id,
         })),
         ...state.assignments,
       ],
@@ -82,7 +82,7 @@ export function BrandAmbassadorProvider({ children }: { children: ReactNode }) {
       id: existing.find((assignment) => assignment.ambassadorId === ambassadorId)?.id ?? id("ba-assignment"),
       eventGroupId, ambassadorId, title: draft.title.trim(), date: draft.date, startTime: draft.startTime, endTime: draft.endTime,
       address: draft.address.trim(), requiredStaff: draft.requiredStaff, notes: draft.notes?.trim() || undefined,
-      status: priorStatus, createdBy, createdAt, updatedAt: now,
+      status: priorStatus, createdBy, createdAt, updatedAt: now, updatedBy: currentUser.id,
     }));
     commit({ ...state, assignments: [...replacement, ...state.assignments.filter((assignment) => assignment.eventGroupId !== eventGroupId)] });
     return { ok: true as const };
@@ -92,7 +92,7 @@ export function BrandAmbassadorProvider({ children }: { children: ReactNode }) {
     const existing = state.assignments.filter((assignment) => assignment.eventGroupId === eventGroupId);
     if (!existing.length || !currentUser || existing.some((assignment) => !canSuperviseBrandAmbassador(data, currentUser, assignment.ambassadorId))) return false;
     const at = new Date().toISOString();
-    commit({ ...state, assignments: state.assignments.map((assignment) => assignment.eventGroupId === eventGroupId ? { ...assignment, status, updatedAt: at } : assignment) });
+    commit({ ...state, assignments: state.assignments.map((assignment) => assignment.eventGroupId === eventGroupId ? { ...assignment, status, updatedAt: at, updatedBy: currentUser.id } : assignment) });
     return true;
   };
 

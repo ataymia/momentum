@@ -122,7 +122,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           const user = data.users.find((item) => item.id === delivery.recipientUserId);
           const recipients = new Set(data.users.filter((item) => item.role === "Administrator" || item.id === user?.managerId).map((item) => item.id)); recipients.delete(delivery.recipientUserId);
           let created = false;
-          for (const recipientUserId of recipients) { additions.push({ id: uid("escalation"), sourceEventId: delivery.sourceEventId, recipientUserId, channel: "In app", title: `Needs attention: ${delivery.title}`, detail: `${user?.name ?? "A team member"} has not opened this notification within the ${current.escalationHours}-hour follow-up window.`, tone: "warning", createdAt: checkedAt, status: "Unread", escalationOf: delivery.id, targetPage:delivery.targetPage, targetRecordId:delivery.targetRecordId, actionLabel:delivery.actionLabel }); created = true; }
+          for (const recipientUserId of recipients) { additions.push({ id: uid("escalation"), sourceEventId: delivery.sourceEventId, recipientUserId, channel: "In app", title: `Needs attention: ${delivery.title}`, detail: `${user?.name ?? "User record unavailable"} has not opened this notification within the ${current.escalationHours}-hour follow-up window.`, tone: "warning", createdAt: checkedAt, status: "Unread", escalationOf: delivery.id, targetPage:delivery.targetPage, targetRecordId:delivery.targetRecordId, actionLabel:delivery.actionLabel }); created = true; }
           if (!created) return delivery; changed = true; return { ...delivery, escalatedAt: checkedAt };
         });
         return changed ? { ...current, deliveries: compactNotificationDeliveries([...additions, ...updated]) } : current;
