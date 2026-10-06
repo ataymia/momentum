@@ -4,6 +4,7 @@ import { Clock3, ExternalLink, LocateFixed, MapPin, Route, UsersRound } from "lu
 import { useEffect, useMemo, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
 import { useHcm } from "../../lib/hcm-context";
+import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import {
   ROUTE_PING_INTERVAL_MINUTES,
@@ -83,6 +84,7 @@ export function WorkforceLivePage() {
   const tracking = useFieldTracking();
   const today = arizonaDateKey();
   const [selectedId, setSelectedId] = useState("");
+  const [view, setView] = useState<"live" | "profiles">("live");
   const [nowMs, setNowMs] = useState(0);
 
   useEffect(() => {
@@ -139,10 +141,17 @@ export function WorkforceLivePage() {
   return <div className="page page--workforce-live">
     <PageHeader
       eyebrow="Administration"
-      title="Workforce live"
-      description={`See who is clocked in, who is off clock, and the latest Administrator-only field location evidence. Sales Representative route points are sampled about every ${ROUTE_PING_INTERVAL_MINUTES} minutes while clocked in.`}
+      title={view==="live"?"Workforce live":"Employee profiles"}
+      description={view==="live"
+        ? `See who is clocked in, who is off clock, and the latest Administrator-only field location evidence. Sales Representative route points are sampled about every ${ROUTE_PING_INTERVAL_MINUTES} minutes while clocked in.`
+        : "Open one employee and review their current status, contact information, time, pay, trips, account activity, delivery work, HR records, and audit history from one Administrator-only surface."}
     />
+    <div className="company-tabs workforce-live__tabs">
+      <button type="button" className={view==="live"?"is-active":""} onClick={()=>setView("live")}>Live board</button>
+      <button type="button" className={view==="profiles"?"is-active":""} onClick={()=>setView("profiles")}>Employee profiles</button>
+    </div>
 
+    {view==="profiles"?<AdminEmployeeProfiles/>:<>
     <Section title="Live clock status" description="Clock status comes from the same source records used for timecards.">
       <div className="company-rule-facts workforce-live__metrics">
         <div><span>Clocked in</span><strong>{clockedIn}</strong><small>Open time entry right now</small></div>
@@ -226,5 +235,6 @@ export function WorkforceLivePage() {
         </Section>}
       </div>}
     </Modal>
+    </>}
   </div>;
 }
