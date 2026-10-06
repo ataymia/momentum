@@ -40,7 +40,7 @@ export function employeeVisitLabel(record: AdminVisitRecord, data: WorkspaceData
 export function employeeOriginatedAccounts(data: WorkspaceData, userId: string) {
   return data.accounts
     .filter((account) => account.originatorId === userId)
-    .sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
+    .sort((left, right) => (right.lastActivity ?? "").localeCompare(left.lastActivity ?? ""));
 }
 
 export function employeeResponsibleAccounts(data: WorkspaceData, userId: string) {
