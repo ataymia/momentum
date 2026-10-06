@@ -194,7 +194,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const team = teamForRole(form.role);
   const managers = managerOptionsForProvisioning(data, form.role);
   const activeCourses = hcm.courses.filter((course) => course.active);
-  const activeDrafts = provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled");
+  // Account provisioning is complete once the identity is linked. Keep the draft for audit/history, but do not leave an already-onboarded employee in the setup queue.\n  const activeDrafts = provisioning.state.drafts.filter((draft) => !["Cancelled", "Auth linked"].includes(draft.status));
   const pendingApprovals = provisioning.state.records.filter((record) => record.state === "Pending approval");
   const rescueQueue = provisioning.rescueQueue;
 
