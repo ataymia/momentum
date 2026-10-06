@@ -118,7 +118,9 @@ test("Administrator visit history includes unmatched Quick Visits with the busin
 
 test("onboarding setup queue excludes identities that are already linked", () => {
   const source = readFileSync("components/hcm/new-hire-provisioning.tsx", "utf8");
-  assert.match(source, /\["Cancelled", "Auth linked"\]\.includes\(draft\.status\)/);
+  assert.match(source, /draft\.status === "Cancelled"/);
+  assert.match(source, /draft\.status !== "Auth linked"/);
+  assert.match(source, /records\.some\(\(record\) => record\.userId === draft\.linkedUserId\)/);
 });
 
 test("Workforce Live exposes the Administrator employee profile surface", () => {
