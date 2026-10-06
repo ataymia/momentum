@@ -7,7 +7,6 @@ export const MAX_VERIFICATION_ACCURACY_METERS = 500;
 export const ROUTE_PING_INTERVAL_MINUTES = 15;
 export const ROUTE_PING_INTERVAL_MS = ROUTE_PING_INTERVAL_MINUTES * 60_000;
 export const ROUTE_SAMPLE_MIN_SECONDS = ROUTE_PING_INTERVAL_MINUTES * 60;
-export const ROUTE_RETENTION_DAYS = 30;
 export const DEPARTURE_CONFIRM_SECONDS = 30;
 export const MAX_ROUTE_SAMPLES = 10000;
 
@@ -116,7 +115,7 @@ export function normalizeFieldTrackingState(input: unknown): FieldTrackingState 
     version: 1,
     geofences: Array.isArray(state.geofences) ? state.geofences.filter((item) => validCoordinate(item.latitude, item.longitude) && item.radiusMiles > 0) : [],
     sessions: Array.isArray(state.sessions) ? state.sessions : [],
-    samples: Array.isArray(state.samples) ? state.samples.filter((item) => validCoordinate(item.latitude, item.longitude) && routeSampleRetained(item.at)).slice(0, MAX_ROUTE_SAMPLES) : [],
+    samples: Array.isArray(state.samples) ? state.samples.filter((item) => validCoordinate(item.latitude, item.longitude)).slice(0, MAX_ROUTE_SAMPLES) : [],
     appointmentEvents: Array.isArray(state.appointmentEvents) ? state.appointmentEvents : [],
     exceptions: Array.isArray(state.exceptions) ? state.exceptions : [],
     departureAlerts: Array.isArray(state.departureAlerts) ? state.departureAlerts : [],
@@ -150,12 +149,6 @@ export function geofenceDecision(profile: GeofenceProfile | undefined, point: Ge
   const within = distance <= profile.radiusMiles;
   if (!accuracyOk) return { configured: true, accuracyOk: false, within, allowed: false, radiusMiles: profile.radiusMiles, distanceMiles: distance, reason: "Location accuracy too low" };
   return { configured: true, accuracyOk: true, within, allowed: within, radiusMiles: profile.radiusMiles, distanceMiles: distance, reason: within ? "Inside radius" : "Outside radius" };
-}
-
-export function routeSampleRetained(at: string, referenceMs = Date.now()) {
-  const instant = new Date(at).getTime();
-  if (Number.isNaN(instant)) return false;
-  return instant >= referenceMs - ROUTE_RETENTION_DAYS * 86_400_000;
 }
 
 /** Regular route history is deliberately sampled by time, not by movement, to bound data volume. */
