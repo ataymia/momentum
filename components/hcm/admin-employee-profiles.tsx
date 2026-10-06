@@ -12,8 +12,6 @@ import {
   Route,
   Search,
   ShieldCheck,
-  Store,
-  Truck,
   UserRound,
   WalletCards,
 } from "lucide-react";
@@ -65,7 +63,7 @@ function activityDate(value: string) {
   try { return arizonaDateKey(value); } catch { return value.slice(0, 10); }
 }
 
-function employeeStatus(user: WorkspaceUser, employmentStatus: string | undefined, open?: TimeEntry) {
+function employeeStatus(employmentStatus: string | undefined, open?: TimeEntry) {
   if (employmentStatus === "Separated") return { label:"Separated", tone:"danger" as const };
   if (employmentStatus === "Leave") return { label:"On leave", tone:"warning" as const };
   if (open) return { label:"Clocked in", tone:"success" as const };
@@ -118,7 +116,9 @@ export function AdminEmployeeProfiles() {
     setPayReason("");
     setPayNotice(null);
     setTab("overview");
-  }, [selectedId]); // compensation intentionally resets when employee changes
+  // Changing the compensation record after a save should not immediately erase the success notice.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   if (!currentUser || currentUser.role !== "Administrator") return null;
 
@@ -130,7 +130,7 @@ export function AdminEmployeeProfiles() {
     .filter((entry) => entry.userId === selected.id)
     .sort((left, right) => `${right.date}T${right.clockIn}`.localeCompare(`${left.date}T${left.clockIn}`));
   const open = currentClock(entries);
-  const status = employeeStatus(selected, employment?.status, open);
+  const status = employeeStatus(employment?.status, open);
   const today = arizonaDateKey();
   const sevenDaysAgo = addCalendarDays(today, -6);
   const thirtyDaysAgo = addCalendarDays(today, -29);
@@ -145,8 +145,10 @@ export function AdminEmployeeProfiles() {
   const routeSessions = tracking.state.sessions.filter((session) => session.userId === selected.id).sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   const latestLocation = tracking.latestSampleForUser(selected.id);
   const payrollRuns = payroll.runs
-    .map((run) => ({ run, line: run.lines.find((line) => line.employeeId === selected.id) }))
-    .filter((item): item is { run: typeof payroll.runs[number]; line: NonNullable<typeof item.line> } => Boolean(item.line))
+    .flatMap((run) => {
+      const line = run.lines.find((item) => item.employeeId === selected.id);
+      return line ? [{ run, line }] : [];
+    })
     .sort((left, right) => right.run.payDate.localeCompare(left.run.payDate));
   const compensationHistory = hcm.compensation.filter((record) => record.userId === selected.id).sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate));
   const documents = hcm.documents.filter((record) => record.userId === selected.id);
@@ -206,7 +208,7 @@ export function AdminEmployeeProfiles() {
           const record = hcm.employees.find((item) => item.userId === user.id);
           const userEntries = data.timeEntries.filter((entry) => entry.userId === user.id);
           const live = currentClock(userEntries);
-          const liveStatus = employeeStatus(user, record?.status, live);
+          const liveStatus = employeeStatus(record?.status, live);
           return <button type="button" key={user.id} className={selectedId === user.id ? "is-selected" : ""} onClick={() => setSelectedId(user.id)}>
             <i className={`employee-presence employee-presence--${liveStatus.tone === "success" ? "success" : liveStatus.tone === "warning" ? "warning" : "neutral"}`}/>
             <span><strong>{user.name}</strong><small>{user.title} · {liveStatus.label}</small></span>
