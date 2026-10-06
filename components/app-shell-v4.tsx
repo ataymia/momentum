@@ -57,14 +57,14 @@ const sectionTabs: Partial<Record<PageKey, SectionTab[]>> = {
   work: [{key:"work",label:"Approvals"},{key:"actions",label:"Action center"}],
   accounts: [{key:"accounts",label:"Accounts"},{key:"quickVisit",label:"Quick Visit"},{key:"salesMap",label:"Map"},{key:"accountSetup",label:"Account setup"},{key:"accountHealth",label:"Account health"}],
   orders: [{key:"orders",label:"Orders"},{key:"orderCash",label:"Invoices & payments"}],
-  inventory: [{key:"inventory",label:"Fulfillment"},{key:"inventoryLedger",label:"Inventory ledger"}],
+  inventory: [{key:"inventory",label:"Fulfillment"},{key:"inventoryLedger",label:"Inventory ledger"},{key:"products",label:"Products"}],
   people: [{key:"people",label:"HR home"},{key:"employees",label:"Employee directory"},{key:"newHire",label:"New hire"},{key:"onboarding",label:"Onboarding queue"},{key:"trainingAdmin",label:"Training setup"}],
   finance: [{key:"finance",label:"Finance"},{key:"accounting",label:"Accounting"}],
   reports: [{key:"reports",label:"Reports"},{key:"performance",label:"Performance"},{key:"reportingCenter",label:"Reporting center"},{key:"audit",label:"Audit trail"}],
   settings: [{key:"settings",label:"Administration"},{key:"workforceLive",label:"Workforce live"},{key:"dataExchange",label:"Data exchange"}],
 };
 const pageParent: Partial<Record<PageKey, PageKey>> = {
-  actions:"work", quickVisit:"accounts", salesMap:"accounts", accountSetup:"accounts", accountHealth:"accounts", orderCash:"orders", inventoryLedger:"inventory",
+  actions:"work", quickVisit:"accounts", salesMap:"accounts", accountSetup:"accounts", accountHealth:"accounts", orderCash:"orders", inventoryLedger:"inventory", products:"inventory",
   employees:"people", newHire:"people", onboarding:"people", trainingAdmin:"people", accounting:"finance", performance:"reports",
   reportingCenter:"reports", audit:"reports", workforceLive:"settings", dataExchange:"settings",
 };
