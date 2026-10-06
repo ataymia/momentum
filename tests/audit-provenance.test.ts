@@ -184,6 +184,7 @@ test("delivery task updates use the driver event actor and event timestamp", () 
   assert.ok(event);
   assert.equal(event.actorId, "driver-1");
   assert.equal(event.at, "2026-10-06T18:12:00.000Z");
+  assert.equal(event.relatedUserId, "driver-1");
 });
 
 test("Brand Ambassador assignment changes use updatedBy and updatedAt", () => {
@@ -207,6 +208,7 @@ test("Brand Ambassador assignment changes use updatedBy and updatedAt", () => {
   assert.ok(event);
   assert.equal(event.actorId, "admin-1");
   assert.equal(event.at, "2026-10-06T21:05:00.000Z");
+  assert.equal(event.relatedUserId, "ba-user");
 });
 
 
