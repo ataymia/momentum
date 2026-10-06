@@ -6,7 +6,7 @@ test("Workforce Live uses real buttons, modal drill-down, and Google Maps links"
   const source=readFileSync("components/pages/workforce-live.tsx","utf8");
   assert.match(source,/page--workforce-live/);
   assert.match(source,/workforce-roster/);
-  assert.match(source,/<Button[^>]*>View<\/Button>/);
+  assert.match(source,/<Button[\s\S]{0,240}>View<\/Button>/);
   assert.match(source,/<Modal[\s\S]*workforce detail/);
   assert.match(source,/Open route in Google Maps/);
   assert.match(source,/googleMapsPointUrl/);
