@@ -52,6 +52,7 @@ export type PageKey =
   | "reportingCenter"
   | "audit"
   | "settings"
+  | "workforceLive"
   | "dataExchange"
   | "help";
 
@@ -387,7 +388,7 @@ export type Approval = {
   returnReason?: string;
 };
 
-export type TimeEntrySource = "Demo mobile" | "Demo desktop" | "Manual correction";
+export type TimeEntrySource = "Demo mobile" | "Demo desktop" | "Web clock" | "Manual correction";
 
 /** Immutable before-image kept whenever a punch is edited. */
 export type TimeEntryCorrection = {
@@ -408,7 +409,10 @@ export type TimeEntry = {
   userId: string;
   date: string;
   clockIn: string;
+  /** Exact instant retained for live status/audit while HH:MM remains the payroll display value. */
+  clockInAt?: string;
   clockOut?: string;
+  clockOutAt?: string;
   mealStart?: string;
   mealEnd?: string;
   breakMinutes: number;
