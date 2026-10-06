@@ -29,7 +29,6 @@ import {
   normalizeFieldTrackingState,
   openDepartureAlert,
   roleIsTracked,
-  routeSampleRetained,
   samplesForUserDay,
   shouldPersistRouteSample,
   validCoordinate,
@@ -150,9 +149,8 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
     const previous = latestUserSample(stateRef.current, userId);
     if (!force && !shouldPersistRouteSample(previous, point)) return previous;
     const sample: RouteSample = { ...point, id: uid("route"), sessionId, userId, source, appointmentId: appointment?.id, accountId: appointment?.accountId };
-    const retained = (samples: RouteSample[]) => samples.filter((item) => routeSampleRetained(item.at)).slice(0, MAX_ROUTE_SAMPLES);
-    setState((current) => ({ ...current, samples: retained([sample, ...current.samples]) }));
-    stateRef.current = { ...stateRef.current, samples: retained([sample, ...stateRef.current.samples]) };
+    setState((current) => ({ ...current, samples: [sample, ...current.samples].slice(0, MAX_ROUTE_SAMPLES) }));
+    stateRef.current = { ...stateRef.current, samples: [sample, ...stateRef.current.samples].slice(0, MAX_ROUTE_SAMPLES) };
     return sample;
   }, [ensureSession]);
 
