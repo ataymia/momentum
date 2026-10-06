@@ -22,7 +22,7 @@ const display = (value: unknown) => {
 
 function sensitivityFor(module: string, collection: string): AuditSensitivity {
   if (["Payroll", "Accounting", "HCM", "Identity"].includes(module)) return "admin";
-  if (["Finance", "Performance", "Period locks", "Field tracking"].includes(module) || ["approvals", "timecards"].includes(collection)) return "manager";
+  if (["Finance", "Performance", "Period locks", "Field tracking", "Brand Ambassador"].includes(module) || ["approvals", "timecards"].includes(collection)) return "manager";
   if (module === "Commerce" && ["payments", "allocations", "credits", "refunds", "notes"].includes(collection)) return "manager";
   return "operational";
 }
@@ -219,6 +219,40 @@ function pairProvenance(before: Record<string, unknown> | undefined, after: Reco
   return undefined;
 }
 
+function dynamicByAtProvenance(before: Record<string, unknown> | undefined, after: Record<string, unknown> | undefined, action: AuditEvent["action"]): Provenance | undefined {
+  const source = action === "Deleted" ? before : after;
+  if (!source) return undefined;
+  for (const actorField of Object.keys(source)) {
+    if (!actorField.endsWith("By") || actorField.length <= 2) continue;
+    const timeField = `${actorField.slice(0, -2)}At`;
+    const actorId = text(source[actorField]);
+    const at = text(source[timeField]);
+    if (!actorId || !validInstant(at)) continue;
+    if (action === "Updated" && sameValue(before?.[actorField], after?.[actorField]) && sameValue(before?.[timeField], after?.[timeField])) continue;
+    return { actorId, at: at! };
+  }
+  return undefined;
+}
+
+function newestDeliveryHistoryProvenance(before: Record<string, unknown> | undefined, after: Record<string, unknown> | undefined): Provenance | undefined {
+  if (!Array.isArray(after?.history)) return undefined;
+  const beforeIds = new Set((Array.isArray(before?.history) ? before!.history : [])
+    .flatMap((item) => item && typeof item === "object" && !Array.isArray(item) && typeof (item as Record<string, unknown>).id === "string" ? [String((item as Record<string, unknown>).id)] : []));
+  const candidates = after.history
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+    .filter((item) => {
+      const id = text(item.id);
+      return !id || !beforeIds.has(id);
+    })
+    .flatMap((item) => {
+      const actorId = text(item.actorId);
+      const at = text(item.at);
+      return actorId && validInstant(at) ? [{ actorId, at: at! }] : [];
+    })
+    .sort((left, right) => right.at.localeCompare(left.at));
+  return candidates[0];
+}
+
 function newestCorrection(payload: Record<string, unknown> | undefined): Provenance | undefined {
   if (!Array.isArray(payload?.corrections)) return undefined;
   const candidates = payload.corrections
@@ -279,12 +313,17 @@ function specialProvenance(before: AuditSnapshot | undefined, after: AuditSnapsh
     }
   }
 
+  if (snapshot.module === "Delivery" && snapshot.collection === "tasks" && action === "Updated") {
+    return newestDeliveryHistoryProvenance(before?.payload, after?.payload);
+  }
+
   return undefined;
 }
 
 function verifiedProvenance(before: AuditSnapshot | undefined, after: AuditSnapshot | undefined, action: AuditEvent["action"]): Provenance | undefined {
   return specialProvenance(before, after, action)
-    ?? pairProvenance(before?.payload, after?.payload, action, action === "Created" ? createdPairs : updatedPairs);
+    ?? pairProvenance(before?.payload, after?.payload, action, action === "Created" ? createdPairs : updatedPairs)
+    ?? dynamicByAtProvenance(before?.payload, after?.payload, action);
 }
 
 export function diffAuditableRecords(
