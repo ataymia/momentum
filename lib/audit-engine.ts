@@ -76,7 +76,7 @@ export function normalizeAuditState(input: unknown): AuditState {
 }
 
 function recordLabel(record: Record<string, unknown>, id: string) {
-  return text(record.number) || text(record.name) || text(record.title) || text(record.legalName) || text(record.lotCode) || text(record.email) || text(record.workEmail) || id;
+  return text(record.number) || text(record.name) || text(record.title) || text(record.action) || text(record.legalName) || text(record.lotCode) || text(record.email) || text(record.workEmail) || id;
 }
 
 function relatedAccount(record: Record<string, unknown>, module: string, collection: string, id: string) {
@@ -169,6 +169,7 @@ function changeList(before: Record<string, unknown> | undefined, after: Record<s
 type Provenance = { actorId: string; at: string };
 
 const createdPairs = [
+  ["actorId", "at"],
   ["createdBy", "createdAt"],
   ["submittedBy", "submittedAt"],
   ["requesterId", "submittedAt"],
