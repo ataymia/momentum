@@ -32,7 +32,7 @@ import { useHcm } from "../../lib/hcm-context";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import { timeEntryHours } from "../../lib/payroll-engine";
 import { usePayroll } from "../../lib/payroll-context";
-import type { TimeEntry, WorkspaceUser } from "../../lib/types";
+import type { TimeEntry } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Avatar, Button, Field, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
