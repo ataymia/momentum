@@ -21,6 +21,7 @@ type RefreshResponse={user_id:string;id_token:string;refresh_token:string;expire
 type UpdateResponse={localId:string;email?:string;idToken:string;refreshToken:string;expiresIn:string};
 
 const SESSION_KEY="momentum-firebase-session-v1";
+const SESSION_CHANNEL="momentum-firebase-session-channel-v1";
 const EXPIRY_SAFETY_MS=60_000;
 
 function authErrorMessage(payload:unknown){
@@ -51,6 +52,45 @@ export function persistFirebaseSession(session:FirebaseAuthSession|null){
   if(typeof window==="undefined")return;
   if(!session)window.sessionStorage.removeItem(SESSION_KEY);
   else window.sessionStorage.setItem(SESSION_KEY,JSON.stringify(session));
+}
+
+/**
+ * Production sessions remain per-browser-session, but a same-origin Momentum tab may hand its
+ * already-authenticated session to a newly opened Momentum tab. This avoids forcing field staff
+ * to sign in again just because they opened onboarding or another CRM workspace in a second tab.
+ */
+export function installFirebaseSessionPeerResponder(){
+  if(typeof window==="undefined"||typeof BroadcastChannel==="undefined")return()=>{};
+  const channel=new BroadcastChannel(SESSION_CHANNEL);
+  channel.onmessage=(event)=>{
+    if(event.data?.type!=="momentum-session-request")return;
+    const active=readFirebaseSession();
+    if(active)channel.postMessage({type:"momentum-session-response",session:active});
+  };
+  return()=>channel.close();
+}
+
+export async function requestFirebaseSessionFromPeer(timeoutMs=350):Promise<FirebaseAuthSession|null>{
+  if(typeof window==="undefined"||typeof BroadcastChannel==="undefined")return null;
+  return await new Promise((resolve)=>{
+    const channel=new BroadcastChannel(SESSION_CHANNEL);
+    let finished=false;
+    const finish=(session:FirebaseAuthSession|null)=>{
+      if(finished)return;
+      finished=true;
+      window.clearTimeout(timer);
+      channel.close();
+      if(session)persistFirebaseSession(session);
+      resolve(session);
+    };
+    const timer=window.setTimeout(()=>finish(null),timeoutMs);
+    channel.onmessage=(event)=>{
+      const candidate=event.data?.type==="momentum-session-response"?event.data.session as FirebaseAuthSession|undefined:undefined;
+      if(!candidate?.uid||!candidate.idToken||!candidate.refreshToken||!Number.isFinite(candidate.expiresAt))return;
+      finish(candidate);
+    };
+    channel.postMessage({type:"momentum-session-request"});
+  });
 }
 
 export async function signInWithFirebasePassword(email:string,password:string):Promise<FirebaseAuthSession>{
