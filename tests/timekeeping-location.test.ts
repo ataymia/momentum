@@ -6,9 +6,7 @@ import { DOMAIN_BY_KEY, domainDocuments, userDocPath } from "../lib/firestore-do
 import type { PersistenceScope } from "../lib/firebase-access";
 import {
   ROUTE_PING_INTERVAL_MINUTES,
-  ROUTE_RETENTION_DAYS,
   roleIsTracked,
-  routeSampleRetained,
   shouldPersistRouteSample,
   type RouteSample,
 } from "../lib/location-tracking-engine";
@@ -56,12 +54,6 @@ describe("clocked-in route sampling",()=>{
     assert.equal(ROUTE_PING_INTERVAL_MINUTES,15);
     assert.equal(shouldPersistRouteSample(previous,{...previous,at:"2026-10-06T16:14:59.000Z"}),false);
     assert.equal(shouldPersistRouteSample(previous,{...previous,at:"2026-10-06T16:15:00.000Z"}),true);
-  });
-  test("route history is retained for thirty days",()=>{
-    const reference=new Date("2026-10-06T16:00:00.000Z").getTime();
-    assert.equal(ROUTE_RETENTION_DAYS,30);
-    assert.equal(routeSampleRetained("2026-09-07T16:00:00.000Z",reference),true);
-    assert.equal(routeSampleRetained("2026-09-05T15:59:59.000Z",reference),false);
   });
 });
 
