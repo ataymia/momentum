@@ -154,14 +154,14 @@ export function WorkforceLivePage() {
 
     <Section title="Employee clock board" description="Select an employee to inspect today's punches and, for tracked field roles, Administrator-only route evidence.">
       <div className="company-request-list">
-        {employeeRows.map((row) => <article key={row.user.id} onClick={() => setSelectedId(row.user.id)} style={{cursor:"pointer",outline:selected?.id===row.user.id?"2px solid var(--border-strong, var(--border))":"none"}}>
+        {employeeRows.map((row) => <article key={row.user.id} style={{outline:selected?.id===row.user.id?"2px solid var(--border-strong, var(--border))":"none"}}>
           <span><UsersRound size={17}/></span>
           <div>
             <small>{employeeLabel(row.user)}</small>
             <strong>{row.user.name}</strong>
             <p>{row.shift ? `Scheduled ${row.shift.startTime}–${row.shift.endTime} · ` : "No published shift today · "}{punchLabel(row.status.entry)}{roleIsTracked(row.user.role) ? ` · Location: ${row.pingState}` : ""}</p>
           </div>
-          <StatusPill tone={row.status.tone}>{row.status.label}</StatusPill>
+          <div style={{display:"grid",gap:6,justifyItems:"end"}}><StatusPill tone={row.status.tone}>{row.status.label}</StatusPill><button type="button" onClick={() => setSelectedId(row.user.id)}>View</button></div>
         </article>)}
         {!employeeRows.length && <div className="review-empty"><p>No active employees are available.</p></div>}
       </div>
