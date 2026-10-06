@@ -4,6 +4,7 @@ import { CircleAlert, Database, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { canManageUser } from "../../lib/access";
 import { useCommerce } from "../../lib/commerce-context";
+import { collectedCashFacts, resolvedPaidOrderFacts } from "../../lib/commercial-source";
 import { useCrm } from "../../lib/crm-context";
 import { useDelivery } from "../../lib/delivery-context";
 import { arizonaDateKey } from "../../lib/date-time";
@@ -28,11 +29,15 @@ export function ReportsPage() {
   const [reportScope, setReportScope] = useState<ReportScope>("commercial");
   const today = arizonaDateKey();
 
-  const paid = records.orders.filter((order) => order.paymentStatus === "Paid").reduce((sum, order) => sum + order.amount, 0);
+  const visibleOrderIds = new Set(records.orders.map((order) => order.id));
+  const paidFacts = resolvedPaidOrderFacts(data, commerce).filter((fact) => visibleOrderIds.has(fact.orderId));
+  const paid = collectedCashFacts(data, commerce).filter((fact) => visibleOrderIds.has(fact.orderId)).reduce((sum, fact) => sum + fact.amount, 0);
   const delivered = records.orders.filter((order) => ["Delivered", "Paid"].includes(order.status) || taskForOrder(order.id)?.status === "Delivered").reduce((sum, order) => sum + order.cases, 0);
   const available = records.inventory.reduce((sum, lot) => sum + warehouseAvailable(ledger, lot.id), 0);
   const onHand = records.inventory.reduce((sum, lot) => sum + Math.max(0, nodeLotBalance(ledger, warehouseNodeId, lot.id)), 0);
-  const reordered = records.accounts.filter((account) => account.reorderCount > 0).length;
+  const paidByAccount = new Map<string, number>();
+  paidFacts.forEach((fact) => paidByAccount.set(fact.accountId, (paidByAccount.get(fact.accountId) ?? 0) + 1));
+  const reordered = [...paidByAccount.values()].filter((count) => count > 1).length;
   const visibleEmployeeIds = new Set(hcm.employees.filter((employee) => canManageUser(data, currentUser, employee.userId, true)).map((employee) => employee.userId));
   const people = {
     active: hcm.employees.filter((employee) => visibleEmployeeIds.has(employee.userId) && employee.status === "Active").length,
@@ -47,10 +52,10 @@ export function ReportsPage() {
 
   const metrics = effectiveScope === "commercial"
     ? [
-        ["Collected order value", formatMoney(paid), "Formula: sum order amount where paymentStatus = Paid"],
+        ["Net collected sales", formatMoney(paid), "Cleared payment allocations less settled refunds in permitted order scope"],
         ["Delivered cases", String(delivered), "Formula: sum cases where fulfillment status = Delivered or legacy Paid"],
         ["Active placements", String(records.placements.length), "Count of placement records in permitted scope"],
-        ["Reordered accounts", String(reordered), "Count of account/location records where reorderCount > 0"],
+        ["Reordered accounts", String(reordered), "Distinct accounts with more than one fully paid order in the commerce-backed history"],
       ]
     : effectiveScope === "operations"
       ? [
@@ -81,7 +86,7 @@ export function ReportsPage() {
     {effectiveScope === "commercial" && <Section title="Commercial record flow" description="Each milestone is reported separately" className="reality-panel">
       <div className="reality-flow">{[
         ["Orders", records.orders.length, "Entered"],
-        ["Paid", records.orders.filter((item) => item.paymentStatus === "Paid").length, "Collected"],
+        ["Paid", paidFacts.length, "Fully paid from commerce evidence"],
         ["Delivered", records.orders.filter((item) => ["Delivered", "Paid"].includes(item.status) || taskForOrder(item.id)?.status === "Delivered").length, "Received"],
         ["Placed", records.placements.length, "Observed"],
         ["Reordered", reordered, "Bought again"],
