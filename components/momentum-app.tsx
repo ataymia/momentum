@@ -66,7 +66,7 @@ function MomentumExperience(){
 }
 
 function MomentumProviders(){
-  return <WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><TrainingLibraryProvider><IdentityProvisioningProvider><BrandAmbassadorProvider><FieldTrackingProvider><PayrollProvider><PerformanceProvider><CommerceProvider><InventoryLedgerProvider><DeliveryProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></DeliveryProvider></InventoryLedgerProvider></CommerceProvider></PerformanceProvider></PayrollProvider></FieldTrackingProvider></BrandAmbassadorProvider></IdentityProvisioningProvider></TrainingLibraryProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider>;
+  return <WorkspaceProvider><RuntimeModeProvider><PeriodLockProvider><CrmProvider><HcmProvider><TrainingLibraryProvider><IdentityProvisioningProvider><BrandAmbassadorProvider><FieldTrackingProvider><PayrollProvider><CommerceProvider><PerformanceProvider><InventoryLedgerProvider><DeliveryProvider><FinanceProvider><AccountingProvider><MarketingProvider><AuditProvider><NotificationProvider><MomentumExperience/></NotificationProvider></AuditProvider></MarketingProvider></AccountingProvider></FinanceProvider></DeliveryProvider></InventoryLedgerProvider></PerformanceProvider></CommerceProvider></PayrollProvider></FieldTrackingProvider></BrandAmbassadorProvider></IdentityProvisioningProvider></TrainingLibraryProvider></HcmProvider></CrmProvider></PeriodLockProvider></RuntimeModeProvider></WorkspaceProvider>;
 }
 
 /**
