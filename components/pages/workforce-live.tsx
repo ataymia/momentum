@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock3, LocateFixed, MapPin, Route, UsersRound } from "lucide-react";
+import { Clock3, ExternalLink, LocateFixed, MapPin, Route, UsersRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
 import { useHcm } from "../../lib/hcm-context";
@@ -12,7 +12,7 @@ import {
 } from "../../lib/location-tracking-engine";
 import type { TimeEntry, WorkspaceUser } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
-import { PageHeader, Section, StatusPill, formatDate } from "../ui";
+import { Button, Modal, PageHeader, Section, StatusPill, formatDate } from "../ui";
 
 const FRESH_PING_MS = 20 * 60_000;
 
@@ -38,31 +38,19 @@ function punchLabel(entry: TimeEntry | undefined) {
   return `${entry.clockIn} → ${entry.clockOut ?? "Open"}`;
 }
 
-function routeProjection(samples: RouteSample[], width = 760, height = 280, padding = 26) {
-  if (!samples.length) return [];
-  if (samples.length === 1) return [{ x: width / 2, y: height / 2, sample: samples[0] }];
-  const latitudes = samples.map((sample) => sample.latitude);
-  const longitudes = samples.map((sample) => sample.longitude);
-  const minLat = Math.min(...latitudes);
-  const maxLat = Math.max(...latitudes);
-  const minLng = Math.min(...longitudes);
-  const maxLng = Math.max(...longitudes);
-  const latSpan = Math.max(maxLat - minLat, 0.0001);
-  const lngSpan = Math.max(maxLng - minLng, 0.0001);
-  return samples.map((sample) => ({
-    sample,
-    x: padding + ((sample.longitude - minLng) / lngSpan) * (width - padding * 2),
-    y: height - padding - ((sample.latitude - minLat) / latSpan) * (height - padding * 2),
-  }));
+function googleMapsPointUrl(sample: RouteSample) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${sample.latitude},${sample.longitude}`)}`;
 }
 
-function googleMapsUrl(samples: RouteSample[]) {
+function googleMapsEmbedUrl(sample: RouteSample) {
+  return `https://www.google.com/maps?q=${encodeURIComponent(`${sample.latitude},${sample.longitude}`)}&z=15&output=embed`;
+}
+
+function googleMapsRouteUrl(samples: RouteSample[]) {
   if (!samples.length) return undefined;
   const first = samples[0];
   const last = samples[samples.length - 1];
-  if (samples.length === 1) {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${last.latitude},${last.longitude}`)}`;
-  }
+  if (samples.length === 1) return googleMapsPointUrl(last);
   const middle = samples.slice(1, -1);
   const stride = Math.max(1, Math.ceil(middle.length / 8));
   const waypoints = middle.filter((_, index) => index % stride === 0).slice(0, 8);
@@ -84,6 +72,11 @@ function employeeLabel(user: WorkspaceUser) {
   return `${user.title} · ${user.team}`;
 }
 
+function openExternal(url: string | undefined) {
+  if (!url || typeof window === "undefined") return;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 export function WorkforceLivePage() {
   const { data, currentUser } = useWorkspace();
   const { hcm } = useHcm();
@@ -91,6 +84,7 @@ export function WorkforceLivePage() {
   const today = arizonaDateKey();
   const [selectedId, setSelectedId] = useState("");
   const [nowMs, setNowMs] = useState(0);
+
   useEffect(() => {
     const refresh = () => setNowMs(Date.now());
     refresh();
@@ -108,14 +102,23 @@ export function WorkforceLivePage() {
 
   if (!currentUser || currentUser.role !== "Administrator") return null;
 
-  const selected = employees.find((user) => user.id === selectedId) ?? employees[0];
   const employeeRows = employees.map((user) => {
     const entries = userEntries(data, user.id);
     const status = clockStatus(entries, today);
     const shift = hcm.shifts.find((item) => item.userId === user.id && item.date === today && item.status !== "Cancelled");
     const latest = roleIsTracked(user.role) ? tracking.latestSampleForUser(user.id) : undefined;
     const pingAge = latest && nowMs ? nowMs - new Date(latest.at).getTime() : Number.POSITIVE_INFINITY;
-    const pingState = !roleIsTracked(user.role) ? "Not tracked" : !status.entry || status.label !== "Clocked in" ? "Off duty" : !latest ? "Waiting for location" : !nowMs ? "Checking" : pingAge <= FRESH_PING_MS ? "Fresh" : "Stale";
+    const pingState = !roleIsTracked(user.role)
+      ? "Not tracked"
+      : status.label !== "Clocked in"
+        ? "Off duty"
+        : !latest
+          ? "Waiting for location"
+          : !nowMs
+            ? "Checking"
+            : pingAge <= FRESH_PING_MS
+              ? "Fresh"
+              : "Stale";
     return { user, entries, status, shift, latest, pingState };
   });
 
@@ -124,84 +127,104 @@ export function WorkforceLivePage() {
   const trackedOnClock = employeeRows.filter((row) => roleIsTracked(row.user.role) && row.status.label === "Clocked in");
   const freshRoutes = trackedOnClock.filter((row) => row.pingState === "Fresh").length;
 
-  const selectedRow = employeeRows.find((row) => row.user.id === selected?.id);
-  const selectedTodayEntries = selectedRow?.entries.filter((entry) => entry.date === today).sort((a, b) => b.clockIn.localeCompare(a.clockIn)) ?? [];
+  const selected = employees.find((user) => user.id === selectedId);
+  const selectedRow = employeeRows.find((row) => row.user.id === selectedId);
+  const selectedTodayEntries = selectedRow?.entries
+    .filter((entry) => entry.date === today)
+    .sort((a, b) => b.clockIn.localeCompare(a.clockIn)) ?? [];
   const route = selected && roleIsTracked(selected.role) ? tracking.routeSamplesForUserDay(selected.id, today) : [];
-  const points = routeProjection(route);
-  const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const mapsUrl = googleMapsUrl(route);
+  const mapsUrl = googleMapsRouteUrl(route);
+  const latestRoutePing = route.at(-1);
 
-  return <div className="page">
+  return <div className="page page--workforce-live">
     <PageHeader
       eyebrow="Administration"
       title="Workforce live"
-      description={`Clock status for active employees and Administrator-only field location evidence. Sales-rep route points are sampled about every ${ROUTE_PING_INTERVAL_MINUTES} minutes only while the rep is clocked in.`}
+      description={`See who is clocked in, who is off clock, and the latest Administrator-only field location evidence. Sales Representative route points are sampled about every ${ROUTE_PING_INTERVAL_MINUTES} minutes while clocked in.`}
     />
 
-    <div className="company-grid company-grid--two">
-      <Section title="Live clock status">
-        <div className="company-rule-facts">
-          <div><span>Clocked in</span><strong>{clockedIn}</strong><small>Open time entry right now</small></div>
-          <div><span>Not clocked in</span><strong>{notClocked}</strong><small>Clocked out or no punch today</small></div>
-          <div><span>Field reps clocked in</span><strong>{trackedOnClock.length}</strong><small>Eligible for work-route pings</small></div>
-          <div><span>Fresh field locations</span><strong>{freshRoutes}</strong><small>Latest ping within 20 minutes</small></div>
-        </div>
-      </Section>
-      <Section title="Tracking control" description="Tracking stops when the time entry closes. No off-duty route collection is intended.">
-        <div className="form-callout"><LocateFixed size={17}/><p>Route volume is bounded by the existing field-tracking safety cap, and new regular route evidence is sampled every {ROUTE_PING_INTERVAL_MINUTES} minutes instead of on every movement. Browser location permission is required on the employee device.</p></div>
-      </Section>
-    </div>
+    <Section title="Live clock status" description="Clock status comes from the same source records used for timecards.">
+      <div className="company-rule-facts workforce-live__metrics">
+        <div><span>Clocked in</span><strong>{clockedIn}</strong><small>Open time entry right now</small></div>
+        <div><span>Not clocked in</span><strong>{notClocked}</strong><small>Clocked out or no punch today</small></div>
+        <div><span>Field reps clocked in</span><strong>{trackedOnClock.length}</strong><small>Eligible for work-route pings</small></div>
+        <div><span>Fresh field locations</span><strong>{freshRoutes}</strong><small>Latest ping within 20 minutes</small></div>
+      </div>
+      <div className="form-callout workforce-live__notice"><LocateFixed size={17}/><p>Tracking stops when the employee clocks out. Browser location permission is required on the employee device. If a browser is suspended, Momentum shows the last real ping as stale instead of inventing a location.</p></div>
+    </Section>
 
-    <Section title="Employee clock board" description="Select an employee to inspect today's punches and, for tracked field roles, Administrator-only route evidence.">
-      <div className="company-request-list">
-        {employeeRows.map((row) => <article key={row.user.id} style={{outline:selected?.id===row.user.id?"2px solid var(--border-strong, var(--border))":"none"}}>
-          <span><UsersRound size={17}/></span>
-          <div>
+    <Section title="Employee clock board" description="Use View to open that employee's time and route detail without stretching the page.">
+      <div className="workforce-roster">
+        {employeeRows.map((row) => <article key={row.user.id}>
+          <span className="workforce-roster__icon"><UsersRound size={17}/></span>
+          <div className="workforce-roster__copy">
             <small>{employeeLabel(row.user)}</small>
             <strong>{row.user.name}</strong>
-            <p>{row.shift ? `Scheduled ${row.shift.startTime}–${row.shift.endTime} · ` : "No published shift today · "}{punchLabel(row.status.entry)}{roleIsTracked(row.user.role) ? ` · Location: ${row.pingState}` : ""}</p>
+            <p>{row.shift ? `Scheduled ${row.shift.startTime}–${row.shift.endTime} · ` : "No published shift today · "}{punchLabel(row.status.entry)}</p>
+            {roleIsTracked(row.user.role) && <em>Location: {row.pingState}{row.latest ? ` · latest ${formatDate(row.latest.at,{hour:"numeric",minute:"2-digit"})}` : ""}</em>}
           </div>
-          <div style={{display:"grid",gap:6,justifyItems:"end"}}><StatusPill tone={row.status.tone}>{row.status.label}</StatusPill><button type="button" onClick={() => setSelectedId(row.user.id)}>View</button></div>
+          <div className="workforce-roster__actions">
+            <StatusPill tone={row.status.tone}>{row.status.label}</StatusPill>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setSelectedId(row.user.id)}>View</Button>
+          </div>
         </article>)}
         {!employeeRows.length && <div className="review-empty"><p>No active employees are available.</p></div>}
       </div>
     </Section>
 
-    {selected && selectedRow && <div className="company-grid company-grid--two">
-      <Section title={`${selected.name} · today's time`} description="Clock-in and clock-out evidence comes from the same time-entry records used for timecards.">
-        <div className="company-rule-facts">
+    <Modal
+      open={Boolean(selected && selectedRow)}
+      title={selected ? `${selected.name} · workforce detail` : "Workforce detail"}
+      description={selected ? employeeLabel(selected) : undefined}
+      onClose={() => setSelectedId("")}
+      wide
+      footer={<>
+        <Button variant="ghost" onClick={() => setSelectedId("")}>Close</Button>
+        {mapsUrl && <Button variant="secondary" icon={<Route size={15}/>} onClick={() => openExternal(mapsUrl)}>Open route in Google Maps</Button>}
+      </>}
+    >
+      {selected && selectedRow && <div className="workforce-detail">
+        <div className="company-rule-facts workforce-detail__facts">
           <div><span>Status</span><strong>{selectedRow.status.label}</strong><small>{punchLabel(selectedRow.status.entry)}</small></div>
           <div><span>Scheduled shift</span><strong>{selectedRow.shift ? `${selectedRow.shift.startTime}–${selectedRow.shift.endTime}` : "Not scheduled"}</strong><small>{selectedRow.shift?.location ?? "No published shift record"}</small></div>
+          {roleIsTracked(selected.role) && <div><span>Route pings</span><strong>{route.length}</strong><small>About every {ROUTE_PING_INTERVAL_MINUTES} minutes while clocked in</small></div>}
+          {roleIsTracked(selected.role) && <div><span>Latest location</span><strong>{selectedRow.latest ? formatDate(selectedRow.latest.at,{hour:"numeric",minute:"2-digit"}) : "None"}</strong><small>{selectedRow.latest ? `Accuracy ±${Math.round(selectedRow.latest.accuracyMeters)} m · ${selectedRow.pingState}` : "Waiting for device permission/location"}</small></div>}
         </div>
-        <div className="company-request-list">
-          {selectedTodayEntries.map((entry) => <article key={entry.id}><span><Clock3 size={16}/></span><div><strong>{entry.clockIn} → {entry.clockOut ?? "Open"}</strong><p>{entry.source} · {entry.breakMinutes} break min{entry.clockInAt ? ` · punched ${formatDate(entry.clockInAt,{hour:"numeric",minute:"2-digit"})}` : ""}</p></div><StatusPill tone={entry.clockOut?"neutral":"success"}>{entry.clockOut?"Closed":"Open"}</StatusPill></article>)}
-          {!selectedTodayEntries.length && <div className="review-empty"><p>No time entry today.</p></div>}
-        </div>
-      </Section>
 
-      <Section title={roleIsTracked(selected.role) ? "Clocked-in route" : "Location tracking"} description={roleIsTracked(selected.role) ? "Administrator-only route trace. Coordinates stay out of the screen; Google Maps can open the actual route when location evidence exists." : "This role is not configured for route tracking."}>
-        {roleIsTracked(selected.role) ? <>
-          <div className="company-rule-facts">
-            <div><span>Tracking session</span><strong>{selectedRow.status.label==="Clocked in" ? "Clock controls active" : "Off duty"}</strong><small>{selectedRow.pingState}</small></div>
-            <div><span>Saved route pings</span><strong>{route.length}</strong><small>Approximately every {ROUTE_PING_INTERVAL_MINUTES} minutes while active</small></div>
-            <div><span>Latest ping</span><strong>{selectedRow.latest ? formatDate(selectedRow.latest.at,{hour:"numeric",minute:"2-digit"}) : "None"}</strong><small>{selectedRow.latest ? `Accuracy ±${Math.round(selectedRow.latest.accuracyMeters)} m` : "Waiting for device permission/location"}</small></div>
+        <Section title="Today's punches" description="Clock-in and clock-out evidence from the employee timecard record.">
+          <div className="workforce-detail__list">
+            {selectedTodayEntries.map((entry) => <article key={entry.id}>
+              <span><Clock3 size={16}/></span>
+              <div><strong>{entry.clockIn} → {entry.clockOut ?? "Open"}</strong><p>{entry.source} · {entry.breakMinutes} break min{entry.clockInAt ? ` · punched ${formatDate(entry.clockInAt,{hour:"numeric",minute:"2-digit"})}` : ""}</p></div>
+              <StatusPill tone={entry.clockOut?"neutral":"success"}>{entry.clockOut?"Closed":"Open"}</StatusPill>
+            </article>)}
+            {!selectedTodayEntries.length && <div className="review-empty"><p>No time entry today.</p></div>}
           </div>
-          {points.length > 0 ? <div style={{border:"1px solid var(--border)",borderRadius:16,padding:10,overflow:"hidden"}}>
-            <svg viewBox="0 0 760 280" role="img" aria-label="Relative route trace for selected employee" style={{width:"100%",height:"auto",display:"block"}}>
-              <rect x="0" y="0" width="760" height="280" rx="12" fill="transparent"/>
-              {points.length > 1 && <polyline points={polyline} fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" opacity=".55"/>}
-              {points.map((point,index) => <circle key={point.sample.id} cx={point.x} cy={point.y} r={index===points.length-1?7:4} fill="currentColor" opacity={index===points.length-1?1:.55}/>)}
-            </svg>
-            <div style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:12,opacity:.72}}><span>Start {formatDate(route[0].at,{hour:"numeric",minute:"2-digit"})}</span><span>Latest {formatDate(route[route.length-1].at,{hour:"numeric",minute:"2-digit"})}</span></div>
-          </div> : <div className="review-empty"><MapPin size={22}/><p>No route ping has been recorded for this employee today.</p></div>}
-          {mapsUrl && <div className="account-detail__actions"><a href={mapsUrl} target="_blank" rel="noreferrer"><Route size={15}/> Open route in Google Maps</a></div>}
-          {route.length > 0 && <div className="company-request-list">{[...route].reverse().slice(0,12).map((sample) => <article key={sample.id}><span><MapPin size={15}/></span><div><strong>{formatDate(sample.at,{hour:"numeric",minute:"2-digit"})}</strong><p>{sample.source} · accuracy ±{Math.round(sample.accuracyMeters)} m</p></div></article>)}</div>}
-        </> : <div className="review-empty"><LocateFixed size={24}/><p>Clock status is visible, but route tracking is intentionally limited to designated field roles.</p></div>}
-      </Section>
-    </div>}
+        </Section>
 
-    <Section title="What 'live' means" description="The system never fabricates a location.">
-      <div className="form-callout"><MapPin size={17}/><p>On supported browsers the app records a route point about every {ROUTE_PING_INTERVAL_MINUTES} minutes while the employee remains clocked in. If the browser or phone suspends the web app, disables location, loses service, or the user denies permission, the board shows the last real ping as stale instead of pretending the employee is still there.</p></div>
-    </Section>
+        {roleIsTracked(selected.role) && <Section title="Clocked-in route" description="Each saved ping is real device evidence. Open the complete route or any individual ping in Google Maps.">
+          {latestRoutePing ? <div className="workforce-map">
+            <iframe
+              title={`Latest location for ${selected.name}`}
+              src={googleMapsEmbedUrl(latestRoutePing)}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+            <div className="workforce-map__caption">
+              <div><strong>Latest ping</strong><p>{formatDate(latestRoutePing.at,{hour:"numeric",minute:"2-digit"})} · accuracy ±{Math.round(latestRoutePing.accuracyMeters)} m</p></div>
+              <Button size="sm" variant="secondary" icon={<ExternalLink size={14}/>} onClick={() => openExternal(googleMapsPointUrl(latestRoutePing))}>View latest ping</Button>
+            </div>
+          </div> : <div className="review-empty"><MapPin size={22}/><p>No route ping has been recorded for this employee today.</p></div>}
+
+          {route.length > 0 && <div className="workforce-pings">
+            {[...route].reverse().map((sample,index) => <article key={sample.id}>
+              <span className="workforce-pings__number">{route.length-index}</span>
+              <div><strong>{formatDate(sample.at,{hour:"numeric",minute:"2-digit"})}</strong><p>{sample.source} · accuracy ±{Math.round(sample.accuracyMeters)} m</p></div>
+              <Button type="button" size="sm" variant="ghost" icon={<MapPin size={14}/>} onClick={() => openExternal(googleMapsPointUrl(sample))}>Map</Button>
+            </article>)}
+          </div>}
+        </Section>}
+      </div>}
+    </Modal>
   </div>;
 }
