@@ -14,6 +14,8 @@ import {
   type KpiPersonRow,
   type ManagementKpiKey,
 } from "../../lib/management-kpi";
+import { useCommerce } from "../../lib/commerce-context";
+import { useCrm } from "../../lib/crm-context";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import type { WorkspaceUser } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -25,6 +27,7 @@ type ViewMode = "graph" | "list";
 const dashboardKeys: ManagementKpiKey[] = [
   "collected_revenue",
   "paid_cases",
+  "physical_visits",
   "completed_demos",
   "demo_completion_rate",
   "new_business_close_rate",
@@ -76,6 +79,8 @@ function KpiCard({ metricKey, value, numerator, denominator }: { metricKey: Mana
 
 export function ManagementKpiDashboard() {
   const { data, scope, currentUser } = useWorkspace();
+  const { commerce } = useCommerce();
+  const { crm } = useCrm();
   const tracking = useFieldTracking();
   const [preset, setPreset] = useState<PeriodPreset>("30d");
   const [metricKey, setMetricKey] = useState<ManagementKpiKey>("new_business_close_rate");
@@ -87,10 +92,10 @@ export function ManagementKpiDashboard() {
   const people = useMemo(() => commercialContributors(data.users, permittedIds), [data.users, permittedIds]);
   const scopeUserIds = useMemo(() => currentUser?.role === "Administrator" ? undefined : people.map((user) => user.id), [currentUser?.role, people]);
   const selectedDefinition = managementKpiDefinition(metricKey);
-  const selectedResult = useMemo(() => calculateManagementKpi(metricKey, data, period, scopeUserIds, tracking.state), [data, metricKey, period, scopeUserIds, tracking.state]);
-  const rows = useMemo(() => managementKpiRows(metricKey, data, period, people, tracking.state), [data, metricKey, people, period, tracking.state]);
-  const series = useMemo(() => kpiSeries(metricKey, data, period, scopeUserIds, tracking.state), [data, metricKey, period, scopeUserIds, tracking.state]);
-  const cards = useMemo(() => dashboardKeys.map((key) => ({ key, result: calculateManagementKpi(key, data, period, scopeUserIds, tracking.state) })), [data, period, scopeUserIds, tracking.state]);
+  const selectedResult = useMemo(() => calculateManagementKpi(metricKey, data, period, scopeUserIds, tracking.state, commerce, crm), [commerce, crm, data, metricKey, period, scopeUserIds, tracking.state]);
+  const rows = useMemo(() => managementKpiRows(metricKey, data, period, people, tracking.state, commerce, crm), [commerce, crm, data, metricKey, people, period, tracking.state]);
+  const series = useMemo(() => kpiSeries(metricKey, data, period, scopeUserIds, tracking.state, commerce, crm), [commerce, crm, data, metricKey, period, scopeUserIds, tracking.state]);
+  const cards = useMemo(() => dashboardKeys.map((key) => ({ key, result: calculateManagementKpi(key, data, period, scopeUserIds, tracking.state, commerce, crm) })), [commerce, crm, data, period, scopeUserIds, tracking.state]);
   const pointString = useMemo(() => sparkPoints(series.map((point) => point.value)), [series]);
 
   if (!isManagement) return null;
@@ -112,7 +117,7 @@ export function ManagementKpiDashboard() {
   return <div className="management-kpi-shell">
     <header className="management-kpi-heading">
       <div><span className="management-kpi-icon"><TrendingUp size={20}/></span><div><small>Management accountability</small><h2>Traceable KPI center</h2><p>Source-defined sales, retention, execution, and field-accountability metrics. Every number has a formula, owner, audit method, and exportable evidence trail.</p></div></div>
-      <StatusPill tone="info">Management scope</StatusPill>
+      <StatusPill tone="success">Source-linked</StatusPill>
     </header>
 
     <div className="management-kpi-toolbar">
