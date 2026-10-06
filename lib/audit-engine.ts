@@ -31,6 +31,61 @@ export function auditEventFingerprint(event: Pick<AuditEvent, "module" | "collec
   return [event.module, event.collection, event.entityId, event.action, event.actorId, event.at].join("|");
 }
 
+const preciseInstant = (value: string | undefined) => Boolean(value && value.includes("T") && validInstant(value));
+
+const legacyActorTimePairs = [
+  ["decidedBy","decidedAt"],["approvedBy","approvedAt"],["fulfilledBy","fulfilledAt"],["reviewedBy","reviewedAt"],
+  ["resolvedBy","resolvedAt"],["returnedBy","returnedAt"],["cancelledBy","cancelledAt"],["deletedBy","deletedAt"],
+  ["approverId","approvedAt"],["updatedBy","updatedAt"],["changedBy","changedAt"],["assignedBy","assignedAt"],
+  ["claimedBy","claimedAt"],["completedBy","completedAt"],["settledBy","settledAt"],["failedBy","failedAt"],
+  ["reversedBy","reversedAt"],["sentBy","sentAt"],["appliedBy","appliedAt"],["recordedBy","recordedAt"],
+  ["uploadedBy","uploadedAt"],["provisionedBy","provisionedAt"],["createdBy","createdAt"],["submittedBy","submittedAt"],
+] as const;
+
+const legacyCreationTimeFields = [
+  "at","occurredAt","createdAt","submittedAt","receivedAt","acceptedAt","assignedAt","provisionedAt",
+  "responsibilityStartedAt","clockInAt","startedAt","configuredAt","publishedAt","uploadedAt",
+] as const;
+
+function legacyChangeValue(changes: AuditChange[], field: string) {
+  const value = changes.find((change) => change.field === field)?.after;
+  return typeof value === "string" ? value : undefined;
+}
+
+function repairLegacyProvenance(event: Pick<AuditEvent,"at"|"actorId"|"actorRole"|"action">, changes: AuditChange[]) {
+  for (const [actorField,timeField] of legacyActorTimePairs) {
+    const actorId = legacyChangeValue(changes, actorField);
+    const at = legacyChangeValue(changes, timeField);
+    if (actorId && preciseInstant(at)) return { actorId, actorRole: actorId === event.actorId ? event.actorRole : "Recorded user", at: at! };
+  }
+
+  if (event.action === "Created") {
+    const explicitActor =
+      legacyChangeValue(changes, "actorId") ||
+      legacyChangeValue(changes, "createdBy") ||
+      legacyChangeValue(changes, "submittedBy") ||
+      legacyChangeValue(changes, "requesterId") ||
+      legacyChangeValue(changes, "userId") ||
+      legacyChangeValue(changes, "provisionedBy") ||
+      event.actorId;
+    for (const field of legacyCreationTimeFields) {
+      const at = legacyChangeValue(changes, field);
+      if (preciseInstant(at)) return { actorId: explicitActor, actorRole: explicitActor === event.actorId ? event.actorRole : "Recorded user", at: at! };
+    }
+  }
+
+  if (event.action === "Updated") {
+    const changedTimes = changes
+      .filter((change) => change.field.endsWith("At") && preciseInstant(change.after))
+      .map((change) => change.after!)
+      .sort()
+      .reverse();
+    if (changedTimes[0]) return { actorId: event.actorId, actorRole: event.actorRole, at: changedTimes[0] };
+  }
+
+  return { actorId: event.actorId, actorRole: event.actorRole, at: event.at };
+}
+
 export function normalizeAuditState(input: unknown): AuditState {
   if (!input || typeof input !== "object") return createAuditSeed();
   const state = input as Partial<AuditState>;
@@ -49,11 +104,12 @@ export function normalizeAuditState(input: unknown): AuditState {
     const changes = event.changes
       .filter((change): change is AuditChange => Boolean(change && typeof change.field === "string" && change.field.trim() && (change.before === undefined || typeof change.before === "string") && (change.after === undefined || typeof change.after === "string")))
       .slice(0, 20);
+    const repaired = repairLegacyProvenance({ at:event.at!, actorId:event.actorId, actorRole:event.actorRole, action:event.action }, changes);
     const normalized: AuditEvent = {
       id: event.id,
-      at: event.at!,
-      actorId: event.actorId,
-      actorRole: event.actorRole,
+      at: repaired.at,
+      actorId: repaired.actorId,
+      actorRole: repaired.actorRole,
       action: event.action,
       module: event.module,
       collection: event.collection,
