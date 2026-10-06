@@ -194,7 +194,14 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const team = teamForRole(form.role);
   const managers = managerOptionsForProvisioning(data, form.role);
   const activeCourses = hcm.courses.filter((course) => course.active);
-  const activeDrafts = provisioning.state.drafts.filter((draft) => draft.status !== "Cancelled");
+  // Account provisioning is complete once the linked identity has a trusted access record. Keep completed drafts for audit/history,
+  // while leaving an orphaned "Auth linked" draft visible so an Administrator can still recover a partial setup.
+  const activeDrafts = provisioning.state.drafts.filter((draft) => {
+    if (draft.status === "Cancelled") return false;
+    if (draft.status !== "Auth linked") return true;
+    if (!draft.linkedUserId) return true;
+    return !provisioning.state.records.some((record) => record.userId === draft.linkedUserId);
+  });
   const pendingApprovals = provisioning.state.records.filter((record) => record.state === "Pending approval");
   const rescueQueue = provisioning.rescueQueue;
 

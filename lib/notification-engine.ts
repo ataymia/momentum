@@ -191,7 +191,13 @@ const entityName = (event: AuditEvent) => collectionNames[event.collection] ?? t
 const notificationCreationActors=new Set(["createdBy","submittedBy","requesterId","ownerId","userId","actorId","provisionedBy"]);
 const notificationMutationActors=new Set(["decidedBy","approvedBy","fulfilledBy","reviewedBy","resolvedBy","returnedBy","cancelledBy","deletedBy","approverId","updatedBy","changedBy","actorId","assignedBy","claimedBy","completedBy"]);
 const notificationActorVerified=(event:AuditEvent)=>{if(event.actorId==="system")return false;if(event.id.startsWith("audit-manual-"))return true;const fields=event.action==="Created"?notificationCreationActors:notificationMutationActors;return event.changes.some((change)=>fields.has(change.field)&&change.after===event.actorId);};
-const actorName = (event: AuditEvent, data?: WorkspaceData) => notificationActorVerified(event) ? (data?.users.find((user) => user.id === event.actorId)?.firstName || data?.users.find((user) => user.id === event.actorId)?.name || "A team member") : "A team member";
+const actorName = (event: AuditEvent, data?: WorkspaceData) => {
+  if (event.actorId === "system") return "Momentum";
+  const actor = data?.users.find((user) => user.id === event.actorId);
+  if (actor) return actor.firstName || actor.name;
+  if (notificationActorVerified(event) && event.actorRole) return event.actorRole;
+  return "Unknown user";
+};
 const accountName = (event: AuditEvent, data?: WorkspaceData) => {
   const account = event.relatedAccountId ? data?.accounts.find((item) => item.id === event.relatedAccountId) : undefined;
   return account?.locationName || account?.name;
@@ -223,7 +229,7 @@ function formatChangeValue(field: string, raw: string | undefined, data?: Worksp
   if (["startTime", "endTime", "clockIn", "clockOut", "mealStart", "mealEnd"].includes(field)) return formatClock(raw);
   if (/date$/i.test(field) || ["date", "effectiveDate", "startDate", "endDate", "dueDate"].includes(field)) return formatCalendarDate(raw);
   if (["pricePerCase", "amount", "rate", "total", "subtotal", "tax", "shipping"].includes(field) && Number.isFinite(Number(raw))) return new Intl.NumberFormat("en-US", { style:"currency", currency:"USD", maximumFractionDigits:2 }).format(Number(raw));
-  if (["ownerId", "managerId", "accountManagerId", "creditedRepId", "assignedBy", "reviewerId", "approvedBy", "userId", "employeeId"].includes(field)) return data?.users.find((user) => user.id === raw)?.name ?? "another team member";
+  if (["ownerId", "managerId", "accountManagerId", "creditedRepId", "assignedBy", "reviewerId", "approvedBy", "userId", "employeeId"].includes(field)) return data?.users.find((user) => user.id === raw)?.name ?? "User record unavailable";
   if (["true", "false"].includes(raw.toLowerCase())) return raw.toLowerCase() === "true" ? "Yes" : "No";
   const list = maybeJsonList(raw);
   if (list) return list.map((item) => data?.users.find((user) => user.id === item)?.name ?? item).join(", ") || "none";
