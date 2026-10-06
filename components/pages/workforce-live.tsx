@@ -1,7 +1,7 @@
 "use client";
 
 import { Clock3, LocateFixed, MapPin, Route, UsersRound } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
 import { useHcm } from "../../lib/hcm-context";
 import { useFieldTracking } from "../../lib/location-tracking-context";
@@ -90,6 +90,13 @@ export function WorkforceLivePage() {
   const tracking = useFieldTracking();
   const today = arizonaDateKey();
   const [selectedId, setSelectedId] = useState("");
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => {
+    const refresh = () => setNowMs(Date.now());
+    refresh();
+    const timer = window.setInterval(refresh, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const employees = useMemo(() => data.users
     .filter((user) => user.role !== "Customer")
@@ -107,8 +114,8 @@ export function WorkforceLivePage() {
     const status = clockStatus(entries, today);
     const shift = hcm.shifts.find((item) => item.userId === user.id && item.date === today && item.status !== "Cancelled");
     const latest = roleIsTracked(user.role) ? tracking.latestSampleForUser(user.id) : undefined;
-    const pingAge = latest ? Date.now() - new Date(latest.at).getTime() : Number.POSITIVE_INFINITY;
-    const pingState = !roleIsTracked(user.role) ? "Not tracked" : !status.entry || status.label !== "Clocked in" ? "Off duty" : !latest ? "Waiting for location" : pingAge <= FRESH_PING_MS ? "Fresh" : "Stale";
+    const pingAge = latest && nowMs ? nowMs - new Date(latest.at).getTime() : Number.POSITIVE_INFINITY;
+    const pingState = !roleIsTracked(user.role) ? "Not tracked" : !status.entry || status.label !== "Clocked in" ? "Off duty" : !latest ? "Waiting for location" : !nowMs ? "Checking" : pingAge <= FRESH_PING_MS ? "Fresh" : "Stale";
     return { user, entries, status, shift, latest, pingState };
   });
 
