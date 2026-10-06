@@ -7,7 +7,6 @@ import { useHcm } from "../../lib/hcm-context";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import {
   ROUTE_PING_INTERVAL_MINUTES,
-  ROUTE_RETENTION_DAYS,
   roleIsTracked,
   type RouteSample,
 } from "../../lib/location-tracking-engine";
@@ -142,7 +141,7 @@ export function WorkforceLivePage() {
         </div>
       </Section>
       <Section title="Tracking control" description="Tracking stops when the time entry closes. No off-duty route collection is intended.">
-        <div className="form-callout"><LocateFixed size={17}/><p>Regular route history is retained for {ROUTE_RETENTION_DAYS} days. Appointment arrival/departure evidence remains part of the field-control record. Browser location permission is required on the employee device.</p></div>
+        <div className="form-callout"><LocateFixed size={17}/><p>Route volume is bounded by the existing field-tracking safety cap, and new regular route evidence is sampled every {ROUTE_PING_INTERVAL_MINUTES} minutes instead of on every movement. Browser location permission is required on the employee device.</p></div>
       </Section>
     </div>
 
