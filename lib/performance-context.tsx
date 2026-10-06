@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useRef, useState } from "react";
 import { DailyWorkReport, ManagerWeeklyReport, PERFORMANCE_STORAGE_KEY, PerformanceGoal, PerformanceState, WeeklyGoalResult, WeeklyProgressDraft, WeeklyProgressReport, WorkReport, ReportNote, canViewPerformanceRecord, createPerformanceSeed, managerWeeklyMetrics, normalizePerformanceState, rollForwardNextWeekDraft, userCommercialMetrics, weeklyCarryForwardGoals, weeklyProgressDraftFor, weeklyProgressReportFor, weeklyReportingPeriod } from "./performance-engine";
+import { useCommerce } from "./commerce-context";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
@@ -26,7 +27,7 @@ const cleanGoalLines=(goals:WeeklyGoalResult[])=>goals.slice(0,3).map((line)=>({
 const cleanNextGoals=(goals:string[])=>goals.slice(0,3).map((goal)=>goal.trim());
 
 export function PerformanceProvider({children}:{children:ReactNode}){
-  const {currentUser,data}=useWorkspace();const runtime=useRuntimeMode();const[performance,setPerformance]=useState<PerformanceState>(()=>readState());const stateRef=useRef(performance);
+  const {currentUser,data}=useWorkspace();const {commerce}=useCommerce();const runtime=useRuntimeMode();const[performance,setPerformance]=useState<PerformanceState>(()=>readState());const stateRef=useRef(performance);
   const commit=(updater:(state:PerformanceState)=>PerformanceState)=>{const current=stateRef.current;const next=updater(current);if(next===current)return current;stateRef.current=next;momentumStorage.setItem(PERFORMANCE_STORAGE_KEY,JSON.stringify(next));setPerformance(next);void momentumStorage.flush();return next;};
   useRemoteStorageSync(PERFORMANCE_STORAGE_KEY,()=>{const next=readState();stateRef.current=next;setPerformance(next);});
   const createGoal=(goal:NewGoal)=>{if(!currentUser||goal.userId!==currentUser.id||!Number.isFinite(goal.target)||goal.target<0||goal.periodEnd<goal.periodStart)return null;const id=uid("goal");commit((state)=>({...state,goals:[{...goal,id,createdAt:now(),updatedAt:now()},...state.goals]}));return id;};
@@ -39,7 +40,7 @@ export function PerformanceProvider({children}:{children:ReactNode}){
     if(report.type==="Manager weekly"&&(!report.weekStart||!report.weekEnd||report.weekEnd<report.weekStart))return null;
     const current=stateRef.current;const duplicate=current.reports.some((existing)=>existing.userId===currentUser.id&&(report.type==="Daily"?existing.type==="Daily"&&existing.workDate===report.workDate:existing.type==="Manager weekly"&&existing.weekStart===report.weekStart&&existing.weekEnd===report.weekEnd));
     if(duplicate)return null;
-    const sourceMetrics=report.type==="Daily"?userCommercialMetrics(data,currentUser.id,report.workDate,report.workDate):managerWeeklyMetrics(current,data,currentUser.id,report.weekStart,report.weekEnd);
+    const sourceMetrics=report.type==="Daily"?userCommercialMetrics(data,currentUser.id,report.workDate,report.workDate,commerce):managerWeeklyMetrics(current,data,currentUser.id,report.weekStart,report.weekEnd,commerce);
     const normalized:NewReport=report.type==="Daily"
       ? {...report,summary:report.summary.trim(),wins:report.wins.trim(),challenges:report.challenges.trim(),reflection:report.reflection.trim(),nextPriorities:report.nextPriorities.trim(),appointmentNotes:report.appointmentNotes.trim(),...sourceMetrics}
       : {...report,summary:report.summary.trim(),teamWins:report.teamWins.trim(),coachingNeeds:report.coachingNeeds.trim(),risks:report.risks.trim(),escalations:report.escalations.trim(),nextWeekPriorities:report.nextWeekPriorities.trim(),...sourceMetrics};
