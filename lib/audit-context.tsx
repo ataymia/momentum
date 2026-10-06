@@ -3,8 +3,10 @@
 import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AUDIT_STORAGE_KEY, AuditChange, AuditEvent, AuditSensitivity, AuditState, auditEventFingerprint, collectAuditableRecords, createAuditSeed, diffAuditableRecords, mergeAuditSnapshots, normalizeAuditState, visibleAuditEvents } from "./audit-engine";
 import { useAccounting } from "./accounting-context";
+import { useBrandAmbassadors } from "./brand-ambassador-context";
 import { useCommerce } from "./commerce-context";
 import { useCrm } from "./crm-context";
+import { useDelivery } from "./delivery-context";
 import { useFinance } from "./finance-context";
 import { useHcm } from "./hcm-context";
 import { useIdentityProvisioning } from "./identity-provisioning-context";
@@ -35,6 +37,8 @@ export function AuditProvider({ children }: { children: ReactNode }) {
   const { ledger } = useInventoryLedger();
   const { finance } = useFinance();
   const { accounting } = useAccounting();
+  const brandAmbassadors = useBrandAmbassadors();
+  const delivery = useDelivery();
   const { state: marketing } = useMarketing();
   const { state: periodLocks } = usePeriodLocks();
   const { state: fieldTracking } = useFieldTracking();
@@ -64,10 +68,12 @@ export function AuditProvider({ children }: { children: ReactNode }) {
     collectAuditableRecords("Inventory", ledger),
     collectAuditableRecords("Finance", finance),
     collectAuditableRecords("Accounting", accounting),
+    collectAuditableRecords("Brand Ambassador", brandAmbassadors.state),
+    collectAuditableRecords("Delivery", delivery.state),
     collectAuditableRecords("Marketing", marketing),
     collectAuditableRecords("Period locks", periodLocks),
     collectAuditableRecords("Field tracking", auditableFieldTracking),
-  ), [data, crm, hcm, identity, payroll, performance, commerce, ledger, finance, accounting, marketing, periodLocks, auditableFieldTracking]);
+  ), [data, crm, hcm, identity, payroll, performance, commerce, ledger, finance, accounting, brandAmbassadors.state, delivery.state, marketing, periodLocks, auditableFieldTracking]);
 
   useEffect(() => {
     if (!previous.current) { previous.current = snapshots; return; }
