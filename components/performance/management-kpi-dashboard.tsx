@@ -68,12 +68,12 @@ function sparkPoints(values: number[]) {
   }).join(" ");
 }
 
-function KpiCard({ metricKey, value, numerator, denominator }: { metricKey: ManagementKpiKey; value: number; numerator: number; denominator?: number }) {
+function KpiCard({ metricKey, value, numerator, denominator, evidenceCount }: { metricKey: ManagementKpiKey; value: number; numerator: number; denominator?: number; evidenceCount: number }) {
   const definition = managementKpiDefinition(metricKey);
   return <article className="management-kpi-card">
     <div><span>{definition.shortLabel}</span><small>{definition.group}</small></div>
     <strong>{formatKpiValue({ value }, definition.format)}</strong>
-    <p>{denominator === undefined ? `${numerator.toLocaleString()} source result${numerator === 1 ? "" : "s"}` : `${numerator.toLocaleString()} / ${denominator.toLocaleString()} source records`}</p>
+    <p>{denominator === undefined ? `${evidenceCount.toLocaleString()} evidence record${evidenceCount === 1 ? "" : "s"}` : `${numerator.toLocaleString()} / ${denominator.toLocaleString()} source records`}</p>
   </article>;
 }
 
@@ -129,7 +129,7 @@ export function ManagementKpiDashboard() {
 
     <div className="management-kpi-period"><strong>{period.start}</strong><span>through</span><strong>{period.end}</strong><i>{currentUser?.role === "Administrator" ? "Company commercial scope" : `${people.length} visible commercial contributor${people.length === 1 ? "" : "s"}`}</i></div>
 
-    <div className="management-kpi-card-grid">{cards.map(({ key, result }) => <KpiCard key={key} metricKey={key} value={result.value} numerator={result.numerator} denominator={result.denominator}/>)}</div>
+    <div className="management-kpi-card-grid">{cards.map(({ key, result }) => <KpiCard key={key} metricKey={key} value={result.value} numerator={result.numerator} denominator={result.denominator} evidenceCount={result.sourceRecordIds.length}/>)}</div>
 
     <Section title={selectedDefinition.label} description={selectedDefinition.description} className="management-kpi-analysis">
       <div className="management-kpi-selected-summary"><div><small>Selected result</small><strong>{formatKpiValue(selectedResult, selectedDefinition.format)}</strong><span>{selectedResult.denominator === undefined ? `${selectedResult.sourceRecordIds.length} evidence record${selectedResult.sourceRecordIds.length === 1 ? "" : "s"}` : `${selectedResult.numerator} numerator / ${selectedResult.denominator} denominator`}</span></div><div><small>Reporting group</small><strong>{selectedDefinition.group}</strong><span>{presetLabels[preset]}</span></div></div>
