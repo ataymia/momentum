@@ -1,4 +1,6 @@
 import { canManageUser } from "./access";
+import type { CommerceState } from "./commerce-engine";
+import { collectedCashFacts, resolvedPaidOrderFacts } from "./commercial-source";
 import { evaluateSalesRepAccountBonuses } from "./bonus-engine";
 import { addCalendarDays, arizonaDateKey, endOfLocalWeek, isValidCalendarDateKey, startOfLocalWeek } from "./date-time";
 import type { WorkspaceData, WorkspaceUser } from "./types";
@@ -116,22 +118,22 @@ export function weeklyReportingObligations(state:PerformanceState,userId:string,
   return periods;
 }
 
-export function userCommercialMetrics(data:WorkspaceData,userId:string,start:string,end:string){
-  const creditedOrders=data.orders.filter((order)=>orderCreditUser(order)===userId&&inRange(orderDate(order),start,end));
-  const paidOrders=creditedOrders.filter((order)=>order.paymentStatus==="Paid"&&Number.isFinite(order.cases)&&order.cases>=0&&Number.isFinite(order.amount)&&order.amount>=0);
-  const paidCases=paidOrders.reduce((sum,order)=>sum+order.cases,0);
-  const collectedRevenue=paidOrders.reduce((sum,order)=>sum+order.amount,0);
+export function userCommercialMetrics(data:WorkspaceData,userId:string,start:string,end:string,commerce?:CommerceState){
+  const paidOrders=resolvedPaidOrderFacts(data,commerce).filter((fact)=>fact.creditedUserId===userId&&inRange(fact.paidAt,start,end));
+  const paidCases=paidOrders.reduce((sum,fact)=>sum+fact.cases,0);
+  const collectedFacts=collectedCashFacts(data,commerce).filter((fact)=>fact.creditedUserId===userId&&inRange(fact.settledAt,start,end));
+  const collectedRevenue=collectedFacts.reduce((sum,fact)=>sum+fact.amount,0);
   const appointments=data.appointments.filter((appointment)=>appointment.ownerId===userId&&appointment.status==="Completed"&&inRange(appointment.date,start,end));
-  const accountFirstPaid=new Map<string,WorkspaceData["orders"][number]>();
-  for(const order of data.orders.filter((item)=>item.paymentStatus==="Paid").sort((a,b)=>orderDate(a).localeCompare(orderDate(b))||a.id.localeCompare(b.id))) if(!accountFirstPaid.has(order.accountId))accountFirstPaid.set(order.accountId,order);
-  const ownedNewPaidAccounts=[...accountFirstPaid.values()].filter((order)=>orderCreditUser(order)===userId&&inRange(orderDate(order),start,end)).length;
+  const accountFirstPaid=new Map<string,ReturnType<typeof resolvedPaidOrderFacts>[number]>();
+  for(const fact of resolvedPaidOrderFacts(data,commerce).sort((a,b)=>a.paidAt.localeCompare(b.paidAt)||a.orderId.localeCompare(b.orderId))) if(!accountFirstPaid.has(fact.accountId))accountFirstPaid.set(fact.accountId,fact);
+  const ownedNewPaidAccounts=[...accountFirstPaid.values()].filter((fact)=>fact.creditedUserId===userId&&inRange(fact.paidAt,start,end)).length;
   return{paidCases,paidOrders:paidOrders.length,collectedRevenue,completedAppointments:appointments.length,newPaidAccounts:ownedNewPaidAccounts,
-    sourceOrderIds:paidOrders.map((order)=>order.id),sourceAppointmentIds:appointments.map((appointment)=>appointment.id)};
+    sourceOrderIds:[...new Set([...paidOrders.map((fact)=>fact.orderId),...collectedFacts.map((fact)=>fact.orderId)])],sourceAppointmentIds:appointments.map((appointment)=>appointment.id)};
 }
 
-export function goalProgress(goal:PerformanceGoal,data:WorkspaceData){
+export function goalProgress(goal:PerformanceGoal,data:WorkspaceData,commerce?:CommerceState){
   if(goal.metric==="Manual")return Math.max(0,Number.isFinite(goal.manualValue)?goal.manualValue:0);
-  const metrics=userCommercialMetrics(data,goal.userId,goal.periodStart,goal.periodEnd);
+  const metrics=userCommercialMetrics(data,goal.userId,goal.periodStart,goal.periodEnd,commerce);
   if(goal.metric==="Paid cases")return metrics.paidCases;
   if(goal.metric==="Completed appointments")return metrics.completedAppointments;
   if(goal.metric==="Paid orders")return metrics.paidOrders;
@@ -139,8 +141,8 @@ export function goalProgress(goal:PerformanceGoal,data:WorkspaceData){
   return metrics.collectedRevenue;
 }
 
-export function resolvedGoalStatus(goal:PerformanceGoal,data:WorkspaceData,asOf=today()):GoalStatus{
-  if(goal.status==="Cancelled")return"Cancelled";const progress=goalProgress(goal,data);if(progress>=goal.target)return"Achieved";if(asOf>goal.periodEnd)return"Missed";return"Active";
+export function resolvedGoalStatus(goal:PerformanceGoal,data:WorkspaceData,asOf=today(),commerce?:CommerceState):GoalStatus{
+  if(goal.status==="Cancelled")return"Cancelled";const progress=goalProgress(goal,data,commerce);if(progress>=goal.target)return"Achieved";if(asOf>goal.periodEnd)return"Missed";return"Active";
 }
 
 export function canViewPerformanceRecord(actor:WorkspaceUser|null|undefined,targetUserId:string,data:WorkspaceData){
@@ -171,9 +173,9 @@ export function expectedDailyReportDates(data:WorkspaceData,userId:string,start:
   return[...dates].filter(isValidCalendarDateKey).sort();
 }
 
-export function managerWeeklyMetrics(state:PerformanceState,data:WorkspaceData,managerId:string,start:string,end:string){
+export function managerWeeklyMetrics(state:PerformanceState,data:WorkspaceData,managerId:string,start:string,end:string,commerce?:CommerceState){
   const manager=data.users.find((user)=>user.id===managerId);const teamUsers=data.users.filter((user)=>user.role!=="Customer"&&user.id!==managerId&&(manager?.role==="Administrator"||canManageUser(data,manager,user.id,false)));
-  const sourceUserIds=teamUsers.map((user)=>user.id);const totals=sourceUserIds.map((userId)=>userCommercialMetrics(data,userId,start,end));
+  const sourceUserIds=teamUsers.map((user)=>user.id);const totals=sourceUserIds.map((userId)=>userCommercialMetrics(data,userId,start,end,commerce));
   const expected=sourceUserIds.reduce((sum,userId)=>sum+expectedDailyReportDates(data,userId,start,end).length,0);
   const submitted=state.reports.filter((report)=>report.type==="Daily"&&sourceUserIds.includes(report.userId)&&inRange(report.workDate,start,end)).length;
   return{completedAppointments:totals.reduce((s,m)=>s+m.completedAppointments,0),paidCases:totals.reduce((s,m)=>s+m.paidCases,0),paidOrders:totals.reduce((s,m)=>s+m.paidOrders,0),newPaidAccounts:totals.reduce((s,m)=>s+m.newPaidAccounts,0),collectedRevenue:totals.reduce((s,m)=>s+m.collectedRevenue,0),repReportsExpected:expected,repReportsSubmitted:submitted,sourceUserIds,sourceAppointmentIds:totals.flatMap((m)=>m.sourceAppointmentIds),sourceOrderIds:totals.flatMap((m)=>m.sourceOrderIds)};
