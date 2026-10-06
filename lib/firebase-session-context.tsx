@@ -4,7 +4,7 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, 
 import { EMPLOYEE_DIRECTORY_COLLECTION, PLATFORM_BOOTSTRAP_DOCUMENT, PLATFORM_META_DOCUMENT, USER_ACCESS_COLLECTION, buildPersistenceScope, directoryDocument, normalizeDirectoryEntry, normalizeUserAccess, userAccessDocument, type UserAccessRecord } from "./firebase-access";
 import { ProvisioningError, createFirebaseIdentityAsAdministrator, deleteEmployeeIdentity, lookupProvisioningStatus, type CreatedFirebaseIdentity } from "./firebase-admin-provisioning";
 import { isProvisionableRole, type ProvisionEmployeeProfile, type ProvisioningStage, type ProvisioningStatusSuccess } from "./provisioning-contract";
-import { FirebaseAuthSession, currentFirebaseSession, lookupFirebaseAccount, persistFirebaseSession, refreshFirebaseSession, requestPasswordResetByUsername, requestUsernameReminder, sendFirebaseEmailVerification, sendFirebasePasswordReset, signInWithFirebasePassword, signInWithUsername, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
+import { FirebaseAuthSession, currentFirebaseSession, installFirebaseSessionPeerResponder, lookupFirebaseAccount, persistFirebaseSession, refreshFirebaseSession, requestFirebaseSessionFromPeer, requestPasswordResetByUsername, requestUsernameReminder, sendFirebaseEmailVerification, sendFirebasePasswordReset, signInWithFirebasePassword, signInWithUsername, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
 import { updateMomentumAccountEmail } from "./firebase-account-management";
 import { SIGN_IN_REJECTED, classifyLoginIdentifier } from "./auth-contract";
 import { firebaseConfigurationStatus } from "./firebase-config";
@@ -143,7 +143,11 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
   const boot=useCallback(async()=>{
     if(!configuration.configured){setStatus("unconfigured");return;}
     try{
-      const active=await currentFirebaseSession();
+      let active=await currentFirebaseSession();
+      if(!active){
+        const peer=await requestFirebaseSessionFromPeer();
+        active=peer?await currentFirebaseSession():null;
+      }
       if(!active){await resetToSignedOut();return;}
       setSession(active);
       await loadWorkspace(active);
@@ -154,8 +158,9 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
   },[configuration.configured,loadWorkspace,resetToSignedOut]);
 
   useEffect(()=>{
+    const stopPeerResponder=installFirebaseSessionPeerResponder();
     const handle=window.setTimeout(()=>void boot(),0);
-    return()=>{window.clearTimeout(handle);void detachFirestorePersistence();};
+    return()=>{window.clearTimeout(handle);stopPeerResponder();void detachFirestorePersistence();};
   },[boot]);
 
   /**
