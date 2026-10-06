@@ -11,7 +11,8 @@ const kpi=readFileSync("components/performance/management-kpi-dashboard.tsx","ut
 
 function pageAccessKeys(){
   const block=access.match(/const pageAccess:[\s\S]*?\n};/)?.[0]??"";
-  return new Set([...block.matchAll(/"([A-Za-z][A-Za-z0-9]*)"/g)].map((match)=>match[1]).filter((value)=>!["Administrator","Sales Manager","Sales Representative","Brand Ambassador","Operations","Warehouse","Delivery Driver","Customer"].includes(value)));
+  const arrays=[...block.matchAll(/^\s*(?:Administrator|"Sales Manager"|"Sales Representative"|"Brand Ambassador"|Operations|Warehouse|"Delivery Driver"|Customer):\s*\[([^\]]*)\]/gm)].map((match)=>match[1]);
+  return new Set(arrays.flatMap((row)=>[...row.matchAll(/"([A-Za-z][A-Za-z0-9]*)"/g)].map((match)=>match[1])));
 }
 function renderedKeys(){
   return new Set([...shell.matchAll(/case "([A-Za-z][A-Za-z0-9]*)":/g)].map((match)=>match[1]));
