@@ -26,7 +26,7 @@ const inventoryStatuses = new Set(["Available", "Quality hold", "Low stock"]);
 const approvalTypes = new Set(["Order", "Low stock sale", "Territory exception", "Timecard", "Price exception", "Inventory adjustment", "Leave", "Expense", "Marketing spend", "Compensation"]);
 const approvalPriorities = new Set(["Normal", "High", "Urgent"]);
 const approvalStatuses = new Set(["Pending", "Approved", "Returned"]);
-const timeSources = new Set(["Demo mobile", "Demo desktop", "Manual correction"]);
+const timeSources = new Set(["Demo mobile", "Demo desktop", "Web clock", "Manual correction"]);
 const timecardStatuses = new Set(["Open", "Submitted", "Manager approved", "Returned", "Payroll ready"]);
 const notificationTones = new Set(["info", "warning", "success"]);
 const bulletinAudiences = new Set(["Company", "Team"]);
@@ -154,10 +154,10 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
   const timeEntries = uniqueById(list(root, "timeEntries", fallback.timeEntries).flatMap((value): TimeEntry[] => {
     if (!object(value)) return [];
     const id = text(value.id); const userId = text(value.userId); const source = text(value.source);
-    if (!id || !internalUserIds.has(userId) || !validDate(value.date) || !validTime(value.clockIn) || !optionalTime(value.clockOut) || !optionalTime(value.mealStart) || !optionalTime(value.mealEnd) || !nonnegative(value.breakMinutes) || !timeSources.has(source)) return [];
+    if (!id || !internalUserIds.has(userId) || !validDate(value.date) || !validTime(value.clockIn) || !optionalValidInstant(value.clockInAt) || !optionalTime(value.clockOut) || !optionalValidInstant(value.clockOutAt) || !optionalTime(value.mealStart) || !optionalTime(value.mealEnd) || !nonnegative(value.breakMinutes) || !timeSources.has(source)) return [];
     if ((value.mealStart && !value.mealEnd && value.clockOut) || (!value.mealStart && value.mealEnd)) return [];
     const corrections = Array.isArray(value.corrections) ? value.corrections.map((item) => normalizeCorrection(item, internalUserIds)).filter((item): item is NonNullable<typeof item> => Boolean(item)) : undefined;
-    return [{ id, userId, date: text(value.date), clockIn: text(value.clockIn), clockOut: optionalText(value.clockOut), mealStart: optionalText(value.mealStart), mealEnd: optionalText(value.mealEnd), breakMinutes: Number(value.breakMinutes), source: source as TimeEntry["source"], note: optionalText(value.note), corrections }];
+    return [{ id, userId, date: text(value.date), clockIn: text(value.clockIn), clockInAt: optionalText(value.clockInAt), clockOut: optionalText(value.clockOut), clockOutAt: optionalText(value.clockOutAt), mealStart: optionalText(value.mealStart), mealEnd: optionalText(value.mealEnd), breakMinutes: Number(value.breakMinutes), source: source as TimeEntry["source"], note: optionalText(value.note), corrections }];
   }));
 
   const timecards = uniqueById(list(root, "timecards", fallback.timecards).flatMap((value): Timecard[] => {
