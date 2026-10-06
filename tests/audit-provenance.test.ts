@@ -150,3 +150,61 @@ test("normalized history sorts by the real event timestamp", () => {
   });
   assert.deepEqual(state.events.map((event) => event.id), ["newer", "older"]);
 });
+
+
+test("delivery task updates use the driver event actor and event timestamp", () => {
+  const before = collectAuditableRecords("Delivery", {
+    tasks: [{
+      id:"delivery-1",
+      orderId:"ord-1",
+      driverId:"driver-1",
+      status:"Accepted",
+      acceptedAt:"2026-10-06T18:00:00.000Z",
+      acceptedBy:"driver-1",
+      history:[{id:"evt-1",type:"Accepted",at:"2026-10-06T18:00:00.000Z",actorId:"driver-1"}],
+    }],
+  });
+  const after = collectAuditableRecords("Delivery", {
+    tasks: [{
+      id:"delivery-1",
+      orderId:"ord-1",
+      driverId:"driver-1",
+      status:"Loaded",
+      acceptedAt:"2026-10-06T18:00:00.000Z",
+      acceptedBy:"driver-1",
+      loadedAt:"2026-10-06T18:12:00.000Z",
+      history:[
+        {id:"evt-2",type:"Loaded",at:"2026-10-06T18:12:00.000Z",actorId:"driver-1"},
+        {id:"evt-1",type:"Accepted",at:"2026-10-06T18:00:00.000Z",actorId:"driver-1"},
+      ],
+    }],
+  });
+  const users: WorkspaceUser[] = [{...rep,id:"driver-1",name:"Driver One",firstName:"Driver",role:"Delivery Driver",team:"Operations",title:"Delivery Driver"}];
+  const [event] = diffAuditableRecords(before, after, { id:"system", role:"System" }, "2026-10-06T23:10:00.000Z", users);
+  assert.ok(event);
+  assert.equal(event.actorId, "driver-1");
+  assert.equal(event.at, "2026-10-06T18:12:00.000Z");
+});
+
+test("Brand Ambassador assignment changes use updatedBy and updatedAt", () => {
+  const before = collectAuditableRecords("Brand Ambassador", {
+    assignments:[{
+      id:"ba-1",eventGroupId:"group-1",ambassadorId:"ba-user",title:"Sampling",
+      date:"2026-10-10",startTime:"10:00",endTime:"14:00",address:"Phoenix",
+      requiredStaff:1,status:"Scheduled",createdBy:"admin-1",createdAt:"2026-10-01T12:00:00.000Z",
+      updatedAt:"2026-10-01T12:00:00.000Z",updatedBy:"admin-1",
+    }],
+  });
+  const after = collectAuditableRecords("Brand Ambassador", {
+    assignments:[{
+      id:"ba-1",eventGroupId:"group-1",ambassadorId:"ba-user",title:"Sampling",
+      date:"2026-10-10",startTime:"11:00",endTime:"15:00",address:"Phoenix",
+      requiredStaff:1,status:"Scheduled",createdBy:"admin-1",createdAt:"2026-10-01T12:00:00.000Z",
+      updatedAt:"2026-10-06T21:05:00.000Z",updatedBy:"admin-1",
+    }],
+  });
+  const [event] = diffAuditableRecords(before, after, { id:"system", role:"System" }, "2026-10-06T23:10:00.000Z", [admin]);
+  assert.ok(event);
+  assert.equal(event.actorId, "admin-1");
+  assert.equal(event.at, "2026-10-06T21:05:00.000Z");
+});
