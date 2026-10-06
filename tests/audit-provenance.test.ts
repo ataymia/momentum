@@ -231,3 +231,30 @@ test("explicit HCM audit records keep their human actor and original timestamp",
   assert.equal(event.at, "2026-10-06T19:45:00.000Z");
   assert.equal(event.label, "Administrator compensation correction");
 });
+
+
+test("legacy created history is retimed from its source timestamp instead of page-detection time", () => {
+  const state = normalizeAuditState({
+    version:1,
+    events:[{
+      id:"legacy-account-create",
+      at:"2026-10-06T23:30:00.000Z",
+      actorId:"rep-1",
+      actorRole:"Sales Representative",
+      action:"Created",
+      module:"Workspace",
+      collection:"accounts",
+      entityType:"Workspace.accounts",
+      entityId:"acc-1",
+      label:"Nash",
+      summary:"Nash created",
+      sensitivity:"operational",
+      changes:[
+        {field:"ownerId",after:"rep-1"},
+        {field:"responsibilityStartedAt",after:"2026-09-18T16:22:10.000Z"},
+      ],
+    }],
+  });
+  assert.equal(state.events.length, 1);
+  assert.equal(state.events[0].at, "2026-09-18T16:22:10.000Z");
+});
