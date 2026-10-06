@@ -27,6 +27,7 @@ import { ReportsPage } from "./pages/reports";
 import { RetailPage } from "./pages/retail";
 import { SettingsPage } from "./pages/settings";
 import { WorkPage } from "./pages/work";
+import { WorkforceLivePage } from "./pages/workforce-live";
 import { AccountHealthPage, AccountingWorkspacePage, ActionCenterPage, AuditWorkspacePage, DataExchangePage, EmployeeDirectoryPage, InventoryLedgerPage, NewHirePage, OnboardingQueuePage, OrderCashPage, PerformanceWorkspacePage, ReportingCenterPage, TrainingSetupPage } from "./pages/focused-workspace-pages";
 import { SyncStatusPill } from "./settings/firebase-access-panel";
 import { Avatar, BrandMark, Button, Modal, formatDate } from "./ui";
@@ -60,18 +61,18 @@ const sectionTabs: Partial<Record<PageKey, SectionTab[]>> = {
   people: [{key:"people",label:"HR home"},{key:"employees",label:"Employee directory"},{key:"newHire",label:"New hire"},{key:"onboarding",label:"Onboarding queue"},{key:"trainingAdmin",label:"Training setup"}],
   finance: [{key:"finance",label:"Finance"},{key:"accounting",label:"Accounting"}],
   reports: [{key:"reports",label:"Reports"},{key:"performance",label:"Performance"},{key:"reportingCenter",label:"Reporting center"},{key:"audit",label:"Audit trail"}],
-  settings: [{key:"settings",label:"Administration"},{key:"dataExchange",label:"Data exchange"}],
+  settings: [{key:"settings",label:"Administration"},{key:"workforceLive",label:"Workforce live"},{key:"dataExchange",label:"Data exchange"}],
 };
 const pageParent: Partial<Record<PageKey, PageKey>> = {
   actions:"work", quickVisit:"accounts", salesMap:"accounts", accountSetup:"accounts", accountHealth:"accounts", orderCash:"orders", inventoryLedger:"inventory",
   employees:"people", newHire:"people", onboarding:"people", trainingAdmin:"people", accounting:"finance", performance:"reports",
-  reportingCenter:"reports", audit:"reports", dataExchange:"settings",
+  reportingCenter:"reports", audit:"reports", workforceLive:"settings", dataExchange:"settings",
 };
 const pageLabels: Partial<Record<PageKey,string>> = {
   actions:"Action center", quickVisit:"Quick Visit", salesMap:"Account map", accountSetup:"Account setup", accountHealth:"Account health", orderCash:"Invoices & payments", timekeeping:"Timekeeping", materials:"Materials & Resources", products:"Products",
   inventoryLedger:"Inventory ledger", employees:"Employee directory", newHire:"New hire", onboarding:"Onboarding queue", trainingAdmin:"Training setup",
   brandAmbassadors:"Brand Ambassadors",
-  accounting:"Accounting", performance:"Performance", reportingCenter:"Reporting center", audit:"Audit trail", dataExchange:"Data exchange",
+  accounting:"Accounting", performance:"Performance", reportingCenter:"Reporting center", audit:"Audit trail", workforceLive:"Workforce live", dataExchange:"Data exchange",
 };
 const demoTourIds = new Set(["usr-flo", "usr-mia", "usr-avery", "usr-jordan", "usr-customer"]);
 const labelFor = (item: NavItem, user: WorkspaceUser) => user.role === "Brand Ambassador" ? (item.key === "brandAmbassadors" ? "My schedule" : item.label) : user.role !== "Customer" ? item.label : item.key === "home" ? "Account overview" : item.key === "accounts" ? "My account" : item.key === "orders" ? "My orders" : item.label;
@@ -129,6 +130,7 @@ function PageView() {
     case "reportingCenter": return <ReportingCenterPage/>;
     case "audit": return <AuditWorkspacePage/>;
     case "settings": return <SettingsPage/>;
+    case "workforceLive": return <WorkforceLivePage/>;
     case "dataExchange": return <DataExchangePage/>;
     case "help": return <HelpPage/>;
     default: return <DashboardPage/>;
