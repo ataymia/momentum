@@ -13,6 +13,8 @@ import {
   lastRecordedEmployeeActivity,
   shiftClockInEvidence,
 } from "../../lib/employee-profile";
+import { useCommerce } from "../../lib/commerce-context";
+import { useCrm } from "../../lib/crm-context";
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { appendAudit, type ProfileChangeRequest } from "../../lib/hcm-engine";
 import { useHcm } from "../../lib/hcm-context";
@@ -24,6 +26,7 @@ import { Avatar, Button, Field, Section, StatusPill, formatDate, hoursBetween } 
 const managerSalesMetrics: ManagementKpiKey[] = [
   "collected_revenue",
   "paid_cases",
+  "physical_visits",
   "completed_demos",
   "new_business_close_rate",
   "reorder_accounts",
@@ -38,6 +41,8 @@ const now = () => new Date().toISOString();
 
 export function EmployeeDirectory() {
   const { data, currentUser, navigate } = useWorkspace();
+  const { commerce } = useCommerce();
+  const { crm } = useCrm();
   const firebase = useFirebaseSessionOptional();
   const { hcm, setHcm } = useHcm();
   const delivery = useDelivery().state;
@@ -259,7 +264,7 @@ export function EmployeeDirectory() {
           {isSales && <Section title="Source-linked sales KPIs" description="Management reference data only. Scorecard weighting and final performance judgment remain a manager responsibility." className="employee-profile-kpis">
             <div className="employee-profile-kpi-grid">{managerSalesMetrics.map((key) => {
               const definition = managementKpiDefinition(key);
-              const result = calculateManagementKpi(key, data, period, [selected.id], tracking.state);
+              const result = calculateManagementKpi(key, data, period, [selected.id], tracking.state, commerce, crm);
               return <article key={key}><small>{definition.shortLabel}</small><strong>{formatKpiValue(result, definition.format)}</strong><span>{result.denominator === undefined ? `${result.sourceRecordIds.length} evidence records` : `${result.numerator}/${result.denominator} source records`}</span></article>;
             })}</div>
             <Button size="sm" variant="secondary" icon={<BarChart3 size={15}/>} onClick={() => navigate("reports")}>Open Reports KPI center</Button>
