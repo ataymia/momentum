@@ -26,6 +26,8 @@ export type BrandAmbassadorAssignment = {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  /** Employee account that last changed this assignment. */
+  updatedBy?: string;
 };
 
 export type BrandAmbassadorState = { version: 1; assignments: BrandAmbassadorAssignment[] };
@@ -57,7 +59,7 @@ export function normalizeBrandAmbassadorState(input: unknown, data: WorkspaceDat
   const assignments = raw.assignments.flatMap((item): BrandAmbassadorAssignment[] => {
     if (!item || typeof item !== "object") return [];
     const record = item as BrandAmbassadorAssignment;
-    if (!record.id || seen.has(record.id) || !record.eventGroupId || !ambassadors.has(record.ambassadorId) || !text(record.title) || !isValidCalendarDateKey(record.date) || !timePattern.test(record.startTime) || !timePattern.test(record.endTime) || record.endTime <= record.startTime || !text(record.address) || !Number.isInteger(record.requiredStaff) || record.requiredStaff < 1 || !["Scheduled", "Completed", "Cancelled"].includes(record.status) || !users.has(record.createdBy) || !instant(record.createdAt) || !instant(record.updatedAt)) return [];
+    if (!record.id || seen.has(record.id) || !record.eventGroupId || !ambassadors.has(record.ambassadorId) || !text(record.title) || !isValidCalendarDateKey(record.date) || !timePattern.test(record.startTime) || !timePattern.test(record.endTime) || record.endTime <= record.startTime || !text(record.address) || !Number.isInteger(record.requiredStaff) || record.requiredStaff < 1 || !["Scheduled", "Completed", "Cancelled"].includes(record.status) || !users.has(record.createdBy) || !instant(record.createdAt) || !instant(record.updatedAt) || (record.updatedBy !== undefined && !users.has(record.updatedBy))) return [];
     seen.add(record.id);
     return [{ ...record, title: record.title.trim(), address: record.address.trim(), notes: record.notes?.trim() || undefined }];
   });
