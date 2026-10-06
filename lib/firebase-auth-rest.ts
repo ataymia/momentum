@@ -70,7 +70,7 @@ export function installFirebaseSessionPeerResponder(){
   return()=>channel.close();
 }
 
-export async function requestFirebaseSessionFromPeer(timeoutMs=350):Promise<FirebaseAuthSession|null>{
+export async function requestFirebaseSessionFromPeer(timeoutMs=1200):Promise<FirebaseAuthSession|null>{
   if(typeof window==="undefined"||typeof BroadcastChannel==="undefined")return null;
   return await new Promise((resolve)=>{
     const channel=new BroadcastChannel(SESSION_CHANNEL);
