@@ -93,6 +93,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     const orderRank = ["Approved", "Allocated", "Out for delivery", "Delivered"] as const;
     const targetForTask = (status: DeliveryTask["status"]): "Allocated" | "Out for delivery" | "Delivered" | undefined => status === "Delivered" ? "Delivered" : status === "In transit" ? "Out for delivery" : status === "Loaded" ? "Allocated" : undefined;
     const candidate = state.tasks
+      .filter((task) => currentUser.role !== "Delivery Driver" || task.driverId === currentUser.id)
       .map((task) => ({ task, order: data.orders.find((order) => order.id === task.orderId), target: targetForTask(task.status) }))
       .find(({ order, target }) => {
         if (!order || !target || ["Cancelled", "Paid"].includes(order.status)) return false;
