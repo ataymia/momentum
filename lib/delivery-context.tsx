@@ -30,7 +30,7 @@ type DeliveryContextValue = {
 const DeliveryContext = createContext<DeliveryContextValue | null>(null);
 
 export function DeliveryProvider({ children }: { children: ReactNode }) {
-  const { data, currentUser } = useWorkspace();
+  const { data, currentUser, setOrderStatus } = useWorkspace();
   const inventory = useInventoryLedger();
   const runtime = useRuntimeMode();
   const read = () => {
@@ -87,6 +87,24 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     stateRef.current=next;
     setState(next);
   });
+
+  useEffect(() => {
+    if (!currentUser || !["Administrator", "Operations", "Delivery Driver"].includes(currentUser.role)) return;
+    const orderRank = ["Approved", "Allocated", "Out for delivery", "Delivered"] as const;
+    const targetForTask = (status: DeliveryTask["status"]) => status === "Delivered" ? "Delivered" : status === "In transit" ? "Out for delivery" : status === "Loaded" ? "Allocated" : undefined;
+    const candidate = state.tasks
+      .map((task) => ({ task, order: data.orders.find((order) => order.id === task.orderId), target: targetForTask(task.status) }))
+      .find(({ order, target }) => {
+        if (!order || !target || ["Cancelled", "Paid"].includes(order.status)) return false;
+        const currentIndex = orderRank.indexOf(order.status as (typeof orderRank)[number]);
+        const targetIndex = orderRank.indexOf(target);
+        return currentIndex >= 0 && currentIndex < targetIndex;
+      });
+    if (!candidate?.order || !candidate.target) return;
+    const currentIndex = orderRank.indexOf(candidate.order.status as (typeof orderRank)[number]);
+    const next = orderRank[currentIndex + 1];
+    if (next) setOrderStatus(candidate.order.id, next);
+  }, [currentUser, data.orders, setOrderStatus, state.tasks]);
 
   const taskForOrder = (orderId: string) => deliveryTaskForOrder(state, orderId);
   const drivers = useMemo(() => data.users.filter((user) => user.role === "Delivery Driver"), [data.users]);
