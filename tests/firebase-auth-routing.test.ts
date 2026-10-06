@@ -46,3 +46,17 @@ test("the browser Function endpoint is configurable without changing app code", 
   assert.match(source, /us-central1/);
   assert.match(source, /cloudfunctions\.net/);
 });
+
+
+test("production auth can restore an active session into a second Momentum tab", () => {
+  const auth = read("lib/firebase-auth-rest.ts");
+  const provider = read("lib/firebase-session-context.tsx");
+
+  assert.match(auth, /BroadcastChannel/);
+  assert.match(auth, /momentum-session-request/);
+  assert.match(auth, /momentum-session-response/);
+  assert.match(auth, /requestFirebaseSessionFromPeer/);
+  assert.match(provider, /installFirebaseSessionPeerResponder/);
+  assert.match(provider, /requestFirebaseSessionFromPeer/);
+  assert.match(provider, /peer\?await currentFirebaseSession\(\):null/);
+});
