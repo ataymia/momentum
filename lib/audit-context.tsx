@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { AUDIT_STORAGE_KEY, AuditChange, AuditEvent, AuditSensitivity, AuditState, collectAuditableRecords, createAuditSeed, diffAuditableRecords, mergeAuditSnapshots, normalizeAuditState, visibleAuditEvents } from "./audit-engine";
+import { AUDIT_STORAGE_KEY, AuditChange, AuditEvent, AuditSensitivity, AuditState, auditEventFingerprint, collectAuditableRecords, createAuditSeed, diffAuditableRecords, mergeAuditSnapshots, normalizeAuditState, visibleAuditEvents } from "./audit-engine";
 import { useAccounting } from "./accounting-context";
 import { useCommerce } from "./commerce-context";
 import { useCrm } from "./crm-context";
@@ -74,7 +74,12 @@ export function AuditProvider({ children }: { children: ReactNode }) {
     // A passive Firestore refresh may represent another employee's work. Never infer the current viewer as actor.
     const additions = diffAuditableRecords(previous.current, snapshots, { id: "system", role: "System" }, new Date().toISOString(), data.users);
     previous.current = snapshots;
-    if (additions.length) setAudit((state) => ({ ...state, events: [...additions, ...state.events].slice(0, 10000) }));
+    if (additions.length) setAudit((state) => {
+      const existing = new Set(state.events.map(auditEventFingerprint));
+      const verified = additions.filter((event) => !existing.has(auditEventFingerprint(event)));
+      if (!verified.length) return state;
+      return { ...state, events: [...verified, ...state.events].sort((left, right) => right.at.localeCompare(left.at)).slice(0, 10000) };
+    });
   }, [snapshots, data.users]);
 
   const visibleEvents = useMemo(() => visibleAuditEvents(currentUser, data, audit.events), [currentUser, data, audit.events]);
