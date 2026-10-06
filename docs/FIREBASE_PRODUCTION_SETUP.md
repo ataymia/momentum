@@ -172,8 +172,7 @@ endpoints Momentum actually uses; add to it if you introduce another backend.
 
 - **Local demo mode** (`localStorage`, seeded fake data) is only reachable from `localhost`; see
   `demoCapabilityEnabled()` in `lib/runtime-mode-store.ts`. Deployed builds are always in production mode.
-- **Sessions** live in `sessionStorage` and refresh through `securetoken.googleapis.com`. Closing the tab
-  ends the session.
+- **Sessions** live in `sessionStorage` and refresh through `securetoken.googleapis.com`. An already signed-in Momentum tab can hand the active same-origin session to a newly opened Momentum tab through `BroadcastChannel`, so opening onboarding, CRM, or another workspace in a second tab does not force another login. Closing every Momentum tab still ends the browser session.
 - **Denied writes** are surfaced in the sync-status pill and logged to the console with the offending
   document path — that is the signal that the rules and the domain table have drifted.
 - An Administrator can never change their own role or account state; that requires a second Administrator.
