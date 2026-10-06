@@ -159,19 +159,19 @@ describe("production persistence incident guards", () => {
 });
 
 describe("notification routing and actor integrity", () => {
-  test("an unrelated update is never attributed to a stale requester", () => {
+  test("an unrelated passive update without provenance does not become fake history", () => {
     const before=collectAuditableRecords("Marketing",{requests:[{id:"req-1",requesterId:"megan",title:"Mini fridge",detail:"Deliver with order",status:"Submitted"}]});
     const after=collectAuditableRecords("Marketing",{requests:[{id:"req-1",requesterId:"megan",title:"Mini fridge",detail:"Deliver with approved order",status:"Submitted"}]});
     const events=diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-09-24T18:00:00.000Z",[]);
-    assert.equal(events.length,1);
-    assert.equal(events[0].actorId,"system");
+    assert.equal(events.length,0);
   });
 
   test("an explicit decision actor remains the actor", () => {
     const before=collectAuditableRecords("Workspace",{approvals:[{id:"apr-9",title:"Review order",requesterId:"matt",status:"Pending"}]});
-    const after=collectAuditableRecords("Workspace",{approvals:[{id:"apr-9",title:"Review order",requesterId:"matt",status:"Approved",decidedBy:"mia"}]});
+    const after=collectAuditableRecords("Workspace",{approvals:[{id:"apr-9",title:"Review order",requesterId:"matt",status:"Approved",decidedBy:"mia",decidedAt:"2026-09-24T17:55:00.000Z"}]});
     const events=diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-09-24T18:00:00.000Z",[{id:"mia",name:"Mia",firstName:"Mia",email:"mia@test.co",initials:"MM",title:"Director",role:"Administrator",team:"Leadership",accent:"#000"} as never]);
     assert.equal(events[0].actorId,"mia");
+    assert.equal(events[0].at,"2026-09-24T17:55:00.000Z");
   });
 
   test("resolved or orphaned order approvals cannot survive as ghost action notifications", () => {
