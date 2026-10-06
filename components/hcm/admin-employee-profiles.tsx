@@ -15,7 +15,7 @@ import {
   UserRound,
   WalletCards,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useAudit } from "../../lib/audit-context";
 import { useCrm } from "../../lib/crm-context";
 import { addCalendarDays, arizonaDateKey } from "../../lib/date-time";
@@ -27,7 +27,7 @@ import {
   employeeResponsibleAccounts,
   employeeVisitLabel,
 } from "../../lib/employee-admin";
-import { activeCompensation, appendAudit, type PayBasis } from "../../lib/hcm-engine";
+import { activeCompensation, appendAudit, type CompensationRecord, type PayBasis } from "../../lib/hcm-engine";
 import { useHcm } from "../../lib/hcm-context";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import { timeEntryHours } from "../../lib/payroll-engine";
@@ -70,6 +70,61 @@ function employeeStatus(employmentStatus: string | undefined, open?: TimeEntry) 
   return { label:"Clocked out", tone:"neutral" as const };
 }
 
+function CompensationCorrectionForm({ userId, compensation }: { userId:string; compensation?:CompensationRecord }) {
+  const { hcm, setHcm } = useHcm();
+  const { currentUser } = useWorkspace();
+  const [payBasis, setPayBasis] = useState<Exclude<PayBasis, "Not configured">>(
+    compensation?.basis === "Salary per pay period" ? "Salary per pay period" : "Hourly",
+  );
+  const [payRate, setPayRate] = useState(compensation ? String(compensation.rate) : "");
+  const [payEffective, setPayEffective] = useState(arizonaDateKey());
+  const [payReason, setPayReason] = useState("");
+  const [payNotice, setPayNotice] = useState<{ tone:"success"|"danger"; text:string } | null>(null);
+
+  const savePayCorrection = (event: FormEvent) => {
+    event.preventDefault();
+    if (!currentUser || currentUser.role !== "Administrator") {
+      setPayNotice({ tone:"danger", text:"Administrator access is required to change compensation." });
+      return;
+    }
+    const result = applyCompensationCorrection(hcm, {
+      recordId: uid("comp-admin"),
+      userId,
+      basis: payBasis,
+      rate: Number(payRate),
+      effectiveDate: payEffective,
+      reason: payReason,
+      approvedBy: currentUser.id,
+      createdAt: now(),
+    });
+    if (!result.ok) {
+      setPayNotice({ tone:"danger", text:result.message });
+      return;
+    }
+    const before = result.previous ? `${result.previous.basis} ${result.previous.rate}` : "Not configured";
+    const after = `${result.record.basis} ${result.record.rate}`;
+    setHcm(appendAudit(result.state, {
+      actorId: currentUser.id,
+      action: "Administrator compensation correction",
+      entityType: "CompensationRecord",
+      entityId: result.record.id,
+      before,
+      after,
+      reason: payReason.trim(),
+    }));
+    setPayNotice({ tone:"success", text:"Pay record updated. Prior compensation history was preserved for audit." });
+    setPayReason("");
+  };
+
+  return <form className="form-grid employee-profile-edit-form admin-pay-correction" onSubmit={savePayCorrection}>
+    <Field label="Pay basis"><select value={payBasis} onChange={(event) => setPayBasis(event.target.value as Exclude<PayBasis,"Not configured">)}><option>Hourly</option><option>Salary per pay period</option></select></Field>
+    <Field label="Rate"><input type="number" min="0.01" step="0.01" required value={payRate} onChange={(event) => setPayRate(event.target.value)}/></Field>
+    <Field label="Effective date"><input type="date" required value={payEffective} onChange={(event) => setPayEffective(event.target.value)}/></Field>
+    <Field label="Correction reason" className="field--full"><input required value={payReason} onChange={(event) => setPayReason(event.target.value)} placeholder="Example: Correct initial rate entered during setup"/></Field>
+    <div className="employee-profile-edit-actions field--full"><Button type="submit">Save pay correction</Button>{payNotice&&<StatusPill tone={payNotice.tone}>{payNotice.text}</StatusPill>}</div>
+  </form>;
+}
+
 export function AdminEmployeeProfiles() {
   const { data, currentUser } = useWorkspace();
   const { hcm, setHcm } = useHcm();
@@ -81,11 +136,6 @@ export function AdminEmployeeProfiles() {
   const [selectedId, setSelectedId] = useState("");
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<ProfileTab>("overview");
-  const [payBasis, setPayBasis] = useState<Exclude<PayBasis, "Not configured">>("Hourly");
-  const [payRate, setPayRate] = useState("");
-  const [payEffective, setPayEffective] = useState(arizonaDateKey());
-  const [payReason, setPayReason] = useState("");
-  const [payNotice, setPayNotice] = useState<{ tone:"success"|"danger"; text:string } | null>(null);
 
   const employees = useMemo(() => data.users
     .filter((user) => user.role !== "Customer")
@@ -99,26 +149,10 @@ export function AdminEmployeeProfiles() {
       .some((value) => String(value).toLowerCase().includes(needle)));
   }, [employees, query]);
 
-  useEffect(() => {
-    if (!selectedId && employees.length) setSelectedId(employees[0].id);
-  }, [employees, selectedId]);
-
-  const selected = employees.find((user) => user.id === selectedId);
+  const selected = employees.find((user) => user.id === selectedId) ?? employees[0];
   const employment = selected ? hcm.employees.find((record) => record.userId === selected.id) : undefined;
   const privateProfile = selected ? hcm.privateProfiles.find((record) => record.userId === selected.id) : undefined;
   const compensation = selected ? activeCompensation(hcm, selected.id) : undefined;
-
-  useEffect(() => {
-    if (!selected) return;
-    setPayBasis(compensation?.basis === "Salary per pay period" ? "Salary per pay period" : "Hourly");
-    setPayRate(compensation ? String(compensation.rate) : "");
-    setPayEffective(arizonaDateKey());
-    setPayReason("");
-    setPayNotice(null);
-    setTab("overview");
-  // Changing the compensation record after a save should not immediately erase the success notice.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
 
   if (!currentUser || currentUser.role !== "Administrator") return null;
 
@@ -162,42 +196,9 @@ export function AdminEmployeeProfiles() {
     ? `${formatMoney(compensation.rate)} · ${compensation.basis}`
     : "Not configured";
 
-  const savePayCorrection = (event: FormEvent) => {
-    event.preventDefault();
-    const rate = Number(payRate);
-    const createdAt = now();
-    const result = applyCompensationCorrection(hcm, {
-      recordId: uid("comp-admin"),
-      userId: selected.id,
-      basis: payBasis,
-      rate,
-      effectiveDate: payEffective,
-      reason: payReason,
-      approvedBy: currentUser.id,
-      createdAt,
-    });
-    if (!result.ok) {
-      setPayNotice({ tone:"danger", text:result.message });
-      return;
-    }
-    const before = result.previous ? `${result.previous.basis} ${result.previous.rate}` : "Not configured";
-    const after = `${result.record.basis} ${result.record.rate}`;
-    setHcm(appendAudit(result.state, {
-      actorId: currentUser.id,
-      action: "Administrator compensation correction",
-      entityType: "CompensationRecord",
-      entityId: result.record.id,
-      before,
-      after,
-      reason: payReason.trim(),
-    }));
-    setPayNotice({ tone:"success", text:"Pay record updated. Prior compensation history was preserved for audit." });
-    setPayReason("");
-  };
-
   return <div className="employee-directory-shell admin-employee-profiles">
     <div className="employee-directory-heading">
-      <div><span><ShieldCheck size={20}/></span><div><small>Administrator only</small><h2>Employee profiles</h2><p>One source-linked view of each employee's identity, time, pay, field activity, accounts, delivery work, HR record, and recent system activity.</p></div></div>
+      <div><span><ShieldCheck size={20}/></span><div><small>Administrator only</small><h2>Employee profiles</h2><p>One source-linked view of each employee&apos;s identity, time, pay, field activity, accounts, delivery work, HR record, and recent system activity.</p></div></div>
       <StatusPill tone="gold">{employees.length} employee{employees.length === 1 ? "" : "s"}</StatusPill>
     </div>
 
@@ -209,7 +210,7 @@ export function AdminEmployeeProfiles() {
           const userEntries = data.timeEntries.filter((entry) => entry.userId === user.id);
           const live = currentClock(userEntries);
           const liveStatus = employeeStatus(record?.status, live);
-          return <button type="button" key={user.id} className={selectedId === user.id ? "is-selected" : ""} onClick={() => setSelectedId(user.id)}>
+          return <button type="button" key={user.id} className={selected.id === user.id ? "is-selected" : ""} onClick={() => setSelectedId(user.id)}>
             <i className={`employee-presence employee-presence--${liveStatus.tone === "success" ? "success" : liveStatus.tone === "warning" ? "warning" : "neutral"}`}/>
             <span><strong>{user.name}</strong><small>{user.title} · {liveStatus.label}</small></span>
             <i>{record?.employeeNumber ?? user.role}</i>
@@ -270,13 +271,7 @@ export function AdminEmployeeProfiles() {
               <article><small>Pay group</small><strong>{employment?.payGroup ?? "—"}</strong><span>{employment?.standardWeeklyHours ?? "—"} standard weekly hours</span></article>
               <article><small>Payroll periods</small><strong>{payrollRuns.length}</strong><span>Historical runs containing this employee</span></article>
             </div>
-            <form className="form-grid employee-profile-edit-form admin-pay-correction" onSubmit={savePayCorrection}>
-              <Field label="Pay basis"><select value={payBasis} onChange={(event) => setPayBasis(event.target.value as Exclude<PayBasis,"Not configured">)}><option>Hourly</option><option>Salary per pay period</option></select></Field>
-              <Field label="Rate"><input type="number" min="0.01" step="0.01" required value={payRate} onChange={(event) => setPayRate(event.target.value)}/></Field>
-              <Field label="Effective date"><input type="date" required value={payEffective} onChange={(event) => setPayEffective(event.target.value)}/></Field>
-              <Field label="Correction reason" className="field--full"><input required value={payReason} onChange={(event) => setPayReason(event.target.value)} placeholder="Example: Correct initial rate entered during setup"/></Field>
-              <div className="employee-profile-edit-actions field--full"><Button type="submit">Save pay correction</Button>{payNotice&&<StatusPill tone={payNotice.tone}>{payNotice.text}</StatusPill>}</div>
-            </form>
+            <CompensationCorrectionForm key={selected.id} userId={selected.id} compensation={compensation}/>
           </Section>
 
           <Section title="Recent time entries" description="Clock-in, clock-out, source, breaks, and calculated worked time.">
