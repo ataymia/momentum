@@ -8,6 +8,7 @@ const reports=readFileSync("components/pages/reports.tsx","utf8");
 const providers=readFileSync("components/momentum-app.tsx","utf8");
 const baseTools=readFileSync("components/pages/operations-tools-base.tsx","utf8");
 const kpi=readFileSync("components/performance/management-kpi-dashboard.tsx","utf8");
+const settings=readFileSync("components/pages/settings-v3.tsx","utf8");
 
 function pageAccessKeys(){
   const block=access.match(/const pageAccess:[\s\S]*?\n};/)?.[0]??"";
@@ -55,4 +56,12 @@ test("only the current freehand Quick Visit implementation remains wired",()=>{
 test("Products is no longer a hidden accessible page",()=>{
   assert.match(shell,/inventory: \[\{key:"inventory"[\s\S]*\{key:"products",label:"Products"\}\]/);
   assert.match(shell,/products:"inventory"/);
+});
+
+
+test("production integration status copy does not advertise already-resolved setup as missing",()=>{
+  assert.doesNotMatch(settings,/Integration remaining/);
+  assert.doesNotMatch(settings,/Rail not selected/);
+  assert.match(settings,/provider:"Cloudflare"[\s\S]*status:"Connected"/);
+  assert.match(settings,/provider:"Helcim"[\s\S]*Processor selected; live rail integration pending/);
 });
