@@ -208,3 +208,26 @@ test("Brand Ambassador assignment changes use updatedBy and updatedAt", () => {
   assert.equal(event.actorId, "admin-1");
   assert.equal(event.at, "2026-10-06T21:05:00.000Z");
 });
+
+
+test("explicit HCM audit records keep their human actor and original timestamp", () => {
+  const before = collectAuditableRecords("HCM", { audit: [] });
+  const after = collectAuditableRecords("HCM", {
+    audit:[{
+      id:"hcm-audit-1",
+      at:"2026-10-06T19:45:00.000Z",
+      actorId:"admin-1",
+      action:"Administrator compensation correction",
+      entityType:"CompensationRecord",
+      entityId:"comp-1",
+      before:"Hourly 18",
+      after:"Hourly 20",
+      reason:"Correct initial entry",
+    }],
+  });
+  const [event] = diffAuditableRecords(before, after, { id:"system", role:"System" }, "2026-10-06T23:10:00.000Z", [admin]);
+  assert.ok(event);
+  assert.equal(event.actorId, "admin-1");
+  assert.equal(event.at, "2026-10-06T19:45:00.000Z");
+  assert.equal(event.label, "Administrator compensation correction");
+});
