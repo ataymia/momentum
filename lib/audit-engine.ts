@@ -143,7 +143,7 @@ function relatedAccount(record: Record<string, unknown>, module: string, collect
 
 function relatedUser(record: Record<string, unknown>, module: string, collection: string, id: string) {
   if (module === "Workspace" && collection === "users") return id;
-  return text(record.userId) || text(record.employeeId) || text(record.requesterId) || text(record.ownerId) || text(record.linkedUserId);
+  return text(record.userId) || text(record.employeeId) || text(record.ambassadorId) || text(record.driverId) || text(record.requesterId) || text(record.ownerId) || text(record.linkedUserId);
 }
 
 function commerceRelatedAccount(state: Record<string, unknown>, collection: string, record: Record<string, unknown>) {
