@@ -72,7 +72,7 @@ export function normalizeAuditState(input: unknown): AuditState {
     seenFacts.add(fact);
     events.push(normalized);
   }
-  return { version: 1, events: events.slice(0, 10000) };
+  return { version: 1, events: events.sort((left, right) => right.at.localeCompare(left.at)).slice(0, 10000) };
 }
 
 function recordLabel(record: Record<string, unknown>, id: string) {
