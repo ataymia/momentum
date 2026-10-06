@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { AuditEvent } from "../lib/audit-engine";
 import { createDemoData } from "../lib/demo-data";
@@ -73,4 +74,11 @@ test("system generated audit events name Momentum instead of a generic team memb
   }, data);
   assert.match(copy.title, /^Momentum updated appointment/);
   assert.doesNotMatch(copy.title, /team member/i);
+});
+
+
+test("notification escalation copy never falls back to an anonymous team member", () => {
+  const source = readFileSync("lib/notification-context-v2.tsx", "utf8");
+  assert.doesNotMatch(source, /A team member/);
+  assert.match(source, /User record unavailable/);
 });
