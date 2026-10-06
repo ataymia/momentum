@@ -117,7 +117,7 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
   useRemoteStorageSync(FIELD_TRACKING_STORAGE_KEY, () => setState(readState()));
 
   const todayEntries = useMemo(() => currentUser ? data.timeEntries.filter((entry) => entry.userId === currentUser.id && entry.date === today()) : [], [currentUser, data.timeEntries]);
-  const hasActiveClock = todayEntries.some((entry) => !entry.clockOut);
+  const hasActiveClock = Boolean(currentUser && data.timeEntries.some((entry) => entry.userId === currentUser.id && !entry.clockOut));
   const clockedOutToday = todayEntries.some((entry) => Boolean(entry.clockOut)) && !hasActiveClock;
   const shouldTrack = Boolean(ready && currentUser && roleIsTracked(currentUser.role) && hasActiveClock);
   const currentSession = currentUser ? activeTrackingSession(state, currentUser.id) : undefined;
