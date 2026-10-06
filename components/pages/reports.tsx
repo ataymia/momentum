@@ -3,10 +3,14 @@
 import { CircleAlert, Database, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { canManageUser } from "../../lib/access";
+import { useCommerce } from "../../lib/commerce-context";
+import { useCrm } from "../../lib/crm-context";
+import { useDelivery } from "../../lib/delivery-context";
 import { arizonaDateKey } from "../../lib/date-time";
 import { useHcm } from "../../lib/hcm-context";
 import { nodeLotBalance, warehouseAvailable, warehouseNodeId } from "../../lib/inventory-ledger";
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
+import { useFieldTracking } from "../../lib/location-tracking-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import { ManagementKpiDashboard } from "../performance/management-kpi-dashboard";
 import { PageHeader, Section, StatusPill, formatMoney } from "../ui";
@@ -16,12 +20,16 @@ type ReportScope = "commercial" | "operations" | "people";
 export function ReportsPage() {
   const { scope: records, data, currentUser } = useWorkspace();
   const { hcm } = useHcm();
+  const { commerce } = useCommerce();
+  const { crm } = useCrm();
+  const { taskForOrder } = useDelivery();
+  const tracking = useFieldTracking();
   const { ledger } = useInventoryLedger();
   const [reportScope, setReportScope] = useState<ReportScope>("commercial");
   const today = arizonaDateKey();
 
   const paid = records.orders.filter((order) => order.paymentStatus === "Paid").reduce((sum, order) => sum + order.amount, 0);
-  const delivered = records.orders.filter((order) => ["Delivered", "Paid"].includes(order.status)).reduce((sum, order) => sum + order.cases, 0);
+  const delivered = records.orders.filter((order) => ["Delivered", "Paid"].includes(order.status) || taskForOrder(order.id)?.status === "Delivered").reduce((sum, order) => sum + order.cases, 0);
   const available = records.inventory.reduce((sum, lot) => sum + warehouseAvailable(ledger, lot.id), 0);
   const onHand = records.inventory.reduce((sum, lot) => sum + Math.max(0, nodeLotBalance(ledger, warehouseNodeId, lot.id)), 0);
   const reordered = records.accounts.filter((account) => account.reorderCount > 0).length;
@@ -61,11 +69,11 @@ export function ReportsPage() {
         ];
 
   return <div className="page page--reports">
-    <PageHeader eyebrow="Operational reporting" title="Reports" description="Counts and totals derived from defined source records within your permitted scope." actions={<StatusPill tone="gold">Sample data</StatusPill>}/>
+    <PageHeader eyebrow="Operational reporting" title="Reports" description="Counts and totals derived from current Momentum source records within your permitted scope." actions={<StatusPill tone="success">Source-linked</StatusPill>}/>
 
     <ManagementKpiDashboard/>
 
-    <div className="report-integrity-banner"><Database size={20}/><div><strong>No live source systems are connected.</strong><p>These totals describe the fictional browser records used for this product tour. Each displayed KPI names its source rule instead of presenting ambiguous progress.</p></div></div>
+    <div className="report-integrity-banner"><Database size={20}/><div><strong>KPI sources are connected to Momentum records.</strong><p>Current calculations read order/payment, CRM visit, appointment, inventory, employee and field-location records. Source volume in your scope: {records.orders.length} orders · {commerce.payments.filter((payment)=>payment.status==="Cleared").length} cleared payments · {crm.interactions.filter((interaction)=>interaction.type==="Visit"&&interaction.physicalVisit).length} physical visits · {records.appointments.length} appointments · {tracking.state.samples.length} saved field pings.</p></div></div>
 
     <div className="report-scope-tabs">{reportScopes.map((item) => <button key={item} className={effectiveScope === item ? "is-active" : ""} onClick={() => setReportScope(item)}>{item}</button>)}</div>
     <div className="report-metric-grid">{metrics.map(([label, value, detail]) => <article key={label}><div><span>{label}</span></div><strong>{value}</strong><p>{detail}</p></article>)}</div>
@@ -74,7 +82,7 @@ export function ReportsPage() {
       <div className="reality-flow">{[
         ["Orders", records.orders.length, "Entered"],
         ["Paid", records.orders.filter((item) => item.paymentStatus === "Paid").length, "Collected"],
-        ["Delivered", records.orders.filter((item) => ["Delivered", "Paid"].includes(item.status)).length, "Received"],
+        ["Delivered", records.orders.filter((item) => ["Delivered", "Paid"].includes(item.status) || taskForOrder(item.id)?.status === "Delivered").length, "Received"],
         ["Placed", records.placements.length, "Observed"],
         ["Reordered", reordered, "Bought again"],
       ].map(([title, value, detail], index) => <div key={title as string}><span>{index + 1}</span><div><small>{title as string}</small><strong>{value as number}</strong><p>{detail as string}</p></div></div>)}</div>
