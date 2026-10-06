@@ -52,3 +52,25 @@ test("created and deleted records stay readable when there are no useful field c
   assert.equal(created.detail, "A new appointment was added to Momentum.");
   assert.equal(deleted.detail, "The appointment was removed from Momentum.");
 });
+
+
+test("known employee actors resolve by directory identity even when the changed fields do not repeat the actor id", () => {
+  const copy = notificationCopy({
+    ...baseEvent,
+    changes: [{ field: "startTime", before: "13:00", after: "14:00" }],
+  }, data);
+  assert.match(copy.title, /^Director updated appointment/);
+  assert.doesNotMatch(copy.title, /team member/i);
+  assert.doesNotMatch(copy.title, /unknown user/i);
+});
+
+test("system generated audit events name Momentum instead of a generic team member", () => {
+  const copy = notificationCopy({
+    ...baseEvent,
+    actorId: "system",
+    actorRole: "Administrator",
+    changes: [{ field: "status", before: "Draft", after: "Approved" }],
+  }, data);
+  assert.match(copy.title, /^Momentum updated appointment/);
+  assert.doesNotMatch(copy.title, /team member/i);
+});
