@@ -159,3 +159,198 @@
   .security-checklist>div { grid-template-columns:36px minmax(0,1fr)!important; align-items:start!important; }
   .security-checklist .status-pill { grid-column:2; justify-self:start; min-width:0; }
 }
+
+
+/* Workforce Live: keep the roster aligned and move drill-down detail into a modal. */
+.page--workforce-live {
+  max-width:1360px;
+}
+.page--workforce-live>.panel {
+  margin-top:14px;
+}
+.workforce-live__metrics {
+  margin:0;
+  box-shadow:none;
+}
+.workforce-live__notice {
+  margin:14px;
+}
+.workforce-roster article {
+  border-bottom:1px solid var(--line);
+  grid-template-columns:44px minmax(0,1fr) max-content;
+  align-items:center;
+  gap:14px;
+  min-height:86px;
+  padding:15px 18px;
+  display:grid;
+}
+.workforce-roster article:last-child {
+  border-bottom:0;
+}
+.workforce-roster__icon {
+  width:38px;
+  height:38px;
+  color:var(--blue-600);
+  background:var(--blue-100);
+  border-radius:11px;
+  display:grid;
+  place-items:center;
+}
+.workforce-roster__copy {
+  min-width:0;
+}
+.workforce-roster__copy small {
+  color:var(--blue-600);
+  font-size:9px;
+  font-weight:760;
+}
+.workforce-roster__copy strong {
+  color:var(--navy-950);
+  margin-top:3px;
+  font-size:12px;
+  display:block;
+}
+.workforce-roster__copy p,
+.workforce-roster__copy em {
+  color:var(--muted);
+  margin:4px 0 0;
+  font-size:10px;
+  line-height:1.45;
+  font-style:normal;
+  display:block;
+}
+.workforce-roster__actions {
+  min-width:118px;
+  justify-items:end;
+  gap:8px;
+  display:grid;
+}
+.workforce-detail {
+  gap:16px;
+  display:grid;
+}
+.workforce-detail__facts {
+  margin:0;
+  grid-template-columns:repeat(auto-fit,minmax(135px,1fr));
+  box-shadow:none;
+}
+.workforce-detail__list article,
+.workforce-pings article {
+  border-bottom:1px solid var(--line);
+  grid-template-columns:36px minmax(0,1fr) auto;
+  align-items:center;
+  gap:11px;
+  padding:12px 14px;
+  display:grid;
+}
+.workforce-detail__list article:last-child,
+.workforce-pings article:last-child {
+  border-bottom:0;
+}
+.workforce-detail__list article>span {
+  width:34px;
+  height:34px;
+  color:var(--blue-600);
+  background:var(--blue-100);
+  border-radius:9px;
+  display:grid;
+  place-items:center;
+}
+.workforce-detail__list strong,
+.workforce-pings strong {
+  color:var(--navy-950);
+  font-size:11px;
+}
+.workforce-detail__list p,
+.workforce-pings p {
+  color:var(--muted);
+  margin:3px 0 0;
+  font-size:9px;
+  line-height:1.45;
+}
+.workforce-map {
+  margin:14px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  overflow:hidden;
+  background:#eef2f7;
+}
+.workforce-map iframe {
+  border:0;
+  width:100%;
+  height:300px;
+  display:block;
+}
+.workforce-map__caption {
+  background:#fff;
+  border-top:1px solid var(--line);
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  display:flex;
+}
+.workforce-map__caption strong {
+  color:var(--navy-950);
+  font-size:11px;
+}
+.workforce-map__caption p {
+  color:var(--muted);
+  margin:3px 0 0;
+  font-size:9px;
+}
+.workforce-pings {
+  border-top:1px solid var(--line);
+}
+.workforce-pings__number {
+  width:30px;
+  height:30px;
+  color:#fff;
+  background:var(--navy-800);
+  border-radius:999px;
+  place-items:center;
+  font-size:9px;
+  font-weight:800;
+  display:grid;
+}
+
+@media (max-width:760px) {
+  .workforce-live__metrics {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .workforce-roster article {
+    grid-template-columns:38px minmax(0,1fr);
+  }
+  .workforce-roster__actions {
+    grid-column:2;
+    grid-template-columns:auto auto;
+    justify-content:start;
+    justify-items:start;
+    min-width:0;
+  }
+  .workforce-map iframe {
+    height:240px;
+  }
+  .workforce-map__caption {
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
+
+@media (max-width:520px) {
+  .workforce-live__metrics {
+    grid-template-columns:1fr;
+  }
+  .workforce-detail__facts {
+    grid-template-columns:1fr 1fr;
+  }
+  .workforce-detail__list article,
+  .workforce-pings article {
+    grid-template-columns:34px minmax(0,1fr);
+  }
+  .workforce-detail__list .status-pill,
+  .workforce-pings .button {
+    grid-column:2;
+    justify-self:start;
+  }
+}
