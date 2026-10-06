@@ -4,8 +4,9 @@ import type { Role } from "./types";
 export const FIELD_TRACKING_STORAGE_KEY = "momentum-field-tracking-v1";
 export const DEFAULT_GEOFENCE_RADIUS_MILES = 2;
 export const MAX_VERIFICATION_ACCURACY_METERS = 500;
-export const ROUTE_SAMPLE_MIN_SECONDS = 60;
-export const ROUTE_SAMPLE_MIN_MILES = 0.1;
+export const ROUTE_PING_INTERVAL_MINUTES = 15;
+export const ROUTE_PING_INTERVAL_MS = ROUTE_PING_INTERVAL_MINUTES * 60_000;
+export const ROUTE_SAMPLE_MIN_SECONDS = ROUTE_PING_INTERVAL_MINUTES * 60;
 export const DEPARTURE_CONFIRM_SECONDS = 30;
 export const MAX_ROUTE_SAMPLES = 10000;
 
@@ -150,11 +151,11 @@ export function geofenceDecision(profile: GeofenceProfile | undefined, point: Ge
   return { configured: true, accuracyOk: true, within, allowed: within, radiusMiles: profile.radiusMiles, distanceMiles: distance, reason: within ? "Inside radius" : "Outside radius" };
 }
 
+/** Regular route history is deliberately sampled by time, not by movement, to bound data volume. */
 export function shouldPersistRouteSample(previous: RouteSample | undefined, next: GeoPoint) {
   if (!previous) return true;
   const seconds = Math.max(0, (new Date(next.at).getTime() - new Date(previous.at).getTime()) / 1000);
-  if (seconds >= ROUTE_SAMPLE_MIN_SECONDS) return true;
-  return distanceMiles(previous, next) >= ROUTE_SAMPLE_MIN_MILES;
+  return seconds >= ROUTE_SAMPLE_MIN_SECONDS;
 }
 
 export function departureConfirmed(firstOutsideAt: string | undefined, currentAt: string) {

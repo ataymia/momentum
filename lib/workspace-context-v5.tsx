@@ -430,6 +430,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const toggleClock = useCallback(() => {
     if (!currentUser || currentUser.role === "Customer") return;
+    const punchAt = nowStamp();
+    const punchTime = localTime();
     setData((current) => {
       const active = current.timeEntries.find((item) => item.userId === currentUser.id && !item.clockOut);
       if (active?.mealStart && !active.mealEnd) return current;
@@ -439,8 +441,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const hasTimecard = current.timecards.some((card) => card.userId === currentUser.id && card.weekStart === weekStart && card.weekEnd === weekEnd);
       const timecards = hasTimecard ? current.timecards : [{ id: `tc-${currentUser.id}-${weekStart}`, userId: currentUser.id, weekStart, weekEnd, status: "Open" as const, attested: false }, ...current.timecards];
       const timeEntries = active
-        ? current.timeEntries.map((item) => item.id === active.id ? { ...item, clockOut: localTime() } : item)
-        : [{ id: `te-${Date.now()}`, userId: currentUser.id, date, clockIn: localTime(), breakMinutes: 0, source: "Demo desktop" as const }, ...current.timeEntries];
+        ? current.timeEntries.map((item) => item.id === active.id ? { ...item, clockOut: punchTime, clockOutAt: punchAt } : item)
+        : [{ id: `te-${Date.now()}`, userId: currentUser.id, date, clockIn: punchTime, clockInAt: punchAt, breakMinutes: 0, source: "Web clock" as const }, ...current.timeEntries];
       return { ...current, timeEntries, timecards };
     });
   }, [currentUser]);

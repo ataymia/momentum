@@ -392,9 +392,9 @@ service cloud.firestore {
     // momentum-field-tracking-v1
     match /{uid}/fieldTracking/{field} {
       allow get, list: if field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']) && manages(uid)) || false));
       allow write: if field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((!(field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']) && manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-audit-v1

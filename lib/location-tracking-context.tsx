@@ -7,6 +7,7 @@ import {
   FIELD_TRACKING_STORAGE_KEY,
   MAX_ROUTE_SAMPLES,
   MAX_VERIFICATION_ACCURACY_METERS,
+  ROUTE_PING_INTERVAL_MS,
   AppointmentLocationEvent,
   AppointmentLocationEventType,
   FieldTrackingState,
@@ -116,7 +117,7 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
   useRemoteStorageSync(FIELD_TRACKING_STORAGE_KEY, () => setState(readState()));
 
   const todayEntries = useMemo(() => currentUser ? data.timeEntries.filter((entry) => entry.userId === currentUser.id && entry.date === today()) : [], [currentUser, data.timeEntries]);
-  const hasActiveClock = todayEntries.some((entry) => !entry.clockOut);
+  const hasActiveClock = Boolean(currentUser && data.timeEntries.some((entry) => entry.userId === currentUser.id && !entry.clockOut));
   const clockedOutToday = todayEntries.some((entry) => Boolean(entry.clockOut)) && !hasActiveClock;
   const shouldTrack = Boolean(ready && currentUser && roleIsTracked(currentUser.role) && hasActiveClock);
   const currentSession = currentUser ? activeTrackingSession(state, currentUser.id) : undefined;
@@ -137,11 +138,8 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const visibleUserIds = useMemo(() => {
-    if (!currentUser) return new Set<string>();
-    if (currentUser.role === "Administrator") return new Set(data.users.filter((user) => user.role === "Sales Representative").map((user) => user.id));
-    if (currentUser.role === "Sales Manager") return new Set(data.users.filter((user) => user.role === "Sales Representative" && (user.managerId === currentUser.id || (currentUser.managedTeams ?? []).includes(user.team))).map((user) => user.id));
-    if (currentUser.role === "Sales Representative") return new Set([currentUser.id]);
-    return new Set<string>();
+    if (!currentUser || currentUser.role !== "Administrator") return new Set<string>();
+    return new Set(data.users.filter((user) => roleIsTracked(user.role)).map((user) => user.id));
   }, [currentUser, data.users]);
 
   const canViewUserTracking = (userId: string) => visibleUserIds.has(userId);
@@ -275,6 +273,28 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
       watchRef.current = null;
     };
   }, [appendRouteSample, closeActiveSessions, currentUser, data.appointments, recordAppointmentEvent, shouldTrack]);
+
+  useEffect(() => {
+    if (!shouldTrack || !currentUser || typeof window === "undefined") return;
+    const userId = currentUser.id;
+    let cancelled = false;
+    const captureScheduledPing = async () => {
+      try {
+        const point = await requestBrowserPoint();
+        if (cancelled) return;
+        setPermission("Active");
+        appendRouteSample(userId, point, "Route");
+      } catch (error) {
+        if (cancelled) return;
+        setPermission(error instanceof Error && error.message.includes("permission") ? "Denied" : "Unavailable");
+      }
+    };
+    const intervalId = window.setInterval(() => void captureScheduledPing(), ROUTE_PING_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [appendRouteSample, currentUser, shouldTrack]);
 
   const transitionAppointment = async (appointmentId: string): Promise<ActionResult> => {
     const appointment = data.appointments.find((item) => item.id === appointmentId);

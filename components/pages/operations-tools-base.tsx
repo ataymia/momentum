@@ -4,6 +4,8 @@ import { FormEvent, useState } from "react";
 import { canClaimUnassignedProspect } from "../../lib/access";
 import { useCrm } from "../../lib/crm-context";
 import { mapsIntegrationStatus, projectAccounts } from "../../lib/maps-integration";
+import { useFieldTracking } from "../../lib/location-tracking-context";
+import { ROUTE_PING_INTERVAL_MINUTES, roleIsTracked } from "../../lib/location-tracking-engine";
 import { GOLDEN_EAGLE_SKUS, PRODUCT_CATALOG_INVENTORY_POLICY } from "../../lib/product-catalog";
 import { prospectRatingColor, weeklySalesManagementSummary } from "../../lib/sales-field-engine";
 import { useTrainingLibrary } from "../../lib/training-library-context";
@@ -31,6 +33,27 @@ export function AccountSetupPage(){
 
 export function ProductsPage(){return <div className="page"><PageHeader eyebrow="Product master" title="Golden Eagle SKUs" description="Case-level wholesaler catalog. Case barcode fields are ready for verified barcode values. Can barcodes are intentionally out of scope."/><Section title="Active catalog" description={PRODUCT_CATALOG_INVENTORY_POLICY}><div className="company-request-list">{GOLDEN_EAGLE_SKUS.map(s=><article key={s.id}><span><PackageSearch size={17}/></span><div><strong>{s.description}</strong><p>{s.casePack} cans / case · Case barcode: {s.caseBarcode??"Pending verified barcode"}</p></div><StatusPill tone={s.caseBarcode?"success":"warning"}>{s.caseBarcode?"Scanner ready":"Barcode pending"}</StatusPill></article>)}</div></Section></div>}
 
-export function TimekeepingPage(){const{data,currentUser,toggleClock,startMeal,endMeal}=useWorkspace();if(!currentUser)return null;const open=data.timeEntries.find(e=>e.userId===currentUser.id&&!e.clockOut);const entries=data.timeEntries.filter(e=>e.userId===currentUser.id).sort((a,b)=>b.date.localeCompare(a.date));const hours=entries.slice(0,7).reduce((s,e)=>s+hoursBetween(e.clockIn,e.clockOut,e.breakMinutes),0);return <div className="page"><PageHeader eyebrow="Timekeeping" title="Clock In & Time" description="Dedicated self-service timekeeping. One tap records the current Arizona time." actions={<Button variant={open?"secondary":"gold"} icon={<Clock3 size={17}/>} onClick={()=>toggleClock()}>{open?"Clock out":"Clock in"}</Button>}/><Section title="Current shift"><div className="company-rule-facts"><div><span>Status</span><strong>{open?`Clocked in · ${open.clockIn}`:"Off clock"}</strong></div><div><span>Recent recorded hours</span><strong>{hours.toFixed(2)}</strong></div></div>{open&&<div className="account-detail__actions">{!open.mealStart&&<Button size="sm" variant="secondary" onClick={startMeal}>Start meal</Button>}{open.mealStart&&!open.mealEnd&&<Button size="sm" variant="secondary" onClick={endMeal}>End meal</Button>}</div>}</Section><Section title="Recent time entries"><div className="company-request-list">{entries.slice(0,10).map(e=><article key={e.id}><span><Clock3 size={16}/></span><div><strong>{e.date}</strong><p>{e.clockIn} → {e.clockOut??"Open"} · {e.breakMinutes} break min</p></div></article>)}</div></Section></div>}
+export function TimekeepingPage(){
+  const{data,currentUser,toggleClock,startMeal,endMeal}=useWorkspace();
+  const tracking=useFieldTracking();
+  if(!currentUser)return null;
+  const open=data.timeEntries.find((entry)=>entry.userId===currentUser.id&&!entry.clockOut);
+  const entries=data.timeEntries.filter((entry)=>entry.userId===currentUser.id).sort((a,b)=>`${b.date}T${b.clockIn}`.localeCompare(`${a.date}T${a.clockIn}`));
+  const hours=entries.slice(0,7).reduce((sum,entry)=>sum+hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes),0);
+  const tracked=roleIsTracked(currentUser.role);
+  return <div className="page">
+    <PageHeader eyebrow="Timekeeping" title="Clock In & Time" description="Self-service timekeeping. Clock punches use Arizona time and sync into the same records used for timecards." actions={<Button variant={open?"secondary":"gold"} icon={<Clock3 size={17}/>} onClick={()=>toggleClock()}>{open?"Clock out":"Clock in"}</Button>}/>
+    <Section title="Current shift">
+      <div className="company-rule-facts">
+        <div><span>Status</span><strong>{open?`Clocked in · ${open.clockIn}`:"Off clock"}</strong><small>{open?.clockInAt?`Punch recorded ${new Date(open.clockInAt).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}`:""}</small></div>
+        <div><span>Recent recorded hours</span><strong>{hours.toFixed(2)}</strong></div>
+        {tracked&&<div><span>Field location</span><strong>{open?tracking.permission:"Stopped"}</strong><small>{open?`Route evidence is sampled about every ${ROUTE_PING_INTERVAL_MINUTES} minutes`:"No off-duty route collection"}</small></div>}
+      </div>
+      {tracked&&<div className="form-callout"><MapPin size={17}/><p>{open?"While you are clocked in, this device may request location permission and record work-route pings for Administrator review. If the browser suspends location in the background, the system records a gap instead of guessing your location.":"Location route tracking is stopped because you are not clocked in."}</p></div>}
+      {open&&<div className="account-detail__actions">{!open.mealStart&&<Button size="sm" variant="secondary" onClick={startMeal}>Start meal</Button>}{open.mealStart&&!open.mealEnd&&<Button size="sm" variant="secondary" onClick={endMeal}>End meal</Button>}</div>}
+    </Section>
+    <Section title="Recent time entries"><div className="company-request-list">{entries.slice(0,10).map((entry)=><article key={entry.id}><span><Clock3 size={16}/></span><div><strong>{entry.date}</strong><p>{entry.clockIn} → {entry.clockOut??"Open"} · {entry.breakMinutes} break min · {entry.source}</p></div></article>)}</div></Section>
+  </div>;
+}
 
 export function MaterialsPage(){const{hcm}=useHcm();const library=useTrainingLibrary();return <div className="page"><PageHeader eyebrow="Resources" title="Materials & Resources" description="Company training, approved resources, and operating references accessible within your role."/><Section title="Training materials"><div className="company-request-list">{library.state.materials.filter(m=>m.active).map(m=>{const course=hcm.courses.find(c=>c.id===m.courseId);return <article key={m.id}><span><BookOpen size={16}/></span><div><strong>{m.title}</strong><p>{course?.title??"Company resource"} · {m.kind}</p>{m.url&&<a href={m.url} target="_blank" rel="noreferrer">Open resource</a>}</div></article>})}{!library.state.materials.some(m=>m.active)&&<div className="review-empty"><BookOpen size={24}/><p>No published resources yet.</p></div>}</div></Section></div>}
