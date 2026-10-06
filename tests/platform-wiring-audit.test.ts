@@ -19,7 +19,7 @@ function renderedKeys(){
 }
 function reachableKeys(){
   const beforeNavButton=shell.split("function NavButton")[0]??shell;
-  return new Set([...beforeNavButton.matchAll(/key:"([A-Za-z][A-Za-z0-9]*)"/g)].map((match)=>match[1]));
+  return new Set([...beforeNavButton.matchAll(/key:\s*"([A-Za-z][A-Za-z0-9]*)"/g)].map((match)=>match[1]));
 }
 
 test("every role-accessible page has a renderer",()=>{
