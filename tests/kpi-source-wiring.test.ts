@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { calculateManagementKpi } from "../lib/management-kpi";
-import type { CommerceState } from "../lib/commerce-engine";
-import type { CrmState } from "../lib/crm-engine";
+import { MANAGEMENT_KPI_DEFINITIONS, calculateManagementKpi } from "../lib/management-kpi";
+import { createCommerceSeed, type CommerceState } from "../lib/commerce-engine";
+import { createCrmSeed, type CrmState } from "../lib/crm-engine";
 import { createDemoData } from "../lib/demo-data";
 
 function sourceFixture(){
@@ -69,4 +69,19 @@ test("KPI Center counts physical Quick Visits from CRM without requiring an acco
   const result=calculateManagementKpi("physical_visits",data,{start:"2026-10-05",end:"2026-10-05"},[rep.id],undefined,commerce,crm);
   assert.equal(result.value,1);
   assert.deepEqual(result.sourceRecordIds,["visit-live"]);
+});
+
+
+test("every KPI definition resolves to a finite source-linked result",()=>{
+  const data=createDemoData();
+  const commerce=createCommerceSeed(data);
+  const crm=createCrmSeed(data);
+  const period={start:"2026-01-01",end:"2026-12-31"};
+  for(const definition of MANAGEMENT_KPI_DEFINITIONS){
+    const result=calculateManagementKpi(definition.key,data,period,undefined,undefined,commerce,crm);
+    assert.equal(Number.isFinite(result.value),true,definition.key);
+    assert.equal(Array.isArray(result.sourceRecordIds),true,definition.key);
+    assert.ok(definition.source.trim().length>0,definition.key);
+    assert.ok(definition.formula.trim().length>0,definition.key);
+  }
 });
