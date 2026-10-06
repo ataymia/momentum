@@ -1,6 +1,6 @@
 "use client";
 import { AlertCircle, Box, Building2, CheckCircle2, ChevronRight, CircleDollarSign, Copy, FileText, Mail, MapPin, PackageSearch, Pencil, Plus, Store, Trash2, Truck, UserRound, XCircle } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { canAdvanceFulfillment, canCreateOrder, isCustomer } from "../../lib/access";
 import { useCommerce } from "../../lib/commerce-context";
 import { useDelivery } from "../../lib/delivery-context";
@@ -28,7 +28,7 @@ export function OrdersPage(){
  const{data,scope,currentUser,createOrder,editOrder,cancelOrder,navigate}=useWorkspace();
  const{ledger,advanceOrderFulfillment,releaseOrderReservationsForEdit}=useInventoryLedger();
  const{commerce}=useCommerce();
- const{state:deliveryState,taskForOrder}=useDelivery();
+ const{taskForOrder}=useDelivery();
  const firebase=useFirebaseSessionOptional();
  const focusId=typeof window!=="undefined"?sessionStorage.getItem("momentum-focus-record"):null;
  const editFocusId=typeof window!=="undefined"?sessionStorage.getItem("momentum-edit-order"):null;
@@ -48,7 +48,8 @@ export function OrdersPage(){
  const customerMode=isCustomer(currentUser);const canFulfill=canAdvanceFulfillment(currentUser);
  const displayStatus=(order:Order):OrderStatus=>taskForOrder(order.id)?.status==="Delivered"&&order.status!=="Paid"?"Delivered":order.status;
 
- const orders=useMemo(()=>{const q=query.trim().toLowerCase();return scope.orders.filter((o)=>{const a=scope.accounts.find((x)=>x.id===o.accountId);return!q||`${o.number} ${a?.name??""} ${orderLinesFor(o).map((l)=>l.product).join(" ")} ${displayStatus(o)}`.toLowerCase().includes(q)})},[query,scope.orders,scope.accounts,deliveryState.tasks]);
+ const q=query.trim().toLowerCase();
+ const orders=scope.orders.filter((o)=>{const a=scope.accounts.find((x)=>x.id===o.accountId);return!q||`${o.number} ${a?.name??""} ${orderLinesFor(o).map((l)=>l.product).join(" ")} ${displayStatus(o)}`.toLowerCase().includes(q)});
  const selected=scope.orders.find((o)=>o.id===selectedId)??orders[0];
  const editingOrder=editingId?scope.orders.find((o)=>o.id===editingId):undefined;
  const selectedLines=selected?orderLinesFor(selected):[];
