@@ -363,7 +363,7 @@ class FirestoreBackend{
       if(blocked)return{ok:false,message:blocked};
       if(!this.flushing&&this.dirty.has(key))await this.flush([key]);
       const journal=local()?.getItem(pendingJournalKey(this.scope.uid,key));
-      if(!this.flushing&&!this.dirty.has(key)&&!journal)return{ok:true};
+      if(!this.dirty.has(key)&&!journal)return{ok:true};
       await new Promise((resolve)=>setTimeout(resolve,75));
     }
     return{ok:false,message:status.lastError??"Momentum cloud did not confirm this change before the safety timeout."};
@@ -378,6 +378,7 @@ class FirestoreBackend{
     const base=existing?(existing.legacy?previous:existing.base):previous;
     this.cache.set(key,value);
     local()?.setItem(journalKey,encodePendingJournal(base,value));
+    this.dirty.delete(key);
     this.dirty.add(key);
     setStatus({pending:this.dirty.size});
     this.scheduleFlush(350);
