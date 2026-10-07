@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { canCreateOrder } from "../lib/access";
+import { processedForDelivery } from "../lib/delivery-engine";
 import { normalizeCommercialState } from "../lib/commercial-state";
 import { mergeDocument } from "../lib/persistence";
 import { reconcileApprovals, reconcileOrders } from "../lib/order-approval-engine";
@@ -162,4 +163,20 @@ test("all intended order-entry roles retain order creation access",()=>{
   const make=(role:WorkspaceUser["role"]):WorkspaceUser=>({...rep,id:`user-${role}`,role,title:role});
   for(const role of ["Administrator","Sales Manager","Sales Representative","Customer"] as const)assert.equal(canCreateOrder(make(role)),true,role);
   for(const role of ["Operations","Delivery Driver","Warehouse","Brand Ambassador"] as const)assert.equal(canCreateOrder(make(role)),false,role);
+});
+
+
+test("an approved approval becomes an actual delivery-eligible order status",()=>{
+  const approved={...pending,status:"Approved" as const,decidedBy:admin.id,decidedAt:"2026-10-07T20:00:00.000Z"};
+  const repaired=reconcileOrders([order("Awaiting approval")],[],[approved])[0];
+  assert.equal(repaired.status,"Approved");
+  assert.equal(processedForDelivery(repaired),true);
+});
+
+test("Administrator workspace repairs approval/order drift into the persisted commercial order source",()=>{
+  const workspace=readFileSync("lib/workspace-context.tsx","utf8");
+  assert.match(workspace,/The order document, not the approval document, is the cross-role delivery source of truth/);
+  assert.match(workspace,/currentUser\?\.role !== "Administrator"/);
+  assert.match(workspace,/reconcileOrders\(commercial\.orders, \[\], approvals\)/);
+  assert.match(workspace,/return changed \? \{ \.\.\.state, orders \} : state/);
 });
