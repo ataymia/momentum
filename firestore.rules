@@ -10,7 +10,8 @@ rules_version = '2';
 //
 //   domains/{domainId}/fields/{field}        shared array field  -> { items: [...] }
 //   domains/{domainId}/fields/_root          non-array remainder -> { data: {...} }
-//   userDomains/{uid}/{domainId}/{field}     per-user shard      -> { items: [...] }
+//   userDomains/{uid}/{domainId}/{field}     per-user shard or chunk manifest
+//   userDomains/{uid}/{domainId}/{field}__chunk_000000  bounded chunk -> { items: [...] }
 //
 // Identity is held separately:
 //
@@ -399,10 +400,78 @@ service cloud.firestore {
 
     // momentum-audit-v1
     match /{uid}/audit/{field} {
-      allow get, list: if field in ['events']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['events']) && manages(uid)) || false));
-      allow write: if field in ['events']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((!(field in ['events']) && manages(uid) && activeEmployee()) || false)));
+      allow get, list: if (field in ['events'] || field.matches('^events__chunk_[0-9]{6}
+
+    // momentum-notification-rules-v1
+    match /{uid}/notificationRules/{field} {
+      allow get, list: if field in ['preferences']
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+      allow write: if field in ['preferences']
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
+    }
+    }
+
+    // Anything not matched above is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+))
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!((field in ['events'] || field.matches('^events__chunk_[0-9]{6}
+
+    // momentum-notification-rules-v1
+    match /{uid}/notificationRules/{field} {
+      allow get, list: if field in ['preferences']
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+      allow write: if field in ['preferences']
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
+    }
+    }
+
+    // Anything not matched above is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+))) && manages(uid)) || false));
+      allow write: if (field in ['events'] || field.matches('^events__chunk_[0-9]{6}
+
+    // momentum-notification-rules-v1
+    match /{uid}/notificationRules/{field} {
+      allow get, list: if field in ['preferences']
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+      allow write: if field in ['preferences']
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
+    }
+    }
+
+    // Anything not matched above is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+))
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((!((field in ['events'] || field.matches('^events__chunk_[0-9]{6}
+
+    // momentum-notification-rules-v1
+    match /{uid}/notificationRules/{field} {
+      allow get, list: if field in ['preferences']
+        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+      allow write: if field in ['preferences']
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
+    }
+    }
+
+    // Anything not matched above is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+))) && manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-notification-rules-v1
