@@ -809,3 +809,24 @@
     line-height:1.4;
   }
 }
+
+
+.delivery-driver-meta {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:7px;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.4;
+}
+.delivery-driver-meta i {
+  color:var(--subtle);
+  font-style:normal;
+}
+@media (max-width:760px) {
+  .delivery-driver-meta {
+    font-size:12px;
+    gap:8px;
+  }
+}
