@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { computedInvoiceStatus, invoiceBalance, invoiceCreditAmount, invoicePaidAmount } from "../../lib/commerce-engine";
 import { useCommerce } from "../../lib/commerce-context";
+import { useDelivery } from "../../lib/delivery-context";
 import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
 import { orderLinesFor } from "../../lib/order-lines";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -51,6 +52,7 @@ type InvoicePrintCenterProps={allowedOrderIds?:string[];title?:string;descriptio
 export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",description="Print a single invoice or select multiple invoices for a delivery run. Browser print also supports Save as PDF."}:InvoicePrintCenterProps={}) {
   const { data, scope } = useWorkspace();
   const { commerce } = useCommerce();
+  const { taskForOrder } = useDelivery();
   const orderIds = useMemo(() => {const scoped=new Set(scope.orders.map((order)=>order.id));return new Set(allowedOrderIds?allowedOrderIds.filter((id)=>scoped.has(id)):[...scoped]);}, [scope.orders,allowedOrderIds]);
   const invoices = useMemo(() => commerce.invoices.filter((invoice) => orderIds.has(invoice.orderId)).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt)), [commerce.invoices, orderIds]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -97,6 +99,8 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
     const location = data.accounts.find((item) => item.id === invoice.accountId);
     const customer = location ? customerForLocation(data, location) : undefined;
     const lines = order ? orderLinesFor(order) : [];
+    const deliveryTask = order ? taskForOrder(order.id) : undefined;
+    const deliverySignature = deliveryTask?.signature;
     const paid = invoicePaidAmount(commerce, invoice.id);
     const credits = invoiceCreditAmount(commerce, invoice.id);
     const balance = invoiceBalance(commerce, invoice);
@@ -155,7 +159,9 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
       </section>
 
       <section className="invoice-sheet__receipt">
-        <div><span>Customer signature</span><i /></div><div><span>Printed name</span><i /></div><div><span>Date / time</span><i /></div>
+        <div className={deliverySignature ? "invoice-sheet__signature-cell is-signed" : "invoice-sheet__signature-cell"}><span>Customer signature</span>{deliverySignature ? <svg viewBox="0 0 1000 300" aria-label="Customer delivery signature">{deliverySignature.strokes.map((stroke, index) => <polyline key={index} points={stroke.map(([x,y]) => `${x},${y}`).join(" ")} />)}</svg> : <i />}</div>
+        <div><span>Printed name</span>{deliverySignature?.recipientName ? <strong>{deliverySignature.recipientName}</strong> : <i />}</div>
+        <div><span>Date / time</span>{deliverySignature ? <strong>{formatDate(deliverySignature.signedAt, { month: "2-digit", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit" })}</strong> : <i />}</div>
         <div><span>Payment received</span><i /></div><div><span>Method</span><i /></div><div><span>Reference / check no.</span><i /></div>
       </section>
 
