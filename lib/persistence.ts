@@ -3,7 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PLATFORM_META_DOCUMENT, type PersistenceScope } from "./firebase-access";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite } from "./firebase-firestore-rest";
-import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, shardState, type DomainSpec } from "./firestore-domains";
+import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, resolveUserPhysicalField, shardState, type DomainSpec } from "./firestore-domains";
 
 /**
  * Momentum storage boundary.
@@ -220,6 +220,10 @@ function mergeStoredState(spec:DomainSpec,baseRaw:string|null,localRaw:string,re
 }
 
 const emptyDocument=(doc:Record<string,unknown>)=>(Array.isArray(doc.items)&&doc.items.length===0)||(isRecord(doc.data)&&Object.keys(doc.data).length===0)||(doc.shardManifestVersion===1&&Array.isArray(doc.shards)&&doc.shards.length===0&&doc.itemCount===0);
+const isBoundedUserChunkPath=(spec:DomainSpec,path:string)=>{
+  const parsed=parseDocPath(path);if(!parsed?.uid||parsed.domainId!==spec.id)return false;
+  return resolveUserPhysicalField(spec,parsed.field)?.isChunk===true;
+};
 
 class FirestoreBackend{
   private cache=new Map<string,string|null>();
@@ -550,9 +554,10 @@ class FirestoreBackend{
     for(const snapshot of snapshots){
       const base=this.docs.get(snapshot.path);
       const localDoc=nextDocs.get(snapshot.path);
-      const merged=localDoc?(documentReplacesOnWrite(snapshot.path)?localDoc:mergeDocument(base?.data,localDoc,snapshot.data,snapshot.path)):snapshot.data;
-      this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
       const key=pathKey.get(snapshot.path);
+      const chunkConflict=key?isBoundedUserChunkPath(DOMAIN_BY_KEY.get(key)!,snapshot.path):false;
+      const merged=localDoc?(chunkConflict?mergeDocument(base?.data,localDoc,snapshot.data,snapshot.path):documentReplacesOnWrite(snapshot.path)?localDoc:mergeDocument(base?.data,localDoc,snapshot.data,snapshot.path)):snapshot.data;
+      this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
       if(!key)continue;
       const map=overrides.get(key)??new Map<string,Record<string,unknown>|null>();
       map.set(snapshot.path,merged);overrides.set(key,map);
@@ -588,7 +593,7 @@ class FirestoreBackend{
         let override:Record<string,unknown>|null=snapshot.data;
         if(this.dirty.has(spec.key)){
           const raw=this.cache.get(spec.key);
-          if(raw!=null){try{const localShard=shardState(spec,JSON.parse(raw)).get(snapshot.path);if(localShard)override=documentReplacesOnWrite(snapshot.path)?localShard:mergeDocument(base?.data,localShard,snapshot.data,snapshot.path);}catch{/* keep remote */}}
+          if(raw!=null){try{const localShard=shardState(spec,JSON.parse(raw)).get(snapshot.path);if(localShard)override=isBoundedUserChunkPath(spec,snapshot.path)?mergeDocument(base?.data,localShard,snapshot.data,snapshot.path):documentReplacesOnWrite(snapshot.path)?localShard:mergeDocument(base?.data,localShard,snapshot.data,snapshot.path);}catch{/* keep remote */}}
         }
         this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
         const map=touched.get(spec.key)??new Map<string,Record<string,unknown>|null>();

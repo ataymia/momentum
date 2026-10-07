@@ -186,7 +186,19 @@ export function domainDocuments(spec:DomainSpec,scope:PersistenceScope):DomainDo
 
 export function userShardWritable(_spec:DomainSpec,fieldSpec:DomainFieldSpec,uid:string,scope:PersistenceScope){if(scope.role==="Customer")return false;if(scope.role==="Administrator")return true;if(uid===scope.uid)return fieldSpec.selfWrite!==false;if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative"&&scope.supervisedBrandAmbassadorIds.has(uid))return scope.accountState==="Active";if(scope.managedUserIds.has(uid))return fieldSpec.managerWrite!==false&&scope.accountState==="Active";return false;}
 export function documentWritable(path:string,scope:PersistenceScope){const parsed=parseDocPath(path);if(!parsed)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)return false;if(parsed.uid){const resolved=resolveUserPhysicalField(spec,parsed.field);return Boolean(resolved?.fieldSpec.userIdField)&&userShardWritable(spec,resolved!.fieldSpec,parsed.uid,scope);}const fieldSpec=parsed.field===ROOT_FIELD?undefined:spec.fields[parsed.field];return roleAllows(fieldSpec?.write??spec.write,scope);}
-export function documentReplacesOnWrite(path:string){const parsed=parseDocPath(path);if(!parsed||parsed.uid||parsed.field===ROOT_FIELD)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);return spec?.fields[parsed.field]?.replaceOnWrite===true;}
+export function documentReplacesOnWrite(path:string){
+  const parsed=parseDocPath(path);if(!parsed||parsed.field===ROOT_FIELD)return false;
+  const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)return false;
+  if(parsed.uid){
+    const resolved=resolveUserPhysicalField(spec,parsed.field);
+    // Chunk documents are complete bounded snapshots of their logical slice. Merging them with their prior
+    // physical contents can union old and new chunk membership and silently grow a "350 KB" chunk beyond
+    // Firestore's 1 MiB ceiling. Replace only the physical chunk. Logical audit history is merged before
+    // rechunking by persistence.ts, so this does not discard legitimate events.
+    return Boolean(resolved?.isChunk&&resolved.fieldSpec.chunkBytes);
+  }
+  return spec.fields[parsed.field]?.replaceOnWrite===true;
+}
 const isRecord=(value:unknown):value is Record<string,unknown>=>Boolean(value&&typeof value==="object"&&!Array.isArray(value));
 export function shardState(spec:DomainSpec,state:unknown):Map<string,Record<string,unknown>>{
   const output=new Map<string,Record<string,unknown>>();if(!isRecord(state))return output;const root:Record<string,unknown>={};

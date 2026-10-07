@@ -5,6 +5,7 @@ import {
   DOMAIN_BY_KEY,
   assembleState,
   chunkManifestShardPaths,
+  documentReplacesOnWrite,
   shardState,
   userDocPath,
 } from "../lib/firestore-domains";
@@ -93,4 +94,32 @@ test("legacy one-document audit data remains readable and migrates to chunks",()
   assert.equal(manifest?.itemCount,events.length);
   assert.equal(Array.isArray(manifest?.items),false);
   assert.ok(chunkManifestShardPaths(auditSpec,userDocPath(ADMIN,"audit","events"),manifest!).length>1);
+});
+
+
+test("bounded audit chunk documents replace prior physical membership instead of accumulating it",()=>{
+  const chunkPath=userDocPath(ADMIN,"audit","events__chunk_000000");
+  const manifestPath=userDocPath(ADMIN,"audit","events");
+  assert.equal(documentReplacesOnWrite(chunkPath),true,"physical chunks must replace their prior bounded snapshot");
+  assert.equal(documentReplacesOnWrite(manifestPath),false,"the manifest is not itself a bounded event chunk");
+  assert.equal(documentReplacesOnWrite("domains/audit/fields/events"),false,"ordinary shared arrays retain merge semantics");
+});
+
+test("rechunking after growth keeps every proposed physical chunk below its configured bound",()=>{
+  const first=Array.from({length:1200},(_,index)=>auditEvent(index));
+  const grown=[...first,...Array.from({length:450},(_,index)=>auditEvent(index+1200))];
+  const firstDocs=shardState(auditSpec,{version:1,events:first});
+  const grownDocs=shardState(auditSpec,{version:1,events:grown});
+
+  const paths=[...grownDocs.keys()].filter((path)=>path.includes("/audit/events__chunk_"));
+  assert.ok(paths.length>1);
+  for(const path of paths){
+    const proposed=grownDocs.get(path)!;
+    const previous=firstDocs.get(path);
+    const proposedBytes=new TextEncoder().encode(JSON.stringify(proposed)).byteLength;
+    assert.ok(proposedBytes<=350_000);
+    if(previous){
+      assert.equal(documentReplacesOnWrite(path),true,"shifted chunk membership must replace, never union with the old chunk");
+    }
+  }
 });
