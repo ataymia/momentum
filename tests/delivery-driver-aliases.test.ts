@@ -21,3 +21,12 @@ test("delivery aliases stay in the driver presentation path",()=>{
   assert.ok(css.includes(".delivery-driver-load__line>strong b"));
   assert.ok(css.includes(".delivery-detail-items__primary b"));
 });
+
+
+test("driver cards keep secondary money and terms quiet beneath the prominent load",()=>{
+  const delivery=readFileSync("components/pages/deliveries.tsx","utf8");
+  const css=readFileSync("app/visual-polish-v2.css","utf8");
+  assert.match(delivery,/isDriver \? <div className="delivery-driver-meta"/);
+  assert.match(delivery,/delivery-driver-load__line/);
+  assert.match(css,/\.delivery-driver-meta[\s\S]*color:var\(--muted\)/);
+});
