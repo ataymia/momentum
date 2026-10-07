@@ -60,6 +60,17 @@ function sharedBlock(spec: DomainSpec): string {
     }`;
 }
 
+function physicalFieldCondition(spec: DomainSpec, logicalFields: string[]): string {
+  if (logicalFields.length === 0) return "false";
+  const clauses = [`field in ${list([...logicalFields].sort())}`];
+  for (const field of logicalFields) {
+    const fieldSpec = spec.fields[field];
+    if (!fieldSpec?.chunkBytes) continue;
+    clauses.push(`field.matches('^${field}__chunk_[0-9]{6}$')`);
+  }
+  return clauses.length === 1 ? clauses[0] : `(${clauses.join(" || ")})`;
+}
+
 function userBlock(spec: DomainSpec): string {
   const perUser = Object.entries(spec.fields).filter(([, fieldSpec]) => fieldSpec.userIdField);
   if (perUser.length === 0) return "";
@@ -68,32 +79,31 @@ function userBlock(spec: DomainSpec): string {
   const noManagerWrite = perUser.filter(([, f]) => f.managerWrite === false).map(([field]) => field).sort();
   const noManagerRead = perUser.filter(([, f]) => f.managerRead === false).map(([field]) => field).sort();
   const salesRepSupervise = perUser.filter(([, f]) => f.salesRepSupervise === true).map(([field]) => field).sort();
+  const allowedFields = physicalFieldCondition(spec, fields);
 
   const managerReadable = noManagerRead.length
-    ? `(!(field in ${list(noManagerRead)}) && manages(uid))`
+    ? `(!(${physicalFieldCondition(spec, noManagerRead)}) && manages(uid))`
     : "manages(uid)";
   const supervisorReadable = salesRepSupervise.length
-    ? `(field in ${list(salesRepSupervise)} && supervisesBrandAmbassador(uid))`
+    ? `(${physicalFieldCondition(spec, salesRepSupervise)} && supervisesBrandAmbassador(uid))`
     : "false";
   const managerWritable = noManagerWrite.length
-    ? `(!(field in ${list(noManagerWrite)}) && manages(uid) && activeEmployee())`
+    ? `(!(${physicalFieldCondition(spec, noManagerWrite)}) && manages(uid) && activeEmployee())`
     : "(manages(uid) && activeEmployee())";
   const supervisorWritable = salesRepSupervise.length
-    ? `(field in ${list(salesRepSupervise)} && supervisesBrandAmbassador(uid) && activeEmployee())`
+    ? `(${physicalFieldCondition(spec, salesRepSupervise)} && supervisesBrandAmbassador(uid) && activeEmployee())`
     : "false";
 
-  // A user shard is readable by its owner, any Administrator, an ordinary manager where enabled, and for
-  // explicitly opted-in fields only, the Sales Representative directly supervising a Brand Ambassador.
   const ownerReadable = "uid == request.auth.uid ? hasAccessRecord()";
   const ownerWritable = noSelfWrite.length
-    ? `uid == request.auth.uid ? (!(field in ${list(noSelfWrite)}) && isEmployee())`
+    ? `uid == request.auth.uid ? (!(${physicalFieldCondition(spec, noSelfWrite)}) && isEmployee())`
     : "uid == request.auth.uid ? isEmployee()";
 
   return `    // ${spec.key}
     match /{uid}/${spec.id}/{field} {
-      allow get, list: if field in ${list(fields)}
+      allow get, list: if ${allowedFields}
         && (${ownerReadable} : (isAdmin() || ${managerReadable} || ${supervisorReadable}));
-      allow write: if field in ${list(fields)}
+      allow write: if ${allowedFields}
         && (isAdmin() || (${ownerWritable} : (${managerWritable} || ${supervisorWritable})));
     }`;
 }
@@ -110,7 +120,7 @@ const header = `rules_version = '2';
 //
 //   domains/{domainId}/fields/{field}        shared array field  -> { items: [...] }
 //   domains/{domainId}/fields/_root          non-array remainder -> { data: {...} }
-//   userDomains/{uid}/{domainId}/{field}     per-user shard      -> { items: [...] }
+//   userDomains/{uid}/{domainId}/{field}     per-user shard or chunk manifest\n//   userDomains/{uid}/{domainId}/{field}__chunk_000000  bounded chunk -> { items: [...] }
 //
 // Identity is held separately:
 //

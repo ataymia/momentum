@@ -3,7 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PLATFORM_META_DOCUMENT, type PersistenceScope } from "./firebase-access";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite } from "./firebase-firestore-rest";
-import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, documentReplacesOnWrite, domainDocuments, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, shardState, type DomainSpec } from "./firestore-domains";
+import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, shardState, type DomainSpec } from "./firestore-domains";
 
 /**
  * Momentum storage boundary.
@@ -187,6 +187,25 @@ function mergeStoredState(spec:DomainSpec,baseRaw:string|null,localRaw:string,re
   try{localState=JSON.parse(localRaw);}catch{return remoteRaw;}
   try{baseState=baseRaw==null?null:JSON.parse(baseRaw);}catch{baseState=null;}
   try{remoteState=remoteRaw==null?null:JSON.parse(remoteRaw);}catch{remoteState=null;}
+
+  // Chunk boundaries are a persistence detail, not record identity. Merge chunked arrays at the logical
+  // record level first so a recovery journal compacted by the browser-storage guard cannot shift records
+  // between chunks and accidentally lose remote history.
+  if(isRecord(localState)&&isRecord(remoteState)){
+    const localRecord:Record<string,unknown>={...localState};
+    const remoteRecord:Record<string,unknown>={...remoteState};
+    const baseRecord:Record<string,unknown>=isRecord(baseState)?{...baseState}:{};
+    for(const [field,fieldSpec] of Object.entries(spec.fields)){
+      if(!fieldSpec.chunkBytes)continue;
+      const baseItems=Array.isArray(baseRecord[field])?baseRecord[field] as unknown[]:[];
+      const localItems=Array.isArray(localRecord[field])?localRecord[field] as unknown[]:[];
+      const remoteItems=Array.isArray(remoteRecord[field])?remoteRecord[field] as unknown[]:[];
+      const merged=mergeItems(baseItems,localItems,remoteItems,`logical:${spec.id}/${field}`);
+      localRecord[field]=merged;remoteRecord[field]=merged;baseRecord[field]=merged;
+    }
+    localState=localRecord;remoteState=remoteRecord;baseState=baseRecord;
+  }
+
   const baseShards=baseState?shardState(spec,baseState):new Map<string,Record<string,unknown>>();
   const localShards=shardState(spec,localState);
   const remoteShards=remoteState?shardState(spec,remoteState):new Map<string,Record<string,unknown>>();
@@ -200,7 +219,7 @@ function mergeStoredState(spec:DomainSpec,baseRaw:string|null,localRaw:string,re
   return assembled?JSON.stringify(assembled):remoteRaw??localRaw;
 }
 
-const emptyDocument=(doc:Record<string,unknown>)=>(Array.isArray(doc.items)&&doc.items.length===0)||(isRecord(doc.data)&&Object.keys(doc.data).length===0);
+const emptyDocument=(doc:Record<string,unknown>)=>(Array.isArray(doc.items)&&doc.items.length===0)||(isRecord(doc.data)&&Object.keys(doc.data).length===0)||(doc.shardManifestVersion===1&&Array.isArray(doc.shards)&&doc.shards.length===0&&doc.itemCount===0);
 
 class FirestoreBackend{
   private cache=new Map<string,string|null>();
@@ -237,6 +256,29 @@ class FirestoreBackend{
     return documents;
   }
 
+  /** Fetch bounded user-shard documents named by chunk manifests. Direct document reads keep rules simple. */
+  private async hydrateChunkShards(){
+    const requested=new Map<string,DomainSpec>();
+    for(const [manifestPath,state] of this.docs){
+      if(!state.data)continue;
+      const parsed=parseDocPath(manifestPath);if(!parsed?.uid)continue;
+      const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)continue;
+      for(const shardPath of chunkManifestShardPaths(spec,manifestPath,state.data)){
+        if(!this.docs.has(shardPath)&&!this.denied.has(shardPath))requested.set(shardPath,spec);
+      }
+    }
+    if(requested.size===0)return new Set<string>();
+    const snapshots=await getFirestoreSnapshots([...requested.keys()]);
+    const touched=new Set<string>();
+    for(const snapshot of snapshots){
+      const spec=requested.get(snapshot.path);if(!spec)continue;
+      if((snapshot as {denied?:boolean}).denied){this.denied.add(snapshot.path);continue;}
+      this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
+      touched.add(spec.key);
+    }
+    return touched;
+  }
+
   private assemble(spec:DomainSpec,overrides?:Map<string,Record<string,unknown>|null>){
     const assembled=assembleState(spec,this.docsFor(spec,overrides));
     return assembled?JSON.stringify(assembled):null;
@@ -250,6 +292,7 @@ class FirestoreBackend{
       if(snapshot.path===PLATFORM_META_DOCUMENT){this.metaVersions=this.versionsFrom(snapshot.data);continue;}
       this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
     }
+    await this.hydrateChunkShards();
     for(const spec of DOMAIN_SPECS)this.cache.set(spec.key,this.assemble(spec));
     // Recover locally journaled changes without letting an old browser snapshot roll shared records backward.
     for(const spec of DOMAIN_SPECS){
@@ -299,6 +342,7 @@ class FirestoreBackend{
       const spec=parsed?DOMAIN_SPECS.find((item)=>item.id===parsed.domainId):undefined;
       if(spec&&snapshot.data)touched.add(spec.key);
     }
+    for(const key of await this.hydrateChunkShards())touched.add(key);
     for(const key of touched){
       if(this.dirty.has(key))continue;
       const next=this.assemble(DOMAIN_BY_KEY.get(key)!);
@@ -350,19 +394,23 @@ class FirestoreBackend{
       if(!spec||raw==null)continue;
       let parsed:unknown;try{parsed=JSON.parse(raw);}catch{continue;}
       const shards=shardState(spec,parsed);
-      for(const doc of domainDocuments(spec,this.scope)){
-        if(!doc.writable||this.denied.has(doc.path))continue;
-        const parsedPath=parseDocPath(doc.path)!;
-        const proposed=shards.get(doc.path)??(parsedPath.field===ROOT_FIELD?{data:{}}:{items:[]});
-        const base=this.docs.get(doc.path);
+      const planned=new Map<string,boolean>();
+
+      // Dynamic chunk documents come first so failure isolation can never publish a manifest that points at
+      // a missing chunk. Static documents/manifests follow.
+      for(const path of shards.keys())if(documentWritable(path,this.scope)&&!this.denied.has(path))planned.set(path,true);
+      for(const doc of domainDocuments(spec,this.scope))if(doc.writable&&!this.denied.has(doc.path)&&!planned.has(doc.path))planned.set(doc.path,true);
+
+      for(const path of planned.keys()){
+        const proposed=shards.get(path)??emptyDocumentForPath(spec,path);
+        const base=this.docs.get(path);
         // Existing business records survive a locally omitted/temporarily unrecognized record.
-        // Bounded derived queues (currently notification deliveries) are intentionally replaceable so
-        // old items can actually be pruned below Firestore document-size limits.
-        const next=base?.data?(documentReplacesOnWrite(doc.path)?proposed:mergeDocument(base.data,proposed,base.data,doc.path)):proposed;
+        // Bounded derived queues are intentionally replaceable so old items can actually be pruned.
+        const next=base?.data?(documentReplacesOnWrite(path)?proposed:mergeDocument(base.data,proposed,base.data,path)):proposed;
         if(!base?.data&&emptyDocument(next))continue;
         if(base?.data&&stable(base.data)===stable(next))continue;
-        writes.push({kind:"set",path:doc.path,data:next,updateTime:base?.updateTime,create:!base?.data});
-        pathKey.set(doc.path,key);nextDocs.set(doc.path,next);
+        writes.push({kind:"set",path,data:next,updateTime:base?.updateTime,create:!base?.data});
+        pathKey.set(path,key);nextDocs.set(path,next);
       }
     }
     return{writes,pathKey,nextDocs};
@@ -421,8 +469,15 @@ class FirestoreBackend{
     const touchedKeys=new Set<string>();
     const messages:string[]=[];
     let anySuccess=false;
-    for(const write of writes){
+    const ordered=[...writes].sort((left,right)=>{
+      const leftKey=pathKey.get(left.path);const rightKey=pathKey.get(right.path);
+      const leftSpec=leftKey?DOMAIN_BY_KEY.get(leftKey):undefined;const rightSpec=rightKey?DOMAIN_BY_KEY.get(rightKey):undefined;
+      return Number(Boolean(leftSpec&&isChunkManifestPath(leftSpec,left.path)))-Number(Boolean(rightSpec&&isChunkManifestPath(rightSpec,right.path)));
+    });
+    for(const write of ordered){
       const key=pathKey.get(write.path);if(key)touchedKeys.add(key);
+      const spec=key?DOMAIN_BY_KEY.get(key):undefined;
+      if(key&&spec&&isChunkManifestPath(spec,write.path)&&failedKeys.has(key)){messages.push(`${write.path}: manifest deferred until every audit chunk is cloud-confirmed.`);continue;}
       const stamp=`${new Date().toISOString()}#${Math.random().toString(36).slice(2,8)}`;
       const versionEntry=metaVersionKey(write.path);
       const metaWrite:FirestoreWrite={kind:"merge",path:PLATFORM_META_DOCUMENT,data:{versions:{[versionEntry]:stamp}},fieldPaths:[`versions.${versionEntry}`]};
@@ -437,7 +492,7 @@ class FirestoreBackend{
         if(key)this.blockedKeys.set(key,`${write.path}: Security Rules rejected the write. The change remains safely queued and is not cloud-confirmed.`);
         messages.push(`${write.path}: Security Rules rejected the write.`);continue;
       }
-      if(isFirestoreConflict(result)){setStatus({conflicts:status.conflicts+1});messages.push(`${write.path}: concurrent update; retrying.`);continue;}
+      if(isFirestoreConflict(result)){if(key)failedKeys.add(key);setStatus({conflicts:status.conflicts+1});messages.push(`${write.path}: concurrent update; retrying.`);continue;}
       messages.push(`${write.path}: ${result.message||`Firestore write failed (${result.status}).`}`);
     }
     for(const key of touchedKeys){
@@ -453,8 +508,15 @@ class FirestoreBackend{
   private async isolateDenied(writes:FirestoreWrite[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>){
     const successfulKeys=new Set<string>();
     const blockedKeys=new Set<string>();
-    for(const write of writes){
+    const ordered=[...writes].sort((left,right)=>{
+      const leftKey=pathKey.get(left.path);const rightKey=pathKey.get(right.path);
+      const leftSpec=leftKey?DOMAIN_BY_KEY.get(leftKey):undefined;const rightSpec=rightKey?DOMAIN_BY_KEY.get(rightKey):undefined;
+      return Number(Boolean(leftSpec&&isChunkManifestPath(leftSpec,left.path)))-Number(Boolean(rightSpec&&isChunkManifestPath(rightSpec,right.path)));
+    });
+    for(const write of ordered){
       const key=pathKey.get(write.path);
+      const spec=key?DOMAIN_BY_KEY.get(key):undefined;
+      if(key&&spec&&isChunkManifestPath(spec,write.path)&&blockedKeys.has(key))continue;
       const stamp=`${new Date().toISOString()}#${Math.random().toString(36).slice(2,8)}`;
       const versionEntry=metaVersionKey(write.path);
       const metaWrite:FirestoreWrite={kind:"merge",path:PLATFORM_META_DOCUMENT,data:{versions:{[versionEntry]:stamp}},fieldPaths:[`versions.${versionEntry}`]};
@@ -513,12 +575,14 @@ class FirestoreBackend{
       if(changed.includes(EMPLOYEE_DIRECTORY_META_KEY))this.onDirectoryChange();
       const readable=this.readablePaths();
       const byMeta=new Map<string,string>();for(const path of readable.keys())byMeta.set(metaVersionKey(path),path);
+      for(const path of this.docs.keys())if(parseDocPath(path))byMeta.set(metaVersionKey(path),path);
       const paths=changed.map((key)=>byMeta.get(key)).filter((path):path is string=>Boolean(path)&&!this.denied.has(path!));
       if(paths.length===0)return;
       const snapshots=await getFirestoreSnapshots(paths);
       const touched=new Map<string,Map<string,Record<string,unknown>|null>>();
       for(const snapshot of snapshots){
-        const spec=readable.get(snapshot.path);if(!spec)continue;
+        const parsedPath=parseDocPath(snapshot.path);
+        const spec=readable.get(snapshot.path)??(parsedPath?DOMAIN_SPECS.find((item)=>item.id===parsedPath.domainId):undefined);if(!spec)continue;
         const base=this.docs.get(snapshot.path);
         if(base?.updateTime===snapshot.updateTime&&base?.data===snapshot.data)continue;
         let override:Record<string,unknown>|null=snapshot.data;
@@ -530,6 +594,7 @@ class FirestoreBackend{
         const map=touched.get(spec.key)??new Map<string,Record<string,unknown>|null>();
         map.set(snapshot.path,override);touched.set(spec.key,map);
       }
+      for(const key of await this.hydrateChunkShards())if(!touched.has(key))touched.set(key,new Map());
       for(const [key,map] of touched){
         const spec=DOMAIN_BY_KEY.get(key)!;
         const next=this.assemble(spec,map);
