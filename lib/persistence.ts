@@ -235,6 +235,7 @@ class FirestoreBackend{
   private timer:number|undefined;
   private pollTimer:number|undefined;
   private flushing=false;
+  private activeFlushKeys=new Set<string>();
   private retryDelay=0;
   private disposed=false;
   scope:PersistenceScope;
@@ -361,7 +362,7 @@ class FirestoreBackend{
     while(Date.now()-started<timeoutMs){
       const blocked=this.blockedKeys.get(key);
       if(blocked)return{ok:false,message:blocked};
-      if(!this.flushing&&this.dirty.has(key))await this.flush([key]);
+      if(this.dirty.has(key)&&!this.activeFlushKeys.has(key))await this.flush([key],true);
       const journal=local()?.getItem(pendingJournalKey(this.scope.uid,key));
       if(!this.dirty.has(key)&&!journal)return{ok:true};
       await new Promise((resolve)=>setTimeout(resolve,75));
@@ -427,10 +428,13 @@ class FirestoreBackend{
     return{writes,pathKey,nextDocs};
   }
 
-  async flush(onlyKeys?:string[]):Promise<void>{
-    if(this.flushing||this.disposed||this.dirty.size===0)return;
-    const keys=onlyKeys?.length?[...new Set(onlyKeys)].filter((key)=>this.dirty.has(key)):[...this.dirty];
+  async flush(onlyKeys?:string[],allowConcurrent=false):Promise<void>{
+    if(this.disposed||this.dirty.size===0)return;
+    if(this.flushing&&!allowConcurrent)return;
+    const requested=onlyKeys?.length?[...new Set(onlyKeys)].filter((key)=>this.dirty.has(key)):[...this.dirty];
+    const keys=requested.filter((key)=>!this.activeFlushKeys.has(key));
     if(keys.length===0)return;
+    for(const key of keys)this.activeFlushKeys.add(key);
     this.flushing=true;setStatus({flushing:true});
     for(const key of keys)this.dirty.delete(key);
     try{
@@ -470,8 +474,9 @@ class FirestoreBackend{
       setStatus({lastError:error instanceof Error?error.message:"Firestore sync failed."});
       this.scheduleFlush(this.retryDelay);
     }finally{
-      this.flushing=false;
-      setStatus({flushing:false,pending:this.dirty.size,deniedDocuments:[...this.denied]});
+      for(const key of keys)this.activeFlushKeys.delete(key);
+      this.flushing=this.activeFlushKeys.size>0;
+      setStatus({flushing:this.flushing,pending:this.dirty.size,deniedDocuments:[...this.denied]});
       if(this.dirty.size&&!this.retryDelay)this.scheduleFlush(200);
     }
   }
