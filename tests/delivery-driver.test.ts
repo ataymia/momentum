@@ -106,3 +106,77 @@ test("commercial normalization does not erase an order just because its account 
   assert.equal(normalized.orders.length, 1);
   assert.equal(normalized.orders[0].id, pendingOrder.id);
 });
+
+
+test("delivered task keeps compact recipient signature evidence", () => {
+  const acceptedAt = "2026-09-22T20:00:00.000Z";
+  const deliveredAt = "2026-09-22T21:00:00.000Z";
+  const task = {
+    id: "delivery-signature",
+    orderId: data.orders[4].id,
+    driverId: driver.id,
+    status: "Delivered",
+    acceptedAt,
+    acceptedBy: driver.id,
+    loadedAt: "2026-09-22T20:15:00.000Z",
+    departedAt: "2026-09-22T20:30:00.000Z",
+    deliveredAt,
+    signature: {
+      strokes: [[[100,120],[220,90],[340,170]],[[390,150],[520,80]]],
+      recipientName: "Store Receiver",
+      signedAt: deliveredAt,
+      capturedBy: driver.id,
+    },
+    history: [
+      { id: "event-1", type: "Accepted", at: acceptedAt, actorId: driver.id },
+      { id: "event-2", type: "Delivered", at: deliveredAt, actorId: driver.id, note: "Recipient signature captured." },
+    ],
+  };
+  const state = normalizeDeliveryState({ version: 1, tasks: [task] }, data);
+  assert.equal(state.tasks.length, 1);
+  assert.equal(state.tasks[0].signature?.recipientName, "Store Receiver");
+  assert.equal(state.tasks[0].signature?.capturedBy, driver.id);
+  assert.equal(state.tasks[0].signature?.strokes.length, 2);
+});
+
+test("legacy delivered tasks without a signature remain readable", () => {
+  const acceptedAt = "2026-09-22T20:00:00.000Z";
+  const deliveredAt = "2026-09-22T21:00:00.000Z";
+  const task = {
+    id: "delivery-legacy",
+    orderId: data.orders[4].id,
+    driverId: driver.id,
+    status: "Delivered",
+    acceptedAt,
+    acceptedBy: driver.id,
+    loadedAt: "2026-09-22T20:15:00.000Z",
+    departedAt: "2026-09-22T20:30:00.000Z",
+    deliveredAt,
+    history: [{ id: "event-1", type: "Delivered", at: deliveredAt, actorId: driver.id }],
+  };
+  const state = normalizeDeliveryState({ version: 1, tasks: [task] }, data);
+  assert.equal(state.tasks.length, 1);
+  assert.equal(state.tasks[0].signature, undefined);
+});
+
+test("malformed oversized signature evidence is discarded without deleting the delivery task", () => {
+  const acceptedAt = "2026-09-22T20:00:00.000Z";
+  const deliveredAt = "2026-09-22T21:00:00.000Z";
+  const tooManyPoints = Array.from({length:1300},(_,index)=>[index % 1000, index % 300]);
+  const task = {
+    id: "delivery-bad-signature",
+    orderId: data.orders[4].id,
+    driverId: driver.id,
+    status: "Delivered",
+    acceptedAt,
+    acceptedBy: driver.id,
+    loadedAt: "2026-09-22T20:15:00.000Z",
+    departedAt: "2026-09-22T20:30:00.000Z",
+    deliveredAt,
+    signature: { strokes: [tooManyPoints], signedAt: deliveredAt, capturedBy: driver.id },
+    history: [{ id: "event-1", type: "Delivered", at: deliveredAt, actorId: driver.id }],
+  };
+  const state = normalizeDeliveryState({ version: 1, tasks: [task] }, data);
+  assert.equal(state.tasks.length, 1);
+  assert.equal(state.tasks[0].signature, undefined);
+});
