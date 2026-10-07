@@ -40,7 +40,7 @@ test("delivery completion requires an on-screen touch or mouse signature instead
   assert.doesNotMatch(deliverySource, /Confirm .* was delivered/);
   assert.match(signatureSource, /onPointerDown/);
   assert.match(signatureSource, /onPointerMove/);
-  assert.match(signatureSource, /touch-action:none/);
+  assert.match(polishSource, /touch-action:none/);
 });
 
 test("delivery signatures are rendered onto invoice receipt fields", () => {
