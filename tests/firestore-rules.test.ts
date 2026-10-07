@@ -491,6 +491,39 @@ describe("domain sharding matches the rules", () => {
   }
 });
 
+describe("bounded audit chunk Security Rules", () => {
+  const ownChunk=`userDomains/${REP}/audit/events__chunk_000000`;
+  const peerChunk=`userDomains/${OTHER_REP}/audit/events__chunk_000000`;
+
+  test("the employee and Administrator can read/write a valid audit chunk for that employee", async () => {
+    assert.equal(documentWritable(ownChunk,scopeFor(REP)),true);
+    assert.equal(documentWritable(ownChunk,scopeFor(ADMIN)),true);
+    await assertSucceeds(setDoc(doc(dbFor(REP),ownChunk),{items:[]}));
+    await assertSucceeds(getDoc(doc(dbFor(REP),ownChunk)));
+    await assertSucceeds(setDoc(doc(dbFor(ADMIN),ownChunk),{items:[]}));
+    await assertSucceeds(getDoc(doc(dbFor(ADMIN),ownChunk)));
+  });
+
+  test("managers and peer employees do not gain audit-history access from chunking", async () => {
+    assert.equal(documentWritable(ownChunk,scopeFor(MANAGER)),false);
+    await assertFails(getDoc(doc(dbFor(MANAGER),ownChunk)));
+    await assertFails(setDoc(doc(dbFor(MANAGER),ownChunk),{items:[]}));
+    await assertFails(getDoc(doc(dbFor(REP),peerChunk)));
+    await assertFails(setDoc(doc(dbFor(REP),peerChunk),{items:[]}));
+  });
+
+  test("only the exact bounded chunk naming scheme is accepted", async () => {
+    for(const path of [
+      `userDomains/${REP}/audit/events__chunk_0`,
+      `userDomains/${REP}/audit/events__chunk_000000_extra`,
+      `userDomains/${REP}/audit/not-events__chunk_000000`,
+    ]){
+      await assertFails(getDoc(doc(dbFor(REP),path)));
+      await assertFails(setDoc(doc(dbFor(REP),path),{items:[]}));
+    }
+  });
+});
+
 describe("the username login index is unreachable from any client", () => {
   const INDEX = "usernames/jsmith";
   const REMINDER = `usernameReminders/${REP}`;
