@@ -2,6 +2,10 @@ export type ProductSku = {
   id: string;
   description: string;
   shortName: string;
+  /** Compact label used only by the Delivery Driver UI. Canonical inventory/order descriptions remain unchanged. */
+  driverNickname: string;
+  /** Nominal can size shown in the Delivery Driver quick-glance label. */
+  canSizeOz: number;
   casePack: number;
   /** Verified case-level barcode only. Can/unit UPCs are intentionally excluded for wholesale scanning. */
   caseBarcode?: string;
@@ -11,12 +15,12 @@ export type ProductSku = {
 };
 
 export const GOLDEN_EAGLE_SKUS: ProductSku[] = [
-  { id: "ge-original-250ml-24", shortName: "Original", description: "0.25L (8.4oz) Golden Eagle Energy Drink (24pack)", casePack: 24, historicalPurchaseOrderCases: 5400, active: true },
-  { id: "ge-sugarfree-250ml-24", shortName: "Sugar Free", description: "0.25L (8.4oz) Golden Eagle SugarFree (24pack)", casePack: 24, historicalPurchaseOrderCases: 1890, active: true },
-  { id: "ge-tropical-250ml-24", shortName: "Tropical", description: "0.25L (8.4oz) Golden Eagle Tropical Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 945, active: true },
-  { id: "ge-red-250ml-24", shortName: "Red", description: "0.25L (8.4oz) Golden Eagle RED Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 945, active: true },
-  { id: "ge-blue-zero-250ml-24", shortName: "Blue", description: "0.25L (8.4oz) Golden Eagle Blue (Zero) Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 540, active: true },
-  { id: "ge-strawberry-250ml-24", shortName: "Strawberry", description: "0.25L (8.4oz) Golden Eagle Strawberry Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 0, active: true },
+  { id: "ge-original-250ml-24", shortName: "Original", driverNickname: "Regular", canSizeOz: 8.4, description: "0.25L (8.4oz) Golden Eagle Energy Drink (24pack)", casePack: 24, historicalPurchaseOrderCases: 5400, active: true },
+  { id: "ge-sugarfree-250ml-24", shortName: "Sugar Free", driverNickname: "Sugar-Free", canSizeOz: 8.4, description: "0.25L (8.4oz) Golden Eagle SugarFree (24pack)", casePack: 24, historicalPurchaseOrderCases: 1890, active: true },
+  { id: "ge-tropical-250ml-24", shortName: "Tropical", driverNickname: "Tropical", canSizeOz: 8.4, description: "0.25L (8.4oz) Golden Eagle Tropical Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 945, active: true },
+  { id: "ge-red-250ml-24", shortName: "Red", driverNickname: "Red", canSizeOz: 8.4, description: "0.25L (8.4oz) Golden Eagle RED Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 945, active: true },
+  { id: "ge-blue-zero-250ml-24", shortName: "Blue", driverNickname: "Blue", canSizeOz: 8.4, description: "0.25L (8.4oz) Golden Eagle Blue (Zero) Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 540, active: true },
+  { id: "ge-strawberry-250ml-24", shortName: "Strawberry", driverNickname: "Strawberry", canSizeOz: 8.4, description: "0.25L (8.4oz) Golden Eagle Strawberry Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 0, active: true },
 ];
 
 const aliases = new Map<string, string>([
@@ -55,6 +59,16 @@ export function skuForProductName(value: string) {
 
 export function canonicalProductDescription(value: string) {
   return skuForProductName(value)?.description ?? value.trim();
+}
+
+/**
+ * Delivery-driver-only display label. The underlying order and inventory records always keep the canonical SKU
+ * description so aliases can never split inventory, reporting, invoicing, or reconciliation.
+ */
+export function deliveryDriverProductLabel(value: string) {
+  const sku = skuForProductName(value);
+  if (!sku) return value.trim();
+  return `${sku.canSizeOz} oz ${sku.driverNickname} ${sku.casePack}-pack`;
 }
 
 export function skuByCaseBarcode(barcode: string) {
