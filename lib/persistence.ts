@@ -554,10 +554,10 @@ class FirestoreBackend{
     for(const snapshot of snapshots){
       const base=this.docs.get(snapshot.path);
       const localDoc=nextDocs.get(snapshot.path);
+      const key=pathKey.get(snapshot.path);
       const chunkConflict=key?isBoundedUserChunkPath(DOMAIN_BY_KEY.get(key)!,snapshot.path):false;
       const merged=localDoc?(chunkConflict?mergeDocument(base?.data,localDoc,snapshot.data,snapshot.path):documentReplacesOnWrite(snapshot.path)?localDoc:mergeDocument(base?.data,localDoc,snapshot.data,snapshot.path)):snapshot.data;
       this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
-      const key=pathKey.get(snapshot.path);
       if(!key)continue;
       const map=overrides.get(key)??new Map<string,Record<string,unknown>|null>();
       map.set(snapshot.path,merged);overrides.set(key,map);
