@@ -23,6 +23,16 @@ export type DeliveryCollection = {
   recordedBy: string;
 };
 
+export type DeliverySignaturePoint = [number, number];
+export type DeliverySignatureDraft = {
+  strokes: DeliverySignaturePoint[][];
+  recipientName?: string;
+};
+export type DeliverySignature = DeliverySignatureDraft & {
+  signedAt: string;
+  capturedBy: string;
+};
+
 export type DeliveryTask = {
   id: string;
   orderId: string;
@@ -37,6 +47,7 @@ export type DeliveryTask = {
   cancelledBy?: string;
   note?: string;
   collections?: DeliveryCollection[];
+  signature?: DeliverySignature;
   history: DeliveryEvent[];
 };
 
@@ -48,6 +59,23 @@ const paymentMethods = new Set<PaymentMethod>(["Card", "ACH", "Wire", "Cash", "C
 const validInstant = (value?: string) => Boolean(value && !Number.isNaN(new Date(value).getTime()));
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 const finitePositive = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value > 0;
+const finitePoint = (value: unknown): value is DeliverySignaturePoint => Array.isArray(value) && value.length === 2 && value.every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate)) && value[0] >= 0 && value[0] <= 1000 && value[1] >= 0 && value[1] <= 300;
+const normalizeSignature = (value: unknown, userIds: Set<string>): DeliverySignature | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+  const signature = value as Partial<DeliverySignature>;
+  if (!validInstant(signature.signedAt) || !signature.capturedBy || !userIds.has(signature.capturedBy) || !Array.isArray(signature.strokes)) return undefined;
+  const strokes = signature.strokes
+    .filter((stroke): stroke is DeliverySignaturePoint[] => Array.isArray(stroke) && stroke.length >= 2 && stroke.length <= 500 && stroke.every(finitePoint))
+    .slice(0, 80);
+  const totalPoints = strokes.reduce((sum, stroke) => sum + stroke.length, 0);
+  if (!strokes.length || totalPoints > 3000) return undefined;
+  return {
+    strokes,
+    recipientName: text(signature.recipientName) || undefined,
+    signedAt: signature.signedAt!,
+    capturedBy: signature.capturedBy,
+  };
+};
 
 export const createDeliverySeed = (): DeliveryState => ({ version: 1, tasks: [] });
 
@@ -91,6 +119,7 @@ export function normalizeDeliveryState(input: unknown, data: WorkspaceData): Del
     ...task,
     note: text(task.note) || undefined,
     collections: (task.collections ?? []).map((collection) => ({ ...collection, reference: text(collection.reference) || undefined })),
+    signature: normalizeSignature(task.signature, userIds),
     history: task.history.map((event) => ({ ...event, note: text(event.note) || undefined })),
   }));
   return { version: 1, tasks };
