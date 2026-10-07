@@ -137,3 +137,12 @@ test("order cloud confirmation uses the requested commercial key",()=>{
   assert.match(persistence,/await this\.flush\(\[key\]\)/);
   assert.match(persistence,/async flushLatest\(\)/);
 });
+
+
+test("order approval waits on one confirmation path instead of launching a second global flush",()=>{
+  const workspace=readFileSync("lib/workspace-context.tsx","utf8");
+  const decide=workspace.slice(workspace.indexOf("const decideApproval"),workspace.indexOf("const setOrderStatus"));
+  assert.doesNotMatch(decide,/momentumStorage\.flush\(\)/);
+  const work=readFileSync("components/pages/work-v2.tsx","utf8");
+  assert.match(work,/flushAndConfirm\(COMMERCIAL_KEY\)/);
+});
