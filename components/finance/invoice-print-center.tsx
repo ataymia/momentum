@@ -13,6 +13,7 @@ import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Modal, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const invoiceBrandSrc = `${basePath}/ChatGPT%20Image%20Oct%207%2C%202026%2C%2004_03_55%20PM.jpg`;
 const company = {
   name: "Momentum Distribution Inc.",
   street: "8550 N 91st Ave. Ste #5",
@@ -115,7 +116,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
       <Image priority className="invoice-sheet__watermark" src={`${basePath}/momentum-golden-eagle.webp`} width={430} height={430} alt="" aria-hidden="true" />
       <header className="invoice-sheet__header">
         <div className="invoice-sheet__issuer">
-          <Image className="invoice-sheet__brand-logo" src={`${basePath}/momentum-golden-eagle.webp`} width={720} height={360} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" priority unoptimized />
+          <Image className="invoice-sheet__brand-logo" src={invoiceBrandSrc} width={1536} height={1024} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" priority unoptimized />
           <div className="invoice-sheet__issuer-copy"><strong>{company.name}</strong><span>Golden Eagle distribution</span><span>{company.street}</span><span>{company.cityStateZip}</span></div>
         </div>
         <div className="invoice-sheet__title"><h1>INVOICE</h1><strong>{invoice.number}</strong></div>
