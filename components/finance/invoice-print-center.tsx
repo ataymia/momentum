@@ -13,6 +13,7 @@ import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Modal, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const invoiceBrandSrc = `${basePath}/momentum-golden-eagle-official-transparent.webp`;
 const company = {
   name: "Momentum Distribution Inc.",
   street: "8550 N 91st Ave. Ste #5",
@@ -57,7 +58,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
   const invoices = useMemo(() => commerce.invoices.filter((invoice) => orderIds.has(invoice.orderId)).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt)), [commerce.invoices, orderIds]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [copies, setCopies] = useState<Copies>(2);
+  const [copies, setCopies] = useState<Copies>(1);
   const [printJob, setPrintJob] = useState<PrintJob>(null);
   const [printNotice, setPrintNotice] = useState("");
 
@@ -112,11 +113,11 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
     const billToAddress = location ? addressFor(location) : "";
 
     return <article className="invoice-sheet" key={`${invoice.id}-${copyIndex}`}>
-      <Image priority className="invoice-sheet__watermark" src={`${basePath}/momentum-golden-eagle.webp`} width={430} height={430} alt="" aria-hidden="true" />
+      <Image priority className="invoice-sheet__watermark" src={invoiceBrandSrc} width={720} height={480} alt="" aria-hidden="true" unoptimized />
       <header className="invoice-sheet__header">
         <div className="invoice-sheet__issuer">
-          <div className="invoice-sheet__mark">M</div>
-          <div><strong>{company.name}</strong><span>Golden Eagle distribution</span><span>{company.street}</span><span>{company.cityStateZip}</span></div>
+          <Image className="invoice-sheet__brand-logo" src={invoiceBrandSrc} width={1536} height={1024} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" priority unoptimized />
+          <div className="invoice-sheet__issuer-copy"><strong>{company.name}</strong><span>Golden Eagle distribution</span><span>{company.street}</span><span>{company.cityStateZip}</span></div>
         </div>
         <div className="invoice-sheet__title"><h1>INVOICE</h1><strong>{invoice.number}</strong></div>
       </header>
