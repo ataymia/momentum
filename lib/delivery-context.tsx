@@ -2,7 +2,7 @@
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { PaymentMethod } from "./commerce-engine";
-import { DELIVERY_STORAGE_KEY, DeliveryEvent, DeliveryState, DeliveryTask, createDeliverySeed, deliveryTaskForOrder, normalizeDeliveryState, processedForDelivery } from "./delivery-engine";
+import { DELIVERY_STORAGE_KEY, DeliveryEvent, DeliverySignatureDraft, DeliveryState, DeliveryTask, createDeliverySeed, deliveryTaskForOrder, normalizeDeliveryState, processedForDelivery } from "./delivery-engine";
 import { useInventoryLedger } from "./inventory-ledger-context";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
@@ -21,7 +21,7 @@ type DeliveryContextValue = {
   prepareDelivery: (orderId: string) => MutationResult;
   markLoaded: (orderId: string) => MutationResult;
   startDelivery: (orderId: string) => MutationResult;
-  markDelivered: (orderId: string, note?: string) => MutationResult;
+  markDelivered: (orderId: string, signature: DeliverySignatureDraft, note?: string) => MutationResult;
   recordDeliveryCollection: (orderId: string, amount: number, method: PaymentMethod, reference?: string) => MutationResult;
   addDeliveryNote: (orderId: string, note: string) => MutationResult;
   resetDelivery: () => void;
@@ -187,12 +187,22 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
-  const markDelivered = (orderId: string, note?: string): MutationResult => {
+  const markDelivered = (orderId: string, signature: DeliverySignatureDraft, note?: string): MutationResult => {
     const task = taskForActor(orderId);
     if (!task || task.status !== "In transit") return { ok: false, message: "The delivery must be in transit before it can be completed." };
+    const strokes = signature.strokes.filter((stroke) => stroke.length >= 2);
+    const totalPoints = strokes.reduce((sum, stroke) => sum + stroke.length, 0);
+    if (!strokes.length || totalPoints < 2) return { ok: false, message: "Capture the recipient signature before completing the delivery." };
+    if (totalPoints > 1200) return { ok: false, message: "The signature is too detailed to save. Clear the box and sign again with a shorter stroke." };
     if (!inventory.completeOrderDelivery(orderId, task.driverId)) return { ok: false, message: "Delivery inventory could not be posted. Confirm the driver has the full order in custody." };
     const stamp = now();
-    commitState((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, status: "Delivered", deliveredAt: stamp, note: note?.trim() || item.note }, { type: "Delivered", actorId: currentUser!.id, note: note?.trim() || undefined }) : item) }));
+    const deliverySignature = {
+      strokes,
+      recipientName: signature.recipientName?.trim() || undefined,
+      signedAt: stamp,
+      capturedBy: currentUser!.id,
+    };
+    commitState((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? appendEvent({ ...item, status: "Delivered", deliveredAt: stamp, signature: deliverySignature, note: note?.trim() || item.note }, { type: "Delivered", actorId: currentUser!.id, note: note?.trim() || "Recipient signature captured." }) : item) }));
     return { ok: true };
   };
 
