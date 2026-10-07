@@ -18,13 +18,14 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PaymentMethod } from "../../lib/commerce-engine";
-import { DELIVERY_STORAGE_KEY, deliveryStatusForOrder, processedForDelivery } from "../../lib/delivery-engine";
+import { DELIVERY_STORAGE_KEY, deliveryStatusForOrder, processedForDelivery, type DeliverySignaturePoint } from "../../lib/delivery-engine";
 import { useDelivery } from "../../lib/delivery-context";
 import { INVENTORY_LEDGER_STORAGE_KEY } from "../../lib/inventory-ledger";
 import { orderLinesFor } from "../../lib/order-lines";
 import { momentumStorage, useSyncStatus } from "../../lib/persistence";
 import { useMarketing } from "../../lib/marketing-context";
 import { COMMERCIAL_KEY, useWorkspace } from "../../lib/workspace-context";
+import { DeliverySignaturePad } from "../delivery/signature-pad";
 import { InvoicePrintCenter } from "../finance/invoice-print-center";
 import { Button, Modal, PageHeader, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
@@ -54,6 +55,10 @@ export function DeliveriesPage() {
   const [collectionDrafts, setCollectionDrafts] = useState<Record<string, CollectionDraft>>({});
   const [notice, setNotice] = useState("");
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+  const [signingOrderId, setSigningOrderId] = useState<string | null>(null);
+  const [signatureStrokes, setSignatureStrokes] = useState<DeliverySignaturePoint[][]>([]);
+  const [recipientName, setRecipientName] = useState("");
+  const [signatureError, setSignatureError] = useState("");
 
   const isDriver = currentUser?.role === "Delivery Driver";
   const canManage = Boolean(currentUser && ["Administrator", "Operations"].includes(currentUser.role));
@@ -69,6 +74,17 @@ export function DeliveriesPage() {
   const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
   const complete = visible.filter((order) => taskForOrder(order.id)?.status === "Delivered");
   const run = async(result: { ok: boolean; message?: string }, success: string) => {if(!result.ok){setNotice(result.message??"The delivery update was not accepted.");return;}setNotice("Saving delivery change to Momentum cloud…");const checks=await Promise.all([momentumStorage.flushAndConfirm(DELIVERY_STORAGE_KEY),momentumStorage.flushAndConfirm(INVENTORY_LEDGER_STORAGE_KEY),momentumStorage.flushAndConfirm(COMMERCIAL_KEY)]);const failed=checks.find((item)=>!item.ok);setNotice(failed?`Change is still on this device but Momentum cloud has NOT confirmed every record. Do not repeat the action. ${failed.message??"Check the sync status."}`:success);};
+  const openSignature = (orderId: string) => { setSigningOrderId(orderId); setSignatureStrokes([]); setRecipientName(""); setSignatureError(""); };
+  const closeSignature = () => { setSigningOrderId(null); setSignatureStrokes([]); setRecipientName(""); setSignatureError(""); };
+  const completeSignedDelivery = async () => {
+    if (!signingOrderId) return;
+    if (!signatureStrokes.some((stroke) => stroke.length >= 2)) { setSignatureError("Have the recipient sign in the box before completing the delivery."); return; }
+    const order = data.orders.find((item) => item.id === signingOrderId);
+    const result = markDelivered(signingOrderId, { strokes: signatureStrokes, recipientName });
+    if (!result.ok) { setSignatureError(result.message ?? "The delivery could not be completed."); return; }
+    closeSignature();
+    await run(result, `${order?.number ?? "Delivery"} delivered. Signature saved to the delivery record and invoice.`);
+  };
   const syncText = sync.lastError ? `Sync issue: ${sync.lastError}` : sync.pending || sync.flushing ? `Saving ${sync.pending || 1} change${sync.pending === 1 ? "" : "s"}…` : sync.mode === "firestore" ? "Cloud synced" : "Local demo";
 
   const card = (orderId: string) => {
@@ -94,18 +110,18 @@ export function DeliveriesPage() {
       if (result.ok) setCollectionDrafts((current) => ({ ...current, [order.id]: defaultCollection(Math.max(0, remaining - Number(collectionDraft.amount))) }));
     };
 
-    return <article key={order.id} className="company-request-list__item" style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <div style={{ minWidth: 0 }}>
+    return <article key={order.id} className="company-request-list__item delivery-card">
+      <div className="delivery-card__header">
+        <div className="delivery-card__identity">
           <small>{order.number}</small>
-          <strong style={{ display: "block", fontSize: "1.08rem" }}>{account?.locationName ?? account?.name ?? "Unknown customer"}</strong>
-          <p style={{ margin: "4px 0" }}><MapPin size={14} style={{ verticalAlign: "-2px" }} /> {account ? fullAddress(account) : "Location unavailable"}</p>
-          {account?.phone && <p style={{ margin: "4px 0" }}><Phone size={14} style={{ verticalAlign: "-2px" }} /> {account.phone}</p>}
+          <strong>{account?.locationName ?? account?.name ?? "Unknown customer"}</strong>
+          <p><MapPin size={16} /> {account ? fullAddress(account) : "Location unavailable"}</p>
+          {account?.phone && <p><Phone size={16} /> {account.phone}</p>}
         </div>
         <StatusPill tone={tone(status)}>{status}</StatusPill>
       </div>
 
-      <div className="company-rule-facts">
+      <div className="company-rule-facts delivery-card__facts">
         <div><span>Cases</span><strong>{order.cases}</strong><small>{lines.length} SKU{lines.length === 1 ? "" : "s"}</small></div>
         <div><span>Order total</span><strong>{formatMoney(order.amount)}</strong><small>{order.paymentStatus}</small></div>
         <div><span>Placed by</span><strong>{placedBy?.name ?? order.ownerId}</strong><small>Order creator</small></div>
@@ -115,16 +131,16 @@ export function DeliveriesPage() {
 
       {linkedMarketing.length > 0 && <div className="delivery-marketing-alert"><Megaphone size={18} /><div><strong>Approved request for this location</strong>{linkedMarketing.map((request) => <p key={request.id}><b>{request.title}</b> · {request.detail}{request.neededBy ? ` · needed ${formatDate(request.neededBy, { month: "short", day: "numeric" })}` : ""}</p>)}</div></div>}
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <div className="delivery-card__actions">
         <Button type="button" size="sm" variant="secondary" icon={<Eye size={15} />} onClick={() => setDetailOrderId(order.id)}>View details</Button>
         {!task && isDriver && <Button type="button" size="sm" icon={<UserCheck size={15} />} onClick={() => run(claimDelivery(order.id), `${order.number} claimed. You can now pack it.`)}>Claim delivery</Button>}
         {!task && canManage && <><select value={selectedDriver} onChange={(event) => setDriverByOrder((current) => ({ ...current, [order.id]: event.target.value }))}>{drivers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><Button type="button" size="sm" disabled={!selectedDriver} onClick={() => run(assignDelivery(order.id, selectedDriver), `${order.number} assigned.`)}>Assign driver</Button></>}
         {task?.status === "Accepted" && (ownTask || canManage) && <>{order.status === "Approved" && <Button type="button" size="sm" icon={<PackageCheck size={15} />} onClick={() => run(prepareDelivery(order.id), `${order.number} packed and inventory reserved.`)}>Pack / reserve</Button>}{order.status === "Allocated" && <Button type="button" size="sm" icon={<PackageOpen size={15} />} onClick={() => run(markLoaded(order.id), `${order.number} loaded into driver custody.`)}>Mark loaded</Button>}<Button type="button" size="sm" variant="ghost" onClick={() => { const reason = window.prompt("Why is this delivery assignment being released?")?.trim() ?? ""; if (reason) run(cancelDelivery(order.id, reason), `${order.number} returned to the delivery queue.`); }}>{ownTask ? "Release assignment" : "Cancel assignment"}</Button></>}
         {task?.status === "Loaded" && (ownTask || canManage) && <Button type="button" size="sm" icon={<Truck size={15} />} onClick={() => run(startDelivery(order.id), `${order.number} is now in transit.`)}>Start delivery</Button>}
-        {task?.status === "In transit" && (ownTask || canManage) && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => { if (window.confirm(`Confirm ${order.number} was delivered to ${account?.locationName ?? account?.name ?? "the customer"}?`)) run(markDelivered(order.id), `${order.number} delivered and inventory posted to the customer.`); }}>Mark delivered</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) run(addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
+        {task?.status === "In transit" && (ownTask || canManage) && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => openSignature(order.id)}>Complete delivery & sign</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) run(addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
       </div>
 
-      {canRecordCollection && <div className="delivery-payment-collection" style={{ display: "grid", gridTemplateColumns: "minmax(120px,1fr) minmax(130px,1fr) minmax(170px,1.4fr) auto", gap: 8, alignItems: "end" }}>
+      {canRecordCollection && <div className="delivery-payment-collection">
         <label><small>Amount collected</small><input type="number" min="0.01" step="0.01" max={remaining} value={collectionDraft.amount} onChange={(event) => updateCollection({ amount: event.target.value })} /></label>
         <label><small>Payment method</small><select value={collectionDraft.method} onChange={(event) => updateCollection({ method: event.target.value as PaymentMethod })}><option>Cash</option><option>Check</option><option>ACH</option><option>Wire</option><option>Card</option><option>Other</option></select></label>
         <label><small>{collectionDraft.method === "Check" ? "Check number / reference" : "Reference / confirmation"}</small><input required={collectionDraft.method === "Check"} value={collectionDraft.reference} onChange={(event) => updateCollection({ reference: event.target.value })} placeholder={collectionDraft.method === "Check" ? "Required for checks" : "Optional unless available"} /></label>
@@ -161,7 +177,7 @@ export function DeliveriesPage() {
     </div>
 
     <Modal open={Boolean(detailOrder)} title={detailOrder ? `${detailOrder.number} · Delivery details` : "Delivery details"} description={detailAccount?.locationName ?? detailAccount?.name ?? "Order and customer detail"} onClose={() => setDetailOrderId(null)} wide footer={<Button type="button" variant="ghost" onClick={() => setDetailOrderId(null)}>Close</Button>}>
-      {detailOrder && <div style={{ display: "grid", gap: 16 }}>
+      {detailOrder && <div className="delivery-detail">
         <div className="company-rule-facts">
           <div><span>Status</span><strong>{detailStatus}</strong><small>Order {detailOrder.status}</small></div>
           <div><span>Placed by</span><strong>{detailPlacedBy?.name??detailOrder.ownerId}</strong><small>Order creator</small></div>
@@ -183,10 +199,22 @@ export function DeliveriesPage() {
 
         <Section title="Delivery note"><p>{detailTask?.note ?? detailAccount?.notes ?? "No delivery note recorded."}</p></Section>
 
+        {detailTask?.signature && <Section title="Delivery signature"><div className="delivery-signature-record"><svg viewBox="0 0 1000 300" aria-label="Recipient delivery signature">{detailTask.signature.strokes.map((stroke, index) => <polyline key={index} points={stroke.map(([x,y]) => `${x},${y}`).join(" ")} />)}</svg><div><strong>{detailTask.signature.recipientName || "Recipient signature"}</strong><small>Signed {formatDate(detailTask.signature.signedAt, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</small></div></div></Section>}
+
         {(detailTask?.collections ?? []).length > 0 && <Section title="Payment collected at delivery"><div className="company-request-list">{detailTask!.collections!.map((collection) => <article key={collection.id}><span><Banknote size={16} /></span><div><strong>{formatMoney(collection.amount)} · {collection.method}</strong><p>{collection.reference ? `Reference: ${collection.reference} · ` : ""}Finance settlement/reconciliation is still required.</p><small>{formatDate(collection.recordedAt, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</small></div></article>)}</div></Section>}
 
         {(detailTask?.history ?? []).length > 0 && <Section title="Delivery history"><div style={{ display: "grid", gap: 7 }}>{detailTask!.history.map((event) => <p key={event.id} style={{ margin: 0 }}><small>{new Date(event.at).toLocaleString()} · {event.type}{event.note ? ` · ${event.note}` : ""}</small></p>)}</div></Section>}
       </div>}
+    </Modal>
+
+    <Modal open={Boolean(signingOrderId)} title="Complete delivery" description="Capture the recipient signature before posting the delivery as complete." onClose={closeSignature} footer={<><Button type="button" variant="ghost" onClick={closeSignature}>Cancel</Button><Button type="button" icon={<CheckCircle2 size={16}/>} onClick={completeSignedDelivery}>Save signature & complete</Button></>}>
+      <div className="delivery-signature-modal">
+        <p className="delivery-signature-modal__order">{signingOrderId ? data.orders.find((item) => item.id === signingOrderId)?.number : ""} · {signingOrderId ? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.locationName ?? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.name : ""}</p>
+        <DeliverySignaturePad strokes={signatureStrokes} onChange={(strokes) => { setSignatureStrokes(strokes); setSignatureError(""); }} />
+        <label className="delivery-signature-name"><span>Recipient name <small>optional</small></span><input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Name of person receiving delivery" autoComplete="name" /></label>
+        <p className="delivery-signature-note">This signature records delivery presence and is copied onto the Momentum invoice. It is not a separate contract or payment authorization.</p>
+        {signatureError && <p className="form-error" role="alert">{signatureError}</p>}
+      </div>
     </Modal>
   </>;
 }
