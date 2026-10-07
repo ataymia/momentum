@@ -23,6 +23,7 @@ import { useDelivery } from "../../lib/delivery-context";
 import { INVENTORY_LEDGER_STORAGE_KEY } from "../../lib/inventory-ledger";
 import { orderLinesFor } from "../../lib/order-lines";
 import { momentumStorage, useSyncStatus } from "../../lib/persistence";
+import { deliveryDriverProductLabel } from "../../lib/product-catalog";
 import { useMarketing } from "../../lib/marketing-context";
 import { COMMERCIAL_KEY, useWorkspace } from "../../lib/workspace-context";
 import { DeliverySignaturePad } from "../delivery/signature-pad";
@@ -115,11 +116,18 @@ export function DeliveriesPage() {
         <div className="delivery-card__identity">
           <small>{order.number}</small>
           <strong>{account?.locationName ?? account?.name ?? "Unknown customer"}</strong>
-          <p><MapPin size={16} /> {account ? fullAddress(account) : "Location unavailable"}</p>
+          <p className="delivery-card__address"><MapPin size={16} /> {account ? fullAddress(account) : "Location unavailable"}</p>
           {account?.phone && <p><Phone size={16} /> {account.phone}</p>}
         </div>
         <StatusPill tone={tone(status)}>{status}</StatusPill>
       </div>
+
+      {isDriver && <div className="delivery-driver-load" aria-label="Delivery load summary">
+        {lines.map((line) => <div className="delivery-driver-load__line" key={line.id}>
+          <strong><b>{line.cases} case{line.cases === 1 ? "" : "s"}</b><span>{deliveryDriverProductLabel(line.product)}</span></strong>
+          <small>{formatMoney(line.pricePerCase)} / case · {formatMoney(line.amount)}</small>
+        </div>)}
+      </div>}
 
       <div className="company-rule-facts delivery-card__facts">
         <div><span>Cases</span><strong>{order.cases}</strong><small>{lines.length} SKU{lines.length === 1 ? "" : "s"}</small></div>
@@ -186,7 +194,7 @@ export function DeliveriesPage() {
           <div><span>Driver</span><strong>{detailDriver?.name ?? "Unassigned"}</strong><small>{detailTask?.status ?? "Not claimed"}</small></div>
         </div>
 
-        <Section title="Items"><div className="company-request-list">{detailLines.map((line) => <article key={line.id}><span><Box size={15} /></span><div><strong>{line.product}</strong><p>{line.cases} cases · {formatMoney(line.pricePerCase)} / case · {formatMoney(line.amount)}</p></div></article>)}</div></Section>
+        <Section title="Items"><div className={isDriver ? "delivery-detail-items delivery-detail-items--driver" : "delivery-detail-items"}>{detailLines.map((line) => <article key={line.id}><span><Box size={18} /></span><div>{isDriver ? <><strong className="delivery-detail-items__primary"><b>{line.cases} case{line.cases === 1 ? "" : "s"}</b><span>{deliveryDriverProductLabel(line.product)}</span></strong><p>{formatMoney(line.pricePerCase)} / case · {formatMoney(line.amount)}</p></> : <><strong>{line.product}</strong><p>{line.cases} cases · {formatMoney(line.pricePerCase)} / case · {formatMoney(line.amount)}</p></>}</div></article>)}</div></Section>
 
         <Section title="Customer & delivery"><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14 }}>
           <div><small>Delivery location</small><p><MapPin size={14} /> {detailAccount ? fullAddress(detailAccount) : "Location unavailable"}</p></div>
