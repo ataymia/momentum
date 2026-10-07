@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { canCreateOrder } from "../lib/access";
 import { normalizeCommercialState } from "../lib/commercial-state";
 import { mergeDocument } from "../lib/persistence";
 import { reconcileApprovals, reconcileOrders } from "../lib/order-approval-engine";
@@ -146,4 +147,19 @@ test("standard order approval waits on one confirmation path instead of launchin
   assert.doesNotMatch(decide,/momentumStorage\.flush\(\)/);
   const work=readFileSync("components/pages/work-v2.tsx","utf8");
   assert.match(work,/flushAndConfirm\(COMMERCIAL_KEY\)/);
+});
+
+
+test("cloud-confirmed commercial work can flush while another domain is already syncing",()=>{
+  const persistence=readFileSync("lib/persistence.ts","utf8");
+  assert.match(persistence,/private activeFlushKeys=new Set<string>\(\)/);
+  assert.match(persistence,/this\.dirty\.has\(key\)&&!this\.activeFlushKeys\.has\(key\)\)await this\.flush\(\[key\],true\)/);
+  assert.match(persistence,/async flush\(onlyKeys\?:string\[\],allowConcurrent=false\)/);
+  assert.match(persistence,/requested\.filter\(\(key\)=>!this\.activeFlushKeys\.has\(key\)\)/);
+});
+
+test("all intended order-entry roles retain order creation access",()=>{
+  const make=(role:WorkspaceUser["role"]):WorkspaceUser=>({...rep,id:`user-${role}`,role,title:role});
+  for(const role of ["Administrator","Sales Manager","Sales Representative","Customer"] as const)assert.equal(canCreateOrder(make(role)),true,role);
+  for(const role of ["Operations","Delivery Driver","Warehouse","Brand Ambassador"] as const)assert.equal(canCreateOrder(make(role)),false,role);
 });
