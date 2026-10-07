@@ -386,6 +386,12 @@ class FirestoreBackend{
 
   removeItem(key:string){this.cache.set(key,null);}
 
+  async flushLatest(){
+    const keys=[...this.dirty];
+    const latest=keys[keys.length-1];
+    if(latest)await this.flush([latest]);
+  }
+
   private scheduleFlush(delay:number){
     if(this.disposed||typeof window==="undefined")return;
     if(this.timer)window.clearTimeout(this.timer);
