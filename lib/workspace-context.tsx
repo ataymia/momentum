@@ -219,6 +219,30 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const currentUser = useMemo(() => demoMode && warehouseSession ? data.users.find((user) => user.id === warehouseUser.id) ?? null : base.currentUser ? data.users.find((user) => user.id === base.currentUser?.id) ?? null : null, [base.currentUser, data.users, demoMode, warehouseSession]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
 
+  // The order document, not the approval document, is the cross-role delivery source of truth. If an older
+  // queued/conflicted approval reached Firestore but left its order one step behind, an Administrator session
+  // repairs that canonical status immediately. Delivery Drivers intentionally do not receive the full approval
+  // ledger, so this prevents My Work from looking Approved while the delivery queue still sees Awaiting approval.
+  useEffect(() => {
+    if (demoMode || currentUser?.role !== "Administrator" || commercial.orders.length === 0) return;
+    const approvals = reconcileApprovals(commercial.approvals, base.data.approvals);
+    const repaired = reconcileOrders(commercial.orders, [], approvals);
+    const statusById = new Map(repaired.map((order) => [order.id, order.status]));
+    if (!commercial.orders.some((order) => statusById.get(order.id) !== order.status)) return;
+    setCommercial((state) => {
+      const currentApprovals = reconcileApprovals(state.approvals, base.data.approvals);
+      const canonical = new Map(reconcileOrders(state.orders, [], currentApprovals).map((order) => [order.id, order.status]));
+      let changed = false;
+      const orders = state.orders.map((order) => {
+        const status = canonical.get(order.id);
+        if (!status || status === order.status) return order;
+        changed = true;
+        return { ...order, status };
+      });
+      return changed ? { ...state, orders } : state;
+    });
+  }, [base.data.approvals, commercial.approvals, commercial.orders, currentUser?.role, demoMode]);
+
   const focusActiveFieldWork = (appointment: Appointment) => {
     if (typeof window !== "undefined") window.sessionStorage.setItem("momentum-focus-record", appointment.id);
     base.navigate("dispatch");
