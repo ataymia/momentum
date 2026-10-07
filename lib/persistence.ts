@@ -395,7 +395,7 @@ class FirestoreBackend{
   private scheduleFlush(delay:number){
     if(this.disposed||typeof window==="undefined")return;
     if(this.timer)window.clearTimeout(this.timer);
-    this.timer=window.setTimeout(()=>void this.flush(),delay);
+    this.timer=window.setTimeout(()=>void this.flushLatest(),delay);
   }
 
   private buildWrites(keys:string[]){
