@@ -14,6 +14,12 @@ export type DomainFieldSpec={
   write?:RoleRule;
   /** Derived/bounded fields may intentionally replace their prior persisted collection. */
   replaceOnWrite?:boolean;
+  /**
+   * Per-user arrays that can grow beyond one Firestore document are persisted behind a small manifest and
+   * bounded chunk documents. The manifest stays at the historical field path so old clients/data can migrate
+   * without inventing a second source of truth.
+   */
+  chunkBytes?:number;
 };
 
 export type DomainSpec={key:string;id:string;read:RoleRule;write:RoleRule;fields:Record<string,DomainFieldSpec>;omit?:string[]};
@@ -74,7 +80,7 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-marketing-v3",id:"marketing",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{requests:perUser("requesterId"),deliveryNotices:{read:[...OPERATIONAL,"Delivery Driver"],write:ADMIN_MANAGER},campaigns:{},spend:{},assets:{},materials:{},materialMovements:{},touches:{},attributions:{},partnerships:{}}},
   {key:"momentum-payroll-v5",id:"payroll",read:ADMIN,write:ADMIN,fields:{payGroups:{},employerTaxRules:{},benefitTaxRules:{},runs:{},liabilities:{},employees:adminOwned(),withholdingProfiles:adminOwned(),disbursements:adminOwned()}},
   {key:"momentum-field-tracking-v1",id:"fieldTracking",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{geofences:{},sessions:perUser("userId",{managerRead:false,managerWrite:false}),samples:perUser("userId",{managerRead:false,managerWrite:false}),appointmentEvents:perUser("userId",{managerRead:false,managerWrite:false}),exceptions:perUser("userId",{managerRead:false,managerWrite:false}),departureAlerts:perUser("userId",{managerRead:false,managerWrite:false})}},
-  {key:"momentum-audit-v1",id:"audit",read:ADMIN,write:ADMIN,fields:{events:perUser("actorId",{managerWrite:false,managerRead:false})}},
+  {key:"momentum-audit-v1",id:"audit",read:ADMIN,write:ADMIN,fields:{events:perUser("actorId",{managerWrite:false,managerRead:false,chunkBytes:350_000})}},
   {key:"momentum-notification-rules-v1",id:"notificationRules",read:"activeEmployee",write:ADMIN,fields:{preferences:perUser(),deliveries:{...restricted("activeEmployee","activeEmployee"),replaceOnWrite:true}}},
   {key:"momentum-period-locks-v1",id:"periodLocks",read:"activeEmployee",write:ADMIN,fields:{locks:{}}},
 ];
@@ -83,7 +89,75 @@ export const DOMAIN_BY_KEY=new Map(DOMAIN_SPECS.map((spec)=>[spec.key,spec]));
 export const ROOT_FIELD="_root";
 export const SHARED_ROOT="domains";
 export const USER_ROOT="userDomains";
+export const USER_SHARD_MANIFEST_VERSION=1;
+const USER_CHUNK_MARKER="__chunk_";
+const USER_CHUNK_PATTERN=/^(.*)__chunk_(\d{6})$/;
 export const isDomainStorageKey=(key:string)=>DOMAIN_BY_KEY.has(key);
+
+const serializedBytes=(value:unknown)=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
+const userChunkField=(field:string,index:number)=>`${field}${USER_CHUNK_MARKER}${String(index).padStart(6,"0")}`;
+
+export function resolveUserPhysicalField(spec:DomainSpec,physicalField:string){
+  const direct=spec.fields[physicalField];
+  if(direct?.userIdField)return{field:physicalField,fieldSpec:direct,isChunk:false};
+  const match=physicalField.match(USER_CHUNK_PATTERN);
+  if(!match)return null;
+  const field=match[1];
+  const fieldSpec=spec.fields[field];
+  if(!fieldSpec?.userIdField||!fieldSpec.chunkBytes)return null;
+  return{field,fieldSpec,isChunk:true};
+}
+
+export function chunkManifestShardPaths(spec:DomainSpec,manifestPath:string,data:Record<string,unknown>|null){
+  const parsed=parseDocPath(manifestPath);
+  if(!parsed?.uid||!data)return[];
+  const resolved=resolveUserPhysicalField(spec,parsed.field);
+  if(!resolved||resolved.isChunk||!resolved.fieldSpec.chunkBytes||data.shardManifestVersion!==USER_SHARD_MANIFEST_VERSION||!Array.isArray(data.shards))return[];
+  const paths:string[]=[];
+  for(const candidate of data.shards){
+    if(typeof candidate!=="string")continue;
+    const physical=resolveUserPhysicalField(spec,candidate);
+    if(!physical?.isChunk||physical.field!==resolved.field)continue;
+    paths.push(userDocPath(parsed.uid,spec.id,candidate));
+  }
+  return[...new Set(paths)];
+}
+
+export function isChunkManifestPath(spec:DomainSpec,path:string){
+  const parsed=parseDocPath(path);
+  if(!parsed?.uid||parsed.domainId!==spec.id)return false;
+  const resolved=resolveUserPhysicalField(spec,parsed.field);
+  return Boolean(resolved&&!resolved.isChunk&&resolved.fieldSpec.chunkBytes);
+}
+
+export function emptyDocumentForPath(spec:DomainSpec,path:string):Record<string,unknown>{
+  const parsed=parseDocPath(path);
+  if(parsed?.uid&&parsed.domainId===spec.id){
+    const resolved=resolveUserPhysicalField(spec,parsed.field);
+    if(resolved&&!resolved.isChunk&&resolved.fieldSpec.chunkBytes)return{shardManifestVersion:USER_SHARD_MANIFEST_VERSION,shards:[],itemCount:0};
+  }
+  return parsed?.field===ROOT_FIELD?{data:{}}:{items:[]};
+}
+
+function orderedChunkItems(items:unknown[]){
+  return [...items].sort((left,right)=>{
+    const l=isRecord(left)?left:undefined;const r=isRecord(right)?right:undefined;
+    const lt=typeof l?.at==="string"?l.at:typeof l?.createdAt==="string"?l.createdAt:"";
+    const rt=typeof r?.at==="string"?r.at:typeof r?.createdAt==="string"?r.createdAt:"";
+    return lt.localeCompare(rt)||recordIdentity(left).localeCompare(recordIdentity(right));
+  });
+}
+
+function chunkItems(items:unknown[],maxBytes:number){
+  const chunks:unknown[][]=[];let current:unknown[]=[];
+  for(const item of orderedChunkItems(items)){
+    const candidate=[...current,item];
+    if(current.length&&serializedBytes({items:candidate})>maxBytes){chunks.push(current);current=[item];}
+    else current=candidate;
+  }
+  if(current.length)chunks.push(current);
+  return chunks;
+}
 
 export function roleAllows(rule:RoleRule,scope:PersistenceScope){if(scope.role==="Customer")return false;if(rule==="hasAccess")return true;if(rule==="activeEmployee")return scope.accountState==="Active";return scope.accountState==="Active"&&rule.includes(scope.role);}
 export const sharedDocPath=(domainId:string,field:string)=>`${SHARED_ROOT}/${domainId}/fields/${field}`;
@@ -99,17 +173,64 @@ export function domainDocuments(spec:DomainSpec,scope:PersistenceScope):DomainDo
     const read=fieldSpec.read?roleAllows(fieldSpec.read,scope):sharedReadable;const write=fieldSpec.write?roleAllows(fieldSpec.write,scope):sharedWritable;
     if(read)documents.push({path:sharedDocPath(spec.id,field),writable:write});if(!fieldSpec.userIdField)continue;
     const readableUids=new Set(scope.readableUserIds);if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative")for(const uid of scope.supervisedBrandAmbassadorIds)readableUids.add(uid);
-    for(const uid of readableUids){if(uid!==scope.uid&&scope.role!=="Administrator"&&!scope.managedUserIds.has(uid)&&!(fieldSpec.salesRepSupervise&&scope.supervisedBrandAmbassadorIds.has(uid)))continue;if(uid!==scope.uid&&scope.role!=="Administrator"&&scope.managedUserIds.has(uid)&&fieldSpec.managerRead===false)continue;documents.push({path:userDocPath(uid,spec.id,field),writable:userShardWritable(spec,fieldSpec,uid,scope)});}
+    for(const uid of readableUids){
+      if(uid!==scope.uid&&scope.role!=="Administrator"&&!scope.managedUserIds.has(uid)&&!(fieldSpec.salesRepSupervise&&scope.supervisedBrandAmbassadorIds.has(uid)))continue;
+      if(uid!==scope.uid&&scope.role!=="Administrator"&&scope.managedUserIds.has(uid)&&fieldSpec.managerRead===false)continue;
+      // Chunked fields expose only their small manifest as a static read. The manifest names the bounded
+      // chunk documents, which persistence.ts hydrates in a second direct-read pass.
+      documents.push({path:userDocPath(uid,spec.id,field),writable:userShardWritable(spec,fieldSpec,uid,scope)});
+    }
   }
   return documents;
 }
 
 export function userShardWritable(_spec:DomainSpec,fieldSpec:DomainFieldSpec,uid:string,scope:PersistenceScope){if(scope.role==="Customer")return false;if(scope.role==="Administrator")return true;if(uid===scope.uid)return fieldSpec.selfWrite!==false;if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative"&&scope.supervisedBrandAmbassadorIds.has(uid))return scope.accountState==="Active";if(scope.managedUserIds.has(uid))return fieldSpec.managerWrite!==false&&scope.accountState==="Active";return false;}
-export function documentWritable(path:string,scope:PersistenceScope){const parsed=parseDocPath(path);if(!parsed)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)return false;if(parsed.uid){const fieldSpec=spec.fields[parsed.field];return Boolean(fieldSpec?.userIdField)&&userShardWritable(spec,fieldSpec,parsed.uid,scope);}const fieldSpec=parsed.field===ROOT_FIELD?undefined:spec.fields[parsed.field];return roleAllows(fieldSpec?.write??spec.write,scope);}
+export function documentWritable(path:string,scope:PersistenceScope){const parsed=parseDocPath(path);if(!parsed)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)return false;if(parsed.uid){const resolved=resolveUserPhysicalField(spec,parsed.field);return Boolean(resolved?.fieldSpec.userIdField)&&userShardWritable(spec,resolved!.fieldSpec,parsed.uid,scope);}const fieldSpec=parsed.field===ROOT_FIELD?undefined:spec.fields[parsed.field];return roleAllows(fieldSpec?.write??spec.write,scope);}
 export function documentReplacesOnWrite(path:string){const parsed=parseDocPath(path);if(!parsed||parsed.uid||parsed.field===ROOT_FIELD)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);return spec?.fields[parsed.field]?.replaceOnWrite===true;}
 const isRecord=(value:unknown):value is Record<string,unknown>=>Boolean(value&&typeof value==="object"&&!Array.isArray(value));
-export function shardState(spec:DomainSpec,state:unknown):Map<string,Record<string,unknown>>{const output=new Map<string,Record<string,unknown>>();if(!isRecord(state))return output;const root:Record<string,unknown>={};for(const [key,value] of Object.entries(state)){if(spec.omit?.includes(key))continue;const fieldSpec=spec.fields[key];if(!Array.isArray(value)||!fieldSpec){root[key]=value;continue;}if(!fieldSpec.userIdField){output.set(sharedDocPath(spec.id,key),{items:value});continue;}const shared:unknown[]=[];const byUser=new Map<string,unknown[]>();for(const item of value){const owner=isRecord(item)?item[fieldSpec.userIdField]:undefined;if(typeof owner==="string"&&owner){const list=byUser.get(owner)??[];list.push(item);byUser.set(owner,list);}else shared.push(item);}output.set(sharedDocPath(spec.id,key),{items:shared});for(const [uid,items] of byUser)output.set(userDocPath(uid,spec.id,key),{items});}output.set(sharedDocPath(spec.id,ROOT_FIELD),{data:root});return output;}
-export function assembleState(spec:DomainSpec,documents:Map<string,Record<string,unknown>|null>):Record<string,unknown>|null{let found=false;const rootDoc=documents.get(sharedDocPath(spec.id,ROOT_FIELD));const state:Record<string,unknown>=isRecord(rootDoc?.data)?{...rootDoc!.data}:{};if(rootDoc)found=true;for(const field of Object.keys(spec.fields)){const items:unknown[]=[];const shared=documents.get(sharedDocPath(spec.id,field));if(shared){found=true;if(Array.isArray(shared.items))items.push(...shared.items);}const userPaths=[...documents.keys()].filter((path)=>{const parsed=parseDocPath(path);return parsed?.uid&&parsed.domainId===spec.id&&parsed.field===field;}).sort();for(const path of userPaths){const doc=documents.get(path);if(doc){found=true;if(Array.isArray(doc.items))items.push(...doc.items);}}state[field]=items;}return found?state:null;}
+export function shardState(spec:DomainSpec,state:unknown):Map<string,Record<string,unknown>>{
+  const output=new Map<string,Record<string,unknown>>();if(!isRecord(state))return output;const root:Record<string,unknown>={};
+  for(const [key,value] of Object.entries(state)){
+    if(spec.omit?.includes(key))continue;const fieldSpec=spec.fields[key];
+    if(!Array.isArray(value)||!fieldSpec){root[key]=value;continue;}
+    if(!fieldSpec.userIdField){output.set(sharedDocPath(spec.id,key),{items:value});continue;}
+    const shared:unknown[]=[];const byUser=new Map<string,unknown[]>();
+    for(const item of value){const owner=isRecord(item)?item[fieldSpec.userIdField]:undefined;if(typeof owner==="string"&&owner){const list=byUser.get(owner)??[];list.push(item);byUser.set(owner,list);}else shared.push(item);}
+    output.set(sharedDocPath(spec.id,key),{items:shared});
+    for(const [uid,items] of byUser){
+      if(fieldSpec.chunkBytes){
+        const chunks=chunkItems(items,fieldSpec.chunkBytes);const shards:string[]=[];
+        chunks.forEach((chunk,index)=>{const physical=userChunkField(key,index);shards.push(physical);output.set(userDocPath(uid,spec.id,physical),{items:chunk});});
+        // Keep the historical field path as a tiny manifest. Existing one-document data therefore migrates
+        // atomically to chunk documents instead of needing an out-of-band console migration.
+        output.set(userDocPath(uid,spec.id,key),{shardManifestVersion:USER_SHARD_MANIFEST_VERSION,shards,itemCount:items.length});
+      }else output.set(userDocPath(uid,spec.id,key),{items});
+    }
+  }
+  output.set(sharedDocPath(spec.id,ROOT_FIELD),{data:root});return output;
+}
+export function assembleState(spec:DomainSpec,documents:Map<string,Record<string,unknown>|null>):Record<string,unknown>|null{
+  let found=false;const rootDoc=documents.get(sharedDocPath(spec.id,ROOT_FIELD));const state:Record<string,unknown>=isRecord(rootDoc?.data)?{...rootDoc!.data}:{};if(rootDoc)found=true;
+  for(const [field,fieldSpec] of Object.entries(spec.fields)){
+    const items:unknown[]=[];const shared=documents.get(sharedDocPath(spec.id,field));if(shared){found=true;if(Array.isArray(shared.items))items.push(...shared.items);}
+    if(fieldSpec.userIdField&&fieldSpec.chunkBytes){
+      const manifestPaths=[...documents.keys()].filter((path)=>{const parsed=parseDocPath(path);return parsed?.uid&&parsed.domainId===spec.id&&parsed.field===field;}).sort();
+      for(const manifestPath of manifestPaths){
+        const manifest=documents.get(manifestPath);if(!manifest)continue;found=true;
+        // Legacy documents are still readable during migration.
+        if(Array.isArray(manifest.items)){items.push(...manifest.items);continue;}
+        for(const shardPath of chunkManifestShardPaths(spec,manifestPath,manifest)){
+          const shard=documents.get(shardPath);if(shard){found=true;if(Array.isArray(shard.items))items.push(...shard.items);}
+        }
+      }
+      const unique=new Map<string,unknown>();for(const item of items)unique.set(recordIdentity(item),item);state[field]=[...unique.values()];continue;
+    }
+    const userPaths=[...documents.keys()].filter((path)=>{const parsed=parseDocPath(path);return parsed?.uid&&parsed.domainId===spec.id&&parsed.field===field;}).sort();
+    for(const path of userPaths){const doc=documents.get(path);if(doc){found=true;if(Array.isArray(doc.items))items.push(...doc.items);}}
+    state[field]=items;
+  }
+  return found?state:null;
+}
 export function recordIdentity(item:unknown):string{if(!isRecord(item))return JSON.stringify(item);for(const key of ["id","userId","policyId","actorId"])if(typeof item[key]==="string")return`${key}:${item[key]}`;return JSON.stringify(item);}
 export const metaVersionKey=(docPath:string)=>docPath.replace(/[^A-Za-z0-9]+/g,"_");
 export const EMPLOYEE_DIRECTORY_META_KEY=metaVersionKey("employeeDirectory");
