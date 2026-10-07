@@ -69,8 +69,9 @@ test("invoice print removes the application layout from print flow so it cannot 
 
 test("invoice header uses the official Momentum Golden Eagle brand asset instead of the placeholder M mark", () => {
   assert.match(invoiceSource, /invoice-sheet__brand-logo/);
-  assert.match(invoiceSource, /momentum-golden-eagle\.webp/);
+  assert.match(invoiceSource, /momentum-golden-eagle-official-transparent\.webp/);
   assert.match(invoiceSource, /Momentum Distribution Inc\. Golden Eagle Energy Drink/);
   assert.doesNotMatch(invoiceSource, /invoice-sheet__mark/);
+  assert.doesNotMatch(invoiceSource, /ChatGPT%20Image/);
   assert.match(invoiceCss, /\.invoice-sheet__brand-logo/);
 });
