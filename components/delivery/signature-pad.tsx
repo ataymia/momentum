@@ -7,8 +7,8 @@ import { Button } from "../ui";
 
 const WIDTH = 1000;
 const HEIGHT = 300;
-const MAX_POINTS = 3000;
-const MIN_POINT_DISTANCE = 3;
+const MAX_POINTS = 1200;
+const MIN_POINT_DISTANCE = 5;
 
 type Props = {
   strokes: DeliverySignaturePoint[][];
