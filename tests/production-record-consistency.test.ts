@@ -135,7 +135,7 @@ test("secondary order surfaces identify who placed each concrete order",()=>{
 
 test("order cloud confirmation uses the requested commercial key",()=>{
   const persistence=readFileSync("lib/persistence.ts","utf8");
-  assert.match(persistence,/await this\.flush\(\[key\]\)/);
+  assert.match(persistence,/await this\.flush\(\[key\],true\)/);
   assert.match(persistence,/async flushLatest\(\)/);
 });
 
