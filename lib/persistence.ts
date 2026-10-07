@@ -361,7 +361,7 @@ class FirestoreBackend{
     while(Date.now()-started<timeoutMs){
       const blocked=this.blockedKeys.get(key);
       if(blocked)return{ok:false,message:blocked};
-      if(!this.flushing&&this.dirty.has(key))await this.flush();
+      if(!this.flushing&&this.dirty.has(key))await this.flush([key]);
       const journal=local()?.getItem(pendingJournalKey(this.scope.uid,key));
       if(!this.flushing&&!this.dirty.has(key)&&!journal)return{ok:true};
       await new Promise((resolve)=>setTimeout(resolve,75));
@@ -420,10 +420,12 @@ class FirestoreBackend{
     return{writes,pathKey,nextDocs};
   }
 
-  async flush():Promise<void>{
+  async flush(onlyKeys?:string[]):Promise<void>{
     if(this.flushing||this.disposed||this.dirty.size===0)return;
+    const keys=onlyKeys?.length?[...new Set(onlyKeys)].filter((key)=>this.dirty.has(key)):[...this.dirty];
+    if(keys.length===0)return;
     this.flushing=true;setStatus({flushing:true});
-    const keys=[...this.dirty];this.dirty.clear();
+    for(const key of keys)this.dirty.delete(key);
     try{
       for(let attempt=0;attempt<4;attempt++){
         const {writes,pathKey,nextDocs}=this.buildWrites(keys);
