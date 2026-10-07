@@ -129,13 +129,15 @@ export function DeliveriesPage() {
         </div>)}
       </div>}
 
-      <div className="company-rule-facts delivery-card__facts">
+      {isDriver ? <div className="delivery-driver-meta">
+        <span>{formatMoney(order.amount)} total</span><i>•</i><span>{customer?.paymentTerms ?? "COD"}</span><i>•</i><span>{order.paymentStatus}</span>
+      </div> : <div className="company-rule-facts delivery-card__facts">
         <div><span>Cases</span><strong>{order.cases}</strong><small>{lines.length} SKU{lines.length === 1 ? "" : "s"}</small></div>
         <div><span>Order total</span><strong>{formatMoney(order.amount)}</strong><small>{order.paymentStatus}</small></div>
         <div><span>Placed by</span><strong>{placedBy?.name ?? order.ownerId}</strong><small>Order creator</small></div>
         <div><span>Driver</span><strong>{driver?.name ?? "Unassigned"}</strong><small>{task ? "Claimed" : "Available to claim"}</small></div>
         <div><span>Terms</span><strong>{customer?.paymentTerms ?? "COD"}</strong><small>{collected > 0 ? `${formatMoney(collected)} collected · Finance pending` : `Order ${order.status}`}</small></div>
-      </div>
+      </div>}
 
       {linkedMarketing.length > 0 && <div className="delivery-marketing-alert"><Megaphone size={18} /><div><strong>Approved request for this location</strong>{linkedMarketing.map((request) => <p key={request.id}><b>{request.title}</b> · {request.detail}{request.neededBy ? ` · needed ${formatDate(request.neededBy, { month: "short", day: "numeric" })}` : ""}</p>)}</div></div>}
 
