@@ -55,7 +55,7 @@ export const momentumStorage={
   },
   subscribe:subscribeStorageKey,
   /** Force pending Firestore writes now (used before sign-out). */
-  async flush(){await backend?.flush();},
+  async flush(){await backend?.flushLatest();},
   /** Confirm that one storage key actually reached Firestore. Local/demo mode succeeds immediately. */
   async flushAndConfirm(key:string,timeoutMs=12_000):Promise<{ok:boolean;message?:string}>{
     if(!backend)return{ok:true};
