@@ -229,18 +229,21 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const repaired = reconcileOrders(commercial.orders, [], approvals);
     const statusById = new Map(repaired.map((order) => [order.id, order.status]));
     if (!commercial.orders.some((order) => statusById.get(order.id) !== order.status)) return;
-    setCommercial((state) => {
-      const currentApprovals = reconcileApprovals(state.approvals, base.data.approvals);
-      const canonical = new Map(reconcileOrders(state.orders, [], currentApprovals).map((order) => [order.id, order.status]));
-      let changed = false;
-      const orders = state.orders.map((order) => {
-        const status = canonical.get(order.id);
-        if (!status || status === order.status) return order;
-        changed = true;
-        return { ...order, status };
+    const handle = window.setTimeout(() => {
+      setCommercial((state) => {
+        const currentApprovals = reconcileApprovals(state.approvals, base.data.approvals);
+        const canonical = new Map(reconcileOrders(state.orders, [], currentApprovals).map((order) => [order.id, order.status]));
+        let changed = false;
+        const orders = state.orders.map((order) => {
+          const status = canonical.get(order.id);
+          if (!status || status === order.status) return order;
+          changed = true;
+          return { ...order, status };
+        });
+        return changed ? { ...state, orders } : state;
       });
-      return changed ? { ...state, orders } : state;
-    });
+    }, 0);
+    return () => window.clearTimeout(handle);
   }, [base.data.approvals, commercial.approvals, commercial.orders, currentUser?.role, demoMode]);
 
   const focusActiveFieldWork = (appointment: Appointment) => {
