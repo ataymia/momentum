@@ -192,17 +192,18 @@ function mergeStoredState(spec:DomainSpec,baseRaw:string|null,localRaw:string,re
   // record level first so a recovery journal compacted by the browser-storage guard cannot shift records
   // between chunks and accidentally lose remote history.
   if(isRecord(localState)&&isRecord(remoteState)){
-    const baseRecord=isRecord(baseState)?baseState:{};
+    const localRecord:Record<string,unknown>={...localState};
+    const remoteRecord:Record<string,unknown>={...remoteState};
+    const baseRecord:Record<string,unknown>=isRecord(baseState)?{...baseState}:{};
     for(const [field,fieldSpec] of Object.entries(spec.fields)){
       if(!fieldSpec.chunkBytes)continue;
       const baseItems=Array.isArray(baseRecord[field])?baseRecord[field] as unknown[]:[];
-      const localItems=Array.isArray(localState[field])?localState[field] as unknown[]:[];
-      const remoteItems=Array.isArray(remoteState[field])?remoteState[field] as unknown[]:[];
+      const localItems=Array.isArray(localRecord[field])?localRecord[field] as unknown[]:[];
+      const remoteItems=Array.isArray(remoteRecord[field])?remoteRecord[field] as unknown[]:[];
       const merged=mergeItems(baseItems,localItems,remoteItems,`logical:${spec.id}/${field}`);
-      localState={...localState,[field]:merged};
-      remoteState={...remoteState,[field]:merged};
-      if(isRecord(baseState))baseState={...baseState,[field]:merged};
+      localRecord[field]=merged;remoteRecord[field]=merged;baseRecord[field]=merged;
     }
+    localState=localRecord;remoteState=remoteRecord;baseState=baseRecord;
   }
 
   const baseShards=baseState?shardState(spec,baseState):new Map<string,Record<string,unknown>>();
