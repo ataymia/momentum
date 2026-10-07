@@ -3,7 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PLATFORM_META_DOCUMENT, type PersistenceScope } from "./firebase-access";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite } from "./firebase-firestore-rest";
-import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, resolveUserPhysicalField, shardState, userDocPath, type DomainSpec } from "./firestore-domains";
+import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, shardState, type DomainSpec } from "./firestore-domains";
 
 /**
  * Momentum storage boundary.
@@ -32,17 +32,6 @@ const isRecord=(value:unknown):value is Record<string,unknown>=>Boolean(value&&t
 const local=()=>typeof window==="undefined"?null:window.localStorage;
 const PENDING_JOURNAL_PREFIX="momentum-firestore-pending-v1";
 const pendingJournalKey=(uid:string,key:string)=>`${PENDING_JOURNAL_PREFIX}:${uid}:${key}`;
-
-/**
- * Chunk documents share their manifest's version key. This keeps platform/meta bounded even when an audit
- * history grows across many physical chunks, while still giving pollers one signal for the whole logical field.
- */
-function versionDocumentPath(path:string,key:string|undefined){
-  const spec=key?DOMAIN_BY_KEY.get(key):undefined;const parsed=parseDocPath(path);
-  if(!spec||!parsed?.uid||parsed.domainId!==spec.id)return path;
-  const resolved=resolveUserPhysicalField(spec,parsed.field);
-  return resolved?.isChunk?userDocPath(parsed.uid,spec.id,resolved.field):path;
-}
 
 export function subscribeStorageKey(key:string,listener:Listener){
   const set=keyListeners.get(key)??new Set<Listener>();
@@ -268,14 +257,14 @@ class FirestoreBackend{
   }
 
   /** Fetch bounded user-shard documents named by chunk manifests. Direct document reads keep rules simple. */
-  private async hydrateChunkShards(forceManifests=new Set<string>()){
+  private async hydrateChunkShards(){
     const requested=new Map<string,DomainSpec>();
     for(const [manifestPath,state] of this.docs){
       if(!state.data)continue;
       const parsed=parseDocPath(manifestPath);if(!parsed?.uid)continue;
       const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)continue;
       for(const shardPath of chunkManifestShardPaths(spec,manifestPath,state.data)){
-        if((forceManifests.has(manifestPath)||!this.docs.has(shardPath))&&!this.denied.has(shardPath))requested.set(shardPath,spec);
+        if(!this.docs.has(shardPath)&&!this.denied.has(shardPath))requested.set(shardPath,spec);
       }
     }
     if(requested.size===0)return new Set<string>();
@@ -436,7 +425,7 @@ class FirestoreBackend{
         const {writes,pathKey,nextDocs}=this.buildWrites(keys);
         if(writes.length===0){for(const key of keys)if(!this.blockedKeys.has(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));break;}
         const stamp=`${new Date().toISOString()}#${Math.random().toString(36).slice(2,8)}`;
-        const versionEntries=[...new Set(writes.map((write)=>metaVersionKey(versionDocumentPath(write.path,pathKey.get(write.path)))))];
+        const versionEntries=writes.map((write)=>metaVersionKey(write.path));
         const metaWrite:FirestoreWrite={kind:"merge",path:PLATFORM_META_DOCUMENT,data:{versions:Object.fromEntries(versionEntries.map((entry)=>[entry,stamp]))},fieldPaths:versionEntries.map((entry)=>`versions.${entry}`)};
         const result=await commitFirestoreWrites([...writes,metaWrite]);
         if(result.ok){
@@ -490,7 +479,7 @@ class FirestoreBackend{
       const spec=key?DOMAIN_BY_KEY.get(key):undefined;
       if(key&&spec&&isChunkManifestPath(spec,write.path)&&failedKeys.has(key)){messages.push(`${write.path}: manifest deferred until every audit chunk is cloud-confirmed.`);continue;}
       const stamp=`${new Date().toISOString()}#${Math.random().toString(36).slice(2,8)}`;
-      const versionEntry=metaVersionKey(versionDocumentPath(write.path,key));
+      const versionEntry=metaVersionKey(write.path);
       const metaWrite:FirestoreWrite={kind:"merge",path:PLATFORM_META_DOCUMENT,data:{versions:{[versionEntry]:stamp}},fieldPaths:[`versions.${versionEntry}`]};
       const result=await commitFirestoreWrites([write,metaWrite]);
       if(result.ok){
@@ -529,7 +518,7 @@ class FirestoreBackend{
       const spec=key?DOMAIN_BY_KEY.get(key):undefined;
       if(key&&spec&&isChunkManifestPath(spec,write.path)&&blockedKeys.has(key))continue;
       const stamp=`${new Date().toISOString()}#${Math.random().toString(36).slice(2,8)}`;
-      const versionEntry=metaVersionKey(versionDocumentPath(write.path,key));
+      const versionEntry=metaVersionKey(write.path);
       const metaWrite:FirestoreWrite={kind:"merge",path:PLATFORM_META_DOCUMENT,data:{versions:{[versionEntry]:stamp}},fieldPaths:[`versions.${versionEntry}`]};
       const result=await commitFirestoreWrites([write,metaWrite]);
       if(result.ok){
@@ -605,12 +594,7 @@ class FirestoreBackend{
         const map=touched.get(spec.key)??new Map<string,Record<string,unknown>|null>();
         map.set(snapshot.path,override);touched.set(spec.key,map);
       }
-      const changedManifests=new Set(paths.filter((path)=>{
-        const parsed=parseDocPath(path);if(!parsed)return false;
-        const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);
-        return Boolean(spec&&isChunkManifestPath(spec,path));
-      }));
-      for(const key of await this.hydrateChunkShards(changedManifests))if(!touched.has(key))touched.set(key,new Map());
+      for(const key of await this.hydrateChunkShards())if(!touched.has(key))touched.set(key,new Map());
       for(const [key,map] of touched){
         const spec=DOMAIN_BY_KEY.get(key)!;
         const next=this.assemble(spec,map);
