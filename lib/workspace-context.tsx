@@ -649,7 +649,6 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     };
     momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
     setCommercial(nextCommercial);
-    void momentumStorage.flush();
   };
 
   const setOrderStatus = (id: string, status: OrderStatus) => {
