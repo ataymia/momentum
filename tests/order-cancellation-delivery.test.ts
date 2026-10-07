@@ -47,4 +47,4 @@ test("order cancellation is evidence-preserving, self-service for the creator, a
   assert.match(page,/Inventory is already reserved for this approved order/);
 });
 
-test("delivery workflow includes claim, pack, load, route and delivery",()=>{const page=readFileSync("components/pages/deliveries.tsx","utf8");for(const label of ["Claim delivery","Pack / reserve","Mark loaded","Start delivery","Mark delivered"])assert.match(page,new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")))});
+test("delivery workflow includes claim, pack, load, route and delivery",()=>{const page=readFileSync("components/pages/deliveries.tsx","utf8");for(const label of ["Claim delivery","Pack / reserve","Mark loaded","Start delivery","Complete delivery & sign"])assert.match(page,new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")))});
