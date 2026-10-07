@@ -65,10 +65,10 @@ const normalizeSignature = (value: unknown, userIds: Set<string>): DeliverySigna
   const signature = value as Partial<DeliverySignature>;
   if (!validInstant(signature.signedAt) || !signature.capturedBy || !userIds.has(signature.capturedBy) || !Array.isArray(signature.strokes)) return undefined;
   const strokes = signature.strokes
-    .filter((stroke): stroke is DeliverySignaturePoint[] => Array.isArray(stroke) && stroke.length >= 2 && stroke.length <= 500 && stroke.every(finitePoint))
+    .filter((stroke): stroke is DeliverySignaturePoint[] => Array.isArray(stroke) && stroke.length >= 2 && stroke.length <= 300 && stroke.every(finitePoint))
     .slice(0, 80);
   const totalPoints = strokes.reduce((sum, stroke) => sum + stroke.length, 0);
-  if (!strokes.length || totalPoints > 3000) return undefined;
+  if (!strokes.length || totalPoints > 1200) return undefined;
   return {
     strokes,
     recipientName: text(signature.recipientName) || undefined,
