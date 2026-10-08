@@ -4,7 +4,7 @@ import type { Account, Activity, Appointment, Approval, CustomerAccount, Invento
 import { normalizeStoredOrderLines } from "./order-lines";
 import { canonicalProductDescription } from "./product-catalog";
 
-export type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "postalCode" | "programPricingLabel" | "programPricePerCase" | "programPricingEffectiveDate" | "programPricingExpirationDate" | "programPricingStatus" | "programPricingOwnerId" | "lastMeaningfulBusinessAt">>;
+export type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "streetAddress" | "location" | "postalCode" | "deliveryAddressSameAsBusiness" | "deliveryStreetAddress" | "deliveryLocation" | "deliveryPostalCode" | "programPricingLabel" | "programPricePerCase" | "programPricingEffectiveDate" | "programPricingExpirationDate" | "programPricingStatus" | "programPricingOwnerId" | "lastMeaningfulBusinessAt">>;
 export type CommercialCustomerPatch = Partial<Pick<CustomerAccount,"name"|"billingContactName"|"billingEmail"|"billingPhone"|"ein"|"accountsPayableContactName"|"accountsPayablePhone"|"accountsPayableEmail"|"az5000Number"|"taxExemptionStatus"|"creditStatus"|"paymentTerms"|"customPaymentTerms"|"onboardingPackageStatus"|"onboardingPackagePreparedAt"|"onboardingPackagePreparedBy"|"onboardingProviderStatus"|"notes">>;
 export type CommercialState = { version: 1; accountPatches: Record<string, CommercialAccountPatch>; customerPatches: Record<string,CommercialCustomerPatch>; orders: Order[]; appointments: Appointment[]; approvals: Approval[]; activities: Activity[]; inventoryLots: InventoryLot[]; territories: SalesTerritory[] };
 
@@ -80,7 +80,13 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     const closerId = optionalText(raw.closerId); if (closerId && internalSalesIds.has(closerId)) patch.closerId = closerId;
     if (wholeNonnegative(raw.lifetimeCases)) patch.lifetimeCases = Number(raw.lifetimeCases);
     if (wholeNonnegative(raw.reorderCount)) patch.reorderCount = Number(raw.reorderCount);
+    const streetAddress=optionalText(raw.streetAddress); if(streetAddress)patch.streetAddress=streetAddress;
+    const location=optionalText(raw.location); if(location)patch.location=location;
     const postalCode=normalizePostalCode(optionalText(raw.postalCode)); if(postalCode)patch.postalCode=postalCode;
+    if(typeof raw.deliveryAddressSameAsBusiness==="boolean")patch.deliveryAddressSameAsBusiness=raw.deliveryAddressSameAsBusiness;
+    const deliveryStreetAddress=optionalText(raw.deliveryStreetAddress); if(deliveryStreetAddress)patch.deliveryStreetAddress=deliveryStreetAddress;
+    const deliveryLocation=optionalText(raw.deliveryLocation); if(deliveryLocation)patch.deliveryLocation=deliveryLocation;
+    const deliveryPostalCode=normalizePostalCode(optionalText(raw.deliveryPostalCode)); if(deliveryPostalCode)patch.deliveryPostalCode=deliveryPostalCode;
     accountPatches[accountId] = { ...accountPatches[accountId], ...patch };
   }
 

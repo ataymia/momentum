@@ -54,7 +54,7 @@ const tropicalLot: InventoryLot = {
   location: "Phoenix demo warehouse",
 };
 
-type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "postalCode" | "latitude" | "longitude" | "geocodePrecision" | "geocodeProvider" | "geocodedAt" | "geocodeFingerprint" | "geocodeStatus" | "territoryId" | "strategic" | "programPricingLabel" | "programPricePerCase" | "programPricingEffectiveDate" | "programPricingExpirationDate" | "programPricingStatus" | "programPricingOwnerId" | "lastMeaningfulBusinessAt">>;
+type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "streetAddress" | "location" | "postalCode" | "deliveryAddressSameAsBusiness" | "deliveryStreetAddress" | "deliveryLocation" | "deliveryPostalCode" | "latitude" | "longitude" | "geocodePrecision" | "geocodeProvider" | "geocodedAt" | "geocodeFingerprint" | "geocodeStatus" | "territoryId" | "strategic" | "programPricingLabel" | "programPricePerCase" | "programPricingEffectiveDate" | "programPricingExpirationDate" | "programPricingStatus" | "programPricingOwnerId" | "lastMeaningfulBusinessAt">>;
 type CommercialCustomerPatch = Partial<Pick<CustomerAccount,"name"|"billingContactName"|"billingEmail"|"billingPhone"|"ein"|"accountsPayableContactName"|"accountsPayablePhone"|"accountsPayableEmail"|"az5000Number"|"taxExemptionStatus"|"creditStatus"|"paymentTerms"|"customPaymentTerms"|"onboardingPackageStatus"|"onboardingPackagePreparedAt"|"onboardingPackagePreparedBy"|"onboardingProviderStatus"|"notes">>;
 
 /**
@@ -79,7 +79,7 @@ type CommercialState = {
 type EnhancedOrderLineInput={product:string;cases:number;inventoryAvailableAtOrder?:number;sourcePlacementId?:string};
 type EnhancedOrderInput = { accountId: string; cases?: number; pricePerCase?: number; product?: string; inventoryAvailableAtOrder?: number; sourcePlacementId?: string; lines?:EnhancedOrderLineInput[] };
 type OrderEditResult={ok:boolean;message?:string;status?:OrderStatus};
-type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string; categoryReviewDate?: string; pricingTier?: PricingTier; postalCode?: string; programPricingLabel?:string; programPricePerCase?:number; programPricingEffectiveDate?:string; programPricingExpirationDate?:string; programPricingStatus?:Account["programPricingStatus"] };
+type CommercialAccountInput = { premiseType?: PremiseType; businessType?: string; categoryReviewDate?: string; pricingTier?: PricingTier; streetAddress?:string; location?:string; postalCode?: string; deliveryAddressSameAsBusiness?:boolean; deliveryStreetAddress?:string; deliveryLocation?:string; deliveryPostalCode?:string; programPricingLabel?:string; programPricePerCase?:number; programPricingEffectiveDate?:string; programPricingExpirationDate?:string; programPricingStatus?:Account["programPricingStatus"] };
 type TerritoryInput = Omit<TerritoryDraft,"id"> & {id?:string};
 type TerritoryMutationResult = {ok:boolean;message?:string;id?:string};
 type BaseWorkspace = ReturnType<typeof useBaseWorkspace>;
@@ -339,6 +339,11 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     if (!validateNewAccountContact(account).ok) return null;
     const postalCode=normalizePostalCode(account.postalCode);
     if(!postalCode)return null;
+    const deliveryAddressSameAsBusiness=account.deliveryAddressSameAsBusiness!==false;
+    const deliveryStreetAddress=deliveryAddressSameAsBusiness?undefined:account.deliveryStreetAddress?.trim();
+    const deliveryLocation=deliveryAddressSameAsBusiness?undefined:account.deliveryLocation?.trim();
+    const deliveryPostalCode=deliveryAddressSameAsBusiness?undefined:normalizePostalCode(account.deliveryPostalCode);
+    if(!deliveryAddressSameAsBusiness&&(!deliveryStreetAddress||!deliveryLocation||!deliveryPostalCode))return null;
     let exceptionReason="";
     const repDeviation=currentUser?.role==="Sales Representative"&&territorySystemEnabled(data)&&isTerritoryDeviation(data,postalCode,currentUser.id);
     if(repDeviation){
@@ -346,7 +351,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       if(exceptionReason.length<5)return null;
     }
     if (findAccountDuplicate(data.accounts, account)) return null;
-    const id = base.createAccount({...account,postalCode});
+    const id = base.createAccount({...account,postalCode,deliveryAddressSameAsBusiness,deliveryStreetAddress,deliveryLocation,deliveryPostalCode});
     if (id) {
       setCommercial((state) => ({ ...state, accountPatches: { ...state.accountPatches, [id]: { premiseType: "Unclassified", businessType: account.channel.trim(), categoryReviewDate: plusDays(today(), 90),postalCode } } }));
       if(repDeviation&&currentUser)recordTerritoryException(id,account.name,postalCode,currentUser.id,"creating this account",exceptionReason,"Pending");
@@ -378,13 +383,21 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       postalCode=normalizePostalCode(patch.postalCode);
       if(!postalCode||currentUser.role==="Sales Representative")return false;
     }
+    let deliveryPostalCode: string|undefined;
+    if(patch.deliveryPostalCode!==undefined){
+      deliveryPostalCode=normalizePostalCode(patch.deliveryPostalCode);
+      if(!deliveryPostalCode)return false;
+    }
+    if(patch.streetAddress!==undefined&&!patch.streetAddress.trim())return false;
+    if(patch.location!==undefined&&!patch.location.trim())return false;
+    if(patch.deliveryAddressSameAsBusiness===false&&(!patch.deliveryStreetAddress?.trim()||!patch.deliveryLocation?.trim()||!deliveryPostalCode))return false;
     const programChanged="programPricePerCase" in patch||"programPricingEffectiveDate" in patch||"programPricingExpirationDate" in patch||"programPricingStatus" in patch||"programPricingLabel" in patch;
     if(programChanged&&currentUser.role==="Sales Representative")return false;
     if(patch.programPricePerCase!==undefined&&(!Number.isFinite(patch.programPricePerCase)||patch.programPricePerCase<=0))return false;
     if(patch.programPricingEffectiveDate&&!isValidCalendarDateKey(patch.programPricingEffectiveDate))return false;
     if(patch.programPricingExpirationDate&&!isValidCalendarDateKey(patch.programPricingExpirationDate))return false;
     if(patch.programPricingEffectiveDate&&patch.programPricingExpirationDate&&patch.programPricingExpirationDate<patch.programPricingEffectiveDate)return false;
-    const cleanPatch = { ...patch, ...(patch.businessType !== undefined ? { businessType: patch.businessType.trim() } : {}), ...(postalCode?{postalCode}:{}) } as CommercialAccountPatch;
+    const cleanPatch = { ...patch, ...(patch.businessType !== undefined ? { businessType: patch.businessType.trim() } : {}), ...(patch.streetAddress!==undefined?{streetAddress:patch.streetAddress.trim()}:{}), ...(patch.location!==undefined?{location:patch.location.trim()}:{}), ...(patch.deliveryStreetAddress!==undefined?{deliveryStreetAddress:patch.deliveryStreetAddress.trim()}:{}), ...(patch.deliveryLocation!==undefined?{deliveryLocation:patch.deliveryLocation.trim()}:{}), ...(postalCode?{postalCode}:{}), ...(deliveryPostalCode?{deliveryPostalCode}:{}) } as CommercialAccountPatch;
     setCommercial((state) => ({
       ...state,
       accountPatches: {
