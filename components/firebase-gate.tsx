@@ -7,7 +7,7 @@ import { LoginForm } from "./login-screen";
 import { BrandMark, Button, StatusPill } from "./ui";
 
 function Loading() {
-  return <main className="login-loading"><BrandMark /><span className="loading-line" /></main>;
+  return <main className="login-loading"><BrandMark onDark /><span className="loading-line" /></main>;
 }
 
 function Unconfigured() {

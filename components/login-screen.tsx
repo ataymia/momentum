@@ -75,16 +75,19 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
 
   const openPane = (next: RecoveryPane) => { setPane(next); setError(""); setNotice(""); };
 
-  if (!ready) return <main className="login-loading"><BrandMark /><span className="loading-line" /></main>;
+  if (!ready) return <main className="login-loading"><BrandMark onDark /><span className="loading-line" /></main>;
 
   return <main className="login-page">
     <section className="login-hero">
       <div className="login-hero__glow login-hero__glow--one" /><div className="login-hero__glow login-hero__glow--two" />
-      <div className="login-hero__top"><BrandMark /></div>
-      <div className="login-hero__content"><Image className="login-official-logo" src={`${basePath}/momentum-invoice-brand.jpg`} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" width={1536} height={1024} priority unoptimized /></div>
+      <div className="login-hero__top"><BrandMark onDark /></div>
+      <div className="login-hero__content">
+        <div className="login-hero__wordmark"><span>Golden Eagle Energy Drink</span><strong>Momentum Distribution</strong><p>Arizona distribution workspace</p></div>
+      </div>
       <footer className="login-hero__footer"><span>Authorized access only</span></footer>
     </section>
     <section className="login-panel"><div className="login-panel__inner">
+      <div className="login-panel__brand"><Image src={`${basePath}/momentum-invoice-brand.jpg`} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" width={1536} height={1024} priority unoptimized /></div>
       <div className="login-panel__heading"><span className="login-panel__icon"><LockKeyhole size={20} /></span><div><h2>Sign in</h2><p>{subtitle}</p></div></div>
 
       {pane === "none" && <form className="login-form" onSubmit={submit}>
