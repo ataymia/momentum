@@ -17,6 +17,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { deliveryAddressLabel } from "../../lib/account-address";
 import type { PaymentMethod } from "../../lib/commerce-engine";
 import { DELIVERY_STORAGE_KEY, deliveryStatusForOrder, processedForDelivery, type DeliverySignaturePoint } from "../../lib/delivery-engine";
 import { useDelivery } from "../../lib/delivery-context";
@@ -31,7 +32,6 @@ import { InvoicePrintCenter } from "../finance/invoice-print-center";
 import { Button, Modal, PageHeader, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const tone = (status: string) => status === "Delivered" ? "success" as const : status === "In transit" || status === "Loaded" ? "info" as const : status.includes("ready") || status === "Accepted" ? "warning" as const : "neutral" as const;
-const fullAddress = (account: { streetAddress?: string; city?: string; state?: string; postalCode?: string; location: string }) => [account.streetAddress, account.city || account.location, account.state, account.postalCode].filter(Boolean).join(", ");
 type CollectionDraft = { amount: string; method: PaymentMethod; reference: string };
 const defaultCollection = (amount: number): CollectionDraft => ({ amount: amount > 0 ? amount.toFixed(2) : "", method: "Check", reference: "" });
 
@@ -116,7 +116,7 @@ export function DeliveriesPage() {
         <div className="delivery-card__identity">
           <small>{order.number}</small>
           <strong>{account?.locationName ?? account?.name ?? "Unknown customer"}</strong>
-          <p className="delivery-card__address"><MapPin size={16} /> {account ? fullAddress(account) : "Location unavailable"}</p>
+          <p className="delivery-card__address"><MapPin size={16} /> {account ? deliveryAddressLabel(account) : "Location unavailable"}</p>
           {account?.phone && <p><Phone size={16} /> {account.phone}</p>}
         </div>
         <StatusPill tone={tone(status)}>{status}</StatusPill>
@@ -199,7 +199,7 @@ export function DeliveriesPage() {
         <Section title="Items"><div className={isDriver ? "delivery-detail-items delivery-detail-items--driver" : "delivery-detail-items"}>{detailLines.map((line) => <article key={line.id}><span><Box size={18} /></span><div>{isDriver ? <><strong className="delivery-detail-items__primary"><b>{line.cases} case{line.cases === 1 ? "" : "s"}</b><span>{deliveryDriverProductLabel(line.product)}</span></strong><p>{formatMoney(line.pricePerCase)} / case · {formatMoney(line.amount)}</p></> : <><strong>{line.product}</strong><p>{line.cases} cases · {formatMoney(line.pricePerCase)} / case · {formatMoney(line.amount)}</p></>}</div></article>)}</div></Section>
 
         <Section title="Customer & delivery"><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14 }}>
-          <div><small>Delivery location</small><p><MapPin size={14} /> {detailAccount ? fullAddress(detailAccount) : "Location unavailable"}</p></div>
+          <div><small>Delivery location</small><p><MapPin size={14} /> {detailAccount ? deliveryAddressLabel(detailAccount) : "Location unavailable"}</p></div>
           <div><small>Primary contact</small><p><UserRound size={14} /> {detailAccount?.contactName || "Not recorded"}{detailAccount?.contactRole ? ` · ${detailAccount.contactRole}` : ""}</p><p>{detailAccount?.phone || "No phone"}{detailAccount?.email ? ` · ${detailAccount.email}` : ""}</p></div>
           <div><small>Billing / A/P contact</small><p><Mail size={14} /> {detailCustomer?.accountsPayableContactName ?? detailCustomer?.billingContactName ?? "Not recorded"}</p><p>{detailCustomer?.accountsPayablePhone ?? detailCustomer?.billingPhone ?? "No phone"}{detailCustomer?.accountsPayableExtension ? ` ext. ${detailCustomer.accountsPayableExtension}` : ""}</p><p>{detailCustomer?.accountsPayableEmail ?? detailCustomer?.billingEmail ?? ""}</p></div>
           <div><small>Terms</small><p><strong>{detailCustomer?.paymentTerms ?? "COD"}</strong></p><p>{detailCollected > 0 ? `${formatMoney(detailCollected)} collected at delivery · Finance reconciliation pending` : "No delivery collection recorded."}</p></div>
