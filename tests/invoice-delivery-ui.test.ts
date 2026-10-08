@@ -62,16 +62,28 @@ test("delivery workspace has dedicated phone typography, single-column actions, 
 
 
 test("invoice print removes the application layout from print flow so it cannot create blank trailing pages", () => {
-  assert.match(invoiceCss, /body>\*:not\(\.invoice-print-root\)\{display:none!important\}/);
-  assert.match(invoiceCss, /\.invoice-print-root\{position:static!important/);
+  assert.ok(invoiceCss.includes("body > *:not(.invoice-print-root) { display: none !important; }"));
+  assert.ok(invoiceCss.includes("body > .invoice-print-root {"));
+  assert.ok(invoiceCss.includes("position: static !important;"));
   assert.doesNotMatch(invoiceCss, /body \*\{visibility:hidden!important\}/);
 });
 
 test("invoice header uses the official Momentum Golden Eagle brand asset instead of the placeholder M mark", () => {
   assert.match(invoiceSource, /invoice-sheet__brand-logo/);
-  assert.match(invoiceSource, /momentum-golden-eagle-official-transparent\.webp/);
+  assert.match(invoiceSource, /momentum-invoice-brand\.jpg/);
   assert.match(invoiceSource, /Momentum Distribution Inc\. Golden Eagle Energy Drink/);
   assert.doesNotMatch(invoiceSource, /invoice-sheet__mark/);
+  assert.doesNotMatch(invoiceSource, /momentum-golden-eagle-official-transparent/);
   assert.doesNotMatch(invoiceSource, /ChatGPT%20Image/);
   assert.match(invoiceCss, /\.invoice-sheet__brand-logo/);
+});
+
+test("print CSS excludes hidden application pages and fits within letter paper", () => {
+  assert.ok(invoiceCss.includes(".invoice-print-root{display:none}"));
+  assert.ok(invoiceCss.includes("height: 10.7in !important"));
+  assert.ok(invoiceCss.includes("min-height: 0 !important"));
+  assert.ok(invoiceCss.includes(".invoice-print-root .invoice-sheet + .invoice-sheet"));
+  assert.ok(invoiceCss.includes("break-before: page !important"));
+  assert.ok(invoiceCss.includes("break-after: auto !important"));
+  assert.ok(!invoiceCss.includes("min-height:11in!important"));
 });

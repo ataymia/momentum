@@ -10,11 +10,13 @@ import { useCommerce } from "../../lib/commerce-context";
 import { useDelivery } from "../../lib/delivery-context";
 import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
 import { orderLinesFor } from "../../lib/order-lines";
+import { invoicePrintPages } from "../../lib/invoice-print-pages";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Modal, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-const invoiceBrandSrc = `${basePath}/momentum-golden-eagle-official-transparent.webp`;
+// Verified byte-for-byte copy of the uploaded artwork in public/.
+const invoiceBrandSrc = `${basePath}/momentum-invoice-brand.jpg`;
 const company = {
   name: "Momentum Distribution Inc.",
   street: "8550 N 91st Ave. Ste #5",
@@ -56,6 +58,12 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
   const [copies, setCopies] = useState<Copies>(1);
   const [printJob, setPrintJob] = useState<PrintJob>(null);
   const [printNotice, setPrintNotice] = useState("");
+
+  // Warm the browser image cache before a synchronous user-initiated print on mobile Safari.
+  useEffect(() => {
+    const brandImage = new window.Image();
+    brandImage.src = invoiceBrandSrc;
+  }, []);
 
   const selectedSet = new Set(selectedIds);
   const allSelected = invoices.length > 0 && invoices.every((invoice) => selectedSet.has(invoice.id));
@@ -167,7 +175,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
   };
 
   const preview = previewId ? invoiceSheet(previewId, 0) : null;
-  const printSheets = printJob ? printJob.ids.flatMap((id) => Array.from({ length: printJob.copies }, (_, copyIndex) => invoiceSheet(id, copyIndex))) : [];
+  const printSheets = printJob ? invoicePrintPages(printJob.ids, printJob.copies).map(({ invoiceId, copyIndex }) => invoiceSheet(invoiceId, copyIndex)) : [];
   const printPortal = typeof document !== "undefined" && printSheets.length ? createPortal(<div className="invoice-print-root" aria-hidden="true">{printSheets}</div>, document.body) : null;
 
   return <>
