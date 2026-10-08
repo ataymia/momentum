@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   title: "Momentum Distribution | Golden Eagle",
   description: "Momentum Distribution",
   other: { "codex-preview": "development" },
-  icons: { icon: `${basePath}/favicon.svg`, shortcut: `${basePath}/favicon.svg` },
+  icons: { icon: `${basePath}/momentum-invoice-brand.jpg`, shortcut: `${basePath}/momentum-invoice-brand.jpg`, apple: `${basePath}/momentum-invoice-brand.jpg` },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
