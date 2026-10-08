@@ -149,6 +149,14 @@ export type Account = {
   city?: string;
   state?: string;
   postalCode?: string;
+  /**
+   * Delivery routing may differ from the business address. Existing accounts default to "same as business"
+   * when this flag is absent so legacy records never lose a usable delivery destination.
+   */
+  deliveryAddressSameAsBusiness?: boolean;
+  deliveryStreetAddress?: string;
+  deliveryLocation?: string;
+  deliveryPostalCode?: string;
   /** Rep who originated the relationship; retained for attribution after a transfer. */
   originatorId?: string;
   accountManagerId?: string;
