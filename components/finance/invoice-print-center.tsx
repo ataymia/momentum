@@ -4,6 +4,7 @@ import Image from "next/image";
 import { CheckSquare2, FileText, Printer, Square } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
+import { businessAddressLabel, deliveryAddressLabel } from "../../lib/account-address";
 import { computedInvoiceStatus, invoiceBalance, invoiceCreditAmount, invoicePaidAmount } from "../../lib/commerce-engine";
 import { useCommerce } from "../../lib/commerce-context";
 import { useDelivery } from "../../lib/delivery-context";
@@ -34,12 +35,6 @@ const hasBankInstructions = Boolean(bank.name && bank.account && bank.routing);
 
 type Copies = 1 | 2;
 type PrintJob = { ids: string[]; copies: Copies } | null;
-
-function addressFor(location: { streetAddress?: string; city?: string; state?: string; postalCode?: string; location?: string }) {
-  const locality = [location.city, location.state].filter(Boolean).join(", ");
-  const cityLine = [locality, location.postalCode].filter(Boolean).join(" ");
-  return [location.streetAddress, cityLine || location.location].filter(Boolean).join(", ");
-}
 
 function dueLabel(terms: string, dueDate?: string) {
   if (terms === "COD") return "Due upon delivery";
@@ -110,7 +105,8 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
     const apEmail = customer?.accountsPayableEmail || customer?.billingEmail;
     const apPhone = customer?.accountsPayablePhone || customer?.billingPhone;
     const apExtension = customer?.accountsPayableExtension?.trim();
-    const billToAddress = location ? addressFor(location) : "";
+    const billToAddress = location ? businessAddressLabel(location) : "";
+    const shipToAddress = location ? deliveryAddressLabel(location) : "";
 
     return <article className="invoice-sheet" key={`${invoice.id}-${copyIndex}`}>
       <Image priority className="invoice-sheet__watermark" src={invoiceBrandSrc} width={720} height={480} alt="" aria-hidden="true" unoptimized />
@@ -125,7 +121,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
       <section className="invoice-sheet__legacy-grid">
         <div><small>FROM</small><strong>{company.name}</strong><span>{company.street}</span><span>{company.cityStateZip}</span><span>{company.phone} · {company.attention}</span><span>{company.salesEmail}</span></div>
         <div><small>BILL TO</small><strong>{customer?.name ?? location?.name ?? "Customer"}</strong>{billToAddress && <span>{billToAddress}</span>}{apName && <span>A/P: {apName}</span>}{apPhone && <span>{apPhone}{apExtension ? ` ext. ${apExtension}` : ""}</span>}{apEmail && <span>{apEmail}</span>}{customer?.az5000Number && <span>AZ-5000: {customer.az5000Number}</span>}</div>
-        <div><small>SHIP TO</small><strong>{location ? locationLabel(location) : "Customer location"}</strong>{location && <span>{addressFor(location)}</span>}{location?.contactName && <span>{location.contactName}{location.contactRole ? ` · ${location.contactRole}` : ""}</span>}{location?.phone && <span>{location.phone}</span>}</div>
+        <div><small>SHIP TO</small><strong>{location ? locationLabel(location) : "Customer location"}</strong>{shipToAddress && <span>{shipToAddress}</span>}{location?.contactName && <span>{location.contactName}{location.contactRole ? ` · ${location.contactRole}` : ""}</span>}{location?.phone && <span>{location.phone}</span>}</div>
         <div className="invoice-sheet__document-meta"><span>INVOICE #</span><strong>{invoice.number}</strong><span>INVOICE DATE</span><strong>{formatDate(invoice.issuedAt, { month: "2-digit", day: "2-digit", year: "numeric" })}</strong><span>ORDER #</span><strong>{order?.number ?? invoice.orderId}</strong></div>
       </section>
 
