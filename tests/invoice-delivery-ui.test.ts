@@ -62,8 +62,9 @@ test("delivery workspace has dedicated phone typography, single-column actions, 
 
 
 test("invoice print removes the application layout from print flow so it cannot create blank trailing pages", () => {
-  assert.match(invoiceCss, /body>\*:not\(\.invoice-print-root\)\{display:none!important\}/);
-  assert.match(invoiceCss, /\.invoice-print-root\{position:static!important/);
+  assert.ok(invoiceCss.includes("body > *:not(.invoice-print-root) { display: none !important; }"));
+  assert.ok(invoiceCss.includes("body > .invoice-print-root {"));
+  assert.ok(invoiceCss.includes("position: static !important;"));
   assert.doesNotMatch(invoiceCss, /body \*\{visibility:hidden!important\}/);
 });
 
