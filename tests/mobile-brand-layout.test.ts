@@ -19,6 +19,9 @@ test("shared branding and login hero use verified artwork, not the M or broken W
 test("mobile viewport and sign-in screen keep login accessible at phone widths", () => {
   assert.ok(layout.includes('width: "device-width", initialScale: 1'));
   assert.ok(layout.includes('"./mobile-platform.css"'));
+  assert.ok(layout.includes("apple:"));
+  assert.ok(layout.includes("momentum-invoice-brand.jpg"));
+  assert.ok(!layout.includes("favicon.svg"));
   assert.ok(css.includes("@media screen and (max-width:900px)"));
   assert.ok(css.includes(".login-page { display:flex; flex-direction:column"));
   assert.ok(css.includes(".login-form input { font-size:16px"));
