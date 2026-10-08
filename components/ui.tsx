@@ -1,13 +1,19 @@
 "use client";
 
 import { ArrowUpRight, ChevronRight, X } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
+const brandAsset = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/momentum-invoice-brand.jpg`;
+
+/** Shared verified Golden Eagle artwork for sign-in, sidebar and role headers. */
 export function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={compact ? "brand brand--compact" : "brand"} aria-label="Momentum Distribution">
-      <span className="brand__mark" aria-hidden="true"><span>M</span></span>
-      {!compact && <span className="brand__type"><strong>Momentum</strong><small>Distribution</small></span>}
+    <div className={compact ? "brand brand--compact" : "brand"}>
+      <span className="brand__art">
+        <Image src={brandAsset} alt="Momentum Distribution Inc. Golden Eagle Energy Drink"
+          width={1536} height={1024} unoptimized />
+      </span>
     </div>
   );
 }

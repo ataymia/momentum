@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./final-pass.css";
 import "./departments.css";
@@ -17,14 +17,17 @@ import "./workflow-navigation.css";
 import "./production-polish.css";
 import "./visual-polish-v2.css";
 import "./invoice-print.css";
+import "./mobile-platform.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
+export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
 export const metadata: Metadata = {
   title: "Momentum Distribution | Golden Eagle",
   description: "Momentum Distribution",
   other: { "codex-preview": "development" },
-  icons: { icon: `${basePath}/favicon.svg`, shortcut: `${basePath}/favicon.svg` },
+  icons: { icon: `${basePath}/momentum-invoice-brand.jpg`, shortcut: `${basePath}/momentum-invoice-brand.jpg`, apple: `${basePath}/momentum-invoice-brand.jpg` },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

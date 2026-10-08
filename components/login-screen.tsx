@@ -81,7 +81,7 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
     <section className="login-hero">
       <div className="login-hero__glow login-hero__glow--one" /><div className="login-hero__glow login-hero__glow--two" />
       <div className="login-hero__top"><BrandMark /></div>
-      <div className="login-hero__content"><Image className="login-official-logo" src={`${basePath}/momentum-golden-eagle.webp`} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" width={720} height={360} priority unoptimized /></div>
+      <div className="login-hero__content"><Image className="login-official-logo" src={`${basePath}/momentum-invoice-brand.jpg`} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" width={1536} height={1024} priority unoptimized /></div>
       <footer className="login-hero__footer"><span>Authorized access only</span></footer>
     </section>
     <section className="login-panel"><div className="login-panel__inner">

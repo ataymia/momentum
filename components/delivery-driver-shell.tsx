@@ -28,14 +28,26 @@ export function DeliveryDriverShell() {
   if (!currentUser || currentUser.role !== "Delivery Driver") return null;
 
   return <div className="delivery-driver-shell">
-    <header style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,padding:"14px 18px",borderBottom:"1px solid var(--line, #d9dee8)",background:"var(--surface, #fff)",position:"sticky",top:0,zIndex:20}}>
-      <div style={{display:"flex",alignItems:"center",gap:10}}><BrandMark/><div><strong>Momentum Delivery</strong><small style={{display:"block"}}>Golden Eagle fulfillment</small></div></div>
-      <div style={{display:"flex",alignItems:"center",gap:10}}><Avatar initials={currentUser.initials}/><div className="driver-shell-user"><strong>{currentUser.name}</strong><small style={{display:"block"}}>{currentUser.title}</small></div><Button size="sm" variant="ghost" icon={<LogOut size={15}/>} onClick={()=>logout()}>Sign out</Button></div>
+    <header className="driver-shell-header">
+      <div className="driver-shell-heading">
+        <BrandMark compact />
+        <div className="driver-shell-brandtext"><strong>Momentum Delivery</strong><small>Golden Eagle fulfillment</small></div>
+      </div>
+      <div className="driver-shell-actions">
+        <Avatar initials={currentUser.initials}/>
+        <div className="driver-shell-user"><strong>{currentUser.name}</strong><small>{currentUser.title}</small></div>
+        <div className="driver-shell-signout">
+          <Button type="button" size="sm" variant="ghost" aria-label="Sign out" icon={<LogOut size={18}/>} onClick={()=>logout()}>Sign out</Button>
+        </div>
+      </div>
     </header>
-    <nav aria-label="Delivery driver navigation" style={{display:"flex",gap:8,padding:"10px 14px",overflowX:"auto",borderBottom:"1px solid var(--line, #d9dee8)",background:"var(--surface, #fff)"}}>
-      {tabs.map(({key,label,icon:Icon})=><button key={key} className={`nav-item ${tab===key?"is-active":""}`} onClick={()=>setTab(key)} style={{minWidth:"max-content"}}><Icon size={17}/><span>{label}</span></button>)}
+    <nav className="driver-shell-nav" aria-label="Delivery driver navigation">
+      {tabs.map(({key,label,icon:Icon})=><button type="button" key={key}
+        className={`nav-item driver-shell-tab ${tab===key?"is-active":""}`}
+        aria-current={tab===key?"page":undefined}
+        onClick={()=>setTab(key)}><Icon size={18}/><span>{label}</span></button>)}
     </nav>
-    <main style={{minHeight:"calc(100vh - 116px)"}}>
+    <main className="driver-shell-main">
       {tab==="deliveries"&&<DeliveriesPage/>}
       {tab==="requests"&&<DeliveryRequestsPage/>}
       {tab==="inventory"&&<InventoryPage/>}
