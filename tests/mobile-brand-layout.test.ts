@@ -46,3 +46,19 @@ test("invoice table and preview remain scrollable within phone width", () => {
   assert.ok(css.includes(".invoice-preview-shell {"));
   assert.ok(css.includes("max-height:calc(100dvh - 20px)"));
 });
+
+test("white-backed artwork never renders in dark sign-in or sidebar backgrounds", () => {
+  const shellV4 = readFileSync("components/app-shell-v4.tsx", "utf8");
+  const shellV3 = readFileSync("components/app-shell-v3.tsx", "utf8");
+  const gate = readFileSync("components/firebase-gate.tsx", "utf8");
+  assert.ok(ui.includes("onDark = false"));
+  assert.ok(ui.includes("brand__dark-wordmark"));
+  assert.ok(shellV4.includes("<BrandMark onDark/>"));
+  assert.ok(shellV3.includes("<BrandMark onDark/>"));
+  assert.ok(gate.includes("<BrandMark onDark />"));
+  assert.ok(login.includes('className="login-hero__top"><BrandMark onDark'));
+  assert.ok(login.includes('className="login-panel__brand"><Image'));
+  assert.ok(!login.includes('className="login-hero__content"><Image'));
+  assert.ok(css.includes(".login-hero { display:none; }"));
+  assert.ok(driver.includes("<BrandMark compact />"));
+});

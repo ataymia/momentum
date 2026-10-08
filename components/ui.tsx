@@ -6,14 +6,20 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 
 const brandAsset = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/momentum-invoice-brand.jpg`;
 
-/** Shared verified Golden Eagle artwork for sign-in, sidebar and role headers. */
-export function BrandMark({ compact = false }: { compact?: boolean }) {
+/**
+ * The supplied JPEG has an opaque white background. Render it only on white
+ * surfaces; dark headers use a type-only brand treatment until a true alpha
+ * asset is supplied.
+ */
+export function BrandMark({ compact = false, onDark = false }: { compact?: boolean; onDark?: boolean }) {
   return (
-    <div className={compact ? "brand brand--compact" : "brand"}>
-      <span className="brand__art">
-        <Image src={brandAsset} alt="Momentum Distribution Inc. Golden Eagle Energy Drink"
-          width={1536} height={1024} unoptimized />
-      </span>
+    <div className={compact ? "brand brand--compact" : "brand"} aria-label="Momentum Distribution">
+      {onDark
+        ? <span className="brand__dark-wordmark"><strong>Momentum</strong>{!compact && <small>Distribution</small>}</span>
+        : <span className="brand__art">
+            <Image src={brandAsset} alt="Momentum Distribution Inc. Golden Eagle Energy Drink"
+              width={1536} height={1024} unoptimized />
+          </span>}
     </div>
   );
 }
