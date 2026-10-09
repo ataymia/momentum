@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {overrideSourceAvailable} from "../functions/src/admin-delivery-inventory";
+import inventoryModule from "../functions/src/admin-delivery-inventory";
+const {overrideSourceAvailable} = inventoryModule;
 import {readFileSync} from "node:fs";
 
 const lotId = "lot-1";
