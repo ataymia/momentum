@@ -10,7 +10,7 @@ const orders=[
  {id:"o4",number:"GE-4",accountId:"a2",ownerId:"rep1",placedAt:"2026-10-06T10:00:00Z",status:"Approved",paymentStatus:"Paid",amount:150},
 ] as Order[];
 const data={orders,accounts:[{id:"a1",customerId:"c1",name:"ABC Market",accountManagerId:"manager1"},{id:"a2",customerId:"c2",name:"XYZ Market"}],users:[{id:"rep1",name:"Megan",role:"Sales Representative",managerId:"manager1"},{id:"rep2",name:"Matt",role:"Sales Representative"},{id:"manager1",name:"Manager",role:"Sales Manager"}]} as WorkspaceData;
-const commerce={invoices:[{id:"i1",orderId:"o1",status:"Paid",total:100,accountId:"a1"}],payments:[{id:"p1",accountId:"a1",amount:100,status:"Cleared"}],allocations:[{id:"ap1",invoiceId:"i1",paymentId:"p1",amount:100}],credits:[],refunds:[],notes:[]} as CommerceState;
+const commerce={invoices:[{id:"i1",orderId:"o1",status:"Paid",total:100,accountId:"a1"}],payments:[{id:"p1",accountId:"a1",amount:100,status:"Cleared"}],allocations:[{id:"ap1",invoiceId:"i1",paymentId:"p1",amount:100}],credits:[],refunds:[],notes:[]} as unknown as CommerceState;
 const opts=(view:"Active / Pending"|"Paid & Delivered"|"Hidden / Canceled"|"All Orders")=>({view});
 test("completed requires delivered and invoice fully settled, not just task or payment labels",()=>{
  assert.equal(orderWorkspaceView(orders[0],commerce,false),"Paid & Delivered");
