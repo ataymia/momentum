@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeDollarSign, BarChart3, Bell, Boxes, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, CircleDollarSign, CircleHelp, Command, LayoutDashboard, LogOut, Megaphone, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings, ShoppingCart, Store, UsersRound, X } from "lucide-react";
+import { BadgeDollarSign, BarChart3, Bell, Boxes, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, CircleDollarSign, CircleHelp, Command, LayoutDashboard, LogOut, Megaphone, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings, ShoppingCart, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { canAccessPage } from "../lib/access";
 import { evaluateSalesRepAccountBonuses } from "../lib/bonus-engine";
