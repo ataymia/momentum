@@ -1,5 +1,6 @@
 import {randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
+import {overrideSourceAvailable} from "./admin-delivery-inventory";
 
 type Entry = {lotId: string; fromNodeId: string; quantity: number};
 type BusinessRecord = Record<string, unknown>;
@@ -30,43 +31,6 @@ export class DeliveryOverrideError extends Error {
 const fail = (status: number, message: string): never => {
   throw new DeliveryOverrideError(status, message);
 };
-
-/** No source may consume cases already committed to another order. */
-export function overrideSourceAvailable(
-  movements: BusinessRecord[],
-  reservations: BusinessRecord[],
-  entry: Entry,
-  sourceType: string,
-  orderId: string,
-): boolean {
-  const matching = movements.filter((row) => txt(row.lotId) === entry.lotId);
-  const onHand = matching.reduce((sum, row) => {
-    const quantity = number(row.quantity);
-    return sum +
-      (txt(row.toNodeId) === entry.fromNodeId ? quantity : 0) -
-      (txt(row.fromNodeId) === entry.fromNodeId ? quantity : 0);
-  }, 0);
-  if (onHand + 0.0001 < entry.quantity) return false;
-
-  if (sourceType === "Warehouse") {
-    const reservedElsewhere = reservations
-      .filter((row) => txt(row.lotId) === entry.lotId &&
-        txt(row.status) === "Active" && txt(row.orderId) !== orderId)
-      .reduce((sum, row) => sum + number(row.quantity), 0);
-    return onHand - reservedElsewhere + 0.0001 >= entry.quantity;
-  }
-
-  // Employee/vehicle/bin custody may contain cases from several orders.
-  // Require matching, order-linked stock provenance before consuming it.
-  const linkedToThisOrder = matching.reduce((sum, row) => {
-    if (txt(row.relatedOrderId) !== orderId) return sum;
-    const quantity = number(row.quantity);
-    return sum +
-      (txt(row.toNodeId) === entry.fromNodeId ? quantity : 0) -
-      (txt(row.fromNodeId) === entry.fromNodeId ? quantity : 0);
-  }, 0);
-  return linkedToThisOrder + 0.0001 >= entry.quantity;
-}
 
 export async function commitAdminDeliveryOverride(
   actorId: string,
