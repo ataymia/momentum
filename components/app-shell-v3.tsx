@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeDollarSign, BarChart3, Bell, Boxes, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, CircleDollarSign, CircleHelp, Command, LayoutDashboard, LogOut, Megaphone, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings, ShoppingCart, Store, UsersRound, X } from "lucide-react";
+import { BadgeDollarSign, BarChart3, Bell, Boxes, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, CircleDollarSign, CircleHelp, Command, LayoutDashboard, LogOut, Megaphone, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings, ShoppingCart, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { canAccessPage } from "../lib/access";
 import { evaluateSalesRepAccountBonuses } from "../lib/bonus-engine";
@@ -42,7 +42,7 @@ type SearchResult = { id: string; type: string; title: string; detail: string; p
 const primaryNav: NavItem[] = [
   { key: "home", label: "Home", icon: LayoutDashboard }, { key: "work", label: "My work", icon: CheckSquare2 },
   { key: "accounts", label: "CRM & sales", icon: Building2 }, { key: "dispatch", label: "Dispatch board", icon: CalendarDays },
-  { key: "retail", label: "Retail execution", icon: Store }, { key: "orders", label: "Orders & billing", icon: ShoppingCart },
+  { key: "orders", label: "Orders & billing", icon: ShoppingCart },
   { key: "inventory", label: "Inventory & fulfillment", icon: Boxes }, { key: "marketing", label: "Marketing", icon: Megaphone },
   { key: "people", label: "Human Resources", icon: UsersRound }, { key: "payroll", label: "Payroll", icon: BadgeDollarSign },
   { key: "finance", label: "Finance & accounting", icon: CircleDollarSign },

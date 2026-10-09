@@ -108,3 +108,9 @@ export function applyCompensationCorrection(state: HCMState, input: Compensation
 
   return { ok: true, state: { ...state, compensation: [record, ...compensation] }, record, previous };
 }
+
+// Keep an employee's own recorded trips visible even after account ownership changes.
+// This does not grant access to the transferred account, its contacts or other activity.
+export function isEmployeeOwnPhysicalTrip(interaction:CrmInteraction,userId:string){
+  return interaction.userId===userId&&interaction.type==="Visit"&&interaction.physicalVisit===true;
+}
