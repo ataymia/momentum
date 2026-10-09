@@ -90,7 +90,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     return {
       ...state,
       contacts: state.contacts.filter((contact) => contact.locationId ? locationIds.has(contact.locationId) : customerIds.has(contact.customerId)),
-      interactions: state.interactions.filter((interaction) => locationIds.has(interaction.locationId) || isEmployeeOwnPhysicalTrip(interaction, currentUser.id) || (isQuickVisitLocationId(interaction.locationId) && canManageUser(data, currentUser, interaction.userId, true))),
+      interactions: state.interactions.filter((interaction) => locationIds.has(interaction.locationId) || isEmployeeOwnPhysicalTrip(interaction, currentUser?.id ?? "") || (isQuickVisitLocationId(interaction.locationId) && canManageUser(data, currentUser, interaction.userId, true))),
       opportunities: state.opportunities.filter((opportunity) => locationIds.has(opportunity.locationId)),
       responsibilityHistory: state.responsibilityHistory.filter((event) => locationIds.has(event.locationId)),
     };
