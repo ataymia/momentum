@@ -1,6 +1,6 @@
 import { isValidCalendarDateKey } from "./date-time";
 import type { InventoryLot, Order, WorkspaceData } from "./types";
-import { orderAcceptsProduct, orderCasesForProduct, productsEquivalent } from "./order-lines";
+import { orderAcceptsProduct, orderCasesForProduct, orderLinesFor, productsEquivalent } from "./order-lines";
 
 export const INVENTORY_LEDGER_STORAGE_KEY="momentum-inventory-ledger-v1";
 export const LOW_STOCK_MANAGER_APPROVAL_THRESHOLD_CASES=50;
@@ -45,21 +45,31 @@ export function normalizeInventoryLedger(input:unknown,data:WorkspaceData):Inven
   if(!input||typeof input!=="object")return seed;
   const state=input as Partial<InventoryLedgerState>;
   const seedNodeIds=new Set(seed.nodes.map((node)=>node.id));
-  const storedNodes=uniqueById((Array.isArray(state.nodes)?state.nodes:[]).filter((node):node is InventoryNode=>Boolean(node?.id&&seedNodeIds.has(node.id)&&node.name?.trim()&&typeof node.active==="boolean")));
+  // Preserve recorded custody nodes while scoped order/account data is still loading.
+  // Otherwise normalizing on a driver session can permanently erase valid movements.
+  const nodeTypes=new Set<InventoryNodeType>(["Warehouse","Bin","Vehicle","Employee custody","Customer","Quality hold","Disposed","External"]);
+  const storedNodes=uniqueById((Array.isArray(state.nodes)?state.nodes:[]).filter((node):node is InventoryNode=>Boolean(node?.id&&node.name?.trim()&&nodeTypes.has(node.type)&&typeof node.active==="boolean")));
   const storedNodeById=new Map(storedNodes.map((node)=>[node.id,node]));
-  const nodes=seed.nodes.map((node)=>{const stored=storedNodeById.get(node.id);return stored?{...node,active:stored.active}:node;});
+  const nodes=[
+    ...seed.nodes.map((node)=>{const stored=storedNodeById.get(node.id);return stored?{...node,active:stored.active}:node;}),
+    ...storedNodes.filter((node)=>!seedNodeIds.has(node.id)),
+  ];
   const nodeById=new Map(nodes.map((node)=>[node.id,node]));
   const lotByIdMap=new Map(data.inventory.map((lot)=>[lot.id,lot]));
   const orderById=new Map(data.orders.map((order)=>[order.id,order]));
   const storedMovements=uniqueById((Array.isArray(state.movements)?state.movements:[]).filter((movement):movement is InventoryMovement=>{
     if(!movement?.id||movement.id.startsWith("opening-")||!positiveFiniteQuantity(movement.quantity)||!movementTypes.has(movement.type)||!movement.reason?.trim()||!movement.actorId||!validTimestamp(movement.at))return false;
-    const lot=lotByIdMap.get(movement.lotId);if(!lot||!productsEquivalent(movement.product,lot.product))return false;
+    const lot=lotByIdMap.get(movement.lotId);
+    if(!movement.lotId||typeof movement.product!=="string"||!movement.product.trim()||lot&&!productsEquivalent(movement.product,lot.product))return false;
     const from=movement.fromNodeId?nodeById.get(movement.fromNodeId):undefined;const to=movement.toNodeId?nodeById.get(movement.toNodeId):undefined;
     if(movement.fromNodeId&&!from||movement.toNodeId&&!to||movement.fromNodeId&&movement.fromNodeId===movement.toNodeId)return false;
     if(movement.type==="Adjustment"){if(Boolean(movement.fromNodeId)===Boolean(movement.toNodeId))return false;}else if(!from||!to)return false;
-    const order=movement.relatedOrderId?orderById.get(movement.relatedOrderId):undefined;if(movement.relatedOrderId&&!order)return false;if(order&&!orderAcceptsProduct(order,lot.product))return false;
+    const order=movement.relatedOrderId?orderById.get(movement.relatedOrderId):undefined;
+    if(order&&!orderAcceptsProduct(order,movement.product))return false;
     if(movement.type==="Receipt"&&(from?.type!=="External"||!["Warehouse","Quality hold"].includes(to?.type??"")))return false;
-    if(movement.type==="Delivery"){if(!order||to?.id!==`node-account-${order.accountId}`||["Customer","External","Quality hold","Disposed"].includes(from?.type??""))return false;}
+    if(movement.type==="Delivery"){
+      if(!movement.relatedOrderId||to?.type!=="Customer"||order&&to.id!==`node-account-${order.accountId}`||["Customer","External","Quality hold","Disposed"].includes(from?.type??""))return false;
+    }
     if(movement.type==="Return"&&order&&(from?.id!==`node-account-${order.accountId}`||!["Warehouse","Quality hold"].includes(to?.type??"")))return false;
     if(["Damage","Shrink"].includes(movement.type)&&!["Quality hold","Disposed"].includes(to?.type??""))return false;
     if(movement.type==="Disposal"&&to?.type!=="Disposed")return false;
@@ -71,10 +81,10 @@ export function normalizeInventoryLedger(input:unknown,data:WorkspaceData):Inven
   const reservations:InventoryReservation[]=[];const reservedByOrder=new Map<string,number>();
   for(const reservation of uniqueById((Array.isArray(state.reservations)?state.reservations:[]).filter((item):item is InventoryReservation=>Boolean(item?.id)))){
     const order=orderById.get(reservation.orderId);const lot=lotByIdMap.get(reservation.lotId);
-    if(!order||!lot||!orderAcceptsProduct(order,lot.product)||!positiveFiniteQuantity(reservation.quantity)||reservation.quantity>order.cases||!reservationStatuses.has(reservation.status)||!reservation.createdBy||!validTimestamp(reservation.createdAt))continue;
+    if(!reservation.orderId||!reservation.lotId||order&&lot&&!orderAcceptsProduct(order,lot.product)||!positiveFiniteQuantity(reservation.quantity)||order&&reservation.quantity>order.cases||!reservationStatuses.has(reservation.status)||!reservation.createdBy||!validTimestamp(reservation.createdAt))continue;
     if(reservation.status==="Released"&&(!reservation.releasedAt||!validTimestamp(reservation.releasedAt)))continue;
     if(reservation.status==="Fulfilled"&&(!reservation.fulfilledAt||!validTimestamp(reservation.fulfilledAt)))continue;
-    if(reservation.status!=="Released"){const used=reservedByOrder.get(order.id)??0;if(used+reservation.quantity>order.cases+0.005)continue;reservedByOrder.set(order.id,used+reservation.quantity);}
+    if(reservation.status!=="Released"&&order){const used=reservedByOrder.get(order.id)??0;if(used+reservation.quantity>order.cases+0.005)continue;reservedByOrder.set(order.id,used+reservation.quantity);}
     reservations.push(reservation);
   }
 
@@ -132,3 +142,81 @@ export function orderCanAdvanceInventory(state:InventoryLedgerState,order:Order,
   return orderDeliveryQuantity(state,order.id)>=order.cases;
 }
 export function lotById(data:WorkspaceData,lotId:string):InventoryLot|undefined{return data.inventory.find((lot)=>lot.id===lotId);}
+
+
+/** Build a delivery posting only from actual, order-linked transfers into this driver.
+ * Active reservations are planning records, not proof that the cases were loaded.
+ * The same evidence also permits safe completion when reservations are missing.
+ */
+export type DeliveryPostingPlan =
+  | { ok:true; movements:Array<{lotId:string;quantity:number}> }
+  | { ok:false; message:string };
+
+export function planDriverDeliveryPosting(
+  ledger:InventoryLedgerState,
+  data:WorkspaceData,
+  order:Order,
+  driverId:string,
+):DeliveryPostingPlan {
+  const driverNodeId=`node-user-${driverId}`;
+  const customerNodeId=`node-account-${order.accountId}`;
+  if(!ledger.nodes.some((node)=>node.id===driverNodeId&&node.type==="Employee custody")||
+     !ledger.nodes.some((node)=>node.id===customerNodeId&&node.type==="Customer"))
+    return {ok:false,message:"The driver's or customer's inventory location is missing. Ask Operations to review the stock ledger."};
+
+  const loads=ledger.movements.filter((movement)=>
+    movement.relatedOrderId===order.id&&movement.type==="Transfer"&&
+    movement.fromNodeId===warehouseNodeId&&movement.toNodeId===driverNodeId);
+  if(!loads.length)
+    return {ok:false,message:"No recorded load into this driver's custody was found. Ask Operations to reconcile this order before completing it."};
+
+  const delivered=ledger.movements.filter((movement)=>movement.relatedOrderId===order.id&&movement.type==="Delivery");
+  if(delivered.some((movement)=>movement.fromNodeId!==driverNodeId||movement.toNodeId!==customerNodeId))
+    return {ok:false,message:"This order has a delivery recorded under a different location or driver. Operations must reconcile it."};
+
+  const byLot=new Map<string,{loaded:number;delivered:number}>();
+  for(const movement of loads){
+    const entry=byLot.get(movement.lotId)??{loaded:0,delivered:0};
+    entry.loaded+=movement.quantity;byLot.set(movement.lotId,entry);
+  }
+  for(const movement of delivered){
+    const entry=byLot.get(movement.lotId);
+    if(!entry)return {ok:false,message:"The delivery record does not match the recorded driver load. Operations must reconcile it."};
+    entry.delivered+=movement.quantity;
+  }
+  const lotByIdMap=new Map(data.inventory.map((lot)=>[lot.id,lot]));
+  const expectedProducts=[...new Set(orderLinesFor(order).map((line)=>line.product))];
+  for(const [lotId,quantity] of byLot){
+    const lot=lotByIdMap.get(lotId);
+    if(!lot)return {ok:false,message:"A loaded inventory lot is unavailable. Ask Operations to verify the lot record."};
+    if(quantity.delivered>quantity.loaded||
+      !expectedProducts.some((product)=>productsEquivalent(lot.product,product)))
+      return {ok:false,message:"The recorded delivery quantities or SKUs do not match the loaded stock. Operations must review them."};
+  }
+  for(const product of expectedProducts){
+    const required=orderCasesForProduct(order,product);
+    let loaded=0;
+    for(const [lotId,quantities] of byLot)
+      if(productsEquivalent(lotByIdMap.get(lotId)!.product,product))loaded+=quantities.loaded;
+    if(loaded!==required)
+      return {ok:false,message:`The driver load is missing or has extra cases for ${product} (${loaded} loaded, ${required} ordered). Ask Operations to reconcile it.`};
+  }
+  const planned:Array<{lotId:string;quantity:number}>=[];
+  let working=ledger;
+  for(const [lotId,quantity] of byLot){
+    const remaining=quantity.loaded-quantity.delivered;
+    if(remaining===0)continue;
+    const candidate={lotId,quantity:remaining,type:"Delivery" as const,fromNodeId:driverNodeId,toNodeId:customerNodeId,relatedOrderId:order.id};
+    if(!movementCanPost(working,candidate))
+      return {ok:false,message:"The driver's remaining stock balance does not cover this order. Ask Operations to reconcile driver custody."};
+    planned.push({lotId,quantity:remaining});
+    working={...working,movements:[{
+      id:`preview-${order.id}-${lotId}`,lotId,product:lotByIdMap.get(lotId)!.product,
+      quantity:remaining,type:"Delivery",fromNodeId:driverNodeId,toNodeId:customerNodeId,
+      relatedOrderId:order.id,reason:"Delivery posting check",at:new Date().toISOString(),actorId:driverId,
+    },...working.movements]};
+  }
+  if(delivered.reduce((total,movement)=>total+movement.quantity,0)+planned.reduce((total,movement)=>total+movement.quantity,0)!==order.cases)
+    return {ok:false,message:"The recorded load does not cover the full order. Ask Operations to review the case quantities."};
+  return {ok:true,movements:planned};
+}

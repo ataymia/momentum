@@ -194,7 +194,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     const totalPoints = strokes.reduce((sum, stroke) => sum + stroke.length, 0);
     if (!strokes.length || totalPoints < 2) return { ok: false, message: "Capture the recipient signature before completing the delivery." };
     if (totalPoints > 1200) return { ok: false, message: "The signature is too detailed to save. Clear the box and sign again with a shorter stroke." };
-    if (!inventory.completeOrderDelivery(orderId, task.driverId)) return { ok: false, message: "Delivery inventory could not be posted. Confirm the driver has the full order in custody." };
+    if (!inventory.completeOrderDelivery(orderId, task.driverId)) return { ok: false, message: inventory.deliveryPostingIssue(orderId, task.driverId) ?? "Delivery inventory could not be posted. Ask Operations to review the inventory ledger." };
     const stamp = now();
     const deliverySignature = {
       strokes,
