@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 
-import { businessAddressLabel, deliveryAddressForAccount, deliveryAddressLabel } from "../lib/account-address";
+import { businessAddressLabel, deliveryAddressForAccount, deliveryAddressLabel, hasCompleteDeliveryAddress } from "../lib/account-address";
 import type { Account } from "../lib/types";
 
 const baseAccount: Account = {
@@ -49,6 +49,13 @@ test("a separate delivery destination overrides only the delivery-facing address
   assert.equal(deliveryAddressLabel(account),"900 Warehouse Rd, Tempe, AZ, 85281");
 });
 
+test("order delivery validation requires a street, market and five-digit ZIP",()=>{
+  assert.equal(hasCompleteDeliveryAddress(baseAccount),true);
+  assert.equal(hasCompleteDeliveryAddress({...baseAccount,streetAddress:""}),false);
+  assert.equal(hasCompleteDeliveryAddress({...baseAccount,postalCode:"8501"}),false);
+  assert.equal(hasCompleteDeliveryAddress({...baseAccount,deliveryAddressSameAsBusiness:false,deliveryStreetAddress:"900 Warehouse Rd",deliveryLocation:"Tempe, AZ",deliveryPostalCode:"85281"}),true);
+});
+
 test("account creation exposes same-as-business shortcut and separate delivery fields",()=>{
   const source=readFileSync("components/pages/accounts.tsx","utf8");
   assert.match(source,/Delivery address is the same as business address/);
@@ -65,9 +72,19 @@ test("delivery workflow and invoice ship-to consume the delivery address helper"
   const orders=readFileSync("components/pages/orders-v3.tsx","utf8");
   assert.match(deliveries,/deliveryAddressLabel\(account\)/);
   assert.match(deliveries,/deliveryAddressLabel\(detailAccount\)/);
-  assert.match(invoices,/const billToAddress = location \? businessAddressLabel\(location\)/);
-  assert.match(invoices,/const shipToAddress = location \? deliveryAddressLabel\(location\)/);
+  assert.match(invoices,/invoice\.billToAddressSnapshot\?\.trim\(\)/);
+  assert.match(invoices,/invoice\.shipToAddressSnapshot\?\.trim\(\)/);
   assert.match(orders,/deliveryAddressLabel\(selectedAccount\)/);
+});
+
+test("order creation blocks incomplete delivery addresses and commerce snapshots invoice addresses",()=>{
+  const workspace=readFileSync("lib/workspace-context.tsx","utf8");
+  const commerce=readFileSync("lib/commerce-engine.ts","utf8");
+  const css=readFileSync("app/invoice-print.css","utf8");
+  assert.match(workspace,/hasCompleteDeliveryAddress\(account\)/);
+  assert.match(commerce,/billToAddressSnapshot/);
+  assert.match(commerce,/shipToAddressSnapshot/);
+  assert.match(css,/grid-template-columns:64px minmax\(120px,1fr\) minmax\(150px,1\.4fr\) minmax\(120px,1fr\) 100px 100px 120px minmax\(170px,auto\)/);
 });
 
 test("workspace and commercial normalizers retain delivery address fields",()=>{
