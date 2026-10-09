@@ -74,7 +74,7 @@ export function ReportsPage() {
         ];
 
   return <div className="page page--reports">
-    <PageHeader eyebrow="Operational reporting" title="Reports" description="Counts and totals derived from current Momentum source records within your permitted scope." actions={<StatusPill tone="success">Source-linked</StatusPill>}/>
+    <PageHeader eyebrow="Operational reporting" title="Reports"/>
 
     <ManagementKpiDashboard/>
 

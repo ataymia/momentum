@@ -17,12 +17,11 @@ export type LoginFormProps = {
   requestPasswordReset?: (identifier: string) => Promise<LoginResult>;
   /** Present only when Firebase Authentication is connected. Takes the employee's recovery e-mail. */
   recoverUsername?: (email: string) => Promise<LoginResult>;
-  subtitle?: string;
 };
 
 type RecoveryPane = "none" | "password" | "username";
 
-export function LoginForm({ login, ready, requestPasswordReset, recoverUsername, subtitle = "Use your Momentum work account." }: LoginFormProps) {
+export function LoginForm({ login, ready, requestPasswordReset, recoverUsername }: LoginFormProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [recoveryEmail, setRecoveryEmail] = useState("");
@@ -80,41 +79,37 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
   return <main className="login-page">
     <section className="login-hero">
       <div className="login-hero__glow login-hero__glow--one" /><div className="login-hero__glow login-hero__glow--two" />
-      <div className="login-hero__top"><BrandMark onDark /></div>
       <div className="login-hero__content">
-        <div className="login-hero__wordmark"><span>Golden Eagle Energy Drink</span><strong>Momentum Distribution</strong><p>Arizona distribution workspace</p></div>
+        <div className="login-hero__wordmark"><strong>Momentum Distribution</strong></div>
       </div>
-      <footer className="login-hero__footer"><span>Authorized access only</span></footer>
     </section>
     <section className="login-panel"><div className="login-panel__inner">
       <div className="login-panel__brand"><Image src={`${basePath}/momentum-invoice-brand.jpg`} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" width={1536} height={1024} priority unoptimized /></div>
-      <div className="login-panel__heading"><span className="login-panel__icon"><LockKeyhole size={20} /></span><div><h2>Sign in</h2><p>{subtitle}</p></div></div>
+      <div className="login-panel__heading"><span className="login-panel__icon"><LockKeyhole size={20} /></span><div><h2>Sign in</h2></div></div>
 
       {pane === "none" && <form className="login-form" onSubmit={submit}>
         <label><span>Username or work email</span><input required autoCapitalize="none" autoCorrect="off" spellCheck={false} value={username} onChange={(event) => { setUsername(event.target.value); setError(""); }} autoComplete="username" placeholder="jsmith or name@company.com" /></label>
         <label><span>Password</span><div className="password-input"><input type={showPassword ? "text" : "password"} required value={password} onChange={(event) => { setPassword(event.target.value); setError(""); }} autoComplete="current-password" /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div></label>
         {error && <p className="form-error" role="alert">{error}</p>}
         {notice && <p className="form-notice" role="status">{notice}</p>}
-        <Button type="submit" size="lg" disabled={busy} icon={<ArrowRight size={18} />}>{busy ? "Working…" : "Sign in"}</Button>
+        <Button type="submit" size="lg" disabled={busy} icon={<ArrowRight size={18} />}>{busy ? "Signing in…" : "Sign in"}</Button>
         {requestPasswordReset && <button type="button" className="login-link" onClick={() => openPane("password")} disabled={busy}>Forgot password?</button>}
         {recoverUsername && <button type="button" className="login-link" onClick={() => openPane("username")} disabled={busy}>Forgot username?</button>}
       </form>}
 
       {pane === "password" && <form className="login-form" onSubmit={resetPassword}>
-        <p className="login-recovery-note">Enter your username or the work e-mail on your account. Both identify the same Momentum account. When you use a username, Momentum only shows a masked version of the recovery address.</p>
         <label><span>Username or work email</span><input required autoCapitalize="none" autoCorrect="off" spellCheck={false} value={username} onChange={(event) => { setUsername(event.target.value); setError(""); }} autoComplete="username" placeholder="jsmith or name@company.com" /></label>
         {error && <p className="form-error" role="alert">{error}</p>}
         {notice && <p className="form-notice" role="status">{notice}</p>}
-        <Button type="submit" size="lg" disabled={busy} icon={<MailQuestion size={18} />}>{busy ? "Working…" : "Send reset link"}</Button>
+        <Button type="submit" size="lg" disabled={busy} icon={<MailQuestion size={18} />}>{busy ? "Sending…" : "Send reset link"}</Button>
         <button type="button" className="login-link" onClick={() => openPane("none")} disabled={busy}>Back to sign in</button>
       </form>}
 
       {pane === "username" && <form className="login-form" onSubmit={remindUsername}>
-        <p className="login-recovery-note">You can always sign in with your work e-mail even if you forget your username. If you still need the username, enter that e-mail here and an Administrator can confirm it.</p>
         <label><span>Work e-mail</span><input type="email" required value={recoveryEmail} onChange={(event) => { setRecoveryEmail(event.target.value); setError(""); }} autoComplete="email" /></label>
         {error && <p className="form-error" role="alert">{error}</p>}
         {notice && <p className="form-notice" role="status">{notice}</p>}
-        <Button type="submit" size="lg" disabled={busy} icon={<MailQuestion size={18} />}>{busy ? "Working…" : "Request my username"}</Button>
+        <Button type="submit" size="lg" disabled={busy} icon={<MailQuestion size={18} />}>{busy ? "Sending…" : "Request my username"}</Button>
         <button type="button" className="login-link" onClick={() => openPane("none")} disabled={busy}>Back to sign in</button>
       </form>}
 
@@ -126,5 +121,5 @@ export function LoginForm({ login, ready, requestPasswordReset, recoverUsername,
 /** Local demo sign-in backed by the workspace provider. Production uses `FirebaseGate`, which renders `LoginForm` directly. */
 export function LoginScreen() {
   const { login, ready } = useWorkspace();
-  return <LoginForm login={login} ready={ready} subtitle="Use your Momentum username or work e-mail." />;
+  return <LoginForm login={login} ready={ready} />;
 }

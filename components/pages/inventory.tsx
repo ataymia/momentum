@@ -102,7 +102,7 @@ export function InventoryPage() {
 
   return (
     <div className="page page--inventory">
-      <PageHeader eyebrow="Supply chain" title="Inventory" description="The custody ledger is the quantity source of truth. Lot records provide product, dates, and disposition status." actions={currentUser?.role==="Administrator"?<Button variant="gold" icon={<Plus size={17}/>} onClick={openQuickAdd}>Quick add inventory</Button>:undefined}/>
+      <PageHeader eyebrow="Supply chain" title="Inventory" actions={currentUser?.role==="Administrator"?<Button variant="gold" icon={<Plus size={17}/>} onClick={openQuickAdd}>Quick add inventory</Button>:undefined}/>
       {quickNotice&&<div className="form-callout"><CheckCircle2 size={17}/><p>{quickNotice}</p></div>}
       <div className="inventory-kpis">
         <div><span><Boxes size={19} /></span><div><small>Company custody</small><strong>{onHand} cases</strong></div></div>
