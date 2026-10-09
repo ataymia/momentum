@@ -59,7 +59,7 @@ export async function commitAdminDeliveryOverride(
   const allocations: Entry[] = [];
   for (const raw of body.allocations) {
     if (!isObject(raw) || !txt(raw.lotId) || !txt(raw.fromNodeId) ||
-        !Number.isInteger(raw.quantity) || number(raw.quantity) <= 0) {
+        !Number.isInteger(number(raw.quantity)) || number(raw.quantity) <= 0) {
       return fail(400, "Each lot needs a source and a positive " +
         "whole-case quantity.");
     }
