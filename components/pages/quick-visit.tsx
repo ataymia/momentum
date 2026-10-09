@@ -85,7 +85,7 @@ export function QuickVisitPage(){
   };
 
   const myTrips=currentUser?employeePhysicalVisits(crm,currentUser.id):[];
-  const recentCutoff=new Date(Date.now()-30*24*60*60*1000).toISOString();
+  const[recentCutoff]=useState(()=>new Date(Date.now()-30*24*60*60*1000).toISOString());
   const recentTrips=myTrips.filter((visit)=>visit.occurredAt>=recentCutoff).length;
   const summaries=data.users.filter((user)=>user.role==="Sales Representative").map((user)=>({user,summary:weeklySalesManagementSummary(data,crm.interactions,user.id)}));
 
