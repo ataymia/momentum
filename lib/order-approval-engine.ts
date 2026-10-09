@@ -60,8 +60,8 @@ export function reconcileOrderWithApproval(order: Order, approval?: Approval): O
   if (order.status === "Cancelled") return order;
   if (!approval) return order;
   if (approval.status === "Approved" && fulfillmentRank[order.status] < fulfillmentRank.Approved) return { ...order, status: "Approved" };
-  if (approval.status === "Pending" && fulfillmentRank[order.status] < fulfillmentRank.Approved) return { ...order, status: "Awaiting approval" };
-  if (approval.status === "Returned" && fulfillmentRank[order.status] < fulfillmentRank.Approved) return { ...order, status: "Draft" };
+  if (approval.status === "Pending" && fulfillmentRank[order.status] <= fulfillmentRank.Approved) return { ...order, status: "Awaiting approval" };
+  if (approval.status === "Returned" && fulfillmentRank[order.status] <= fulfillmentRank.Approved) return { ...order, status: "Draft" };
   return order;
 }
 
