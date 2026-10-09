@@ -3,6 +3,7 @@
 import { BadgeDollarSign, Calculator, Check, FileText, Landmark, LockKeyhole, Play, RefreshCcw, ShieldCheck, WalletCards, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
+import { evaluateSalesRepAccountBonuses } from "../../lib/bonus-engine";
 import { activeCompensation, benefitDeductionPerPayPeriod } from "../../lib/hcm-engine";
 import { useHcm } from "../../lib/hcm-context";
 import { activePayrollEmployee, activeWithholding, type PayFrequency, type PayrollEmployee } from "../../lib/payroll-engine";
@@ -61,6 +62,10 @@ export function PayrollPage() {
   const staffEarnings = data.users.filter((user)=>user.role!=="Customer").map((user)=>({user,snapshot:employeeEarningsSnapshot(data,hcm,payroll,user.id)}));
   const myEarnings = currentUser ? employeeEarningsSnapshot(data,hcm,payroll,currentUser.id):null;
   const commissionHold = salesCommissionPolicyProblem();
+  const bonusMilestones = evaluateSalesRepAccountBonuses(data);
+  const customerName = (accountId:string) => data.accounts.find((account)=>account.id===accountId)?.name ?? "Account not found";
+  const repAttributedOrders = (repId:string) => data.orders.filter((order)=>order.status!=="Cancelled"&&(order.creditedRepId??order.ownerId)===repId)
+    .sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
 
   const loadEmployee = (employeeId: string) => {
     setSelectedEmployeeId(employeeId);
@@ -151,6 +156,18 @@ export function PayrollPage() {
       {myEarnings.flaggedBonusCount>0&&<p>Account bonus milestones flagged for review: {myEarnings.flaggedBonusCount} · {formatMoney(myEarnings.flaggedBonusAmount)}. Final eligibility must be verified before payroll.</p>}
       {myEarnings.blockers.map((message)=><p key={message}>{message}</p>)}
     </Section>}
+    {tab === "self" && currentUser?.role==="Sales Representative" && <Section title="My sales bonuses">
+      <div className="company-request-list">
+        {bonusMilestones.filter((milestone)=>milestone.repId===currentUser.id).map((milestone)=><article key={milestone.id}>
+          <span><BadgeDollarSign size={16}/></span>
+          <div><strong>{customerName(milestone.accountId)} · {milestone.milestone}</strong>
+            <p>{formatMoney(milestone.amount)} · {milestone.status} · {milestone.observedCases}/{milestone.thresholdCases} cases</p>
+            <small>Bonus eligibility and payment must be verified before payroll.</small>
+          </div>
+        </article>)}
+        {!bonusMilestones.some((milestone)=>milestone.repId===currentUser.id)&&<p>No account bonus milestones yet.</p>}
+      </div>
+    </Section>}
     {tab === "earnings" && admin && <>
       <Section title="Employee earnings" description="Live view of approved hours and flagged bonus milestones. Final payments require payroll review.">
         <div className="company-request-list">
@@ -160,6 +177,16 @@ export function PayrollPage() {
               <p>{snapshot.regularHours.toFixed(2)} regular hrs · {snapshot.overtimeHours.toFixed(2)} OT hrs · Gross estimate: {snapshot.estimatedGross===null?"Not ready":formatMoney(snapshot.estimatedGross)}</p>
               <small>{snapshot.pendingApprovalHours.toFixed(2)} hrs awaiting approval · {snapshot.approvedTimecards} unprocessed approved timecards</small>
               {snapshot.flaggedBonusCount>0&&<p>{snapshot.flaggedBonusCount} account bonus milestone(s) flagged: {formatMoney(snapshot.flaggedBonusAmount)}. Verify settlement and terms before pay.</p>}
+              {user.role==="Sales Representative"&&<>
+                <p><strong>Account bonus milestones</strong></p>
+                {bonusMilestones.filter((milestone)=>milestone.repId===user.id).slice(0,20).map((milestone)=><p key={milestone.id}>
+                  {customerName(milestone.accountId)} · {milestone.milestone} · {formatMoney(milestone.amount)} · {milestone.status} · {milestone.observedCases}/{milestone.thresholdCases} cases
+                </p>)}
+                <p><strong>Sales awaiting commission review</strong></p>
+                {repAttributedOrders(user.id).slice(0,20).map((order)=><p key={order.id}>
+                  {customerName(order.accountId)} · {order.number} · {order.cases} cases · {order.paymentStatus} · Percentage commission not calculated
+                </p>)}
+              </>}
               {snapshot.blockers.map((message)=><p key={message}>{message}</p>)}
             </div>
           </article>)}
