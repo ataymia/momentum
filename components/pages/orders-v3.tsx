@@ -5,17 +5,19 @@ import { canAdvanceFulfillment, canCreateOrder, isCustomer } from "../../lib/acc
 import { deliveryAddressLabel, hasCompleteDeliveryAddress } from "../../lib/account-address";
 import { useCommerce } from "../../lib/commerce-context";
 import { useDelivery } from "../../lib/delivery-context";
-import { activeReservedForOrder, INVENTORY_LEDGER_STORAGE_KEY, orderCanAdvanceInventory, orderDeliveryQuantity, orderOutboundQuantity, productInventoryStatus } from "../../lib/inventory-ledger";
+import { activeReservedForOrder, INVENTORY_LEDGER_STORAGE_KEY, nodeLotBalance, orderCanAdvanceInventory, orderDeliveryQuantity, orderOutboundQuantity, productInventoryStatus, warehouseNodeId } from "../../lib/inventory-ledger";
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import { canCancelOrder } from "../../lib/order-cancellation";
-import { orderLinesFor } from "../../lib/order-lines";
+import { matchingInventoryLots, orderLinesFor } from "../../lib/order-lines";
 import { filterOrderWorkspace, type OrderWorkspaceView } from "../../lib/order-workspace-views";
 import { GOLDEN_EAGLE_SKUS } from "../../lib/product-catalog";
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
+import { firebaseFunctionUrl } from "../../lib/firebase-functions";
 import { momentumStorage } from "../../lib/persistence";
 import { evaluatePartnerPricing } from "../../lib/pricing-engine";
 import type { Order, OrderStatus } from "../../lib/types";
 import { COMMERCIAL_KEY, useWorkspace } from "../../lib/workspace-context";
+import { DELIVERY_STORAGE_KEY } from "../../lib/delivery-engine";
 import { Button, Field, Modal, PageHeader, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const lifecycle:OrderStatus[]=["Draft","Awaiting approval","Approved","Allocated","Out for delivery","Delivered","Paid"];
@@ -29,7 +31,7 @@ export function OrdersPage(){
  const{data,scope,currentUser,createOrder,editOrder,cancelOrder,navigate}=useWorkspace();
  const{ledger,advanceOrderFulfillment,releaseOrderReservationsForEdit}=useInventoryLedger();
  const{commerce}=useCommerce();
- const{taskForOrder}=useDelivery();
+ const{state:deliveryState,taskForOrder}=useDelivery();
  const firebase=useFirebaseSessionOptional();
  const focusId=typeof window!=="undefined"?sessionStorage.getItem("momentum-focus-record"):null;
  const editFocusId=typeof window!=="undefined"?sessionStorage.getItem("momentum-edit-order"):null;
@@ -51,13 +53,20 @@ export function OrdersPage(){
  const[cancelReason,setCancelReason]=useState("");
  const[cancelling,setCancelling]=useState(false);
  const[error,setError]=useState("");
+ const[overrideOrderId,setOverrideOrderId]=useState<string|null>(null);
+ const[overrideReason,setOverrideReason]=useState("");
+ const[overridePerformedBy,setOverridePerformedBy]=useState("");
+ const[overrideDate,setOverrideDate]=useState("");
+ const[overrideBusy,setOverrideBusy]=useState(false);
+ const[overrideRows,setOverrideRows]=useState<Array<{id:string;lotId:string;fromNodeId:string;quantity:number}>>([]);
+
  const[submitting,setSubmitting]=useState(false);
  const[accountId,setAccountId]=useState(focusedAccount?.id??scope.accounts[0]?.id??"");
  const[lines,setLines]=useState<DraftLine[]>([newLine()]);
  const customerMode=isCustomer(currentUser);const canFulfill=canAdvanceFulfillment(currentUser);
- const displayStatus=(order:Order):OrderStatus=>taskForOrder(order.id)?.status==="Delivered"&&order.status!=="Paid"?"Delivered":order.status;
+ const displayStatus=(order:Order):OrderStatus=>(taskForOrder(order.id)?.status==="Delivered"||deliveryState.overrides.some((e)=>e.orderId===order.id))&&order.status!=="Paid"?"Delivered":order.status;
 
- const deliveredTasks=useMemo(()=>new Set(scope.orders.filter((order)=>taskForOrder(order.id)?.status==="Delivered").map((order)=>order.id)),[scope.orders,taskForOrder]);
+ const deliveredTasks=useMemo(()=>new Set(scope.orders.filter((order)=>taskForOrder(order.id)?.status==="Delivered"||deliveryState.overrides.some((e)=>e.orderId===order.id)).map((order)=>order.id)),[scope.orders,taskForOrder,deliveryState.overrides]);
  const orders=useMemo(()=>filterOrderWorkspace(data,scope.orders,commerce,deliveredTasks,{
    view,search:query,accountId:accountFilter,placedById:repFilter,managerId:managerFilter,placedFrom,placedThrough,dateSort,
  }),[data,scope.orders,commerce,deliveredTasks,view,query,accountFilter,repFilter,managerFilter,placedFrom,placedThrough,dateSort]);
