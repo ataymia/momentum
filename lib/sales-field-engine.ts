@@ -35,6 +35,12 @@ export function prospectRatingColor(value: number | undefined) {
 
 export const isPhysicalVisit = (interaction: CrmInteraction) => interaction.type === "Visit" && interaction.physicalVisit === true;
 
+/** Personal visit history never includes another representative's field records. */
+export function personalVisitHistory(interactions:readonly CrmInteraction[],userId:string){
+  return interactions.filter((interaction)=>interaction.userId===userId&&isPhysicalVisit(interaction))
+    .sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)||b.id.localeCompare(a.id));
+}
+
 export function weeklyVisitSummary(interactions: CrmInteraction[], userId: string, asOf = arizonaDateKey()): WeeklyVisitSummary {
   const weekStart = startOfLocalWeek(asOf);
   const weekEnd = addCalendarDays(weekStart, 6);

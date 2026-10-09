@@ -13,9 +13,9 @@ import {
   quickVisitSuggestions,
   type QuickVisitSampleRow,
 } from "../../lib/quick-visit";
-import { prospectRatingColor, weeklySalesManagementSummary } from "../../lib/sales-field-engine";
+import { personalVisitHistory, prospectRatingColor, weeklySalesManagementSummary, weeklyVisitSummary } from "../../lib/sales-field-engine";
 import { useWorkspace } from "../../lib/workspace-context";
-import { Button, Field, PageHeader, Section, StatusPill, formatMoney } from "../ui";
+import { Button, Field, PageHeader, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 type SampleEditorRow=QuickVisitSampleRow&{id:string};
 const newSampleRow=():SampleEditorRow=>({id:`sample-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,product:"",quantity:1});
@@ -30,6 +30,7 @@ export function QuickVisitPage(){
   const[note,setNote]=useState("Visited business location");
   const[samples,setSamples]=useState<SampleEditorRow[]>([newSampleRow()]);
   const[message,setMessage]=useState("");
+  const[visitLimit,setVisitLimit]=useState(25);
   if(!currentUser)return null;
 
   const exactMatch=scope.accounts.find((account)=>account.id===accountId)??matchQuickVisitAccount(scope.accounts,business);
@@ -83,6 +84,13 @@ export function QuickVisitPage(){
   };
 
   const summaries=data.users.filter((user)=>user.role==="Sales Representative").map((user)=>({user,summary:weeklySalesManagementSummary(data,crm.interactions,user.id)}));
+  const myVisits=personalVisitHistory(crm.interactions,currentUser.id);
+  const myWeek=weeklyVisitSummary(crm.interactions,currentUser.id);
+  const myVisitLabel=(visit:(typeof myVisits)[number])=>{
+    const linked=scope.accounts.find((item)=>item.id===visit.locationId);
+    const freehand=(visit as typeof visit&{quickVisitBusinessName?:string}).quickVisitBusinessName;
+    return linked?.locationName??linked?.name??freehand??visit.summary.split(" · ").at(-1)??"Business visit";
+  };
 
   return <div className="page">
     <PageHeader eyebrow="CRM & sales" title="Quick Visit" description="Log the physical stop first. Match an existing business when one appears, or type a new business without creating an account or prospect."/>
@@ -122,6 +130,21 @@ export function QuickVisitPage(){
           {exactMatch&&canClaimUnassignedProspect(currentUser,exactMatch)&&<Button type="button" variant="secondary" icon={<UserCheck size={15}/>} onClick={()=>{if(claimUnassignedProspect(exactMatch.id))setMessage("Prospect claimed. Existing history was retained.")}}>Claim this unassigned prospect</Button>}
         </div>
       </form>
+    </Section>
+    <Section title="My visits" action={<StatusPill tone="neutral">{myWeek.completed} this week · {myVisits.length} total</StatusPill>}>
+      <div className="company-request-list">
+        {myVisits.slice(0,visitLimit).map((visit)=><article key={visit.id}>
+          <span><Store size={17}/></span>
+          <div>
+            <strong>{myVisitLabel(visit)}</strong>
+            <small>{formatDate(visit.occurredAt,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})}</small>
+            <p>{visit.summary}</p>
+          </div>
+          <StatusPill tone={visit.visitUnsuccessful?"warning":"neutral"}>{visit.visitUnsuccessful?"Unsuccessful":`Score ${visit.prospectRating??"—"}/10`}</StatusPill>
+        </article>)}
+        {myVisits.length===0&&<div className="review-empty"><p>No visits recorded yet.</p></div>}
+      </div>
+      {visitLimit<myVisits.length&&<Button type="button" size="sm" variant="secondary" onClick={()=>setVisitLimit((limit)=>limit+25)}>Show more visits</Button>}
     </Section>
     {["Administrator","Sales Manager"].includes(currentUser.role)&&<Section title="Weekly sales management" description="Actual CRM, order and account records only. Visit target: 75–80 per full week. Freehand Quick Visits count because the rep physically visited the business.">
       <div className="company-request-list">{summaries.map(({user,summary})=><article key={user.id}><span><Store size={17}/></span><div><strong>{user.name}</strong><p>{summary.visits} visits · {summary.orders} orders / {summary.orderCases} cases / {formatMoney(summary.orderValue)} · {summary.reorders} reorders · {summary.newAccounts} new accounts · {summary.promisingProspects} promising prospects · {summary.followUpsDue} follow-ups due · {summary.blockers} blockers</p></div><StatusPill tone={summary.visits>=75?"success":summary.visits>=50?"warning":"neutral"}>{summary.visits}/75</StatusPill></article>)}</div>
