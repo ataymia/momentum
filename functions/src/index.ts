@@ -4,6 +4,7 @@ import {defineString} from "firebase-functions/params";
 import {initializeApp} from "firebase-admin/app";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
+import {commitAdminDeliveryOverride, DeliveryOverrideError} from "./admin-delivery-override";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -1405,3 +1406,23 @@ export const deleteEmployee = onRequest(
     }
   },
 );
+
+/** Record an authorized off-route delivery in the same order and inventory ledgers. */
+export const adminDeliveryOverride = onRequest({cors:true,region:"us-central1"},
+  async(request,response)=>{
+    if(request.method!=="POST"){
+      json(response,405,{ok:false,message:"Method not allowed."});return;
+    }
+    const caller=await requireAdministrator(request);
+    if("stage" in caller){json(response,caller.status,{ok:false,message:caller.message});return;}
+    try{
+      const result=await commitAdminDeliveryOverride(caller.uid,request.body);
+      json(response,200,{ok:true,...result});
+    }catch(error){
+      if(error instanceof DeliveryOverrideError){
+        json(response,error.status,{ok:false,message:error.message});return;
+      }
+      console.error("adminDeliveryOverride failed",error);
+      json(response,502,{ok:false,message:"The delivery override was not saved. No delivery should be assumed."});
+    }
+  });
