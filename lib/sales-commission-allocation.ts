@@ -49,7 +49,7 @@ export function eligibleCommissionManager(
     !manager ||
     input.designatedManagerId !== manager.id ||
     manager.role !== "Sales Manager" ||
-    !/\\bsales manager\\b/i.test(manager.title)
+    !/\bsales manager\b/i.test(manager.title)
   ) return undefined;
   return manager.id;
 }
