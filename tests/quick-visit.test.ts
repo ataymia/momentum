@@ -73,7 +73,7 @@ test("sales reps see their own physical trips, including transferred-account tri
   const records=employeePhysicalVisits({interactions:[coworker,own,call]} as never,"rep-one");
   assert.deepEqual(records.map((item)=>item.id),["own"]);
   const crmSource=readFileSync("lib/crm-context.tsx","utf8");
-  assert.ok(crmSource.includes("isEmployeeOwnPhysicalTrip(interaction, currentUser.id)"));
+  assert.ok(crmSource.includes('isEmployeeOwnPhysicalTrip(interaction, currentUser?.id ?? "")'));
 });
 
 test("retail execution is hidden from current navigation without deleting placement records",()=>{
