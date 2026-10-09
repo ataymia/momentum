@@ -97,7 +97,7 @@ export function AdminDeliveryOverride({order,onClose,onSaved}:Props){
       <Field label="Actual delivery date and time"><input type="datetime-local" required value={date} onChange={(event)=>setDate(event.target.value)}/></Field>
       <Field label="Who delivered or collected it"><input required value={performedBy} onChange={(event)=>setPerformedBy(event.target.value)} placeholder="Person or customer pickup"/></Field>
       <Field label="Reason and delivery notes" className="field--full"><textarea required value={reason} onChange={(event)=>setReason(event.target.value)} placeholder="Explain how and where the product was delivered"/></Field>
-      <div className="field--full"><strong>Inventory delivered</strong><p>Use the actual lot and stock source. Each product's case total must match the order.</p></div>
+      <div className="field--full"><strong>Inventory delivered</strong><p>Use the actual lot and stock source. Each product&apos;s case total must match the order.</p></div>
       {rows.map((row,index)=><div key={row.id} className="field--full"
         style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:9,alignItems:"end"}}>
         <Field label={`Lot ${index+1}`}><select required value={row.lotId} onChange={(event)=>update(row.id,{lotId:event.target.value})}>
