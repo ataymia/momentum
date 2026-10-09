@@ -1407,22 +1407,44 @@ export const deleteEmployee = onRequest(
   },
 );
 
-/** Record an authorized off-route delivery in the same order and inventory ledgers. */
-export const adminDeliveryOverride = onRequest({cors:true,region:"us-central1"},
-  async(request,response)=>{
-    if(request.method!=="POST"){
-      json(response,405,{ok:false,message:"Method not allowed."});return;
+/** Record an authorized off-route delivery in the existing ledgers. */
+export const adminDeliveryOverride = onRequest(
+  {
+    cors: true,
+    region: "us-central1",
+  },
+  async (request, response) => {
+    if (request.method !== "POST") {
+      json(response, 405, {ok: false, message: "Method not allowed."});
+      return;
     }
-    const caller=await requireAdministrator(request);
-    if("stage" in caller){json(response,caller.status,{ok:false,message:caller.message});return;}
-    try{
-      const result=await commitAdminDeliveryOverride(caller.uid,request.body);
-      json(response,200,{ok:true,...result});
-    }catch(error){
-      if(error instanceof DeliveryOverrideError){
-        json(response,error.status,{ok:false,message:error.message});return;
+    const caller = await requireAdministrator(request);
+    if ("stage" in caller) {
+      json(response, caller.status, {
+        ok: false,
+        message: caller.message,
+      });
+      return;
+    }
+    try {
+      const result = await commitAdminDeliveryOverride(
+        caller.uid,
+        request.body,
+      );
+      json(response, 200, {ok: true, ...result});
+    } catch (error) {
+      if (error instanceof DeliveryOverrideError) {
+        json(response, error.status, {
+          ok: false,
+          message: error.message,
+        });
+        return;
       }
-      console.error("adminDeliveryOverride failed",error);
-      json(response,502,{ok:false,message:"The delivery override was not saved. No delivery should be assumed."});
+      console.error("adminDeliveryOverride failed", error);
+      json(response, 502, {
+        ok: false,
+        message: "The override was not saved. No delivery should be assumed.",
+      });
     }
-  });
+  },
+);
