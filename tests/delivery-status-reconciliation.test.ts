@@ -31,6 +31,6 @@ test("do not rewrite paid/cancelled orders or infer delivery without signed stoc
  assert.equal(nextVerifiedDeliveryOrderStatus(task,{...order,status:"Cancelled"},ledger,data),undefined);
  assert.equal(nextVerifiedDeliveryOrderStatus({...task,status:"Delivered"},{...order,status:"Out for delivery"},ledger,data),undefined);
  ledger.movements.push({id:"movement-delivery",lotId:lot.id,product:lot.product,quantity:4,type:"Delivery",fromNodeId:`node-user-${driver.id}`,toNodeId:`node-account-${location.id}`,relatedOrderId:order.id,reason:"Delivered",at:"2026-10-09T10:05:00.000Z",actorId:driver.id});
- const signature={strokes:[[[12,20],[30,50]]],signedAt:"2026-10-09T10:05:00.000Z",capturedBy:driver.id};
+ const signature:NonNullable<DeliveryTask["signature"]>={strokes:[[[12,20],[30,50]]],signedAt:"2026-10-09T10:05:00.000Z",capturedBy:driver.id};
  assert.equal(nextVerifiedDeliveryOrderStatus({...task,status:"Delivered",signature},{...order,status:"Out for delivery"},ledger,data),"Delivered");
 });
