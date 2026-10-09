@@ -1,6 +1,6 @@
 "use client";
 import { AlertCircle, Box, Building2, CheckCircle2, ChevronRight, CircleDollarSign, Copy, FileText, Mail, MapPin, PackageSearch, Pencil, Plus, Store, Trash2, Truck, UserRound, XCircle } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { canAdvanceFulfillment, canCreateOrder, isCustomer } from "../../lib/access";
 import { deliveryAddressLabel, hasCompleteDeliveryAddress } from "../../lib/account-address";
 import { useCommerce } from "../../lib/commerce-context";
@@ -9,13 +9,14 @@ import { activeReservedForOrder, INVENTORY_LEDGER_STORAGE_KEY, orderCanAdvanceIn
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import { canCancelOrder } from "../../lib/order-cancellation";
 import { orderLinesFor } from "../../lib/order-lines";
+import { filterOrderWorkspace, type OrderWorkspaceView } from "../../lib/order-workspace-views";
 import { GOLDEN_EAGLE_SKUS } from "../../lib/product-catalog";
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { momentumStorage } from "../../lib/persistence";
 import { evaluatePartnerPricing } from "../../lib/pricing-engine";
 import type { Order, OrderStatus } from "../../lib/types";
 import { COMMERCIAL_KEY, useWorkspace } from "../../lib/workspace-context";
-import { Button, Field, Modal, PageHeader, Section, StatusPill, formatMoney } from "../ui";
+import { Button, Field, Modal, PageHeader, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const lifecycle:OrderStatus[]=["Draft","Awaiting approval","Approved","Allocated","Out for delivery","Delivered","Paid"];
 const fulfillmentNext:Partial<Record<OrderStatus,"Allocated"|"Out for delivery"|"Delivered">>={Approved:"Allocated",Allocated:"Out for delivery","Out for delivery":"Delivered"};
@@ -34,6 +35,14 @@ export function OrdersPage(){
  const editFocusId=typeof window!=="undefined"?sessionStorage.getItem("momentum-edit-order"):null;
  const focused=scope.orders.find((o)=>o.id===focusId);const focusedAccount=scope.accounts.find((a)=>a.id===focusId);
  const[query,setQuery]=useState("");
+ const[view,setView]=useState<OrderWorkspaceView>("Active / Pending");
+ const[accountFilter,setAccountFilter]=useState("");
+ const[repFilter,setRepFilter]=useState("");
+ const[managerFilter,setManagerFilter]=useState("");
+ const[placedFrom,setPlacedFrom]=useState("");
+ const[placedThrough,setPlacedThrough]=useState("");
+ const[dateSort,setDateSort]=useState<"newest"|"oldest">("newest");
+ const[resultLimit,setResultLimit]=useState(40);
  const[selectedId,setSelectedId]=useState(focused?.id??scope.orders[0]?.id??"");
  const[open,setOpen]=useState(false);
  const[editingId,setEditingId]=useState<string|null>(null);
@@ -48,9 +57,11 @@ export function OrdersPage(){
  const customerMode=isCustomer(currentUser);const canFulfill=canAdvanceFulfillment(currentUser);
  const displayStatus=(order:Order):OrderStatus=>taskForOrder(order.id)?.status==="Delivered"&&order.status!=="Paid"?"Delivered":order.status;
 
- const q=query.trim().toLowerCase();
- const orders=scope.orders.filter((o)=>{const a=scope.accounts.find((x)=>x.id===o.accountId);return!q||`${o.number} ${a?.name??""} ${orderLinesFor(o).map((l)=>l.product).join(" ")} ${displayStatus(o)}`.toLowerCase().includes(q)});
- const selected=scope.orders.find((o)=>o.id===selectedId)??orders[0];
+ const deliveredTasks=useMemo(()=>new Set(scope.orders.filter((order)=>taskForOrder(order.id)?.status==="Delivered").map((order)=>order.id)),[scope.orders,taskForOrder]);
+ const orders=useMemo(()=>filterOrderWorkspace(data,scope.orders,commerce,deliveredTasks,{
+   view,search:query,accountId:accountFilter,placedById:repFilter,managerId:managerFilter,placedFrom,placedThrough,dateSort,
+ }),[data,scope.orders,commerce,deliveredTasks,view,query,accountFilter,repFilter,managerFilter,placedFrom,placedThrough,dateSort]);
+ const selected=orders.find((o)=>o.id===selectedId)??orders[0];
  const editingOrder=editingId?scope.orders.find((o)=>o.id===editingId):undefined;
  const selectedLines=selected?orderLinesFor(selected):[];
  const selectedApproval=selected?scope.approvals.find((approval)=>approval.recordId===selected.id&&["Order","Low stock sale"].includes(approval.type)):undefined;
