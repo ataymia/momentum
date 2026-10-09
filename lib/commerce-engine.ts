@@ -1,10 +1,11 @@
 import { arizonaDateKey, isValidCalendarDateKey } from "./date-time";
+import { businessAddressLabel, deliveryAddressLabel } from "./account-address";
 import type { WorkspaceData } from "./types";
 
 export const COMMERCE_STORAGE_KEY="momentum-commerce-v1";
 export type InvoiceTerms="Prepaid"|"COD"|"Net 7"|"Net 15"|"Net 30"|"Custom";
 export type InvoiceStatus="Draft"|"Open"|"Partially paid"|"Paid"|"Void";
-export type Invoice={id:string;number:string;orderId:string;accountId:string;issuedAt:string;dueDate?:string;terms:InvoiceTerms;total:number;status:InvoiceStatus;createdAt:string;voidReason?:string};
+export type Invoice={id:string;number:string;orderId:string;accountId:string;issuedAt:string;dueDate?:string;terms:InvoiceTerms;total:number;status:InvoiceStatus;createdAt:string;voidReason?:string;billToAddressSnapshot?:string;shipToAddressSnapshot?:string};
 export type PaymentStatus="Pending"|"Cleared"|"Failed"|"Reversed";
 export type PaymentMethod="Card"|"ACH"|"Wire"|"Cash"|"Check"|"Other";
 export type Payment={id:string;accountId:string;receivedAt:string;amount:number;method:PaymentMethod;status:PaymentStatus;processorReference?:string;note?:string;createdBy:string;createdAt:string;settledAt?:string;settledBy?:string;failedAt?:string;failedBy?:string;failureReason?:string;reversedAt?:string;reversedBy?:string;reversalReason?:string;reversalReference?:string};
@@ -17,6 +18,7 @@ export type CommerceState={version:1;invoices:Invoice[];payments:Payment[];alloc
 const now=()=>new Date().toISOString();const today=()=>arizonaDateKey();
 const finitePositive=(value:number)=>Number.isFinite(value)&&value>0;
 const finiteNonNegative=(value:number)=>Number.isFinite(value)&&value>=0;
+const cleanSnapshot=(value:unknown)=>typeof value==="string"&&value.trim()?value.trim():undefined;
 const validDateOrInstant=(value?:string)=>Boolean(value&&(isValidCalendarDateKey(value)||!Number.isNaN(new Date(value).getTime())));
 const businessDateKey=(value:string)=>isValidCalendarDateKey(value)?value:arizonaDateKey(value);
 const eligibleForInvoice=(status:string)=>["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(status);
@@ -49,7 +51,7 @@ const refundEvidenceValid=(refund:Refund)=>{
 };
 
 export function createCommerceSeed(data:WorkspaceData):CommerceState{
-  const invoices:Invoice[]=data.orders.filter((order)=>eligibleForInvoice(order.status)||order.paymentStatus!=="Not invoiced").filter((order)=>finiteNonNegative(order.amount)).map((order)=>{const createdAt=now();const account=data.accounts.find((item)=>item.id===order.accountId);const customer=(data.customers??[]).find((item)=>item.id===account?.customerId);const approvedNet30=customer?.creditStatus==="Net 30 Approved"&&customer.paymentTerms==="Net 30";const terms:InvoiceTerms=approvedNet30?"Net 30":customer?.paymentTerms==="Custom"&&customer.customPaymentTerms?.trim()?"Custom":"COD";return{id:`invoice-${order.id}`,number:invoiceNumber(order.number),orderId:order.id,accountId:order.accountId,issuedAt:createdAt,terms,total:order.amount,status:order.paymentStatus==="Paid"?"Paid":order.paymentStatus==="Partially paid"?"Partially paid":"Open",createdAt};});
+  const invoices:Invoice[]=data.orders.filter((order)=>eligibleForInvoice(order.status)||order.paymentStatus!=="Not invoiced").filter((order)=>finiteNonNegative(order.amount)).map((order)=>{const createdAt=now();const account=data.accounts.find((item)=>item.id===order.accountId);const customer=(data.customers??[]).find((item)=>item.id===account?.customerId);const approvedNet30=customer?.creditStatus==="Net 30 Approved"&&customer.paymentTerms==="Net 30";const terms:InvoiceTerms=approvedNet30?"Net 30":customer?.paymentTerms==="Custom"&&customer.customPaymentTerms?.trim()?"Custom":"COD";const billToAddressSnapshot=account?businessAddressLabel(account)||undefined:undefined;const shipToAddressSnapshot=account?deliveryAddressLabel(account)||undefined:undefined;return{id:`invoice-${order.id}`,number:invoiceNumber(order.number),orderId:order.id,accountId:order.accountId,issuedAt:createdAt,terms,total:order.amount,status:order.paymentStatus==="Paid"?"Paid":order.paymentStatus==="Partially paid"?"Partially paid":"Open",createdAt,billToAddressSnapshot,shipToAddressSnapshot};});
   const payments:Payment[]=[];const allocations:PaymentAllocation[]=[];
   for(const order of data.orders.filter((item)=>item.paymentStatus==="Paid"&&finitePositive(item.amount))){const invoice=invoices.find((item)=>item.orderId===order.id);if(!invoice)continue;const paymentId=`payment-${order.id}-seed`;const settledAt=order.firstSettledAt??order.paidAt??order.placedAt;payments.push({id:paymentId,accountId:order.accountId,receivedAt:settledAt,settledAt,settledBy:"system",amount:order.amount,method:"Other",status:"Cleared",note:"Seeded from paid demo order",createdBy:"system",createdAt:now()});allocations.push({id:`allocation-${order.id}-seed`,paymentId,invoiceId:invoice.id,amount:order.amount,createdAt:now(),createdBy:"system"});}
   return{version:1,invoices,payments,allocations,credits:[],refunds:[],notes:[]};
@@ -60,8 +62,9 @@ export function normalizeCommerceState(input:unknown,data:WorkspaceData):Commerc
   const orderById=new Map(data.orders.map((order)=>[order.id,order]));
   const accountIds=new Set(data.accounts.map((account)=>account.id));
   const storedInvoices=uniqueById((Array.isArray(state.invoices)?state.invoices:[]).filter((invoice):invoice is Invoice=>{const order=invoice&&orderById.get(invoice.orderId);return Boolean(order&&invoice.accountId===order.accountId&&accountIds.has(invoice.accountId)&&invoice.number?.trim()&&validDateOrInstant(invoice.issuedAt)&&validDateOrInstant(invoice.createdAt)&&(!invoice.dueDate||isValidCalendarDateKey(invoice.dueDate))&&invoiceTerms.has(invoice.terms)&&invoiceStatuses.has(invoice.status)&&finiteNonNegative(invoice.total)&&finiteNonNegative(order.amount)&&Math.abs(invoice.total-order.amount)<0.005&&(invoice.status!=="Void"||invoice.voidReason?.trim()));}));
-  const invoiceIds=new Set(storedInvoices.map((invoice)=>invoice.id));
-  const invoices=[...storedInvoices];for(const invoice of seed.invoices)if(!invoiceIds.has(invoice.id)&&!invoices.some((item)=>item.orderId===invoice.orderId))invoices.push(invoice);
+  const normalizedStoredInvoices:Invoice[]=storedInvoices.map((invoice)=>{const account=data.accounts.find((item)=>item.id===invoice.accountId);return{...invoice,billToAddressSnapshot:cleanSnapshot(invoice.billToAddressSnapshot)||(account?businessAddressLabel(account)||undefined:undefined),shipToAddressSnapshot:cleanSnapshot(invoice.shipToAddressSnapshot)||(account?deliveryAddressLabel(account)||undefined:undefined)};});
+  const invoiceIds=new Set(normalizedStoredInvoices.map((invoice)=>invoice.id));
+  const invoices=[...normalizedStoredInvoices];for(const invoice of seed.invoices)if(!invoiceIds.has(invoice.id)&&!invoices.some((item)=>item.orderId===invoice.orderId))invoices.push(invoice);
   const invoiceById=new Map(invoices.map((invoice)=>[invoice.id,invoice]));
 
   const storedPayments=uniqueById((Array.isArray(state.payments)?state.payments:[]).filter((payment):payment is Payment=>Boolean(payment&&accountIds.has(payment.accountId)&&finitePositive(payment.amount)&&paymentMethods.has(payment.method)&&paymentStatuses.has(payment.status)&&payment.createdBy&&validDateOrInstant(payment.receivedAt)&&validDateOrInstant(payment.createdAt)&&paymentEvidenceValid(payment))));

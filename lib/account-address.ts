@@ -26,6 +26,11 @@ export function deliveryAddressForAccount(account: Pick<Account,"streetAddress"|
   };
 }
 
+export function hasCompleteDeliveryAddress(account: Pick<Account,"streetAddress"|"location"|"postalCode"|"deliveryAddressSameAsBusiness"|"deliveryStreetAddress"|"deliveryLocation"|"deliveryPostalCode">) {
+  const address = deliveryAddressForAccount(account);
+  return Boolean(address.streetAddress && address.location && address.postalCode && /^\d{5}$/.test(address.postalCode));
+}
+
 export function formatAccountAddress(address: AccountAddress) {
   const parts = [clean(address.streetAddress), clean(address.location), clean(address.postalCode)].filter(Boolean);
   return parts.join(", ");

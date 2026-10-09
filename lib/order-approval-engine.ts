@@ -67,7 +67,11 @@ export function reconcileOrderWithApproval(order: Order, approval?: Approval): O
 
 export function reconcileOrders(primary: Order[], secondary: Order[], approvals: Approval[]): Order[] {
   const byId = new Map<string, Order>();
+  const observedStatuses = new Map<string, Set<Order["status"]>>();
   for (const order of [...secondary, ...primary]) {
+    const statuses = observedStatuses.get(order.id) ?? new Set<Order["status"]>();
+    statuses.add(order.status);
+    observedStatuses.set(order.id, statuses);
     const existing = byId.get(order.id);
     if (!existing) { byId.set(order.id, order); continue; }
     // Cancellation and fulfillment are separate terminal branches. Delivery/payment evidence wins over
@@ -83,5 +87,16 @@ export function reconcileOrders(primary: Order[], secondary: Order[], approvals:
     const other = advanced === order ? existing : order;
     byId.set(order.id, { ...other, ...advanced });
   }
-  return [...byId.values()].map((order) => reconcileOrderWithApproval(order, approvalForOrder(approvals, order.id)));
+  return [...byId.values()].map((order) => {
+    const approval = approvalForOrder(approvals, order.id);
+    const reconciled = reconcileOrderWithApproval(order, approval);
+    if (reconciled.status !== "Approved" || !approval) return reconciled;
+    const statuses = observedStatuses.get(order.id);
+    // A new edit explicitly writes a lower pre-fulfillment status before its new approval cycle.
+    // That observed order replica is the evidence that the latest Pending/Returned approval belongs
+    // to an amendment, rather than being a stale approval copy left over from the original cycle.
+    if (approval.status === "Pending" && statuses?.has("Awaiting approval")) return { ...reconciled, status: "Awaiting approval" };
+    if (approval.status === "Returned" && statuses?.has("Draft")) return { ...reconciled, status: "Draft" };
+    return reconciled;
+  });
 }

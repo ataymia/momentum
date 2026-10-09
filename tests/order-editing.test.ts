@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { canonicalApproval, reconcileApprovals, reconcileOrderWithApproval } from "../lib/order-approval-engine";
+import { canonicalApproval, reconcileApprovals, reconcileOrderWithApproval, reconcileOrders } from "../lib/order-approval-engine";
 import type { Approval, Order } from "../lib/types";
 
 const baseApproval: Approval = {
@@ -58,10 +58,18 @@ describe("order correction approval cycles", () => {
     assert.equal(active.status, "Pending");
   });
 
-  test("a newer pending edit reopens an approved pre-fulfillment order for Administrator review", () => {
-    const approvedOrder: Order = { ...order, status: "Approved" };
+  test("a newer pending edit reopens an approved replica for Administrator review", () => {
+    const approvedReplica: Order = { ...order, status: "Approved" };
+    const editedReplica: Order = { ...order, status: "Awaiting approval" };
     const pendingEdit: Approval = { ...baseApproval, id: "apr-after-approved-edit", submittedAt: "2026-09-24T18:05:00.000Z", status: "Pending" };
-    assert.equal(reconcileOrderWithApproval(approvedOrder, pendingEdit).status, "Awaiting approval");
+    assert.equal(reconcileOrders([editedReplica], [approvedReplica], [pendingEdit])[0].status, "Awaiting approval");
+  });
+
+  test("a returned latest edit cycle reopens an approved replica as Draft", () => {
+    const approvedReplica: Order = { ...order, status: "Approved" };
+    const returnedReplica: Order = { ...order, status: "Draft" };
+    const returnedEdit: Approval = { ...baseApproval, id: "apr-returned-edit", submittedAt: "2026-09-24T18:05:30.000Z", status: "Returned", decidedBy: "admin", decidedAt: "2026-09-24T18:05:40.000Z", returnReason: "Correct the edited order." };
+    assert.equal(reconcileOrders([returnedReplica], [approvedReplica], [returnedEdit])[0].status, "Draft");
   });
 
   test("approval reconciliation never rolls back an order after fulfillment has started", () => {

@@ -3,6 +3,7 @@
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { accountIsVisible, canAdvanceFulfillment, canAssignScheduleUser, canManageSchedule, canReconcileOrderPayment, canReviewApproval, canTransferSalesResponsibility, getWorkspaceScope } from "./access";
 import { validateNewAccountContact } from "./account-creation";
+import { hasCompleteDeliveryAddress } from "./account-address";
 import { normalizeCommercialState } from "./commercial-state";
 import { addCalendarDays, arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import { findAccountDuplicate } from "./duplicate-engine";
@@ -587,6 +588,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role)) return null;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
+    if (!hasCompleteDeliveryAddress(account)) return null;
     if(currentUser.role==="Sales Representative"&&!documentTerritoryDeviation(account,currentUser.id,"placing an order"))return null;
     const pricing=evaluatePartnerPricing(data,accountId);const price=pricing.currentPricePerCase;
     if(!Number.isFinite(price)||!price||price<=0)return null;

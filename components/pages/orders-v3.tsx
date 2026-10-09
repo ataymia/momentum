@@ -2,7 +2,7 @@
 import { AlertCircle, Box, Building2, CheckCircle2, ChevronRight, CircleDollarSign, Copy, FileText, Mail, MapPin, PackageSearch, Pencil, Plus, Store, Trash2, Truck, UserRound, XCircle } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { canAdvanceFulfillment, canCreateOrder, isCustomer } from "../../lib/access";
-import { deliveryAddressLabel } from "../../lib/account-address";
+import { deliveryAddressLabel, hasCompleteDeliveryAddress } from "../../lib/account-address";
 import { useCommerce } from "../../lib/commerce-context";
 import { useDelivery } from "../../lib/delivery-context";
 import { activeReservedForOrder, INVENTORY_LEDGER_STORAGE_KEY, orderCanAdvanceInventory, orderDeliveryQuantity, orderOutboundQuantity, productInventoryStatus } from "../../lib/inventory-ledger";
@@ -79,6 +79,8 @@ export function OrdersPage(){
   e.preventDefault();if(submitting)return;
   if(firebase&&currentUser?.role!=="Customer"&&firebase.access?.accountState!=="Active"){setError(`Your Momentum access is ${firebase.access?.accountState??"not active"}. The order was not submitted.`);return}
   if(!formPrice){setError("Current order pricing must be configured before this order can be submitted.");return}
+  const submissionAccount=scope.accounts.find((account)=>account.id===(editingOrder?.accountId??accountId));
+  if(!submissionAccount||!hasCompleteDeliveryAddress(submissionAccount)){setError("Add a complete delivery street address, city / market, and five-digit ZIP code to this account before submitting an order.");return}
   if(!lines.length||lines.some((l)=>!Number.isInteger(l.cases)||l.cases<1)){setError("Every order line needs a whole-number case quantity of at least 1.");return}
   setSubmitting(true);setError("");
   const lineInput=lines.map((l)=>({...l,inventoryAvailableAtOrder:productInventoryStatus(ledger,data,l.product).available}));
