@@ -4,7 +4,10 @@ import {defineString} from "firebase-functions/params";
 import {initializeApp} from "firebase-admin/app";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
-import {commitAdminDeliveryOverride, DeliveryOverrideError} from "./admin-delivery-override";
+import {
+  commitAdminDeliveryOverride,
+  DeliveryOverrideError,
+} from "./admin-delivery-override";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
