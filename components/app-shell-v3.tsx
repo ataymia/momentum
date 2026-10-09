@@ -42,7 +42,7 @@ type SearchResult = { id: string; type: string; title: string; detail: string; p
 const primaryNav: NavItem[] = [
   { key: "home", label: "Home", icon: LayoutDashboard }, { key: "work", label: "My work", icon: CheckSquare2 },
   { key: "accounts", label: "CRM & sales", icon: Building2 }, { key: "dispatch", label: "Dispatch board", icon: CalendarDays },
-  { key: "retail", label: "Retail execution", icon: Store }, { key: "orders", label: "Orders & billing", icon: ShoppingCart },
+  { key: "orders", label: "Orders & billing", icon: ShoppingCart },
   { key: "inventory", label: "Inventory & fulfillment", icon: Boxes }, { key: "marketing", label: "Marketing", icon: Megaphone },
   { key: "people", label: "Human Resources", icon: UsersRound }, { key: "payroll", label: "Payroll", icon: BadgeDollarSign },
   { key: "finance", label: "Finance & accounting", icon: CircleDollarSign },

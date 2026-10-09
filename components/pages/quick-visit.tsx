@@ -3,6 +3,7 @@
 import { Store, UserCheck, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { canClaimUnassignedProspect } from "../../lib/access";
+import { employeePhysicalVisits, employeeVisitLabel } from "../../lib/employee-admin";
 import { useCrm } from "../../lib/crm-context";
 import { GOLDEN_EAGLE_SKUS } from "../../lib/product-catalog";
 import {
@@ -15,7 +16,7 @@ import {
 } from "../../lib/quick-visit";
 import { prospectRatingColor, weeklySalesManagementSummary } from "../../lib/sales-field-engine";
 import { useWorkspace } from "../../lib/workspace-context";
-import { Button, Field, PageHeader, Section, StatusPill, formatMoney } from "../ui";
+import { Button, Field, PageHeader, Section, StatusPill, formatMoney, formatDate } from "../ui";
 
 type SampleEditorRow=QuickVisitSampleRow&{id:string};
 const newSampleRow=():SampleEditorRow=>({id:`sample-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,product:"",quantity:1});
@@ -30,6 +31,7 @@ export function QuickVisitPage(){
   const[note,setNote]=useState("Visited business location");
   const[samples,setSamples]=useState<SampleEditorRow[]>([newSampleRow()]);
   const[message,setMessage]=useState("");
+  const[historyLimit,setHistoryLimit]=useState(30);
   if(!currentUser)return null;
 
   const exactMatch=scope.accounts.find((account)=>account.id===accountId)??matchQuickVisitAccount(scope.accounts,business);
@@ -82,6 +84,9 @@ export function QuickVisitPage(){
     setRating(5);
   };
 
+  const myTrips=currentUser?employeePhysicalVisits(crm,currentUser.id):[];
+  const recentCutoff=new Date(Date.now()-30*24*60*60*1000).toISOString();
+  const recentTrips=myTrips.filter((visit)=>visit.occurredAt>=recentCutoff).length;
   const summaries=data.users.filter((user)=>user.role==="Sales Representative").map((user)=>({user,summary:weeklySalesManagementSummary(data,crm.interactions,user.id)}));
 
   return <div className="page">
@@ -122,6 +127,19 @@ export function QuickVisitPage(){
           {exactMatch&&canClaimUnassignedProspect(currentUser,exactMatch)&&<Button type="button" variant="secondary" icon={<UserCheck size={15}/>} onClick={()=>{if(claimUnassignedProspect(exactMatch.id))setMessage("Prospect claimed. Existing history was retained.")}}>Claim this unassigned prospect</Button>}
         </div>
       </form>
+    </Section>
+    <Section title="My trips" description={`${recentTrips} visits in the last 30 days · ${myTrips.length} all time`}>
+      <div className="company-request-list">
+        {myTrips.slice(0,historyLimit).map((visit)=><article key={visit.id}>
+          <span><Store size={17}/></span>
+          <div><strong>{employeeVisitLabel(visit,data)}</strong>
+            <p>{formatDate(visit.occurredAt,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})}{visit.visitUnsuccessful?" · Unsuccessful":""}{visit.prospectRating? ` · Score ${visit.prospectRating}/10`:""}</p>
+            {visit.summary&&<small>{visit.summary}</small>}
+          </div>
+        </article>)}
+        {!myTrips.length&&<div className="review-empty"><p>No trips logged yet.</p></div>}
+      </div>
+      {myTrips.length>historyLimit&&<Button size="sm" variant="secondary" onClick={()=>setHistoryLimit((current)=>current+30)}>Show more trips</Button>}
     </Section>
     {["Administrator","Sales Manager"].includes(currentUser.role)&&<Section title="Weekly sales management" description="Actual CRM, order and account records only. Visit target: 75–80 per full week. Freehand Quick Visits count because the rep physically visited the business.">
       <div className="company-request-list">{summaries.map(({user,summary})=><article key={user.id}><span><Store size={17}/></span><div><strong>{user.name}</strong><p>{summary.visits} visits · {summary.orders} orders / {summary.orderCases} cases / {formatMoney(summary.orderValue)} · {summary.reorders} reorders · {summary.newAccounts} new accounts · {summary.promisingProspects} promising prospects · {summary.followUpsDue} follow-ups due · {summary.blockers} blockers</p></div><StatusPill tone={summary.visits>=75?"success":summary.visits>=50?"warning":"neutral"}>{summary.visits}/75</StatusPill></article>)}</div>
