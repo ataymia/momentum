@@ -113,8 +113,8 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
     const apEmail = customer?.accountsPayableEmail || customer?.billingEmail;
     const apPhone = customer?.accountsPayablePhone || customer?.billingPhone;
     const apExtension = customer?.accountsPayableExtension?.trim();
-    const billToAddress = location ? businessAddressLabel(location) : "";
-    const shipToAddress = location ? deliveryAddressLabel(location) : "";
+    const billToAddress = invoice.billToAddressSnapshot?.trim() || (location ? businessAddressLabel(location) : "");
+    const shipToAddress = invoice.shipToAddressSnapshot?.trim() || (location ? deliveryAddressLabel(location) : "");
 
     return <article className="invoice-sheet" key={`${invoice.id}-${copyIndex}`}>
       <Image priority className="invoice-sheet__watermark" src={invoiceBrandSrc} width={720} height={480} alt="" aria-hidden="true" unoptimized />
