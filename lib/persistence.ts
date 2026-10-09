@@ -238,6 +238,8 @@ class FirestoreBackend{
   private metaVersions:Record<string,string>={};
   private timer:number|undefined;
   private pollTimer:number|undefined;
+  /** Focus and interval refreshes must not race each other. */
+  private polling=false;
   private flushing=false;
   private activeFlushKeys=new Set<string>();
   private retryDelay=0;
@@ -630,26 +632,29 @@ class FirestoreBackend{
   }
 
   async poll(){
-    if(this.disposed||this.flushing)return;
+    if(this.disposed||this.flushing||this.polling)return;
+    this.polling=true;
     try{
       const meta=await getFirestoreSnapshot(PLATFORM_META_DOCUMENT);
       const versions=this.versionsFrom(meta.data);
       const changed=Object.entries(versions).filter(([key,value])=>this.metaVersions[key]!==value).map(([key])=>key);
       if(changed.length===0)return;
-      for(const key of changed)this.metaVersions[key]=versions[key];
+      // Do not acknowledge a version before its records have been loaded successfully.
+      // Otherwise a transient fetch failure silently loses the update until a later version arrives.
       if(changed.includes(EMPLOYEE_DIRECTORY_META_KEY))this.onDirectoryChange();
       const readable=this.readablePaths();
       const byMeta=new Map<string,string>();for(const path of readable.keys())byMeta.set(metaVersionKey(path),path);
       for(const path of this.docs.keys())if(parseDocPath(path))byMeta.set(metaVersionKey(path),path);
       const paths=changed.map((key)=>byMeta.get(key)).filter((path):path is string=>Boolean(path)&&!this.denied.has(path!));
-      if(paths.length===0)return;
+      if(paths.length===0){for(const key of changed)this.metaVersions[key]=versions[key];return;}
       const snapshots=await getFirestoreSnapshots(paths);
       const touched=new Map<string,Map<string,Record<string,unknown>|null>>();
       for(const snapshot of snapshots){
         const parsedPath=parseDocPath(snapshot.path);
         const spec=readable.get(snapshot.path)??(parsedPath?DOMAIN_SPECS.find((item)=>item.id===parsedPath.domainId):undefined);if(!spec)continue;
         const base=this.docs.get(snapshot.path);
-        if(base?.updateTime===snapshot.updateTime&&base?.data===snapshot.data)continue;
+        // Firestore REST decoding creates a new object on every read. Update time is the stable identity.
+        if(base?.updateTime&&base.updateTime===snapshot.updateTime)continue;
         let override:Record<string,unknown>|null=snapshot.data;
         if(this.dirty.has(spec.key)){
           const raw=this.cache.get(spec.key);
@@ -665,10 +670,13 @@ class FirestoreBackend{
         const next=this.assemble(spec,map);
         if(next!==this.cache.get(key)){this.cache.set(key,next);emitKey(key);}
       }
+      for(const key of changed)this.metaVersions[key]=versions[key];
       setStatus({lastSyncedAt:new Date().toISOString()});
     }catch(error){
       if(error instanceof FirestoreRequestError&&error.status===401){setStatus({lastError:"Firebase session expired. Sign in again."});return;}
       setStatus({lastError:error instanceof Error?error.message:"Firestore poll failed."});
+    }finally{
+      this.polling=false;
     }
   }
 
