@@ -76,8 +76,10 @@ export async function commitAdminDeliveryOverride(
   const workspaceRef = firestore.doc(prefix + "workspace/fields/orders");
   const accountsRef = firestore.doc(prefix + "workspace/fields/accounts");
   const workspaceLotsRef = firestore.doc(prefix + "workspace/fields/inventory");
-  const extraLotsRef = firestore.doc(prefix + "commercial/fields/inventoryLots");
-  const movementsRef = firestore.doc(prefix + "inventoryLedger/fields/movements");
+  const extraLotsRef = firestore.doc(
+    prefix + "commercial/fields/inventoryLots");
+  const movementsRef = firestore.doc(
+    prefix + "inventoryLedger/fields/movements");
   const nodesRef = firestore.doc(prefix + "inventoryLedger/fields/nodes");
   const reservationsRef = firestore.doc(
     prefix + "inventoryLedger/fields/reservations");
@@ -109,7 +111,8 @@ export async function commitAdminDeliveryOverride(
       workspaceOrders.find((row) => txt(row.id) === orderId);
     if (!order) return fail(404, "Order not found in the shared register.");
     const status = txt(order.status);
-    if (!["Approved", "Allocated", "Out for delivery", "Paid"].includes(status)) {
+    if (!["Approved", "Allocated", "Out for delivery", "Paid"].includes(
+      status)) {
       return fail(409, "Only approved or fulfillment-stage orders qualify.");
     }
     const placedAt = Date.parse(txt(order.placedAt));
@@ -178,11 +181,11 @@ export async function commitAdminDeliveryOverride(
           !source || source.active !== true ||
           !["Warehouse", "Vehicle", "Bin", "Employee custody"].includes(
             txt(source.type))) {
-        return fail(409, "Selected inventory lot or stock source is ineligible.");
+        return fail(409, "Selected lot or stock source is ineligible.");
       }
       const product = key(txt(lot.product));
       if (!expected.has(product)) {
-        return fail(409, "Selected inventory lot does not match the order SKU.");
+        return fail(409, "Selected lot does not match the order SKU.");
       }
       if (!overrideSourceAvailable(
         working, reservations, entry, txt(source.type), orderId)) {
