@@ -64,6 +64,12 @@ describe("order correction approval cycles", () => {
     assert.equal(reconcileOrderWithApproval(approvedOrder, pendingEdit).status, "Awaiting approval");
   });
 
+  test("a returned latest cycle reopens an approved pre-fulfillment order as Draft", () => {
+    const approvedOrder: Order = { ...order, status: "Approved" };
+    const returnedEdit: Approval = { ...baseApproval, id: "apr-returned-edit", submittedAt: "2026-09-24T18:05:30.000Z", status: "Returned", decidedBy: "admin", decidedAt: "2026-09-24T18:05:40.000Z", returnReason: "Correct the edited order." };
+    assert.equal(reconcileOrderWithApproval(approvedOrder, returnedEdit).status, "Draft");
+  });
+
   test("approval reconciliation never rolls back an order after fulfillment has started", () => {
     const allocatedOrder: Order = { ...order, status: "Allocated" };
     const pendingEdit: Approval = { ...baseApproval, id: "apr-too-late", submittedAt: "2026-09-24T18:06:00.000Z", status: "Pending" };
