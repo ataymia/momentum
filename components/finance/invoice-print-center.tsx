@@ -130,7 +130,12 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
         <div><small>FROM</small><strong>{company.name}</strong><span>{company.street}</span><span>{company.cityStateZip}</span><span>{company.phone} · {company.attention}</span><span>{company.salesEmail}</span></div>
         <div><small>BILL TO</small><strong>{customer?.name ?? location?.name ?? "Customer"}</strong>{billToAddress && <span>{billToAddress}</span>}{apName && <span>A/P: {apName}</span>}{apPhone && <span>{apPhone}{apExtension ? ` ext. ${apExtension}` : ""}</span>}{apEmail && <span>{apEmail}</span>}{customer?.az5000Number && <span>AZ-5000: {customer.az5000Number}</span>}</div>
         <div><small>SHIP TO</small><strong>{location ? locationLabel(location) : "Customer location"}</strong>{shipToAddress && <span>{shipToAddress}</span>}{location?.contactName && <span>{location.contactName}{location.contactRole ? ` · ${location.contactRole}` : ""}</span>}{location?.phone && <span>{location.phone}</span>}</div>
-        <div className="invoice-sheet__document-meta"><span>INVOICE #</span><strong>{invoice.number}</strong><span>INVOICE DATE</span><strong>{formatDate(invoice.issuedAt, { month: "2-digit", day: "2-digit", year: "numeric" })}</strong><span>ORDER #</span><strong>{order?.number ?? invoice.orderId}</strong></div>
+        
+      </section>
+      <section className="invoice-sheet__document-meta">
+        <div><span>INVOICE #</span><strong>{invoice.number}</strong></div>
+        <div><span>INVOICE DATE</span><strong>{formatDate(invoice.issuedAt, { month: "2-digit", day: "2-digit", year: "numeric" })}</strong></div>
+        <div><span>ORDER #</span><strong>{order?.number ?? invoice.orderId}</strong></div>
       </section>
 
       <section className="invoice-sheet__meta">
