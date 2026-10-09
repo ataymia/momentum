@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { employeeEarningsSnapshot } from "../lib/payroll-earnings-preview";
+import { readFileSync } from "node:fs";
 import { createPayrollSeed, hourlyWagesForApprovedTimecards, regularPayrollSource } from "../lib/payroll-engine";
 import type { WorkspaceData } from "../lib/types";
 import type { HCMState } from "../lib/hcm-engine";
@@ -66,4 +67,12 @@ test("hourly payroll refuses one blended rate for a midweek pay change",()=>{
  const source=regularPayrollSource(data,"rep-1","2026-09-28","2026-10-04",["tc-1"]);
  assert.ok(source);
  assert.equal(hourlyWagesForApprovedTimecards(data,hcm,"rep-1",source!,40),null);
+});
+
+test("earnings UI identifies orders and account bonuses without implying paid commissions",()=>{
+  const ui=readFileSync("components/pages/payroll-v2.tsx","utf8");
+  assert.ok(ui.includes("Account bonus milestones"));
+  assert.ok(ui.includes("Sales awaiting commission review"));
+  assert.ok(ui.includes("Percentage commission not calculated"));
+  assert.ok(ui.includes("My sales bonuses"));
 });
