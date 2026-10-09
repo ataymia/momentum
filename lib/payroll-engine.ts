@@ -238,11 +238,40 @@ export function earnedBonusesForMonth(state: PayrollState, data: WorkspaceData, 
     .filter((item) => item.earnedAt?.slice(0, 7) === month && !used.has(item.signal.id));
 }
 
+export function compensationForPayrollDate(hcm:HCMState,userId:string,date:string){
+  if(!isValidCalendarDateKey(date))return undefined;
+  return hcm.compensation.filter((record)=>record.userId===userId&&record.effectiveDate<=date&&(!record.endDate||record.endDate>=date))
+    .sort((a,b)=>b.effectiveDate.localeCompare(a.effectiveDate))[0];
+}
+
+/** Price each approved workweek under its historical effective rate.
+ * Reject midweek rate changes until hours are split into correct rate windows.
+ */
+export function hourlyWagesForApprovedTimecards(data:WorkspaceData,hcm:HCMState,employeeId:string,source:RegularPayrollSource,overtimeThresholdHours:number){
+  if(!finiteNonNegative(overtimeThresholdHours))return null;
+  let regularHours=0,overtimeHours=0,regularPay=0,overtimePay=0;
+  for(const cardId of source.timecardIds){
+    const card=data.timecards.find((item)=>item.id===cardId&&item.userId===employeeId);
+    if(!card)return null;
+    const first=compensationForPayrollDate(hcm,employeeId,card.weekStart);
+    const last=compensationForPayrollDate(hcm,employeeId,card.weekEnd);
+    if(!first||!last||first.id!==last.id||first.basis!=="Hourly"||last.basis!=="Hourly"||!finiteNonNegative(first.rate))return null;
+    const weekSource={timecardIds:[card.id],entries:source.entries.filter((entry)=>entry.date>=card.weekStart&&entry.date<=card.weekEnd)};
+    const hours=payrollHourBreakdown(data,employeeId,weekSource,overtimeThresholdHours);
+    if(!hours)return null;
+    regularHours+=hours.regularHours;
+    overtimeHours+=hours.overtimeHours;
+    regularPay+=hours.regularHours*first.rate;
+    overtimePay+=hours.overtimeHours*first.rate*1.5;
+  }
+  return {regularHours,overtimeHours,regularPay,overtimePay};
+}
+
 export function calculateRegularLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[]): PayLine | null {
   if (!isValidCalendarDateKey(periodStart) || !isValidCalendarDateKey(periodEnd) || periodEnd < periodStart || !activeEmployerTaxConfigurationValid(state, periodEnd)) return null;
   const employee = activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, periodEnd);
-  const compensation = activeCompensation(hcm, employeeId, periodEnd);
+  const compensation = compensationForPayrollDate(hcm, employeeId, periodEnd);
   const group = employee ? state.payGroups.find((item) => item.id === employee.payGroupId && item.active) : undefined;
   const source = regularPayrollSource(data, employeeId, periodStart, periodEnd, sourceTimecardIds);
   const benefits = payrollBenefitDeductions(state, hcm, employeeId, periodEnd);
@@ -251,12 +280,13 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
   if (employerTaxRules.some((rule) => !percentValid(rule.percent))) return null;
   const totalHours = source.entries.reduce((sum, entry) => sum + timeEntryHours(entry), 0);
   if (!finiteNonNegative(totalHours)) return null;
-  const breakdown = compensation.basis === "Hourly" ? payrollHourBreakdown(data, employeeId, source, group.overtimeThresholdHours) : null;
-  if (compensation.basis === "Hourly" && !breakdown) return null;
-  const overtimeHours = compensation.basis === "Hourly" ? breakdown!.overtimeHours : 0;
-  const regularHours = compensation.basis === "Hourly" ? breakdown!.regularHours : totalHours;
-  const regularPay = compensation.basis === "Hourly" ? regularHours * compensation.rate : compensation.rate;
-  const overtimePay = compensation.basis === "Hourly" ? overtimeHours * compensation.rate * 1.5 : 0;
+  const hourly = compensation.basis === "Hourly" ? hourlyWagesForApprovedTimecards(data,hcm,employeeId,source,group.overtimeThresholdHours) : null;
+  if (compensation.basis === "Hourly" && !hourly) return null;
+  if (compensation.basis === "Salary per pay period" && compensationForPayrollDate(hcm,employeeId,periodStart)?.id!==compensation.id) return null;
+  const overtimeHours = hourly?.overtimeHours ?? 0;
+  const regularHours = hourly?.regularHours ?? totalHours;
+  const regularPay = hourly?.regularPay ?? compensation.rate;
+  const overtimePay = hourly?.overtimePay ?? 0;
   return calculateNet(state, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, 0, source.timecardIds, [], withholding!, benefits);
 }
 

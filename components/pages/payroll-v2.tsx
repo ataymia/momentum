@@ -3,9 +3,12 @@
 import { BadgeDollarSign, Calculator, Check, FileText, Landmark, LockKeyhole, Play, RefreshCcw, ShieldCheck, WalletCards, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
+import { evaluateSalesRepAccountBonuses } from "../../lib/bonus-engine";
 import { activeCompensation, benefitDeductionPerPayPeriod } from "../../lib/hcm-engine";
 import { useHcm } from "../../lib/hcm-context";
 import { activePayrollEmployee, activeWithholding, type PayFrequency, type PayrollEmployee } from "../../lib/payroll-engine";
+import { employeeEarningsSnapshot } from "../../lib/payroll-earnings-preview";
+import { salesCommissionPolicyProblem, STANDARD_SALES_COMMISSION_POLICY } from "../../lib/sales-commission-policy";
 import { disbursementRecord, taxLiabilityRecord } from "../../lib/payroll-settlement-controls";
 import { usePayroll } from "../../lib/payroll-context";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -20,7 +23,7 @@ export function PayrollPage() {
   const { hcm } = useHcm();
   const { payroll, savePayGroup, savePayrollEmployee, saveWithholding, saveEmployerTaxRule, buildRegularRun, buildBonusRun, setRunStatus, voidAndReissue, settleDisbursement, failDisbursement, retryDisbursement, updateLiability, resetPayroll } = usePayroll();
   const admin = currentUser?.role === "Administrator";
-  const [tab, setTab] = useState<"self" | "processing" | "tax" | "setup">("self");
+  const [tab, setTab] = useState<"self" | "earnings" | "processing" | "tax" | "setup">("self");
   const [notice, setNotice] = useState("");
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
@@ -55,6 +58,14 @@ export function PayrollPage() {
   const ytdTaxes = releasedMyLines.reduce((sum, line) => sum + line.employeeTaxes, 0);
   const ytdBenefits = releasedMyLines.reduce((sum, line) => sum + line.benefitDeduction, 0);
   const ytdNet = releasedMyLines.reduce((sum, line) => sum + line.netPay, 0);
+
+  const staffEarnings = data.users.filter((user)=>user.role!=="Customer").map((user)=>({user,snapshot:employeeEarningsSnapshot(data,hcm,payroll,user.id)}));
+  const myEarnings = currentUser ? employeeEarningsSnapshot(data,hcm,payroll,currentUser.id):null;
+  const commissionHold = salesCommissionPolicyProblem();
+  const bonusMilestones = evaluateSalesRepAccountBonuses(data);
+  const customerName = (accountId:string) => data.accounts.find((account)=>account.id===accountId)?.name ?? "Account not found";
+  const repAttributedOrders = (repId:string) => data.orders.filter((order)=>order.status!=="Cancelled"&&(order.creditedRepId??order.ownerId)===repId)
+    .sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
 
   const loadEmployee = (employeeId: string) => {
     setSelectedEmployeeId(employeeId);
@@ -132,8 +143,60 @@ export function PayrollPage() {
 
   return <div className="page page--payroll">
     <PageHeader eyebrow="Workforce compensation" title="Payroll" description="Native payroll consumes effective HR compensation, approved time, monthly earned bonuses, active benefit elections, configured withholding, and payment instructions." actions={<div className="request-actions">{notice && <StatusPill tone="success">{notice}</StatusPill>}<StatusPill tone="gold">Native payroll</StatusPill>{admin && <Button size="sm" variant="ghost" icon={<RefreshCcw size={14}/>} onClick={() => { resetPayroll(); setNotice("Payroll demo reset"); }}>Reset payroll demo</Button>}</div>} />
-    <div className="company-tabs"><button className={tab === "self" ? "is-active" : ""} onClick={() => setTab("self")}>My pay</button>{admin && <button className={tab === "processing" ? "is-active" : ""} onClick={() => setTab("processing")}>Pay runs</button>}{admin && <button className={tab === "tax" ? "is-active" : ""} onClick={() => setTab("tax")}>Taxes & disbursement</button>}{admin && <button className={tab === "setup" ? "is-active" : ""} onClick={() => setTab("setup")}>Payroll setup</button>}</div>
+    <div className="company-tabs"><button className={tab === "self" ? "is-active" : ""} onClick={() => setTab("self")}>My pay</button>{admin && <button className={tab === "earnings" ? "is-active" : ""} onClick={() => setTab("earnings")}>Earnings</button>}{admin && <button className={tab === "processing" ? "is-active" : ""} onClick={() => setTab("processing")}>Pay runs</button>}{admin && <button className={tab === "tax" ? "is-active" : ""} onClick={() => setTab("tax")}>Taxes & disbursement</button>}{admin && <button className={tab === "setup" ? "is-active" : ""} onClick={() => setTab("setup")}>Payroll setup</button>}</div>
 
+    {tab === "self" && myEarnings && <Section title="Hours & earnings awaiting payroll">
+      <div className="hcm-metrics payroll-ytd">
+        <article><span>Approved regular hours</span><strong>{myEarnings.regularHours.toFixed(2)}</strong></article>
+        <article><span>Approved overtime hours</span><strong>{myEarnings.overtimeHours.toFixed(2)}</strong></article>
+        <article><span>Estimated gross wages</span><strong>{myEarnings.estimatedGross===null?"Pending setup":formatMoney(myEarnings.estimatedGross)}</strong></article>
+        <article><span>Hours awaiting approval</span><strong>{myEarnings.pendingApprovalHours.toFixed(2)}</strong></article>
+      </div>
+      <p>Based on approved, unprocessed timecards. This is a gross wage estimate, not a finalized pay statement.</p>
+      {myEarnings.flaggedBonusCount>0&&<p>Account bonus milestones flagged for review: {myEarnings.flaggedBonusCount} · {formatMoney(myEarnings.flaggedBonusAmount)}. Final eligibility must be verified before payroll.</p>}
+      {myEarnings.blockers.map((message)=><p key={message}>{message}</p>)}
+    </Section>}
+    {tab === "self" && currentUser?.role==="Sales Representative" && <Section title="My sales bonuses">
+      <div className="company-request-list">
+        {bonusMilestones.filter((milestone)=>milestone.repId===currentUser.id).map((milestone)=><article key={milestone.id}>
+          <span><BadgeDollarSign size={16}/></span>
+          <div><strong>{customerName(milestone.accountId)} · {milestone.milestone}</strong>
+            <p>{formatMoney(milestone.amount)} · {milestone.status} · {milestone.observedCases}/{milestone.thresholdCases} cases</p>
+            <small>Bonus eligibility and payment must be verified before payroll.</small>
+          </div>
+        </article>)}
+        {!bonusMilestones.some((milestone)=>milestone.repId===currentUser.id)&&<p>No account bonus milestones yet.</p>}
+      </div>
+    </Section>}
+    {tab === "earnings" && admin && <>
+      <Section title="Employee earnings" description="Live view of approved hours and flagged bonus milestones. Final payments require payroll review.">
+        <div className="company-request-list">
+          {staffEarnings.map(({user,snapshot})=><article key={user.id}>
+            <span><BadgeDollarSign size={18}/></span>
+            <div><strong>{user.name}</strong>
+              <p>{snapshot.regularHours.toFixed(2)} regular hrs · {snapshot.overtimeHours.toFixed(2)} OT hrs · Gross estimate: {snapshot.estimatedGross===null?"Not ready":formatMoney(snapshot.estimatedGross)}</p>
+              <small>{snapshot.pendingApprovalHours.toFixed(2)} hrs awaiting approval · {snapshot.approvedTimecards} unprocessed approved timecards</small>
+              {snapshot.flaggedBonusCount>0&&<p>{snapshot.flaggedBonusCount} account bonus milestone(s) flagged: {formatMoney(snapshot.flaggedBonusAmount)}. Verify settlement and terms before pay.</p>}
+              {user.role==="Sales Representative"&&<>
+                <p><strong>Account bonus milestones</strong></p>
+                {bonusMilestones.filter((milestone)=>milestone.repId===user.id).slice(0,20).map((milestone)=><p key={milestone.id}>
+                  {customerName(milestone.accountId)} · {milestone.milestone} · {formatMoney(milestone.amount)} · {milestone.status} · {milestone.observedCases}/{milestone.thresholdCases} cases
+                </p>)}
+                <p><strong>Sales awaiting commission review</strong></p>
+                {repAttributedOrders(user.id).slice(0,20).map((order)=><p key={order.id}>
+                  {customerName(order.accountId)} · {order.number} · {order.cases} cases · {order.paymentStatus} · Percentage commission not calculated
+                </p>)}
+              </>}
+              {snapshot.blockers.map((message)=><p key={message}>{message}</p>)}
+            </div>
+          </article>)}
+        </div>
+      </Section>
+      <Section title="Commission policy" description={commissionHold??"Effective-dated commission policy is configured."}>
+        <p>Standard representative allocation: {(STANDARD_SALES_COMMISSION_POLICY.representativeRate*100).toFixed(2)}% rep + {(STANDARD_SALES_COMMISSION_POLICY.managerOverrideRate*100).toFixed(2)}% manager override. The combined pool is {(STANDARD_SALES_COMMISSION_POLICY.maxCombinedRate*100).toFixed(2)}%.</p>
+        <p>Percentage commissions are not currently included in payroll. An approved effective date, collected-revenue exclusions and sale-by-sale credit records are required.</p>
+      </Section>
+    </>}
     {tab === "self" && <><div className="company-grid company-grid--two"><Section title="Payroll profile" description="Pay rate comes from the effective compensation record in Human Resources"><div className="payroll-profile"><div><span><BadgeDollarSign size={20}/></span><div><small>Effective pay basis</small><strong>{myComp ? `${myComp.basis} · ${formatMoney(myComp.rate)}` : "Not configured in HR"}</strong></div></div><div><span><Calculator size={20}/></span><div><small>Withholding setup</small><strong>{myTax ? `${myTax.federalPercent}% federal · ${myTax.statePercent}% state · ${myTax.localPercent}% local` : "Not configured"}</strong></div></div><div><span><WalletCards size={20}/></span><div><small>Payment instruction</small><strong>{myPayrollEmployee ? `${myPayrollEmployee.paymentMethod} · ${myPayrollEmployee.paymentTokenLabel || "masked destination not loaded"}` : "Not configured"}</strong></div></div></div></Section><Section title="Latest pay statement" description="Every amount drills into source hours, earnings, benefits, withholding, and deductions">{latestMyLine ? <div className="pay-statement"><div><span>Regular pay</span><strong>{formatMoney(latestMyLine.regularPay)}</strong></div><div><span>Overtime pay</span><strong>{formatMoney(latestMyLine.overtimePay)}</strong></div><div><span>Bonus earnings</span><strong>{formatMoney(latestMyLine.bonusPay)}</strong></div><div><span>Gross pay</span><strong>{formatMoney(latestMyLine.grossPay)}</strong></div><div><span>Benefit deduction</span><strong>-{formatMoney(latestMyLine.benefitDeduction)}</strong></div><div><span>Employee taxes</span><strong>-{formatMoney(latestMyLine.employeeTaxes)}</strong></div><div><span>Other post-tax deduction</span><strong>-{formatMoney(latestMyLine.postTaxDeduction)}</strong></div><div className="pay-statement__net"><span>Net pay</span><strong>{formatMoney(latestMyLine.netPay)}</strong></div><div><span>Pay date</span><strong>{latestMyRun ? formatDate(latestMyRun.payDate) : "—"}</strong></div></div> : <div className="review-empty"><FileText size={24}/><h3>No pay statement yet</h3><p>A statement appears after an authorized payroll run includes this employee.</p></div>}</Section></div><Section title="Year-to-date pay" description="YTD totals include released payroll only"><div className="hcm-metrics payroll-ytd"><article><span>Gross</span><strong>{formatMoney(ytdGross)}</strong><small>Released payroll</small></article><article><span>Employee taxes</span><strong>{formatMoney(ytdTaxes)}</strong><small>Withheld</small></article><article><span>Benefit deductions</span><strong>{formatMoney(ytdBenefits)}</strong><small>Enrollment-linked</small></article><article><span>Net pay</span><strong>{formatMoney(ytdNet)}</strong><small>Released</small></article></div></Section></>}
 
     {tab === "processing" && admin && <><div className="company-grid company-grid--two"><Section title="Regular payroll draft" description="Consumes approved timecards once"><div className="form-grid"><Field label="Period start"><input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} /></Field><Field label="Period end"><input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} /></Field><Field label="Pay date"><input type="date" value={payDate} onChange={(event) => setPayDate(event.target.value)} /></Field><Button icon={<Play size={15}/>} onClick={buildRegular}>Build regular draft</Button></div></Section><Section title="Monthly bonus payroll" description="Sales-account bonuses are paid monthly and consumed once"><div className="form-grid"><Field label="Bonus month"><input type="month" value={bonusMonth} onChange={(event) => setBonusMonth(event.target.value)} /></Field><Field label="Pay date"><input type="date" value={bonusPayDate} onChange={(event) => setBonusPayDate(event.target.value)} /></Field><Button variant="gold" icon={<BadgeDollarSign size={15}/>} onClick={buildBonus}>Build monthly bonus draft</Button></div></Section></div><Section title="Pay-run register" description="Draft → approved → released. Released runs are corrected only through void and controlled reissue."><div className="campaign-register">{payroll.runs.map((run) => <article key={run.id}><div className="campaign-register__head"><div><small>{run.kind} · {formatDate(run.periodStart,{month:"short",day:"numeric"})} – {formatDate(run.periodEnd,{month:"short",day:"numeric",year:"numeric"})} · pay {formatDate(run.payDate,{month:"short",day:"numeric"})}</small><strong>{run.id}</strong><p>{run.lines.length} employee line{run.lines.length === 1 ? "" : "s"} · gross {formatMoney(run.lines.reduce((sum,line)=>sum+line.grossPay,0))} · net {formatMoney(run.lines.reduce((sum,line)=>sum+line.netPay,0))}{run.reissueOf ? ` · reissue of ${run.reissueOf}` : ""}</p></div><StatusPill tone={runTone(run.status)}>{run.status}</StatusPill></div><div className="finance-order-list"><div className="payroll-line-row payroll-line-row--head"><span>Employee</span><span>Reg hrs</span><span>OT hrs</span><span>Gross</span><span>Benefits</span><span>Taxes</span><span>Net</span></div>{run.lines.map((line) => <div className="payroll-line-row" key={line.employeeId}><span>{data.users.find((user)=>user.id===line.employeeId)?.name}</span><span>{line.regularHours.toFixed(2)}</span><span>{line.overtimeHours.toFixed(2)}</span><span>{formatMoney(line.grossPay)}</span><span>{formatMoney(line.benefitDeduction)}</span><span>{formatMoney(line.employeeTaxes)}</span><span><strong>{formatMoney(line.netPay)}</strong></span></div>)}</div><div className="request-actions payroll-run-actions">{run.status === "Draft" && <Button size="sm" icon={<Check size={14}/>} onClick={() => setRunStatus(run.id,"Approved")}>Approve payroll</Button>}{run.status === "Approved" && <Button size="sm" variant="gold" icon={<WalletCards size={14}/>} onClick={() => setRunStatus(run.id,"Released")}>Release payroll</Button>}{run.status === "Released" && <Button size="sm" variant="danger" icon={<X size={14}/>} onClick={() => { const reason=window.prompt("Reason for void and reissue"); if(reason) voidAndReissue(run.id,reason); }}>Void & reissue</Button>}</div></article>)}{payroll.runs.length === 0 && <div className="review-empty"><p>No payroll runs built.</p></div>}</div></Section></>}
