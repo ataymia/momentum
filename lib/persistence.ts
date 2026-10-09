@@ -56,6 +56,10 @@ export const momentumStorage={
   subscribe:subscribeStorageKey,
   /** Force pending Firestore writes now (used before sign-out). */
   async flush(){await backend?.flush();},
+  /** Force a fresh read of critical cloud domains without discarding local edits. */
+  async refreshKeys(keys:readonly string[]):Promise<{ok:boolean;message?:string}>{
+    return backend?backend.refreshKeys(keys):{ok:true,message:"Local demo"};
+  },
   /** Confirm that one storage key actually reached Firestore. Local/demo mode succeeds immediately. */
   async flushAndConfirm(key:string,timeoutMs=12_000):Promise<{ok:boolean;message?:string}>{
     if(!backend)return{ok:true};
@@ -356,6 +360,48 @@ class FirestoreBackend{
   }
 
   getItem(key:string){return this.cache.get(key)??null;}
+
+  async refreshKeys(requested:readonly string[]):Promise<{ok:boolean;message?:string}>{
+    if(this.disposed)return{ok:false,message:"Sign in again to refresh cloud records."};
+    if(this.flushing)return{ok:false,message:"Changes are still saving. Retry after cloud sync."};
+    const keys=[...new Set(requested)].filter((key)=>DOMAIN_BY_KEY.has(key));
+    if(!keys.length)return{ok:true};
+    const pending=()=>keys.some((key)=>this.dirty.has(key)||this.activeFlushKeys.has(key)||
+      this.blockedKeys.has(key)||Boolean(local()?.getItem(pendingJournalKey(this.scope.uid,key))));
+    if(pending())return{ok:false,message:"Unsaved cloud changes exist. Resolve the sync warning before refreshing."};
+    try{
+      const target=new Set(keys);
+      const paths=new Map<string,DomainSpec>();
+      for(const [path,spec] of this.readablePaths())if(target.has(spec.key))paths.set(path,spec);
+      // Include previously discovered user-shard chunks, not only static manifests.
+      for(const path of this.docs.keys()){
+        const parsed=parseDocPath(path);
+        const spec=parsed?DOMAIN_SPECS.find((entry)=>entry.id===parsed.domainId):undefined;
+        if(spec&&target.has(spec.key))paths.set(path,spec);
+      }
+      const snapshots=await getFirestoreSnapshots([...paths.keys()]);
+      if(snapshots.some((snapshot)=>(snapshot as {denied?:boolean}).denied)){
+        for(const snapshot of snapshots)if((snapshot as {denied?:boolean}).denied)this.denied.add(snapshot.path);
+        setStatus({deniedDocuments:[...this.denied]});
+        return{ok:false,message:"One or more cloud records were blocked by permissions. Ask Operations to review access."};
+      }
+      // Writes may begin while the request is in flight. Keep them ahead of stale cloud data.
+      if(pending())return{ok:false,message:"New unsaved edits arrived during refresh. Save them and sync again."};
+      for(const snapshot of snapshots)this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
+      await this.hydrateChunkShards();
+      if(pending())return{ok:false,message:"New unsaved edits arrived during refresh. Save them and sync again."};
+      for(const key of keys){
+        const next=this.assemble(DOMAIN_BY_KEY.get(key)!);
+        if(next!==this.cache.get(key)){this.cache.set(key,next);emitKey(key);}
+      }
+      setStatus({lastSyncedAt:new Date().toISOString(),lastError:undefined,deniedDocuments:[...this.denied]});
+      return{ok:true};
+    }catch(error){
+      const message=error instanceof Error?error.message:"Cloud refresh failed.";
+      setStatus({lastError:message});
+      return{ok:false,message};
+    }
+  }
 
   async flushAndConfirm(key:string,timeoutMs:number){
     const started=Date.now();
