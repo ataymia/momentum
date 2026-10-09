@@ -49,7 +49,7 @@
 
 /* Component-scoped invoice ledger and detail layout. */
 .invoice-ledger-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:14px;align-items:start;min-width:0}
-.invoice-ledger-layout>.section{min-width:0}
+.invoice-ledger-layout>.panel{min-width:0}
 .invoice-ledger-layout .company-request-list{min-width:0}
 .invoice-ledger-row{border:0;border-bottom:1px solid var(--line,#e5e7eb);background:#fff;width:100%;min-width:0;padding:12px;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;cursor:pointer}
 .invoice-ledger-row:hover,.invoice-ledger-row.is-selected{background:#f4f7fb}
