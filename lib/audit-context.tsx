@@ -57,23 +57,41 @@ export function AuditProvider({ children }: { children: ReactNode }) {
     departureAlerts: fieldTracking.departureAlerts,
   }), [fieldTracking.appointmentEvents, fieldTracking.departureAlerts, fieldTracking.exceptions, fieldTracking.geofences, fieldTracking.sessions]);
 
-  const snapshots = useMemo(() => mergeAuditSnapshots(
-    collectAuditableRecords("Workspace", data),
-    collectAuditableRecords("CRM", crm),
-    collectAuditableRecords("HCM", hcm),
-    collectAuditableRecords("Identity", identity),
-    collectAuditableRecords("Payroll", payroll),
-    collectAuditableRecords("Performance", performance),
-    collectAuditableRecords("Commerce", commerce),
-    collectAuditableRecords("Inventory", ledger),
-    collectAuditableRecords("Finance", finance),
-    collectAuditableRecords("Accounting", accounting),
-    collectAuditableRecords("Brand Ambassador", brandAmbassadors.state),
-    collectAuditableRecords("Delivery", delivery.state),
-    collectAuditableRecords("Marketing", marketing),
-    collectAuditableRecords("Period locks", periodLocks),
-    collectAuditableRecords("Field tracking", auditableFieldTracking),
-  ), [data, crm, hcm, identity, payroll, performance, commerce, ledger, finance, accounting, brandAmbassadors.state, delivery.state, marketing, periodLocks, auditableFieldTracking]);
+  // Keep unaffected modules' record identities stable. Field telemetry should never rebuild
+  // every CRM, order, HCM, finance, and inventory audit snapshot on each sample.
+  const workspaceRecords=useMemo(()=>collectAuditableRecords("Workspace",data),[data]);
+  const crmRecords=useMemo(()=>collectAuditableRecords("CRM",crm),[crm]);
+  const hcmRecords=useMemo(()=>collectAuditableRecords("HCM",hcm),[hcm]);
+  const identityRecords=useMemo(()=>collectAuditableRecords("Identity",identity),[identity]);
+  const payrollRecords=useMemo(()=>collectAuditableRecords("Payroll",payroll),[payroll]);
+  const performanceRecords=useMemo(()=>collectAuditableRecords("Performance",performance),[performance]);
+  const commerceRecords=useMemo(()=>collectAuditableRecords("Commerce",commerce),[commerce]);
+  const inventoryRecords=useMemo(()=>collectAuditableRecords("Inventory",ledger),[ledger]);
+  const financeRecords=useMemo(()=>collectAuditableRecords("Finance",finance),[finance]);
+  const accountingRecords=useMemo(()=>collectAuditableRecords("Accounting",accounting),[accounting]);
+  const ambassadorRecords=useMemo(()=>collectAuditableRecords("Brand Ambassador",brandAmbassadors.state),[brandAmbassadors.state]);
+  const deliveryRecords=useMemo(()=>collectAuditableRecords("Delivery",delivery.state),[delivery.state]);
+  const marketingRecords=useMemo(()=>collectAuditableRecords("Marketing",marketing),[marketing]);
+  const locksRecords=useMemo(()=>collectAuditableRecords("Period locks",periodLocks),[periodLocks]);
+  const fieldRecords=useMemo(()=>collectAuditableRecords("Field tracking",auditableFieldTracking),[auditableFieldTracking]);
+
+  const snapshots=useMemo(()=>mergeAuditSnapshots(
+    workspaceRecords,
+    crmRecords,
+    hcmRecords,
+    identityRecords,
+    payrollRecords,
+    performanceRecords,
+    commerceRecords,
+    inventoryRecords,
+    financeRecords,
+    accountingRecords,
+    ambassadorRecords,
+    deliveryRecords,
+    marketingRecords,
+    locksRecords,
+    fieldRecords
+  ),[workspaceRecords, crmRecords, hcmRecords, identityRecords, payrollRecords, performanceRecords, commerceRecords, inventoryRecords, financeRecords, accountingRecords, ambassadorRecords, deliveryRecords, marketingRecords, locksRecords, fieldRecords]);
 
   useEffect(() => {
     if (!previous.current) { previous.current = snapshots; return; }
