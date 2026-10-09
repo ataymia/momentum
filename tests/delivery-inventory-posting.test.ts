@@ -5,8 +5,8 @@ import type { WorkspaceData, Order } from "../lib/types";
 
 const driver={id:"driver-one",name:"Driver One",role:"Delivery Driver"} as WorkspaceData["users"][number];
 const account={id:"account-one",name:"Store One"} as WorkspaceData["accounts"][number];
-const lotA={id:"lot-a",product:"Golden Eagle Original",onHand:30,receivedAt:"2026-09-10",bestBy:"2027-06-01",status:"In stock"} as WorkspaceData["inventory"][number];
-const lotB={id:"lot-b",product:"Golden Eagle Tropical",onHand:30,receivedAt:"2026-09-10",bestBy:"2027-06-01",status:"In stock"} as WorkspaceData["inventory"][number];
+const lotA={id:"lot-a",product:"Golden Eagle Original",onHand:30,reserved:0,available:30,lotCode:"LOT",location:"Main warehouse",receivedAt:"2026-09-10",bestBy:"2027-06-01",status:"Available"} as WorkspaceData["inventory"][number];
+const lotB={id:"lot-b",product:"Golden Eagle Tropical",onHand:30,reserved:0,available:30,lotCode:"LOT",location:"Main warehouse",receivedAt:"2026-09-10",bestBy:"2027-06-01",status:"Available"} as WorkspaceData["inventory"][number];
 const order={id:"order-one",number:"ORD-ONE",accountId:account.id,ownerId:driver.id,status:"Out for delivery",cases:10,amount:240,pricePerCase:24,product:lotA.product,placedAt:"2026-10-09T10:00:00.000Z"} as Order;
 const data={users:[driver],accounts:[account],orders:[order],inventory:[lotA,lotB]} as WorkspaceData;
 const driverNode=`node-user-${driver.id}`;
