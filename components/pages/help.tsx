@@ -154,7 +154,7 @@ export function HelpPage() {
     <PageHeader
       eyebrow="Help & training"
       title="How to use Momentum"
-      description="A role-aware guide to the screens you use, the records you control, and the quickest path when you need help."
+      
       actions={<StatusPill tone="info">{currentUser.title}</StatusPill>}
     />
 
@@ -170,7 +170,7 @@ export function HelpPage() {
       </article>
     </section>}
 
-    <Section title="Platform basics" description="Four habits keep most Momentum workflows simple." className="help-section">
+    <Section title="Platform basics" className="help-section">
       <div className="help-basics-grid">{platformBasics.map((item) => <article key={item.label}>
         <span>{item.label}</span>
         <strong>{item.icon && <Search size={16}/>} {item.title}</strong>
@@ -178,7 +178,7 @@ export function HelpPage() {
       </article>)}</div>
     </Section>
 
-    <Section title="Quick links" description="Jump directly to the parts of Momentum available to your role." className="help-section help-quick-links-section">
+    <Section title="Quick links" className="help-section help-quick-links-section">
       <div className="help-quick-links">{quickLinks.map((item) => <Button key={item.page} size="sm" variant="secondary" onClick={() => navigate(item.page)}>{item.label}</Button>)}</div>
     </Section>
 
@@ -192,7 +192,7 @@ export function HelpPage() {
         </div>
       </Section>
 
-      <Section title="Frequently asked questions" description="Open only the answer you need." className="help-section">
+      <Section title="Frequently asked questions" className="help-section">
         <div className="help-faq-list">{faq.map(([question, answer]) => <details key={question}>
           <summary><CircleHelp size={17}/><span>{question}</span></summary>
           <p>{answer}</p>

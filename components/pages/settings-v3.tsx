@@ -99,7 +99,7 @@ export function SettingsPage() {
   };
 
   return <div className="page page--settings">
-    <PageHeader eyebrow="Administration" title="Administration" description="Runtime mode, permissions, audit, notification rules, period locks, production architecture, and data health." actions={<StatusPill tone={runtime.isDemo?"gold":"success"}>{runtime.isDemo?"Demo mode":"Production mode"}</StatusPill>}/>
+    <PageHeader eyebrow="Administration" title="Administration" actions={<StatusPill tone={runtime.isDemo?"gold":"success"}>{runtime.isDemo?"Demo mode":"Production mode"}</StatusPill>}/>
     <div className="settings-security-banner"><span><ShieldCheck size={22}/></span><div><strong>{runtime.isDemo?"Product-complete demo layer":firebase?`Production tenancy · Firebase project ${firebase.projectId}`:"Production-mode standalone test"}</strong><p>{firebase?"Sign-in is Firebase Authentication; every engine persists to role-gated Firestore documents enforced by Security Rules. Payment rails, e-mail/SMS transport, and file uploads remain to be connected.":"Core workflows are native Momentum logic. Live employee, customer, payment, notification, and file data still requires the remaining Firebase, Cloudflare, payment-rail, and email/SMS integrations."}</p></div><StatusPill tone={runtime.isDemo?"warning":"success"}>{runtime.isDemo?"Demo persistence":firebase?"Firestore persistence":"Reset disabled"}</StatusPill></div>
 
     {firebase&&<FirebaseAccessPanel/>}
@@ -111,7 +111,7 @@ export function SettingsPage() {
       <Section title={runtime.isDemo?"Demo users":"Company identities"} description="Role visibility follows the authenticated account" className="settings-users">{data.users.map((user)=><article key={user.id}><Avatar initials={user.initials} color={user.accent}/><div><strong>{user.name}</strong><p>{user.title}</p><small>{user.email}</small></div><StatusPill tone={user.role==="Administrator"?"gold":"neutral"} dot={false}>{user.role}</StatusPill></article>)}</Section>
     </div>
 
-    <Section title="Data health" description="Operational truth should fail loudly when required links, dates, owners, or controls are missing" action={<StatusPill tone={health.total?"warning":"success"}>{health.total} open signal{health.total===1?"":"s"}</StatusPill>}>
+    <Section title="Data health" action={<StatusPill tone={health.total?"warning":"success"}>{health.total} open signal{health.total===1?"":"s"}</StatusPill>}>
       <div className="accounting-rule-list">{health.issues.map((issue)=><article key={issue.label}><span>{issue.count?<AlertTriangle size={17}/>:<SearchCheck size={17}/>}</span><div><strong>{issue.label}</strong><p>{issue.detail}</p></div><StatusPill tone={issue.count?"warning":"success"}>{issue.count}</StatusPill></article>)}</div><div className="form-callout"><SearchCheck size={17}/><p>This is a diagnostic surface, not an auto-fix button. Material data exceptions must be corrected at their source record so the audit history stays intact.</p></div>
     </Section>
 

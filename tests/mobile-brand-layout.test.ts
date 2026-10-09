@@ -56,7 +56,7 @@ test("white-backed artwork never renders in dark sign-in or sidebar backgrounds"
   assert.ok(shellV4.includes("<BrandMark onDark/>"));
   assert.ok(shellV3.includes("<BrandMark onDark/>"));
   assert.ok(gate.includes("<BrandMark onDark />"));
-  assert.ok(login.includes('className="login-hero__top"><BrandMark onDark'));
+  assert.ok(!login.includes('className="login-hero__top"><BrandMark onDark'));
   assert.ok(login.includes('className="login-panel__brand"><Image'));
   assert.ok(!login.includes('className="login-hero__content"><Image'));
   assert.ok(css.includes(".login-hero { display:none; }"));

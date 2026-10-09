@@ -16,7 +16,7 @@ export function DeliveryRequestsPage() {
 
   return <div className="page page--delivery-requests">
     <PageHeader title="Approved requests" actions={<StatusPill tone={approved.length ? "warning" : "success"}>{approved.length} approved</StatusPill>}/>
-    <Section title="Marketing / delivery requests" description="Approved requests that may affect a delivery appear here. Location-linked requests also repeat on the matching delivery card.">
+    <Section title="Marketing / delivery requests">
       <div className="delivery-marketing-request-list">
         {approved.map((request) => {
           const account = request.accountId ? data.accounts.find((item) => item.id === request.accountId) : undefined;
