@@ -18,6 +18,7 @@ export type CommerceState={version:1;invoices:Invoice[];payments:Payment[];alloc
 const now=()=>new Date().toISOString();const today=()=>arizonaDateKey();
 const finitePositive=(value:number)=>Number.isFinite(value)&&value>0;
 const finiteNonNegative=(value:number)=>Number.isFinite(value)&&value>=0;
+const cleanSnapshot=(value:unknown)=>typeof value==="string"&&value.trim()?value.trim():undefined;
 const validDateOrInstant=(value?:string)=>Boolean(value&&(isValidCalendarDateKey(value)||!Number.isNaN(new Date(value).getTime())));
 const businessDateKey=(value:string)=>isValidCalendarDateKey(value)?value:arizonaDateKey(value);
 const eligibleForInvoice=(status:string)=>["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(status);
@@ -61,7 +62,7 @@ export function normalizeCommerceState(input:unknown,data:WorkspaceData):Commerc
   const orderById=new Map(data.orders.map((order)=>[order.id,order]));
   const accountIds=new Set(data.accounts.map((account)=>account.id));
   const storedInvoices=uniqueById((Array.isArray(state.invoices)?state.invoices:[]).filter((invoice):invoice is Invoice=>{const order=invoice&&orderById.get(invoice.orderId);return Boolean(order&&invoice.accountId===order.accountId&&accountIds.has(invoice.accountId)&&invoice.number?.trim()&&validDateOrInstant(invoice.issuedAt)&&validDateOrInstant(invoice.createdAt)&&(!invoice.dueDate||isValidCalendarDateKey(invoice.dueDate))&&invoiceTerms.has(invoice.terms)&&invoiceStatuses.has(invoice.status)&&finiteNonNegative(invoice.total)&&finiteNonNegative(order.amount)&&Math.abs(invoice.total-order.amount)<0.005&&(invoice.status!=="Void"||invoice.voidReason?.trim()));}));
-  const normalizedStoredInvoices=storedInvoices.map((invoice)=>{const account=data.accounts.find((item)=>item.id===invoice.accountId);return{...invoice,billToAddressSnapshot:invoice.billToAddressSnapshot?.trim()||(account?businessAddressLabel(account)||undefined:undefined),shipToAddressSnapshot:invoice.shipToAddressSnapshot?.trim()||(account?deliveryAddressLabel(account)||undefined:undefined)};});
+  const normalizedStoredInvoices=storedInvoices.map((invoice)=>{const account=data.accounts.find((item)=>item.id===invoice.accountId);return{...invoice,billToAddressSnapshot:cleanSnapshot(invoice.billToAddressSnapshot)||(account?businessAddressLabel(account)||undefined:undefined),shipToAddressSnapshot:cleanSnapshot(invoice.shipToAddressSnapshot)||(account?deliveryAddressLabel(account)||undefined:undefined)};});
   const invoiceIds=new Set(normalizedStoredInvoices.map((invoice)=>invoice.id));
   const invoices=[...normalizedStoredInvoices];for(const invoice of seed.invoices)if(!invoiceIds.has(invoice.id)&&!invoices.some((item)=>item.orderId===invoice.orderId))invoices.push(invoice);
   const invoiceById=new Map(invoices.map((invoice)=>[invoice.id,invoice]));
