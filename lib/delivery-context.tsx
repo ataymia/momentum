@@ -4,6 +4,7 @@ import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useSt
 import type { PaymentMethod } from "./commerce-engine";
 import { DELIVERY_STORAGE_KEY, DeliveryEvent, DeliverySignatureDraft, DeliveryState, DeliveryTask, createDeliverySeed, deliveryTaskForOrder, normalizeDeliveryState, processedForDelivery } from "./delivery-engine";
 import { useInventoryLedger } from "./inventory-ledger-context";
+import { nextVerifiedDeliveryOrderStatus } from "./delivery-status-reconciliation";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
@@ -90,22 +91,14 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!currentUser || !["Administrator", "Operations", "Delivery Driver"].includes(currentUser.role)) return;
-    const orderRank = ["Approved", "Allocated", "Out for delivery", "Delivered"] as const;
-    const targetForTask = (status: DeliveryTask["status"]): "Allocated" | "Out for delivery" | "Delivered" | undefined => status === "Delivered" ? "Delivered" : status === "In transit" ? "Out for delivery" : status === "Loaded" ? "Allocated" : undefined;
-    const candidate = state.tasks
-      .filter((task) => currentUser.role !== "Delivery Driver" || task.driverId === currentUser.id)
-      .map((task) => ({ task, order: data.orders.find((order) => order.id === task.orderId), target: targetForTask(task.status) }))
-      .find(({ order, target }) => {
-        if (!order || !target || ["Cancelled", "Paid"].includes(order.status)) return false;
-        const currentIndex = orderRank.indexOf(order.status as (typeof orderRank)[number]);
-        const targetIndex = orderRank.indexOf(target);
-        return currentIndex >= 0 && currentIndex < targetIndex;
-      });
-    if (!candidate?.order || !candidate.target) return;
-    const currentIndex = orderRank.indexOf(candidate.order.status as (typeof orderRank)[number]);
-    const next = orderRank[currentIndex + 1];
-    if (next) setOrderStatus(candidate.order.id, next);
-  }, [currentUser, data.orders, setOrderStatus, state.tasks]);
+    const candidate=state.tasks
+      .filter((task)=>currentUser.role!=="Delivery Driver"||task.driverId===currentUser.id)
+      .map((task)=>({task,order:data.orders.find((order)=>order.id===task.orderId)}))
+      .find(({task,order})=>order&&nextVerifiedDeliveryOrderStatus(task,order,inventory.ledger,data));
+    if(!candidate?.order)return;
+    const next=nextVerifiedDeliveryOrderStatus(candidate.task,candidate.order,inventory.ledger,data);
+    if(next)setOrderStatus(candidate.order.id,next);
+  }, [currentUser, data, inventory.ledger, setOrderStatus, state.tasks]);
 
   const taskForOrder = (orderId: string) => deliveryTaskForOrder(state, orderId);
   const drivers = useMemo(() => data.users.filter((user) => user.role === "Delivery Driver"), [data.users]);

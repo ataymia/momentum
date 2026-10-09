@@ -12,6 +12,7 @@ import {
   PackageOpen,
   Phone,
   Route,
+  RefreshCcw,
   Truck,
   UserCheck,
   UserRound,
@@ -55,6 +56,7 @@ export function DeliveriesPage() {
   const [driverByOrder, setDriverByOrder] = useState<Record<string, string>>({});
   const [collectionDrafts, setCollectionDrafts] = useState<Record<string, CollectionDraft>>({});
   const [notice, setNotice] = useState("");
+  const [refreshingQueue, setRefreshingQueue] = useState(false);
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const [signingOrderId, setSigningOrderId] = useState<string | null>(null);
   const [signatureStrokes, setSignatureStrokes] = useState<DeliverySignaturePoint[][]>([]);
@@ -75,6 +77,24 @@ export function DeliveriesPage() {
   const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
   const complete = visible.filter((order) => taskForOrder(order.id)?.status === "Delivered");
   const run = async(result: { ok: boolean; message?: string }, success: string) => {if(!result.ok){setNotice(result.message??"The delivery update was not accepted.");return;}setNotice("Saving delivery change to Momentum cloud…");const checks=await Promise.all([momentumStorage.flushAndConfirm(DELIVERY_STORAGE_KEY),momentumStorage.flushAndConfirm(INVENTORY_LEDGER_STORAGE_KEY),momentumStorage.flushAndConfirm(COMMERCIAL_KEY)]);const failed=checks.find((item)=>!item.ok);setNotice(failed?`Change is still on this device but Momentum cloud has NOT confirmed every record. Do not repeat the action. ${failed.message??"Check the sync status."}`:success);};
+  const refreshQueue = async () => {
+    if(refreshingQueue)return;
+    setRefreshingQueue(true);
+    setNotice("Checking cloud delivery, order and inventory records…");
+    const keys=[DELIVERY_STORAGE_KEY,INVENTORY_LEDGER_STORAGE_KEY,COMMERCIAL_KEY];
+    try{
+      for(const key of keys){
+        const saved=await momentumStorage.flushAndConfirm(key);
+        if(!saved.ok){setNotice(`Sync stopped: ${saved.message??"Cloud did not confirm pending changes."}`);return;}
+      }
+      const result=await momentumStorage.refreshKeys(keys);
+      setNotice(result.ok
+        ?(sync.mode==="firestore"?"Queue refreshed from the cloud. Verified order statuses will catch up automatically.":"Local demo refreshed.")
+        :`Queue could not refresh: ${result.message??"Try again or contact Operations."}`);
+    }catch(error){
+      setNotice(error instanceof Error?error.message:"Queue refresh failed. Check your connection.");
+    }finally{setRefreshingQueue(false);}
+  };
   const openSignature = (orderId: string) => { setSigningOrderId(orderId); setSignatureStrokes([]); setRecipientName(""); setSignatureError(""); };
   const closeSignature = () => { setSigningOrderId(null); setSignatureStrokes([]); setRecipientName(""); setSignatureError(""); };
   const completeSignedDelivery = async () => {
@@ -173,7 +193,7 @@ export function DeliveriesPage() {
 
   return <>
     <div className="page page--deliveries">
-      <PageHeader title={isDriver ? "My deliveries" : "Delivery operations"} actions={<StatusPill tone={sync.lastError ? "danger" : sync.pending || sync.flushing ? "warning" : "success"}>{syncText}</StatusPill>} />
+      <PageHeader title={isDriver ? "My deliveries" : "Delivery operations"} actions={<div className="request-actions"><StatusPill tone={sync.lastError ? "danger" : sync.pending || sync.flushing ? "warning" : "success"}>{syncText}</StatusPill><Button type="button" size="sm" variant="secondary" icon={<RefreshCcw size={15}/>} disabled={refreshingQueue} onClick={refreshQueue}>{refreshingQueue?"Syncing…":"Sync queue"}</Button></div>} />
       {notice && <p className="form-notice" role="status">{notice}</p>}
       <div className="company-rule-facts"><div><span>Available / accepted</span><strong>{ready.length}</strong><small>Ready for driver action</small></div><div><span>Loaded / in transit</span><strong>{active.length}</strong><small>Active driver custody</small></div><div><span>Delivered</span><strong>{complete.length}</strong><small>Completed delivery records</small></div><div><span>Drivers</span><strong>{drivers.length}</strong><small>{drivers.length ? "Provisioned delivery users" : "No delivery drivers provisioned"}</small></div></div>
 
@@ -217,7 +237,7 @@ export function DeliveriesPage() {
       </div>}
     </Modal>
 
-    <Modal open={Boolean(signingOrderId)} title="Complete delivery" description="Capture the recipient signature before posting the delivery as complete." onClose={closeSignature} footer={<><Button type="button" variant="ghost" onClick={closeSignature}>Cancel</Button><Button type="button" icon={<CheckCircle2 size={16}/>} onClick={completeSignedDelivery}>Save signature & complete</Button></>}>
+    <Modal open={Boolean(signingOrderId)} title="Complete delivery" description="Capture the recipient signature before posting the delivery as complete." onClose={closeSignature} footer={<><Button type="button" variant="secondary" icon={<RefreshCcw size={15}/>} onClick={refreshQueue} disabled={refreshingQueue}>{refreshingQueue?"Syncing…":"Sync queue"}</Button><Button type="button" variant="ghost" onClick={closeSignature}>Cancel</Button><Button type="button" icon={<CheckCircle2 size={16}/>} onClick={completeSignedDelivery} disabled={refreshingQueue}>Save signature & complete</Button></>}>
       <div className="delivery-signature-modal">
         <p className="delivery-signature-modal__order">{signingOrderId ? data.orders.find((item) => item.id === signingOrderId)?.number : ""} · {signingOrderId ? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.locationName ?? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.name : ""}</p>
         <DeliverySignaturePad strokes={signatureStrokes} onChange={(strokes) => { setSignatureStrokes(strokes); setSignatureError(""); }} />
