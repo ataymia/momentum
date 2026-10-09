@@ -154,7 +154,7 @@ export function OrderCashPanel() {
         <div className="company-rule-facts"><div><span>Open receivables</span><strong>{formatMoney(arTotal)}</strong><small>{receivables.length} open invoice{receivables.length === 1 ? "" : "s"}</small></div><div><span>Past due</span><strong>{formatMoney(pastDue)}</strong><small>Based on configured due dates</small></div><div><span>Cleared payments</span><strong>{commerce.payments.filter((payment) => payment.status === "Cleared").length}</strong><small>Settlement records</small></div><div><span>Credits / refunds</span><strong>{commerce.credits.length} / {commerce.refunds.length}</strong><small>Separate control records</small></div></div>
       </Section>
 
-      <div className="company-grid company-grid--two">
+      <div className="invoice-ledger-layout">
         <Section title="Invoice ledger" description="Invoice records generated from eligible orders">
           <div className="company-request-list">
             {invoices.map((invoice) => {
@@ -163,7 +163,7 @@ export function OrderCashPanel() {
               const status = computedInvoiceStatus(commerce, invoice);
               const open = invoiceBalance(commerce, invoice);
               const placedBy = order ? data.users.find((user) => user.id === order.ownerId) : undefined;
-              return <button id={`commerce-${invoice.id}`} key={invoice.id} className={`account-table ${selected?.id === invoice.id ? "is-selected" : ""} ${focusedInvoice?.id === invoice.id ? "is-focused" : ""}`} onClick={() => setSelectedId(invoice.id)}><span className="account-name-cell"><i><FileText size={17} /></i><span><strong>{invoice.number}</strong><small>{location ? locationLabel(location) : "Location"} · {order?.number} · Placed by {placedBy?.name ?? order?.ownerId ?? "Not recorded"}</small></span></span><span><StatusPill tone={invoiceTone(status)}>{status}</StatusPill></span><span>{formatMoney(invoice.total)}</span><span>{open > 0 ? `${formatMoney(open)} due` : "Settled"}</span></button>;
+              return <button id={`commerce-${invoice.id}`} key={invoice.id} className={`invoice-ledger-row ${selected?.id === invoice.id ? "is-selected" : ""} ${focusedInvoice?.id === invoice.id ? "is-focused" : ""}`} onClick={() => setSelectedId(invoice.id)}><span className="invoice-ledger-row__identity"><strong>{invoice.number}</strong><small>{location ? locationLabel(location) : "Location"}</small><small>{order?.number ? `Order ${order.number} · ` : ""}Placed by {placedBy?.name ?? order?.ownerId ?? "Not recorded"}</small></span><span className="invoice-ledger-row__amounts"><StatusPill tone={invoiceTone(status)}>{status}</StatusPill><strong>{formatMoney(invoice.total)}</strong><small>{open > 0 ? `${formatMoney(open)} due` : "Settled"}</small></span></button>;
             })}
             {invoices.length === 0 && <div className="review-empty"><ReceiptText size={24} /><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}
           </div>
