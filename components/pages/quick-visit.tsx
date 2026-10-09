@@ -32,6 +32,7 @@ export function QuickVisitPage(){
   const[samples,setSamples]=useState<SampleEditorRow[]>([newSampleRow()]);
   const[message,setMessage]=useState("");
   const[historyLimit,setHistoryLimit]=useState(30);
+  const[recentCutoff]=useState(()=>new Date(Date.now()-30*24*60*60*1000).toISOString());
   if(!currentUser)return null;
 
   const exactMatch=scope.accounts.find((account)=>account.id===accountId)??matchQuickVisitAccount(scope.accounts,business);
@@ -85,7 +86,6 @@ export function QuickVisitPage(){
   };
 
   const myTrips=currentUser?employeePhysicalVisits(crm,currentUser.id):[];
-  const[recentCutoff]=useState(()=>new Date(Date.now()-30*24*60*60*1000).toISOString());
   const recentTrips=myTrips.filter((visit)=>visit.occurredAt>=recentCutoff).length;
   const summaries=data.users.filter((user)=>user.role==="Sales Representative").map((user)=>({user,summary:weeklySalesManagementSummary(data,crm.interactions,user.id)}));
 
