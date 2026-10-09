@@ -11,7 +11,7 @@ export function placedOrderDate(order:Order):string{
   return /^\d{4}-\d{2}-\d{2}$/.test(order.placedAt)?order.placedAt:arizonaDateKey(order.placedAt);
 }
 export function orderIsDelivered(order:Order,deliveredTask:boolean):boolean{
-  return order.status==="Delivered"||order.status==="Paid"||deliveredTask;
+  return order.status==="Delivered"||deliveredTask;
 }
 export function orderIsFullyPaid(order:Order,commerce:CommerceState):boolean{
   const invoice=commerce.invoices.find((row)=>row.orderId===order.id);
