@@ -51,7 +51,12 @@ export type DeliveryTask = {
   history: DeliveryEvent[];
 };
 
-export type DeliveryState = { version: 1; tasks: DeliveryTask[] };
+export type AdminDeliveryOverride = {
+  id:string;orderId:string;actorId:string;recordedAt:string;deliveredAt:string;
+  performedBy?:string;reason:string;movementIds:string[];
+  kind:"Admin override";status:"Delivered";
+};
+export type DeliveryState = { version: 1; tasks: DeliveryTask[]; overrides: AdminDeliveryOverride[] };
 
 const statusValues = new Set<DeliveryTaskStatus>(["Accepted", "Loaded", "In transit", "Delivered", "Cancelled"]);
 const eventTypes = new Set<DeliveryEventType>(["Accepted", "Assigned", "Loaded", "Departed", "Delivered", "Cancelled", "Payment collected", "Note"]);
@@ -77,7 +82,7 @@ const normalizeSignature = (value: unknown, userIds: Set<string>): DeliverySigna
   };
 };
 
-export const createDeliverySeed = (): DeliveryState => ({ version: 1, tasks: [] });
+export const createDeliverySeed = (): DeliveryState => ({ version: 1, tasks: [], overrides: [] });
 
 export function processedForDelivery(order: Order) {
   return ["Approved", "Allocated", "Out for delivery", "Delivered", "Paid"].includes(order.status);
@@ -122,10 +127,16 @@ export function normalizeDeliveryState(input: unknown, data: WorkspaceData): Del
     signature: normalizeSignature(task.signature, userIds),
     history: task.history.map((event) => ({ ...event, note: text(event.note) || undefined })),
   }));
-  return { version: 1, tasks };
+  const overrides=(Array.isArray(raw.overrides)?raw.overrides:[])
+    .filter((item):item is AdminDeliveryOverride=>Boolean(item&&item.id&&item.orderId&&item.actorId&&item.reason?.trim()&&
+      item.kind==="Admin override"&&item.status==="Delivered"&&validInstant(item.recordedAt)&&validInstant(item.deliveredAt)&&
+      Array.isArray(item.movementIds)&&item.movementIds.length>0&&item.movementIds.every((id)=>typeof id==="string"&&id.trim())))
+    .filter((item,index,items)=>items.findIndex((other)=>other.orderId===item.orderId)===index);
+  return { version: 1, tasks, overrides };
 }
 
 export function deliveryStatusForOrder(state: DeliveryState, order: Order) {
+  if(state.overrides?.some((entry)=>entry.orderId===order.id))return "Delivered";
   const task = deliveryTaskForOrder(state, order.id);
   if (task) return task.status;
   if (order.status === "Approved") return "Ready for packing";

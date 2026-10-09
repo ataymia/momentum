@@ -74,7 +74,7 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-performance-v1",id:"performance",read:"activeEmployee",write:ADMIN_MANAGER,fields:{goals:perUser(),reports:perUser(),notes:perUser("authorId"),weeklyDrafts:perUser()}},
   {key:"momentum-commerce-v1",id:"commerce",read:["Administrator","Sales Manager","Sales Representative","Operations","Delivery Driver"],write:ADMIN,fields:{invoices:{},payments:{},allocations:{},credits:{},refunds:{},notes:{}}},
   {key:"momentum-inventory-ledger-v1",id:"inventoryLedger",read:OPERATIONAL,write:OPERATIONS,fields:{nodes:{read:[...OPERATIONAL,"Delivery Driver"]},movements:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},reservations:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},counts:{read:[...OPERATIONAL,"Delivery Driver"]}}},
-  {key:"momentum-delivery-v1",id:"delivery",read:DELIVERY_READ,write:DELIVERY_WRITE,fields:{tasks:{}}},
+  {key:"momentum-delivery-v1",id:"delivery",read:DELIVERY_READ,write:DELIVERY_WRITE,fields:{tasks:{},overrides:{read:DELIVERY_READ,write:ADMIN}}},
   {key:"momentum-finance-v3",id:"finance",read:ADMIN,write:ADMIN,fields:{expenses:perUser("requesterId")}},
   {key:"momentum-accounting-v1",id:"accounting",read:ADMIN,write:ADMIN,fields:{accounts:{},rules:{},journals:{},reconciliations:{}}},
   {key:"momentum-marketing-v3",id:"marketing",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{requests:perUser("requesterId"),deliveryNotices:{read:[...OPERATIONAL,"Delivery Driver"],write:ADMIN_MANAGER},campaigns:{},spend:{},assets:{},materials:{},materialMovements:{},touches:{},attributions:{},partnerships:{}}},
