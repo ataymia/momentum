@@ -180,3 +180,15 @@ test("Administrator workspace repairs approval/order drift into the persisted co
   assert.match(workspace,/reconcileOrders\(commercial\.orders, \[\], approvals\)/);
   assert.match(workspace,/return changed \? \{ \.\.\.state, orders \} : state/);
 });
+
+test("Firestore polling is single-flight and retries a failed version without discarding it",()=>{
+  const source=readFileSync("lib/persistence.ts","utf8");
+  const poll=source.slice(source.indexOf("  async poll(){"),source.indexOf("\n  dispose(){"));
+  assert.match(poll,/if\(this\.disposed\|\|this\.flushing\|\|this\.polling\)return/);
+  assert.match(poll,/this\.polling=true/);
+  assert.match(poll,/finally\{\s*this\.polling=false/);
+  const fetched=poll.indexOf("const snapshots=await getFirestoreSnapshots(paths)");
+  const acknowledged=poll.indexOf("for(const key of changed)this.metaVersions[key]=versions[key];\n      setStatus");
+  assert.ok(fetched>=0&&acknowledged>fetched,"Acknowledge changed versions only after records load");
+  assert.match(poll,/if\(base\?\.updateTime&&base\.updateTime===snapshot\.updateTime\)continue/);
+});
