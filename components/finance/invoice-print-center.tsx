@@ -123,7 +123,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
           <Image className="invoice-sheet__brand-logo" src={invoiceBrandSrc} width={1536} height={1024} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" priority unoptimized />
           <div className="invoice-sheet__issuer-copy"><strong>{company.name}</strong><span>Golden Eagle distribution</span><span>{company.street}</span><span>{company.cityStateZip}</span></div>
         </div>
-        <div className="invoice-sheet__title"><h1>INVOICE</h1><strong>{invoice.number}</strong></div>
+        <div className="invoice-sheet__title"><h1>INVOICE</h1></div>
       </header>
 
       <section className="invoice-sheet__legacy-grid">
