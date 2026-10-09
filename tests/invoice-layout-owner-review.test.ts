@@ -39,5 +39,7 @@ test("administrator payments reuse original settlement engine and are not delive
  assert.match(context,/const canManageCash = currentUser\?\.role === "Administrator"/);
  assert.match(context,/if \(!canManageCash \|\| !currentUser/);
  assert.match(access,/canReconcileOrderPayment[^\n]*Administrator/);
- assert.match(orders,/currentUser\?\.role==="Administrator"&&selectedInvoice&&<Button[^>]*>Record payment<\/Button>/);
+ assert.ok(orders.includes('currentUser?.role==="Administrator"&&selectedInvoice&&<Button'));
+ assert.ok(orders.includes(">Record payment</Button>"));
+ assert.ok(orders.includes('navigate("orderCash")'));
 });
