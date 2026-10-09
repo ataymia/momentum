@@ -1,3 +1,4 @@
+import { validAdditionalManagerIds } from "./employee-reporting";
 import { isValidCalendarDateKey } from "./date-time";
 import type {
   Availability,
@@ -101,7 +102,7 @@ export function normalizePersistedHcmState(input: unknown, data: WorkspaceData, 
     const userId = text(raw.userId); const status = enumValue<EmploymentRecord["status"]>(raw.status, employmentStatuses); const classification = enumValue<EmploymentRecord["classification"]>(raw.classification, classifications);
     if (!userIds.has(userId) || !text(raw.employeeNumber) || !status || !text(raw.jobTitle) || !text(raw.department) || !text(raw.location) || !classification || !text(raw.payGroup) || !optionalDate(raw.hireDate) || !optionalDate(raw.separationDate) || !optionalInstant(raw.updatedAt) || (raw.standardWeeklyHours !== undefined && !nonnegative(raw.standardWeeklyHours))) return [];
     const managerId = optionalText(raw.managerId);
-    return [{ userId, employeeNumber: text(raw.employeeNumber), status, hireDate: optionalText(raw.hireDate), separationDate: optionalText(raw.separationDate), jobTitle: text(raw.jobTitle), department: text(raw.department), location: text(raw.location), managerId: managerId && userIds.has(managerId) && managerId !== userId ? managerId : undefined, classification, payGroup: text(raw.payGroup), standardWeeklyHours: finite(raw.standardWeeklyHours) ? Number(raw.standardWeeklyHours) : undefined, updatedAt: validInstant(raw.updatedAt) ? text(raw.updatedAt) : new Date().toISOString() }];
+    return [{ userId, employeeNumber: text(raw.employeeNumber), status, hireDate: optionalText(raw.hireDate), separationDate: optionalText(raw.separationDate), jobTitle: text(raw.jobTitle), department: text(raw.department), location: text(raw.location), managerId: managerId && userIds.has(managerId) && managerId !== userId ? managerId : undefined, additionalManagerIds: validAdditionalManagerIds(raw.additionalManagerIds,data,userId,managerId), classification, payGroup: text(raw.payGroup), standardWeeklyHours: finite(raw.standardWeeklyHours) ? Number(raw.standardWeeklyHours) : undefined, updatedAt: validInstant(raw.updatedAt) ? text(raw.updatedAt) : new Date().toISOString() }];
   }), (record) => record.userId);
   const employeeIds = new Set(employees.map((record) => record.userId));
   for (const seeded of seed.employees) if (!employeeIds.has(seeded.userId)) employees.push(seeded);

@@ -8,7 +8,7 @@ export type EmploymentStatus = "Prehire" | "Active" | "Leave" | "Separated";
 export type WorkerClassification = "Hourly" | "Salary" | "Contractor" | "Not configured";
 export type EmploymentRecord = {
   userId:string; employeeNumber:string; status:EmploymentStatus; hireDate?:string; separationDate?:string;
-  jobTitle:string; department:string; location:string; managerId?:string; classification:WorkerClassification;
+  jobTitle:string; department:string; location:string; managerId?:string; additionalManagerIds?:string[]; classification:WorkerClassification;
   payGroup:string; standardWeeklyHours?:number; updatedAt:string;
 };
 export type EmploymentChange = { id:string; userId:string; field:keyof EmploymentRecord; previous?:string; next:string; effectiveDate:string; reason:string; approvedBy:string; createdAt:string };

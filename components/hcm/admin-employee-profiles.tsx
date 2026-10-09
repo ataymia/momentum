@@ -20,6 +20,7 @@ import { useAudit } from "../../lib/audit-context";
 import { useCrm } from "../../lib/crm-context";
 import { addCalendarDays, arizonaDateKey } from "../../lib/date-time";
 import { useDelivery } from "../../lib/delivery-context";
+import { reportingManagerCandidates, validAdditionalManagerIds } from "../../lib/employee-reporting";
 import {
   applyCompensationCorrection,
   employeeOriginatedAccounts,
@@ -27,12 +28,12 @@ import {
   employeeResponsibleAccounts,
   employeeVisitLabel,
 } from "../../lib/employee-admin";
-import { activeCompensation, appendAudit, type CompensationRecord, type PayBasis } from "../../lib/hcm-engine";
+import { activeCompensation, appendAudit, type CompensationRecord, type EmploymentRecord, type PayBasis } from "../../lib/hcm-engine";
 import { useHcm } from "../../lib/hcm-context";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import { timeEntryHours } from "../../lib/payroll-engine";
 import { usePayroll } from "../../lib/payroll-context";
-import type { TimeEntry } from "../../lib/types";
+import type { TimeEntry, WorkspaceData } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Avatar, Button, Field, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
@@ -68,6 +69,55 @@ function employeeStatus(employmentStatus: string | undefined, open?: TimeEntry) 
   if (employmentStatus === "Leave") return { label:"On leave", tone:"warning" as const };
   if (open) return { label:"Clocked in", tone:"success" as const };
   return { label:"Clocked out", tone:"neutral" as const };
+}
+
+function ReportingManagersForm({employeeId,employment,data}:{employeeId:string;employment?:EmploymentRecord;data:WorkspaceData}){
+  const {currentUser}=useWorkspace();
+  const {setHcm}=useHcm();
+  const [selected,setSelected]=useState<string[]>(employment?.additionalManagerIds??[]);
+  const [notice,setNotice]=useState("");
+  const primary=employment?.managerId??data.users.find((user)=>user.id===employeeId)?.managerId;
+  const candidates=reportingManagerCandidates(data,employeeId);
+  const save=(event:FormEvent)=>{
+    event.preventDefault();
+    if(currentUser?.role!=="Administrator"||!employment){setNotice("Administrator access and an employment record are required.");return;}
+    const normalized=validAdditionalManagerIds(selected,data,employeeId,primary);
+    setHcm((current)=>{
+      const previous=current.employees.find((item)=>item.userId===employeeId);
+      if(!previous)return current;
+      const before=previous.additionalManagerIds??[];
+      if(JSON.stringify(before)===JSON.stringify(normalized))return current;
+      return appendAudit({...current,employees:current.employees.map((item)=>item.userId===employeeId?{...item,additionalManagerIds:normalized,updatedAt:now()}:item)},{
+        actorId:currentUser.id,
+        action:"Update additional reporting managers",
+        entityType:"EmploymentRecord",
+        entityId:employeeId,
+        before:before.join(", "),
+        after:normalized.join(", "),
+        reason:"Administrator reporting assignment",
+      });
+    });
+    setNotice("Reporting contacts submitted.");
+  };
+  return <Section title="Reporting managers" description="Choose additional reporting contacts. This does not grant approval rights or commission overrides.">
+    <form onSubmit={save} className="form-grid">
+      <div className="field--full" style={{display:"grid",gap:10}}>
+        {candidates.map((person)=>{
+          const isPrimary=person.id===primary;
+          return <label key={person.id} style={{display:"flex",alignItems:"center",gap:10}}>
+            <input type="checkbox" checked={isPrimary||selected.includes(person.id)} disabled={isPrimary}
+              onChange={(e)=>{setSelected((current)=>e.target.checked?[...current,person.id]:current.filter((id)=>id!==person.id));setNotice("");}}/>
+            <span>{person.name}{isPrimary?" · Direct manager":""}</span>
+          </label>;
+        })}
+        {!candidates.length&&<p>No eligible reporting managers are available.</p>}
+      </div>
+      <div className="field--full" style={{display:"flex",alignItems:"center",gap:12}}>
+        <Button type="submit">Save reporting contacts</Button>
+        {notice&&<small>{notice}</small>}
+      </div>
+    </form>
+  </Section>;
 }
 
 function CompensationCorrectionForm({ userId, compensation }: { userId:string; compensation?:CompensationRecord }) {
@@ -254,6 +304,7 @@ export function AdminEmployeeProfiles() {
             <article><small>Recent system activity</small><strong>{employeeEvents.length}</strong><span>{lastEvent ? `Latest ${formatDate(lastEvent.at,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}` : "No audit activity"}</span></article>
           </div>
 
+          <ReportingManagersForm key={selected.id} employeeId={selected.id} employment={employment} data={data}/>
           <Section title="Current activity" description="Immediate status from live source records, not a separate profile counter.">
             <div className="admin-profile-current-activity">
               <article><Clock3 size={17}/><div><small>Clock</small><strong>{clockLabel(open)}</strong><p>{open ? `${open.date} · ${open.source} · ${open.breakMinutes} break minutes` : "No open time entry."}</p></div></article>
