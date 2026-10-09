@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import inventoryModule from "../functions/src/admin-delivery-inventory";
-const {overrideSourceAvailable} = inventoryModule;
+import * as inventoryModule from "../functions/src/admin-delivery-inventory";
+const commonJsCompatible = inventoryModule as typeof inventoryModule & {
+  default?: typeof inventoryModule;
+};
+const overrideSourceAvailable = commonJsCompatible.default?.overrideSourceAvailable ??
+  commonJsCompatible.overrideSourceAvailable;
 import {readFileSync} from "node:fs";
 
 const lotId = "lot-1";
