@@ -23,7 +23,7 @@ test("hourly earnings calculated from approved timecards without a finalized pay
  assert.equal(summary.overtimeHours,0);
  assert.equal(summary.estimatedGross,200);
  assert.equal(summary.pendingApprovalHours,0);
- assert.ok(summary.blockers.some((message)=>message.includes("effective date")));
+ assert.ok(summary.blockers.some((message)=>message.includes("qualifying-sales reconciliation")));
 });
 test("unapproved time must not enter the wage estimate",()=>{
  const {data,hcm,payroll}=asBase("Submitted");
