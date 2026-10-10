@@ -195,9 +195,14 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const customers=(base.data.customers??[]).map((customer)=>({...customer,...(commercial.customerPatches[customer.id]??{}),paymentTerms:(commercial.customerPatches[customer.id]?.paymentTerms??customer.paymentTerms??"COD")}));
     const accounts = base.data.accounts.map((account) => ({ ...account, ...(commercial.accountPatches[account.id] ?? {}) }));
     const salesRepIds = new Set(users.filter((user) => user.role === "Sales Representative").map((user) => user.id));
+    // Orders and placements are refreshed together as staff update shared records.
+    // Index the first placement per account once rather than scanning every placement per order.
+    const placementProductByAccount = new Map<string,string>();
+    for(const placement of base.data.placements)
+      if(!placementProductByAccount.has(placement.accountId))placementProductByAccount.set(placement.accountId,placement.product);
     const baseOrders = base.data.orders.map((order) => ({
       ...order,
-      product: order.product ?? base.data.placements.find((placement) => placement.accountId === order.accountId)?.product ?? base.data.inventory[0]?.product ?? "Golden Eagle",
+      product: order.product ?? placementProductByAccount.get(order.accountId) ?? base.data.inventory[0]?.product ?? "Golden Eagle",
       creditedRepId: order.creditedRepId ?? (salesRepIds.has(order.ownerId) ? order.ownerId : undefined),
     }));
     const appointmentIds = new Set(commercial.appointments.map((item) => item.id));

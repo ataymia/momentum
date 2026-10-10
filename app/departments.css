@@ -969,3 +969,12 @@
     grid-template-columns:1fr;
   }
 }
+
+/* Orders: scoped filter controls, no viewport offsets or transforms. */
+.order-workspace-controls{margin:0 0 14px;min-width:0}
+.order-workspace-controls .company-tabs{overflow-x:auto}
+.order-workspace-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;align-items:end;padding:12px;background:var(--surface,#fff);border:1px solid var(--line,#e5e7eb);border-radius:12px}
+.order-workspace-filters label{display:grid;gap:5px;min-width:0;font-size:12px;color:var(--ink-soft,#667085)}
+.order-workspace-filters input,.order-workspace-filters select{width:100%;min-width:0;height:38px;border:1px solid var(--line,#d9dee7);border-radius:8px;background:#fff;padding:0 8px;color:var(--ink,#1e293b)}
+.order-workspace-filters button{height:38px}
+@media(max-width:680px){.order-workspace-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -285,6 +285,13 @@ service cloud.firestore {
       allow write: if isEmployee() || bootstrapClaimant();
     }
 
+    // Immutable audit proof for owner-authorized off-route deliveries.
+    // Only the authenticated server function may create these records.
+    match /adminDeliveryOverrides/{orderId} {
+      allow get, list: if activeEmployee();
+      allow create, update, delete: if false;
+    }
+
     // --- engine state: shared shards ----------------------------------------
 
     match /domains {
