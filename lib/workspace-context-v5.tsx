@@ -267,13 +267,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const createAccount = useCallback((account: NewAccount) => {
     if (!currentUser || !canCreateAccount(currentUser)) return null;
     const id = `acc-${Date.now()}`;
+    const createdAt=nowStamp();
     const customerName = account.customerName?.trim() || account.name.trim();
     const customerId = `cust-${slug(customerName)}`;
     const customer: CustomerAccount = { id: customerId, name: customerName, accountType: customerName === account.name ? "Independent" : "Chain / franchise", billingContactName: account.contactName, billingEmail: account.email, billingPhone: account.phone, createdAt: nowStamp() };
     setData((current) => ({
       ...current,
       customers: (current.customers ?? []).some((item) => item.id === customerId) ? current.customers : [customer, ...(current.customers ?? [])],
-      accounts: [{ ...account, id, customerId, locationName: account.locationName?.trim() || account.name, streetAddress: account.streetAddress, stage: "Prospect", ownerId: currentUser.id, originatorId: currentUser.id, accountManagerId: currentUser.id, responsibilityStartedAt: nowStamp(), lastActivity: "Location created", nextAction: "Qualify the decision-maker and buying process", nextActionDate: todayKey(), health: "New", lifetimeCases: 0, reorderCount: 0, notes: "Created in the local demo workspace." }, ...current.accounts],
+      accounts: [{ ...account, id, createdAt, createdByUid:currentUser.id, customerId, locationName: account.locationName?.trim() || account.name, streetAddress: account.streetAddress, stage: "Prospect", ownerId: currentUser.id, originatorId: currentUser.id, accountManagerId: currentUser.id, responsibilityStartedAt: nowStamp(), lastActivity: "Location created", nextAction: "Qualify the decision-maker and buying process", nextActionDate: todayKey(), health: "New", lifetimeCases: 0, reorderCount: 0, notes: "Created in the local demo workspace." }, ...current.accounts],
       activities: [{ id: `act-${Date.now()}`, accountId: id, type: "note", title: "Customer location created", detail: `${customerName} · ${account.locationName?.trim() || account.name} added.`, at: nowStamp(), userId: currentUser.id }, ...current.activities],
     }));
     return id;
