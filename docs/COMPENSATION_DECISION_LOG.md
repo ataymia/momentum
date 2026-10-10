@@ -22,3 +22,11 @@ While the position is vacant, the otherwise illustrative 0.50% is retained by Mo
 The 2.50% and 0.50% both apply to *Qualifying Net Collected Sales*, not simply paid gross invoices. The effective date remains missing, and percentage commission must not enter payroll without a written prospective effective date and reconciled qualifying-sales evidence.
 
 The fixed opening/sustained account bonuses remain independent of these percentages.
+
+## 2026-10-10 launch-to-date commission effective scope
+
+Operations explicitly confirmed that 2.50% Sales Representative commission applies **from the beginning of the Golden Eagle / Momentum commercial launch**, including any sales backlogged in the first month. There is **no verified exact launch calendar date** in this decision, so the platform records the approved scope as **all recorded Momentum sales since launch**, rather than inventing a date or applying a later cutoff. This supersedes earlier warnings that retroactivity was not approved.
+
+Every historical order is in scope for evaluation, but a commission is earned only on qualifying net collected product revenue actually retained. Paid/invoiced/delivered are separate. Refunds, sales taxes, credits, chargebacks, customer allowances, uncollected amounts and freight exclusions still require reconciliation. The sales commission statement must preserve historical attribution, first settlement, adjustment history and payouts already made. Do not double pay old earnings. Nothing in this scope change authorizes an automatic payroll run before that ledger is complete.
+
+When no officially designated Sales Manager is eligible for a historical sale, 0.50% is an illustrative retained company amount, not a payable accrued commission or owner compensation. Do not assign vacant-period manager commission retroactively to a future hire.
