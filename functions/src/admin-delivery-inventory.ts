@@ -10,6 +10,12 @@ const number = (value: unknown) =>
  * A stock movement must not consume stock reserved for another order.
  * Nonwarehouse sources additionally require proof of custody for this order.
  * Pure so it can be tested independently of Firebase.
+ * @param {BusinessRecord[]} movements Recorded stock movements.
+ * @param {BusinessRecord[]} reservations Stock reservations.
+ * @param {SourceEntry} entry Proposed delivery lot and source.
+ * @param {string} sourceType Type of the custody source.
+ * @param {string} orderId Order being completed.
+ * @return {boolean} Whether stock can be consumed without taking another order's stock.
  */
 export function overrideSourceAvailable(
   movements: BusinessRecord[],
