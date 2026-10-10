@@ -4,6 +4,8 @@ import { BadgeDollarSign, Calculator, Check, FileText, Landmark, LockKeyhole, Pl
 import { FormEvent, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
 import { evaluateSalesRepAccountBonuses } from "../../lib/bonus-engine";
+import { useCommerce } from "../../lib/commerce-context";
+import { reviewSalesCommissionBacklog } from "../../lib/sales-commission-backlog";
 import { activeCompensation, benefitDeductionPerPayPeriod } from "../../lib/hcm-engine";
 import { useHcm } from "../../lib/hcm-context";
 import { activePayrollEmployee, activeWithholding, type PayFrequency, type PayrollEmployee } from "../../lib/payroll-engine";
@@ -20,6 +22,7 @@ const runTone = (status: string) => status === "Released" ? "success" as const :
 
 export function PayrollPage() {
   const { data, currentUser, navigate } = useWorkspace();
+  const { commerce } = useCommerce();
   const { hcm } = useHcm();
   const { payroll, savePayGroup, savePayrollEmployee, saveWithholding, saveEmployerTaxRule, buildRegularRun, buildBonusRun, setRunStatus, voidAndReissue, settleDisbursement, failDisbursement, retryDisbursement, updateLiability, resetPayroll } = usePayroll();
   const admin = currentUser?.role === "Administrator";
@@ -62,10 +65,10 @@ export function PayrollPage() {
   const staffEarnings = data.users.filter((user)=>user.role!=="Customer").map((user)=>({user,snapshot:employeeEarningsSnapshot(data,hcm,payroll,user.id)}));
   const myEarnings = currentUser ? employeeEarningsSnapshot(data,hcm,payroll,currentUser.id):null;
   const commissionHold = salesCommissionPolicyProblem();
+  const commissionBacklog = reviewSalesCommissionBacklog(data,commerce);
   const bonusMilestones = evaluateSalesRepAccountBonuses(data);
   const customerName = (accountId:string) => data.accounts.find((account)=>account.id===accountId)?.name ?? "Account not found";
-  const repAttributedOrders = (repId:string) => data.orders.filter((order)=>order.status!=="Cancelled"&&(order.creditedRepId??order.ownerId)===repId)
-    .sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
+  const repCommissionBacklog = (repId:string) => commissionBacklog.filter((entry)=>entry.creditedRepresentativeId===repId);
 
   const loadEmployee = (employeeId: string) => {
     setSelectedEmployeeId(employeeId);
@@ -156,6 +159,18 @@ export function PayrollPage() {
       {myEarnings.flaggedBonusCount>0&&<p>Account bonus milestones flagged for review: {myEarnings.flaggedBonusCount} · {formatMoney(myEarnings.flaggedBonusAmount)}. Final eligibility must be verified before payroll.</p>}
       {myEarnings.blockers.map((message)=><p key={message}>{message}</p>)}
     </Section>}
+    {tab === "self" && currentUser?.role==="Sales Representative" && <Section title="Historical sales commission review" description="Includes all recorded sales since launch, including backlog. These figures are payment evidence only and are not payable commissions.">
+      <div className="company-request-list">
+        {repCommissionBacklog(currentUser.id).slice(0,20).map((entry)=><article key={entry.orderId}>
+          <span><BadgeDollarSign size={16}/></span>
+          <div><strong>{customerName(entry.accountId)} · {entry.orderNumber}</strong>
+            <p>Cleared-payment evidence: {formatMoney(entry.collectedEvidenceCents/100)} · {entry.reviewStatus}</p>
+            <small>2.50% rate applies to qualifying net collected sales after reconciliation. Percentage commission not calculated or payable yet.</small>
+          </div>
+        </article>)}
+        {!repCommissionBacklog(currentUser.id).length&&<p>No attributed sales recorded yet.</p>}
+      </div>
+    </Section>}
     {tab === "self" && currentUser?.role==="Sales Representative" && <Section title="My sales bonuses">
       <div className="company-request-list">
         {bonusMilestones.filter((milestone)=>milestone.repId===currentUser.id).map((milestone)=><article key={milestone.id}>
@@ -183,8 +198,8 @@ export function PayrollPage() {
                   {customerName(milestone.accountId)} · {milestone.milestone} · {formatMoney(milestone.amount)} · {milestone.status} · {milestone.observedCases}/{milestone.thresholdCases} cases
                 </p>)}
                 <p><strong>Sales awaiting commission review</strong></p>
-                {repAttributedOrders(user.id).slice(0,20).map((order)=><p key={order.id}>
-                  {customerName(order.accountId)} · {order.number} · {order.cases} cases · {order.paymentStatus} · Percentage commission not calculated
+                {repCommissionBacklog(user.id).slice(0,20).map((entry)=><p key={entry.orderId}>
+                  {customerName(entry.accountId)} · {entry.orderNumber} · {formatMoney(entry.collectedEvidenceCents/100)} cleared-payment evidence · {entry.reviewStatus} · Percentage commission not calculated
                 </p>)}
               </>}
               {snapshot.blockers.map((message)=><p key={message}>{message}</p>)}
@@ -192,9 +207,9 @@ export function PayrollPage() {
           </article>)}
         </div>
       </Section>
-      <Section title="Commission policy" description={commissionHold??"Effective-dated commission policy is configured."}>
+      <Section title="Commission policy" description={commissionHold??"Approved for recorded sales since business launch; ledger and payout reviews remain pending."}>
         <p>Standard representative allocation: {(STANDARD_SALES_COMMISSION_POLICY.representativeRate*100).toFixed(2)}% rep + {(STANDARD_SALES_COMMISSION_POLICY.managerOverrideRate*100).toFixed(2)}% manager override. The combined pool is {(STANDARD_SALES_COMMISSION_POLICY.maxCombinedRate*100).toFixed(2)}%.</p>
-        <p>Percentage commissions are not currently included in payroll. An approved effective date, collected-revenue exclusions and sale-by-sale credit records are required.</p>
+        <p>The 2.50% representative commission applies from launch, including backlog. The 0.50% manager share is payable only to a designated official Sales Manager; otherwise it remains with Momentum. Percentage commissions are not currently included in payroll. Verified qualifying net collections, exclusions, historical attribution, and duplicate-payout controls are still required.</p>
       </Section>
     </>}
     {tab === "self" && <><div className="company-grid company-grid--two"><Section title="Payroll profile" description="Pay rate comes from the effective compensation record in Human Resources"><div className="payroll-profile"><div><span><BadgeDollarSign size={20}/></span><div><small>Effective pay basis</small><strong>{myComp ? `${myComp.basis} · ${formatMoney(myComp.rate)}` : "Not configured in HR"}</strong></div></div><div><span><Calculator size={20}/></span><div><small>Withholding setup</small><strong>{myTax ? `${myTax.federalPercent}% federal · ${myTax.statePercent}% state · ${myTax.localPercent}% local` : "Not configured"}</strong></div></div><div><span><WalletCards size={20}/></span><div><small>Payment instruction</small><strong>{myPayrollEmployee ? `${myPayrollEmployee.paymentMethod} · ${myPayrollEmployee.paymentTokenLabel || "masked destination not loaded"}` : "Not configured"}</strong></div></div></div></Section><Section title="Latest pay statement" description="Every amount drills into source hours, earnings, benefits, withholding, and deductions">{latestMyLine ? <div className="pay-statement"><div><span>Regular pay</span><strong>{formatMoney(latestMyLine.regularPay)}</strong></div><div><span>Overtime pay</span><strong>{formatMoney(latestMyLine.overtimePay)}</strong></div><div><span>Bonus earnings</span><strong>{formatMoney(latestMyLine.bonusPay)}</strong></div><div><span>Gross pay</span><strong>{formatMoney(latestMyLine.grossPay)}</strong></div><div><span>Benefit deduction</span><strong>-{formatMoney(latestMyLine.benefitDeduction)}</strong></div><div><span>Employee taxes</span><strong>-{formatMoney(latestMyLine.employeeTaxes)}</strong></div><div><span>Other post-tax deduction</span><strong>-{formatMoney(latestMyLine.postTaxDeduction)}</strong></div><div className="pay-statement__net"><span>Net pay</span><strong>{formatMoney(latestMyLine.netPay)}</strong></div><div><span>Pay date</span><strong>{latestMyRun ? formatDate(latestMyRun.payDate) : "—"}</strong></div></div> : <div className="review-empty"><FileText size={24}/><h3>No pay statement yet</h3><p>A statement appears after an authorized payroll run includes this employee.</p></div>}</Section></div><Section title="Year-to-date pay" description="YTD totals include released payroll only"><div className="hcm-metrics payroll-ytd"><article><span>Gross</span><strong>{formatMoney(ytdGross)}</strong><small>Released payroll</small></article><article><span>Employee taxes</span><strong>{formatMoney(ytdTaxes)}</strong><small>Withheld</small></article><article><span>Benefit deductions</span><strong>{formatMoney(ytdBenefits)}</strong><small>Enrollment-linked</small></article><article><span>Net pay</span><strong>{formatMoney(ytdNet)}</strong><small>Released</small></article></div></Section></>}
