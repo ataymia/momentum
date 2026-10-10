@@ -81,10 +81,18 @@ test("manager role without explicit designation or title does not qualify", () =
   if (result.status === "Calculated") assert.equal(result.managerCents, 0);
 });
 
-test("rate effective date must be written and cannot be inferred", () => {
-  const result = allocateStandardSalesCommission(input);
-  assert.equal(result.status, "Blocked");
-  if (result.status === "Blocked") assert.match(result.reason, /effective date/i);
+test("launch-to-date approval covers backlogged verified collection without guessing launch date", () => {
+  const result = allocateStandardSalesCommission({...input,earningDate:"2026-09-20"});
+  assert.equal(result.status, "Calculated");
+  if(result.status==="Calculated"){
+    assert.equal(result.representativeCents,25000);
+    assert.equal(result.retainedByCompanyCents,5000);
+  }
+});
+
+test("missing both launch-wide authorization and a written date still fails closed", () => {
+  const result=allocateStandardSalesCommission(input,{...policy,effectiveDate:null,retroactiveToLaunch:false});
+  assert.equal(result.status,"Blocked");
 });
 
 test("earnings before effective date are never repriced", () => {
