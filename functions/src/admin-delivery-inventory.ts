@@ -15,7 +15,7 @@ const number = (value: unknown) =>
  * @param {SourceEntry} entry Proposed delivery lot and source.
  * @param {string} sourceType Type of the custody source.
  * @param {string} orderId Order being completed.
- * @return {boolean} Whether stock can be consumed without affecting another order.
+ * @return {boolean} True if this order can safely consume these cases.
  */
 export function overrideSourceAvailable(
   movements: BusinessRecord[],
