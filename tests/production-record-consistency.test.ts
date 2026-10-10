@@ -192,3 +192,14 @@ test("Firestore polling is single-flight and retries a failed version without di
   assert.ok(fetched>=0&&acknowledged>fetched,"Acknowledge changed versions only after records load");
   assert.match(poll,/if\(base\?\.updateTime&&base\.updateTime===snapshot\.updateTime\)continue/);
 });
+
+test("opt-in Firestore and route diagnostic timing keeps sensitive business data out of logs",()=>{
+  const diagnostics=readFileSync("lib/performance-diagnostics.ts","utf8");
+  const transport=readFileSync("lib/firebase-firestore-rest.ts","utf8");
+  const navigation=readFileSync("lib/workspace-context-v5.tsx","utf8");
+  assert.match(diagnostics,/momentum-performance-diagnostics/);
+  assert.match(diagnostics,/if\(!enabled\(\)\)return/);
+  assert.match(transport,/operation:"firestore-batch-read"/);
+  assert.match(navigation,/traceNavigationPaint\(allowed\)/);
+  assert.doesNotMatch(diagnostics,/employeeId|accountId|latitude|longitude|authToken|email/);
+});
