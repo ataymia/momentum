@@ -19,7 +19,11 @@ const items = (doc: BusinessRecord | undefined): BusinessRecord[] =>
   Array.isArray(doc?.items) ? doc.items.filter(isObject) : [];
 const key = (value: string) => value.trim().toLowerCase();
 
+/** Typed, user-safe rejection for invalid off-route delivery requests. */
 export class DeliveryOverrideError extends Error {
+  /** @param {number} status HTTP response code.
+   * @param {string} message Human-readable error.
+   */
   constructor(
     public readonly status: number,
     message: string,
@@ -32,6 +36,12 @@ const fail = (status: number, message: string): never => {
   throw new DeliveryOverrideError(status, message);
 };
 
+/**
+ * Atomically record off-route delivery, physical inventory and audit history.
+ * @param {string} actorId Authenticated active Administrator UID.
+ * @param {unknown} body Untrusted delivery submission.
+ * @return {Promise<OverrideResult>} Recorded order and delivery reference.
+ */
 export async function commitAdminDeliveryOverride(
   actorId: string,
   body: unknown,
