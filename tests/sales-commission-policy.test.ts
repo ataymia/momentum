@@ -15,20 +15,27 @@ describe("standard sales commission policy", () => {
     );
   });
 
-  test("fails closed until a written effective date is supplied", () => {
+  test("launch-to-date direction covers all recorded sales without fabricating a start date", () => {
     assert.equal(STANDARD_SALES_COMMISSION_POLICY.effectiveDate, null);
-    assert.equal(standardSalesCommissionPolicyReady(), false);
-    assert.match(salesCommissionPolicyProblem() ?? "", /effective date/i);
+    assert.equal(STANDARD_SALES_COMMISSION_POLICY.retroactiveToLaunch, true);
+    assert.equal(standardSalesCommissionPolicyReady(), true);
+    assert.equal(salesCommissionPolicyProblem(), null);
+  });
+
+  test("missing both a launch-wide decision and a dated plan fails closed", () => {
+    const unapproved = {...STANDARD_SALES_COMMISSION_POLICY, retroactiveToLaunch:false};
+    assert.equal(standardSalesCommissionPolicyReady(unapproved), false);
+    assert.match(salesCommissionPolicyProblem(unapproved) ?? "", /effective date/i);
   });
 
   test("accepts the confirmed allocation once a valid effective date is explicitly provided", () => {
-    const dated = { ...STANDARD_SALES_COMMISSION_POLICY, effectiveDate: "2026-09-15" };
+    const dated = { ...STANDARD_SALES_COMMISSION_POLICY, retroactiveToLaunch:false, effectiveDate: "2026-09-15" };
     assert.equal(salesCommissionPolicyProblem(dated), null);
     assert.equal(standardSalesCommissionPolicyReady(dated), true);
   });
 
   test("rejects a silently drifted pool", () => {
-    const invalid = { ...STANDARD_SALES_COMMISSION_POLICY, effectiveDate: "2026-09-15", maxCombinedRate: 0.02 };
+    const invalid = { ...STANDARD_SALES_COMMISSION_POLICY, maxCombinedRate: 0.02 };
     assert.match(salesCommissionPolicyProblem(invalid) ?? "", /allocation/i);
   });
 });
