@@ -1,4 +1,5 @@
 "use client";
+import {traceNavigationPaint} from "./performance-diagnostics";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
@@ -247,7 +248,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const currentUser = useMemo(() => data.users.find((user) => user.id === currentUserId) ?? null, [currentUserId, data.users]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
   const setSidebarCollapsed = useCallback((collapsed: boolean) => { setSidebarCollapsedState(collapsed); momentumStorage.setItem(SIDEBAR_KEY, String(collapsed)); }, []);
-  const navigate = useCallback((page: PageKey) => { setActivePage(canAccessPage(currentUser, page) ? page : "home"); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }, [currentUser]);
+  const navigate = useCallback((page: PageKey) => { const allowed=canAccessPage(currentUser,page)?page:"home";traceNavigationPaint(allowed);setActivePage(allowed); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }, [currentUser]);
 
   const login = useCallback((identifier: string, password: string): LoginResult | Promise<LoginResult> => {
     if (firebase) return firebase.signIn(identifier, password);
