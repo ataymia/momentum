@@ -66,9 +66,12 @@ export function allocateStandardSalesCommission(
   if (!Number.isSafeInteger(input.qualifyingNetCollectedCents) || input.qualifyingNetCollectedCents < 0) {
     return {status: "Blocked", reason: "Verified qualifying sales must be nonnegative integer cents."};
   }
-  if (!isValidCalendarDateKey(input.earningDate) || input.earningDate < policy.effectiveDate!) {
-    return {status: "Blocked", reason: "This earning predates the written commission effective date, or has an invalid date."};
+  if (!isValidCalendarDateKey(input.earningDate) ||
+      (policy.effectiveDate !== null && input.earningDate < policy.effectiveDate)) {
+    return {status: "Blocked", reason: "Invalid earning date or earning predates the approved dated policy."};
   }
+  // Launch-to-date approval includes historical recorded sales. Reconciliation and
+  // immutable attribution are independent requirements, not a retroactivity cutoff.
   if (!input.creditedRepresentativeId.trim()) {
     return {status: "Blocked", reason: "The credited Sales Representative UID is missing."};
   }
