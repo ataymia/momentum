@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useState } from "react";
 import { canAdvanceFulfillment, canCreateOrder, isCustomer } from "../../lib/access";
 import { deliveryAddressLabel, hasCompleteDeliveryAddress } from "../../lib/account-address";
 import { useCommerce } from "../../lib/commerce-context";
-import { useDelivery } from "../../lib/delivery-context";
 import { activeReservedForOrder, INVENTORY_LEDGER_STORAGE_KEY, orderCanAdvanceInventory, orderDeliveryQuantity, orderOutboundQuantity, productInventoryStatus } from "../../lib/inventory-ledger";
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import { canCancelOrder } from "../../lib/order-cancellation";
@@ -28,7 +27,6 @@ export function OrdersPage(){
  const{data,scope,currentUser,createOrder,editOrder,cancelOrder,navigate}=useWorkspace();
  const{ledger,advanceOrderFulfillment,releaseOrderReservationsForEdit}=useInventoryLedger();
  const{commerce}=useCommerce();
- const{taskForOrder}=useDelivery();
  const firebase=useFirebaseSessionOptional();
  const focusId=typeof window!=="undefined"?sessionStorage.getItem("momentum-focus-record"):null;
  const editFocusId=typeof window!=="undefined"?sessionStorage.getItem("momentum-edit-order"):null;
