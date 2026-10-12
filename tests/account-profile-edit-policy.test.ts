@@ -4,15 +4,15 @@ import {ACCOUNT_PROFILE_EDITABLE_FIELDS,validateAccountProfileEdit,type Verified
 import type {Account} from "../lib/types";
 import {readFileSync} from "node:fs";
 
-const original={
+const original:Account={
   id:"acc-1",name:"ABC Market",location:"Phoenix, AZ",channel:"Independent retail",
   ownerId:"rep-current",originatorId:"rep-original",createdByUid:"rep-original",
   createdAt:"2026-09-30T16:12:00.000Z",accountManagerId:"manager-1",
   lifetimeCases:72,reorderCount:3,contactName:"Buyer",contactRole:"Owner",phone:"6025550100",
   email:"buyer@example.com",notes:"",lastActivity:"Visit",stage:"Placed",
-  health:"Active",nextAction:"Follow up",nextActionDate:"2026-10-15",
+  health:"New",nextAction:"Follow up",nextActionDate:"2026-10-15",
   responsibilityStartedAt:"2026-10-09T08:00:00.000Z",
-} as Account;
+};
 const actor=(uid:string,role:VerifiedAccountEditor["role"],accountState:"Active"|"Suspended"="Active"):VerifiedAccountEditor=>({uid,role,accountState});
 
 test("original creator can edit profile even after ownership transfer",()=>{
