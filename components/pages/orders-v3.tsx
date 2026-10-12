@@ -46,7 +46,7 @@ export function OrdersPage(){
  const[accountId,setAccountId]=useState(focusedAccount?.id??scope.accounts[0]?.id??"");
  const[lines,setLines]=useState<DraftLine[]>([newLine()]);
  const customerMode=isCustomer(currentUser);const canFulfill=canAdvanceFulfillment(currentUser);
- const displayStatus=(order:Order):OrderStatus=>taskForOrder(order.id)?.status==="Delivered"&&order.status!=="Paid"?"Delivered":order.status;
+ const displayStatus=(order:Order):OrderStatus=>order.status;
 
  const q=query.trim().toLowerCase();
  const orders=scope.orders.filter((o)=>{const a=scope.accounts.find((x)=>x.id===o.accountId);return!q||`${o.number} ${a?.name??""} ${orderLinesFor(o).map((l)=>l.product).join(" ")} ${displayStatus(o)}`.toLowerCase().includes(q)});
