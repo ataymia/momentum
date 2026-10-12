@@ -147,8 +147,13 @@ export async function createTrustedCrmAccount(
       const existing=priorRequest.data();
       if(str(existing?.actorUid)!==actorUid)
         throw new TrustedAccountCreationError(409,"Account request conflict.");
+      const previousId=str(existing?.accountId);
+      if(!previousId||!list(accounts.data()).some(
+        (row)=>str(row.id)===previousId))
+        throw new TrustedAccountCreationError(
+          409,"Prior account creation needs reconciliation.");
       return {
-        accountId:str(existing?.accountId),
+        accountId:previousId,
         createdAt:str(existing?.createdAt),
         replayed:true,
       };
@@ -164,6 +169,12 @@ export async function createTrustedCrmAccount(
     const customerId="cust-"+customerSlug(validation.customerName);
     const creatorRef=db.doc("accountCreatorProvenance/"+accountId);
     const customerName=validation.customerName;
+    const customerCollision=list(customers.data()).find((row)=>
+      str(row.id)===customerId &&
+      str(row.name).toLowerCase()!==customerName.toLowerCase());
+    if(customerCollision)
+      throw new TrustedAccountCreationError(
+        409,"Customer grouping needs review before creation.");
     const alreadyGrouped=list(customers.data()).some((row)=>
       str(row.id)===customerId);
     const account={
