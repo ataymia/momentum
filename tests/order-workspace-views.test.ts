@@ -32,3 +32,9 @@ test("customer, sales rep, manager and placed-date filters can all combine",()=>
  assert.equal(placedOrderDate(orders[0]),"2026-10-01");
  assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),{view:"All Orders",dateSort:"oldest"}).map(o=>o.id),["o3","o1","o2","o4"]);
 });
+
+test("driver-task flag alone cannot complete an order before canonical state reconciliation",()=>{
+ const notDelivered={...orders[0],status:"Approved"} as Order;
+ assert.equal(orderWorkspaceView(notDelivered,commerce,true),"Active / Pending");
+ assert.equal(orderWorkspaceView(orders[0],commerce,false),"Paid & Delivered");
+});
