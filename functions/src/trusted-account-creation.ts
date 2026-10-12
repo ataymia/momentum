@@ -1,0 +1,212 @@
+import {randomUUID} from "node:crypto";
+import {getFirestore} from "firebase-admin/firestore";
+
+type RecordValue=Record<string,unknown>;
+type AccountInput=Record<string,unknown>;
+type ValidCreation={ok:true;record:RecordValue;customerName:string}|
+  {ok:false;message:string};
+type CreateResult={accountId:string;createdAt:string;replayed:boolean};
+
+const object=(value:unknown):value is RecordValue=>
+  Boolean(value&&typeof value==="object"&&!Array.isArray(value));
+const str=(value:unknown)=>typeof value==="string"?value.trim():"";
+const list=(value:RecordValue|undefined):RecordValue[]=>
+  Array.isArray(value?.items)?value.items.filter(object):[];
+const validZip=(value:string)=>/^\d{5}$/.test(value);
+const requestIdValid=(value:string)=>
+  /^[a-zA-Z0-9_-]{16,80}$/.test(value);
+
+/** A rejection that can be safely shown without exposing internal data. */
+export class TrustedAccountCreationError extends Error{
+  /**
+   * @param {number} status HTTP status code.
+   * @param {string} message Client-safe explanation.
+   */
+  constructor(public readonly status:number,message:string){super(message);}
+}
+
+/**
+ * Validate account creation fields independently of client UI checks.
+ * Never accept ownership, creator, status, revenue or pricing from a caller.
+ * @param {unknown} input Untrusted account-creation payload.
+ * @return {ValidCreation} Sanitized writable profile or rejection.
+ */
+export function validateTrustedAccountCreation(input:unknown):ValidCreation{
+  if(!object(input))return {ok:false,message:"Account details are required."};
+  const allowed=[
+    "name","customerName","locationName","location","channel",
+    "contactName","contactRole","phone","mobilePhone","fax","email",
+    "streetAddress","postalCode","deliveryAddressSameAsBusiness",
+    "deliveryStreetAddress","deliveryLocation","deliveryPostalCode",
+  ];
+  if(Object.keys(input).some((key)=>!allowed.includes(key)))
+    return {ok:false,message:"Account creation cannot set ownership or history."};
+  const required=["name","location","channel","contactName","contactRole"];
+  if(required.some((key)=>!str(input[key])))
+    return {ok:false,message:"Business and primary contact information are required."};
+  if(!str(input.phone)&&!str(input.mobilePhone)&&!str(input.email))
+    return {ok:false,message:"At least one contact method is required."};
+  if(!validZip(str(input.postalCode)))
+    return {ok:false,message:"A valid five-digit Arizona ZIP code is required."};
+  const same=input.deliveryAddressSameAsBusiness!==false;
+  if(!same&&(!str(input.deliveryStreetAddress)||
+    !str(input.deliveryLocation)||
+    !validZip(str(input.deliveryPostalCode))))
+    return {ok:false,message:"A separate delivery address must be complete."};
+  const record:RecordValue={};
+  for(const key of allowed){
+    const value=input[key];
+    if(value===undefined)continue;
+    if(key==="deliveryAddressSameAsBusiness"){
+      if(typeof value!=="boolean")
+        return {ok:false,message:"Invalid delivery-address option."};
+      record[key]=value;
+    }else if(typeof value==="string"&&value.length<=500){
+      record[key]=value.trim();
+    }else return {ok:false,message:"An account field is invalid or too long."};
+  }
+  const customerName=str(input.customerName)||str(input.name);
+  if(str(input.email)&&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str(input.email)))
+    return {ok:false,message:"The contact email is invalid."};
+  return {ok:true,record,customerName};
+}
+
+/**
+ * Duplicate guard for concurrent server-side new account requests.
+ * Keeps the legacy shared account register as the source of truth.
+ * @param {RecordValue[]} accounts Current account records.
+ * @param {RecordValue} candidate Sanitized location to create.
+ * @return {boolean} Whether a high-confidence duplicate exists.
+ */
+export function potentialDuplicateAccount(
+  accounts:RecordValue[],
+  candidate:RecordValue,
+):boolean{
+  const name=str(candidate.name).toLowerCase();
+  const zip=str(candidate.postalCode);
+  const street=str(candidate.streetAddress).toLowerCase();
+  const phone=str(candidate.phone).replace(/\D/g,"");
+  return accounts.some((account)=>{
+    const sameName=str(account.name).toLowerCase()===name;
+    const sameZip=str(account.postalCode)===zip;
+    const sameStreet=Boolean(street)&&
+      str(account.streetAddress).toLowerCase()===street;
+    const samePhone=Boolean(phone)&&
+      str(account.phone).replace(/\D/g,"")===phone;
+    return sameName&&sameZip&&(sameStreet||samePhone);
+  });
+}
+
+const customerSlug=(name:string)=>name
+  .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+  .toLowerCase().replace(/[^a-z0-9]+/g,"-")
+  .replace(/^-+|-+$/g,"").slice(0,70)||"business";
+
+/**
+ * Transactionally create one account, its group, activity, and immutable
+ * creator proof. Does not expose a browser endpoint until legacy direct
+ * shared-array account writes are secured.
+ *
+ * @param {string} actorUid UID from verified Firebase ID token.
+ * @param {unknown} raw Untrusted account input.
+ * @param {string} requestId Idempotency token generated by caller.
+ * @return {Promise<CreateResult>} Existing or newly created record.
+ */
+export async function createTrustedCrmAccount(
+  actorUid:string,
+  raw:unknown,
+  requestId:string,
+):Promise<CreateResult>{
+  if(!actorUid||!requestIdValid(requestId))
+    throw new TrustedAccountCreationError(400,"Invalid account request.");
+  const validation=validateTrustedAccountCreation(raw);
+  if(!validation.ok)
+    throw new TrustedAccountCreationError(400,validation.message);
+  const db=getFirestore();
+  const accessRef=db.doc("userAccess/"+actorUid);
+  const accountRef=db.doc("domains/workspace/fields/accounts");
+  const customersRef=db.doc("domains/workspace/fields/customers");
+  const activitiesRef=db.doc("domains/workspace/fields/activities");
+  const metaRef=db.doc("platform/meta");
+  const requestRef=db.doc("accountCreationRequests/"+
+    actorUid+"_"+requestId);
+
+  return db.runTransaction(async(tx)=>{
+    const [access,accounts,customers,activities,priorRequest]=
+      await Promise.all([
+        tx.get(accessRef),tx.get(accountRef),tx.get(customersRef),
+        tx.get(activitiesRef),tx.get(requestRef),
+      ]);
+    const actor=access.data();
+    if(actor?.accountState!=="Active"||
+      !["Administrator","Sales Manager","Sales Representative"].includes(
+        str(actor?.role)))
+      throw new TrustedAccountCreationError(403,"Not authorized to create accounts.");
+
+    if(priorRequest.exists){
+      const existing=priorRequest.data();
+      if(str(existing?.actorUid)!==actorUid)
+        throw new TrustedAccountCreationError(409,"Account request conflict.");
+      return {
+        accountId:str(existing?.accountId),
+        createdAt:str(existing?.createdAt),
+        replayed:true,
+      };
+    }
+
+    const priorAccounts=list(accounts.data());
+    if(potentialDuplicateAccount(priorAccounts,validation.record))
+      throw new TrustedAccountCreationError(
+        409,"A matching account already exists. Review it first.");
+    const createdAt=new Date().toISOString();
+    const day=createdAt.slice(0,10);
+    const accountId="acc-"+randomUUID();
+    const customerId="cust-"+customerSlug(validation.customerName);
+    const creatorRef=db.doc("accountCreatorProvenance/"+accountId);
+    const customerName=validation.customerName;
+    const alreadyGrouped=list(customers.data()).some((row)=>
+      str(row.id)===customerId);
+    const account={
+      ...validation.record,
+      id:accountId,customerId,
+      locationName:str(validation.record.locationName)||
+        str(validation.record.name),
+      createdAt,createdByUid:actorUid,
+      ownerId:actorUid,originatorId:actorUid,
+      accountManagerId:actorUid,responsibilityStartedAt:createdAt,
+      stage:"Prospect",health:"New",lifetimeCases:0,reorderCount:0,
+      lastActivity:"Location created",
+      nextAction:"Qualify the decision-maker and buying process",
+      nextActionDate:day,notes:"",
+    };
+    tx.set(accountRef,{items:[account,...priorAccounts]});
+    if(!alreadyGrouped)tx.set(customersRef,{items:[{
+      id:customerId,name:customerName,
+      accountType:customerName===str(validation.record.name)?
+        "Independent":"Chain / franchise",
+      billingContactName:validation.record.contactName,
+      billingEmail:validation.record.email,
+      billingPhone:validation.record.phone,
+      createdAt,
+    },...list(customers.data())]});
+    tx.set(activitiesRef,{items:[{
+      id:"act-"+randomUUID(),accountId,at:createdAt,userId:actorUid,
+      type:"note",title:"Customer location created",
+      detail:"Account created through authorized registration.",
+    },...list(activities.data())]});
+    tx.create(creatorRef,{
+      accountId,creatorUid:actorUid,createdAt,
+      evidence:"Trusted server account-creation transaction",
+    });
+    tx.create(requestRef,{actorUid,accountId,createdAt});
+    const version=createdAt+"#"+randomUUID().slice(0,6);
+    const paths=[accountRef.path,activitiesRef.path];
+    if(!alreadyGrouped)paths.push(customersRef.path);
+    const versions=Object.fromEntries(paths.map((path)=>[
+      path.replace(/[^A-Za-z0-9]+/g,"_"),version,
+    ]));
+    tx.set(metaRef,{versions},{merge:true});
+    return {accountId,createdAt,replayed:false};
+  });
+}
