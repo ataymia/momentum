@@ -182,7 +182,7 @@ export function DispatchPage() {
       tags: appointmentForm.tags.split(",").map((item) => item.trim()).filter(Boolean),
     });
     if (!id) {
-      setError("Choose a customer location in your scope and complete all required fields.");
+      setError("Choose a customer location in your scope, complete all required fields, and make sure the assigned employee is not double-booked.");
       return;
     }
     setSelectedId(id);
@@ -258,7 +258,8 @@ export function DispatchPage() {
     const relative = clamp(event.clientX - rect.left, 0, rect.width);
     const rawMinutes = BOARD_START + (relative / rect.width) * BOARD_SPAN;
     const snapped = clamp(Math.round(rawMinutes / SNAP) * SNAP, BOARD_START, BOARD_END - SNAP);
-    moveAppointment(dragId, ownerId, selectedDate, minutesToTime(snapped));
+    const moved = moveAppointment(dragId, ownerId, selectedDate, minutesToTime(snapped));
+    setError(moved ? "" : "That appointment could not be moved. Check schedule conflicts, permissions, and assignment scope.");
     setDragId(null);
   };
   const dropInHolding = (event: DragEvent<HTMLDivElement>) => {
