@@ -11,7 +11,7 @@ test("new CRM locations capture UID distinct from transferable owner ID",()=>{
 
 test("normalization retains verified-format creator UID and timestamp but does not backfill legacy owners",()=>{
   const normalizer=readFileSync("lib/workspace-normalization.ts","utf8");
-  assert.match(normalizer,/createdByUid: userRef\(value\.createdByUid\)/);
+  assert.match(normalizer,/createdByUid: optionalText\(value\.createdByUid\)/);
   assert.match(normalizer,/createdAt: validInstant\(value\.createdAt\)/);
   assert.doesNotMatch(normalizer,/createdByUid:\s*(?:ownerId|userRef\(value\.ownerId\))/);
 });
