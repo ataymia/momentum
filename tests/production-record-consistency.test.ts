@@ -197,10 +197,16 @@ test("opt-in Firestore and route diagnostic timing keeps sensitive business data
   const diagnostics=readFileSync("lib/performance-diagnostics.ts","utf8");
   const transport=readFileSync("lib/firebase-firestore-rest.ts","utf8");
   const navigation=readFileSync("lib/workspace-context-v5.tsx","utf8");
+  const shell=readFileSync("components/app-shell-v4.tsx","utf8");
+  const poll=readFileSync("lib/persistence.ts","utf8");
   assert.match(diagnostics,/momentum-performance-diagnostics/);
   assert.match(diagnostics,/if\(!enabled\(\)\)return/);
   assert.match(transport,/operation:"firestore-batch-read"/);
   assert.match(navigation,/traceNavigationPaint\(allowed\)/);
+  assert.match(shell,/traceNavigationCommit\(activePage\)/);
+  assert.match(diagnostics,/operation:"navigation-commit"/);
+  assert.match(poll,/operation:"firestore-poll"/);
+  assert.match(poll,/changedCount=changed.length/);
   assert.doesNotMatch(diagnostics,/employeeId|accountId|latitude|longitude|authToken|email/);
 });
 
