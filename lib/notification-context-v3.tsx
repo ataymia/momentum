@@ -23,7 +23,7 @@ const UnifiedNotificationContext=createContext<NotificationValue|null>(null);
 
 function UnifiedBridge({children}:{children:ReactNode}){
   const legacy=useLegacyNotifications();
-  const {data,currentUser}=useWorkspace();
+  const {data,scope,currentUser}=useWorkspace();
   const {hcm}=useHcm();
   const {performance}=usePerformance();
   const {finance}=useFinance();
@@ -40,7 +40,7 @@ function UnifiedBridge({children}:{children:ReactNode}){
     const items:NotificationDelivery[]=[];
 
     if(currentUser.role!=="Customer"){
-      for(const action of buildActionNotices({data,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger})){
+      for(const action of buildActionNotices({data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger})){
         const id=`derived-action:${action.id}`;
         items.push({
           id,
@@ -99,7 +99,7 @@ function UnifiedBridge({children}:{children:ReactNode}){
       });
     }
     return items;
-  },[currentUser,data,hcm,performance,finance,marketing,accounting,events,ledger,readDerived]);
+  },[currentUser,data,scope,hcm,performance,finance,marketing,accounting,events,ledger,readDerived]);
 
   const legacyItems=useMemo(()=>legacy.currentUserItems.filter(item=>{
     if(!item.targetPage||!item.targetRecordId)return true;
