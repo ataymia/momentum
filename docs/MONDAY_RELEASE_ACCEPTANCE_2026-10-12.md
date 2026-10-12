@@ -48,7 +48,21 @@ Perform several route transitions while coworkers are using the platform. Then r
 console.table(JSON.parse(localStorage.getItem("momentum-performance-timings")||"[]"));
 ```
 
-These samples include navigation paint and Firestore batch read duration/count **only**. They are stored locally in that browser, are not transmitted to an analytics service, and **do not measure full data-ready latency or identify network/listener count**. Supplement with DevTools Network/Performance and before/after comparable active-user sessions. Do not claim the reported 5–10 second lag is fixed until measured full-ready times pass.
+The samples distinguish navigation paint, React module commit, Firestore batch reads and the metadata-poll duration/number of changed metadata paths. They are stored locally in that browser and are not transmitted to analytics. **React commit is not full data-ready latency**, and these samples do not measure network request totals or live listener counts. Inspect DevTools Network/Performance alongside a comparable active-user baseline.
+
+For a quick operation-by-operation summary, paste this in the same QA browser's Console:
+
+```js
+const rows = JSON.parse(localStorage.getItem("momentum-performance-timings") || "[]");
+const kinds = [...new Set(rows.map(x => x.operation))];
+console.table(kinds.map(operation => {
+  const times = rows.filter(x => x.operation === operation).map(x => x.durationMs).sort((a,b) => a-b);
+  const q = p => times[Math.max(0, Math.ceil(times.length*p)-1)];
+  return {operation, samples:times.length, p50ms:q(.5), p95ms:q(.95), worstMs:q(1)};
+}));
+```
+
+Run the same steps in a clean staging session first, then under 5+ authenticated active employees. Collect the actual user-observed ready times with a stopwatch or browser Performance panel. Never use these page-commit samples as proof of data readiness. Disable local timing capture afterward with `localStorage.removeItem("momentum-performance-diagnostics");`; optionally clear the stored performance samples. Do not claim the reported 5–10 second lag is fixed until measured full-ready times pass.
 
 ## Money/permission release gates
 
@@ -63,3 +77,7 @@ These samples include navigation paint and Firestore batch read duration/count *
 For each smoke test, record: tester role, exact branch commit, test record ID, pre-state, attempted action, post-refresh Firestore-backed result, expected vs observed behavior, screenshot/PDF when visual, console/network errors, and whether blocked. For performance, capture active session count and comparable navigation-to-data-ready timings. Capture synthetic CI numbers separately.
 
 **Release decision:** Blocked until secure CRM editing, real performance measurements, visual invoice acceptance, role-based verification, and owner approval.
+
+## Cloudflare check update
+
+The user reported the Cloudflare build green after clearing a corrupted dependency/build cache. GitHub returned a green Workers Builds check for integrated PR #52 commit `cc19d3e` on October 12. Confirm the exact SHA and branch of any subsequent green Cloudflare check in the dashboard. A green Cloudflare build is **not** evidence that PR #52 has been deployed or that Firebase rules/functions are published.
