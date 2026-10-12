@@ -44,7 +44,7 @@ test("missing or inconsistent provenance cannot authorize creators",()=>{
 test("inactive and unrelated roles, even Administrator, cannot edit",()=>{
   assert.equal(serverMayEditAccount("admin","Administrator","Suspended","acc-1",null,record),false);
   assert.equal(serverMayEditAccount("rep-created","Sales Representative","Disabled","acc-1",provenance,record),false);
-  assert.equal(serverMayEditAccount("rep-created","Customer","Active","acc-1",provenance,record),true);
+  assert.equal(serverMayEditAccount("rep-created","Customer","Active","acc-1",provenance,record),false);
 });
 
 test("ordinary contact fields allowed; provenance/credit/ownership tampering denied",()=>{
