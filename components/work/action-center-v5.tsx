@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, BadgeDollarSign, BookOpenCheck, Boxes, CalendarClock, ClipboardCheck, FileText, GraduationCap, Megaphone, Receipt, ShieldCheck, UsersRound } from "lucide-react";
+import { AlertTriangle, BookOpenCheck, Boxes, CalendarClock, ClipboardCheck, FileText, GraduationCap, Megaphone, Receipt, ShieldCheck, UsersRound } from "lucide-react";
 import { buildActionNotices, type ActionUrgency } from "../../lib/action-center-policy-v2";
 import { useAccounting } from "../../lib/accounting-context";
 import { useFinance } from "../../lib/finance-context";
