@@ -183,6 +183,13 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Future account editor MUST read true creator identity from Admin SDK.
+    // Client-writable workspace.createdByUid is never proof of creation.
+    // Neither an Administrator client nor a Sales Manager can mint provenance.
+    match /accountCreatorProvenance/{accountId} {
+      allow get, list, create, update, delete: if false;
+    }
+
     // --- engine state: shared shards ----------------------------------------
 
     match /domains {
