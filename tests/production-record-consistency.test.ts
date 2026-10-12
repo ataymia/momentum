@@ -180,3 +180,16 @@ test("Administrator workspace repairs approval/order drift into the persisted co
   assert.match(workspace,/reconcileOrders\(commercial\.orders, \[\], approvals\)/);
   assert.match(workspace,/return changed \? \{ \.\.\.state, orders \} : state/);
 });
+
+test("non-order appointment closeouts preserve existing closer attribution",()=>{
+  const workspace=readFileSync("lib/workspace-context.tsx","utf8");
+  assert.match(workspace,/\.\.\.\(closeout\.outcome === "Order placed" \? \{ closerId: enhanced\.ownerId \} : \{\}\)/);
+  assert.doesNotMatch(workspace,/closerId: closeout\.outcome === "Order placed" \? enhanced\.ownerId : undefined/);
+});
+
+test("cloud confirmation fails closed when the signed-in role has no writable target",()=>{
+  const persistence=readFileSync("lib/persistence.ts","utf8");
+  assert.match(persistence,/hasWritableTarget/);
+  assert.match(persistence,/current role has no authorized cloud write target/);
+  assert.match(persistence,/this\.blockedKeys\.set\(key,message\)/);
+});
