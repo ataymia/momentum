@@ -776,3 +776,16 @@ describe("trusted account profile audit records are immutable to browser clients
     await assertFails(setDoc(doc(dbFor(ADMIN),"accountProfileEditEvents/forged"),{actorUid:ADMIN}));
   });
 });
+
+describe("trusted account creation receipts are server-owned",()=>{
+  const receipt="accountCreationRequests/uid-admin_request-token-123456789";
+  test("no Firebase client can create or claim an idempotency receipt",async()=>{
+    for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER]){
+      await assertFails(getDoc(doc(dbFor(uid),receipt)));
+      await assertFails(setDoc(doc(dbFor(uid),receipt),{
+        accountId:"forged",actorUid:uid,
+      }));
+    }
+    await assertFails(setDoc(doc(dbFor(null),receipt),{accountId:"forged"}));
+  });
+});
