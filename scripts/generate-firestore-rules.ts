@@ -285,6 +285,31 @@ service cloud.firestore {
       allow write: if isEmployee() || bootstrapClaimant();
     }
 
+    // Immutable audit proof for owner-authorized off-route deliveries.
+    // Only the authenticated server function may create these records.
+    match /adminDeliveryOverrides/{orderId} {
+      allow get, list: if activeEmployee();
+      allow create, update, delete: if false;
+    }
+
+    // Future account editor MUST read true creator identity from Admin SDK.
+    // Client-writable workspace.createdByUid is never proof of creation.
+    // Neither an Administrator client nor a Sales Manager can mint provenance.
+    match /accountCreatorProvenance/{accountId} {
+      allow get, list, create, update, delete: if false;
+    }
+
+    // Backend-only immutable event history for account-profile edits.
+    match /accountProfileEditEvents/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Server-only idempotency receipts prevent replayed account creation.
+    match /accountCreationRequests/{requestId} {
+      allow get, list, create, update, delete: if false;
+    }
+
     // --- engine state: shared shards ----------------------------------------
 
     match /domains {

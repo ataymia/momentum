@@ -57,7 +57,13 @@ export function employeeEarningsSnapshot(data:WorkspaceData,hcm:HCMState,payroll
   const pendingApprovalHours=unapproved.reduce((sum,entry)=>sum+timeEntryHours(entry),0);
   const usedBonuses=consumedBonuses(payroll);
   const milestones=evaluateSalesRepAccountBonuses(data).filter((item)=>item.repId===userId&&item.status==="Earned"&&!usedBonuses.has(item.id));
-  if(salesCommissionPolicyProblem())issues.add("Percentage commissions are on hold: the written rate effective date is missing.");
+  // Launch-to-date eligibility is approved, but the collected-sales commission
+  // ledger and consumption safeguards have not been integrated with payroll.
+  const employeeRole=data.users.find((user)=>user.id===userId)?.role;
+  if(employeeRole==="Sales Representative"){
+    const policyIssue=salesCommissionPolicyProblem();
+    issues.add(policyIssue??"Percentage commissions await qualifying-sales reconciliation and verified payroll integration; launch-to-date sales remain eligible.");
+  }
   return {
     regularHours:money(regularHours),overtimeHours:money(overtimeHours),
     estimatedGross:ready.length===0||issues.has("Pay group not configured.")||regularHours+overtimeHours===0?null:money(estimatedGross),

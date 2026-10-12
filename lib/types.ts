@@ -123,6 +123,10 @@ export type CustomerAccount = {
 
 export type Account = {
   id: string;
+  /** Firebase UID captured when this account was created; never infer from ownerId. */
+  createdByUid?: string;
+  /** Actual account creation timestamp. Legacy accounts intentionally lack provenance. */
+  createdAt?: string;
   name: string;
   location: string;
   channel: string;

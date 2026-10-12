@@ -1,4 +1,5 @@
 import type { FirebaseAuthSession } from "./firebase-auth-rest";
+import {recordPerformanceSample} from "./performance-diagnostics";
 import { currentFirebaseSession } from "./firebase-auth-rest";
 import { firebaseWebConfig } from "./firebase-config";
 
@@ -130,6 +131,7 @@ export async function getFirestoreSnapshot<T=Record<string,unknown>>(documentPat
 export async function getFirestoreSnapshots<T=Record<string,unknown>>(documentPaths:string[]):Promise<FirestoreSnapshot<T>[]>{
   const unique=[...new Set(documentPaths)];
   if(unique.length===0)return[];
+  const started=performance.now();
   const config=configOrThrow();const session=await sessionOrThrow();
   const results:FirestoreSnapshot<T>[]=[];
   for(let index=0;index<unique.length;index+=100){
@@ -153,6 +155,7 @@ export async function getFirestoreSnapshots<T=Record<string,unknown>>(documentPa
       else if(entry.missing)results.push({path:pathFromName(config.projectId,entry.missing),exists:false,data:null});
     }
   }
+  recordPerformanceSample({operation:"firestore-batch-read",durationMs:performance.now()-started,count:unique.length});
   return results;
 }
 
