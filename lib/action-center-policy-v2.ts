@@ -10,13 +10,13 @@ import type { PageKey, WorkspaceData, WorkspaceUser } from "./types";
 
 export type ActionUrgency="Blocking"|"Due"|"Review"|"Watch";
 export type ActionNotice={id:string;title:string;detail:string;category:string;page?:PageKey;urgency:ActionUrgency;focus?:string;peopleTab?:string;weeklyWeekStart?:string};
-export type ActionNoticeInputs={data:WorkspaceData;currentUser:WorkspaceUser;hcm:HCMState;performance:PerformanceState;finance:FinanceState;marketing:MarketingState;accounting:AccountingState;accountingEvents:AccountingSourceEvent[];ledger:InventoryLedgerState;today?:string};
+export type ActionNoticeInputs={data:WorkspaceData;scope:WorkspaceData;currentUser:WorkspaceUser;hcm:HCMState;performance:PerformanceState;finance:FinanceState;marketing:MarketingState;accounting:AccountingState;accountingEvents:AccountingSourceEvent[];ledger:InventoryLedgerState;today?:string};
 
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
 const date=(value:string)=>{const parsed=new Date(/^\d{4}-\d{2}-\d{2}$/.test(value)?`${value}T12:00:00-07:00`:value);return Number.isNaN(parsed.getTime())?value:new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric"}).format(parsed);};
 
 export function buildActionNotices(input:ActionNoticeInputs):ActionNotice[]{
-  const{data,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents,ledger}=input;
+  const{data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents,ledger}=input;
   const today=input.today??arizonaDateKey();
   const admin=currentUser.role==="Administrator",manager=currentUser.role==="Sales Manager",warehouse=currentUser.role==="Warehouse",operations=currentUser.role==="Operations";
   const actions:ActionNotice[]=[];
@@ -51,7 +51,7 @@ export function buildActionNotices(input:ActionNoticeInputs):ActionNotice[]{
     for(const event of unprocessedSourceEvents(accounting,accountingEvents))actions.push({id:`accounting:${event.id}`,title:event.blockedReason?"Accounting policy required":"Accounting event ready",detail:event.blockedReason??event.description,category:"Accounting",page:"finance",focus:event.id,urgency:event.blockedReason?"Blocking":"Review"});
   }
 
-  if(admin||manager||operations)for(const appointment of data.appointments.filter(item=>item.status==="Scheduled"&&!item.ownerId&&item.date<=today)){const location=data.accounts.find(account=>account.id===appointment.accountId);actions.push({id:`dispatch:${appointment.id}`,title:"Unassigned scheduled work",detail:`${location?.locationName??location?.name??"Location"} · ${appointment.date} ${appointment.startTime}`,category:"Dispatch",page:"dispatch",focus:appointment.id,urgency:appointment.date<today?"Blocking":"Due"});}
+  if(admin||manager||operations)for(const appointment of scope.appointments.filter(item=>item.status==="Scheduled"&&!item.ownerId&&item.date<=today)){const location=data.accounts.find(account=>account.id===appointment.accountId);actions.push({id:`dispatch:${appointment.id}`,title:"Unassigned scheduled work",detail:`${location?.locationName??location?.name??"Location"} · ${appointment.date} ${appointment.startTime}`,category:"Dispatch",page:"dispatch",focus:appointment.id,urgency:appointment.date<today?"Blocking":"Due"});}
   if(admin||manager||warehouse||operations)for(const stock of inventoryProductStatuses(ledger,data).filter(item=>item.reorderNeeded))actions.push({id:`stock:${stock.product}`,title:stock.requiresManagerApproval?"Low stock blocks unapproved sales":"Inventory reorder required",detail:`${stock.product} · ${stock.available} available sellable cases`,category:"Inventory",page:canAccessPage(currentUser,"inventory")?"inventory":undefined,urgency:stock.requiresManagerApproval?"Blocking":"Due"});
 
   const rank:Record<ActionUrgency,number>={Blocking:0,Due:1,Review:2,Watch:3};
