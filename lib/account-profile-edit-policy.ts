@@ -20,6 +20,11 @@ export const ACCOUNT_PROFILE_EDITABLE_FIELDS=[
 ] as const satisfies readonly (keyof Account)[];
 export type AccountProfileEditableField=typeof ACCOUNT_PROFILE_EDITABLE_FIELDS[number];
 export type AccountProfileEdit=Partial<Pick<Account,AccountProfileEditableField>>;
+/** Must come from a server-owned immutable record, never from client-supplied fields. */
+export type VerifiedAccountCreator={
+  accountId:string;
+  creatorUid:string;
+};
 export type AccountProfileEditDecision=
   | {ok:true; updated:Account}
   | {ok:false; reason:string};
@@ -33,18 +38,24 @@ const forbiddenKeys =new Set(["id","createdAt","createdByUid","ownerId","origina
 /**
  * This function is a pure policy and field validator, NOT a server authorization endpoint.
  * The server must verify actor.uid and actor.role from Firebase Auth and userAccess/{uid};
- * validate the current immutable account document in a transaction, enforce this
+ * retrieve a separate protected creator-provenance record (never trust the
+ * shared account createdByUid alone), validate the current account in a
+ * transaction, enforce this
  * decision and commit under a version precondition.
  */
 export function validateAccountProfileEdit(
   actor:VerifiedAccountEditor,
   current:Account,
   untrustedPatch:unknown,
+  verifiedCreator:VerifiedAccountCreator|null,
 ):AccountProfileEditDecision{
   if(actor.accountState!=="Active"||!actor.uid.trim())
     return {ok:false,reason:"The employee is not active and authenticated."};
-  if(actor.role!=="Administrator"&&
-     (!current.createdByUid || current.createdByUid!==actor.uid))
+  const trustedCreator=Boolean(verifiedCreator&&
+    verifiedCreator.accountId===current.id&&
+    verifiedCreator.creatorUid===actor.uid&&
+    current.createdByUid===verifiedCreator.creatorUid);
+  if(actor.role!=="Administrator"&&!trustedCreator)
     return {ok:false,reason:"Only the original creator or a full Administrator may edit this account."};
   if(!untrustedPatch||typeof untrustedPatch!=="object"||Array.isArray(untrustedPatch))
     return {ok:false,reason:"Account changes must be a field object."};
