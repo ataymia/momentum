@@ -15,7 +15,7 @@ const urgencyTone=(urgency:ActionUrgency)=>urgency==="Blocking"?"danger" as cons
 const iconFor=(category:string)=>category==="Approvals"?ClipboardCheck:category==="Performance"?FileText:category==="Human Resources"?UsersRound:category==="Finance"?Receipt:category==="Marketing"?Megaphone:category==="Accounting"?BookOpenCheck:category==="Dispatch"?CalendarClock:category==="Inventory"?Boxes:category==="Timekeeping"?GraduationCap:AlertTriangle;
 
 export function ActionCenter(){
-  const {data,currentUser,navigate}=useWorkspace();
+  const {data,scope,currentUser,navigate}=useWorkspace();
   const {hcm}=useHcm();
   const {performance}=usePerformance();
   const {finance}=useFinance();
@@ -24,7 +24,7 @@ export function ActionCenter(){
   const {ledger}=useInventoryLedger();
   if(!currentUser||currentUser.role==="Customer")return null;
 
-  const actions=buildActionNotices({data,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger});
+  const actions=buildActionNotices({data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger});
   const groups=[...new Set(actions.map(item=>item.category))];
   const open=(item:(typeof actions)[number])=>{
     if(item.focus)window.sessionStorage.setItem("momentum-focus-record",item.focus);
