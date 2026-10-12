@@ -4,6 +4,8 @@ import test from "node:test";
 import type { AuditEvent } from "../lib/audit-engine";
 import { createDemoData } from "../lib/demo-data";
 import { notificationCopy } from "../lib/notification-engine";
+import { orderMilestoneIntents, sundayWeeklyReminderIntent } from "../lib/notification-policy-v2";
+import { createPerformanceSeed } from "../lib/performance-engine";
 
 const data = createDemoData();
 
@@ -81,4 +83,60 @@ test("notification escalation copy never falls back to an anonymous team member"
   const source = readFileSync("lib/notification-context-v2.tsx", "utf8");
   assert.doesNotMatch(source, /A team member/);
   assert.match(source, /User record unavailable/);
+});
+
+
+test("customer notification policy covers confirmed, out-for-delivery, and delivered milestones", () => {
+  const customer = data.users.find((user) => user.role === "Customer")!;
+  const baseOrder = {
+    id: "order-notification-test",
+    number: "GE-NOTIFY-1",
+    accountId: "acc-101",
+    cases: 10,
+    pricePerCase: 24,
+    amount: 240,
+    status: "Approved" as const,
+    placedAt: "2026-10-12",
+    ownerId: "usr-jordan",
+    creditedRepId: "usr-jordan",
+    priceBasis: "Tier A",
+    paymentStatus: "Open" as const,
+  };
+  const confirmed = { ...data, orders: [baseOrder] };
+  assert.equal(orderMilestoneIntents(confirmed, customer).some((item) => item.title === "Order confirmed"), true);
+
+  const outbound = { ...data, orders: [{ ...baseOrder, status: "Out for delivery" as const }] };
+  assert.equal(orderMilestoneIntents(outbound, customer).some((item) => item.title === "Order out for delivery"), true);
+
+  const delivered = { ...data, orders: [{ ...baseOrder, status: "Delivered" as const }] };
+  assert.equal(orderMilestoneIntents(delivered, customer).some((item) => item.title === "Order delivered"), true);
+});
+
+test("credited sales rep receives a delivered-order milestone", () => {
+  const rep = data.users.find((user) => user.id === "usr-jordan")!;
+  const delivered = {
+    ...data,
+    orders: [{
+      id: "order-rep-delivered",
+      number: "GE-NOTIFY-2",
+      accountId: "acc-101",
+      cases: 10,
+      pricePerCase: 24,
+      amount: 240,
+      status: "Delivered" as const,
+      placedAt: "2026-10-12",
+      ownerId: rep.id,
+      creditedRepId: rep.id,
+      priceBasis: "Tier A",
+      paymentStatus: "Open" as const,
+    }],
+  };
+  assert.equal(orderMilestoneIntents(delivered, rep).some((item) => item.title === "Your order was delivered"), true);
+});
+
+test("Sunday weekly summary reminder does not appear before 7 PM Arizona time", () => {
+  const rep = data.users.find((user) => user.id === "usr-jordan")!;
+  const performance = createPerformanceSeed();
+  assert.equal(sundayWeeklyReminderIntent(performance, rep, new Date("2026-10-11T18:59:00-07:00")), null);
+  assert.equal(sundayWeeklyReminderIntent(performance, rep, new Date("2026-10-11T19:00:00-07:00"))?.title, "Weekly summary reminder");
 });
