@@ -7,6 +7,7 @@ import { evaluateSalesRepAccountBonuses } from "../lib/bonus-engine";
 import { useCommerce } from "../lib/commerce-context";
 import { useCrm } from "../lib/crm-context";
 import { useFirebaseSessionOptional } from "../lib/firebase-session-context";
+import {traceNavigationCommit} from "../lib/performance-diagnostics";
 import { useNotifications } from "../lib/notification-context";
 import { useRuntimeMode } from "../lib/runtime-mode";
 import type { PageKey, WorkspaceUser } from "../lib/types";
@@ -97,6 +98,7 @@ function SectionSubnav(){
 
 function PageView() {
   const { activePage } = useWorkspace();
+  useEffect(()=>traceNavigationCommit(activePage),[activePage]);
   switch (activePage) {
     case "home": return <DashboardPage/>;
     case "work": return <WorkPage/>;
