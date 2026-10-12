@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useState } from "react";
 import { canAdvanceFulfillment, canCreateOrder, isCustomer } from "../../lib/access";
 import { deliveryAddressLabel, hasCompleteDeliveryAddress } from "../../lib/account-address";
 import { useCommerce } from "../../lib/commerce-context";
-import { useDelivery } from "../../lib/delivery-context";
 import { activeReservedForOrder, INVENTORY_LEDGER_STORAGE_KEY, orderCanAdvanceInventory, orderDeliveryQuantity, orderOutboundQuantity, productInventoryStatus } from "../../lib/inventory-ledger";
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import { canCancelOrder } from "../../lib/order-cancellation";
@@ -28,7 +27,6 @@ export function OrdersPage(){
  const{data,scope,currentUser,createOrder,editOrder,cancelOrder,navigate}=useWorkspace();
  const{ledger,advanceOrderFulfillment,releaseOrderReservationsForEdit}=useInventoryLedger();
  const{commerce}=useCommerce();
- const{taskForOrder}=useDelivery();
  const firebase=useFirebaseSessionOptional();
  const focusId=typeof window!=="undefined"?sessionStorage.getItem("momentum-focus-record"):null;
  const editFocusId=typeof window!=="undefined"?sessionStorage.getItem("momentum-edit-order"):null;
@@ -46,7 +44,7 @@ export function OrdersPage(){
  const[accountId,setAccountId]=useState(focusedAccount?.id??scope.accounts[0]?.id??"");
  const[lines,setLines]=useState<DraftLine[]>([newLine()]);
  const customerMode=isCustomer(currentUser);const canFulfill=canAdvanceFulfillment(currentUser);
- const displayStatus=(order:Order):OrderStatus=>taskForOrder(order.id)?.status==="Delivered"&&order.status!=="Paid"?"Delivered":order.status;
+ const displayStatus=(order:Order):OrderStatus=>order.status;
 
  const q=query.trim().toLowerCase();
  const orders=scope.orders.filter((o)=>{const a=scope.accounts.find((x)=>x.id===o.accountId);return!q||`${o.number} ${a?.name??""} ${orderLinesFor(o).map((l)=>l.product).join(" ")} ${displayStatus(o)}`.toLowerCase().includes(q)});

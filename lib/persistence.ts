@@ -486,7 +486,19 @@ class FirestoreBackend{
     try{
       for(let attempt=0;attempt<4;attempt++){
         const {writes,pathKey,nextDocs}=this.buildWrites(keys);
-        if(writes.length===0){for(const key of keys)if(!this.blockedKeys.has(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));break;}
+        if(writes.length===0){
+          for(const key of keys){
+            const spec=DOMAIN_BY_KEY.get(key);
+            const hasWritableTarget=Boolean(spec&&domainDocuments(spec,this.scope).some((doc)=>doc.writable));
+            if(!hasWritableTarget){
+              const message=`${key}: your current role has no authorized cloud write target. The change remains safely queued and is not cloud-confirmed.`;
+              this.blockedKeys.set(key,message);
+              this.dirty.add(key);
+              setStatus({lastError:message});
+            }else if(!this.blockedKeys.has(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+          }
+          break;
+        }
         const stamp=`${new Date().toISOString()}#${Math.random().toString(36).slice(2,8)}`;
         const versionEntries=writes.map((write)=>metaVersionKey(write.path));
         const metaWrite:FirestoreWrite={kind:"merge",path:PLATFORM_META_DOCUMENT,data:{versions:Object.fromEntries(versionEntries.map((entry)=>[entry,stamp]))},fieldPaths:versionEntries.map((entry)=>`versions.${entry}`)};

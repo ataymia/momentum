@@ -36,6 +36,7 @@ test("Delivered driver task reconciles and immediately displays as Delivered in 
   assert.match(delivery,/nextVerifiedDeliveryOrderStatus/);
   assert.match(delivery,/currentUser\.role!=="Delivery Driver"\|\|task\.driverId===currentUser\.id/);
   assert.match(delivery,/setOrderStatus\(candidate\.order\.id,next\)/);
-  assert.match(orders,/taskForOrder\(order\.id\)\?\.status==="Delivered"/);
+  assert.match(orders,/const displayStatus=\(order:Order\):OrderStatus=>order\.status/);
+  assert.doesNotMatch(orders,/taskForOrder\(order\.id\)\?\.status==="Delivered"/);
   assert.match(orders,/selectedDisplayStatus/);
 });

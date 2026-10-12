@@ -54,6 +54,8 @@ test("order delivery validation requires a street, market and five-digit ZIP",()
   assert.equal(hasCompleteDeliveryAddress({...baseAccount,streetAddress:""}),false);
   assert.equal(hasCompleteDeliveryAddress({...baseAccount,postalCode:"8501"}),false);
   assert.equal(hasCompleteDeliveryAddress({...baseAccount,deliveryAddressSameAsBusiness:false,deliveryStreetAddress:"900 Warehouse Rd",deliveryLocation:"Tempe, AZ",deliveryPostalCode:"85281"}),true);
+  assert.equal(hasCompleteDeliveryAddress({...baseAccount,deliveryAddressSameAsBusiness:false,deliveryStreetAddress:"",deliveryLocation:"Tempe, AZ",deliveryPostalCode:"85281"}),false);
+  assert.deepEqual(deliveryAddressForAccount({...baseAccount,deliveryAddressSameAsBusiness:false,deliveryStreetAddress:"",deliveryLocation:"Tempe, AZ",deliveryPostalCode:"85281"}),{streetAddress:undefined,location:"Tempe, AZ",postalCode:"85281"});
 });
 
 test("account creation exposes same-as-business shortcut and separate delivery fields",()=>{

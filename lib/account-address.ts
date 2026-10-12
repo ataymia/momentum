@@ -20,9 +20,9 @@ export function deliveryAddressForAccount(account: Pick<Account,"streetAddress"|
   const business = businessAddressForAccount(account);
   if (account.deliveryAddressSameAsBusiness !== false) return business;
   return {
-    streetAddress: clean(account.deliveryStreetAddress) ?? business.streetAddress,
-    location: clean(account.deliveryLocation) ?? business.location,
-    postalCode: clean(account.deliveryPostalCode) ?? business.postalCode,
+    streetAddress: clean(account.deliveryStreetAddress),
+    location: clean(account.deliveryLocation),
+    postalCode: clean(account.deliveryPostalCode),
   };
 }
 
