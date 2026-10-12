@@ -47,7 +47,7 @@ export function validateAccountProfileEdit(
   actor:VerifiedAccountEditor,
   current:Account,
   untrustedPatch:unknown,
-  verifiedCreator:VerifiedAccountCreator|null,
+  verifiedCreator:VerifiedAccountCreator|null=null,
 ):AccountProfileEditDecision{
   if(actor.accountState!=="Active"||!actor.uid.trim())
     return {ok:false,reason:"The employee is not active and authenticated."};
