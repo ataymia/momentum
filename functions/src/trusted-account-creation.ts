@@ -2,7 +2,6 @@ import {randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 
 type RecordValue=Record<string,unknown>;
-type AccountInput=Record<string,unknown>;
 type ValidCreation={ok:true;record:RecordValue;customerName:string}|
   {ok:false;message:string};
 type CreateResult={accountId:string;createdAt:string;replayed:boolean};
