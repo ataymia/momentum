@@ -39,14 +39,14 @@ export function validateTrustedAccountCreation(input:unknown):ValidCreation{
     "deliveryStreetAddress","deliveryLocation","deliveryPostalCode",
   ];
   if(Object.keys(input).some((key)=>!allowed.includes(key)))
-    return {ok:false,message:"Account creation cannot set ownership or history."};
+    return {ok:false,message:"Creation cannot set account history."};
   const required=["name","location","channel","contactName","contactRole"];
   if(required.some((key)=>!str(input[key])))
-    return {ok:false,message:"Business and primary contact information are required."};
+    return {ok:false,message:"Business and contact details are required."};
   if(!str(input.phone)&&!str(input.mobilePhone)&&!str(input.email))
     return {ok:false,message:"At least one contact method is required."};
   if(!validZip(str(input.postalCode)))
-    return {ok:false,message:"A valid five-digit Arizona ZIP code is required."};
+    return {ok:false,message:"A five-digit ZIP code is required."};
   const same=input.deliveryAddressSameAsBusiness!==false;
   if(!same&&(!str(input.deliveryStreetAddress)||
     !str(input.deliveryLocation)||
@@ -141,7 +141,7 @@ export async function createTrustedCrmAccount(
     if(actor?.accountState!=="Active"||
       !["Administrator","Sales Manager","Sales Representative"].includes(
         str(actor?.role)))
-      throw new TrustedAccountCreationError(403,"Not authorized to create accounts.");
+      throw new TrustedAccountCreationError(403,"Not authorized to create.");
 
     if(priorRequest.exists){
       const existing=priorRequest.data();
