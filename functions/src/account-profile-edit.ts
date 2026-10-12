@@ -89,6 +89,7 @@ export function serverMayEditAccount(
   if(!uid||state!=="Active"||!asRecord(account)||
     string(account.id)!==accountId)return false;
   if(role==="Administrator")return true;
+  if(role!=="Sales Representative"&&role!=="Sales Manager")return false;
   if(!asRecord(proof)||string(proof.accountId)!==accountId)return false;
   return string(proof.creatorUid)===uid &&
     string(account.createdByUid)===uid;
