@@ -725,3 +725,35 @@ describe("Delivery Driver approved marketing visibility", () => {
     await assertFails(getDoc(doc(db,"domains/marketing/fields/campaigns")));
   });
 });
+
+describe("immutable account creator provenance is server-owned", () => {
+  const path = "accountCreatorProvenance/acc-test";
+
+  test("even an active Administrator client cannot read, forge, or overwrite creator proof", async () => {
+    const db = dbFor(ADMIN);
+    await assertFails(getDoc(doc(db, path)));
+    await assertFails(setDoc(doc(db, path), { accountId: "acc-test", creatorUid: ADMIN }));
+  });
+
+  test("reps, managers, Operations and customers cannot mint creator claims", async () => {
+    for (const uid of [REP, OTHER_REP, MANAGER, OPS, DRIVER]) {
+      const db = dbFor(uid);
+      await assertFails(getDoc(doc(db, path)));
+      await assertFails(setDoc(doc(db, path), {accountId:"acc-test", creatorUid:uid}));
+    }
+    await assertFails(setDoc(doc(dbFor(null), path), {accountId:"acc-test", creatorUid:REP}));
+  });
+
+  test("provenance is immutable from every client even if Admin SDK seeds an existing record", async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), path), {
+        accountId:"acc-test", creatorUid:REP,
+        createdAt:"2026-10-12T16:00:00.000Z",
+      });
+    });
+    const db = dbFor(ADMIN);
+    await assertFails(getDoc(doc(db, path)));
+    await assertFails(setDoc(doc(db, path), { creatorUid:ADMIN }, { merge: true }));
+    await assertFails(setDoc(doc(dbFor(REP), path), { creatorUid:REP }, { merge: true }));
+  });
+});
