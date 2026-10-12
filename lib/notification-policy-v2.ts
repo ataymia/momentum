@@ -1,4 +1,6 @@
-import type { Order, WorkspaceData, WorkspaceUser } from "./types";
+import { arizonaDateKey, arizonaHour } from "./date-time";
+import { weeklyReportingObligations, type PerformanceState } from "./performance-engine";
+import type { WorkspaceData, WorkspaceUser } from "./types";
 
 export type NotificationImportance = "critical" | "action" | "status" | "reminder";
 
@@ -11,6 +13,23 @@ export type NotificationIntent = {
   targetPage?: "orders" | "reportingCenter" | "people" | "work";
   targetRecordId?: string;
 };
+
+export function sundayWeeklyReminderIntent(performance: PerformanceState, user: WorkspaceUser, now = new Date()): NotificationIntent | null {
+  if (!["Sales Representative","Sales Manager"].includes(user.role)) return null;
+  const today = arizonaDateKey(now);
+  const weekday = new Date(`${today}T12:00:00-07:00`).getDay();
+  if (weekday !== 0 || arizonaHour(now) < 19) return null;
+  const obligation = weeklyReportingObligations(performance, user.id, today)[0];
+  if (!obligation || obligation.overdue) return null;
+  return {
+    id: `weekly-sunday-reminder:${user.id}:${obligation.weekStart}`,
+    recipientUserId: user.id,
+    title: "Weekly summary reminder",
+    detail: "Your weekly report is due tomorrow. Submit the summary and next week's goals before Monday closes.",
+    importance: "reminder",
+    targetPage: "reportingCenter",
+  };
+}
 
 export function orderMilestoneIntents(data: WorkspaceData, user: WorkspaceUser): NotificationIntent[] {
   const intents: NotificationIntent[] = [];
