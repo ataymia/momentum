@@ -34,7 +34,14 @@ export function buildActionNotices(input:ActionNoticeInputs):ActionNotice[]{
 
   if(admin||manager){
     for(const request of hcm.workflows.filter(item=>item.status==="Submitted"&&item.userId!==currentUser.id&&canManageUser(data,currentUser,item.userId,false)))actions.push({id:`hr:${request.id}`,title:request.title,detail:`${data.users.find(user=>user.id===request.userId)?.name??"Employee"} · ${request.type}`,category:"Human Resources",page:"people",peopleTab:"review",focus:request.id,urgency:"Review"});
+  }
+  if(admin){
     for(const report of performance.reports.filter(item=>item.status==="Submitted"&&item.userId!==currentUser.id&&reportVisibleTo(currentUser,item,data))){const author=data.users.find(user=>user.id===report.userId);actions.push({id:`report:${report.id}`,title:`Review ${report.type.toLowerCase()} report`,detail:`${author?.name??"Employee"} · submitted`,category:"Performance",page:"reportingCenter",focus:report.id,urgency:"Review"});}
+  }
+  if(manager){
+    for(const rep of data.users.filter(user=>user.role==="Sales Representative"&&canManageUser(data,currentUser,user.id,false))){
+      for(const period of weeklyReportingObligations(performance,rep.id,today).filter(item=>item.overdue))actions.push({id:`rep-weekly-overdue:${rep.id}:${period.weekStart}`,title:`${rep.firstName}'s weekly report is overdue`,detail:`Week ${date(period.weekStart)} to ${date(period.weekEnd)} was due ${date(period.dueDate)}.`,category:"Performance",page:"reportingCenter",urgency:"Due"});
+    }
   }
 
   for(const expense of finance.expenses){
