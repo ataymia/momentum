@@ -50,15 +50,16 @@ export function validateServerProfilePatch(input:unknown):Decision{
   const patch:RecordValue={};
   for(const [field,value] of Object.entries(input)){
     if(!fieldSet.has(field))
-      return {ok:false,message:"Only contact and account profile fields may be edited."};
+      return {ok:false,message:"Only account profile fields may be edited."};
     if(field==="deliveryAddressSameAsBusiness"){
       if(typeof value!=="boolean")
-        return {ok:false,message:"The delivery-address option must be true or false."};
+        return {ok:false,message:"Delivery-address option is invalid."};
       patch[field]=value;
       continue;
     }
-    if(typeof value!=="string"||value.length>(field==="notes"?2000:field==="name"?180:500))
-      return {ok:false,message:"A profile field has an invalid value or length."};
+    const limit=field==="notes"?2000:field==="name"?180:500;
+    if(typeof value!=="string"||value.length>limit)
+      return {ok:false,message:"Invalid profile field value or length."};
     const trimmed=value.trim();
     if(field==="name"&&!trimmed)
       return {ok:false,message:"The business name must not be blank."};
@@ -139,7 +140,7 @@ export async function commitTrustedAccountProfileEdit(
     if(!serverMayEditAccount(
       actorUid,string(actor?.role),string(actor?.accountState),
       accountId,proof.data(),existing,
-    ))throw new AccountProfileEditError(403,"Not authorized to edit this account.");
+    ))throw new AccountProfileEditError(403,"Account edit not authorized.");
 
     const changed=Object.fromEntries(
       Object.entries(validated.patch).filter(
@@ -179,7 +180,7 @@ export async function commitTrustedAccountProfileEdit(
     tx.create(eventsRef,event);
     tx.set(activitiesRef,{items:[{
       id:auditId,accountId,userId:actorUid,type:"note",
-      title:"Account profile updated",detail:"Authorized profile fields updated.",
+      title:"Account profile updated",detail:"Profile fields updated.",
       at:stamp,
     },...itemList(activities.data())]});
     const version=stamp+"#"+randomUUID().slice(0,6);
