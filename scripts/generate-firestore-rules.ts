@@ -305,6 +305,11 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Server-only idempotency receipts prevent replayed account creation.
+    match /accountCreationRequests/{requestId} {
+      allow get, list, create, update, delete: if false;
+    }
+
     // --- engine state: shared shards ----------------------------------------
 
     match /domains {
