@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { accountIsVisible, canAdvanceFulfillment, canAssignScheduleUser, canManageSchedule, canReconcileOrderPayment, canReviewApproval, canTransferSalesResponsibility, getWorkspaceScope } from "./access";
+import { appointmentConflict } from "./appointment-scheduling";
 import { validateNewAccountContact } from "./account-creation";
 import { hasCompleteDeliveryAddress } from "./account-address";
 import { normalizeCommercialState } from "./commercial-state";
@@ -500,6 +501,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const ownerId = currentUser.role === "Sales Representative" ? currentUser.id : appointment.ownerId || undefined;
     if (ownerId && !canAssignScheduleUser(data, currentUser, ownerId)) return null;
     const owner = data.users.find((user) => user.id === ownerId);
+    if(ownerId&&appointmentConflict(data.appointments,{ownerId,date:appointment.date,startTime:appointment.startTime,duration:appointment.duration}))return null;
     if(owner?.role==="Sales Representative"&&!documentTerritoryDeviation(account,owner.id,`scheduling ${appointment.type.toLowerCase()}`))return null;
     const id = uid("apt");
     const record: Appointment = { ...appointment, objective: appointment.objective.trim(), id, ownerId, customerId: account.customerId, status: "Scheduled", location: account.streetAddress || account.location, priority: appointment.priority ?? "Normal", tags: appointment.tags ?? [], assignedBy: ownerId ? currentUser.id : undefined, assignedAt: ownerId ? now() : undefined };
@@ -535,7 +537,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
           nextAction: closeout.nextAction.trim(),
           nextActionDate: closeout.nextActionDate,
           stage: closeout.outcome === "Order placed" ? "Opening order" : data.accounts.find((item) => item.id === enhanced.accountId)?.stage,
-          closerId: closeout.outcome === "Order placed" ? enhanced.ownerId : undefined,
+          ...(closeout.outcome === "Order placed" ? { closerId: enhanced.ownerId } : {}),
         },
       },
       activities: [{ id: uid("act-closeout"), accountId: enhanced.accountId, type: "visit", title: `${enhanced.type} completed · ${closeout.outcome}`, detail: `${closeout.closeoutNote.trim()} Next: ${closeout.nextAction.trim()} on ${closeout.nextActionDate}.`, at: now(), userId: currentUser.id }, ...state.activities],
@@ -553,6 +555,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const account=data.accounts.find((item)=>item.id===enhanced.accountId);
     if (ownerId && (!account||!canAssignScheduleUser(data, currentUser, ownerId))) return;
     const owner = ownerId ? data.users.find((user) => user.id === ownerId) : undefined;
+    if(ownerId&&appointmentConflict(data.appointments,{ownerId,date:enhanced.date,startTime:enhanced.startTime,duration:enhanced.duration,excludeId:enhanced.id}))return;
     if(account&&owner?.role==="Sales Representative"&&!documentTerritoryDeviation(account,owner.id,"reassigning this appointment"))return;
     const prior = data.users.find((user) => user.id === enhanced.ownerId);
     setCommercial((state) => ({ ...state, appointments: state.appointments.map((item) => item.id === id ? { ...item, ownerId: ownerId || undefined, assignedBy: ownerId ? currentUser.id : undefined, assignedAt: ownerId ? now() : undefined } : item), activities: [{ id: uid("act-assign"), accountId: enhanced.accountId, type: "note", title: ownerId ? "Appointment assigned" : "Appointment unassigned", detail: `${prior?.name ?? "Unassigned"} → ${owner?.name ?? "Holding area"}.`, at: now(), userId: currentUser.id }, ...state.activities] }));
@@ -566,6 +569,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const account=data.accounts.find((item)=>item.id===enhanced.accountId);
     if (ownerId && (!account||!canAssignScheduleUser(data, currentUser, ownerId))) return false;
     const owner=ownerId?data.users.find((user)=>user.id===ownerId):undefined;
+    if(ownerId&&appointmentConflict(data.appointments,{ownerId,date,startTime,duration:enhanced.duration,excludeId:enhanced.id}))return false;
     if(account&&owner?.role==="Sales Representative"&&!documentTerritoryDeviation(account,owner.id,"moving this appointment"))return false;
     const before = `${enhanced.ownerId ?? "Unassigned"} · ${enhanced.date} ${enhanced.startTime}`;
     const after = `${ownerId ?? "Unassigned"} · ${date} ${startTime}`;
