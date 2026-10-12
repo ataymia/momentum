@@ -1,4 +1,4 @@
 "use client";
 
-/** Stable import path for the notification context. `-v2` is the current implementation. */
-export { NotificationProvider, useNotifications } from "./notification-context-v2";
+/** Stable import path for the unified notification context. `-v3` mirrors Action Center work and key order milestones into the bell. */
+export { NotificationProvider, useNotifications } from "./notification-context-v3";
