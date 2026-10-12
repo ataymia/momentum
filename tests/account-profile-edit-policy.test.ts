@@ -16,7 +16,7 @@ const original={
 const actor=(uid:string,role:VerifiedAccountEditor["role"],accountState:"Active"|"Suspended"="Active"):VerifiedAccountEditor=>({uid,role,accountState});
 
 test("original creator can edit profile even after ownership transfer",()=>{
- const r=validateAccountProfileEdit(actor("rep-original","Sales Representative"),original,{contactName:"New buyer",notes:"Follow up"});
+ const r=validateAccountProfileEdit(actor("rep-original","Sales Representative"),original,{contactName:"New buyer",notes:"Follow up"},{accountId:"acc-1",creatorUid:"rep-original"});
  assert.equal(r.ok,true);
  if(!r.ok)return;
  assert.equal(r.updated.contactName,"New buyer");
@@ -44,7 +44,7 @@ test("unrelated rep, owner and unrelated manager cannot edit",()=>{
 });
 
 test("a Sales Manager who really created the account retains creator authority",()=>{
- const r=validateAccountProfileEdit(actor("manager-1","Sales Manager"),{...original,createdByUid:"manager-1"},{email:"buyer2@example.com"});
+ const r=validateAccountProfileEdit(actor("manager-1","Sales Manager"),{...original,createdByUid:"manager-1"},{email:"buyer2@example.com"},{accountId:"acc-1",creatorUid:"manager-1"});
  assert.equal(r.ok,true);
 });
 
@@ -82,4 +82,12 @@ test("policy is not mistaken for an exposed client account editor or unsecured e
  const functions=readFileSync("functions/src/index.ts","utf8");
  assert.doesNotMatch(ui,/updateAccountProfile\(/);
  assert.doesNotMatch(functions,/export const editAccountProfile\s*=/);
+});
+
+test("a spoofed shared-document creator UID never grants edit access without separate verified provenance",()=>{
+ const forged={...original,createdByUid:"rep-other"};
+ assert.equal(validateAccountProfileEdit(actor("rep-other","Sales Representative"),forged,{phone:"6025550200"}).ok,false);
+ assert.equal(validateAccountProfileEdit(actor("rep-original","Sales Representative"),original,{phone:"6025550200"}).ok,false);
+ assert.equal(validateAccountProfileEdit(actor("rep-other","Sales Representative"),forged,{phone:"6025550200"},{accountId:"wrong-account",creatorUid:"rep-other"}).ok,false);
+ assert.equal(validateAccountProfileEdit(actor("rep-other","Sales Representative"),forged,{phone:"6025550200"},{accountId:"acc-1",creatorUid:"rep-original"}).ok,false);
 });
