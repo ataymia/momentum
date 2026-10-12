@@ -9,7 +9,7 @@ import { useInventoryLedger } from "./inventory-ledger-context";
 import { useMarketing } from "./marketing-context";
 import { NotificationProvider as LegacyNotificationProvider, useNotifications as useLegacyNotifications } from "./notification-context-v2";
 import type { NotificationDelivery } from "./notification-engine";
-import { orderMilestoneIntents, sundayWeeklyReminderIntent } from "./notification-policy-v2";
+import { expenseStatusIntents, orderMilestoneIntents, sundayWeeklyReminderIntent } from "./notification-policy-v2";
 import { usePerformance } from "./performance-context";
 import { useWorkspace } from "./workspace-context";
 
@@ -76,6 +76,25 @@ function UnifiedBridge({children}:{children:ReactNode}){
         targetPage:intent.targetPage,
         targetRecordId:intent.targetRecordId,
         actionLabel:intent.targetPage?"Open":"Review",
+      });
+    }
+
+    for(const intent of expenseStatusIntents(finance,currentUser)){
+      const id=`derived-intent:${intent.id}`;
+      items.push({
+        id,
+        sourceEventId:intent.id,
+        recipientUserId:currentUser.id,
+        channel:"In app",
+        title:intent.title,
+        detail:intent.detail,
+        tone:"success",
+        createdAt,
+        status:readDerived.has(id)?"Read":"Unread",
+        ...(readDerived.has(id)?{readAt:createdAt}:{}),
+        targetPage:intent.targetPage,
+        targetRecordId:intent.targetRecordId,
+        actionLabel:"Open expense",
       });
     }
 
