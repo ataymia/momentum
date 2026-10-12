@@ -10,7 +10,7 @@ import type { PageKey, WorkspaceData, WorkspaceUser } from "./types";
 
 export type ActionUrgency="Blocking"|"Due"|"Review"|"Watch";
 export type ActionNotice={id:string;title:string;detail:string;category:string;page?:PageKey;urgency:ActionUrgency;focus?:string;peopleTab?:string;weeklyWeekStart?:string};
-export type ActionNoticeInputs={data:WorkspaceData;scope:WorkspaceData;currentUser:WorkspaceUser;hcm:HCMState;performance:PerformanceState;finance:FinanceState;marketing:MarketingState;accounting:AccountingState;accountingEvents:AccountingSourceEvent[];ledger:InventoryLedgerState;today?:string};
+export type ActionNoticeInputs={data:WorkspaceData;scope:Pick<WorkspaceData,"appointments">;currentUser:WorkspaceUser;hcm:HCMState;performance:PerformanceState;finance:FinanceState;marketing:MarketingState;accounting:AccountingState;accountingEvents:AccountingSourceEvent[];ledger:InventoryLedgerState;today?:string};
 
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
 const date=(value:string)=>{const parsed=new Date(/^\d{4}-\d{2}-\d{2}$/.test(value)?`${value}T12:00:00-07:00`:value);return Number.isNaN(parsed.getTime())?value:new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric"}).format(parsed);};
