@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PLATFORM_META_DOCUMENT, type PersistenceScope } from "./firebase-access";
+import {recordPerformanceSample} from "./performance-diagnostics";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite } from "./firebase-firestore-rest";
 import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, resolveUserPhysicalField, shardState, type DomainSpec } from "./firestore-domains";
 
@@ -646,10 +647,13 @@ class FirestoreBackend{
   async poll(){
     if(this.disposed||this.flushing||this.polling)return;
     this.polling=true;
+    const pollStarted=performance.now();
+    let changedCount=0;
     try{
       const meta=await getFirestoreSnapshot(PLATFORM_META_DOCUMENT);
       const versions=this.versionsFrom(meta.data);
       const changed=Object.entries(versions).filter(([key,value])=>this.metaVersions[key]!==value).map(([key])=>key);
+      changedCount=changed.length;
       if(changed.length===0)return;
       // Do not acknowledge a version before its records have been loaded successfully.
       // Otherwise a transient fetch failure silently loses the update until a later version arrives.
@@ -688,6 +692,7 @@ class FirestoreBackend{
       if(error instanceof FirestoreRequestError&&error.status===401){setStatus({lastError:"Firebase session expired. Sign in again."});return;}
       setStatus({lastError:error instanceof Error?error.message:"Firestore poll failed."});
     }finally{
+      recordPerformanceSample({operation:"firestore-poll",durationMs:performance.now()-pollStarted,count:changedCount});
       this.polling=false;
     }
   }
