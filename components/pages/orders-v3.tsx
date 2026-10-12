@@ -32,7 +32,7 @@ export function OrdersPage(){
  const{data,scope,currentUser,createOrder,editOrder,cancelOrder,navigate}=useWorkspace();
  const{ledger,advanceOrderFulfillment,releaseOrderReservationsForEdit}=useInventoryLedger();
  const{commerce}=useCommerce();
- const{state:deliveryState,taskForOrder}=useDelivery();
+ const{state:deliveryState}=useDelivery();
  const firebase=useFirebaseSessionOptional();
  const focusId=typeof window!=="undefined"?sessionStorage.getItem("momentum-focus-record"):null;
  const editFocusId=typeof window!=="undefined"?sessionStorage.getItem("momentum-edit-order"):null;
@@ -62,7 +62,7 @@ export function OrdersPage(){
  const customerMode=isCustomer(currentUser);const canFulfill=canAdvanceFulfillment(currentUser);
  const displayStatus=(order:Order):OrderStatus=>order.status;
 
- const deliveredTasks=useMemo(()=>new Set(scope.orders.filter((order)=>taskForOrder(order.id)?.status==="Delivered"||deliveryState.overrides.some((e)=>e.orderId===order.id)).map((order)=>order.id)),[scope.orders,taskForOrder,deliveryState.overrides]);
+ const deliveredTasks=useMemo(()=>new Set(scope.orders.filter((order)=>order.status==="Delivered").map((order)=>order.id)),[scope.orders]);
  const orders=useMemo(()=>filterOrderWorkspace(data,scope.orders,commerce,deliveredTasks,{
    view,search:query,accountId:accountFilter,placedById:repFilter,managerId:managerFilter,placedFrom,placedThrough,dateSort,
  }),[data,scope.orders,commerce,deliveredTasks,view,query,accountFilter,repFilter,managerFilter,placedFrom,placedThrough,dateSort]);
