@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {readFileSync} from "node:fs";
-import * as imported from "../functions/src/trusted-account-creation";
+import * as imported from "../functions/src/trusted-account-validation";
 const moduleRef=imported as typeof imported & {default?:typeof imported};
 const {validateTrustedAccountCreation,potentialDuplicateAccount}=moduleRef.default??moduleRef;
 
