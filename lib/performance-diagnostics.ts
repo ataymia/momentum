@@ -7,7 +7,7 @@ export const PERFORMANCE_DIAGNOSTICS_FLAG="momentum-performance-diagnostics";
 export const PERFORMANCE_DIAGNOSTICS_KEY="momentum-performance-timings";
 export type PerformanceTimingSample={
   at:string;
-  operation:"navigation-paint"|"firestore-batch-read";
+  operation:"navigation-paint"|"navigation-commit"|"firestore-batch-read"|"firestore-poll";
   durationMs:number;
   count?:number;
   page?:string;
@@ -36,10 +36,13 @@ export function recordPerformanceSample(
   }catch{/* Diagnostics must not affect business writes or navigation. */}
 }
 
-/** Measures arrival at painted navigation, not server/data readiness. */
+let pendingNavigation:{page:string;started:number}|null=null;
+
+/** Measures navigation paint, not server/data readiness. */
 export function traceNavigationPaint(page:string){
   if(!enabled())return;
   const started=performance.now();
+  pendingNavigation={page,started};
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     recordPerformanceSample({
       operation:"navigation-paint",
@@ -47,4 +50,16 @@ export function traceNavigationPaint(page:string){
       durationMs:performance.now()-started,
     });
   }));
+}
+
+/** Capture React's commit of the requested module, separately from the first paint. */
+export function traceNavigationCommit(page:string){
+  if(!enabled()||pendingNavigation?.page!==page)return;
+  const started=pendingNavigation.started;
+  pendingNavigation=null;
+  recordPerformanceSample({
+    operation:"navigation-commit",
+    page,
+    durationMs:performance.now()-started,
+  });
 }
