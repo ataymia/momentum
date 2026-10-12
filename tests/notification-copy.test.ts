@@ -5,6 +5,7 @@ import type { AuditEvent } from "../lib/audit-engine";
 import { createDemoData } from "../lib/demo-data";
 import { notificationCopy } from "../lib/notification-engine";
 import { orderMilestoneIntents, sundayWeeklyReminderIntent } from "../lib/notification-policy-v2";
+import { customerInvoiceEmail, customerStatusEmail, outboundEmailDecision } from "../lib/outbound-notification-policy";
 import { createPerformanceSeed } from "../lib/performance-engine";
 
 const data = createDemoData();
@@ -139,4 +140,60 @@ test("Sunday weekly summary reminder does not appear before 7 PM Arizona time", 
   const performance = createPerformanceSeed();
   assert.equal(sundayWeeklyReminderIntent(performance, rep, new Date("2026-10-11T18:59:00-07:00")), null);
   assert.equal(sundayWeeklyReminderIntent(performance, rep, new Date("2026-10-11T19:00:00-07:00"))?.title, "Weekly summary reminder");
+});
+
+
+test("outbound email policy keeps administrator and operations traffic in-app only", () => {
+  const admin = data.users.find((user) => user.role === "Administrator")!;
+  assert.equal(outboundEmailDecision(admin, "order-confirmed:test").send, false);
+  const operations = data.users.find((user) => user.role === "Operations");
+  if (operations) assert.equal(outboundEmailDecision(operations, "program-pricing-expiry:test").send, false);
+});
+
+test("sales rep email policy allows returned approvals, timecards, expense status, weekly reminder, and pricing expiry", () => {
+  const rep = data.users.find((user) => user.id === "usr-jordan")!;
+  for (const source of [
+    "action:approval-returned:1",
+    "action:timecard-returned:1",
+    "action:expense-returned:1",
+    "expense-approved:1",
+    "weekly-sunday-reminder:1",
+    "program-pricing-expiry:1",
+  ]) assert.equal(outboundEmailDecision(rep, source).send, true);
+  assert.equal(outboundEmailDecision(rep, "action:training:1").send, false);
+  assert.equal(outboundEmailDecision(rep, "action:document:1").send, false);
+});
+
+test("customer status email prefers accounts payable, while invoices require billing email", () => {
+  const account = data.accounts.find((item) => item.id === "acc-101")!;
+  const order = {
+    id: "email-routing-order",
+    number: "GE-EMAIL-1",
+    accountId: account.id,
+    cases: 10,
+    pricePerCase: 24,
+    amount: 240,
+    status: "Approved" as const,
+    placedAt: "2026-10-12",
+    ownerId: "usr-jordan",
+    priceBasis: "Tier A",
+    paymentStatus: "Open" as const,
+  };
+  const customerId = account.customerId ?? "customer-email-test";
+  const customer = {
+    id: customerId,
+    name: "Email Test Customer",
+    accountType: "Independent" as const,
+    billingEmail: "billing@example.com",
+    accountsPayableEmail: "ap@example.com",
+    createdAt: "2026-10-12T00:00:00.000Z",
+  };
+  const routed = {
+    ...data,
+    customers: [...(data.customers ?? []).filter((item) => item.id !== customerId), customer],
+    accounts: data.accounts.map((item) => item.id === account.id ? { ...item, customerId } : item),
+    orders: [order],
+  };
+  assert.equal(customerStatusEmail(routed, order.id), "ap@example.com");
+  assert.equal(customerInvoiceEmail(routed, order.id), "billing@example.com");
 });
