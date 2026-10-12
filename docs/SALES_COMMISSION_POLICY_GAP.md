@@ -20,7 +20,7 @@ The current commerce model can represent cleared/reversed payments, payment allo
 
 ## Required controls before payroll integration
 
-1. Record the written effective date of the 2.50% + 0.50% structure. Do not recalculate already-earned commission under a later rate.
+1. Effective scope is **all recorded sales since Momentum's commercial launch**, including backlogged first-month sales, per the 2026-10-10 decision. The precise launch calendar date is unverified, so do not fabricate it. Preserve already-consumed earnings and avoid duplicate payouts.
 2. Define and store immutable commission attribution for each qualifying sale or earning event, including credited representative and credited manager/override recipient where applicable.
 3. Build a commission earnings ledger from reconciled collection events and qualifying adjustments, not from current account ownership alone.
 4. Link refunds, credits, reversals, and other qualifying adjustments back to the original earning so future payroll can adjust without rewriting released payroll history.
@@ -30,4 +30,4 @@ The current commerce model can represent cleared/reversed payments, payment allo
 
 ## Open business control
 
-The new rate's written effective date is not yet recorded in the platform requirements. Until it is, percentage commission must not be auto-calculated or added to a payroll run.
+The 2026-10-10 decision authorizes launch-to-date commission eligibility, removing the unknown-date cutoff. **Payment automation remains blocked** until the Qualifying Net Collected Sales ledger, exclusions, immutable historic rep attribution, adjustment/reversal accounting, and payout consumption are implemented and verified.
