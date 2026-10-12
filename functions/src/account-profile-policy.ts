@@ -1,11 +1,11 @@
-type RecordValue=Record<string,unknown>;
+type RecordValue=Record<string, unknown>;
 type Decision={ok:true;patch:RecordValue}|{ok:false;message:string};
 
 export const PROFILE_FIELDS=[
-  "name","contactName","contactRole","phone","mobilePhone","fax","email",
-  "streetAddress","city","state","postalCode",
-  "deliveryAddressSameAsBusiness","deliveryStreetAddress","deliveryLocation",
-  "deliveryPostalCode","notes",
+  "name", "contactName", "contactRole", "phone", "mobilePhone", "fax", "email",
+  "streetAddress", "city", "state", "postalCode",
+  "deliveryAddressSameAsBusiness", "deliveryStreetAddress", "deliveryLocation",
+  "deliveryPostalCode", "notes",
 ] as const;
 
 const fieldSet=new Set<string>(PROFILE_FIELDS);
@@ -19,28 +19,33 @@ export const string=(value:unknown)=>typeof value==="string"?value.trim():"";
  * @param {unknown} input Untrusted profile patch.
  * @return {Decision} Allowed normalized fields or a rejection.
  */
-export function validateServerProfilePatch(input:unknown):Decision{
-  if(!asRecord(input)||!Object.keys(input).length)
-    return {ok:false,message:"Supply account profile fields to update."};
+export function validateServerProfilePatch(input:unknown):Decision {
+  if (!asRecord(input)||!Object.keys(input).length) {
+    return {ok: false, message: "Supply account profile fields to update."};
+  }
   const patch:RecordValue={};
-  for(const [field,value] of Object.entries(input)){
-    if(!fieldSet.has(field))
-      return {ok:false,message:"Only account profile fields may be edited."};
-    if(field==="deliveryAddressSameAsBusiness"){
-      if(typeof value!=="boolean")
-        return {ok:false,message:"Delivery-address option is invalid."};
+  for (const [field, value] of Object.entries(input)) {
+    if (!fieldSet.has(field)) {
+      return {ok: false, message: "Only account profile fields may be edited."};
+    }
+    if (field==="deliveryAddressSameAsBusiness") {
+      if (typeof value!=="boolean") {
+        return {ok: false, message: "Delivery-address option is invalid."};
+      }
       patch[field]=value;
       continue;
     }
     const limit=field==="notes"?2000:field==="name"?180:500;
-    if(typeof value!=="string"||value.length>limit)
-      return {ok:false,message:"Invalid profile field value or length."};
+    if (typeof value!=="string"||value.length>limit) {
+      return {ok: false, message: "Invalid profile field value or length."};
+    }
     const trimmed=value.trim();
-    if(field==="name"&&!trimmed)
-      return {ok:false,message:"The business name must not be blank."};
+    if (field==="name"&&!trimmed) {
+      return {ok: false, message: "The business name must not be blank."};
+    }
     patch[field]=trimmed;
   }
-  return {ok:true,patch};
+  return {ok: true, patch};
 }
 
 /**
@@ -61,12 +66,12 @@ export function serverMayEditAccount(
   accountId:string,
   proof:unknown,
   account:unknown,
-):boolean{
-  if(!uid||state!=="Active"||!asRecord(account)||
-    string(account.id)!==accountId)return false;
-  if(role==="Administrator")return true;
-  if(role!=="Sales Representative"&&role!=="Sales Manager")return false;
-  if(!asRecord(proof)||string(proof.accountId)!==accountId)return false;
+):boolean {
+  if (!uid||state!=="Active"||!asRecord(account)||
+    string(account.id)!==accountId) return false;
+  if (role==="Administrator") return true;
+  if (role!=="Sales Representative"&&role!=="Sales Manager") return false;
+  if (!asRecord(proof)||string(proof.accountId)!==accountId) return false;
   return string(proof.creatorUid)===uid &&
     string(account.createdByUid)===uid;
 }

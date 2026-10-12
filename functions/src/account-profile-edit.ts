@@ -1,6 +1,6 @@
 import {randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
-import {asRecord,string,serverMayEditAccount,validateServerProfilePatch} from "./account-profile-policy";
+import {asRecord, string, serverMayEditAccount, validateServerProfilePatch} from "./account-profile-policy";
 
 /**
  * Server-only account-profile update. Not exposed as a public Function until
@@ -22,7 +22,7 @@ export class AccountProfileEditError extends Error {
    * @param {number} status Safe HTTP status.
    * @param {string} message End-user-safe explanation.
    */
-  constructor(public readonly status:number,message:string){
+  constructor(public readonly status:number, message:string) {
     super(message);
   }
 }
@@ -39,12 +39,14 @@ export class AccountProfileEditError extends Error {
 export async function commitTrustedAccountProfileEdit(
   actorUid:string,
   request:EditRequest,
-):Promise<ProfileResult>{
-  if(!actorUid||!request||!string(request.accountId))
-    throw new AccountProfileEditError(400,"Account or authorization missing.");
+):Promise<ProfileResult> {
+  if (!actorUid||!request||!string(request.accountId)) {
+    throw new AccountProfileEditError(400, "Account or authorization missing.");
+  }
   const validated=validateServerProfilePatch(request.patch);
-  if(!validated.ok)
-    throw new AccountProfileEditError(400,validated.message);
+  if (!validated.ok) {
+    throw new AccountProfileEditError(400, validated.message);
+  }
 
   const db=getFirestore();
   const accountId=string(request.accountId);
@@ -56,72 +58,75 @@ export async function commitTrustedAccountProfileEdit(
   const eventsRef=db.collection("accountProfileEditEvents").doc();
   const metaRef=db.doc("platform/meta");
 
-  return db.runTransaction(async(tx)=>{
+  return db.runTransaction(async (tx)=>{
     const [
-      access,accounts,proof,commercial,activities,
+      access, accounts, proof, commercial, activities,
     ]=await Promise.all([
-      tx.get(accessRef),tx.get(accountRef),tx.get(creatorRef),
-      tx.get(commercialRef),tx.get(activitiesRef),
+      tx.get(accessRef), tx.get(accountRef), tx.get(creatorRef),
+      tx.get(commercialRef), tx.get(activitiesRef),
     ]);
     const actor=access.data();
     const rows=itemList(accounts.data());
     const existing=rows.find((item)=>string(item.id)===accountId);
-    if(!existing)
-      throw new AccountProfileEditError(404,"The account does not exist.");
-    if(!serverMayEditAccount(
-      actorUid,string(actor?.role),string(actor?.accountState),
-      accountId,proof.data(),existing,
-    ))throw new AccountProfileEditError(403,"Account edit not authorized.");
+    if (!existing) {
+      throw new AccountProfileEditError(404, "The account does not exist.");
+    }
+    if (!serverMayEditAccount(
+      actorUid, string(actor?.role), string(actor?.accountState),
+      accountId, proof.data(), existing,
+    )) throw new AccountProfileEditError(403, "Account edit not authorized.");
 
     const changed=Object.fromEntries(
       Object.entries(validated.patch).filter(
-        ([name,value])=>existing[name]!==value));
-    if(!Object.keys(changed).length)
-      throw new AccountProfileEditError(409,"No changes to save.");
+        ([name, value])=>existing[name]!==value));
+    if (!Object.keys(changed).length) {
+      throw new AccountProfileEditError(409, "No changes to save.");
+    }
 
     const commercialData=commercial.data()?.data;
     const root=asRecord(commercialData)?commercialData:{};
     const accountPatches=asRecord(root.accountPatches)?root.accountPatches:{};
     const priorOverlay=accountPatches[accountId];
     const nextOverlay:RecordValue=asRecord(priorOverlay)?{...priorOverlay}:{};
-    for(const [field,value] of Object.entries(changed)){
-      if(field in nextOverlay)nextOverlay[field]=value;
+    for (const [field, value] of Object.entries(changed)) {
+      if (field in nextOverlay)nextOverlay[field]=value;
     }
     const stamp=new Date().toISOString();
     const auditId="account-profile-"+randomUUID();
     const nextRows=rows.map((row)=>string(row.id)===accountId?
-      {...row,...changed}:row);
+      {...row, ...changed}:row);
     // Writing transactionally protects against concurrent account/CRM writes.
-    tx.set(accountRef,{items:nextRows});
-    if(Object.keys(nextOverlay).some((key)=>changed[key]!==undefined)){
-      tx.set(commercialRef,{
-        data:{...root,accountPatches:{
-          ...accountPatches,[accountId]:nextOverlay,
+    tx.set(accountRef, {items: nextRows});
+    if (Object.keys(nextOverlay).some((key)=>changed[key]!==undefined)) {
+      tx.set(commercialRef, {
+        data: {...root, accountPatches: {
+          ...accountPatches, [accountId]: nextOverlay,
         }},
       });
     }
     const event={
-      id:auditId,accountId,actorUid,at:stamp,
-      operation:"Account profile edited",
-      changedKeys:Object.keys(changed).sort(),
-      before:Object.fromEntries(
-        Object.keys(changed).map((field)=>[field,existing[field]??null])),
-      after:changed,
+      id: auditId, accountId, actorUid, at: stamp,
+      operation: "Account profile edited",
+      changedKeys: Object.keys(changed).sort(),
+      before: Object.fromEntries(
+        Object.keys(changed).map((field)=>[field, existing[field]??null])),
+      after: changed,
     };
-    tx.create(eventsRef,event);
-    tx.set(activitiesRef,{items:[{
-      id:auditId,accountId,userId:actorUid,type:"note",
-      title:"Account profile updated",detail:"Profile fields updated.",
-      at:stamp,
-    },...itemList(activities.data())]});
-    const version=stamp+"#"+randomUUID().slice(0,6);
-    const paths=[accountRef.path,activitiesRef.path];
-    if(Object.keys(nextOverlay).some((key)=>changed[key]!==undefined))
+    tx.create(eventsRef, event);
+    tx.set(activitiesRef, {items: [{
+      id: auditId, accountId, userId: actorUid, type: "note",
+      title: "Account profile updated", detail: "Profile fields updated.",
+      at: stamp,
+    }, ...itemList(activities.data())]});
+    const version=stamp+"#"+randomUUID().slice(0, 6);
+    const paths=[accountRef.path, activitiesRef.path];
+    if (Object.keys(nextOverlay).some((key)=>changed[key]!==undefined)) {
       paths.push(commercialRef.path);
+    }
     const versions=Object.fromEntries(paths.map((path)=>[
-      path.replace(/[^A-Za-z0-9]+/g,"_"),version,
+      path.replace(/[^A-Za-z0-9]+/g, "_"), version,
     ]));
-    tx.set(metaRef,{versions},{merge:true});
-    return {accountId,auditId,updatedAt:stamp};
+    tx.set(metaRef, {versions}, {merge: true});
+    return {accountId, auditId, updatedAt: stamp};
   });
 }
