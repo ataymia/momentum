@@ -176,6 +176,13 @@ service cloud.firestore {
       allow write: if isEmployee() || bootstrapClaimant();
     }
 
+    // Immutable audit proof for owner-authorized off-route deliveries.
+    // Only the authenticated server function may create these records.
+    match /adminDeliveryOverrides/{orderId} {
+      allow get, list: if activeEmployee();
+      allow create, update, delete: if false;
+    }
+
     // --- engine state: shared shards ----------------------------------------
 
     match /domains {
@@ -253,8 +260,8 @@ service cloud.firestore {
 
     // momentum-delivery-v1
     match /delivery/fields/{field} {
-      allow get, list: if field in ['_root', 'tasks'] && ((activeEmployee() && role() in ['Administrator', 'Operations', 'Warehouse', 'Delivery Driver']));
-      allow write: if field in ['_root', 'tasks'] && ((activeEmployee() && role() in ['Administrator', 'Operations', 'Delivery Driver']));
+      allow get, list: if field in ['_root', 'overrides', 'tasks'] && ((activeEmployee() && role() in ['Administrator', 'Operations', 'Warehouse', 'Delivery Driver']));
+      allow write: if field in ['_root', 'overrides', 'tasks'] && (field in ['overrides'] ? (isActiveRole('Administrator')) : (activeEmployee() && role() in ['Administrator', 'Operations', 'Delivery Driver']));
     }
 
     // momentum-finance-v3
