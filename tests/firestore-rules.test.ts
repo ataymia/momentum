@@ -757,3 +757,22 @@ describe("immutable account creator provenance is server-owned", () => {
     await assertFails(setDoc(doc(dbFor(REP), path), { creatorUid:REP }, { merge: true }));
   });
 });
+
+describe("trusted account profile audit records are immutable to browser clients",()=>{
+  const auditPath="accountProfileEditEvents/audit-1";
+  test("only Admin may read the server-generated event, never create/update it",async()=>{
+    await env.withSecurityRulesDisabled(async(context)=>{
+      await setDoc(doc(context.firestore(),auditPath),{
+        id:"audit-1",accountId:"acc-test",actorUid:ADMIN,at:at,
+        changedKeys:["phone"],before:{phone:"old"},after:{phone:"new"},
+      });
+    });
+    await assertSucceeds(getDoc(doc(dbFor(ADMIN),auditPath)));
+    for(const uid of [REP,OTHER_REP,MANAGER,OPS,DRIVER]){
+      await assertFails(getDoc(doc(dbFor(uid),auditPath)));
+      await assertFails(setDoc(doc(dbFor(uid),auditPath),{accountId:"forged"}));
+    }
+    await assertFails(setDoc(doc(dbFor(ADMIN),auditPath),{actorUid:ADMIN},{merge:true}));
+    await assertFails(setDoc(doc(dbFor(ADMIN),"accountProfileEditEvents/forged"),{actorUid:ADMIN}));
+  });
+});
