@@ -81,7 +81,7 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-payroll-v5",id:"payroll",read:ADMIN,write:ADMIN,fields:{payGroups:{},employerTaxRules:{},benefitTaxRules:{},runs:{},liabilities:{},employees:adminOwned(),withholdingProfiles:adminOwned(),disbursements:adminOwned()}},
   {key:"momentum-field-tracking-v1",id:"fieldTracking",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{geofences:{},sessions:perUser("userId",{managerRead:false,managerWrite:false}),samples:perUser("userId",{managerRead:false,managerWrite:false}),appointmentEvents:perUser("userId",{managerRead:false,managerWrite:false}),exceptions:perUser("userId",{managerRead:false,managerWrite:false}),departureAlerts:perUser("userId",{managerRead:false,managerWrite:false})}},
   {key:"momentum-audit-v1",id:"audit",read:ADMIN,write:ADMIN,fields:{events:perUser("actorId",{managerWrite:false,managerRead:false,chunkBytes:350_000})}},
-  {key:"momentum-notification-rules-v1",id:"notificationRules",read:"activeEmployee",write:ADMIN,fields:{preferences:perUser(),deliveries:{...restricted("activeEmployee","activeEmployee"),replaceOnWrite:true}}},
+  {key:"momentum-notification-rules-v1",id:"notificationRules",read:"activeEmployee",write:ADMIN,fields:{preferences:perUser(),deliveries:{...perUser("recipientUserId",{managerRead:false,managerWrite:false,read:"activeEmployee",write:"activeEmployee"}),replaceOnWrite:true}}},
   {key:"momentum-period-locks-v1",id:"periodLocks",read:"activeEmployee",write:ADMIN,fields:{locks:{}}},
 ];
 
