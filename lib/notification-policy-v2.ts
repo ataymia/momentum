@@ -70,3 +70,8 @@ export function expenseStatusIntents(finance: FinanceState, user: WorkspaceUser)
       targetRecordId: expense.id,
     }));
 }
+
+/** Keep accounting-policy work visible in My Work/Finance without creating one bell alert per historical event. */
+export function shouldShowActionNotification(action:{category:string;title:string}):boolean{
+  return !(action.category==="Accounting"&&action.title==="Accounting policy required");
+}
