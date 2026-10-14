@@ -30,7 +30,10 @@ service firebase.storage {
 
     /** Any provisioned employee, including one still onboarding. Mirrors firestore.rules isEmployee(). */
     function isEmployee() {
-      return hasAccessRecord() && access().role != 'Customer';
+      return hasAccessRecord()
+        && access().role != 'Customer'
+        && access().accountState != 'Suspended'
+        && access().accountState != 'Separated';
     }
 
     function isAdmin() {
@@ -45,6 +48,21 @@ service firebase.storage {
         && request.resource.size < 200 * 1024 * 1024
         && request.resource.contentType != null;
       allow delete: if isAdmin();
+    }
+
+    function marketingEditor() {
+      return isEmployee() && access().accountState == 'Active'
+        && access().role in ['Administrator','Marketing'];
+    }
+    match /marketing/{assetId}/{versionId}/{fileName} {
+      allow read: if marketingEditor() || (isEmployee()
+        && firestore.get(/databases/(default)/documents/marketingAssetVersions/$(versionId)).data.status == 'Approved'
+        && firestore.get(/databases/(default)/documents/marketingAssetVersions/$(versionId)).data.deleted == false);
+      allow create: if marketingEditor()
+        && request.resource.size < 200 * 1024 * 1024
+        && request.resource.contentType != null;
+      allow delete: if marketingEditor();
+      allow update: if false;
     }
 
     // Anything not matched above is denied.

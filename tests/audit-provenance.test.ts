@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {readFileSync} from "node:fs";
 import {
   auditEventFingerprint,
   collectAuditableRecords,
   diffAuditableRecords,
+  mergeAuditSnapshots,
   normalizeAuditState,
   type AuditEvent,
 } from "../lib/audit-engine";
@@ -259,4 +261,27 @@ test("legacy created history is retimed from its source timestamp instead of pag
   });
   assert.equal(state.events.length, 1);
   assert.equal(state.events[0].at, "2026-09-18T16:22:10.000Z");
+});
+
+test("a reused unrelated audit snapshot does not generate spurious changes on field activity",()=>{
+  const workspace=collectAuditableRecords("Workspace",{
+    accounts:[{id:"acc-stable",name:"ABC Market",ownerId:"rep-1",stage:"Prospect"}],
+  });
+  const before=mergeAuditSnapshots(workspace,collectAuditableRecords("CRM",{interactions:[]}));
+  const after=mergeAuditSnapshots(workspace,collectAuditableRecords("CRM",{interactions:[{
+    id:"visit-latest",locationId:"acc-stable",userId:"rep-1",type:"Visit",
+    occurredAt:"2026-10-09T20:00:00.000Z",summary:"Visit logged",physicalVisit:true,
+  }]}));
+  const events=diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-10-09T20:05:00.000Z",[rep]);
+  assert.equal(events.length,1);
+  assert.equal(events[0].entityId,"visit-latest");
+  assert.equal(events[0].actorId,"rep-1");
+});
+
+test("global audit collector memoizes domains and skips serialization for reused record references",()=>{
+  const context=readFileSync("lib/audit-context.tsx","utf8");
+  const engine=readFileSync("lib/audit-engine.ts","utf8");
+  assert.match(context,/const workspaceRecords=useMemo\(\(\)=>collectAuditableRecords\("Workspace",data\),\[data\]\)/);
+  assert.match(context,/const fieldRecords=useMemo\(\(\)=>collectAuditableRecords\("Field tracking",auditableFieldTracking\),\[auditableFieldTracking\]\)/);
+  assert.match(engine,/before\.payload === after\.payload \|\| sameValue/);
 });

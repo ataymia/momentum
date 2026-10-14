@@ -31,6 +31,7 @@ const expectedTeam: Record<ProvisionableRole, Exclude<Team, "Customer">> = {
   Operations: "Operations",
   Warehouse: "Operations",
   "Delivery Driver": "Operations",
+  Marketing: "Marketing",
 };
 
 export function validateInternalUserProvisioning(data: WorkspaceData, input: ProvisionInternalUserInput) {

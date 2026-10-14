@@ -12,11 +12,12 @@ export type Role =
   | "Sales Representative"
   | "Brand Ambassador"
   | "Operations"
+  | "Marketing"
   | "Warehouse"
   | "Delivery Driver"
   | "Customer";
 
-export type Team = "Leadership" | "Sales" | "Operations" | "Customer";
+export type Team = "Leadership" | "Sales" | "Operations" | "Marketing" | "Customer";
 
 export type PageKey =
   | "home"
@@ -66,6 +67,8 @@ export type WorkspaceUser = {
   role: Role;
   team: Team;
   managerId?: string;
+  /** UI eligibility only; Firebase userAccess remains the authorization authority. */
+  employmentStatus?: "Active" | "Separated";
   /** Login alias. Work e-mail remains a valid sign-in and recovery identifier for the same Firebase uid. */
   username?: string;
   phone?: string;
@@ -123,6 +126,10 @@ export type CustomerAccount = {
 
 export type Account = {
   id: string;
+  /** Firebase UID captured when this account was created; never infer from ownerId. */
+  createdByUid?: string;
+  /** Actual account creation timestamp. Legacy accounts intentionally lack provenance. */
+  createdAt?: string;
   name: string;
   location: string;
   channel: string;

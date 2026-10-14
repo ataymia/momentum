@@ -4,6 +4,15 @@ import {defineString} from "firebase-functions/params";
 import {initializeApp} from "firebase-admin/app";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
+import {
+  separateEmployee,
+  EmployeeSeparationError,
+} from "./employee-separation";
+
+import {
+  commitAdminDeliveryOverride,
+  DeliveryOverrideError,
+} from "./admin-delivery-override";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -352,6 +361,7 @@ const PROVISIONABLE_TEAMS: Record<string, string> = {
   "Operations": "Operations",
   "Warehouse": "Operations",
   "Delivery Driver": "Operations",
+  Marketing: "Marketing",
 };
 
 type ProvisioningStage =
@@ -1321,6 +1331,16 @@ export const deleteEmployee = onRequest(
       const accessData = access.data() ?? {};
       const directoryData = directory.data() ?? {};
 
+      if (!access.exists || accessData.role === "Administrator" ||
+          !["Password change required", "Onboarding"].includes(
+            textValue(accessData.accountState))) {
+        json(response, 409, {
+          ok: false,
+          message: "Use employee offboarding to preserve work history.",
+        });
+        return;
+      }
+
       const email =
         textValue(accessData.email) ||
         textValue(directoryData.email);
@@ -1405,3 +1425,106 @@ export const deleteEmployee = onRequest(
     }
   },
 );
+
+/**
+ * Administrator-only employee offboarding. This preserves the employee
+ * directory and historical sales, while revoking present assignments.
+ */
+export const separateEmployeeAccess = onRequest(
+  {
+    cors: true,
+    region: "us-central1",
+  },
+  async (request, response) => {
+    if (request.method !== "POST") {
+      json(response, 405, {ok: false, message: "POST required."});
+      return;
+    }
+    const caller = await requireAdministrator(request);
+    if ("stage" in caller) {
+      json(response, caller.status, {
+        ok: false,
+        message: caller.message,
+      });
+      return;
+    }
+    const uid = textValue(request.body?.uid);
+    const confirmation = textValue(request.body?.confirmUid);
+    const reason = textValue(request.body?.reason);
+    if (!uid || uid !== confirmation || reason.length < 5) {
+      json(response, 400, {
+        ok: false,
+        message: "Confirm the exact employee and supply an internal reason.",
+      });
+      return;
+    }
+    try {
+      const result = await separateEmployee(caller.uid, uid, reason);
+      json(response, 200, {ok: true, ...result});
+    } catch (error) {
+      console.error("separateEmployeeAccess failed", error);
+      if (error instanceof EmployeeSeparationError) {
+        json(response, error.status, {
+          ok: false,
+          message: error.message,
+        });
+      } else {
+        json(response, 502, {
+          ok: false,
+          message: "Offboarding needs Administrator review. " +
+            "Verify both Firestore access and Firebase Auth.",
+        });
+      }
+    }
+  },
+);
+
+/** Record an authorized off-route delivery in the existing ledgers. */
+export const adminDeliveryOverride = onRequest(
+  {
+    cors: true,
+    region: "us-central1",
+  },
+  async (request, response) => {
+    if (request.method !== "POST") {
+      json(response, 405, {ok: false, message: "Method not allowed."});
+      return;
+    }
+    const caller = await requireAdministrator(request);
+    if ("stage" in caller) {
+      json(response, caller.status, {
+        ok: false,
+        message: caller.message,
+      });
+      return;
+    }
+    try {
+      const result = await commitAdminDeliveryOverride(
+        caller.uid,
+        request.body,
+      );
+      json(response, 200, {ok: true, ...result});
+    } catch (error) {
+      if (error instanceof DeliveryOverrideError) {
+        json(response, error.status, {
+          ok: false,
+          message: error.message,
+        });
+        return;
+      }
+      console.error("adminDeliveryOverride failed", error);
+      json(response, 502, {
+        ok: false,
+        message: "The override was not saved. No delivery should be assumed.",
+      });
+    }
+  },
+);
+
+export {
+  captureOrderNotifications,
+  captureDeliveryNotifications,
+  captureDeliveryOverrideNotifications,
+  capturePaymentNotifications,
+  captureInvoiceNotifications,
+} from "./notification-observer";

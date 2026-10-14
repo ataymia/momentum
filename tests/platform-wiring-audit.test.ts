@@ -12,7 +12,7 @@ const settings=readFileSync("components/pages/settings-v3.tsx","utf8");
 
 function pageAccessKeys(){
   const block=access.match(/const pageAccess:[\s\S]*?\n};/)?.[0]??"";
-  const arrays=[...block.matchAll(/^\s*(?:Administrator|"Sales Manager"|"Sales Representative"|"Brand Ambassador"|Operations|Warehouse|"Delivery Driver"|Customer):\s*\[([^\]]*)\]/gm)].map((match)=>match[1]);
+  const arrays=[...block.matchAll(/^\s*(?:Administrator|"Sales Manager"|"Sales Representative"|"Brand Ambassador"|Operations|Warehouse|"Delivery Driver"|Marketing|Customer):\s*\[([^\]]*)\]/gm)].map((match)=>match[1]);
   return new Set(arrays.flatMap((row)=>[...row.matchAll(/"([A-Za-z][A-Za-z0-9]*)"/g)].map((match)=>match[1])));
 }
 function renderedKeys(){

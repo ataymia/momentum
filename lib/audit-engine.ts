@@ -397,7 +397,9 @@ export function diffAuditableRecords(
   for (const key of keys) {
     const before = previous.get(key);
     const after = current.get(key);
-    if (before && after && sameValue(before.payload, after.payload)) continue;
+    // Unchanged React/engine records preserve identity. Avoid serializing every unrelated
+    // document when a field-tracking sample or another domain updates.
+    if (before && after && (before.payload === after.payload || sameValue(before.payload, after.payload))) continue;
     const snapshot = after ?? before;
     if (!snapshot) continue;
 

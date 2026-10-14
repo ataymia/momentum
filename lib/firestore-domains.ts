@@ -74,14 +74,14 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-performance-v1",id:"performance",read:"activeEmployee",write:ADMIN_MANAGER,fields:{goals:perUser(),reports:perUser(),notes:perUser("authorId"),weeklyDrafts:perUser()}},
   {key:"momentum-commerce-v1",id:"commerce",read:["Administrator","Sales Manager","Sales Representative","Operations","Delivery Driver"],write:ADMIN,fields:{invoices:{},payments:{},allocations:{},credits:{},refunds:{},notes:{}}},
   {key:"momentum-inventory-ledger-v1",id:"inventoryLedger",read:OPERATIONAL,write:OPERATIONS,fields:{nodes:{read:[...OPERATIONAL,"Delivery Driver"]},movements:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},reservations:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},counts:{read:[...OPERATIONAL,"Delivery Driver"]}}},
-  {key:"momentum-delivery-v1",id:"delivery",read:DELIVERY_READ,write:DELIVERY_WRITE,fields:{tasks:{}}},
+  {key:"momentum-delivery-v1",id:"delivery",read:DELIVERY_READ,write:DELIVERY_WRITE,fields:{tasks:{},overrides:{read:DELIVERY_READ,write:ADMIN}}},
   {key:"momentum-finance-v3",id:"finance",read:ADMIN,write:ADMIN,fields:{expenses:perUser("requesterId")}},
   {key:"momentum-accounting-v1",id:"accounting",read:ADMIN,write:ADMIN,fields:{accounts:{},rules:{},journals:{},reconciliations:{}}},
   {key:"momentum-marketing-v3",id:"marketing",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{requests:perUser("requesterId"),deliveryNotices:{read:[...OPERATIONAL,"Delivery Driver"],write:ADMIN_MANAGER},campaigns:{},spend:{},assets:{},materials:{},materialMovements:{},touches:{},attributions:{},partnerships:{}}},
   {key:"momentum-payroll-v5",id:"payroll",read:ADMIN,write:ADMIN,fields:{payGroups:{},employerTaxRules:{},benefitTaxRules:{},runs:{},liabilities:{},employees:adminOwned(),withholdingProfiles:adminOwned(),disbursements:adminOwned()}},
   {key:"momentum-field-tracking-v1",id:"fieldTracking",read:OPERATIONAL,write:ADMIN_MANAGER,fields:{geofences:{},sessions:perUser("userId",{managerRead:false,managerWrite:false}),samples:perUser("userId",{managerRead:false,managerWrite:false}),appointmentEvents:perUser("userId",{managerRead:false,managerWrite:false}),exceptions:perUser("userId",{managerRead:false,managerWrite:false}),departureAlerts:perUser("userId",{managerRead:false,managerWrite:false})}},
   {key:"momentum-audit-v1",id:"audit",read:ADMIN,write:ADMIN,fields:{events:perUser("actorId",{managerWrite:false,managerRead:false,chunkBytes:350_000})}},
-  {key:"momentum-notification-rules-v1",id:"notificationRules",read:"activeEmployee",write:ADMIN,fields:{preferences:perUser(),deliveries:{...restricted("activeEmployee","activeEmployee"),replaceOnWrite:true}}},
+  {key:"momentum-notification-rules-v1",id:"notificationRules",read:"activeEmployee",write:ADMIN,fields:{preferences:perUser(),deliveries:{...perUser("recipientUserId",{managerRead:false,managerWrite:false,read:"activeEmployee",write:"activeEmployee"}),replaceOnWrite:true}}},
   {key:"momentum-period-locks-v1",id:"periodLocks",read:"activeEmployee",write:ADMIN,fields:{locks:{}}},
 ];
 
@@ -159,7 +159,7 @@ function chunkItems(items:unknown[],maxBytes:number){
   return chunks;
 }
 
-export function roleAllows(rule:RoleRule,scope:PersistenceScope){if(scope.role==="Customer")return false;if(rule==="hasAccess")return true;if(rule==="activeEmployee")return scope.accountState==="Active";return scope.accountState==="Active"&&rule.includes(scope.role);}
+export function roleAllows(rule:RoleRule,scope:PersistenceScope){if(scope.role==="Customer"||["Suspended","Separated"].includes(scope.accountState))return false;if(rule==="hasAccess")return true;if(rule==="activeEmployee")return scope.accountState==="Active";return scope.accountState==="Active"&&rule.includes(scope.role);}
 export const sharedDocPath=(domainId:string,field:string)=>`${SHARED_ROOT}/${domainId}/fields/${field}`;
 export const userDocPath=(uid:string,domainId:string,field:string)=>`${USER_ROOT}/${uid}/${domainId}/${field}`;
 export type ParsedDocPath={domainId:string;field:string;uid?:string};
@@ -171,7 +171,7 @@ export function domainDocuments(spec:DomainSpec,scope:PersistenceScope):DomainDo
   if(sharedReadable)documents.push({path:sharedDocPath(spec.id,ROOT_FIELD),writable:sharedWritable});
   for(const [field,fieldSpec] of Object.entries(spec.fields)){
     const read=fieldSpec.read?roleAllows(fieldSpec.read,scope):sharedReadable;const write=fieldSpec.write?roleAllows(fieldSpec.write,scope):sharedWritable;
-    if(read)documents.push({path:sharedDocPath(spec.id,field),writable:write});if(!fieldSpec.userIdField)continue;
+    if(read)documents.push({path:sharedDocPath(spec.id,field),writable:write});if(!fieldSpec.userIdField||!read)continue;
     const readableUids=new Set(scope.readableUserIds);if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative")for(const uid of scope.supervisedBrandAmbassadorIds)readableUids.add(uid);
     for(const uid of readableUids){
       if(uid!==scope.uid&&scope.role!=="Administrator"&&!scope.managedUserIds.has(uid)&&!(fieldSpec.salesRepSupervise&&scope.supervisedBrandAmbassadorIds.has(uid)))continue;
@@ -184,7 +184,7 @@ export function domainDocuments(spec:DomainSpec,scope:PersistenceScope):DomainDo
   return documents;
 }
 
-export function userShardWritable(_spec:DomainSpec,fieldSpec:DomainFieldSpec,uid:string,scope:PersistenceScope){if(scope.role==="Customer")return false;if(scope.role==="Administrator")return true;if(uid===scope.uid)return fieldSpec.selfWrite!==false;if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative"&&scope.supervisedBrandAmbassadorIds.has(uid))return scope.accountState==="Active";if(scope.managedUserIds.has(uid))return fieldSpec.managerWrite!==false&&scope.accountState==="Active";return false;}
+export function userShardWritable(_spec:DomainSpec,fieldSpec:DomainFieldSpec,uid:string,scope:PersistenceScope){if(scope.role==="Customer"||["Suspended","Separated"].includes(scope.accountState))return false;if(scope.role==="Administrator")return true;if(uid===scope.uid)return fieldSpec.selfWrite!==false;if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative"&&scope.supervisedBrandAmbassadorIds.has(uid))return scope.accountState==="Active";if(scope.managedUserIds.has(uid))return fieldSpec.managerWrite!==false&&scope.accountState==="Active";return false;}
 export function documentWritable(path:string,scope:PersistenceScope){const parsed=parseDocPath(path);if(!parsed)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)return false;if(parsed.uid){const resolved=resolveUserPhysicalField(spec,parsed.field);return Boolean(resolved?.fieldSpec.userIdField)&&userShardWritable(spec,resolved!.fieldSpec,parsed.uid,scope);}const fieldSpec=parsed.field===ROOT_FIELD?undefined:spec.fields[parsed.field];return roleAllows(fieldSpec?.write??spec.write,scope);}
 export function documentReplacesOnWrite(path:string){
   const parsed=parseDocPath(path);if(!parsed||parsed.field===ROOT_FIELD)return false;

@@ -60,11 +60,12 @@ export function normalizeNotificationState(input: unknown, users: WorkspaceUser[
 }
 
 export function resolveNotificationRecipients(event: AuditEvent, data: WorkspaceData): string[] {
+  data={...data,users:data.users.filter(user=>user.employmentStatus!=="Separated")};
   if (event.collection === "approvals" && event.action === "Created") {
     return data.users.filter((user) => user.role === "Administrator" && user.id !== event.actorId).map((user) => user.id);
   }
   if (event.collection === "approvals" && event.action === "Updated" && event.relatedUserId) {
-    return event.relatedUserId === event.actorId ? [] : [event.relatedUserId];
+    return event.relatedUserId === event.actorId || !data.users.some(user=>user.id===event.relatedUserId) ? [] : [event.relatedUserId];
   }
   if (event.sensitivity === "admin") {
     const admins = data.users.filter((user) => user.role === "Administrator").map((user) => user.id);

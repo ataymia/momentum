@@ -5,15 +5,18 @@ export type SalesCommissionPolicy = {
   representativeRate: number;
   managerOverrideRate: number;
   maxCombinedRate: number;
-  /** Written prospective effective date. Null means the rate is approved but not yet safe to calculate in payroll. */
+  /** A dated change, if explicitly approved; not inferred from system timestamps. */
   effectiveDate: string | null;
+  /** Approved launch-to-date treatment for all recorded Momentum sales, including backlog. */
+  retroactiveToLaunch?: boolean;
 };
 
 /**
- * Confirmed 2026-09-15 standard allocation for representative-generated qualifying sales.
+ * Approved 2.50% representative plus 0.50% eligible-manager allocation.
  *
- * Do not infer retroactivity. The written effective date still has to be approved before percentage
- * commission can be calculated or added to payroll.
+ * October 10, 2026 direction: apply to all Momentum sales since business launch,
+ * including existing/backlogged orders. No calendar launch date was verified.
+ * Collection and qualifying revenue reconciliation still gate actual payroll.
  */
 export const STANDARD_SALES_COMMISSION_POLICY: SalesCommissionPolicy = {
   basis: "Qualifying Net Collected Sales",
@@ -21,6 +24,7 @@ export const STANDARD_SALES_COMMISSION_POLICY: SalesCommissionPolicy = {
   managerOverrideRate: 0.005,
   maxCombinedRate: 0.03,
   effectiveDate: null,
+  retroactiveToLaunch: true,
 };
 
 export const QUALIFYING_NET_COLLECTED_SALES_EXCLUSIONS = [
@@ -43,8 +47,9 @@ export function salesCommissionPolicyProblem(policy: SalesCommissionPolicy = STA
   if (!Number.isFinite(policy.managerOverrideRate) || policy.managerOverrideRate < 0) return "Sales Manager override rate is invalid.";
   if (!Number.isFinite(policy.maxCombinedRate) || policy.maxCombinedRate < 0) return "Maximum combined commission rate is invalid.";
   if (Math.abs(policy.representativeRate + policy.managerOverrideRate - policy.maxCombinedRate) > 0.0000001) return "Commission allocation does not equal the approved maximum combined rate.";
-  if (!policy.effectiveDate) return "Written commission effective date is required before payroll calculation.";
-  if (!isValidCalendarDateKey(policy.effectiveDate)) return "Commission effective date is invalid.";
+  if (policy.retroactiveToLaunch && policy.effectiveDate) return "Choose launch-to-date or a dated policy, not both.";
+  if (!policy.retroactiveToLaunch && !policy.effectiveDate) return "Commission effective date or an approved launch-to-date rule is required.";
+  if (policy.effectiveDate && !isValidCalendarDateKey(policy.effectiveDate)) return "Commission effective date is invalid.";
   return null;
 }
 

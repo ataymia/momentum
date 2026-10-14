@@ -8,6 +8,7 @@ const pageAccess: Record<WorkspaceUser["role"], PageKey[]> = {
   Operations: ["home","work","actions","dispatch","orders","orderCash","inventory","inventoryLedger","products","marketing","people","employees","timekeeping","materials","payroll","finance","reports","reportingCenter","help"],
   Warehouse: ["home","work","actions","orders","inventory","inventoryLedger","products","people","employees","timekeeping","materials","payroll","reports","reportingCenter","help"],
   "Delivery Driver": ["home","work","actions","orders","inventory","inventoryLedger","people","employees","timekeeping","materials","reports","reportingCenter","help"],
+  Marketing: ["home","work","actions","marketing","timekeeping","people","materials","help"],
   Customer: ["home","accounts","orders","help"],
 };
 
@@ -48,7 +49,7 @@ export const canSuperviseBrandAmbassador = (data: WorkspaceData, actor: Workspac
 export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
   if (!actor) return false;
   const target = data.users.find((user) => user.id === targetUserId);
-  if (!target || target.role === "Customer" || target.role === "Warehouse" || target.role === "Brand Ambassador") return false;
+  if (!target || target.employmentStatus === "Separated" || target.role === "Customer" || target.role === "Warehouse" || target.role === "Brand Ambassador") return false;
   if (actor.role === "Administrator") return ["Sales", "Operations", "Leadership"].includes(target.team);
   if (actor.role === "Operations") return target.team === "Operations";
   if (actor.role === "Sales Manager") return target.team === "Sales" && canManageUser(data, actor, target.id, true);
@@ -60,9 +61,12 @@ export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, accou
   if (["Administrator","Operations","Warehouse"].includes(user.role)) return true;
   if (user.role === "Delivery Driver") return data.orders.some((order) => order.accountId === account.id && ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status));
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
-  if (user.role === "Brand Ambassador") return false;
+  if (["Brand Ambassador","Marketing"].includes(user.role)) return false;
   if (user.role === "Sales Representative") return account.ownerId === user.id || (!account.ownerId && account.stage === "Prospect");
-  return Boolean(account.ownerId) && managedUserIds(data, user).has(account.ownerId);
+  // Unassigned customers remain visible to managers for safe reassignment.
+  // Sales Representatives can self-claim only unassigned prospects, never
+  // automatically inherit payment-bearing or already-active customers.
+  return !account.ownerId || managedUserIds(data, user).has(account.ownerId);
 };
 
 /** Only an unassigned Prospect may be self-claimed. Existing customers still use managed responsibility transfer. */
@@ -76,7 +80,7 @@ export const canClaimUnassignedProspect = (user: WorkspaceUser | null | undefine
 export const canTransferSalesResponsibility = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, account: Account, targetUserId: string) => {
   if (!actor || !["Administrator", "Sales Manager"].includes(actor.role) || !accountIsVisible(data, actor, account)) return false;
   const target = data.users.find((user) => user.id === targetUserId && ["Sales Representative", "Sales Manager"].includes(user.role));
-  if (!target) return false;
+  if (!target || target.employmentStatus === "Separated") return false;
   if (actor.role === "Administrator") return true;
   return target.team === "Sales" && canManageUser(data, actor, target.id, true);
 };
@@ -115,7 +119,7 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
           ? data.appointments.filter(item => item.ownerId === user.id)
           : [];
   const orders = ["Administrator","Operations","Warehouse"].includes(user.role) ? data.orders : user.role === "Delivery Driver" ? data.orders.filter((order) => ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status)) : data.orders.filter(order => accountIds.has(order.accountId));
-  const placements = ["Customer","Operations","Warehouse","Brand Ambassador","Delivery Driver"].includes(user.role) ? [] : user.role === "Administrator" ? data.placements : data.placements.filter(item => accountIds.has(item.accountId));
+  const placements = ["Customer","Operations","Warehouse","Brand Ambassador","Delivery Driver","Marketing"].includes(user.role) ? [] : user.role === "Administrator" ? data.placements : data.placements.filter(item => accountIds.has(item.accountId));
   const approvals = user.role === "Administrator" ? data.approvals : user.role === "Sales Manager" ? data.approvals.filter(item => (item.requesterId && managedIds.has(item.requesterId)) || Boolean(item.team && (user.managedTeams ?? []).includes(item.team))) : data.approvals.filter(item => item.requesterId === user.id);
   const visibleTimeUserIds = user.role === "Administrator" ? new Set(data.users.filter((candidate) => candidate.role !== "Customer").map((candidate) => candidate.id)) : user.role === "Sales Manager" ? managedIds : new Set([user.id]);
   const timecards = data.timecards.filter((card) => visibleTimeUserIds.has(card.userId));
@@ -132,7 +136,7 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
       ? data.activities.filter((item) => item.type === "order")
     : user.role === "Warehouse"
       ? data.activities.filter(item => item.type === "order")
-      : user.role === "Brand Ambassador"
+      : ["Brand Ambassador","Marketing"].includes(user.role)
         ? []
         : data.activities.filter(item => !item.accountId || accountIds.has(item.accountId));
   return {
