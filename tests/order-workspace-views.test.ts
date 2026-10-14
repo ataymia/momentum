@@ -47,6 +47,6 @@ test("typed account, placer and manager filters work together without selecting 
  assert.deepEqual(rows.map(o=>o.id),["o1"]);
  assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),{view:"All Orders",accountQuery:"xyZ"}).map(o=>o.id),["o4","o3"]);
  assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),{view:"All Orders",placedByQuery:"matt"}).map(o=>o.id),["o2"]);
- assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),{view:"All Orders",managerQuery:"manager"}).map(o=>o.id),["o4","o3","o1","o2"].filter(id=>id!=="o2"));
+ assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),{view:"All Orders",managerQuery:"manager"}).map(o=>o.id),["o4","o2","o1","o3"]);
  assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),{view:"All Orders",accountQuery:"   "}).map(o=>o.id),["o4","o2","o1","o3"]);
 });
