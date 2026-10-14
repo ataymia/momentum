@@ -180,7 +180,7 @@ export async function separateEmployee(
     }
     const paths=["employeeDirectory"];
     if (releasedAccountIds.length) {
-      paths.push("domains_commercial_fields__root");
+      paths.push("domains_commercial_fields_root");
     }
     if (suspendedTerritoryIds.length) {
       paths.push("domains_commercial_fields_territories");
@@ -201,17 +201,22 @@ export async function separateEmployee(
   // Firestore's live rules deny separated identities as soon as the above
   // transaction commits. Now also lock Firebase Auth and refresh tokens.
   // A failure here is retryable: no account/history rollback is attempted.
+  let authDisabled=true;
   try {
     await getAuth().updateUser(targetUid, {disabled: true});
     await getAuth().revokeRefreshTokens(targetUid);
   } catch (error) {
     const code=record(error)?text(error.code):"";
-    if (code!=="auth/user-not-found") {
+    if (code==="auth/user-not-found") {
+      // The identity is already gone; do not report an Auth disable that
+      // never took place. Firestore access remains revoked.
+      authDisabled=false;
+    } else {
       throw new EmployeeSeparationError(
         502, "Workspace access was revoked. Firebase Auth lockout " +
         "needs Administrator verification and retry.");
     }
   }
 
-  return {...outcome, authDisabled: true};
+  return {...outcome, authDisabled};
 }
