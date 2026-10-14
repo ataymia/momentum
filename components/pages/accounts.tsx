@@ -71,7 +71,7 @@ export function AccountsPage(){
   const canManagePricing=Boolean(currentUser&&["Administrator","Sales Manager"].includes(currentUser.role));
   const canTransfer=Boolean(currentUser&&["Administrator","Sales Manager"].includes(currentUser.role));
   const territoryEnabled=territorySystemEnabled(data);
-  const salesUsers=data.users.filter((user)=>["Sales Representative","Sales Manager"].includes(user.role));
+  const salesUsers=data.users.filter((user)=>user.employmentStatus!=="Separated"&&["Sales Representative","Sales Manager"].includes(user.role));
   const handoffTarget=data.users.find((user)=>user.id===handoffTo);
   const handoffDiffersFromSuggestion=Boolean(handoffTarget?.role==="Sales Representative"&&territoryEnabled&&selectedTerritory?.ownerId!==handoffTarget.id);
 
