@@ -48,7 +48,7 @@ export const canSuperviseBrandAmbassador = (data: WorkspaceData, actor: Workspac
 export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
   if (!actor) return false;
   const target = data.users.find((user) => user.id === targetUserId);
-  if (!target || target.role === "Customer" || target.role === "Warehouse" || target.role === "Brand Ambassador") return false;
+  if (!target || target.employmentStatus === "Separated" || target.role === "Customer" || target.role === "Warehouse" || target.role === "Brand Ambassador") return false;
   if (actor.role === "Administrator") return ["Sales", "Operations", "Leadership"].includes(target.team);
   if (actor.role === "Operations") return target.team === "Operations";
   if (actor.role === "Sales Manager") return target.team === "Sales" && canManageUser(data, actor, target.id, true);
@@ -79,7 +79,7 @@ export const canClaimUnassignedProspect = (user: WorkspaceUser | null | undefine
 export const canTransferSalesResponsibility = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, account: Account, targetUserId: string) => {
   if (!actor || !["Administrator", "Sales Manager"].includes(actor.role) || !accountIsVisible(data, actor, account)) return false;
   const target = data.users.find((user) => user.id === targetUserId && ["Sales Representative", "Sales Manager"].includes(user.role));
-  if (!target) return false;
+  if (!target || target.employmentStatus === "Separated") return false;
   if (actor.role === "Administrator") return true;
   return target.team === "Sales" && canManageUser(data, actor, target.id, true);
 };
