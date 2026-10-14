@@ -11,7 +11,7 @@ const base={
   id:"acc-1",name:"A store",ownerId:"megan",stage:"Placed",
   originatorId:"megan",closerId:"megan",lifetimeCases:42,
   createdByUid:"megan",accountManagerId:"megan",
-} as Account;
+} as unknown as Account;
 const other={
   ...base,id:"acc-2",name:"B store",ownerId:"someone-else",
   originatorId:"megan",closerId:"megan",
