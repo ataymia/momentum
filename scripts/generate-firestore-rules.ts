@@ -94,7 +94,7 @@ function userBlock(spec: DomainSpec): string {
     ? `(${physicalFieldCondition(spec, salesRepSupervise)} && supervisesBrandAmbassador(uid) && activeEmployee())`
     : "false";
 
-  const ownerReadable = "uid == request.auth.uid ? hasAccessRecord()";
+  const ownerReadable = "uid == request.auth.uid ? isEmployee()";
   const ownerWritable = noSelfWrite.length
     ? `uid == request.auth.uid ? (!(${physicalFieldCondition(spec, noSelfWrite)}) && isEmployee())`
     : "uid == request.auth.uid ? isEmployee()";
