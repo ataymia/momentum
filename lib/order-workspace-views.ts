@@ -21,6 +21,7 @@ export function orderIsFullyPaid(order:Order,commerce:CommerceState):boolean{
   return Boolean(invoice&&computedInvoiceStatus(commerce,invoice)==="Paid"&&invoiceBalance(commerce,invoice)<=0);
 }
 export function orderWorkspaceView(order:Order,commerce:CommerceState,deliveredTask:boolean):Exclude<OrderWorkspaceView,"All Orders">{
+  void commerce;
   if(order.status==="Cancelled")return "Hidden / Canceled";
   // Fulfillment and collections are independent: Finance owns unpaid delivered invoices.
   if(orderIsDelivered(order,deliveredTask))return "Delivered";
