@@ -93,3 +93,25 @@ export async function lookupProvisioningStatus(session:FirebaseAuthSession,email
 export async function deleteEmployeeIdentity(session:FirebaseAuthSession,uid:string):Promise<DeleteEmployeeSuccess>{
   return callAdminEndpoint<DeleteEmployeeSuccess>(firebaseFunctionUrl("deleteEmployee"),session,{uid});
 }
+
+export type SeparatedEmployeeResult={
+  ok:true;
+  uid:string;
+  separatedAt:string;
+  releasedAccountIds:string[];
+  suspendedTerritoryIds:string[];
+  authDisabled:boolean;
+};
+
+/** Permanently blocks login while preserving every historical employee record. */
+export async function separateEmployeeIdentity(
+  session:FirebaseAuthSession,
+  uid:string,
+  reason:string,
+):Promise<SeparatedEmployeeResult>{
+  return callAdminEndpoint<SeparatedEmployeeResult>(
+    firebaseFunctionUrl("separateEmployeeAccess"),
+    session,
+    {uid,confirmUid:uid,reason},
+  );
+}
