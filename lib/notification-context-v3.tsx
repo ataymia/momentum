@@ -9,7 +9,7 @@ import { useInventoryLedger } from "./inventory-ledger-context";
 import { useMarketing } from "./marketing-context";
 import { NotificationProvider as LegacyNotificationProvider, useNotifications as useLegacyNotifications } from "./notification-context-v2";
 import type { NotificationDelivery } from "./notification-engine";
-import { expenseStatusIntents, orderMilestoneIntents, sundayWeeklyReminderIntent } from "./notification-policy-v2";
+import { expenseStatusIntents, orderMilestoneIntents, sundayWeeklyReminderIntent, shouldShowActionNotification } from "./notification-policy-v2";
 import { usePerformance } from "./performance-context";
 import { useWorkspace } from "./workspace-context";
 
@@ -42,7 +42,7 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
     const items:NotificationDelivery[]=[];
 
     if(currentUser.role!=="Customer"){
-      for(const action of buildActionNotices({data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger})){
+      for(const action of buildActionNotices({data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger}).filter(shouldShowActionNotification)){
         const id=`derived-action:${action.id}`;
         items.push({
           id,
