@@ -1,29 +1,30 @@
-import {randomUUID} from "node:crypto";
+import {randomUUID} from "node: crypto";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
 
 type Row=Record<string, unknown>;
 type Result={
-  uid:string;
-  separatedAt:string;
-  releasedAccountIds:string[];
-  suspendedTerritoryIds:string[];
-  authDisabled:boolean;
+  uid: string;
+  separatedAt: string;
+  releasedAccountIds: string[];
+  suspendedTerritoryIds: string[];
+  authDisabled: boolean;
 };
 
-const record=(value:unknown):value is Row=>
+const record=(value: unknown):value is Row=>
   Boolean(value && typeof value==="object" && !Array.isArray(value));
-const text=(value:unknown):string=>
+const text=(value: unknown):string=>
   typeof value==="string"?value.trim():"";
-const rows=(value:unknown):Row[]=>
+const rows=(value: unknown):Row[]=>
   Array.isArray(value)?value.filter(record):[];
 
+/** A recoverable and client-safe employee offboarding failure. */
 export class EmployeeSeparationError extends Error {
   /**
    * @param {number} status HTTP status.
    * @param {string} message Client-safe explanation.
    */
-  constructor(public readonly status:number, message:string) {
+  constructor(public readonly status: number, message: string) {
     super(message);
   }
 }
@@ -42,14 +43,14 @@ export class EmployeeSeparationError extends Error {
  * @return {Promise<Result>} Release counts and identity lockout result.
  */
 export async function separateEmployee(
-  adminUid:string,
-  targetUid:string,
-  reason:string,
+  adminUid: string,
+  targetUid: string,
+  reason: string,
 ):Promise<Result> {
   if (!adminUid || !targetUid || adminUid===targetUid ||
       reason.trim().length<5 || reason.length>500) {
     throw new EmployeeSeparationError(
-      400,"Choose another employee and provide a reason.");
+      400, "Choose another employee and provide a reason.");
   }
 
   const db=getFirestore();
@@ -64,70 +65,70 @@ export async function separateEmployee(
 
   const outcome=await db.runTransaction(async (tx) => {
     const [
-      admin,target,directory,accountDoc,commercial,territoryDoc,audit,
+      admin, target, directory, accountDoc, commercial, territoryDoc, audit,
     ]=await Promise.all([
-      tx.get(adminRef),tx.get(targetRef),tx.get(directoryRef),
-      tx.get(accountsRef),tx.get(commercialRef),tx.get(territoriesRef),
+      tx.get(adminRef), tx.get(targetRef), tx.get(directoryRef),
+      tx.get(accountsRef), tx.get(commercialRef), tx.get(territoriesRef),
       tx.get(auditRef),
     ]);
     const adminData=admin.data();
     const targetData=target.data();
     if (adminData?.role!=="Administrator" ||
         adminData.accountState!=="Active") {
-      throw new EmployeeSeparationError(403,"Administrator access required.");
+      throw new EmployeeSeparationError(403, "Administrator access required.");
     }
     if (!target.exists || !directory.exists) {
-      throw new EmployeeSeparationError(404,"Employee record not found.");
+      throw new EmployeeSeparationError(404, "Employee record not found.");
     }
     if (targetData?.role==="Administrator") {
       throw new EmployeeSeparationError(
-        403,"Administrator separation requires separate approval.");
+        403, "Administrator separation requires separate approval.");
     }
 
     // A retry after a partial Firebase Auth failure must be safe.
     if (audit.exists && targetData?.accountState==="Separated") {
       const prior=audit.data();
       return {
-        uid:targetUid,
-        separatedAt:text(prior?.separatedAt),
-        releasedAccountIds:Array.isArray(prior?.releasedAccountIds)?
+        uid: targetUid,
+        separatedAt: text(prior?.separatedAt),
+        releasedAccountIds: Array.isArray(prior?.releasedAccountIds)?
           prior.releasedAccountIds.filter(
-            (value:unknown):value is string=>typeof value==="string") : [],
-        suspendedTerritoryIds:Array.isArray(prior?.suspendedTerritoryIds)?
+            (value: unknown):value is string=>typeof value==="string") : [],
+        suspendedTerritoryIds: Array.isArray(prior?.suspendedTerritoryIds)?
           prior.suspendedTerritoryIds.filter(
-            (value:unknown):value is string=>typeof value==="string") : [],
+            (value: unknown):value is string=>typeof value==="string") : [],
       };
     }
 
     const baseAccounts=rows(accountDoc.data()?.items);
     const rawRoot=commercial.data()?.data;
-    const root=record(rawRoot)?rawRoot:{};
+    const root=record(rawRoot)?rawRoot: {};
     const currentPatches=record(root.accountPatches)?
-      root.accountPatches:{};
-    const patches:Row={...currentPatches};
-    const releasedAccountIds:string[]=[];
+      root.accountPatches: {};
+    const patches: Row={...currentPatches};
+    const releasedAccountIds: string[]=[];
     const stamp=new Date().toISOString();
 
     for (const account of baseAccounts) {
       const id=text(account.id);
       if (!id) continue;
       const candidate=currentPatches[id];
-      const prior=record(candidate)?candidate:{};
+      const prior=record(candidate)?candidate: {};
       const owner=typeof prior.ownerId==="string"?
-        prior.ownerId:text(account.ownerId);
+        prior.ownerId: text(account.ownerId);
       if (owner!==targetUid) continue;
       patches[id]={
         ...prior,
-        ownerId:"",
-        accountManagerId:"",
-        responsibilityStartedAt:stamp,
-        lastActivity:"Account released after employee separation",
+        ownerId: "",
+        accountManagerId: "",
+        responsibilityStartedAt: stamp,
+        lastActivity: "Account released after employee separation",
       };
       releasedAccountIds.push(id);
     }
 
     const currentTerritories=rows(territoryDoc.data()?.items);
-    const suspendedTerritoryIds:string[]=[];
+    const suspendedTerritoryIds: string[]=[];
     const territories=currentTerritories.map((territory) => {
       if (text(territory.ownerId)!==targetUid) return territory;
       const id=text(territory.id);
@@ -136,46 +137,46 @@ export async function separateEmployee(
       void ownerId;
       return {
         ...history,
-        status:"Suspended",
-        updatedAt:stamp,
-        updatedBy:adminUid,
-        notes:text(territory.notes) +
+        status: "Suspended",
+        updatedAt: stamp,
+        updatedBy: adminUid,
+        notes: text(territory.notes) +
           " | Employee separated; territory awaits reassignment.",
       };
     });
 
-    tx.update(targetRef,{
-      accountState:"Separated",
-      updatedAt:stamp,
-      updatedBy:adminUid,
+    tx.update(targetRef, {
+      accountState: "Separated",
+      updatedAt: stamp,
+      updatedBy: adminUid,
     });
-    tx.set(directoryRef,{
-      employmentStatus:"Separated",
-      separatedAt:stamp,
-    },{merge:true});
+    tx.set(directoryRef, {
+      employmentStatus: "Separated",
+      separatedAt: stamp,
+    }, {merge: true});
     if (releasedAccountIds.length) {
-      tx.set(commercialRef,{
-        data:{...root, accountPatches:patches},
+      tx.set(commercialRef, {
+        data: {...root, accountPatches: patches},
       });
     }
     if (suspendedTerritoryIds.length) {
-      tx.set(territoriesRef,{items:territories});
+      tx.set(territoriesRef, {items: territories});
     }
 
     const event={
-      uid:targetUid,
-      actorUid:adminUid,
-      separatedAt:stamp,
-      reason:reason.trim(),
-      previousState:text(targetData?.accountState),
+      uid: targetUid,
+      actorUid: adminUid,
+      separatedAt: stamp,
+      reason: reason.trim(),
+      previousState: text(targetData?.accountState),
       releasedAccountIds,
       suspendedTerritoryIds,
-      historyPreserved:true,
+      historyPreserved: true,
     };
     if (audit.exists) {
-      tx.update(auditRef,event);
+      tx.update(auditRef, event);
     } else {
-      tx.create(auditRef,event);
+      tx.create(auditRef, event);
     }
     const paths=["employeeDirectory"];
     if (releasedAccountIds.length) {
@@ -184,14 +185,14 @@ export async function separateEmployee(
     if (suspendedTerritoryIds.length) {
       paths.push("domains_commercial_fields_territories");
     }
-    const version=stamp+"#"+randomUUID().slice(0,6);
-    tx.set(metaRef,{
-      versions:Object.fromEntries(paths.map((key)=>[key,version])),
-    },{merge:true});
+    const version=stamp+"#"+randomUUID().slice(0, 6);
+    tx.set(metaRef, {
+      versions: Object.fromEntries(paths.map((key)=>[key, version])),
+    }, {merge: true});
 
     return {
-      uid:targetUid,
-      separatedAt:stamp,
+      uid: targetUid,
+      separatedAt: stamp,
       releasedAccountIds,
       suspendedTerritoryIds,
     };
@@ -201,16 +202,16 @@ export async function separateEmployee(
   // transaction commits. Now also lock Firebase Auth and refresh tokens.
   // A failure here is retryable: no account/history rollback is attempted.
   try {
-    await getAuth().updateUser(targetUid,{disabled:true});
+    await getAuth().updateUser(targetUid, {disabled: true});
     await getAuth().revokeRefreshTokens(targetUid);
   } catch (error) {
     const code=record(error)?text(error.code):"";
     if (code!=="auth/user-not-found") {
       throw new EmployeeSeparationError(
-        502,"Workspace access was revoked. Firebase Auth lockout " +
+        502, "Workspace access was revoked. Firebase Auth lockout " +
         "needs Administrator verification and retry.");
     }
   }
 
-  return {...outcome,authDisabled:true};
+  return {...outcome, authDisabled: true};
 }
