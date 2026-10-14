@@ -48,7 +48,7 @@ export const canSuperviseBrandAmbassador = (data: WorkspaceData, actor: Workspac
 export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, targetUserId: string) => {
   if (!actor) return false;
   const target = data.users.find((user) => user.id === targetUserId);
-  if (!target || target.role === "Customer" || target.role === "Warehouse" || target.role === "Brand Ambassador") return false;
+  if (!target || target.employmentStatus === "Separated" || target.role === "Customer" || target.role === "Warehouse" || target.role === "Brand Ambassador") return false;
   if (actor.role === "Administrator") return ["Sales", "Operations", "Leadership"].includes(target.team);
   if (actor.role === "Operations") return target.team === "Operations";
   if (actor.role === "Sales Manager") return target.team === "Sales" && canManageUser(data, actor, target.id, true);
@@ -62,7 +62,10 @@ export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, accou
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
   if (user.role === "Brand Ambassador") return false;
   if (user.role === "Sales Representative") return account.ownerId === user.id || (!account.ownerId && account.stage === "Prospect");
-  return Boolean(account.ownerId) && managedUserIds(data, user).has(account.ownerId);
+  // Unassigned customers remain visible to managers for safe reassignment.
+  // Sales Representatives can self-claim only unassigned prospects, never
+  // automatically inherit payment-bearing or already-active customers.
+  return !account.ownerId || managedUserIds(data, user).has(account.ownerId);
 };
 
 /** Only an unassigned Prospect may be self-claimed. Existing customers still use managed responsibility transfer. */
@@ -76,7 +79,7 @@ export const canClaimUnassignedProspect = (user: WorkspaceUser | null | undefine
 export const canTransferSalesResponsibility = (data: WorkspaceData, actor: WorkspaceUser | null | undefined, account: Account, targetUserId: string) => {
   if (!actor || !["Administrator", "Sales Manager"].includes(actor.role) || !accountIsVisible(data, actor, account)) return false;
   const target = data.users.find((user) => user.id === targetUserId && ["Sales Representative", "Sales Manager"].includes(user.role));
-  if (!target) return false;
+  if (!target || target.employmentStatus === "Separated") return false;
   if (actor.role === "Administrator") return true;
   return target.team === "Sales" && canManageUser(data, actor, target.id, true);
 };

@@ -94,7 +94,7 @@ function userBlock(spec: DomainSpec): string {
     ? `(${physicalFieldCondition(spec, salesRepSupervise)} && supervisesBrandAmbassador(uid) && activeEmployee())`
     : "false";
 
-  const ownerReadable = "uid == request.auth.uid ? hasAccessRecord()";
+  const ownerReadable = "uid == request.auth.uid ? isEmployee()";
   const ownerWritable = noSelfWrite.length
     ? `uid == request.auth.uid ? (!(${physicalFieldCondition(spec, noSelfWrite)}) && isEmployee())`
     : "uid == request.auth.uid ? isEmployee()";
@@ -159,7 +159,10 @@ service cloud.firestore {
 
     /** Any provisioned employee, including one still onboarding. Mirrors roleAllows(\`hasAccess\`). */
     function isEmployee() {
-      return hasAccessRecord() && role() != 'Customer';
+      return hasAccessRecord()
+        && role() != 'Customer'
+        && access().accountState != 'Suspended'
+        && access().accountState != 'Separated';
     }
     function hasAccess() {
       return isEmployee();
@@ -283,6 +286,12 @@ service cloud.firestore {
       // Every employee stamps a version here after a successful write so other sessions can poll for changes.
       allow get: if signedIn();
       allow write: if isEmployee() || bootstrapClaimant();
+    }
+
+    // Privileged offboarding log. Even an Administrator browser cannot write.
+    match /employeeSeparations/{uid} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     // --- engine state: shared shards ----------------------------------------

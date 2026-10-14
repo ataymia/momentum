@@ -4,6 +4,10 @@ import {defineString} from "firebase-functions/params";
 import {initializeApp} from "firebase-admin/app";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
+import {
+  separateEmployee,
+  EmployeeSeparationError,
+} from "./employee-separation";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -1402,6 +1406,59 @@ export const deleteEmployee = onRequest(
           "Authentication before retrying.",
         502,
       );
+    }
+  },
+);
+
+/**
+ * Administrator-only employee offboarding. This preserves the employee
+ * directory and historical sales, while revoking present assignments.
+ */
+export const separateEmployeeAccess = onRequest(
+  {
+    cors: true,
+    region: "us-central1",
+  },
+  async (request, response) => {
+    if (request.method !== "POST") {
+      json(response, 405, {ok: false, message: "POST required."});
+      return;
+    }
+    const caller = await requireAdministrator(request);
+    if ("stage" in caller) {
+      json(response, caller.status, {
+        ok: false,
+        message: caller.message,
+      });
+      return;
+    }
+    const uid = textValue(request.body?.uid);
+    const confirmation = textValue(request.body?.confirmUid);
+    const reason = textValue(request.body?.reason);
+    if (!uid || uid !== confirmation || reason.length < 5) {
+      json(response, 400, {
+        ok: false,
+        message: "Confirm the exact employee and supply an internal reason.",
+      });
+      return;
+    }
+    try {
+      const result = await separateEmployee(caller.uid, uid, reason);
+      json(response, 200, {ok: true, ...result});
+    } catch (error) {
+      console.error("separateEmployeeAccess failed", error);
+      if (error instanceof EmployeeSeparationError) {
+        json(response, error.status, {
+          ok: false,
+          message: error.message,
+        });
+      } else {
+        json(response, 502, {
+          ok: false,
+          message: "Offboarding needs Administrator review. " +
+            "Verify both Firestore access and Firebase Auth.",
+        });
+      }
     }
   },
 );

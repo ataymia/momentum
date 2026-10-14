@@ -159,7 +159,7 @@ function chunkItems(items:unknown[],maxBytes:number){
   return chunks;
 }
 
-export function roleAllows(rule:RoleRule,scope:PersistenceScope){if(scope.role==="Customer")return false;if(rule==="hasAccess")return true;if(rule==="activeEmployee")return scope.accountState==="Active";return scope.accountState==="Active"&&rule.includes(scope.role);}
+export function roleAllows(rule:RoleRule,scope:PersistenceScope){if(scope.role==="Customer"||["Suspended","Separated"].includes(scope.accountState))return false;if(rule==="hasAccess")return true;if(rule==="activeEmployee")return scope.accountState==="Active";return scope.accountState==="Active"&&rule.includes(scope.role);}
 export const sharedDocPath=(domainId:string,field:string)=>`${SHARED_ROOT}/${domainId}/fields/${field}`;
 export const userDocPath=(uid:string,domainId:string,field:string)=>`${USER_ROOT}/${uid}/${domainId}/${field}`;
 export type ParsedDocPath={domainId:string;field:string;uid?:string};
@@ -171,7 +171,7 @@ export function domainDocuments(spec:DomainSpec,scope:PersistenceScope):DomainDo
   if(sharedReadable)documents.push({path:sharedDocPath(spec.id,ROOT_FIELD),writable:sharedWritable});
   for(const [field,fieldSpec] of Object.entries(spec.fields)){
     const read=fieldSpec.read?roleAllows(fieldSpec.read,scope):sharedReadable;const write=fieldSpec.write?roleAllows(fieldSpec.write,scope):sharedWritable;
-    if(read)documents.push({path:sharedDocPath(spec.id,field),writable:write});if(!fieldSpec.userIdField)continue;
+    if(read)documents.push({path:sharedDocPath(spec.id,field),writable:write});if(!fieldSpec.userIdField||!read)continue;
     const readableUids=new Set(scope.readableUserIds);if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative")for(const uid of scope.supervisedBrandAmbassadorIds)readableUids.add(uid);
     for(const uid of readableUids){
       if(uid!==scope.uid&&scope.role!=="Administrator"&&!scope.managedUserIds.has(uid)&&!(fieldSpec.salesRepSupervise&&scope.supervisedBrandAmbassadorIds.has(uid)))continue;
@@ -184,7 +184,7 @@ export function domainDocuments(spec:DomainSpec,scope:PersistenceScope):DomainDo
   return documents;
 }
 
-export function userShardWritable(_spec:DomainSpec,fieldSpec:DomainFieldSpec,uid:string,scope:PersistenceScope){if(scope.role==="Customer")return false;if(scope.role==="Administrator")return true;if(uid===scope.uid)return fieldSpec.selfWrite!==false;if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative"&&scope.supervisedBrandAmbassadorIds.has(uid))return scope.accountState==="Active";if(scope.managedUserIds.has(uid))return fieldSpec.managerWrite!==false&&scope.accountState==="Active";return false;}
+export function userShardWritable(_spec:DomainSpec,fieldSpec:DomainFieldSpec,uid:string,scope:PersistenceScope){if(scope.role==="Customer"||["Suspended","Separated"].includes(scope.accountState))return false;if(scope.role==="Administrator")return true;if(uid===scope.uid)return fieldSpec.selfWrite!==false;if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative"&&scope.supervisedBrandAmbassadorIds.has(uid))return scope.accountState==="Active";if(scope.managedUserIds.has(uid))return fieldSpec.managerWrite!==false&&scope.accountState==="Active";return false;}
 export function documentWritable(path:string,scope:PersistenceScope){const parsed=parseDocPath(path);if(!parsed)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)return false;if(parsed.uid){const resolved=resolveUserPhysicalField(spec,parsed.field);return Boolean(resolved?.fieldSpec.userIdField)&&userShardWritable(spec,resolved!.fieldSpec,parsed.uid,scope);}const fieldSpec=parsed.field===ROOT_FIELD?undefined:spec.fields[parsed.field];return roleAllows(fieldSpec?.write??spec.write,scope);}
 export function documentReplacesOnWrite(path:string){
   const parsed=parseDocPath(path);if(!parsed||parsed.field===ROOT_FIELD)return false;

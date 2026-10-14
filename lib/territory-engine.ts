@@ -61,13 +61,13 @@ export function validateTerritoryDraft(data:Pick<WorkspaceData,"territories"|"us
   if(draft.status==="Active"){
     if(!draft.ownerId)return{ok:false,message:"An active territory needs a suggested sales representative.",postalCodes};
     const owner=data.users.find((user)=>user.id===draft.ownerId);
-    if(!owner||owner.role!=="Sales Representative")return{ok:false,message:"Active territory suggestions can only point to a Sales Representative.",postalCodes};
+    if(!owner||owner.role!=="Sales Representative"||owner.employmentStatus==="Separated")return{ok:false,message:"Active territory suggestions can only point to an active Sales Representative.",postalCodes};
     if(postalCodes.length===0)return{ok:false,message:"An active territory needs at least one ZIP code.",postalCodes};
     const overlap=territoryOverlap(data,postalCodes,draft.id);
     if(overlap)return{ok:false,message:`ZIP ${overlap.postalCode} is already active in ${overlap.territory.name}. Keep one geographic suggestion per ZIP so exceptions remain clear.`,postalCodes};
   }else if(draft.ownerId){
     const owner=data.users.find((user)=>user.id===draft.ownerId);
-    if(!owner||owner.role!=="Sales Representative")return{ok:false,message:"Suggested territory owner must be a Sales Representative.",postalCodes};
+    if(!owner||owner.role!=="Sales Representative"||owner.employmentStatus==="Separated")return{ok:false,message:"Suggested territory owner must be an active Sales Representative.",postalCodes};
   }
   return{ok:true,postalCodes};
 }

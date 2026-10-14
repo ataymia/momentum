@@ -30,7 +30,10 @@ service firebase.storage {
 
     /** Any provisioned employee, including one still onboarding. Mirrors firestore.rules isEmployee(). */
     function isEmployee() {
-      return hasAccessRecord() && access().role != 'Customer';
+      return hasAccessRecord()
+        && access().role != 'Customer'
+        && access().accountState != 'Suspended'
+        && access().accountState != 'Separated';
     }
 
     function isAdmin() {

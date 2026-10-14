@@ -70,6 +70,7 @@ export function normalizeDirectoryEntry(uid:string,input:unknown):WorkspaceUser|
     role:role as Role,
     team:team as Team,
     managerId:optionalText(raw.managerId),
+    employmentStatus:raw.employmentStatus==="Separated"?"Separated":"Active",
     managedTeams:teamList(raw.managedTeams),
     accountIds:Array.isArray(raw.accountIds)?raw.accountIds.filter((item):item is string=>typeof item==="string"):undefined,
     username:normalizeUsername(text(raw.username))||undefined,
@@ -81,7 +82,7 @@ export function normalizeDirectoryEntry(uid:string,input:unknown):WorkspaceUser|
 export function directoryDocument(user:WorkspaceUser,updatedAt=new Date().toISOString()):Record<string,unknown>{
   return{
     name:user.name,firstName:user.firstName,email:user.email.toLowerCase(),initials:user.initials,title:user.title,
-    role:user.role,team:user.team,managerId:user.managerId??null,managedTeams:user.managedTeams??[],accountIds:user.accountIds??[],
+    role:user.role,team:user.team,managerId:user.managerId??null,employmentStatus:user.employmentStatus??"Active",managedTeams:user.managedTeams??[],accountIds:user.accountIds??[],
     username:user.username??null,phone:user.phone??null,accent:user.accent,updatedAt,
   };
 }

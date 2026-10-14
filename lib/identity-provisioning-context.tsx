@@ -338,6 +338,9 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
 
   const setAccountState = (userId: string, nextState: Extract<AccountAccessState, "Suspended" | "Separated">, reason: string) => {
     if (currentUser?.role !== "Administrator" || reason.trim().length < 3 || userId === currentUser.id) return false;
+    // Production separation must use the secure backend endpoint rather than
+    // optimistically changing a local HR record before login revocation.
+    if (nextState === "Separated" && firebase) return false;
     const record = accountAccessFor(state, userId);
     if (!record) return false;
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: nextState, returnedAt: new Date().toISOString(), returnedBy: currentUser.id, returnReason: reason.trim() } : item) }));
