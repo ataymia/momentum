@@ -18,7 +18,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 
 import {
   EMPLOYEE_DIRECTORY_COLLECTION,
@@ -915,4 +915,29 @@ describe("Marketing files, production history, and sales targets", () => {
     await assertFails(setDoc(doc(dbFor(MARKETING),path),{...row,updatedBy:MARKETING}));
     await assertFails(setDoc(doc(dbFor(MANAGER),path),{...row,target:-1}));
   });
+});
+
+describe("confidential HR signed-form receipt metadata",()=>{
+ test("only employee and active Administrator can read; all browser writes are denied",async()=>{
+  const path="hrSignedFormRecords/form-receipt-1";
+  const auditPath="hrSignedFormAudit/audit-entry-1";
+  const metadata={id:"form-receipt-1",employeeUid:REP,formKey:"W4",status:"Archived",signedPdfStoragePath:"hr-private/uid-rep/W4/envelope-1/signed.pdf",completedAt:at};
+  await env.withSecurityRulesDisabled(async context=>{
+   await setDoc(doc(context.firestore(),path),metadata);
+   await setDoc(doc(context.firestore(),auditPath),{employeeUid:REP,action:"Archive confirmed",at});
+  });
+  await assertSucceeds(getDoc(doc(dbFor(REP),path)));
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+  await assertSucceeds(getDocs(query(collection(dbFor(REP),"hrSignedFormRecords"),where("employeeUid","==",REP))));
+  await assertFails(getDoc(doc(dbFor(OTHER_REP),path)));
+  await assertFails(getDoc(doc(dbFor(MANAGER),path)));
+  await assertFails(getDoc(doc(dbFor(OPS),path)));
+  await assertFails(getDoc(doc(dbFor(MARKETING),path)));
+  await assertFails(getDoc(doc(dbFor(null),path)));
+  await assertFails(setDoc(doc(dbFor(REP),path),metadata));
+  await assertFails(setDoc(doc(dbFor(ADMIN),path),{...metadata,status:"Pending"}));
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),auditPath)));
+  await assertFails(getDoc(doc(dbFor(REP),auditPath)));
+  await assertFails(setDoc(doc(dbFor(ADMIN),auditPath),{employeeUid:REP,action:"Forged"}));
+ });
 });
