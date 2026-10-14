@@ -10,6 +10,7 @@ import { appendAudit, type PayBasis, type WorkerClassification } from "../../lib
 import { useIdentityProvisioning, type NewProvisioningDraftInput } from "../../lib/identity-provisioning-context";
 import type { ProvisionableRole, ProvisioningDraft } from "../../lib/identity-provisioning";
 import { isFailClosedPlaceholder } from "../../lib/identity-provisioning";
+import { validExternalVerification } from "../../lib/hr-document-controls";
 import { onboardingReadiness, requiredOnboardingDocumentTemplates, type OnboardingRescueAction, type OnboardingRescueEntry } from "../../lib/onboarding-engine";
 import { useTrainingLibrary } from "../../lib/training-library-context";
 import { coursesForRoleAudience } from "../../lib/training-library-engine";
@@ -46,9 +47,9 @@ type FormState = {
 
 const legalNameOf = (form: Pick<FormState, "firstName" | "lastName">) => `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
 
-const teamForRole = (role: ProvisionableRole): "Sales" | "Operations" => ["Sales Manager", "Sales Representative", "Brand Ambassador"].includes(role) ? "Sales" : "Operations";
-const roleOptions: ProvisionableRole[] = ["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver"];
-const defaultTitles = new Set<string>(["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver"]);
+const teamForRole = (role: ProvisionableRole): "Sales" | "Operations" | "Marketing" => role === "Marketing" ? "Marketing" : ["Sales Manager", "Sales Representative", "Brand Ambassador"].includes(role) ? "Sales" : "Operations";
+const roleOptions: ProvisionableRole[] = ["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver", "Marketing"];
+const defaultTitles = new Set<string>(["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver", "Marketing"]);
 const payBasisOptions: PayBasis[] = ["Hourly", "Salary per pay period"];
 const classificationFor = (workerType: WorkerType, payBasis: PayBasis): WorkerClassification => workerType === "Contractor" ? "Contractor" : payBasis === "Hourly" ? "Hourly" : payBasis === "Salary per pay period" ? "Salary" : "Not configured";
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -148,7 +149,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const [issued, setIssued] = useState<{ draftId: string; email: string; password: string; name: string; username: string } | null>(null);
   const [pendingLink, setPendingLink] = useState<{ draftId: string; uid: string } | null>(null);
   const [activationBusy,setActivationBusy]=useState<string|null>(null);
-  const coursesForRole = (role: ProvisionableRole, team: "Sales" | "Operations") => coursesForRoleAudience(hcm.courses, trainingLibrary.state.audiences, role, team).map((course) => course.id);
+  const coursesForRole = (role: ProvisionableRole, team: "Sales" | "Operations" | "Marketing") => coursesForRoleAudience(hcm.courses, trainingLibrary.state.audiences, role, team).map((course) => course.id);
   const defaultCourses = coursesForRole("Sales Representative", "Sales");
   const emptyForm = (): FormState => ({
     source: "Direct hire",
@@ -381,9 +382,12 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
 
   const verifyDocumentExternally = (documentId: string) => {
     const document = hcm.documents.find((item) => item.id === documentId);
-    if (!document || document.status === "Available") return;
+    if (!document || currentUser.role !== "Administrator") return;
+    const reference = window.prompt("Confirm you reviewed the completed, signed original. Enter its secure HR record reference (no SSN, tax values, or public file link).");
+    if (reference === null) return;
+    if (reference.trim().length < 5) { setNotice("A secure record reference is required to record verification."); return; }
     const at = new Date().toISOString();
-    setHcm((state) => appendAudit({ ...state, documents: state.documents.map((item) => item.id === documentId ? { ...item, status: "Available", fileName: "Verified externally (manual attestation)", uploadedAt: at, uploadedBy: currentUser.id } : item) }, { actorId: currentUser.id, action: "Verified onboarding document outside Momentum", entityType: "EmployeeDocument", entityId: documentId, before: document.status, after: "Available", reason: "Manual Administrator attestation while secure file/e-sign transport is not connected" }));
+    setHcm((state) => appendAudit({ ...state, documents: state.documents.map((item) => item.id === documentId ? { ...item, status: "Available", verification: { method: "External signed original", recordReference: reference.trim(), verifiedAt: at, verifiedBy: currentUser.id, documentVersion: item.version }, uploadedAt: at, uploadedBy: currentUser.id } : item) }, { actorId: currentUser.id, action: "Verified onboarding document outside Momentum", entityType: "EmployeeDocument", entityId: documentId, before: document.status, after: "Available", reason: "Manual Administrator attestation while secure file/e-sign transport is not connected" }));
     setNotice(`${document.title} marked verified externally. No file was stored in Momentum.`);
   };
 
@@ -460,7 +464,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
         const employee=hcm.employees.find((item)=>item.userId===record.userId);
         const requiredTitles=new Set(requiredOnboardingDocumentTemplates(employee?.classification??"Not configured").map((item)=>item.title.toLowerCase()));
         const documents=hcm.documents.filter((item)=>item.userId===record.userId&&requiredTitles.has(item.title.toLowerCase()));
-        return <article key={record.id} className="onboarding-review-card"><span className="provisioning-avatar"><CheckCircle2 size={18}/></span><div className="onboarding-review-body"><strong>{user?.name??record.userId}</strong><p>{readiness.readyForActivation?"All activation controls are complete.":`${readiness.activationBlockers.length} activation blocker${readiness.activationBlockers.length===1?"":"s"} remain.`}</p><div className="onboarding-doc-review">{documents.map((document)=><div key={document.id}><span><FileCheck2 size={15}/><span><strong>{document.title}</strong><small>{document.status==="Available"?document.fileName??"Verified":"Awaiting Administrator verification"}</small></span></span>{document.status==="Available"?<StatusPill tone="success">Verified</StatusPill>:<Button size="sm" variant="secondary" onClick={()=>verifyDocumentExternally(document.id)}>Verify externally</Button>}</div>)}</div>{readiness.activationBlockers.length>0&&<ul className="onboarding-activation-blockers">{readiness.activationBlockers.map((blocker)=><li key={blocker}>{blocker}</li>)}</ul>}</div><StatusPill tone={readiness.readyForActivation?"success":"warning"}>{readiness.readyForActivation?"Ready":"Review"}</StatusPill><Button size="sm" disabled={!readiness.readyForActivation||activationBusy===record.userId} onClick={()=>void activatePendingUser(record.userId,user?.name??"Employee")}>{activationBusy===record.userId?"Activating…":"Activate access"}</Button></article>;
+        return <article key={record.id} className="onboarding-review-card"><span className="provisioning-avatar"><CheckCircle2 size={18}/></span><div className="onboarding-review-body"><strong>{user?.name??record.userId}</strong><p>{readiness.readyForActivation?"All activation controls are complete.":`${readiness.activationBlockers.length} activation blocker${readiness.activationBlockers.length===1?"":"s"} remain.`}</p><div className="onboarding-doc-review">{documents.map((document)=><div key={document.id}><span><FileCheck2 size={15}/><span><strong>{document.title}</strong><small>{document.status==="Available"?document.verification ? "External signed record verified" : "Legacy verification — evidence review needed":"Awaiting Administrator verification"}</small></span></span>{document.status==="Available"&&validExternalVerification(document.verification,document.version)?<StatusPill tone="success">Verified</StatusPill>:<Button size="sm" variant="secondary" onClick={()=>verifyDocumentExternally(document.id)}>Verify externally</Button>}</div>)}</div>{readiness.activationBlockers.length>0&&<ul className="onboarding-activation-blockers">{readiness.activationBlockers.map((blocker)=><li key={blocker}>{blocker}</li>)}</ul>}</div><StatusPill tone={readiness.readyForActivation?"success":"warning"}>{readiness.readyForActivation?"Ready":"Review"}</StatusPill><Button size="sm" disabled={!readiness.readyForActivation||activationBusy===record.userId} onClick={()=>void activatePendingUser(record.userId,user?.name??"Employee")}>{activationBusy===record.userId?"Activating…":"Activate access"}</Button></article>;
       })}{pendingApprovals.length===0&&<div className="review-empty"><CheckCircle2 size={24}/><h3>No onboarding approvals waiting</h3><p>Employees appear here after they complete and submit their onboarding work.</p></div>}</div>
     </Section>
 

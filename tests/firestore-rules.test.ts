@@ -49,6 +49,7 @@ const MANAGER = "uid-manager";
 const REP = "uid-rep";
 const OTHER_REP = "uid-other-rep";
 const OPS = "uid-ops";
+const MARKETING = "uid-marketing";
 const DRIVER = "uid-driver";
 const ONBOARDING = "uid-onboarding";
 /** Brand Ambassadors, one per Sales Representative, to prove supervision is scoped to the reporting line. */
@@ -83,6 +84,7 @@ const ACCESS: UserAccessRecord[] = [
   accessRecord(REP, "Sales Representative", "Sales", { managerId: MANAGER }),
   accessRecord(OTHER_REP, "Sales Representative", "Sales", { managerId: ADMIN, team: "Operations" }),
   accessRecord(OPS, "Operations", "Operations"),
+  accessRecord(MARKETING, "Marketing", "Marketing"),
   accessRecord(DRIVER, "Delivery Driver", "Operations"),
   accessRecord(ONBOARDING, "Sales Representative", "Sales", {
     managerId: MANAGER,
@@ -723,5 +725,194 @@ describe("Delivery Driver approved marketing visibility", () => {
     await assertSucceeds(getDoc(doc(db,"domains/marketing/fields/deliveryNotices")));
     await assertFails(setDoc(doc(db,"domains/marketing/fields/deliveryNotices"),{items:[]}));
     await assertFails(getDoc(doc(db,"domains/marketing/fields/campaigns")));
+  });
+});
+
+describe("employee separation and suspension revokes operational access", () => {
+  for (const state of ["Separated", "Suspended"] as const) {
+    test(`${state} users cannot read or modify any employee domain`, async () => {
+      const uid = `uid-${state.toLowerCase()}-offboard`;
+      await env.withSecurityRulesDisabled(async (context) => {
+        await setDoc(
+          doc(context.firestore(), USER_ACCESS_COLLECTION, uid),
+          userAccessDocument(accessRecord(uid, "Sales Representative", "Sales", {
+            accountState: state,
+          })),
+        );
+      });
+      const userDb = dbFor(uid);
+      for (const path of [
+        "domains/workspace/fields/accounts",
+        "domains/commercial/fields/_root",
+        "domains/hcm/fields/policies",
+        "domains/trainingLibrary/fields/materials",
+        "domains/crm/fields/contacts",
+        `userDomains/${uid}/identity/records`,
+        `userDomains/${uid}/hcm/documents`,
+      ]) {
+        await assertFails(getDoc(doc(userDb, path)));
+        await assertFails(setDoc(doc(userDb, path), {items: []}));
+      }
+      await assertFails(getDoc(doc(userDb, EMPLOYEE_DIRECTORY_COLLECTION, REP)));
+    });
+  }
+
+  test("the Storage policy also excludes both non-working states", () => {
+    const rules = readFileSync("storage.rules", "utf8");
+    assert.match(rules, /accountState != 'Separated'/);
+    assert.match(rules, /accountState != 'Suspended'/);
+  });
+
+  test("client-side persistence refuses suspended and separated shard writes", () => {
+    for (const state of ["Suspended", "Separated"] as const) {
+      const scope = {...scopeFor(REP), accountState: state};
+      assert.equal(
+        documentWritable(`userDomains/${REP}/identity/records`, scope),
+        false,
+      );
+      assert.equal(
+        documentWritable("domains/commercial/fields/_root", scope),
+        false,
+      );
+      assert.equal(domainDocuments(DOMAIN_SPECS[0], scope).length, 0);
+    }
+  });
+});
+
+describe("separation audit is immutable to employees", () => {
+  test("active Administrator may read but no client may forge audit", async () => {
+    const path="employeeSeparations/uid-rep";
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(),path),{
+        uid:REP,actorUid:ADMIN,separatedAt:at,historyPreserved:true,
+      });
+    });
+    await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+    for (const uid of [REP,MANAGER,OPS,DRIVER]) {
+      await assertFails(getDoc(doc(dbFor(uid),path)));
+      await assertFails(setDoc(doc(dbFor(uid),path),{uid:REP}));
+    }
+    await assertFails(setDoc(doc(dbFor(ADMIN),path),{
+      uid:REP,historyPreserved:false,
+    }));
+  });
+});
+
+describe("immutable account creator provenance is server-owned", () => {
+  const path = "accountCreatorProvenance/acc-test";
+
+  test("even an active Administrator client cannot read, forge, or overwrite creator proof", async () => {
+    const db = dbFor(ADMIN);
+    await assertFails(getDoc(doc(db, path)));
+    await assertFails(setDoc(doc(db, path), { accountId: "acc-test", creatorUid: ADMIN }));
+  });
+
+  test("reps, managers, Operations and customers cannot mint creator claims", async () => {
+    for (const uid of [REP, OTHER_REP, MANAGER, OPS, DRIVER]) {
+      const db = dbFor(uid);
+      await assertFails(getDoc(doc(db, path)));
+      await assertFails(setDoc(doc(db, path), {accountId:"acc-test", creatorUid:uid}));
+    }
+    await assertFails(setDoc(doc(dbFor(null), path), {accountId:"acc-test", creatorUid:REP}));
+  });
+
+  test("provenance is immutable from every client even if Admin SDK seeds an existing record", async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), path), {
+        accountId:"acc-test", creatorUid:REP,
+        createdAt:"2026-10-12T16:00:00.000Z",
+      });
+    });
+    const db = dbFor(ADMIN);
+    await assertFails(getDoc(doc(db, path)));
+    await assertFails(setDoc(doc(db, path), { creatorUid:ADMIN }, { merge: true }));
+    await assertFails(setDoc(doc(dbFor(REP), path), { creatorUid:REP }, { merge: true }));
+  });
+});
+
+describe("trusted account profile audit records are immutable to browser clients",()=>{
+  const auditPath="accountProfileEditEvents/audit-1";
+  test("only Admin may read the server-generated event, never create/update it",async()=>{
+    await env.withSecurityRulesDisabled(async(context)=>{
+      await setDoc(doc(context.firestore(),auditPath),{
+        id:"audit-1",accountId:"acc-test",actorUid:ADMIN,at:at,
+        changedKeys:["phone"],before:{phone:"old"},after:{phone:"new"},
+      });
+    });
+    await assertSucceeds(getDoc(doc(dbFor(ADMIN),auditPath)));
+    for(const uid of [REP,OTHER_REP,MANAGER,OPS,DRIVER]){
+      await assertFails(getDoc(doc(dbFor(uid),auditPath)));
+      await assertFails(setDoc(doc(dbFor(uid),auditPath),{accountId:"forged"}));
+    }
+    await assertFails(setDoc(doc(dbFor(ADMIN),auditPath),{actorUid:ADMIN},{merge:true}));
+    await assertFails(setDoc(doc(dbFor(ADMIN),"accountProfileEditEvents/forged"),{actorUid:ADMIN}));
+  });
+});
+
+describe("trusted account creation receipts are server-owned",()=>{
+  const receipt="accountCreationRequests/uid-admin_request-token-123456789";
+  test("no Firebase client can create or claim an idempotency receipt",async()=>{
+    for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER]){
+      await assertFails(getDoc(doc(dbFor(uid),receipt)));
+      await assertFails(setDoc(doc(dbFor(uid),receipt),{
+        accountId:"forged",actorUid:uid,
+      }));
+    }
+    await assertFails(setDoc(doc(dbFor(null),receipt),{accountId:"forged"}));
+  });
+});
+
+describe("server-owned notification preview and delivery records",()=>{
+  for(const collection of ["notificationCandidates","emailOutbox"]){
+    test(`${collection} cannot be forged even by an Administrator browser`,async()=>{
+      const path=`${collection}/test-event`;
+      await env.withSecurityRulesDisabled(async(context)=>{
+        await setDoc(doc(context.firestore(),path),{status:"Review required",transportEnabled:false});
+      });
+      await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+      for(const uid of [ADMIN,REP,OTHER_REP,MANAGER,OPS,DRIVER]){
+        await assertFails(setDoc(doc(dbFor(uid),path),{status:"Sent"}));
+        if(uid!==ADMIN)await assertFails(getDoc(doc(dbFor(uid),path)));
+      }
+    });
+  }
+  test("suppression data is private to the backend",async()=>{
+    for(const uid of [ADMIN,REP,MANAGER,OPS,DRIVER]){
+      await assertFails(getDoc(doc(dbFor(uid),"emailSuppressions/recipient")));
+      await assertFails(setDoc(doc(dbFor(uid),"emailSuppressions/recipient"),{blocked:false}));
+    }
+  });
+});
+
+describe("Marketing files, production history, and sales targets", () => {
+  test("Marketing manages files; reps see approved versions only and cannot approve drafts", async () => {
+    const path = "marketingAssetVersions/test-draft";
+    const draft = {id:"test-draft",assetId:"asset",version:1,status:"Draft",deleted:false,createdBy:MARKETING,updatedBy:MARKETING};
+    await assertSucceeds(setDoc(doc(dbFor(MARKETING),path),draft));
+    await assertFails(getDoc(doc(dbFor(REP),path)));
+    await assertFails(setDoc(doc(dbFor(REP),path),{...draft,status:"Approved",updatedBy:REP}));
+    await assertSucceeds(setDoc(doc(dbFor(MARKETING),path),{...draft,status:"Approved"}));
+    await assertSucceeds(getDoc(doc(dbFor(REP),path)));
+    await assertFails(setDoc(doc(dbFor(MARKETING),path),{...draft,status:"Approved",version:2}));
+    await assertSucceeds(setDoc(doc(dbFor(MARKETING),path),{...draft,status:"Archived",deleted:true}));
+    await assertFails(getDoc(doc(dbFor(REP),path)));
+  });
+  test("requesters cannot impersonate colleagues or rewrite production history", async () => {
+    const path="marketingProductionRequests/test-request";
+    const row={id:"test-request",requesterId:REP,quantity:10,status:"Requested",ownerId:"",draftVersionId:"",approvedVersionId:"",createdAt:at,updatedAt:at,updatedBy:REP,history:[{at,actorId:REP,status:"Requested"}]};
+    await assertFails(setDoc(doc(dbFor(OTHER_REP),path),row));
+    await assertSucceeds(setDoc(doc(dbFor(REP),path),row));
+    await assertFails(getDoc(doc(dbFor(OTHER_REP),path)));
+    await assertFails(setDoc(doc(dbFor(MARKETING),path),{...row,status:"Draft",updatedBy:MARKETING,history:[]}));
+    await assertSucceeds(setDoc(doc(dbFor(MARKETING),path),{...row,status:"Draft",updatedBy:MARKETING,history:[...row.history,{at,actorId:MARKETING,status:"Draft"}]}));
+  });
+  test("weekly targets are controlled by management, not the employee or Marketing", async () => {
+    const path=`salesVisitTargets/${REP}/weeks/2026-10-12`;
+    const row={userId:REP,weekStart:"2026-10-12",target:65,updatedAt:at,updatedBy:MANAGER};
+    await assertSucceeds(setDoc(doc(dbFor(MANAGER),path),row));
+    await assertSucceeds(getDoc(doc(dbFor(REP),path)));
+    await assertFails(setDoc(doc(dbFor(REP),path),{...row,updatedBy:REP}));
+    await assertFails(setDoc(doc(dbFor(MARKETING),path),{...row,updatedBy:MARKETING}));
+    await assertFails(setDoc(doc(dbFor(MANAGER),path),{...row,target:-1}));
   });
 });

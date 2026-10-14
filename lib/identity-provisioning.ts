@@ -67,8 +67,8 @@ const validStates = new Set<AccountAccessState>(["Password change required", "On
 const validSources = new Set<ProvisioningSource>(["Direct hire", "Accepted offer", "Referral", "Bootstrap admin"]);
 const validDraftSources = new Set<ProvisioningDraft["source"]>(["Direct hire", "Accepted offer", "Referral"]);
 const validDraftStatuses = new Set<ProvisioningDraftStatus>(["Draft", "Ready to invite", "Invite sent", "Auth linked", "Cancelled"]);
-const validRoles = new Set<ProvisionableRole>(["Sales Manager", "Sales Representative", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver"]);
-const validTeams = new Set<Exclude<Team, "Customer">>(["Leadership", "Sales", "Operations"]);
+const validRoles = new Set<ProvisionableRole>(["Sales Manager", "Sales Representative", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver", "Marketing"]);
+const validTeams = new Set<Exclude<Team, "Customer">>(["Leadership", "Sales", "Operations", "Marketing"]);
 const validClassifications = new Set<WorkerClassification>(["Hourly", "Salary", "Contractor", "Not configured"]);
 const validPayBasis = new Set<PayBasis>(["Hourly", "Salary per pay period", "Not configured"]);
 const validInstant = (value?: string) => Boolean(value && !Number.isNaN(new Date(value).getTime()));

@@ -94,7 +94,7 @@ function userBlock(spec: DomainSpec): string {
     ? `(${physicalFieldCondition(spec, salesRepSupervise)} && supervisesBrandAmbassador(uid) && activeEmployee())`
     : "false";
 
-  const ownerReadable = "uid == request.auth.uid ? hasAccessRecord()";
+  const ownerReadable = "uid == request.auth.uid ? isEmployee()";
   const ownerWritable = noSelfWrite.length
     ? `uid == request.auth.uid ? (!(${physicalFieldCondition(spec, noSelfWrite)}) && isEmployee())`
     : "uid == request.auth.uid ? isEmployee()";
@@ -159,7 +159,10 @@ service cloud.firestore {
 
     /** Any provisioned employee, including one still onboarding. Mirrors roleAllows(\`hasAccess\`). */
     function isEmployee() {
-      return hasAccessRecord() && role() != 'Customer';
+      return hasAccessRecord()
+        && role() != 'Customer'
+        && access().accountState != 'Suspended'
+        && access().accountState != 'Separated';
     }
     function hasAccess() {
       return isEmployee();
@@ -283,6 +286,109 @@ service cloud.firestore {
       // Every employee stamps a version here after a successful write so other sessions can poll for changes.
       allow get: if signedIn();
       allow write: if isEmployee() || bootstrapClaimant();
+    }
+
+    // Privileged offboarding log. Even an Administrator browser cannot write.
+    match /employeeSeparations/{uid} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Immutable audit proof for owner-authorized off-route deliveries.
+    // Only the authenticated server function may create these records.
+    match /adminDeliveryOverrides/{orderId} {
+      allow get, list: if activeEmployee();
+      allow create, update, delete: if false;
+    }
+
+    // Future account editor MUST read true creator identity from Admin SDK.
+    // Client-writable workspace.createdByUid is never proof of creation.
+    // Neither an Administrator client nor a Sales Manager can mint provenance.
+    match /accountCreatorProvenance/{accountId} {
+      allow get, list, create, update, delete: if false;
+    }
+
+    // Backend-only immutable event history for account-profile edits.
+    match /accountProfileEditEvents/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Server-only idempotency receipts prevent replayed account creation.
+    match /accountCreationRequests/{requestId} {
+      allow get, list, create, update, delete: if false;
+    }
+
+    // Review-only server notification candidates. Browsers cannot mint mail.
+    match /notificationCandidates/{candidateId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /emailOutbox/{messageId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /emailSuppressions/{recipientId} {
+      allow read, write: if false;
+    }
+
+    match /salesVisitTargets/{uid}/weeks/{weekStart} {
+      allow read: if isAdmin() || (activeEmployee()
+        && (uid == request.auth.uid || manages(uid)));
+      allow create, update: if (isAdmin() || manages(uid))
+        && request.resource.data.keys().hasOnly(['userId','weekStart','target','updatedAt','updatedBy'])
+        && request.resource.data.userId == uid
+        && request.resource.data.weekStart == weekStart
+        && request.resource.data.target is int && request.resource.data.target >= 0
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow delete: if false;
+    }
+    function marketingEditor() {
+      return isActiveRole('Administrator') || isActiveRole('Marketing');
+    }
+    match /marketingAssetVersions/{versionId} {
+      allow read: if marketingEditor() || (isEmployee()
+        && resource.data.status == 'Approved' && resource.data.deleted == false);
+      allow create: if marketingEditor()
+        && request.resource.data.id == versionId
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.assetId is string
+        && request.resource.data.version is int && request.resource.data.version > 0
+        && request.resource.data.status == 'Draft'
+        && request.resource.data.deleted == false;
+      allow update: if marketingEditor()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status','updatedAt','updatedBy','deleted'])
+        && request.resource.data.status in ['Draft','Approved','Archived']
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow delete: if false;
+    }
+    match /marketingProductionRequests/{requestId} {
+      allow read: if marketingEditor() || (activeEmployee()
+        && resource.data.requesterId == request.auth.uid);
+      allow create: if activeEmployee()
+        && request.resource.data.id == requestId
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.history == [{'at': request.resource.data.createdAt, 'actorId': request.auth.uid, 'status': 'Requested'}]
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.status == 'Requested'
+        && request.resource.data.quantity is int
+        && request.resource.data.quantity > 0
+        && request.resource.data.approvedVersionId == ''
+        && request.resource.data.draftVersionId == ''
+        && request.resource.data.ownerId == '';
+      allow update: if marketingEditor()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['ownerId','status','dueDate','draftVersionId','approvedVersionId','updatedAt','updatedBy','history'])
+        && request.resource.data.history == resource.data.history.concat([{'at': request.resource.data.updatedAt, 'actorId': request.auth.uid, 'status': request.resource.data.status}])
+        && request.resource.data.status in ['Requested','Assigned','Draft','Approval','Printing','Ready','Completed']
+        && request.resource.data.updatedBy == request.auth.uid
+        && (request.resource.data.approvedVersionId == '' ||
+          (get(/databases/$(database)/documents/marketingAssetVersions/$(request.resource.data.approvedVersionId)).data.status == 'Approved'
+          && get(/databases/$(database)/documents/marketingAssetVersions/$(request.resource.data.approvedVersionId)).data.deleted == false))
+        && (!(request.resource.data.status in ['Printing','Ready','Completed']) || request.resource.data.approvedVersionId != '');
+      allow delete: if false;
     }
 
     // --- engine state: shared shards ----------------------------------------

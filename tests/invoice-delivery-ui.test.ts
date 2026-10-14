@@ -80,7 +80,9 @@ test("invoice header uses the official Momentum Golden Eagle brand asset instead
 
 test("print CSS excludes hidden application pages and fits within letter paper", () => {
   assert.ok(invoiceCss.includes(".invoice-print-root{display:none}"));
-  assert.ok(invoiceCss.includes("height: 10.7in !important"));
+  assert.ok(invoiceCss.includes("min-height: 10.7in !important"));
+  assert.ok(invoiceCss.includes("max-height: none !important"));
+  assert.ok(!invoiceCss.includes("max-height: 10.7in !important"));
   assert.ok(invoiceCss.includes("min-height: 0 !important"));
   assert.ok(invoiceCss.includes(".invoice-print-root .invoice-sheet + .invoice-sheet"));
   assert.ok(invoiceCss.includes("break-before: page !important"));

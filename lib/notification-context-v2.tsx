@@ -55,8 +55,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const target=notificationTarget(event,data);if(!target)continue;
         for (const userId of resolveNotificationRecipients(event, data)) {
           const preference = current.preferences.find((item) => item.userId === userId);
-          if (!preference) continue;
-          for (const channel of enabledChannels(preference)) {
+          if (!preference || data.users.find(user=>user.id===preference.userId)?.employmentStatus==="Separated") continue;
+          for (const channel of enabledChannels(preference).filter(channel=>channel==="In app")) {
             const key = deliveryKey(event.id, userId, channel);
             if (existing.has(key)) continue;
             existing.add(key);
@@ -82,8 +82,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const title = stock.requiresManagerApproval ? "Low stock approval required" : "Inventory reorder required";
         const detail = `${stock.product} has ${stock.available} available sellable cases. ${stock.requiresManagerApproval ? "Sales require manager approval below 50 cases. Replenishment is also required." : "Replenishment is required below 500 cases."}`;
         for (const recipientUserId of recipientIds) {
-          const preference = current.preferences.find((item) => item.userId === recipientUserId); if (!preference) continue;
-          for (const channel of enabledChannels(preference)) {
+          const preference = current.preferences.find((item) => item.userId === recipientUserId); if (!preference || data.users.find(user=>user.id===preference.userId)?.employmentStatus==="Separated") continue;
+          for (const channel of enabledChannels(preference).filter(channel=>channel==="In app")) {
             const key = deliveryKey(sourceEventId, recipientUserId, channel); if (existing.has(key)) continue; existing.add(key);
             additions.push({ id: uid("stock-alert"), sourceEventId, recipientUserId, channel, title, detail, tone: "warning", createdAt: new Date().toISOString(), status: channel === "In app" ? "Unread" : "Awaiting integration", targetPage:"inventory", actionLabel:"Open inventory fulfillment" });
           }
@@ -106,7 +106,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const sourceEventId=`program-pricing-expiry:${account.id}:${account.programPricingExpirationDate}`;const owner=data.users.find((user)=>user.id===account.ownerId);const recipients=new Set(data.users.filter((user)=>user.role==="Administrator").map((user)=>user.id));
         if(account.accountManagerId)recipients.add(account.accountManagerId);if(account.ownerId)recipients.add(account.ownerId);if(owner?.managerId)recipients.add(owner.managerId);
         const title=`Program pricing expires in ${days} day${days===1?"":"s"}`;const detail=`${account.locationName??account.name}${account.programPricingLabel?` · ${account.programPricingLabel}`:""} expires ${account.programPricingExpirationDate}. Review renewal, replacement pricing, or expiration.`;
-        for(const recipientUserId of recipients){const preference=current.preferences.find((item)=>item.userId===recipientUserId);if(!preference)continue;for(const channel of enabledChannels(preference)){const key=deliveryKey(sourceEventId,recipientUserId,channel);if(existing.has(key))continue;existing.add(key);additions.push({id:uid("pricing-alert"),sourceEventId,recipientUserId,channel,title,detail,tone:"warning",createdAt:new Date().toISOString(),status:channel==="In app"?"Unread":"Awaiting integration",targetPage:"accounts",targetRecordId:account.id,actionLabel:"Open account"});}}
+        for(const recipientUserId of recipients){const preference=current.preferences.find((item)=>item.userId===recipientUserId);if(!preference)continue;for(const channel of enabledChannels(preference).filter(channel=>channel==="In app")){const key=deliveryKey(sourceEventId,recipientUserId,channel);if(existing.has(key))continue;existing.add(key);additions.push({id:uid("pricing-alert"),sourceEventId,recipientUserId,channel,title,detail,tone:"warning",createdAt:new Date().toISOString(),status:channel==="In app"?"Unread":"Awaiting integration",targetPage:"accounts",targetRecordId:account.id,actionLabel:"Open account"});}}
       }
       return additions.length||retained.length!==current.deliveries.length?{...current,deliveries:compactNotificationDeliveries([...additions,...retained])}:current;
     }),0);return()=>window.clearTimeout(handle);

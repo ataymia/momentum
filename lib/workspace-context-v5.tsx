@@ -1,4 +1,5 @@
 "use client";
+import {traceNavigationPaint} from "./performance-diagnostics";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
@@ -247,7 +248,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const currentUser = useMemo(() => data.users.find((user) => user.id === currentUserId) ?? null, [currentUserId, data.users]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
   const setSidebarCollapsed = useCallback((collapsed: boolean) => { setSidebarCollapsedState(collapsed); momentumStorage.setItem(SIDEBAR_KEY, String(collapsed)); }, []);
-  const navigate = useCallback((page: PageKey) => { setActivePage(canAccessPage(currentUser, page) ? page : "home"); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }, [currentUser]);
+  const navigate = useCallback((page: PageKey) => { const allowed=canAccessPage(currentUser,page)?page:"home";traceNavigationPaint(allowed);setActivePage(allowed); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }, [currentUser]);
 
   const login = useCallback((identifier: string, password: string): LoginResult | Promise<LoginResult> => {
     if (firebase) return firebase.signIn(identifier, password);
@@ -267,13 +268,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const createAccount = useCallback((account: NewAccount) => {
     if (!currentUser || !canCreateAccount(currentUser)) return null;
     const id = `acc-${Date.now()}`;
+    const createdAt=nowStamp();
     const customerName = account.customerName?.trim() || account.name.trim();
     const customerId = `cust-${slug(customerName)}`;
     const customer: CustomerAccount = { id: customerId, name: customerName, accountType: customerName === account.name ? "Independent" : "Chain / franchise", billingContactName: account.contactName, billingEmail: account.email, billingPhone: account.phone, createdAt: nowStamp() };
     setData((current) => ({
       ...current,
       customers: (current.customers ?? []).some((item) => item.id === customerId) ? current.customers : [customer, ...(current.customers ?? [])],
-      accounts: [{ ...account, id, customerId, locationName: account.locationName?.trim() || account.name, streetAddress: account.streetAddress, stage: "Prospect", ownerId: currentUser.id, originatorId: currentUser.id, accountManagerId: currentUser.id, responsibilityStartedAt: nowStamp(), lastActivity: "Location created", nextAction: "Qualify the decision-maker and buying process", nextActionDate: todayKey(), health: "New", lifetimeCases: 0, reorderCount: 0, notes: "Created in the local demo workspace." }, ...current.accounts],
+      accounts: [{ ...account, id, createdAt, createdByUid:currentUser.id, customerId, locationName: account.locationName?.trim() || account.name, streetAddress: account.streetAddress, stage: "Prospect", ownerId: currentUser.id, originatorId: currentUser.id, accountManagerId: currentUser.id, responsibilityStartedAt: nowStamp(), lastActivity: "Location created", nextAction: "Qualify the decision-maker and buying process", nextActionDate: todayKey(), health: "New", lifetimeCases: 0, reorderCount: 0, notes: "Created in the local demo workspace." }, ...current.accounts],
       activities: [{ id: `act-${Date.now()}`, accountId: id, type: "note", title: "Customer location created", detail: `${customerName} · ${account.locationName?.trim() || account.name} added.`, at: nowStamp(), userId: currentUser.id }, ...current.activities],
     }));
     return id;

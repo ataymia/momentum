@@ -30,14 +30,17 @@ export function FirebaseAccessPanel() {
   const [adminForm, setAdminForm] = useState({ name: "", email: "", title: "Owner", password: generateTemporaryPassword() });
   const [issued, setIssued] = useState<{ email: string; password: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [confirmSeparate, setConfirmSeparate] = useState<string | null>(null);
+  const [separationReason, setSeparationReason] = useState("");
 
   if (currentUser?.role !== "Administrator") return null;
 
   const run = async (action: () => Promise<{ ok: boolean; message?: string }>, success: string) => {
     setBusy(true); setError(""); setNotice("");
-    const result = await action();
-    setBusy(false);
-    if (result.ok) setNotice(result.message ?? success); else setError(result.message ?? "Request failed.");
+    try {
+      const result = await action();
+      if (result.ok) setNotice(result.message ?? success); else setError(result.message ?? "Request failed.");
+    } catch { setError("Request could not be completed. Please retry."); } finally { setBusy(false); }
   };
 
   const createAdministrator = (event: FormEvent) => {
@@ -78,9 +81,9 @@ export function FirebaseAccessPanel() {
       {sync.lastError && <p className="form-error" role="alert">{sync.lastError}</p>}
       <div className="provisioning-queue firebase-admin-list">{firebase.directory.slice().sort((a, b) => a.name.localeCompare(b.name)).map((user) => {
         const access = firebase.accessRecords[user.id];
-        return <article key={user.id}><span className="provisioning-avatar">{user.initials}</span><div className="firebase-admin-identity"><strong>{user.name}</strong><p>{user.title} · {user.role} · {user.team}</p><small>{user.email}{access ? ` · Updated ${new Date(access.updatedAt).toLocaleDateString()}` : " · Access record missing"}</small></div><StatusPill tone={access?.accountState === "Active" ? "success" : access?.accountState === "Suspended" || access?.accountState === "Separated" ? "danger" : "warning"}>{access?.accountState ?? "Unknown"}</StatusPill><div className="provisioning-row-actions">{user.role !== "Administrator" && access?.accountState === "Active" && <Button size="sm" variant="secondary" disabled={busy} icon={<KeyRound size={14} />} onClick={() => void run(() => firebase.grantAdministrator(user.id), `${user.name} is now an Administrator.`)}>Grant Administrator</Button>}<Button size="sm" variant="ghost" disabled={busy} icon={<MailCheck size={14} />} onClick={() => void run(() => firebase.sendPasswordReset(user.email), "Password reset e-mail sent.")}>Reset password</Button>{user.id !== firebase.session?.uid && (confirmDelete === user.id
+        return <article key={user.id}><span className="provisioning-avatar">{user.initials}</span><div className="firebase-admin-identity"><strong>{user.name}</strong><p>{user.title} · {user.role} · {user.team}</p><small>{user.email}{access ? ` · Updated ${new Date(access.updatedAt).toLocaleDateString()}` : " · Access record missing"}</small></div><StatusPill tone={access?.accountState === "Active" ? "success" : access?.accountState === "Suspended" || access?.accountState === "Separated" ? "danger" : "warning"}>{access?.accountState ?? "Unknown"}</StatusPill><div className="provisioning-row-actions">{user.role !== "Administrator" && access?.accountState === "Active" && <Button size="sm" variant="secondary" disabled={busy} icon={<KeyRound size={14} />} onClick={() => void run(() => firebase.grantAdministrator(user.id), `${user.name} is now an Administrator.`)}>Grant Administrator</Button>}<Button size="sm" variant="ghost" disabled={busy} icon={<MailCheck size={14} />} onClick={() => void run(() => firebase.sendPasswordReset(user.email), "Password reset e-mail sent.")}>Reset password</Button>{user.role!=="Administrator"&&user.id!==firebase.session?.uid&&<Button size="sm" variant="danger" disabled={busy} onClick={()=>{setConfirmSeparate(user.id);setConfirmDelete(null);setSeparationReason("");}}>{access?.accountState==="Separated"?"Retry access lockout":"Offboard employee"}</Button>}{user.id !== firebase.session?.uid && ["Password change required","Onboarding"].includes(access?.accountState??"") && (confirmDelete === user.id
           ? <><Button size="sm" variant="danger" disabled={busy} icon={<Trash2 size={14} />} onClick={() => { setConfirmDelete(null); void run(() => firebase.deleteEmployeeAccount(user.id), `${user.name} was deleted.`); }}>Delete permanently</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmDelete(null)}>Keep</Button></>
-          : <Button size="sm" variant="ghost" disabled={busy} icon={<Trash2 size={14} />} onClick={() => { setError(""); setNotice(""); setConfirmDelete(user.id); }}>Delete account</Button>)}</div>{confirmDelete === user.id && <p className="form-error" role="alert">This permanently removes {user.email} from Firebase Authentication and deletes every Momentum record for them. Their work e-mail becomes available again. This cannot be undone.</p>}</article>;
+          : <Button size="sm" variant="ghost" disabled={busy} icon={<Trash2 size={14} />} onClick={() => { setError(""); setNotice(""); setConfirmDelete(user.id); }}>Delete account</Button>)}</div>{confirmSeparate===user.id&&<div className="form-grid"><label>Reason for separation<input value={separationReason} onChange={(event)=>setSeparationReason(event.target.value)} placeholder="Employee resignation; release assigned accounts" /></label><Button size="sm" variant="danger" disabled={busy||separationReason.trim().length<5} onClick={()=>{setConfirmSeparate(null);void run(()=>firebase.separateEmployeeAccount(user.id,separationReason),`${user.name} was separated.`);}}>Confirm separation and release accounts</Button><Button size="sm" variant="ghost" disabled={busy} onClick={()=>setConfirmSeparate(null)}>Cancel</Button><p>Retains customer, order, payroll, and sales history. Suspends owned territories; upcoming appointments must be reviewed.</p></div>}{confirmDelete === user.id && <p className="form-error" role="alert">This permanently removes {user.email} from Firebase Authentication and deletes every Momentum record for them. Their work e-mail becomes available again. This cannot be undone.</p>}</article>;
       })}</div>
     </Section>
 

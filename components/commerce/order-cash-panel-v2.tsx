@@ -1,7 +1,7 @@
 "use client";
 
 import { BadgeDollarSign, FileText, Landmark, ReceiptText, RotateCcw, ShieldCheck } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { InvoiceTerms, PaymentMethod, arAgingBucket, computedInvoiceStatus, creditCanApprove, invoiceBalance, invoicePaidAmount, invoicePendingAmount, invoiceRecordableAmount, openReceivables, paymentSettlementDate, refundCanApprove, refundRemainingAmount } from "../../lib/commerce-engine";
 import { useCommerce } from "../../lib/commerce-context";
 import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
@@ -18,13 +18,17 @@ const businessDateKey = (value: string) => isValidCalendarDateKey(value) ? value
 export function OrderCashPanel() {
   const { data, scope, currentUser } = useWorkspace();
   const { commerce, setInvoiceTerms, recordPayment, setPaymentStatus, failPayment, reversePayment, createCredit, approveCredit, applyCredit, requestRefund, approveRefund, markRefundSent, settleRefund, failRefund, addNote, voidInvoice } = useCommerce();
-  const orderIds = new Set(scope.orders.map((order) => order.id));
-  const invoices = commerce.invoices.filter((invoice) => orderIds.has(invoice.orderId)).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
-  const receivables = openReceivables(commerce).filter((item) => orderIds.has(item.invoice.orderId));
+  const orderIds=useMemo(()=>new Set(scope.orders.map((order)=>order.id)),[scope.orders]);
+  const invoices=useMemo(()=>commerce.invoices.filter((invoice)=>orderIds.has(invoice.orderId)).sort((a,b)=>b.issuedAt.localeCompare(a.issuedAt)),[commerce.invoices,orderIds]);
+  const receivables=useMemo(()=>openReceivables(commerce).filter((item)=>orderIds.has(item.invoice.orderId)),[commerce,orderIds]);
+  const orderById=useMemo(()=>new Map(data.orders.map((order)=>[order.id,order])),[data.orders]);
+  const accountById=useMemo(()=>new Map(data.accounts.map((account)=>[account.id,account])),[data.accounts]);
+  const userById=useMemo(()=>new Map(data.users.map((user)=>[user.id,user])),[data.users]);
   const focusId = typeof window !== "undefined" ? window.sessionStorage.getItem("momentum-focus-record") : null;
   const focusedInvoice = focusId ? invoices.find((invoice) => invoice.id === focusId || invoice.orderId === focusId) : undefined;
 
   const [selectedId, setSelectedId] = useState(focusedInvoice?.id ?? invoices[0]?.id ?? "");
+  const [invoiceLimit,setInvoiceLimit]=useState(50);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [creditOpen, setCreditOpen] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
@@ -154,17 +158,18 @@ export function OrderCashPanel() {
         <div className="company-rule-facts"><div><span>Open receivables</span><strong>{formatMoney(arTotal)}</strong><small>{receivables.length} open invoice{receivables.length === 1 ? "" : "s"}</small></div><div><span>Past due</span><strong>{formatMoney(pastDue)}</strong><small>Based on configured due dates</small></div><div><span>Cleared payments</span><strong>{commerce.payments.filter((payment) => payment.status === "Cleared").length}</strong><small>Settlement records</small></div><div><span>Credits / refunds</span><strong>{commerce.credits.length} / {commerce.refunds.length}</strong><small>Separate control records</small></div></div>
       </Section>
 
-      <div className="company-grid company-grid--two">
+      <div className="invoice-ledger-layout">
         <Section title="Invoice ledger" description="Invoice records generated from eligible orders">
           <div className="company-request-list">
-            {invoices.map((invoice) => {
-              const order = data.orders.find((item) => item.id === invoice.orderId);
-              const location = data.accounts.find((item) => item.id === invoice.accountId);
+            {invoices.slice(0,invoiceLimit).map((invoice) => {
+              const order = orderById.get(invoice.orderId);
+              const location = accountById.get(invoice.accountId);
               const status = computedInvoiceStatus(commerce, invoice);
               const open = invoiceBalance(commerce, invoice);
-              const placedBy = order ? data.users.find((user) => user.id === order.ownerId) : undefined;
-              return <button id={`commerce-${invoice.id}`} key={invoice.id} className={`account-table ${selected?.id === invoice.id ? "is-selected" : ""} ${focusedInvoice?.id === invoice.id ? "is-focused" : ""}`} onClick={() => setSelectedId(invoice.id)}><span className="account-name-cell"><i><FileText size={17} /></i><span><strong>{invoice.number}</strong><small>{location ? locationLabel(location) : "Location"} · {order?.number} · Placed by {placedBy?.name ?? order?.ownerId ?? "Not recorded"}</small></span></span><span><StatusPill tone={invoiceTone(status)}>{status}</StatusPill></span><span>{formatMoney(invoice.total)}</span><span>{open > 0 ? `${formatMoney(open)} due` : "Settled"}</span></button>;
+              const placedBy = order ? userById.get(order.ownerId) : undefined;
+              return <button id={`commerce-${invoice.id}`} key={invoice.id} className={`invoice-ledger-row ${selected?.id === invoice.id ? "is-selected" : ""} ${focusedInvoice?.id === invoice.id ? "is-focused" : ""}`} onClick={() => setSelectedId(invoice.id)}><span className="invoice-ledger-row__identity"><strong>{invoice.number}</strong><small>{location ? locationLabel(location) : "Location"}</small><small>{order?.number ? `Order ${order.number} · ` : ""}Placed by {placedBy?.name ?? order?.ownerId ?? "Not recorded"}</small></span><span className="invoice-ledger-row__amounts"><StatusPill tone={invoiceTone(status)}>{status}</StatusPill><strong>{formatMoney(invoice.total)}</strong><small>{open > 0 ? `${formatMoney(open)} due` : "Settled"}</small></span></button>;
             })}
+            {invoices.length>invoiceLimit&&<Button type="button" size="sm" variant="secondary" onClick={()=>setInvoiceLimit((limit)=>limit+50)}>Show more invoices</Button>}
             {invoices.length === 0 && <div className="review-empty"><ReceiptText size={24} /><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}
           </div>
         </Section>
@@ -198,7 +203,7 @@ export function OrderCashPanel() {
       </div>
 
       <Modal open={paymentOpen} title="Record customer payment" description="Pending means money has been initiated but has not settled. Cleared requires the actual bank or processor settlement date." onClose={() => setPaymentOpen(false)} footer={<><Button variant="ghost" onClick={() => setPaymentOpen(false)}>Cancel</Button><Button type="submit" form="payment-form">Record payment</Button></>}>
-        <form id="payment-form" className="form-grid" onSubmit={submitPayment}><Field label="Amount"><input required type="number" min="0.01" step="0.01" max={recordable} value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} /></Field><Field label="Method"><select value={paymentForm.method} onChange={(event) => setPaymentForm({ ...paymentForm, method: event.target.value as PaymentMethod })}><option>Card</option><option>ACH</option><option>Wire</option><option>Cash</option><option>Check</option><option>Other</option></select></Field><Field label="Settlement state"><select value={paymentForm.status} onChange={(event) => setPaymentForm({ ...paymentForm, status: event.target.value as "Pending" | "Cleared" })}><option>Cleared</option><option>Pending</option></select></Field>{paymentForm.status === "Cleared" && <Field label="Actual settlement date"><input required type="date" max={todayKey()} value={paymentForm.settlementDate} onChange={(event) => setPaymentForm({ ...paymentForm, settlementDate: event.target.value })} /></Field>}<Field label={paymentForm.method === "Check" ? "Check number / reference" : "Processor / bank reference"}><input value={paymentForm.reference} onChange={(event) => setPaymentForm({ ...paymentForm, reference: event.target.value })} /></Field><Field label="Note" className="field--full"><textarea rows={3} value={paymentForm.note} onChange={(event) => setPaymentForm({ ...paymentForm, note: event.target.value })} /></Field>{pending > 0 && <div className="form-callout field--full"><Landmark size={17}/><p>{formatMoney(pending)} is already recorded as pending settlement and cannot be double-allocated.</p></div>}</form>
+        <form id="payment-form" className="form-grid" onSubmit={submitPayment}><Field label="Amount"><input required type="number" min="0.01" step="0.01" max={recordable} value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} /></Field><Field label="Method"><select value={paymentForm.method} onChange={(event) => setPaymentForm({ ...paymentForm, method: event.target.value as PaymentMethod })}><option>Card</option><option>ACH</option><option>Wire</option><option>Check</option><option>Other</option></select></Field><Field label="Settlement state"><select value={paymentForm.status} onChange={(event) => setPaymentForm({ ...paymentForm, status: event.target.value as "Pending" | "Cleared" })}><option>Cleared</option><option>Pending</option></select></Field>{paymentForm.status === "Cleared" && <Field label="Actual settlement date"><input required type="date" max={todayKey()} value={paymentForm.settlementDate} onChange={(event) => setPaymentForm({ ...paymentForm, settlementDate: event.target.value })} /></Field>}<Field label={paymentForm.method === "Check" ? "Check number / reference" : "Processor / bank reference"}><input value={paymentForm.reference} onChange={(event) => setPaymentForm({ ...paymentForm, reference: event.target.value })} /></Field><Field label="Note" className="field--full"><textarea rows={3} value={paymentForm.note} onChange={(event) => setPaymentForm({ ...paymentForm, note: event.target.value })} /></Field>{pending > 0 && <div className="form-callout field--full"><Landmark size={17}/><p>{formatMoney(pending)} is already recorded as pending settlement and cannot be double-allocated.</p></div>}</form>
       </Modal>
       <Modal open={creditOpen} title="Create credit memo" description="Credits require a reason and remain distinct from payments and refunds. The creator cannot approve their own credit." onClose={() => setCreditOpen(false)} footer={<><Button variant="ghost" onClick={() => setCreditOpen(false)}>Cancel</Button><Button type="submit" form="credit-form">Create draft credit</Button></>}><form id="credit-form" className="form-grid" onSubmit={submitCredit}><Field label="Amount"><input required type="number" min="0.01" step="0.01" max={recordable} value={creditForm.amount} onChange={(event) => setCreditForm({ ...creditForm, amount: event.target.value })} /></Field><Field label="Reason" className="field--full"><textarea required rows={3} value={creditForm.reason} onChange={(event) => setCreditForm({ ...creditForm, reason: event.target.value })} /></Field></form></Modal>
       <Modal open={refundOpen} title="Request quality refund" description="Current operating direction allows refund exceptions for a verified quality issue on our side. The requester cannot approve the refund. The formal customer refund policy is still pending." onClose={() => setRefundOpen(false)} footer={<><Button variant="ghost" onClick={() => setRefundOpen(false)}>Cancel</Button><Button type="submit" form="refund-form">Create quality refund request</Button></>}><form id="refund-form" className="form-grid" onSubmit={submitRefund}><Field label="Amount"><input required type="number" min="0.01" step="0.01" value={refundForm.amount} onChange={(event) => setRefundForm({ ...refundForm, amount: event.target.value })} /></Field><Field label="Quality issue" className="field--full"><textarea required rows={3} value={refundForm.reason} onChange={(event) => setRefundForm({ ...refundForm, reason: event.target.value })} placeholder="Describe the verified product or fulfillment quality issue" /></Field><Field label="Evidence reviewed" className="field--full"><textarea required rows={3} value={refundForm.evidence} onChange={(event) => setRefundForm({ ...refundForm,evidence:event.target.value })} placeholder="Lot, photos, inspection notes, delivery evidence, or other supporting record" /></Field></form></Modal>

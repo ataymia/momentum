@@ -55,6 +55,9 @@ jobs:
       - name: Firestore security rules regression tests
         run: npm run test:rules
 
+      - name: Storage access regression tests
+        run: npm run test:storage
+
       - name: Verify generated Firestore rules are committed
         run: git diff --exit-code -- firestore.rules
 

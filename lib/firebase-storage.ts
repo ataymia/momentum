@@ -106,3 +106,22 @@ export async function deleteTrainingFile(storagePath: string): Promise<StorageRe
   if (!response.ok && response.status !== 404) return { ok: false, message: `Firebase Storage refused the delete (${response.status}).` };
   return { ok: true, value: true };
 }
+
+export async function uploadMarketingFile(assetId:string,versionId:string,file:File):Promise<StorageResult<{storagePath:string;contentType:string;size:number}>>{
+  if(!/^[A-Za-z0-9-]+$/.test(assetId)||!/^[A-Za-z0-9-]+$/.test(versionId)||file.size<=0||file.size>MAX_TRAINING_FILE_BYTES)return{ok:false,message:"Choose a valid file smaller than 200 MB."};
+  const prepared=await requireSession();if(!prepared.ok)return prepared;
+  const {session,bucket}=prepared.value;
+  const storagePath=`marketing/${assetId}/${versionId}/${safeStorageFileName(file.name)}`;
+  const contentType=file.type||"application/octet-stream";
+  const response=await fetch(objectUrl(bucket,storagePath,`?uploadType=media&name=${encodeURIComponent(storagePath)}`),{method:"POST",headers:{authorization:`Firebase ${session.idToken}`,"content-type":contentType},body:file}).catch(()=>null);
+  if(!response?.ok)return{ok:false,message:"File upload was not confirmed. Check Storage access and retry."};
+  return{ok:true,value:{storagePath,contentType,size:file.size}};
+}
+export async function openMarketingFile(storagePath:string):Promise<StorageResult<{objectUrl:string}>>{
+  if(!/^marketing\/[^/]+\/[^/]+\/[^/]+$/.test(storagePath))return{ok:false,message:"No stored marketing file is attached."};
+  const prepared=await requireSession();if(!prepared.ok)return prepared;
+  const {session,bucket}=prepared.value;
+  const response=await fetch(objectUrl(bucket,storagePath,"?alt=media"),{headers:{authorization:`Firebase ${session.idToken}`}}).catch(()=>null);
+  if(!response?.ok)return{ok:false,message:"This file is unavailable or not approved for your access."};
+  return{ok:true,value:{objectUrl:URL.createObjectURL(await response.blob())}};
+}

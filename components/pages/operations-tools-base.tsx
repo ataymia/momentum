@@ -1,4 +1,5 @@
 "use client";
+import { TrainingMaterialLink } from "../hcm/training-material-link";
 import { BookOpen, Clock3, MapPin, PackageSearch } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { mapsIntegrationStatus, projectAccounts } from "../../lib/maps-integration";
@@ -51,4 +52,4 @@ export function TimekeepingPage(){
   </div>;
 }
 
-export function MaterialsPage(){const{hcm}=useHcm();const library=useTrainingLibrary();return <div className="page"><PageHeader eyebrow="Resources" title="Materials & Resources" description="Company training, approved resources, and operating references accessible within your role."/><Section title="Training materials"><div className="company-request-list">{library.state.materials.filter(m=>m.active).map(m=>{const course=hcm.courses.find(c=>c.id===m.courseId);return <article key={m.id}><span><BookOpen size={16}/></span><div><strong>{m.title}</strong><p>{course?.title??"Company resource"} · {m.kind}</p>{m.url&&<a href={m.url} target="_blank" rel="noreferrer">Open resource</a>}</div></article>})}{!library.state.materials.some(m=>m.active)&&<div className="review-empty"><BookOpen size={24}/><p>No published resources yet.</p></div>}</div></Section></div>}
+export function MaterialsPage(){const{hcm}=useHcm();const library=useTrainingLibrary();return <div className="page"><PageHeader eyebrow="Resources" title="Training & company resources" description="Company training, approved resources, and operating references accessible within your role."/><Section title="Training materials"><div className="company-request-list">{library.state.materials.filter(m=>m.active).map(m=>{const course=hcm.courses.find(c=>c.id===m.courseId);return <article key={m.id}><span><BookOpen size={16}/></span><div><strong>{m.title}</strong><p>{course?.title??"Company resource"} · {m.kind}</p><TrainingMaterialLink material={m}/></div></article>})}{!library.state.materials.some(m=>m.active)&&<div className="review-empty"><BookOpen size={24}/><p>No published resources yet.</p></div>}</div></Section></div>}

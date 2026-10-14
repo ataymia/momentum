@@ -1,3 +1,4 @@
+import type { ExternalDocumentVerification } from "./hr-document-controls";
 import { canManageUser } from "./access";
 import { arizonaDateKey } from "./date-time";
 import type { WorkspaceData, WorkspaceUser } from "./types";
@@ -16,7 +17,7 @@ export type EmploymentChange = { id:string; userId:string; field:keyof Employmen
 export type ProfileChangeRequest = { id:string; userId:string; field:"email"|"phone"|"address"|"emergencyContact"; currentValue?:string; requestedValue:string; reason:string; submittedAt:string; status:"Submitted"|"Approved"|"Returned"; reviewerId?:string; decidedAt?:string; decisionNote?:string };
 export type EmployeePrivateProfile = { userId:string; phone?:string; address?:string; emergencyContact?:string; preferredName?:string; updatedAt:string };
 
-export type EmployeeDocument = { id:string; userId:string; title:string; category:"Employment"|"Compensation"|"Benefits"|"Policy"|"Tax"|"Performance"|"Training"|"Other"; version:number; status:"Available"|"Acknowledgment required"|"Missing"; fileName?:string; effectiveDate?:string; expiresAt?:string; acknowledgedAt?:string; acknowledgedVersion?:number; uploadedAt:string; uploadedBy:string };
+export type EmployeeDocument = { verification?:ExternalDocumentVerification; id:string; userId:string; title:string; category:"Employment"|"Compensation"|"Benefits"|"Policy"|"Tax"|"Performance"|"Training"|"Other"; version:number; status:"Available"|"Acknowledgment required"|"Missing"; fileName?:string; effectiveDate?:string; expiresAt?:string; acknowledgedAt?:string; acknowledgedVersion?:number; uploadedAt:string; uploadedBy:string };
 export type PolicyRecord = { id:string; title:string; version:number; audience:"Company"|"Leadership"|"Sales"|"Operations"; effectiveDate:string; dueDate?:string; active:boolean; summary:string };
 export type PolicyAcknowledgment = { id:string; policyId:string; userId:string; version:number; acknowledgedAt:string };
 

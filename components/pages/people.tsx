@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useHcm } from "../../lib/hcm-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Section, StatusPill, formatDate } from "../ui";
+import { HrDocumentControls } from "../hcm/document-controls";
 import { PeoplePage as PeoplePageV2 } from "./people-v2";
 
 export function PeoplePage() {
@@ -31,6 +32,7 @@ export function PeoplePage() {
       {workflow && <article className="is-focused"><span><FileText size={18}/></span><div><small>{workflowEmployee?.name ?? "Employee"} · {workflow.type}</small><strong>{workflow.title}</strong><p>{workflow.detail}</p></div><StatusPill tone={workflow.status === "Approved" ? "success" : workflow.status === "Returned" ? "danger" : "warning"}>{workflow.status}</StatusPill></article>}
       {employee && <article className="is-focused"><span><UserRound size={18}/></span><div><small>{employee.role} · {employee.team}</small><strong>{employee.name}</strong><p>{employee.title} · {employee.email}{manager ? ` · reports to ${manager.name}` : ""}</p></div><StatusPill tone="info">Workforce record</StatusPill></article>}
     </div></Section></div>}
-    <PeoplePageV2/>
+    <PeoplePageV2/><HrDocumentControls/>
+
   </>;
 }

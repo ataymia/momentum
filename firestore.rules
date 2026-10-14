@@ -50,7 +50,10 @@ service cloud.firestore {
 
     /** Any provisioned employee, including one still onboarding. Mirrors roleAllows(`hasAccess`). */
     function isEmployee() {
-      return hasAccessRecord() && role() != 'Customer';
+      return hasAccessRecord()
+        && role() != 'Customer'
+        && access().accountState != 'Suspended'
+        && access().accountState != 'Separated';
     }
     function hasAccess() {
       return isEmployee();
@@ -176,6 +179,109 @@ service cloud.firestore {
       allow write: if isEmployee() || bootstrapClaimant();
     }
 
+    // Privileged offboarding log. Even an Administrator browser cannot write.
+    match /employeeSeparations/{uid} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Immutable audit proof for owner-authorized off-route deliveries.
+    // Only the authenticated server function may create these records.
+    match /adminDeliveryOverrides/{orderId} {
+      allow get, list: if activeEmployee();
+      allow create, update, delete: if false;
+    }
+
+    // Future account editor MUST read true creator identity from Admin SDK.
+    // Client-writable workspace.createdByUid is never proof of creation.
+    // Neither an Administrator client nor a Sales Manager can mint provenance.
+    match /accountCreatorProvenance/{accountId} {
+      allow get, list, create, update, delete: if false;
+    }
+
+    // Backend-only immutable event history for account-profile edits.
+    match /accountProfileEditEvents/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Server-only idempotency receipts prevent replayed account creation.
+    match /accountCreationRequests/{requestId} {
+      allow get, list, create, update, delete: if false;
+    }
+
+    // Review-only server notification candidates. Browsers cannot mint mail.
+    match /notificationCandidates/{candidateId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /emailOutbox/{messageId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /emailSuppressions/{recipientId} {
+      allow read, write: if false;
+    }
+
+    match /salesVisitTargets/{uid}/weeks/{weekStart} {
+      allow read: if isAdmin() || (activeEmployee()
+        && (uid == request.auth.uid || manages(uid)));
+      allow create, update: if (isAdmin() || manages(uid))
+        && request.resource.data.keys().hasOnly(['userId','weekStart','target','updatedAt','updatedBy'])
+        && request.resource.data.userId == uid
+        && request.resource.data.weekStart == weekStart
+        && request.resource.data.target is int && request.resource.data.target >= 0
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow delete: if false;
+    }
+    function marketingEditor() {
+      return isActiveRole('Administrator') || isActiveRole('Marketing');
+    }
+    match /marketingAssetVersions/{versionId} {
+      allow read: if marketingEditor() || (isEmployee()
+        && resource.data.status == 'Approved' && resource.data.deleted == false);
+      allow create: if marketingEditor()
+        && request.resource.data.id == versionId
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.assetId is string
+        && request.resource.data.version is int && request.resource.data.version > 0
+        && request.resource.data.status == 'Draft'
+        && request.resource.data.deleted == false;
+      allow update: if marketingEditor()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status','updatedAt','updatedBy','deleted'])
+        && request.resource.data.status in ['Draft','Approved','Archived']
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow delete: if false;
+    }
+    match /marketingProductionRequests/{requestId} {
+      allow read: if marketingEditor() || (activeEmployee()
+        && resource.data.requesterId == request.auth.uid);
+      allow create: if activeEmployee()
+        && request.resource.data.id == requestId
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.history == [{'at': request.resource.data.createdAt, 'actorId': request.auth.uid, 'status': 'Requested'}]
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.status == 'Requested'
+        && request.resource.data.quantity is int
+        && request.resource.data.quantity > 0
+        && request.resource.data.approvedVersionId == ''
+        && request.resource.data.draftVersionId == ''
+        && request.resource.data.ownerId == '';
+      allow update: if marketingEditor()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['ownerId','status','dueDate','draftVersionId','approvedVersionId','updatedAt','updatedBy','history'])
+        && request.resource.data.history == resource.data.history.concat([{'at': request.resource.data.updatedAt, 'actorId': request.auth.uid, 'status': request.resource.data.status}])
+        && request.resource.data.status in ['Requested','Assigned','Draft','Approval','Printing','Ready','Completed']
+        && request.resource.data.updatedBy == request.auth.uid
+        && (request.resource.data.approvedVersionId == '' ||
+          (get(/databases/$(database)/documents/marketingAssetVersions/$(request.resource.data.approvedVersionId)).data.status == 'Approved'
+          && get(/databases/$(database)/documents/marketingAssetVersions/$(request.resource.data.approvedVersionId)).data.deleted == false))
+        && (!(request.resource.data.status in ['Printing','Ready','Completed']) || request.resource.data.approvedVersionId != '');
+      allow delete: if false;
+    }
+
     // --- engine state: shared shards ----------------------------------------
 
     match /domains {
@@ -253,8 +359,8 @@ service cloud.firestore {
 
     // momentum-delivery-v1
     match /delivery/fields/{field} {
-      allow get, list: if field in ['_root', 'tasks'] && ((activeEmployee() && role() in ['Administrator', 'Operations', 'Warehouse', 'Delivery Driver']));
-      allow write: if field in ['_root', 'tasks'] && ((activeEmployee() && role() in ['Administrator', 'Operations', 'Delivery Driver']));
+      allow get, list: if field in ['_root', 'overrides', 'tasks'] && ((activeEmployee() && role() in ['Administrator', 'Operations', 'Warehouse', 'Delivery Driver']));
+      allow write: if field in ['_root', 'overrides', 'tasks'] && (field in ['overrides'] ? (isActiveRole('Administrator')) : (activeEmployee() && role() in ['Administrator', 'Operations', 'Delivery Driver']));
     }
 
     // momentum-finance-v3
@@ -313,7 +419,7 @@ service cloud.firestore {
     // momentum-demo-workspace-v5
     match /{uid}/workspace/{field} {
       allow get, list: if field in ['timeEntries', 'timecards']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['timeEntries', 'timecards']
         && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
@@ -321,7 +427,7 @@ service cloud.firestore {
     // momentum-territory-v2
     match /{uid}/territory/{field} {
       allow get, list: if field in ['exceptions']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['exceptions']
         && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
@@ -329,7 +435,7 @@ service cloud.firestore {
     // momentum-hcm-v4
     match /{uid}/hcm/{field} {
       allow get, list: if field in ['acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'compensation', 'compensationChanges', 'dependents', 'documents', 'employmentChanges', 'goals', 'leaveRequests', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'reviews', 'shiftRequests', 'tasks', 'training', 'workflows']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['audit', 'compensation']) && manages(uid)) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || (!(field in ['audit', 'compensation']) && manages(uid)) || false));
       allow write: if field in ['acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'compensation', 'compensationChanges', 'dependents', 'documents', 'employmentChanges', 'goals', 'leaveRequests', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'reviews', 'shiftRequests', 'tasks', 'training', 'workflows']
         && (isAdmin() || (uid == request.auth.uid ? (!(field in ['compensation', 'compensationChanges', 'employmentChanges', 'ptoAssignments', 'ptoLedger']) && isEmployee()) : ((!(field in ['audit', 'compensation']) && manages(uid) && activeEmployee()) || false)));
     }
@@ -337,7 +443,7 @@ service cloud.firestore {
     // momentum-identity-provisioning-v1
     match /{uid}/identity/{field} {
       allow get, list: if field in ['records']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['records']) && manages(uid)) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || (!(field in ['records']) && manages(uid)) || false));
       allow write: if field in ['records']
         && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((!(field in ['records']) && manages(uid) && activeEmployee()) || false)));
     }
@@ -345,7 +451,7 @@ service cloud.firestore {
     // momentum-brand-ambassador-v1
     match /{uid}/brandAmbassador/{field} {
       allow get, list: if field in ['assignments']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['assignments']) && manages(uid)) || (field in ['assignments'] && supervisesBrandAmbassador(uid))));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || (!(field in ['assignments']) && manages(uid)) || (field in ['assignments'] && supervisesBrandAmbassador(uid))));
       allow write: if field in ['assignments']
         && (isAdmin() || (uid == request.auth.uid ? (!(field in ['assignments']) && isEmployee()) : ((!(field in ['assignments']) && manages(uid) && activeEmployee()) || (field in ['assignments'] && supervisesBrandAmbassador(uid) && activeEmployee()))));
     }
@@ -353,7 +459,7 @@ service cloud.firestore {
     // momentum-document-templates-v1
     match /{uid}/documentTemplates/{field} {
       allow get, list: if field in ['packets']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['packets']
         && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
@@ -361,7 +467,7 @@ service cloud.firestore {
     // momentum-performance-v1
     match /{uid}/performance/{field} {
       allow get, list: if field in ['goals', 'notes', 'reports', 'weeklyDrafts']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['goals', 'notes', 'reports', 'weeklyDrafts']
         && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
@@ -369,7 +475,7 @@ service cloud.firestore {
     // momentum-finance-v3
     match /{uid}/finance/{field} {
       allow get, list: if field in ['expenses']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['expenses']
         && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
@@ -377,7 +483,7 @@ service cloud.firestore {
     // momentum-marketing-v3
     match /{uid}/marketing/{field} {
       allow get, list: if field in ['requests']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || manages(uid) || false));
       allow write: if field in ['requests']
         && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
     }
@@ -385,7 +491,7 @@ service cloud.firestore {
     // momentum-payroll-v5
     match /{uid}/payroll/{field} {
       allow get, list: if field in ['disbursements', 'employees', 'withholdingProfiles']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['disbursements', 'employees', 'withholdingProfiles']) && manages(uid)) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || (!(field in ['disbursements', 'employees', 'withholdingProfiles']) && manages(uid)) || false));
       allow write: if field in ['disbursements', 'employees', 'withholdingProfiles']
         && (isAdmin() || (uid == request.auth.uid ? (!(field in ['disbursements', 'employees', 'withholdingProfiles']) && isEmployee()) : ((!(field in ['disbursements', 'employees', 'withholdingProfiles']) && manages(uid) && activeEmployee()) || false)));
     }
@@ -393,7 +499,7 @@ service cloud.firestore {
     // momentum-field-tracking-v1
     match /{uid}/fieldTracking/{field} {
       allow get, list: if field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!(field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']) && manages(uid)) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || (!(field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']) && manages(uid)) || false));
       allow write: if field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']
         && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((!(field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']) && manages(uid) && activeEmployee()) || false)));
     }
@@ -401,17 +507,17 @@ service cloud.firestore {
     // momentum-audit-v1
     match /{uid}/audit/{field} {
       allow get, list: if (field in ['events'] || field.matches('^events__chunk_[0-9]{6}$'))
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || (!((field in ['events'] || field.matches('^events__chunk_[0-9]{6}$'))) && manages(uid)) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || (!((field in ['events'] || field.matches('^events__chunk_[0-9]{6}$'))) && manages(uid)) || false));
       allow write: if (field in ['events'] || field.matches('^events__chunk_[0-9]{6}$'))
         && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((!((field in ['events'] || field.matches('^events__chunk_[0-9]{6}$'))) && manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-notification-rules-v1
     match /{uid}/notificationRules/{field} {
-      allow get, list: if field in ['preferences']
-        && (uid == request.auth.uid ? hasAccessRecord() : (isAdmin() || manages(uid) || false));
-      allow write: if field in ['preferences']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
+      allow get, list: if field in ['deliveries', 'preferences']
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || (!(field in ['deliveries']) && manages(uid)) || false));
+      allow write: if field in ['deliveries', 'preferences']
+        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((!(field in ['deliveries']) && manages(uid) && activeEmployee()) || false)));
     }
     }
 

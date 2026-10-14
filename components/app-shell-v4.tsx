@@ -7,6 +7,7 @@ import { evaluateSalesRepAccountBonuses } from "../lib/bonus-engine";
 import { useCommerce } from "../lib/commerce-context";
 import { useCrm } from "../lib/crm-context";
 import { useFirebaseSessionOptional } from "../lib/firebase-session-context";
+import {traceNavigationCommit} from "../lib/performance-diagnostics";
 import { useNotifications } from "../lib/notification-context";
 import { useRuntimeMode } from "../lib/runtime-mode";
 import type { PageKey, WorkspaceUser } from "../lib/types";
@@ -43,7 +44,7 @@ const primaryNav: NavItem[] = [
   { key: "inventory", label: "Inventory & fulfillment", icon: Boxes }, { key: "marketing", label: "Marketing", icon: Megaphone },
   { key: "brandAmbassadors", label: "Brand Ambassadors", icon: PartyPopper },
   { key: "timekeeping", label: "Clock In / Timekeeping", icon: CalendarDays },
-  { key: "materials", label: "Materials / Resources", icon: FileText },
+
   { key: "people", label: "Human Resources", icon: UsersRound }, { key: "payroll", label: "Payroll", icon: BadgeDollarSign },
   { key: "finance", label: "Finance & accounting", icon: CircleDollarSign },
 ];
@@ -58,18 +59,18 @@ const sectionTabs: Partial<Record<PageKey, SectionTab[]>> = {
   accounts: [{key:"accounts",label:"Accounts"},{key:"quickVisit",label:"Quick Visit"},{key:"salesMap",label:"Map"},{key:"accountSetup",label:"Account setup"},{key:"accountHealth",label:"Account health"}],
   orders: [{key:"orders",label:"Orders"},{key:"orderCash",label:"Invoices & payments"}],
   inventory: [{key:"inventory",label:"Fulfillment"},{key:"inventoryLedger",label:"Inventory ledger"},{key:"products",label:"Products"}],
-  people: [{key:"people",label:"HR home"},{key:"employees",label:"Employee directory"},{key:"newHire",label:"New hire"},{key:"onboarding",label:"Onboarding queue"},{key:"trainingAdmin",label:"Training setup"}],
+  people: [{key:"people",label:"HR home"},{key:"materials",label:"Training & resources"},{key:"employees",label:"Employee directory"},{key:"newHire",label:"New hire"},{key:"onboarding",label:"Onboarding queue"},{key:"trainingAdmin",label:"Training setup"}],
   finance: [{key:"finance",label:"Finance"},{key:"accounting",label:"Accounting"}],
   reports: [{key:"reports",label:"Reports"},{key:"performance",label:"Performance"},{key:"reportingCenter",label:"Reporting center"},{key:"audit",label:"Audit trail"}],
   settings: [{key:"settings",label:"Administration"},{key:"workforceLive",label:"Workforce live"},{key:"dataExchange",label:"Data exchange"}],
 };
 const pageParent: Partial<Record<PageKey, PageKey>> = {
   actions:"work", quickVisit:"accounts", salesMap:"accounts", accountSetup:"accounts", accountHealth:"accounts", orderCash:"orders", inventoryLedger:"inventory", products:"inventory",
-  employees:"people", newHire:"people", onboarding:"people", trainingAdmin:"people", accounting:"finance", performance:"reports",
+  materials:"people", employees:"people", newHire:"people", onboarding:"people", trainingAdmin:"people", accounting:"finance", performance:"reports",
   reportingCenter:"reports", audit:"reports", workforceLive:"settings", dataExchange:"settings",
 };
 const pageLabels: Partial<Record<PageKey,string>> = {
-  actions:"Action center", quickVisit:"Quick Visit", salesMap:"Account map", accountSetup:"Account setup", accountHealth:"Account health", orderCash:"Invoices & payments", timekeeping:"Timekeeping", materials:"Materials & Resources", products:"Products",
+  actions:"Action center", quickVisit:"Quick Visit", salesMap:"Account map", accountSetup:"Account setup", accountHealth:"Account health", orderCash:"Invoices & payments", timekeeping:"Timekeeping", materials:"Training & resources", products:"Products",
   inventoryLedger:"Inventory ledger", employees:"Employee directory", newHire:"New hire", onboarding:"Onboarding queue", trainingAdmin:"Training setup",
   brandAmbassadors:"Brand Ambassadors",
   accounting:"Accounting", performance:"Performance", reportingCenter:"Reporting center", audit:"Audit trail", workforceLive:"Workforce live", dataExchange:"Data exchange",
@@ -97,6 +98,7 @@ function SectionSubnav(){
 
 function PageView() {
   const { activePage } = useWorkspace();
+  useEffect(()=>traceNavigationCommit(activePage),[activePage]);
   switch (activePage) {
     case "home": return <DashboardPage/>;
     case "work": return <WorkPage/>;
@@ -146,7 +148,7 @@ export function AppShell() {
   useEffect(() => { const listener = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setSearchOpen(true); } if (event.key === "Escape") { setSearchOpen(false); setNotificationsOpen(false); setUserOpen(false); } }; addEventListener("keydown", listener); return () => removeEventListener("keydown", listener); }, []);
   if (!currentUser) return null;
 
-  const allowedPrimary = primaryNav.filter((item) => canAccessPage(currentUser, item.key)); const allowedSecondary = secondaryNav.filter((item) => canAccessPage(currentUser, item.key));
+  const allowedPrimary = primaryNav.map((item): NavItem => item.key === "people" && !canAccessPage(currentUser, "people") && canAccessPage(currentUser, "materials") ? { ...item, key: "materials", label: "HR / Training" } : item).filter((item) => canAccessPage(currentUser, item.key)); const allowedSecondary = secondaryNav.filter((item) => canAccessPage(currentUser, item.key));
   const switchableUsers = runtime.isDemo ? data.users.filter((user) => demoTourIds.has(user.id)) : [];
   const unread = generated.unreadCount;
   const normalized = query.trim().toLowerCase(); const searchResults: SearchResult[] = [];

@@ -2,7 +2,7 @@
 
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { EMPLOYEE_DIRECTORY_COLLECTION, PLATFORM_BOOTSTRAP_DOCUMENT, PLATFORM_META_DOCUMENT, USER_ACCESS_COLLECTION, buildPersistenceScope, directoryDocument, normalizeDirectoryEntry, normalizeUserAccess, userAccessDocument, type UserAccessRecord } from "./firebase-access";
-import { ProvisioningError, createFirebaseIdentityAsAdministrator, deleteEmployeeIdentity, lookupProvisioningStatus, type CreatedFirebaseIdentity } from "./firebase-admin-provisioning";
+import { ProvisioningError, createFirebaseIdentityAsAdministrator, deleteEmployeeIdentity, separateEmployeeIdentity, lookupProvisioningStatus, type CreatedFirebaseIdentity } from "./firebase-admin-provisioning";
 import { isProvisionableRole, type ProvisionEmployeeProfile, type ProvisioningStage, type ProvisioningStatusSuccess } from "./provisioning-contract";
 import { FirebaseAuthSession, currentFirebaseSession, installFirebaseSessionPeerResponder, lookupFirebaseAccount, persistFirebaseSession, refreshFirebaseSession, requestFirebaseSessionFromPeer, requestPasswordResetByUsername, requestUsernameReminder, sendFirebaseEmailVerification, sendFirebasePasswordReset, signInWithFirebasePassword, signInWithUsername, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
 import { updateMomentumAccountEmail } from "./firebase-account-management";
@@ -53,6 +53,7 @@ export type FirebaseSessionValue={
   provisioningStatus:(email:string)=>Promise<ProvisioningStatusSuccess|null>;
   /** Administrator-only: permanently remove an identity and free its work e-mail for re-use. */
   deleteEmployeeAccount:(uid:string)=>Promise<ActionResult>;
+  separateEmployeeAccount:(uid:string,reason:string)=>Promise<ActionResult>;
   setAccountState:(uid:string,state:AccountAccessState)=>Promise<ActionResult>;
   updateUserAccess:(uid:string,patch:UserAccessPatch)=>Promise<ActionResult>;
   grantAdministrator:(uid:string)=>Promise<ActionResult>;
@@ -356,6 +357,20 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     return{ok:true,message:`${result.email||"The account"} was deleted${result.authIdentityDeleted?"":" (its Firebase identity was already gone)"}. The work e-mail is free to use again.`};
   },[access,directory,requireAdministrator,session]);
 
+  const separateEmployeeAccount=useCallback(async(uid:string,reason:string):Promise<ActionResult>=>{
+    const denied=requireAdministrator();if(denied)return denied;
+    if(!session||uid===session.uid)return{ok:false,message:"Choose another employee."};
+    if(reason.trim().length<5)return{ok:false,message:"Enter an offboarding reason."};
+    try{
+      const result=await separateEmployeeIdentity(session,uid,reason.trim());
+      const current=accessRef.current??access;
+      if(current)await loadDirectory(current);
+      return{ok:true,message:`Employee access revoked. ${result.releasedAccountIds.length} accounts released and ${result.suspendedTerritoryIds.length} territories suspended. Historical records retained.${result.authDisabled?"":" Firebase Auth identity was already missing."}`};
+    }catch(caught){
+      return{ok:false,message:message(caught,"Offboarding requires Administrator review.")};
+    }
+  },[access,loadDirectory,requireAdministrator,session]);
+
   const writeAccess=useCallback(async(uid:string,accessPatch:Record<string,unknown>,directoryPatch:Record<string,unknown>|null):Promise<ActionResult>=>{
     const denied=requireAdministrator();if(denied)return denied;
     if(uid===session!.uid&&("role" in accessPatch||"accountState" in accessPatch))return{ok:false,message:"Administrators cannot change their own role or account state."};
@@ -373,7 +388,7 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     return{ok:true};
   },[requireAdministrator,session]);
 
-  const setAccountState=useCallback((uid:string,state:AccountAccessState)=>writeAccess(uid,{accountState:state},null),[writeAccess]);
+  const setAccountState=useCallback((uid:string,state:AccountAccessState)=>state==="Separated"?Promise.resolve({ok:false,message:"Use employee offboarding to revoke Auth and release accounts."}):writeAccess(uid,{accountState:state},null),[writeAccess]);
 
   const changeUserEmail=useCallback(async(uid:string,newEmail:string):Promise<ActionResult>=>{
     const denied=requireAdministrator();if(denied)return denied;
@@ -406,8 +421,8 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
 
   const value=useMemo<FirebaseSessionValue>(()=>({
     configured:configuration.configured,projectId:configuration.projectId,status,error,session,access,emailVerified,directory,accessRecords,
-    signIn,signOut,retry:boot,changePassword,changeOwnEmail,changeUserEmail,sendPasswordReset,recoverUsername,sendVerificationEmail,refreshVerification,claimAdministrator,createEmployeeAccount,provisioningStatus,deleteEmployeeAccount,setAccountState,updateUserAccess,grantAdministrator,
-  }),[access,accessRecords,boot,changeOwnEmail,changePassword,changeUserEmail,claimAdministrator,configuration.configured,configuration.projectId,createEmployeeAccount,deleteEmployeeAccount,directory,emailVerified,error,grantAdministrator,provisioningStatus,recoverUsername,refreshVerification,sendPasswordReset,sendVerificationEmail,session,setAccountState,signIn,signOut,status,updateUserAccess]);
+    signIn,signOut,retry:boot,changePassword,changeOwnEmail,changeUserEmail,sendPasswordReset,recoverUsername,sendVerificationEmail,refreshVerification,claimAdministrator,createEmployeeAccount,provisioningStatus,deleteEmployeeAccount,separateEmployeeAccount,setAccountState,updateUserAccess,grantAdministrator,
+  }),[access,accessRecords,boot,changeOwnEmail,changePassword,changeUserEmail,claimAdministrator,configuration.configured,configuration.projectId,createEmployeeAccount,deleteEmployeeAccount,separateEmployeeAccount,directory,emailVerified,error,grantAdministrator,provisioningStatus,recoverUsername,refreshVerification,sendPasswordReset,sendVerificationEmail,session,setAccountState,signIn,signOut,status,updateUserAccess]);
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

@@ -1,4 +1,5 @@
 import type { FirebaseAuthSession } from "./firebase-auth-rest";
+import {recordPerformanceSample} from "./performance-diagnostics";
 import { currentFirebaseSession } from "./firebase-auth-rest";
 import { firebaseWebConfig } from "./firebase-config";
 
@@ -130,6 +131,7 @@ export async function getFirestoreSnapshot<T=Record<string,unknown>>(documentPat
 export async function getFirestoreSnapshots<T=Record<string,unknown>>(documentPaths:string[]):Promise<FirestoreSnapshot<T>[]>{
   const unique=[...new Set(documentPaths)];
   if(unique.length===0)return[];
+  const started=performance.now();
   const config=configOrThrow();const session=await sessionOrThrow();
   const results:FirestoreSnapshot<T>[]=[];
   for(let index=0;index<unique.length;index+=100){
@@ -153,6 +155,7 @@ export async function getFirestoreSnapshots<T=Record<string,unknown>>(documentPa
       else if(entry.missing)results.push({path:pathFromName(config.projectId,entry.missing),exists:false,data:null});
     }
   }
+  recordPerformanceSample({operation:"firestore-batch-read",durationMs:performance.now()-started,count:unique.length});
   return results;
 }
 
@@ -191,3 +194,15 @@ export async function commitFirestoreWrites(writes:FirestoreWrite[]):Promise<Fir
 
 export const isFirestoreConflict=(result:FirestoreCommitResult)=>!result.ok&&(result.code==="FAILED_PRECONDITION"||result.code==="ABORTED"||result.status===409||result.code==="ALREADY_EXISTS");
 export const isFirestorePermissionDenied=(result:FirestoreCommitResult)=>!result.ok&&(result.code==="PERMISSION_DENIED"||result.status===403);
+
+/** Bounded equality query for per-record libraries and queues. */
+export async function queryFirestoreSnapshots<T=Record<string,unknown>>(collection:string,filters:{field:string;value:string|boolean}[]=[],limit=200):Promise<FirestoreSnapshot<T>[]>{
+  if(!/^[A-Za-z][A-Za-z0-9]+$/.test(collection))throw new Error("Invalid collection.");
+  const config=configOrThrow();const session=await sessionOrThrow();
+  const clauses=filters.map(item=>({fieldFilter:{field:{fieldPath:item.field},op:"EQUAL",value:typeof item.value==="boolean"?{booleanValue:item.value}:{stringValue:item.value}}}));
+  const structuredQuery={from:[{collectionId:collection}],limit:Math.min(500,Math.max(1,limit)),...(clauses.length?{where:clauses.length===1?clauses[0]:{compositeFilter:{op:"AND",filters:clauses}}}:{})};
+  const response=await fetch(`https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents:runQuery`,{method:"POST",headers:{...authHeaders(session),"content-type":"application/json"},body:JSON.stringify({structuredQuery})});
+  if(!response.ok)throw new FirestoreRequestError(response.status,"QUERY_FAILED","The records could not be loaded. Check your access and deployed Firebase rules.");
+  const payload=await response.json() as {document?:FirestoreDocument}[];
+  return payload.flatMap(row=>row.document?[snapshot<T>(config,row.document)]:[]);
+}

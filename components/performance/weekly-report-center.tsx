@@ -1,5 +1,6 @@
 "use client";
 
+import { WeeklyCompliance } from "./weekly-compliance";
 import { ClipboardCheck, FileText, Save, Send, ShieldCheck, Target } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
@@ -89,6 +90,7 @@ export function WeeklyReportCenter(){
   };
 
   return <>
+    <WeeklyCompliance/>
     <div className="report-integrity-banner"><Target size={20}/><div><strong>Weekly goals now roll forward automatically.</strong><p>Each employee receives a Monday weekly-report obligation. This week&apos;s three goals come from the prior submitted report. The report is due the following Monday and remains in Required Actions until submitted.</p></div></div>
 
     <Section title="My weekly report" description="Three goals, actual results, notes, a weekly summary, and the next three goals">
