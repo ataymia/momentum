@@ -288,6 +288,12 @@ service cloud.firestore {
       allow write: if isEmployee() || bootstrapClaimant();
     }
 
+    // Privileged offboarding log. Even an Administrator browser cannot write.
+    match /employeeSeparations/{uid} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     // --- engine state: shared shards ----------------------------------------
 
     match /domains {
