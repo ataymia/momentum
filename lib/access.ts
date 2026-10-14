@@ -62,7 +62,10 @@ export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, accou
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
   if (user.role === "Brand Ambassador") return false;
   if (user.role === "Sales Representative") return account.ownerId === user.id || (!account.ownerId && account.stage === "Prospect");
-  return Boolean(account.ownerId) && managedUserIds(data, user).has(account.ownerId);
+  // Unassigned customers remain visible to managers for safe reassignment.
+  // Sales Representatives can self-claim only unassigned prospects, never
+  // automatically inherit payment-bearing or already-active customers.
+  return !account.ownerId || managedUserIds(data, user).has(account.ownerId);
 };
 
 /** Only an unassigned Prospect may be self-claimed. Existing customers still use managed responsibility transfer. */
