@@ -54,6 +54,6 @@ test("measure audit recomputation with overlapping field activity", () => {
     iterations,
     beforeMs: legacyMs,
     afterMs: optimizedMs,
-    environment: "GitHub Actions CI; no concurrent employees or live Firestore",
+    environment: `${process.env.CI ? "CI" : "Local Node"}; no concurrent employees or live Firestore`,
   }));
 });

@@ -80,7 +80,7 @@ without `--only`: that could deploy the unrelated Hosting target as well.
 Deployment command after preflight passes:
 
 ```bash
-npx firebase-tools@15.30.1 deploy --project momentumdis --only firestore:rules,firestore:indexes,storage,functions:separateEmployeeAccess,functions:deleteEmployee,functions:adminDeliveryOverride,functions:captureOrderNotifications,functions:captureDeliveryNotifications,functions:captureDeliveryOverrideNotifications,functions:capturePaymentNotifications,functions:captureInvoiceNotifications
+npx firebase-tools@15.30.1 deploy --project momentumdis --only firestore:rules,firestore:indexes,storage,functions:provisionEmployee,functions:separateEmployeeAccess,functions:deleteEmployee,functions:adminDeliveryOverride,functions:captureOrderNotifications,functions:captureDeliveryNotifications,functions:captureDeliveryOverrideNotifications,functions:capturePaymentNotifications,functions:captureInvoiceNotifications
 ```
 
 This deploys the preview observer but never emails anyone. Check Eventarc/Functions
@@ -93,3 +93,12 @@ Owner: Mia for release and Resend identity; engineering for remaining integratio
 KPI impact: reliable offboarding, fewer misleading alerts, accountable order status.
 Next decision: verify this combined release, then complete Resend transport and
 source authorization. Neither payment activation nor CRM migration is complete.
+
+## October 14 verification update
+
+- PR #57 contains the combined release candidate. It is not evidence of a production deployment.
+- Logic suite: 380 passed. First GitHub run passed all 83 Firestore emulator tests; a Functions role-map quoting error was fixed in the next commit.
+- Actual Chromium PDF export exposed clipped receipt/footer content. Print CSS now allows continuation pages, with a compact normal invoice layout. Both identifiers and footer were inspected in the exported PDF.
+- Marketing Storage authorization has a separate emulator gate covering draft reads, approved reads, immutable files, and separated/customer denial.
+- Marketing provisioning requires deploying `provisionEmployee`, in addition to rules/Storage and the other listed endpoints.
+- Live authenticated role tests and deployed-domain PDF verification still require the Firebase release. No actual employee/account/payment was modified during local smoke testing.

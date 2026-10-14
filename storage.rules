@@ -59,6 +59,7 @@ service firebase.storage {
         && firestore.get(/databases/(default)/documents/marketingAssetVersions/$(versionId)).data.status == 'Approved'
         && firestore.get(/databases/(default)/documents/marketingAssetVersions/$(versionId)).data.deleted == false);
       allow create: if marketingEditor()
+        && resource == null
         && request.resource.size < 200 * 1024 * 1024
         && request.resource.contentType != null;
       allow delete: if marketingEditor();
