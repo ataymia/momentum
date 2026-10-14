@@ -66,6 +66,8 @@ export type WorkspaceUser = {
   role: Role;
   team: Team;
   managerId?: string;
+  /** UI eligibility only; Firebase userAccess remains the authorization authority. */
+  employmentStatus?: "Active" | "Separated";
   /** Login alias. Work e-mail remains a valid sign-in and recovery identifier for the same Firebase uid. */
   username?: string;
   phone?: string;
