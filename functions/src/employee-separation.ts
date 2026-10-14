@@ -1,4 +1,4 @@
-import {randomUUID} from "node: crypto";
+import {randomUUID} from "node:crypto";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
 
