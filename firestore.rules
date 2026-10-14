@@ -50,7 +50,10 @@ service cloud.firestore {
 
     /** Any provisioned employee, including one still onboarding. Mirrors roleAllows(`hasAccess`). */
     function isEmployee() {
-      return hasAccessRecord() && role() != 'Customer';
+      return hasAccessRecord()
+        && role() != 'Customer'
+        && access().accountState != 'Suspended'
+        && access().accountState != 'Separated';
     }
     function hasAccess() {
       return isEmployee();
