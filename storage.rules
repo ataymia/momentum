@@ -66,6 +66,17 @@ service firebase.storage {
       allow update: if false;
     }
 
+    // Confidential employment forms are written only by trusted backend service identities.
+    // Signed PDFs and signing certificates are NEVER uploaded from a browser, even by an Administrator.
+    // Allow individual document fetches for the employee or an active Administrator; disallow listing
+    // the bucket prefix and modifying the immutable signed originals from all client accounts.
+    match /hr-private/{employeeUid}/{formKey}/{artifactId}/{fileName} {
+      allow get: if (formKey in ['I9', 'W4', 'AZ_A4'])
+        && (fileName in ['signed.pdf', 'certificate.pdf'])
+        && (isAdmin() || (isEmployee() && request.auth.uid == employeeUid));
+      allow list, create, update, delete: if false;
+    }
+
     // Anything not matched above is denied.
     match /{allPaths=**} {
       allow read, write: if false;
