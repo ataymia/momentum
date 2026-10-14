@@ -64,7 +64,7 @@ export function OrdersPage(){
 
  const deliveredTasks=useMemo(()=>new Set(scope.orders.filter((order)=>order.status==="Delivered").map((order)=>order.id)),[scope.orders]);
  const orders=useMemo(()=>filterOrderWorkspace(data,scope.orders,commerce,deliveredTasks,{
-   view,search:query,accountId:accountFilter,placedById:repFilter,managerId:managerFilter,placedFrom,placedThrough,dateSort,
+   view,search:query,accountQuery:accountFilter,placedByQuery:repFilter,managerQuery:managerFilter,placedFrom,placedThrough,dateSort,
  }),[data,scope.orders,commerce,deliveredTasks,view,query,accountFilter,repFilter,managerFilter,placedFrom,placedThrough,dateSort]);
  const selected=orders.find((o)=>o.id===selectedId)??orders[0];
  const editingOrder=editingId?scope.orders.find((o)=>o.id===editingId):undefined;
@@ -139,12 +139,12 @@ export function OrdersPage(){
  <div className="order-stats"><div><span><FileText size={18}/></span><div><small>Orders in scope</small><strong>{scope.orders.length}</strong></div></div><div><span><CircleDollarSign size={18}/></span><div><small>Open amount</small><strong>{formatMoney(scope.orders.filter(o=>o.paymentStatus!=="Paid"&&o.status!=="Cancelled").reduce((s,o)=>s+o.amount,0))}</strong></div></div><div><span><Truck size={18}/></span><div><small>Delivered cases</small><strong>{scope.orders.filter(o=>["Delivered","Paid"].includes(displayStatus(o))).reduce((s,o)=>s+o.cases,0)}</strong></div></div><div><span><PackageSearch size={18}/></span><div><small>Canonical SKUs</small><strong>{skuOptions.length}</strong></div></div></div>
  <div className="order-workspace-controls">
   <div className="company-tabs" role="tablist" aria-label="Order status views">
-   {(["Active / Pending","Paid & Delivered","Hidden / Canceled","All Orders"] as OrderWorkspaceView[]).map((next)=><button key={next} type="button" role="tab" aria-selected={view===next} className={view===next?"is-active":""} onClick={()=>{setView(next);setResultLimit(40);setDetailOpen(false)}}>{next}</button>)}
+   {(["Active / Pending","Delivered","Hidden / Canceled","All Orders"] as OrderWorkspaceView[]).map((next)=><button key={next} type="button" role="tab" aria-selected={view===next} className={view===next?"is-active":""} onClick={()=>{setView(next);setResultLimit(40);setDetailOpen(false)}}>{next}</button>)}
   </div>
   <div className="order-workspace-filters">
-   <label>Customer / account<select value={accountFilter} onChange={e=>{setAccountFilter(e.target.value);setResultLimit(40)}}><option value="">All customers</option>{scope.accounts.map(a=><option key={a.id} value={a.id}>{a.locationName??a.name}</option>)}</select></label>
-   <label>Placed by<select value={repFilter} onChange={e=>{setRepFilter(e.target.value);setResultLimit(40)}}><option value="">All reps</option>{data.users.filter(u=>["Sales Representative","Sales Manager","Administrator"].includes(u.role)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
-   <label>Sales Manager<select value={managerFilter} onChange={e=>{setManagerFilter(e.target.value);setResultLimit(40)}}><option value="">All managers</option>{data.users.filter(u=>u.role==="Sales Manager").map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+   <label>Customer / account<input type="search" autoComplete="off" placeholder="Type account or customer…" value={accountFilter} onChange={e=>{setAccountFilter(e.target.value);setResultLimit(40)}}/></label>
+   <label>Placed by<input type="search" autoComplete="off" placeholder="Type rep name…" value={repFilter} onChange={e=>{setRepFilter(e.target.value);setResultLimit(40)}}/></label>
+   <label>Sales Manager<input type="search" autoComplete="off" placeholder="Type manager name…" value={managerFilter} onChange={e=>{setManagerFilter(e.target.value);setResultLimit(40)}}/></label>
    <label>Placed from<input type="date" value={placedFrom} onChange={e=>{setPlacedFrom(e.target.value);setResultLimit(40)}}/></label>
    <label>Placed through<input type="date" min={placedFrom||undefined} value={placedThrough} onChange={e=>{setPlacedThrough(e.target.value);setResultLimit(40)}}/></label>
    <label>Sort<select value={dateSort} onChange={e=>setDateSort(e.target.value as "newest"|"oldest")}><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label>

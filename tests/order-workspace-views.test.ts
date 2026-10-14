@@ -11,18 +11,18 @@ const orders=[
 ] as Order[];
 const data={orders,accounts:[{id:"a1",customerId:"c1",name:"ABC Market",accountManagerId:"manager1"},{id:"a2",customerId:"c2",name:"XYZ Market"}],users:[{id:"rep1",name:"Megan",role:"Sales Representative",managerId:"manager1"},{id:"rep2",name:"Matt",role:"Sales Representative"},{id:"manager1",name:"Manager",role:"Sales Manager"}]} as WorkspaceData;
 const commerce={invoices:[{id:"i1",orderId:"o1",status:"Paid",total:100,accountId:"a1"}],payments:[{id:"p1",accountId:"a1",amount:100,status:"Cleared"}],allocations:[{id:"ap1",invoiceId:"i1",paymentId:"p1",amount:100}],credits:[],refunds:[],notes:[]} as unknown as CommerceState;
-const opts=(view:"Active / Pending"|"Paid & Delivered"|"Hidden / Canceled"|"All Orders")=>({view});
-test("completed requires delivered and invoice fully settled, not just task or payment labels",()=>{
- assert.equal(orderWorkspaceView(orders[0],commerce,false),"Paid & Delivered");
- assert.equal(orderWorkspaceView(orders[1],commerce,false),"Active / Pending");
+const opts=(view:"Active / Pending"|"Delivered"|"Hidden / Canceled"|"All Orders")=>({view});
+test("delivered orders leave active regardless of invoice payment; payment alone cannot complete delivery",()=>{
+ assert.equal(orderWorkspaceView(orders[0],commerce,false),"Delivered");
+ assert.equal(orderWorkspaceView(orders[1],commerce,false),"Delivered");
  assert.equal(orderWorkspaceView(orders[3],commerce,false),"Active / Pending");
  assert.equal(orderWorkspaceView(orders[2],commerce,false),"Hidden / Canceled");
 });
 test("all views reference original orders without mutating or hiding history",()=>{
  const original=JSON.stringify(orders);
- assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),opts("Paid & Delivered")).map(o=>o.id),["o1"]);
+ assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),opts("Delivered")).map(o=>o.id),["o2","o1"]);
  assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),opts("Hidden / Canceled")).map(o=>o.id),["o3"]);
- assert.equal(filterOrderWorkspace(data,orders,commerce,new Set(),opts("Active / Pending")).length,2);
+ assert.equal(filterOrderWorkspace(data,orders,commerce,new Set(),opts("Active / Pending")).length,1);
  assert.equal(filterOrderWorkspace(data,orders,commerce,new Set(),opts("All Orders")).length,4);
  assert.equal(JSON.stringify(orders),original);
 });
@@ -36,5 +36,17 @@ test("customer, sales rep, manager and placed-date filters can all combine",()=>
 test("driver-task flag alone cannot complete an order before canonical state reconciliation",()=>{
  const notDelivered={...orders[0],status:"Approved"} as Order;
  assert.equal(orderWorkspaceView(notDelivered,commerce,true),"Active / Pending");
- assert.equal(orderWorkspaceView(orders[0],commerce,false),"Paid & Delivered");
+ assert.equal(orderWorkspaceView(orders[0],commerce,false),"Delivered");
+});
+
+
+test("typed account, placer and manager filters work together without selecting IDs",()=>{
+ const rows=filterOrderWorkspace(data,orders,commerce,new Set(),{
+  view:"All Orders",accountQuery:"abc",placedByQuery:"meg",managerQuery:"manager",placedFrom:"2026-10-01",placedThrough:"2026-10-31",
+ });
+ assert.deepEqual(rows.map(o=>o.id),["o1"]);
+ assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),{view:"All Orders",accountQuery:"xyZ"}).map(o=>o.id),["o4","o3"]);
+ assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),{view:"All Orders",placedByQuery:"matt"}).map(o=>o.id),["o2"]);
+ assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),{view:"All Orders",managerQuery:"manager"}).map(o=>o.id),["o4","o2","o1","o3"]);
+ assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),{view:"All Orders",accountQuery:"   "}).map(o=>o.id),["o4","o2","o1","o3"]);
 });

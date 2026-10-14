@@ -4,7 +4,7 @@ import test from "node:test";
 import type { AuditEvent } from "../lib/audit-engine";
 import { createDemoData } from "../lib/demo-data";
 import { notificationCopy } from "../lib/notification-engine";
-import { orderMilestoneIntents, sundayWeeklyReminderIntent } from "../lib/notification-policy-v2";
+import { orderMilestoneIntents, sundayWeeklyReminderIntent, shouldShowActionNotification } from "../lib/notification-policy-v2";
 import { customerInvoiceEmail, customerStatusEmail, outboundEmailDecision } from "../lib/outbound-notification-policy";
 import { createPerformanceSeed } from "../lib/performance-engine";
 
@@ -209,4 +209,11 @@ test("paid status alone never claims delivery",()=>{
 test("separated representatives never qualify for outbound reminder email",()=>{
   const rep=data.users.find(user=>user.role==="Sales Representative")!;
   assert.equal(outboundEmailDecision({...rep,employmentStatus:"Separated"},"weekly-sunday-reminder:1").send,false);
+});
+
+
+test("accounting-policy backlog stays in My Work without flooding the notification bell",()=>{
+  assert.equal(shouldShowActionNotification({category:"Accounting",title:"Accounting policy required"}),false);
+  assert.equal(shouldShowActionNotification({category:"Accounting",title:"Accounting event ready"}),true);
+  assert.equal(shouldShowActionNotification({category:"Human Resources",title:"Document acknowledgment required"}),true);
 });
