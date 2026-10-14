@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {readFileSync} from "node:fs";
+import {metaVersionKey} from "../lib/firestore-domains";
 import {
   effectiveAccountOwner,
   planAccountRelease,
@@ -66,4 +68,14 @@ test("unassigned queue includes prospects and established accounts",()=>{
     "Self-claim prospect","Manager assignment",
   ]);
   assert.deepEqual(rows.map((row)=>row.accountId),["acc-1","acc-2"]);
+});
+
+test("offboarding stamps the exact live commercial sync version key",()=>{
+  const source=readFileSync("functions/src/employee-separation.ts","utf8");
+  const commercialKey=metaVersionKey("domains/commercial/fields/_root");
+  const territoryKey=metaVersionKey("domains/commercial/fields/territories");
+  assert.equal(commercialKey,"domains_commercial_fields_root");
+  assert.match(source,new RegExp(`paths\\.push\\("${commercialKey}"\\)`));
+  assert.match(source,new RegExp(`paths\\.push\\("${territoryKey}"\\)`));
+  assert.ok(!source.includes("domains_commercial_fields__root"));
 });
