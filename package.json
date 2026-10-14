@@ -19,7 +19,8 @@
     "test": "npm run typecheck && npm run lint && npm run test:logic && npm run test:rules",
     "deploy": "next build && firebase deploy --only hosting",
     "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage",
-    "deploy:worker": "next build && wrangler deploy"
+    "deploy:worker": "next build && wrangler deploy",
+    "test:storage": "npx --yes firebase-tools@15.30.1 emulators:exec --only firestore,storage --project momentum-rules-test \"node --import tsx --test tests/storage-rules.test.ts\""
   },
   "dependencies": {
     "lucide-react": "0.468.0",

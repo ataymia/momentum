@@ -19,24 +19,34 @@
     margin: 0 !important;
     padding: 0 !important;
   }
-  /* Reserve pagination tolerance: never occupy the full eleven-inch sheet. */
+  /* Allow long invoices to paginate instead of hiding receipt fields and totals. */
   .invoice-print-root .invoice-sheet {
-    display: flex !important;
+    display: block !important;
     box-sizing: border-box !important;
     position: relative !important;
     width: 8.5in !important;
-    height: 10.7in !important;
-    min-height: 0 !important;
-    max-height: 10.7in !important;
-    overflow: hidden !important;
+    height: auto !important;
+    min-height: 10.7in !important;
+    max-height: none !important;
+    overflow: visible !important;
     box-shadow: none !important;
     margin: 0 !important;
     padding: .42in .48in .36in !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
     break-after: auto !important;
     page-break-after: auto !important;
   }
+  .invoice-sheet__brand-logo { height: 1in; width: 1.6in; }
+  .invoice-sheet__header { padding-bottom: 12px; }
+  .invoice-sheet__meta { grid-template-columns: repeat(4,minmax(0,1fr)) 1.3fr; margin-bottom: 10px; }
+  .invoice-sheet__terms { margin-top: 10px; padding: 8px 10px; }
+  .invoice-sheet__receipt { margin-top: 12px; gap: 9px 18px; }
+  .invoice-sheet__footer { margin-top: 14px; padding-top: 8px; }
+  .invoice-sheet__table { margin-bottom: 8px; }
+  .invoice-sheet__table thead { display: table-header-group; }
+  .invoice-sheet__table tr, .invoice-sheet__totals, .invoice-sheet__terms,
+  .invoice-sheet__receipt, .invoice-sheet__footer { break-inside: avoid; }
   /* Start each additional invoice/copy on a page without a trailing blank page. */
   .invoice-print-root .invoice-sheet + .invoice-sheet {
     break-before: page !important;
