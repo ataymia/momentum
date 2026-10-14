@@ -776,3 +776,22 @@ describe("employee separation and suspension revokes operational access", () => 
     }
   });
 });
+
+describe("separation audit is immutable to employees", () => {
+  test("active Administrator may read but no client may forge audit", async () => {
+    const path="employeeSeparations/uid-rep";
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(),path),{
+        uid:REP,actorUid:ADMIN,separatedAt:at,historyPreserved:true,
+      });
+    });
+    await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+    for (const uid of [REP,MANAGER,OPS,DRIVER]) {
+      await assertFails(getDoc(doc(dbFor(uid),path)));
+      await assertFails(setDoc(doc(dbFor(uid),path),{uid:REP}));
+    }
+    await assertFails(setDoc(doc(dbFor(ADMIN),path),{
+      uid:REP,historyPreserved:false,
+    }));
+  });
+});
