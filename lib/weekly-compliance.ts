@@ -16,6 +16,6 @@ export function weeklyPhysicalVisits(crm:CrmState,userId:string,start:string,end
  return crm.interactions.filter(row=>row.userId===userId&&row.type==="Visit"&&row.physicalVisit===true&&visitDay(row.occurredAt)>=start&&visitDay(row.occurredAt)<=end).length;
 }
 
-export function weeklyReporterEligible(user:WorkspaceUser){
- return user.employmentStatus!=="Separated" && user.employmentStatus!=="Prehire" && canAccessPage(user,"reportingCenter");
+export function weeklyReporterEligible(user:WorkspaceUser,hrStatus?:string){
+ return user.employmentStatus!=="Separated" && hrStatus!=="Prehire" && canAccessPage(user,"reportingCenter");
 }

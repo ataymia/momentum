@@ -47,6 +47,6 @@ test("HR evidence must identify a signed original, reviewer, time, and matching 
 test("weekly compliance does not flag roles without reporting access or prehires", () => {
  assert.equal(weeklyReporterEligible({role:"Marketing"} as WorkspaceUser),false);
  assert.equal(weeklyReporterEligible({role:"Customer"} as WorkspaceUser),false);
- assert.equal(weeklyReporterEligible({role:"Sales Representative",employmentStatus:"Prehire"} as WorkspaceUser),false);
+ assert.equal(weeklyReporterEligible({role:"Sales Representative"} as WorkspaceUser,"Prehire"),false);
  assert.equal(weeklyReporterEligible({role:"Sales Representative",employmentStatus:"Active"} as WorkspaceUser),true);
 });
