@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { weeklyPhysicalVisits, weeklySubmissionStatus } from "../lib/weekly-compliance";
+import { weeklyPhysicalVisits, weeklySubmissionStatus, weeklyReporterEligible } from "../lib/weekly-compliance";
 import { createPerformanceSeed } from "../lib/performance-engine";
 import type { CrmState } from "../lib/crm-engine";
 import { canAccessPage } from "../lib/access";
@@ -42,4 +42,11 @@ test("HR evidence must identify a signed original, reviewer, time, and matching 
   assert.equal(validExternalVerification({...evidence,recordReference:""},2),false);
   assert.equal(validExternalVerification({...evidence,verifiedBy:""},2),false);
   assert.equal(validExternalVerification(undefined,2),false);
+});
+
+test("weekly compliance does not flag roles without reporting access or prehires", () => {
+ assert.equal(weeklyReporterEligible({role:"Marketing"} as WorkspaceUser),false);
+ assert.equal(weeklyReporterEligible({role:"Customer"} as WorkspaceUser),false);
+ assert.equal(weeklyReporterEligible({role:"Sales Representative",employmentStatus:"Prehire"} as WorkspaceUser),false);
+ assert.equal(weeklyReporterEligible({role:"Sales Representative",employmentStatus:"Active"} as WorkspaceUser),true);
 });

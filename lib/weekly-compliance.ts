@@ -1,3 +1,5 @@
+import {canAccessPage} from "./access";
+import type {WorkspaceUser} from "./types";
 import {arizonaDateKey,isValidCalendarDateKey} from "./date-time";
 import {weeklyReportingPeriod,type PerformanceState} from "./performance-engine";
 import type {CrmState} from "./crm-engine";
@@ -12,4 +14,8 @@ function visitDay(value:string){
 }
 export function weeklyPhysicalVisits(crm:CrmState,userId:string,start:string,end:string){
  return crm.interactions.filter(row=>row.userId===userId&&row.type==="Visit"&&row.physicalVisit===true&&visitDay(row.occurredAt)>=start&&visitDay(row.occurredAt)<=end).length;
+}
+
+export function weeklyReporterEligible(user:WorkspaceUser){
+ return user.employmentStatus!=="Separated" && user.employmentStatus!=="Prehire" && canAccessPage(user,"reportingCenter");
 }
