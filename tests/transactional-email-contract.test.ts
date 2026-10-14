@@ -93,7 +93,6 @@ test("pricing expiration notice is only a validated 30-day template, not a timer
 });
 
 test("unsupported kinds cannot be sent via untyped payloads",()=>{
-  const e=({...base,kind:"marketing_blast",contactList:"everybody"})
-    as unknown as EmailEvent;
+  const e=({...base,kind:"marketing_blast",contactList:"everybody"}) as unknown as EmailEvent;
   assert.equal(prepareTransactionalEmail(e).ok,false);
 });
