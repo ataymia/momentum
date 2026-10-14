@@ -725,3 +725,54 @@ describe("Delivery Driver approved marketing visibility", () => {
     await assertFails(getDoc(doc(db,"domains/marketing/fields/campaigns")));
   });
 });
+
+describe("employee separation and suspension revokes operational access", () => {
+  for (const state of ["Separated", "Suspended"] as const) {
+    test(`${state} users cannot read or modify any employee domain`, async () => {
+      const uid = `uid-${state.toLowerCase()}-offboard`;
+      await env.withSecurityRulesDisabled(async (context) => {
+        await setDoc(
+          doc(context.firestore(), USER_ACCESS_COLLECTION, uid),
+          userAccessDocument(accessRecord(uid, "Sales Representative", "Sales", {
+            accountState: state,
+          })),
+        );
+      });
+      const userDb = dbFor(uid);
+      for (const path of [
+        "domains/workspace/fields/accounts",
+        "domains/commercial/fields/_root",
+        "domains/hcm/fields/policies",
+        "domains/trainingLibrary/fields/materials",
+        "domains/crm/fields/contacts",
+        `userDomains/${uid}/identity/records`,
+        `userDomains/${uid}/hcm/documents`,
+      ]) {
+        await assertFails(getDoc(doc(userDb, path)));
+        await assertFails(setDoc(doc(userDb, path), {items: []}));
+      }
+      await assertFails(getDoc(doc(userDb, EMPLOYEE_DIRECTORY_COLLECTION, REP)));
+    });
+  }
+
+  test("the Storage policy also excludes both non-working states", () => {
+    const rules = readFileSync("storage.rules", "utf8");
+    assert.match(rules, /accountState != 'Separated'/);
+    assert.match(rules, /accountState != 'Suspended'/);
+  });
+
+  test("client-side persistence refuses suspended and separated shard writes", () => {
+    for (const state of ["Suspended", "Separated"] as const) {
+      const scope = {...scopeFor(REP), accountState: state};
+      assert.equal(
+        documentWritable(`userDomains/${REP}/identity/records`, scope),
+        false,
+      );
+      assert.equal(
+        documentWritable("domains/commercial/fields/_root", scope),
+        false,
+      );
+      assert.equal(domainDocuments(DOMAIN_SPECS[0], scope).length, 0);
+    }
+  });
+});
