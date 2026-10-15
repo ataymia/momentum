@@ -100,6 +100,7 @@ export type SeparatedEmployeeResult={
   separatedAt:string;
   releasedAccountIds:string[];
   suspendedTerritoryIds:string[];
+  releasedAppointmentIds:string[];
   authDisabled:boolean;
 };
 
