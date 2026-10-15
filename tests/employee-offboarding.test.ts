@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {readFileSync} from "node:fs";
 import {metaVersionKey} from "../lib/firestore-domains";
+import {releaseSeparatedAppointments} from "../functions/src/separation-projection";
+import {visibleActiveEmployees} from "../lib/employee-directory-visibility";
 import {
   effectiveAccountOwner,
   planAccountRelease,
@@ -78,4 +80,45 @@ test("offboarding stamps the exact live commercial sync version key",()=>{
   assert.match(source,new RegExp(`paths\\.push\\("${commercialKey}"\\)`));
   assert.match(source,new RegExp(`paths\\.push\\("${territoryKey}"\\)`));
   assert.ok(!source.includes("domains_commercial_fields__root"));
+});
+
+test("separation immediately unassigns active and follow-up appointments without deleting history",()=>{
+ const appointments=[
+  {id:"scheduled",ownerId:"megan",status:"Scheduled",assignedAt:"2026-10-01T00:00:00Z"},
+  {id:"moving",ownerId:"megan",status:"En route"},
+  {id:"follow",ownerId:"megan",status:"Needs follow-up"},
+  {id:"complete",ownerId:"megan",status:"Completed",completedAt:"2026-10-02T00:00:00Z"},
+  {id:"other",ownerId:"matt",status:"Scheduled"},
+ ];
+ const result=releaseSeparatedAppointments(appointments,"megan","2026-10-15T12:00:00Z");
+ assert.deepEqual(result.releasedIds,["scheduled","moving","follow"]);
+ assert.equal(result.items[0].ownerId,"");
+ assert.equal(result.items[1].ownerId,"");
+ assert.equal(result.items[2].separationReviewRequired,true);
+ assert.equal(result.items[3].ownerId,"megan");
+ assert.equal(result.items[3].completedAt,"2026-10-02T00:00:00Z");
+ assert.deepEqual(result.items[4],appointments[4]);
+ const retry=releaseSeparatedAppointments(result.items,"megan","2026-10-15T12:00:10Z");
+ assert.deepEqual(retry.releasedIds,[]);
+ assert.deepEqual(retry.items,result.items);
+ assert.deepEqual(appointments[0],{id:"scheduled",ownerId:"megan",status:"Scheduled",assignedAt:"2026-10-01T00:00:00Z"});
+});
+test("separation reconciles both appointment shards and does not stop at an earlier separation audit",()=>{
+ const source=readFileSync("functions/src/employee-separation.ts","utf8");
+ for(const path of ["domains/workspace/fields/appointments","domains/commercial/fields/appointments"]){
+  assert.ok(source.includes(path));
+  assert.ok(source.includes(metaVersionKey(path)));
+ }
+ assert.match(source,/releaseSeparatedAppointments/);
+ assert.match(source,/alreadySeparated/);
+ assert.doesNotMatch(source,/if \(audit\.exists && targetData\?\.accountState==="Separated"\) \{/);
+ assert.match(source,/tx\.update\(targetRef/);
+});
+test("former employees are absent in active roster but historical identity records remain",()=>{
+ const users=[
+  {id:"matt",role:"Sales Representative",employmentStatus:"Active",name:"Matt"},
+  {id:"megan",role:"Marketing",employmentStatus:"Separated",name:"Megan"},
+ ] as unknown as WorkspaceData["users"];
+ assert.deepEqual(visibleActiveEmployees(users).map(u=>u.id),["matt"]);
+ assert.equal(users.length,2);
 });
