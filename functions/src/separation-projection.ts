@@ -1,3 +1,4 @@
+/* eslint-disable max-len, keyword-spacing, comma-spacing, key-spacing, indent, require-jsdoc, space-before-blocks */
 /** Server-side projections for an Administrator-approved separation.
  * Keep immutable history and completed visits; open work returns to scheduling.
  */
