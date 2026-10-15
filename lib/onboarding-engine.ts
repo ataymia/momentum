@@ -316,7 +316,7 @@ export function onboardingRescueQueue(hcm: HCMState, data: WorkspaceData, identi
     if (readiness.readyForActivation) actions.push("activate");
     actions.push("overrideAndActivate");
 
-    const diagnosis = firebaseState && hrClaimsActive && firebaseState !== "Active"
+    const diagnosis = firebaseState && hrClaimsActive
       ? `Firebase access is ${firebaseState}, but the HR record says Active. Only an Administrator can authorize restoring access; check for an intentional suspension or separation before proceeding.`
       : missingTrustedRecord
       ? "No trusted Momentum provisioning record. Repair it from the Firebase identity, access record, and saved new-hire setup."
