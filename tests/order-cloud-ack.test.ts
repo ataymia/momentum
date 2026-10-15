@@ -17,6 +17,9 @@ test("order submit waits for the commercial Firestore key to be confirmed",()=>{
 test("authoritative Firebase access state gates the live workspace",()=>{
   const app=read("components/momentum-app.tsx");
   const orders=read("components/pages/orders-v3.tsx");
-  assert.match(app,/firebase\.access\?\.accountState!=="Active"/);
+  assert.match(app,/firebaseAccountState:firebase\?\.access\?\.accountState/);
+  assert.match(app,/employeeEntryDecision\(/);
+  const authority=read("lib/employee-access-authority.ts");
+  assert.match(authority,/if\(access==="Active"\)return "Workspace"/);
   assert.match(orders,/firebase\.access\?\.accountState!=="Active"/);
 });
