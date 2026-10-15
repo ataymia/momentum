@@ -3,7 +3,7 @@ import {defineSecret} from "firebase-functions/params";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import {onRequest} from "firebase-functions/v2/https";
 import {
-  emailHash,nextMailStatus,validMailToSend,verifyResendWebhook,
+  emailHash,nextMailStatus,safeMail,validMailToSend,verifyResendWebhook,
   type ServerMail,
 } from "./resend-mail-policy";
 
@@ -28,7 +28,7 @@ export const deliverApprovedNotification=onDocumentCreated({
   document:"notificationOutbox/{id}",region:"us-central1",
   secrets:[apiKey],maxInstances:2,
 },async (event)=>{
-  if(!enabled()||!from()||!replyTo()||!cutoff()||!apiKey.value())return;
+  if(!enabled()||!safeMail(from())||!safeMail(replyTo())||!cutoff()||!apiKey.value())return;
   if(!event.data)return;
   const db=getFirestore();
   const mailRef=event.data.ref;
@@ -45,8 +45,7 @@ export const deliverApprovedNotification=onDocumentCreated({
     const found=await Promise.all(references.map((ref)=>tx.get(ref)));
     if(found[0].data()?.accountState!=="Active"||
        found[0].data()?.role!=="Administrator"||
-       (mail.recipientUid&&found[1].data()?.accountState==="Separated")||
-       (mail.recipientUid&&found[1].data()?.accountState==="Suspended")||
+       (mail.recipientUid&&found[1].data()?.accountState!=="Active")||
        found[found.length-1].exists){
       tx.update(mailRef,{status:"Suppressed",lastError:"Access or suppression policy rejected this recipient."});
       return null;
