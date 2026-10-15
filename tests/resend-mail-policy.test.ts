@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import {createHmac} from "node:crypto";
 import test from "node:test";
-import policy from "../functions/src/resend-mail-policy";
+import * as mailPolicy from "../functions/src/resend-mail-policy";
 
+const policy=(mailPolicy as unknown as {default?:typeof mailPolicy}).default??mailPolicy;
 const {validMailToSend,verifyResendWebhook,providerStatus,nextMailStatus,emailHash}=policy;
 const base={
  id:"mail-event-100",kind:"order_approved",
