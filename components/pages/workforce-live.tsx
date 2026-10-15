@@ -4,6 +4,8 @@ import { Clock3, ExternalLink, LocateFixed, MapPin, Route, UsersRound } from "lu
 import { useEffect, useMemo, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
 import { useHcm } from "../../lib/hcm-context";
+import { visibleActiveEmployees } from "../../lib/employee-directory-visibility";
+import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import {
@@ -94,13 +96,9 @@ export function WorkforceLivePage() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const employees = useMemo(() => data.users
-    .filter((user) => user.role !== "Customer")
-    .filter((user) => {
-      const employment = hcm.employees.find((record) => record.userId === user.id);
-      return !employment || employment.status === "Active";
-    })
-    .sort((a, b) => a.name.localeCompare(b.name)), [data.users, hcm.employees]);
+  const firebase = useFirebaseSessionOptional();
+  const employees = useMemo(() => visibleActiveEmployees(data.users,firebase?.accessRecords)
+    .sort((a, b) => a.name.localeCompare(b.name)), [data.users, firebase?.accessRecords]);
 
   if (!currentUser || currentUser.role !== "Administrator") return null;
 

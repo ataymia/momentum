@@ -1,6 +1,8 @@
+/* eslint-disable max-len, keyword-spacing, comma-spacing, key-spacing, indent, space-before-blocks */
 import {randomUUID} from "node:crypto";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
+import {releaseSeparatedAppointments} from "./separation-projection";
 
 type Row=Record<string, unknown>;
 type Result={
@@ -8,6 +10,7 @@ type Result={
   separatedAt: string;
   releasedAccountIds: string[];
   suspendedTerritoryIds: string[];
+  releasedAppointmentIds: string[];
   authDisabled: boolean;
 };
 
@@ -30,8 +33,8 @@ export class EmployeeSeparationError extends Error {
 }
 
 /**
- * Revoke one former employee while retaining their directory identity and
- * every sale, order, note, commission source, and historic assignment.
+ * Revoke one former employee, release open appointments, and retain every
+ * sale, order, note, commission source, and completed historical assignment.
  *
  * Account ownership is a commercial overlay, so base workspace account
  * records stay untouched. This is also essential for legacy normalization,
@@ -60,15 +63,19 @@ export async function separateEmployee(
   const accountsRef=db.doc("domains/workspace/fields/accounts");
   const commercialRef=db.doc("domains/commercial/fields/_root");
   const territoriesRef=db.doc("domains/commercial/fields/territories");
+  const appointmentsRef=db.doc("domains/workspace/fields/appointments");
+  const commercialAppointmentsRef=db.doc("domains/commercial/fields/appointments");
   const auditRef=db.doc(`employeeSeparations/${targetUid}`);
   const metaRef=db.doc("platform/meta");
 
   const outcome=await db.runTransaction(async (tx) => {
     const [
-      admin, target, directory, accountDoc, commercial, territoryDoc, audit,
+      admin, target, directory, accountDoc, commercial, territoryDoc,
+      workspaceAppointments, commercialAppointments, audit,
     ]=await Promise.all([
       tx.get(adminRef), tx.get(targetRef), tx.get(directoryRef),
       tx.get(accountsRef), tx.get(commercialRef), tx.get(territoriesRef),
+      tx.get(appointmentsRef), tx.get(commercialAppointmentsRef),
       tx.get(auditRef),
     ]);
     const adminData=admin.data();
@@ -85,19 +92,13 @@ export async function separateEmployee(
         403, "Administrator separation requires separate approval.");
     }
 
-    // A retry after a partial Firebase Auth failure must be safe.
-    if (audit.exists && targetData?.accountState==="Separated") {
-      const prior=audit.data();
-      return {
-        uid: targetUid,
-        separatedAt: text(prior?.separatedAt),
-        releasedAccountIds: Array.isArray(prior?.releasedAccountIds)?
-          prior.releasedAccountIds.filter(
-            (value: unknown):value is string=>typeof value==="string") : [],
-        suspendedTerritoryIds: Array.isArray(prior?.suspendedTerritoryIds)?
-          prior.suspendedTerritoryIds.filter(
-            (value: unknown):value is string=>typeof value==="string") : [],
-      };
+    // Repeating an approved separation reconciles any older assignments left
+    // behind by previous releases. It never creates a second HR separation.
+    const prior=audit.exists?audit.data():undefined;
+    const alreadySeparated=targetData?.accountState==="Separated";
+    if(alreadySeparated&&!audit.exists) {
+      throw new EmployeeSeparationError(409,
+        "Separated identity lacks an audit record. Review before repair.");
     }
 
     const baseAccounts=rows(accountDoc.data()?.items);
@@ -107,22 +108,24 @@ export async function separateEmployee(
       root.accountPatches: {};
     const patches: Row={...currentPatches};
     const releasedAccountIds: string[]=[];
-    const stamp=new Date().toISOString();
+    const stamp=alreadySeparated?text(prior?.separatedAt):new Date().toISOString();
 
     for (const account of baseAccounts) {
       const id=text(account.id);
       if (!id) continue;
       const candidate=currentPatches[id];
-      const prior=record(candidate)?candidate: {};
-      const owner=typeof prior.ownerId==="string"?
-        prior.ownerId: text(account.ownerId);
-      if (owner!==targetUid) continue;
+      const patch=record(candidate)?candidate: {};
+      const owner=typeof patch.ownerId==="string"?
+        patch.ownerId: text(account.ownerId);
+      const manager=typeof patch.accountManagerId==="string"?
+        patch.accountManagerId:text(account.accountManagerId);
+      if(owner!==targetUid&&manager!==targetUid)continue;
       patches[id]={
-        ...prior,
-        ownerId: "",
-        accountManagerId: "",
+        ...patch,
+        ownerId: owner===targetUid?"":owner,
+        accountManagerId: manager===targetUid?"":manager,
         responsibilityStartedAt: stamp,
-        lastActivity: "Account released after employee separation",
+        lastActivity: "Account responsibility released after employee separation",
       };
       releasedAccountIds.push(id);
     }
@@ -145,6 +148,13 @@ export async function separateEmployee(
       };
     });
 
+    const scheduled=releaseSeparatedAppointments(
+      rows(workspaceAppointments.data()?.items), targetUid, stamp);
+    const commercialScheduled=releaseSeparatedAppointments(
+      rows(commercialAppointments.data()?.items), targetUid, stamp);
+    const releasedAppointmentIds=[...new Set([
+      ...scheduled.releasedIds,...commercialScheduled.releasedIds])];
+
     tx.update(targetRef, {
       accountState: "Separated",
       updatedAt: stamp,
@@ -162,15 +172,32 @@ export async function separateEmployee(
     if (suspendedTerritoryIds.length) {
       tx.set(territoriesRef, {items: territories});
     }
+    if(scheduled.releasedIds.length) {
+      tx.set(appointmentsRef,{items:scheduled.items});
+    }
+    if(commercialScheduled.releasedIds.length) {
+      tx.set(commercialAppointmentsRef,{items:commercialScheduled.items});
+    }
 
     const event={
       uid: targetUid,
       actorUid: adminUid,
       separatedAt: stamp,
-      reason: reason.trim(),
-      previousState: text(targetData?.accountState),
-      releasedAccountIds,
-      suspendedTerritoryIds,
+      reason: text(prior?.reason)||reason.trim(),
+      ...(alreadySeparated?{
+        lastReconciliationReason:reason.trim(),
+        lastReconciledAt:new Date().toISOString(),
+      }:{}),
+      previousState: text(prior?.previousState)||text(targetData?.accountState),
+      releasedAccountIds: [...new Set([
+        ...(Array.isArray(prior?.releasedAccountIds)?prior.releasedAccountIds:[]),
+        ...releasedAccountIds])],
+      suspendedTerritoryIds: [...new Set([
+        ...(Array.isArray(prior?.suspendedTerritoryIds)?prior.suspendedTerritoryIds:[]),
+        ...suspendedTerritoryIds])],
+      releasedAppointmentIds: [...new Set([
+        ...(Array.isArray(prior?.releasedAppointmentIds)?prior.releasedAppointmentIds:[]),
+        ...releasedAppointmentIds])],
       historyPreserved: true,
     };
     if (audit.exists) {
@@ -179,6 +206,8 @@ export async function separateEmployee(
       tx.create(auditRef, event);
     }
     const paths=["employeeDirectory"];
+    if(scheduled.releasedIds.length)paths.push("domains_workspace_fields_appointments");
+    if(commercialScheduled.releasedIds.length)paths.push("domains_commercial_fields_appointments");
     if (releasedAccountIds.length) {
       paths.push("domains_commercial_fields_root");
     }
@@ -195,6 +224,7 @@ export async function separateEmployee(
       separatedAt: stamp,
       releasedAccountIds,
       suspendedTerritoryIds,
+      releasedAppointmentIds,
     };
   });
 

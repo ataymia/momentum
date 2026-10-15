@@ -19,6 +19,8 @@ import { customerForLocation, customerLocations, customersForLocations, location
 import { addCalendarDays, arizonaDateKey, arizonaTimeKey, COMPANY_TIME_ZONE } from "../../lib/date-time";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import type { Appointment, AppointmentOutcome, AppointmentStatus } from "../../lib/types";
+import { visibleActiveEmployees } from "../../lib/employee-directory-visibility";
+import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Avatar, Button, Field, Modal, PageHeader, Section, StatusPill, formatDate } from "../ui";
 
@@ -124,15 +126,18 @@ export function DispatchPage() {
   }, []);
 
   const dates = useMemo(() => Array.from({ length: 7 }, (_, index) => dateOffset(index)), []);
-  const assignable = data.users.filter((user) => {
-    if (user.role === "Customer" || user.role === "Warehouse") return false;
+  const firebase = useFirebaseSessionOptional();
+  const currentStaff = visibleActiveEmployees(data.users, firebase?.accessRecords);
+  const activeStaffIds = new Set(currentStaff.map((user) => user.id));
+  const assignable = currentStaff.filter((user) => {
+    if (!["Sales Representative", "Sales Manager", "Operations", "Delivery Driver", "Administrator"].includes(user.role)) return false;
     if (currentUser?.role === "Administrator") return ["Sales", "Operations", "Leadership"].includes(user.team);
     if (currentUser?.role === "Operations") return user.team === "Operations";
     if (currentUser?.role === "Sales Manager") return scope.users.some((item) => item.id === user.id) && user.team === "Sales";
     return user.id === currentUser?.id;
   });
   const technicians = assignable.filter((user) => technicianFilter === "all" || user.id === technicianFilter);
-  const allForDate = scope.appointments.filter((item) => item.date === selectedDate);
+  const allForDate = scope.appointments.filter((item) => item.date === selectedDate && (!item.ownerId || activeStaffIds.has(item.ownerId) || !["Completed","Cancelled"].includes(item.status)));
   const isCloseoutRequired = (appointment: Appointment) => Boolean(tracking.openAlertForAppointment(appointment.id));
   const isInMotion = (appointment: Appointment) => ["Dispatched", "En route", "Arrived"].includes(appointment.status) && !isCloseoutRequired(appointment);
   const filteredForDate = allForDate.filter((item) => {
@@ -142,7 +147,7 @@ export function DispatchPage() {
     return ["Completed", "Needs follow-up"].includes(item.status);
   });
   const unassigned = filteredForDate.filter((item) => !item.ownerId);
-  const selected = scope.appointments.find((item) => item.id === selectedId) ?? filteredForDate[0];
+  const selected = filteredForDate.find((item) => item.id === selectedId) ?? filteredForDate[0];
   const selectedLocation = selected ? scope.accounts.find((item) => item.id === selected.accountId) : undefined;
   const selectedCustomer = selectedLocation ? customerForLocation(data, selectedLocation) : undefined;
   const selectedOwner = data.users.find((item) => item.id === selected?.ownerId);
@@ -158,7 +163,7 @@ export function DispatchPage() {
   const currentMinutes = timeToMinutes(arizonaTimeKey(clock));
   const currentLineVisible = selectedDate === todayKey() && currentMinutes >= BOARD_START && currentMinutes <= BOARD_END;
   const currentLineLeft = `${((currentMinutes - BOARD_START) / BOARD_SPAN) * 100}%`;
-  const visibleTrackedReps = data.users.filter((user) => user.role === "Sales Representative" && tracking.canViewUserTracking(user.id));
+  const visibleTrackedReps = currentStaff.filter((user) => user.role === "Sales Representative" && tracking.canViewUserTracking(user.id));
   const routeFocusUserId = technicianFilter !== "all" && tracking.canViewUserTracking(technicianFilter) ? technicianFilter : currentUser?.role === "Sales Representative" ? currentUser.id : visibleTrackedReps[0]?.id;
   const routeTrail = routeFocusUserId ? tracking.routeSamplesForUserDay(routeFocusUserId, selectedDate) : [];
 

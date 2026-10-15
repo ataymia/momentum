@@ -365,7 +365,11 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
       const result=await separateEmployeeIdentity(session,uid,reason.trim());
       const current=accessRef.current??access;
       if(current)await loadDirectory(current);
-      return{ok:true,message:`Employee access revoked. ${result.releasedAccountIds.length} accounts released and ${result.suspendedTerritoryIds.length} territories suspended. Historical records retained.${result.authDisabled?"":" Firebase Auth identity was already missing."}`};
+      // Fetch the committed assignment release now, rather than waiting on background polling.
+      const refreshed=await momentumStorage.refreshKeys([
+        "momentum-demo-workspace-v5","momentum-commercial-controls-v1",
+      ]);
+      return{ok:true,message:`Employee access revoked. ${result.releasedAccountIds.length} accounts released, ${result.releasedAppointmentIds.length} open appointments unassigned for review, and ${result.suspendedTerritoryIds.length} territories suspended. Historical records retained.${refreshed.ok?"":" Current workspace has unsaved edits; appointment changes will appear after cloud sync."}${result.authDisabled?"":" Firebase Auth identity was already missing."}`};
     }catch(caught){
       return{ok:false,message:message(caught,"Offboarding requires Administrator review.")};
     }

@@ -1,4 +1,5 @@
 import type { Account, Approval, Bulletin, PageKey, WorkspaceData, WorkspaceUser } from "./types";
+import { visibleActiveEmployees } from "./employee-directory-visibility";
 
 const pageAccess: Record<WorkspaceUser["role"], PageKey[]> = {
   Administrator: ["home","work","actions","accounts","quickVisit","salesMap","accountSetup","accountHealth","dispatch","orders","orderCash","inventory","inventoryLedger","products","marketing","brandAmbassadors","people","employees","newHire","onboarding","trainingAdmin","timekeeping","materials","payroll","finance","accounting","reports","performance","reportingCenter","audit","settings","workforceLive","dataExchange","help"],
@@ -108,7 +109,8 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
   const accounts = data.accounts.filter(account => accountIsVisible(data, user, account));
   const accountIds = new Set(accounts.map(account => account.id));
   const managedIds = managedUserIds(data, user);
-  const users = user.role === "Administrator" ? data.users : data.users.filter(candidate => candidate.id === user.id || (user.role === "Sales Manager" && managedIds.has(candidate.id)) || (user.role === "Sales Representative" && (candidate.id === user.managerId || (candidate.role === "Brand Ambassador" && candidate.managerId === user.id))));
+  const activeUsers = visibleActiveEmployees(data.users);
+  const users = user.role === "Administrator" ? activeUsers : activeUsers.filter(candidate => candidate.id === user.id || (user.role === "Sales Manager" && managedIds.has(candidate.id)) || (user.role === "Sales Representative" && (candidate.id === user.managerId || (candidate.role === "Brand Ambassador" && candidate.managerId === user.id))));
   const appointments = user.role === "Administrator"
     ? data.appointments
     : user.role === "Operations"
