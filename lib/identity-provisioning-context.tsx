@@ -58,8 +58,10 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   const syncAccountState = (userId: string, nextState: AccountAccessState) => {
     if (!firebase) return;
     const remote = firebase.session?.uid === userId ? firebase.access : firebase.accessRecords[userId];
+    // A missing/stale admin directory must never be treated as permission to downgrade.
+    if(!remote) return;
     // Employee self-service/onboarding repair may never silently downgrade an already Active account.
-    if(remote && !mayTransitionAccountState({currentState:remote.accountState,nextState,adminInitiated:false})) return;
+    if(!mayTransitionAccountState({currentState:remote.accountState,nextState,adminInitiated:false})) return;
     void firebase.setAccountState(userId, nextState);
   };
   // Rescue and override are Administrator powers, not founder-only powers: an on-call Administrator has to be
@@ -148,7 +150,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (!target || target.role === "Administrator") return false;
     const draft = input.draftId ? state.drafts.find((item) => item.id === input.draftId && item.status !== "Cancelled" && item.workEmail.toLowerCase() === target.email.toLowerCase()) : undefined;
     if (!draft || (draft.linkedUserId && draft.linkedUserId !== target.id)) return false;
-    if(firebase?.accessRecords[target.id]?.accountState==="Active")return false; // HR setup cannot demote an activated employee.
+    if(firebase && (!firebase.accessRecords[target.id]||firebase.accessRecords[target.id].accountState==="Active"))return false; // Unknown Firebase state cannot authorize a downgrade.
     if (target.role !== draft.role || target.team !== draft.team || target.managerId !== draft.managerId) return false;
     const at = new Date().toISOString();
     const linked: ProvisioningDraft = { ...draft, status: "Auth linked", linkedUserId: target.id, updatedAt: at };
@@ -232,7 +234,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const target = data.users.find((user) => user.id === userId && user.role !== "Administrator" && user.role !== "Customer");
     if (!record || !target || !rescuableStates.has(record.state)) return false;
     const nextState = record.state === "Password change required" ? "Onboarding" as const : record.state;
-    if(firebase?.accessRecords[userId]?.accountState==="Active"&&nextState!=="Active")return false;
+    if(firebase && (!firebase.accessRecords[userId]||(firebase.accessRecords[userId].accountState==="Active"&&nextState!=="Active")))return false;
     if (firebase && nextState !== record.state) { const persisted = await firebase.setAccountState(userId, nextState); if (!persisted.ok) return false; }
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: nextState, passwordChangedAt: item.passwordChangedAt ?? at, passwordChangeEvidence: item.passwordChangeEvidence ?? `Administrator verified: ${cleanReason}`, returnReason: undefined } : item) }));
@@ -245,7 +247,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (!overrideAllowed || !currentUser || cleanReason.length < 5 || userId === currentUser.id) return false;
     const record = accountAccessFor(state, userId);
     if (!record || record.state === "Pending approval" || !preactiveStates.has(record.state) || !onboardingReadiness(hcm, record, userId).readyForEmployeeSubmission) return false;
-    if(firebase?.accessRecords[userId]?.accountState==="Active")return false;
+    if(firebase && (!firebase.accessRecords[userId]||firebase.accessRecords[userId].accountState==="Active"))return false;
     if (firebase) { const persisted = await firebase.setAccountState(userId, "Pending approval"); if (!persisted.ok) return false; }
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Pending approval", onboardingSubmittedAt: item.onboardingSubmittedAt ?? at } : item) }));
@@ -272,7 +274,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const at = new Date().toISOString();
     const nextState: AccountAccessState = "Onboarding";
     // A missing HR record is not authority to revoke the Administrator’s Active decision.
-    if(firebase?.accessRecords[userId]?.accountState==="Active")return false;
+    if(firebase && (!firebase.accessRecords[userId]||firebase.accessRecords[userId].accountState==="Active"))return false;
     if (firebase) { const persisted = await firebase.setAccountState(userId, nextState); if (!persisted.ok) return false; }
     const record: IdentityProvisioningRecord = {
       id: `access-${userId}`,
@@ -309,7 +311,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const target = data.users.find((user) => user.id === userId && user.role !== "Customer" && user.role !== "Administrator");
     const record = accountAccessFor(state, userId);
     if (!target || !record || record.state === "Onboarding" || !rescuableStates.has(record.state)) return false;
-    if(firebase?.accessRecords[userId]?.accountState==="Active")return false; // No re-onboarding an Active employee.
+    if(firebase && (!firebase.accessRecords[userId]||firebase.accessRecords[userId].accountState==="Active"))return false; // Never demote without verifying the authority.
     if (firebase) { const persisted = await firebase.setAccountState(userId, "Onboarding"); if (!persisted.ok) return false; }
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Onboarding", returnedAt: at, returnedBy: currentUser.id, returnReason: cleanReason } : item) }));
@@ -324,7 +326,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const target = data.users.find((user) => user.id === userId && user.role !== "Administrator" && user.role !== "Customer");
     const remoteState=firebase?.accessRecords[userId]?.accountState;
     // Separated identities have Auth revoked and need a separate, audited rehire process.
-    if(remoteState==="Separated")return false;
+    if(firebase && (!firebase.accessRecords[userId]||remoteState==="Separated"))return false;
     const firebaseMismatch=Boolean(remoteState&&remoteState!=="Active"&&record?.state==="Active");
     if (!target || (record && !rescuableStates.has(record.state) && !firebaseMismatch)) return false;
     // This is a human-initiated, reason-audited Administrator activation, never a background repair.
@@ -348,6 +350,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (currentUser?.role !== "Administrator" || reason.trim().length < 3) return false;
     const record = accountAccessFor(state, userId);
     if (!record || !["Pending approval", "Onboarding"].includes(record.state)) return false;
+    if(firebase && (!firebase.accessRecords[userId]||firebase.accessRecords[userId].accountState==="Active"))return false;
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Onboarding", returnedAt: at, returnedBy: currentUser.id, returnReason: reason.trim() } : item) }));
     syncAccountState(userId, "Onboarding");
