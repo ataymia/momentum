@@ -291,6 +291,7 @@ export function onboardingRescueQueue(hcm: HCMState, data: WorkspaceData, identi
     const stored = identity.records.find((item) => item.userId === user.id);
     const missingTrustedRecord = !stored || isFailClosedPlaceholder(stored);
     const record = missingTrustedRecord ? undefined : stored;
+    const hrClaimsActive = record?.state === "Active";
     const firebaseState = firebaseStates?.[user.id]?.accountState;
     // Intentionally separated employees are former staff, not "stuck" hires.
     // Their historical HR and audit records remain available to Administrators.
@@ -298,7 +299,7 @@ export function onboardingRescueQueue(hcm: HCMState, data: WorkspaceData, identi
     // An Administrator-activated Firebase account is not stuck just because HR history is missing.
     if (firebaseState === "Active") return [];
     // If Firebase is non-active but local HR history says Active, show the mismatch for rescue.
-    if (!firebaseState && record?.state === "Active") return [];
+    if (!firebaseState && hrClaimsActive) return [];
 
     const draft = identity.drafts.find((item) => item.status !== "Cancelled" && (item.id === stored?.draftId || item.linkedUserId === user.id || item.workEmail.toLowerCase() === user.email.toLowerCase()));
     const packageIncomplete = draft ? onboardingPackageNeedsRepair(hcm, { ...draft, linkedUserId: user.id }, user.id) : !hcm.employees.some((item) => item.userId === user.id);
@@ -315,7 +316,7 @@ export function onboardingRescueQueue(hcm: HCMState, data: WorkspaceData, identi
     if (readiness.readyForActivation) actions.push("activate");
     actions.push("overrideAndActivate");
 
-    const diagnosis = firebaseState && record?.state === "Active" && firebaseState !== "Active"
+    const diagnosis = firebaseState && hrClaimsActive && firebaseState !== "Active"
       ? `Firebase access is ${firebaseState}, but the HR record says Active. Only an Administrator can authorize restoring access; check for an intentional suspension or separation before proceeding.`
       : missingTrustedRecord
       ? "No trusted Momentum provisioning record. Repair it from the Firebase identity, access record, and saved new-hire setup."
