@@ -292,6 +292,9 @@ export function onboardingRescueQueue(hcm: HCMState, data: WorkspaceData, identi
     const missingTrustedRecord = !stored || isFailClosedPlaceholder(stored);
     const record = missingTrustedRecord ? undefined : stored;
     const firebaseState = firebaseStates?.[user.id]?.accountState;
+    // Intentionally separated employees are former staff, not "stuck" hires.
+    // Their historical HR and audit records remain available to Administrators.
+    if(firebaseState==="Separated"||(!firebaseState&&record?.state==="Separated"))return [];
     // An Administrator-activated Firebase account is not stuck just because HR history is missing.
     if (firebaseState === "Active") return [];
     // If Firebase is non-active but local HR history says Active, show the mismatch for rescue.
