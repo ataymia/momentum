@@ -323,6 +323,8 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const record = accountAccessFor(state, userId);
     const target = data.users.find((user) => user.id === userId && user.role !== "Administrator" && user.role !== "Customer");
     const remoteState=firebase?.accessRecords[userId]?.accountState;
+    // Separated identities have Auth revoked and need a separate, audited rehire process.
+    if(remoteState==="Separated")return false;
     const firebaseMismatch=Boolean(remoteState&&remoteState!=="Active"&&record?.state==="Active");
     if (!target || (record && !rescuableStates.has(record.state) && !firebaseMismatch)) return false;
     // This is a human-initiated, reason-audited Administrator activation, never a background repair.
