@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {readFileSync} from "node:fs";
 import {metaVersionKey} from "../lib/firestore-domains";
-import {releaseSeparatedAppointments} from "../functions/src/separation-projection";
+import separationProjection from "../functions/src/separation-projection";
+const {releaseSeparatedAppointments}=separationProjection;
 import {visibleActiveEmployees} from "../lib/employee-directory-visibility";
 import {
   effectiveAccountOwner,
