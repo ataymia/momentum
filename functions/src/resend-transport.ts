@@ -1,4 +1,4 @@
-/* eslint-disable max-len, comma-spacing, no-control-regex, require-jsdoc, space-before-blocks, indent, keyword-spacing, curly, valid-jsdoc, switch-colon-spacing, key-spacing, brace-style, semi-spacing */
+/* eslint-disable max-len, comma-spacing, no-control-regex, space-before-blocks, indent, keyword-spacing, curly, switch-colon-spacing, key-spacing, brace-style, semi-spacing */
 import {getFirestore} from "firebase-admin/firestore";
 import {defineSecret} from "firebase-functions/params";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
