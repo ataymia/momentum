@@ -7,10 +7,10 @@ const read=(row:SeparationRow,key:string)=>
   typeof row[key]==="string" ? (row[key] as string).trim() : "";
 /**
  * Release open work while keeping completed appointments and historical rows.
- * @param {readonly SeparationRow[]} items Current appointment snapshot.
+ * @param {Array<Object>} items Current appointment snapshot.
  * @param {string} employeeUid Approved separated identity.
  * @param {string} stamp Authorized separation time.
- * @return {{items:SeparationRow[], releasedIds:string[]}} Updated projection.
+ * @return {Object} Updated projection.
  */
 export function releaseSeparatedAppointments(
  items:readonly SeparationRow[],employeeUid:string,stamp:string,
