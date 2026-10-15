@@ -148,6 +148,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (!target || target.role === "Administrator") return false;
     const draft = input.draftId ? state.drafts.find((item) => item.id === input.draftId && item.status !== "Cancelled" && item.workEmail.toLowerCase() === target.email.toLowerCase()) : undefined;
     if (!draft || (draft.linkedUserId && draft.linkedUserId !== target.id)) return false;
+    if(firebase?.accessRecords[target.id]?.accountState==="Active")return false; // HR setup cannot demote an activated employee.
     if (target.role !== draft.role || target.team !== draft.team || target.managerId !== draft.managerId) return false;
     const at = new Date().toISOString();
     const linked: ProvisioningDraft = { ...draft, status: "Auth linked", linkedUserId: target.id, updatedAt: at };
@@ -231,6 +232,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const target = data.users.find((user) => user.id === userId && user.role !== "Administrator" && user.role !== "Customer");
     if (!record || !target || !rescuableStates.has(record.state)) return false;
     const nextState = record.state === "Password change required" ? "Onboarding" as const : record.state;
+    if(firebase?.accessRecords[userId]?.accountState==="Active"&&nextState!=="Active")return false;
     if (firebase && nextState !== record.state) { const persisted = await firebase.setAccountState(userId, nextState); if (!persisted.ok) return false; }
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: nextState, passwordChangedAt: item.passwordChangedAt ?? at, passwordChangeEvidence: item.passwordChangeEvidence ?? `Administrator verified: ${cleanReason}`, returnReason: undefined } : item) }));
@@ -243,6 +245,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (!overrideAllowed || !currentUser || cleanReason.length < 5 || userId === currentUser.id) return false;
     const record = accountAccessFor(state, userId);
     if (!record || record.state === "Pending approval" || !preactiveStates.has(record.state) || !onboardingReadiness(hcm, record, userId).readyForEmployeeSubmission) return false;
+    if(firebase?.accessRecords[userId]?.accountState==="Active")return false;
     if (firebase) { const persisted = await firebase.setAccountState(userId, "Pending approval"); if (!persisted.ok) return false; }
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Pending approval", onboardingSubmittedAt: item.onboardingSubmittedAt ?? at } : item) }));
@@ -306,6 +309,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const target = data.users.find((user) => user.id === userId && user.role !== "Customer" && user.role !== "Administrator");
     const record = accountAccessFor(state, userId);
     if (!target || !record || record.state === "Onboarding" || !rescuableStates.has(record.state)) return false;
+    if(firebase?.accessRecords[userId]?.accountState==="Active")return false; // No re-onboarding an Active employee.
     if (firebase) { const persisted = await firebase.setAccountState(userId, "Onboarding"); if (!persisted.ok) return false; }
     const at = new Date().toISOString();
     setState((current) => ({ ...current, records: current.records.map((item) => item.userId === userId ? { ...item, state: "Onboarding", returnedAt: at, returnedBy: currentUser.id, returnReason: cleanReason } : item) }));
