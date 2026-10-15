@@ -285,13 +285,13 @@ const RESCUE_ORDER: Record<AccountAccessState | "Not provisioned", number> = {
  * The Administrator queue previously listed only `Pending approval`, which left employees who never got past
  * the password change, or who fell back to the fail-closed placeholder, invisible outside Firebase Console.
  */
-export function onboardingRescueQueue(hcm: HCMState, data: WorkspaceData, identity: IdentityProvisioningState, firebaseStates?: Readonly<Record<string,AccountAccessState>>): OnboardingRescueEntry[] {
+export function onboardingRescueQueue(hcm: HCMState, data: WorkspaceData, identity: IdentityProvisioningState, firebaseStates?: Readonly<Record<string,{accountState:AccountAccessState}>>): OnboardingRescueEntry[] {
   const entries = data.users.flatMap((user): OnboardingRescueEntry[] => {
     if (user.role === "Customer" || user.role === "Administrator") return [];
     const stored = identity.records.find((item) => item.userId === user.id);
     const missingTrustedRecord = !stored || isFailClosedPlaceholder(stored);
     const record = missingTrustedRecord ? undefined : stored;
-    const firebaseState = firebaseStates?.[user.id];
+    const firebaseState = firebaseStates?.[user.id]?.accountState;
     // An Administrator-activated Firebase account is not stuck just because HR history is missing.
     if (firebaseState === "Active") return [];
     // If Firebase is non-active but local HR history says Active, show the mismatch for rescue.
