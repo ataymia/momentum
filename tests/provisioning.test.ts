@@ -206,16 +206,16 @@ describe("deleting an account frees the hire to be recreated", () => {
 
 describe("fail-closed placeholder records", () => {
   /**
-   * A hire whose provisioning half-finished has no real record, so the seed invents a "Suspended" one to
-   * stay fail-closed. That placeholder must never be mistaken for a real Administrator decision, or the
+   * A hire whose provisioning half-finished has no real HR record. The seed creates an "Onboarding" placeholder to
+   * record missing HR setup, never an unauthorized suspension. That placeholder must never override Firebase activation, or the
    * hire can never be recovered — which is exactly how production got stuck.
    */
-  test("the seed marks unproven identities Suspended and flags them as placeholders", () => {
+  test("the seed marks missing HR setup Onboarding and never fabricates suspension", () => {
     const data = workspace([user(HIRE_ID)]);
     const seed = createIdentityProvisioningSeed(data);
     const record = seed.records.find((item) => item.userId === HIRE_ID);
     assert.ok(record);
-    assert.equal(record.state, "Suspended", "an unproven identity must not be treated as Active");
+    assert.equal(record.state, "Onboarding", "a missing HR record must not be fabricated as a suspension");
     assert.equal(record.provisionedBy, FAIL_CLOSED_PROVISIONER);
     assert.equal(isFailClosedPlaceholder(record), true);
   });
@@ -233,6 +233,6 @@ describe("fail-closed placeholder records", () => {
     const data = workspace([user(HIRE_ID)]);
     const seed = createIdentityProvisioningSeed(data);
     const persisted = seed.records.filter((item) => !isFailClosedPlaceholder(item));
-    assert.deepEqual(persisted, [], "fail-closed placeholders must never reach Firestore");
+    assert.deepEqual(persisted, [], "missing-history placeholders must never reach Firestore");
   });
 });

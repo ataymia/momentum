@@ -16,6 +16,7 @@ import {
 import { useCommerce } from "../../lib/commerce-context";
 import { useCrm } from "../../lib/crm-context";
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
+import { visibleActiveEmployees } from "../../lib/employee-directory-visibility";
 import { appendAudit, type ProfileChangeRequest } from "../../lib/hcm-engine";
 import { useHcm } from "../../lib/hcm-context";
 import { useFieldTracking } from "../../lib/location-tracking-context";
@@ -52,10 +53,12 @@ export function EmployeeDirectory() {
   const [editMessage, setEditMessage] = useState("");
   const [contactMessage, setContactMessage] = useState("");
   const focusId = typeof window !== "undefined" ? window.sessionStorage.getItem("momentum-focus-record") : null;
-  const focusedEmployee = focusId ? data.users.find((user) => user.id === focusId && user.role !== "Customer") : undefined;
+  const employees = useMemo(
+    () => visibleActiveEmployees(data.users, firebase?.accessRecords).sort((a, b) => a.name.localeCompare(b.name)),
+    [data.users, firebase?.accessRecords],
+  );
+  const focusedEmployee = focusId ? employees.find((user) => user.id === focusId) : undefined;
   const [selectedId, setSelectedId] = useState(focusedEmployee?.id ?? currentUser?.id ?? "");
-
-  const employees = useMemo(() => data.users.filter((user) => user.role !== "Customer").sort((a, b) => a.name.localeCompare(b.name)), [data.users]);
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return employees;
@@ -63,7 +66,9 @@ export function EmployeeDirectory() {
   }, [employees, query]);
 
   const selected = employees.find((user) => user.id === selectedId) ?? employees[0];
-  if (!currentUser || !selected) return null;
+  if (!currentUser) return null;
+
+  if (!selected) return <section className="employee-directory-shell"><div className="employee-directory-empty">No active employees in the directory.</div></section>;
 
   const employment = hcm.employees.find((record) => record.userId === selected.id);
   const manager = data.users.find((user) => user.id === (employment?.managerId ?? selected.managerId));

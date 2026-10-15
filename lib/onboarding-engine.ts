@@ -285,18 +285,26 @@ const RESCUE_ORDER: Record<AccountAccessState | "Not provisioned", number> = {
  * The Administrator queue previously listed only `Pending approval`, which left employees who never got past
  * the password change, or who fell back to the fail-closed placeholder, invisible outside Firebase Console.
  */
-export function onboardingRescueQueue(hcm: HCMState, data: WorkspaceData, identity: IdentityProvisioningState): OnboardingRescueEntry[] {
+export function onboardingRescueQueue(hcm: HCMState, data: WorkspaceData, identity: IdentityProvisioningState, firebaseStates?: Readonly<Record<string,{accountState:AccountAccessState}>>): OnboardingRescueEntry[] {
   const entries = data.users.flatMap((user): OnboardingRescueEntry[] => {
     if (user.role === "Customer" || user.role === "Administrator") return [];
     const stored = identity.records.find((item) => item.userId === user.id);
     const missingTrustedRecord = !stored || isFailClosedPlaceholder(stored);
     const record = missingTrustedRecord ? undefined : stored;
-    if (record?.state === "Active") return [];
+    const hrClaimsActive = record?.state === "Active";
+    const firebaseState = firebaseStates?.[user.id]?.accountState;
+    // Intentionally separated employees are former staff, not "stuck" hires.
+    // Their historical HR and audit records remain available to Administrators.
+    if(firebaseState==="Separated"||(!firebaseState&&record?.state==="Separated"))return [];
+    // An Administrator-activated Firebase account is not stuck just because HR history is missing.
+    if (firebaseState === "Active") return [];
+    // If Firebase is non-active but local HR history says Active, show the mismatch for rescue.
+    if (!firebaseState && hrClaimsActive) return [];
 
     const draft = identity.drafts.find((item) => item.status !== "Cancelled" && (item.id === stored?.draftId || item.linkedUserId === user.id || item.workEmail.toLowerCase() === user.email.toLowerCase()));
     const packageIncomplete = draft ? onboardingPackageNeedsRepair(hcm, { ...draft, linkedUserId: user.id }, user.id) : !hcm.employees.some((item) => item.userId === user.id);
     const readiness = onboardingReadiness(hcm, record, user.id);
-    const state: AccountAccessState | "Not provisioned" = missingTrustedRecord ? (stored?.state === "Suspended" ? "Not provisioned" : stored?.state ?? "Not provisioned") : record!.state;
+    const state: AccountAccessState | "Not provisioned" = firebaseState ?? (missingTrustedRecord ? "Not provisioned" : record!.state);
 
     const actions: OnboardingRescueAction[] = [];
     if (missingTrustedRecord) actions.push("repairIdentityRecord");
@@ -308,7 +316,9 @@ export function onboardingRescueQueue(hcm: HCMState, data: WorkspaceData, identi
     if (readiness.readyForActivation) actions.push("activate");
     actions.push("overrideAndActivate");
 
-    const diagnosis = missingTrustedRecord
+    const diagnosis = firebaseState && hrClaimsActive
+      ? `Firebase access is ${firebaseState}, but the HR record says Active. Only an Administrator can authorize restoring access; check for an intentional suspension or separation before proceeding.`
+      : missingTrustedRecord
       ? "No trusted Momentum provisioning record. Repair it from the Firebase identity, access record, and saved new-hire setup."
       : packageIncomplete
         ? "The onboarding package (employment record, documents, training, or compensation) is incomplete."

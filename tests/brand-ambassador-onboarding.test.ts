@@ -319,7 +319,7 @@ describe("Administrator onboarding rescue", () => {
 
   test("a fail-closed placeholder is reported as a missing trusted record with a repair action", () => {
     const seed = createIdentityProvisioningSeed(data);
-    assert.ok(seed.records.filter(isFailClosedPlaceholder).length > 0, "the seed must fail closed for unprovisioned identities");
+    assert.ok(seed.records.filter(isFailClosedPlaceholder).length > 0, "the seed must mark missing HR history without blocking Firebase-authorized active employees");
     const entry = onboardingRescueQueue(createHcmSeed(data), data, { ...seed, drafts: [draft] }).find((item) => item.user.id === BA_A)!;
     assert.equal(entry.missingTrustedRecord, true);
     assert.equal(entry.state, "Not provisioned");
@@ -338,6 +338,29 @@ describe("Administrator onboarding rescue", () => {
     assert.ok(entry.actions.includes("attestPasswordChange"));
     assert.ok(entry.actions.includes("moveToOnboarding"));
     assert.ok(!entry.actions.includes("activate"), "activation must stay unavailable while readiness fails");
+  });
+
+  test("Firebase status mismatch appears in rescue even when the HR record says Active", () => {
+    const seed = createIdentityProvisioningSeed(data);
+    const identity = { ...seed, drafts: [draft], records: [record("Active"), ...seed.records.filter((item) => item.userId !== BA_A)] };
+    const entry = onboardingRescueQueue(createHcmSeed(data), data, identity, {
+      [BA_A]: {accountState:"Suspended"},
+    }).find((item) => item.user.id === BA_A);
+    assert.ok(entry);
+    assert.equal(entry.state,"Suspended");
+    assert.match(entry.diagnosis,/Firebase access is Suspended/);
+  });
+
+  test("Firebase-activated employees never appear stuck merely because onboarding history is missing", () => {
+    const seed = createIdentityProvisioningSeed(data);
+    const queue = onboardingRescueQueue(createHcmSeed(data), data, seed, {[BA_A]: {accountState:"Active"}});
+    assert.equal(queue.some((item) => item.user.id === BA_A),false);
+  });
+
+  test("intentionally separated employees are excluded from onboarding rescue", () => {
+    const seed = createIdentityProvisioningSeed(data);
+    const identity = {...seed,records:[record("Separated"),...seed.records.filter(item=>item.userId!==BA_A)]};
+    assert.equal(onboardingRescueQueue(createHcmSeed(data),data,identity,{[BA_A]:{accountState:"Separated"}}).some(item=>item.user.id===BA_A),false);
   });
 
   test("an Active employee is never listed as stuck", () => {

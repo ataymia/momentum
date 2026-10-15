@@ -12,6 +12,7 @@ import { DOCUMENT_TEMPLATE_STORAGE_KEY } from "../lib/document-template-engine";
 import { FinanceProvider } from "../lib/finance-context";
 import { HcmProvider } from "../lib/hcm-context";
 import { IDENTITY_PROVISIONING_STORAGE_KEY } from "../lib/identity-provisioning";
+import { employeeEntryDecision } from "../lib/employee-access-authority";
 import { IdentityProvisioningProvider, useIdentityProvisioning } from "../lib/identity-provisioning-context";
 import { InventoryLedgerProvider } from "../lib/inventory-ledger-context";
 import { FieldTrackingProvider } from "../lib/location-tracking-context";
@@ -58,10 +59,14 @@ function MomentumExperience(){
   const {currentUser}=useWorkspace();
   const {currentRecord}=useIdentityProvisioning();
   const firebase=useFirebaseSessionOptional();
-  const activeAdministrator=currentUser?.role==="Administrator"&&firebase?.access?.role==="Administrator"&&firebase.access.accountState==="Active";
   if(!currentUser)return <LoginScreen/>;
-  if(firebase&&currentUser.role!=="Customer"&&firebase.access?.accountState!=="Active")return <OnboardingPortal/>;
-  if(currentUser.role!=="Customer"&&currentRecord?.state!=="Active"&&!activeAdministrator)return <OnboardingPortal/>;
+  const entry=employeeEntryDecision({
+    production:Boolean(firebase),
+    role:currentUser.role,
+    firebaseAccountState:firebase?.access?.accountState,
+    onboardingState:currentRecord?.state,
+  });
+  if(entry!=="Workspace")return <OnboardingPortal/>;
   return <><AppShell/><DeparturePrompt/></>;
 }
 
