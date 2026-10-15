@@ -340,6 +340,29 @@ describe("Administrator onboarding rescue", () => {
     assert.ok(!entry.actions.includes("activate"), "activation must stay unavailable while readiness fails");
   });
 
+  test("Firebase status mismatch appears in rescue even when the HR record says Active", () => {
+    const seed = createIdentityProvisioningSeed(data);
+    const identity = { ...seed, drafts: [draft], records: [record("Active"), ...seed.records.filter((item) => item.userId !== BA_A)] };
+    const entry = onboardingRescueQueue(createHcmSeed(data), data, identity, {
+      [BA_A]: {accountState:"Suspended"},
+    }).find((item) => item.user.id === BA_A);
+    assert.ok(entry);
+    assert.equal(entry.state,"Suspended");
+    assert.match(entry.diagnosis,/Firebase access is Suspended/);
+  });
+
+  test("Firebase-activated employees never appear stuck merely because onboarding history is missing", () => {
+    const seed = createIdentityProvisioningSeed(data);
+    const queue = onboardingRescueQueue(createHcmSeed(data), data, seed, {[BA_A]: {accountState:"Active"}});
+    assert.equal(queue.some((item) => item.user.id === BA_A),false);
+  });
+
+  test("intentionally separated employees are excluded from onboarding rescue", () => {
+    const seed = createIdentityProvisioningSeed(data);
+    const identity = {...seed,records:[record("Separated"),...seed.records.filter(item=>item.userId!==BA_A)]};
+    assert.equal(onboardingRescueQueue(createHcmSeed(data),data,identity,{[BA_A]:{accountState:"Separated"}}).some(item=>item.user.id===BA_A),false);
+  });
+
   test("an Active employee is never listed as stuck", () => {
     const seed = createIdentityProvisioningSeed(data);
     const identity = { ...seed, drafts: [draft], records: [record("Active", { activatedAt: "2026-09-16T00:00:00.000Z", activatedBy: ADMIN_ID }), ...seed.records.filter((item) => item.userId !== BA_A)] };
