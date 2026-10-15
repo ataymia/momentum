@@ -182,7 +182,9 @@ export async function separateEmployee(
       uid: targetUid,
       actorUid: adminUid,
       separatedAt: stamp,
-      reason: reason.trim(),
+      reason: text(prior?.reason)||reason.trim(),
+      lastReconciliationReason: alreadySeparated?reason.trim():undefined,
+      lastReconciledAt: alreadySeparated?new Date().toISOString():undefined,
       previousState: text(prior?.previousState)||text(targetData?.accountState),
       releasedAccountIds: [...new Set([
         ...(Array.isArray(prior?.releasedAccountIds)?prior.releasedAccountIds:[]),
