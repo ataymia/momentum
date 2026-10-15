@@ -30,6 +30,8 @@ import {
 } from "../../lib/employee-admin";
 import { activeCompensation, appendAudit, type CompensationRecord, type EmploymentRecord, type PayBasis } from "../../lib/hcm-engine";
 import { useHcm } from "../../lib/hcm-context";
+import { visibleActiveEmployees } from "../../lib/employee-directory-visibility";
+import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import { timeEntryHours } from "../../lib/payroll-engine";
 import { usePayroll } from "../../lib/payroll-context";
@@ -186,10 +188,14 @@ export function AdminEmployeeProfiles() {
   const [selectedId, setSelectedId] = useState("");
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<ProfileTab>("overview");
-
-  const employees = useMemo(() => data.users
-    .filter((user) => user.role !== "Customer")
-    .sort((left, right) => left.name.localeCompare(right.name)), [data.users]);
+  const [showFormer, setShowFormer] = useState(false);
+  const firebase = useFirebaseSessionOptional();
+  const activeEmployees = useMemo(() => visibleActiveEmployees(data.users, firebase?.accessRecords), [data.users, firebase?.accessRecords]);
+  const employees = useMemo(() => {
+    const activeIds=new Set(activeEmployees.map(user=>user.id));
+    return (showFormer ? data.users.filter(user=>user.role!=="Customer"&&!activeIds.has(user.id)) : activeEmployees)
+      .sort((left,right)=>left.name.localeCompare(right.name));
+  }, [data.users, activeEmployees, showFormer]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -207,7 +213,7 @@ export function AdminEmployeeProfiles() {
   if (!currentUser || currentUser.role !== "Administrator") return null;
 
   if (!selected) {
-    return <div className="review-empty"><UserRound size={24}/><h3>No employees available</h3><p>Create or activate an employee before opening a profile.</p></div>;
+    return <div className="review-empty"><UserRound size={24}/><h3>No {showFormer?"former":"active"} employees available</h3><p>{showFormer?"No archived employees match this view.":"Create or activate an employee before opening a profile."}</p><Button size="sm" variant="secondary" onClick={()=>setShowFormer(!showFormer)}>Switch staff view</Button></div>;
   }
 
   const entries = data.timeEntries
@@ -249,7 +255,7 @@ export function AdminEmployeeProfiles() {
   return <div className="employee-directory-shell admin-employee-profiles">
     <div className="employee-directory-heading">
       <div><span><ShieldCheck size={20}/></span><div><small>Administrator only</small><h2>Employee profiles</h2><p>One source-linked view of each employee&apos;s identity, time, pay, field activity, accounts, delivery work, HR record, and recent system activity.</p></div></div>
-      <StatusPill tone="gold">{employees.length} employee{employees.length === 1 ? "" : "s"}</StatusPill>
+      <div className="provisioning-row-actions"><Button size="sm" variant={showFormer?"secondary":"primary"} onClick={()=>{setShowFormer(false);setSelectedId("");setQuery("");}}>Active staff</Button><Button size="sm" variant={showFormer?"primary":"secondary"} onClick={()=>{setShowFormer(true);setSelectedId("");setQuery("");}}>Former employees / archive</Button><StatusPill tone="gold">{employees.length} {showFormer?"former":"active"}</StatusPill></div>
     </div>
 
     <div className="employee-directory-layout">
