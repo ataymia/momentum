@@ -3,6 +3,7 @@
 import { CheckCircle2, FileCheck2, KeyRound, LockKeyhole, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
+import { employeeEntryDecision } from "../../lib/employee-access-authority";
 import { useHcm } from "../../lib/hcm-context";
 import { appendAudit } from "../../lib/hcm-engine";
 import { useIdentityProvisioning } from "../../lib/identity-provisioning-context";
@@ -56,7 +57,17 @@ export function OnboardingPortal() {
   const [profileError, setProfileError] = useState("");
   const [submitNotice, setSubmitNotice] = useState("");
 
-  if (!currentUser || currentUser.role === "Customer" || !record || record.state === "Active" || activeAdministrator) return null;
+  if (!currentUser || currentUser.role === "Customer") return null;
+  const entry = employeeEntryDecision({
+    production: Boolean(firebase),
+    role: currentUser.role,
+    firebaseAccountState: firebase?.access?.accountState,
+    onboardingState: record?.state,
+  });
+  // This portal never restricts an employee whom the Administrator has made Active in Firebase.
+  if (entry === "Workspace" || activeAdministrator) return null;
+  if (entry === "Unavailable") return <main className="onboarding-shell"><section className="onboarding-card onboarding-card--center"><span className="onboarding-hero-icon"><LockKeyhole size={28}/></span><StatusPill tone="danger">Access unavailable</StatusPill><h1>Momentum access is unavailable</h1><p>This account cannot enter the workspace right now. Contact an Administrator if you think this is incorrect.</p><button className="onboarding-signout" onClick={logout}>Sign out</button></section></main>;
+  if (!record) return <main className="onboarding-shell"><section className="onboarding-card onboarding-card--center"><StatusPill tone="warning">HR setup needed</StatusPill><h1>Your onboarding is being prepared</h1><p>Your account is not suspended. Ask an Administrator to finish the onboarding record.</p><button className="onboarding-signout" onClick={logout}>Sign out</button></section></main>;
 
   const assignments = hcm.training.filter((item) => item.userId === currentUser.id);
   const documents = hcm.documents.filter((item) => item.userId === currentUser.id && ["Employment", "Compensation", "Tax"].includes(item.category));
@@ -99,7 +110,7 @@ export function OnboardingPortal() {
 
   if (record.state === "Pending approval") return <main className="onboarding-shell"><section className="onboarding-card onboarding-card--center"><span className="onboarding-hero-icon"><ShieldCheck size={28}/></span><StatusPill tone="info">Submitted</StatusPill><h1>Onboarding submitted</h1><p>Your part is complete. An Administrator is verifying required employment and tax paperwork before production access is activated.</p>{record.onboardingSubmittedAt && <small>Submitted {new Date(record.onboardingSubmittedAt).toLocaleString()}</small>}<button className="onboarding-signout" onClick={logout}>Sign out</button></section></main>;
 
-  if (record.state === "Suspended" || record.state === "Separated") return <main className="onboarding-shell"><section className="onboarding-card onboarding-card--center"><span className="onboarding-hero-icon"><LockKeyhole size={28}/></span><StatusPill tone="danger">Access unavailable</StatusPill><h1>Momentum access is unavailable</h1><p>This account cannot enter the workspace right now. Contact an Administrator if you think this is incorrect.</p><button className="onboarding-signout" onClick={logout}>Sign out</button></section></main>;
+  // A stale onboarding suspension no longer overrides the actual Firebase access state.
 
   return <main className="onboarding-shell"><div className="onboarding-page">
     <header className="onboarding-header"><div><StatusPill tone="gold">New hire onboarding</StatusPill><h1>Welcome, {currentUser.firstName}</h1><p>Finish the items you control. HR verifies employment paperwork after you submit.</p></div><button className="onboarding-signout" onClick={logout}>Sign out</button></header>
