@@ -319,7 +319,7 @@ describe("Administrator onboarding rescue", () => {
 
   test("a fail-closed placeholder is reported as a missing trusted record with a repair action", () => {
     const seed = createIdentityProvisioningSeed(data);
-    assert.ok(seed.records.filter(isFailClosedPlaceholder).length > 0, "the seed must fail closed for unprovisioned identities");
+    assert.ok(seed.records.filter(isFailClosedPlaceholder).length > 0, "the seed must mark missing HR history without blocking Firebase-authorized active employees");
     const entry = onboardingRescueQueue(createHcmSeed(data), data, { ...seed, drafts: [draft] }).find((item) => item.user.id === BA_A)!;
     assert.equal(entry.missingTrustedRecord, true);
     assert.equal(entry.state, "Not provisioned");
