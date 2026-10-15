@@ -46,8 +46,8 @@ test("active account can only lose active access by a direct Administrator suspe
 });
 
 test("former employees vanish from active directory but remain in historical identity source",()=>{
- const directory=visibleActiveEmployees(users,{"matt":"Active","former":"Separated","previously-marked":"Separated","new":"Onboarding"});
+ const directory=visibleActiveEmployees(users,{"matt":{accountState:"Active"},"former":{accountState:"Separated"},"previously-marked":{accountState:"Separated"},"new":{accountState:"Onboarding"}});
  assert.deepEqual(directory.map(x=>x.id),["matt","new"]);
  assert.equal(users.length,4,"source histories must not be deleted");
- assert.deepEqual(visibleActiveEmployees(users,{"former":"Active","previously-marked":"Active"}).map(x=>x.id),["matt","former","previously-marked","new"],"Firebase Active overrides stale HR separation");
+ assert.deepEqual(visibleActiveEmployees(users,{"former":{accountState:"Active"},"previously-marked":{accountState:"Active"}}).map(x=>x.id),["matt","former","previously-marked","new"],"Firebase Active overrides stale HR separation");
 });
