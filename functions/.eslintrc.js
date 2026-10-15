@@ -21,6 +21,10 @@ module.exports = {
     "/lib/**/*", // Ignore built files.
     "/generated/**/*", // Ignore generated files.
   ],
+  overrides: [{
+    files: ["src/resend-mail-policy.ts", "src/resend-transport.ts"],
+    rules: {"require-jsdoc": "off", "valid-jsdoc": "off"},
+  }],
   plugins: [
     "@typescript-eslint",
     "import",
