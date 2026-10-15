@@ -28,7 +28,7 @@ export function validMailToSend(value:ServerMail,cutoff:string){
  if(value.status!=="Approved")return "Not approved for transport.";
  if(!Number.isFinite(Date.parse(cutoff))||!Number.isFinite(Date.parse(value.createdAt))||
    Date.parse(value.createdAt)<Date.parse(cutoff))return "Historical or unapproved activation window.";
- if(!safeMail(value.to)||!safeText(value.subject,190)||!safeText(value.text,5000))
+ if(!safeMail(value.to)||!safeText(value.subject,190)||/[\r\n]/.test(value.subject)||!safeText(value.text,5000))
    return "Unsafe or missing delivery fields.";
  if(!safeText(value.idempotencyKey,256)||!safeText(value.eventId,200)||
     !safeText(value.sourcePath,220)||!safeText(value.sourceRecordId,220)||
