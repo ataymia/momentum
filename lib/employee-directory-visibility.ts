@@ -6,11 +6,11 @@ import type { AccountAccessState } from "./identity-provisioning";
  */
 export function visibleActiveEmployees(
  users:readonly WorkspaceUser[],
- firebaseStates?:Readonly<Record<string,AccountAccessState>>,
+ firebaseStates?:Readonly<Record<string,{accountState:AccountAccessState}>>,
 ):WorkspaceUser[]{
  return users.filter(user=>{
   if(user.role==="Customer")return false;
-  const status=firebaseStates?.[user.id];
+  const status=firebaseStates?.[user.id]?.accountState;
   if(status==="Separated")return false;
   if(status==="Active")return true; // Authoritative active access overrides stale HR status.
   return user.employmentStatus!=="Separated";
