@@ -941,3 +941,14 @@ describe("confidential HR signed-form receipt metadata",()=>{
   await assertFails(setDoc(doc(dbFor(ADMIN),auditPath),{employeeUid:REP,action:"Forged"}));
  });
 });
+
+describe("server-only external notification transport",()=>{
+ test("no browser role can create or tamper with outbox, provider index, webhook or suppression",async()=>{
+  for(const collectionName of ["notificationOutbox","notificationProviderIndex","notificationWebhookEvents","notificationSuppressions"]){
+   for(const uid of [ADMIN,REP,MANAGER,OPS,MARKETING,null]){
+    await assertFails(setDoc(doc(dbFor(uid),collectionName,"synthetic-1"),{status:"Approved",to:"buyer@example.test"}));
+    await assertFails(getDoc(doc(dbFor(uid),collectionName,"synthetic-1")));
+   }
+  }
+ });
+});
