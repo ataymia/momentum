@@ -1,4 +1,4 @@
-/* eslint-disable max-len, comma-spacing, no-control-regex, require-jsdoc, space-before-blocks, indent, keyword-spacing, curly, valid-jsdoc, switch-colon-spacing, key-spacing, brace-style, semi-spacing */
+/* eslint-disable max-len, comma-spacing, no-control-regex, space-before-blocks, indent, keyword-spacing, curly, switch-colon-spacing, key-spacing, brace-style, semi-spacing */
 import {createHash,createHmac,timingSafeEqual} from "node:crypto";
 
 export type MailStatus=
