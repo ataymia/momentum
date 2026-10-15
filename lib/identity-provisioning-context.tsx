@@ -5,6 +5,7 @@ import { useFirebaseSessionOptional } from "./firebase-session-context";
 import { useHcm } from "./hcm-context";
 import { appendAudit } from "./hcm-engine";
 import { AccountAccessState, IDENTITY_PROVISIONING_STORAGE_KEY, IdentityProvisioningRecord, IdentityProvisioningState, ProvisioningDraft, ProvisioningSource, accountAccessFor, createIdentityProvisioningSeed, isFailClosedPlaceholder, normalizeIdentityProvisioningState } from "./identity-provisioning";
+import { mayTransitionAccountState } from "./employee-access-authority";
 import { activateEmploymentAfterOnboarding, administratorOverrideEmploymentActivation, onboardingPackageNeedsRepair, onboardingReadiness, onboardingRescueQueue, prepareOnboardingPackage, type OnboardingRescueEntry } from "./onboarding-engine";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { normalizeUsername, usernameProblem } from "./username";
@@ -54,7 +55,13 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   const { hcm, setHcm } = useHcm();
   const firebase = useFirebaseSessionOptional();
   const [state, setState] = useState<IdentityProvisioningState>(() => readState(data));
-  const syncAccountState = (userId: string, nextState: AccountAccessState) => { if (firebase) void firebase.setAccountState(userId, nextState); };
+  const syncAccountState = (userId: string, nextState: AccountAccessState) => {
+    if (!firebase) return;
+    const remote = firebase.session?.uid === userId ? firebase.access : firebase.accessRecords[userId];
+    // Employee self-service/onboarding repair may never silently downgrade an already Active account.
+    if(remote && !mayTransitionAccountState({currentState:remote.accountState,nextState,adminInitiated:false})) return;
+    void firebase.setAccountState(userId, nextState);
+  };
   // Rescue and override are Administrator powers, not founder-only powers: an on-call Administrator has to be
   // able to unstick a hire without anyone opening the Firebase Console.
   const overrideAllowed = currentUser?.role === "Administrator";
@@ -261,6 +268,8 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const usableDraft = draft && draft.role === target.role && draft.team === target.team && draft.managerId === target.managerId ? draft : undefined;
     const at = new Date().toISOString();
     const nextState: AccountAccessState = "Onboarding";
+    // A missing HR record is not authority to revoke the Administrator’s Active decision.
+    if(firebase?.accessRecords[userId]?.accountState==="Active")return false;
     if (firebase) { const persisted = await firebase.setAccountState(userId, nextState); if (!persisted.ok) return false; }
     const record: IdentityProvisioningRecord = {
       id: `access-${userId}`,
@@ -309,7 +318,10 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     if (!overrideAllowed || !currentUser || cleanReason.length < 5 || userId === currentUser.id) return false;
     const record = accountAccessFor(state, userId);
     const target = data.users.find((user) => user.id === userId && user.role !== "Administrator" && user.role !== "Customer");
-    if (!target || (record && !rescuableStates.has(record.state))) return false;
+    const remoteState=firebase?.accessRecords[userId]?.accountState;
+    const firebaseMismatch=Boolean(remoteState&&remoteState!=="Active"&&record?.state==="Active");
+    if (!target || (record && !rescuableStates.has(record.state) && !firebaseMismatch)) return false;
+    // This is a human-initiated, reason-audited Administrator activation, never a background repair.
     if (firebase) { const persisted = await firebase.setAccountState(userId, "Active"); if (!persisted.ok) return false; }
     const at = new Date().toISOString();
     setHcm((current) => administratorOverrideEmploymentActivation(current, data, userId, currentUser.id, cleanReason));
@@ -349,7 +361,7 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   };
 
   const currentRecord = useMemo(() => currentUser ? accountAccessFor(state, currentUser.id) : undefined, [currentUser, state]);
-  const rescueQueue = useMemo(() => currentUser?.role === "Administrator" ? onboardingRescueQueue(hcm, data, state) : [], [currentUser, data, hcm, state]);
+  const rescueQueue = useMemo(() => currentUser?.role === "Administrator" ? onboardingRescueQueue(hcm, data, state, firebase?.accessRecords) : [], [currentUser, data, hcm, state, firebase?.accessRecords]);
   return <Context.Provider value={{ state, currentRecord, rescueQueue, saveDraft, cancelDraft, markDraftInviteSent, linkDraftToUser, beginOnboarding, repairOnboardingPackage, completePasswordChange, submitOnboarding, activateUser, administratorRepairIdentityRecord, administratorMoveToOnboarding, administratorVerifyPasswordStep, administratorAdvanceToReview, administratorBypassAndActivate, returnForCorrections, setAccountState }}>{children}</Context.Provider>;
 }
 
