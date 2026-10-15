@@ -1,4 +1,4 @@
-/* eslint-disable max-len, keyword-spacing, comma-spacing, key-spacing, indent, require-jsdoc, space-before-blocks */
+/* eslint-disable max-len, keyword-spacing, comma-spacing, key-spacing, indent, space-before-blocks */
 import {randomUUID} from "node:crypto";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
