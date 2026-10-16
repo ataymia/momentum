@@ -1,3 +1,4 @@
+/* eslint-disable max-len, comma-spacing, key-spacing, keyword-spacing, curly, one-var */
 type BusinessRecord = Record<string, unknown>;
 type SourceEntry = {lotId: string; fromNodeId: string; quantity: number};
 
