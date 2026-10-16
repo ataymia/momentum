@@ -88,3 +88,28 @@ test("server maintains transaction, admin authorization, and separate payment st
   assert.match(implementation, /"Fulfilled"/);
   assert.match(implementation, /"adminDeliveryOverrides"/);
 });
+
+test("admin override cannot be blocked by unrelated local unsynced work",()=>{
+  const ui=readFileSync("components/orders/admin-delivery-override.tsx","utf8");
+  assert.doesNotMatch(ui,/flushAndConfirm\(/);
+  assert.match(ui,/fetch\(firebaseFunctionUrl\("adminDeliveryOverride"\)/);
+  assert.match(ui,/inventoryReconciliationAcknowledged/);
+  assert.match(ui,/onSaved\(refreshed\.ok\?base/);
+});
+test("server updates both order registers and preserves payment truth",()=>{
+  const server=readFileSync("functions/src/admin-delivery-override.ts","utf8");
+  assert.match(server,/if \(commercialOrders\.some/);
+  assert.match(server,/if \(workspaceOrders\.some/);
+  assert.match(server,/touched\.push\(commercialRef\.path\)/);
+  assert.match(server,/touched\.push\(workspaceRef\.path\)/);
+  assert.doesNotMatch(server,/paymentStatus: txt\(row\.paymentStatus\)/);
+  assert.match(server,/inventoryReconciliationRequired/);
+  assert.match(server,/!reconcileInventory && reservations\.some/);
+  assert.match(server,/tx\.create\(auditRef, override\)/);
+});
+test("client immediately moves server-confirmed delivery to delivered view",()=>{
+  const page=readFileSync("components/pages/orders-v3.tsx","utf8");
+  assert.match(page,/setServerConfirmedDeliveries/);
+  assert.match(page,/setView\("Delivered"\)/);
+  assert.match(page,/presentedOrders/);
+});

@@ -8,6 +8,7 @@ type OverrideResult = {
   orderId: string;
   deliveredAt: string;
   movementIds: string[];
+  inventoryReconciliationRequired: boolean;
 };
 
 const isObject = (value: unknown): value is BusinessRecord =>
@@ -60,10 +61,14 @@ export async function commitAdminDeliveryOverride(
     return fail(400, "Enter an eligible order, actual delivery time, " +
       "who delivered it, and a clear reason.");
   }
-  if (!Array.isArray(body.allocations) || !body.allocations.length ||
-      body.allocations.length > 100) {
-    return fail(400, "Choose the inventory lots and source locations " +
-      "actually delivered.");
+  if (!Array.isArray(body.allocations) || body.allocations.length > 100) {
+    return fail(400, "Inventory selections must be a valid list.");
+  }
+  // Delivery may be physically confirmed before stock records are reconciled.
+  // This never invents or subtracts stock: it opens an explicit exception.
+  const reconcileInventory = body.allocations.length === 0;
+  if (reconcileInventory && body.inventoryReconciliationAcknowledged !== true) {
+    return fail(400, "Confirm that inventory requires reconciliation.");
   }
 
   const allocations: Entry[] = [];
@@ -164,9 +169,6 @@ export async function commitAdminDeliveryOverride(
         txt(row.type) === "Delivery")) {
       return fail(409, "Delivery inventory was already posted for this order.");
     }
-    if (!movements.length) {
-      return fail(409, "The movement ledger is empty. Reconcile stock first.");
-    }
     const customerNodeId = "node-account-" + accountId;
     const customerNode = sourceNodes.get(customerNodeId);
     if (customerNode && txt(customerNode.type) !== "Customer") {
@@ -219,8 +221,9 @@ export async function commitAdminDeliveryOverride(
       additions.push(movement);
       working.push(movement);
     }
-    if ([...expected].some(([sku, cases]) => observed.get(sku) !== cases) ||
-        observed.size !== expected.size) {
+    if (!reconcileInventory &&
+        ([...expected].some(([sku, cases]) => observed.get(sku) !== cases) ||
+          observed.size !== expected.size)) {
       return fail(409, "Delivered quantities must match every ordered SKU.");
     }
 
@@ -233,22 +236,26 @@ export async function commitAdminDeliveryOverride(
       performedBy,
       reason,
       movementIds: additions.map((row) => txt(row.id)),
+      inventoryReconciliationRequired: reconcileInventory,
+      inventoryReconciliationStatus: reconcileInventory ?
+        "Open" : "Not required",
+      expectedInventoryLines: reconcileInventory ?
+        [...expected].map(([product, cases]) => ({product, cases})) : [],
       kind: "Admin override",
       status: "Delivered",
     };
     const markDelivered = (row: BusinessRecord): BusinessRecord => ({
       ...row,
       status: "Delivered",
-      paymentStatus: txt(row.paymentStatus) === "Not invoiced" ?
-        "Open" : row.paymentStatus,
+      // Delivery never changes payment or invoicing status.
+      inventoryReconciliationRequired: reconcileInventory ||
+        row.inventoryReconciliationRequired === true,
     });
-    const touched = [
-      movementsRef.path,
-      overridesRef.path,
-      commercialRef.path,
-      activityRef.path,
-    ];
-    tx.set(movementsRef, {items: [...additions, ...movements]});
+    const touched = [overridesRef.path, activityRef.path];
+    if (additions.length) {
+      tx.set(movementsRef, {items: [...additions, ...movements]});
+      touched.push(movementsRef.path);
+    }
     tx.set(overridesRef, {
       items: [override, ...items(overridesSnap.data())],
     });
@@ -256,17 +263,20 @@ export async function commitAdminDeliveryOverride(
       tx.set(nodesRef, {items: nextNodes});
       touched.push(nodesRef.path);
     }
+    // Both legacy registers may hold this order. Updating only one causes
+    // the workspace to show Approved after a successful admin override.
     if (commercialOrders.some((row) => txt(row.id) === orderId)) {
       tx.set(commercialRef, {
         items: commercialOrders.map((row) =>
           txt(row.id) === orderId ? markDelivered(row) : row),
       });
-    } else {
+      touched.push(commercialRef.path);
+    }
+    if (workspaceOrders.some((row) => txt(row.id) === orderId)) {
       tx.set(workspaceRef, {
         items: workspaceOrders.map((row) =>
           txt(row.id) === orderId ? markDelivered(row) : row),
       });
-      touched.splice(touched.indexOf(commercialRef.path), 1);
       touched.push(workspaceRef.path);
     }
 
@@ -303,7 +313,7 @@ export async function commitAdminDeliveryOverride(
       touched.push(tasksRef.path);
     }
 
-    if (reservations.some((row) =>
+    if (!reconcileInventory && reservations.some((row) =>
       txt(row.orderId) === orderId && txt(row.status) === "Active")) {
       tx.set(reservationsRef, {
         items: reservations.map((row) =>
@@ -336,6 +346,7 @@ export async function commitAdminDeliveryOverride(
       versions[path.replace(/[^A-Za-z0-9]+/g, "_")] = version;
     }
     tx.set(metaRef, {versions}, {merge: true});
-    return {orderId, deliveredAt, movementIds: override.movementIds};
+    return {orderId, deliveredAt, movementIds: override.movementIds,
+      inventoryReconciliationRequired: reconcileInventory};
   });
 }
