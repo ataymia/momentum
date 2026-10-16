@@ -1,14 +1,12 @@
 import {randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
-import {overrideSourceAvailable} from "./admin-delivery-inventory";
+import {overrideSourceAvailable, planAutomaticDelivery} from "./admin-delivery-inventory";
 
-type Entry = {lotId: string; fromNodeId: string; quantity: number};
 type BusinessRecord = Record<string, unknown>;
 type OverrideResult = {
   orderId: string;
   deliveredAt: string;
   movementIds: string[];
-  inventoryReconciliationRequired: boolean;
 };
 
 const isObject = (value: unknown): value is BusinessRecord =>
@@ -51,8 +49,9 @@ export async function commitAdminDeliveryOverride(
   const orderId = txt(body.orderId);
   const reason = txt(body.reason);
   const performedBy = txt(body.performedBy);
-  const deliveredAt = txt(body.deliveredAt);
   const stamp = new Date().toISOString();
+  // Defaults to the server-recorded time; optional trusted prior timestamp.
+  const deliveredAt = txt(body.deliveredAt) || stamp;
   const date = Date.parse(deliveredAt);
 
   if (!orderId || reason.length < 5 || reason.length > 500 ||
@@ -61,30 +60,6 @@ export async function commitAdminDeliveryOverride(
     return fail(400, "Enter an eligible order, actual delivery time, " +
       "who delivered it, and a clear reason.");
   }
-  if (!Array.isArray(body.allocations) || body.allocations.length > 100) {
-    return fail(400, "Inventory selections must be a valid list.");
-  }
-  // Delivery may be physically confirmed before stock records are reconciled.
-  // This never invents or subtracts stock: it opens an explicit exception.
-  const reconcileInventory = body.allocations.length === 0;
-  if (reconcileInventory && body.inventoryReconciliationAcknowledged !== true) {
-    return fail(400, "Confirm that inventory requires reconciliation.");
-  }
-
-  const allocations: Entry[] = [];
-  for (const raw of body.allocations) {
-    if (!isObject(raw) || !txt(raw.lotId) || !txt(raw.fromNodeId) ||
-        !Number.isInteger(number(raw.quantity)) || number(raw.quantity) <= 0) {
-      return fail(400, "Each lot needs a source and a positive " +
-        "whole-case quantity.");
-    }
-    allocations.push({
-      lotId: txt(raw.lotId),
-      fromNodeId: txt(raw.fromNodeId),
-      quantity: number(raw.quantity),
-    });
-  }
-
   const firestore = getFirestore();
   const prefix = "domains/";
   const commercialRef = firestore.doc(prefix + "commercial/fields/orders");
@@ -183,6 +158,13 @@ export async function commitAdminDeliveryOverride(
       accountId,
     }];
 
+    const allocations = planAutomaticDelivery(
+      [...expected].map(([product, cases]) => ({product, cases})),
+      [...lots.values()], nodes, movements, reservations, orderId);
+    if (!allocations) {
+      return fail(409, "Available inventory does not cover this order. " +
+        "Verify warehouse stock and previously assigned driver custody.");
+    }
     const observed = new Map<string, number>();
     const additions: BusinessRecord[] = [];
     const working = movements.slice();
@@ -221,9 +203,8 @@ export async function commitAdminDeliveryOverride(
       additions.push(movement);
       working.push(movement);
     }
-    if (!reconcileInventory &&
-        ([...expected].some(([sku, cases]) => observed.get(sku) !== cases) ||
-          observed.size !== expected.size)) {
+    if ([...expected].some(([sku, cases]) =>
+      observed.get(sku) !== cases) || observed.size !== expected.size) {
       return fail(409, "Delivered quantities must match every ordered SKU.");
     }
 
@@ -236,11 +217,8 @@ export async function commitAdminDeliveryOverride(
       performedBy,
       reason,
       movementIds: additions.map((row) => txt(row.id)),
-      inventoryReconciliationRequired: reconcileInventory,
-      inventoryReconciliationStatus: reconcileInventory ?
-        "Open" : "Not required",
-      expectedInventoryLines: reconcileInventory ?
-        [...expected].map(([product, cases]) => ({product, cases})) : [],
+      inventoryReconciliationRequired: false,
+      inventoryReconciliationStatus: "Not required",
       kind: "Admin override",
       status: "Delivered",
     };
@@ -248,14 +226,11 @@ export async function commitAdminDeliveryOverride(
       ...row,
       status: "Delivered",
       // Delivery never changes payment or invoicing status.
-      inventoryReconciliationRequired: reconcileInventory ||
-        row.inventoryReconciliationRequired === true,
+      inventoryReconciliationRequired: false,
     });
     const touched = [overridesRef.path, activityRef.path];
-    if (additions.length) {
-      tx.set(movementsRef, {items: [...additions, ...movements]});
-      touched.push(movementsRef.path);
-    }
+    tx.set(movementsRef, {items: [...additions, ...movements]});
+    touched.push(movementsRef.path);
     tx.set(overridesRef, {
       items: [override, ...items(overridesSnap.data())],
     });
@@ -313,7 +288,7 @@ export async function commitAdminDeliveryOverride(
       touched.push(tasksRef.path);
     }
 
-    if (!reconcileInventory && reservations.some((row) =>
+    if (reservations.some((row) =>
       txt(row.orderId) === orderId && txt(row.status) === "Active")) {
       tx.set(reservationsRef, {
         items: reservations.map((row) =>
@@ -346,7 +321,6 @@ export async function commitAdminDeliveryOverride(
       versions[path.replace(/[^A-Za-z0-9]+/g, "_")] = version;
     }
     tx.set(metaRef, {versions}, {merge: true});
-    return {orderId, deliveredAt, movementIds: override.movementIds,
-      inventoryReconciliationRequired: reconcileInventory};
+    return {orderId, deliveredAt, movementIds: override.movementIds};
   });
 }
