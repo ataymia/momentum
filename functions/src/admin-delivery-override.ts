@@ -237,7 +237,8 @@ export async function commitAdminDeliveryOverride(
       reason,
       movementIds: additions.map((row) => txt(row.id)),
       inventoryReconciliationRequired: reconcileInventory,
-      inventoryReconciliationStatus: reconcileInventory ? "Open" : "Not required",
+      inventoryReconciliationStatus: reconcileInventory ?
+        "Open" : "Not required",
       expectedInventoryLines: reconcileInventory ?
         [...expected].map(([product, cases]) => ({product, cases})) : [],
       kind: "Admin override",
