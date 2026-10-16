@@ -6,6 +6,8 @@ const commonJsCompatible = inventoryModule as typeof inventoryModule & {
 };
 const overrideSourceAvailable = commonJsCompatible.default?.overrideSourceAvailable ??
   commonJsCompatible.overrideSourceAvailable;
+const planAutomaticDelivery=commonJsCompatible.default?.planAutomaticDelivery ??
+  commonJsCompatible.planAutomaticDelivery;
 import {readFileSync} from "node:fs";
 
 const lotId = "lot-1";
@@ -93,8 +95,9 @@ test("admin override cannot be blocked by unrelated local unsynced work",()=>{
   const ui=readFileSync("components/orders/admin-delivery-override.tsx","utf8");
   assert.doesNotMatch(ui,/flushAndConfirm\(/);
   assert.match(ui,/fetch\(firebaseFunctionUrl\("adminDeliveryOverride"\)/);
-  assert.match(ui,/inventoryReconciliationAcknowledged/);
-  assert.match(ui,/onSaved\(refreshed\.ok\?base/);
+  assert.doesNotMatch(ui,/inventoryReconciliationAcknowledged/);
+  assert.doesNotMatch(ui,/refreshKeys\(/);
+  assert.match(ui,/onSaved\("Delivered\. Inventory updated\."\,/);
 });
 test("server updates both order registers and preserves payment truth",()=>{
   const server=readFileSync("functions/src/admin-delivery-override.ts","utf8");
@@ -104,7 +107,8 @@ test("server updates both order registers and preserves payment truth",()=>{
   assert.match(server,/touched\.push\(workspaceRef\.path\)/);
   assert.doesNotMatch(server,/paymentStatus: txt\(row\.paymentStatus\)/);
   assert.match(server,/inventoryReconciliationRequired/);
-  assert.match(server,/!reconcileInventory && reservations\.some/);
+  assert.match(server,/planAutomaticDelivery\(/);
+  assert.doesNotMatch(server,/reconcileInventory/);
   assert.match(server,/tx\.create\(auditRef, override\)/);
 });
 test("client immediately moves server-confirmed delivery to delivered view",()=>{
@@ -112,4 +116,58 @@ test("client immediately moves server-confirmed delivery to delivered view",()=>
   assert.match(page,/setServerConfirmedDeliveries/);
   assert.match(page,/setView\("Delivered"\)/);
   assert.match(page,/presentedOrders/);
+});
+
+test("auto posting splits entire order across lots without user choices",()=>{
+ const nodes=[
+  {id:"node-warehouse-main",type:"Warehouse",active:true},
+  {id:"node-user-1",type:"Employee custody",active:true},
+ ];
+ const lots=[
+  {id:"original-1",product:"Original",status:"Available"},
+  {id:"original-2",product:"Original",status:"Available"},
+ ];
+ const movements=[
+  {id:"receipt1",lotId:"original-1",quantity:4,fromNodeId:"external",toNodeId:"node-warehouse-main",type:"Receipt"},
+  {id:"receipt2",lotId:"original-2",quantity:7,fromNodeId:"external",toNodeId:"node-warehouse-main",type:"Receipt"},
+ ];
+ const planned=planAutomaticDelivery([{product:"Original",cases:10}],lots,nodes,movements,[],"order-1");
+ assert.ok(planned);
+ assert.equal(planned.reduce((sum,row)=>sum+row.quantity,0),10);
+ assert.equal(planned.length,2);
+ assert.equal(planned.every(row=>row.fromNodeId==="node-warehouse-main"),true);
+});
+test("automatic override consumes existing order custody first and protects other reservations",()=>{
+ const nodes=[
+  {id:"node-warehouse-main",type:"Warehouse",active:true},
+  {id:"node-user-1",type:"Employee custody",active:true},
+ ];
+ const lots=[{id:"lot-1",product:"Original",status:"Available"}];
+ const movements=[
+  {lotId:"lot-1",quantity:12,fromNodeId:"external",toNodeId:"node-warehouse-main",type:"Receipt"},
+  {lotId:"lot-1",quantity:5,fromNodeId:"node-warehouse-main",toNodeId:"node-user-1",type:"Transfer",relatedOrderId:"order-1"},
+ ];
+ const reservations=[{lotId:"lot-1",quantity:5,orderId:"other-order",status:"Active"}];
+ const planned=planAutomaticDelivery([{product:"Original",cases:7}],lots,nodes,movements,reservations,"order-1");
+ assert.ok(planned);
+ assert.deepEqual(planned.map(row=>[row.fromNodeId,row.quantity]),[
+  ["node-user-1",5],["node-warehouse-main",2],
+ ]);
+ assert.equal(planAutomaticDelivery([{product:"Original",cases:9}],lots,nodes,movements,reservations,"order-1"),null);
+});
+test("no false inventory delivery with missing stock, held stock, or unmatched SKU",()=>{
+ const nodes=[{id:"node-warehouse-main",type:"Warehouse",active:true}];
+ const movements=[{lotId:"lot-1",quantity:3,fromNodeId:"external",toNodeId:"node-warehouse-main"}];
+ assert.equal(planAutomaticDelivery([{product:"Original",cases:4}],[{id:"lot-1",product:"Original",status:"Available"}],nodes,movements,[],"order-1"),null);
+ assert.equal(planAutomaticDelivery([{product:"Original",cases:1}],[{id:"lot-1",product:"Original",status:"Quality hold"}],nodes,movements,[],"order-1"),null);
+ assert.equal(planAutomaticDelivery([{product:"SugarFree",cases:1}],[{id:"lot-1",product:"Original",status:"Available"}],nodes,movements,[],"order-1"),null);
+});
+test("override is two fields and skips inventory reconciliation UI",()=>{
+ const ui=readFileSync("components/orders/admin-delivery-override.tsx","utf8");
+ assert.match(ui,/Delivered by/);
+ assert.match(ui,/label="Note"/);
+ assert.doesNotMatch(ui,/choose source|Choose source|Add another lot|type="radio"|Inventory verification/);
+ assert.match(ui,/orderId:order.id,performedBy:performedBy.trim\(\),reason:note.trim\(\)/);
+ const workspace=readFileSync("lib/workspace-context-v5.tsx","utf8");
+ assert.match(workspace,/externalHydrationRef/);
 });
