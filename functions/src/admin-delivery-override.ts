@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
-import {overrideSourceAvailable, planAutomaticDelivery} from "./admin-delivery-inventory";
+import {overrideSourceAvailable, planAutomaticDelivery} from
+  "./admin-delivery-inventory";
 
 type BusinessRecord = Record<string, unknown>;
 type OverrideResult = {
