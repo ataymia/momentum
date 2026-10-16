@@ -1,7 +1,7 @@
 "use client";
 import {traceNavigationPaint} from "./performance-diagnostics";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   accountIsVisible,
   canAccessPage,
@@ -195,6 +195,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const production = Boolean(firebase);
   const directory = firebase?.directory;
   const [data, setData] = useState<WorkspaceData>(() => production ? hydrateProductionWorkspace(directory ?? []) : createNormalizedDemoData());
+  // Cloud hydration is not a local edit and must not be immediately re-uploaded.
+  const externalHydrationRef=useRef<WorkspaceData|null>(null);
   const [demoUserId, setDemoUserId] = useState<string | null>(null);
   const [activePage, setActivePage] = useState<PageKey>("home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -232,17 +234,31 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // Production: the employee directory is authoritative for identities; re-normalize when it changes.
   useEffect(() => {
     if (!production || !directory) return;
-    const handle = window.setTimeout(() => setData((current) => normalizeCustomerHierarchy(normalizeWorkspaceData({ ...current, users: directory }, emptyWorkspace(directory)))), 0);
+    const handle = window.setTimeout(() => setData((current) => {
+      const next=normalizeCustomerHierarchy(normalizeWorkspaceData({ ...current, users: directory }, emptyWorkspace(directory)));
+      externalHydrationRef.current=next;
+      return next;
+    }), 0);
     return () => window.clearTimeout(handle);
   }, [directory, production]);
 
-  useRemoteStorageSync(DATA_KEY, () => { if (production) setData(hydrateProductionWorkspace(directory ?? [])); });
+  useRemoteStorageSync(DATA_KEY, () => { if (production) {
+    const next=hydrateProductionWorkspace(directory ?? []);
+    externalHydrationRef.current=next;
+    setData(next);
+  } });
 
   useEffect(() => {
-    if (ready) {
-      momentumStorage.setItem(DATA_KEY, JSON.stringify(data));
-      void momentumStorage.flush();
+    if (!ready) return;
+    if (externalHydrationRef.current === data) {
+      // Prevent a Firestore poll/directory update from triggering a redundant
+      // write of the entire workspace. Local edits still persist normally.
+      externalHydrationRef.current=null;
+      return;
     }
+    externalHydrationRef.current=null;
+    momentumStorage.setItem(DATA_KEY, JSON.stringify(data));
+    void momentumStorage.flush();
   }, [data, ready]);
 
   const currentUser = useMemo(() => data.users.find((user) => user.id === currentUserId) ?? null, [currentUserId, data.users]);
