@@ -312,7 +312,7 @@ export async function commitAdminDeliveryOverride(
       touched.push(tasksRef.path);
     }
 
-    if (reservations.some((row) =>
+    if (!reconcileInventory && reservations.some((row) =>
       txt(row.orderId) === orderId && txt(row.status) === "Active")) {
       tx.set(reservationsRef, {
         items: reservations.map((row) =>
