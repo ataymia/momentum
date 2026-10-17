@@ -18,7 +18,8 @@ export type AppointmentSlot = {
 
 /** Reject impossible dates, malformed times, and slots extending past midnight. */
 export function validAppointmentSlot(slot: Pick<AppointmentSlot, "date" | "startTime" | "duration">): boolean {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(slot.date)) return false;
+  const parts = slot.date.split("-");
+  if (parts.length !== 3 || parts[0].length !== 4 || parts[1].length !== 2 || parts[2].length !== 2 || parts.some((part) => [...part].some((char) => char < "0" || char > "9"))) return false;
   const date = new Date(`${slot.date}T00:00:00.000Z`);
   if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== slot.date) return false;
   const start = timeToMinutes(slot.startTime);
