@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { appointmentConflict } from "../lib/appointment-scheduling";
+import { appointmentConflict, validAppointmentSlot } from "../lib/appointment-scheduling";
 import type { Appointment } from "../lib/types";
 
 const appointment=(overrides:Partial<Appointment>={}):Appointment=>({
@@ -18,4 +18,22 @@ test("overlapping active appointments conflict for the same employee",()=>{
 test("completed work and the appointment being moved do not conflict",()=>{
   assert.equal(appointmentConflict([appointment({status:"Completed"})],{ownerId:"rep",date:"2026-10-12",startTime:"10:15",duration:30}),undefined);
   assert.equal(appointmentConflict([appointment()],{ownerId:"rep",date:"2026-10-12",startTime:"10:15",duration:30,excludeId:"a1"}),undefined);
+});
+
+
+test("appointment slots reject impossible dates, invalid clocks and overnight duration",()=>{
+  const slot={date:"2026-10-17",startTime:"23:30",duration:30};
+  assert.equal(validAppointmentSlot(slot),true);
+  assert.equal(validAppointmentSlot({...slot,duration:31}),false);
+  assert.equal(validAppointmentSlot({...slot,date:"2026-02-30"}),false);
+  assert.equal(validAppointmentSlot({...slot,date:"2026-13-17"}),false);
+  assert.equal(validAppointmentSlot({...slot,startTime:"24:00"}),false);
+  assert.equal(validAppointmentSlot({...slot,startTime:"10:60"}),false);
+  assert.equal(validAppointmentSlot({...slot,duration:0}),false);
+  assert.equal(validAppointmentSlot({...slot,duration:1.5}),false);
+});
+
+test("invalid slots are never treated as valid conflicts",()=>{
+  assert.equal(appointmentConflict([appointment()],{ownerId:"rep",date:"2026-10-12",startTime:"24:00",duration:30}),undefined);
+  assert.equal(appointmentConflict([appointment()],{ownerId:"rep",date:"2026-10-12",startTime:"10:15",duration:1440}),undefined);
 });
