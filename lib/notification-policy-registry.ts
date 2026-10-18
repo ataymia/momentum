@@ -30,6 +30,12 @@ export type NotificationPolicyEntry = {
   attachmentPolicy?: string;
   dedupeRule: string;
   notes?: string;
+  emailRateLimit?: {
+    cooldownMinutes: number;
+    maxEmails: number;
+    rollingWindowHours: number;
+    scope: string;
+  };
 };
 
 const channels = (
@@ -194,8 +200,14 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(false, true, true),
     targetPage: "orderCash",
     templateKey: "customer-payment-failed-v1",
-    dedupeRule: "Suppress duplicate failure emails for repeated attempts against the same payment intent within a defined cooldown.",
-    notes: "Cooldown/retry parameters must be finalized before production activation.",
+    dedupeRule: "Suppress repeated failure emails using the policy rate limit below.",
+    emailRateLimit: {
+      cooldownMinutes: 30,
+      maxEmails: 2,
+      rollingWindowHours: 24,
+      scope: "customer account + recipient email",
+    },
+    notes: "At most one failed-payment email every 30 minutes and no more than two in any rolling 24-hour window for the same customer account and recipient email.",
   },
   {
     id: "payment.refunded.customer",
