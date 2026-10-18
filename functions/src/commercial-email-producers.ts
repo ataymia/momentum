@@ -41,11 +41,20 @@ const context=async ():Promise<Context>=>{
   const paths=[
     docs.accounts,docs.customers,docs.commercialOrders,
     docs.workspaceOrders,docs.invoices,docs.payments,docs.allocations,
+    "domains/commercial/fields/_root",
   ];
   const snapshots=await db.getAll(...paths.map((path)=>db.doc(path)));
   const payload=snapshots.map((snap)=>items(snap.data()));
+  const root=snapshots[7].data()?.data as Row|undefined;
+  const accountPatches=row(root?.accountPatches)?root.accountPatches:{};
+  const customerPatches=row(root?.customerPatches)?root.customerPatches:{};
+  const merge=(records:Row[],patches:Row)=>records.map((record)=>{
+    const patch=patches[text(record.id)];
+    return row(patch)?{...record,...patch}:record;
+  });
   return {
-    accounts:payload[0],customers:payload[1],
+    accounts:merge(payload[0],accountPatches),
+    customers:merge(payload[1],customerPatches),
     orders:[...payload[2],...payload[3]].filter((order,index,all)=>
       all.findIndex((item)=>text(item.id)===text(order.id))===index),
     invoices:payload[4],payments:payload[5],allocations:payload[6],
