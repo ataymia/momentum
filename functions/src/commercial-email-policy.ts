@@ -1,4 +1,4 @@
-/* eslint-disable max-len, comma-spacing, space-before-blocks, keyword-spacing, key-spacing, brace-style, indent */
+/* eslint-disable max-len, comma-spacing, space-before-blocks, keyword-spacing, key-spacing, brace-style, indent, curly */
 import {createHash} from "node:crypto";
 import {safeMail} from "./resend-mail-policy";
 
