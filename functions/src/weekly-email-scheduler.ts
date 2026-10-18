@@ -1,3 +1,4 @@
+/* eslint-disable comma-spacing, space-before-blocks, key-spacing, keyword-spacing */
 import {getFirestore} from "firebase-admin/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import {
