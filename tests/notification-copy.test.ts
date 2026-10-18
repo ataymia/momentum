@@ -5,7 +5,7 @@ import type { AuditEvent } from "../lib/audit-engine";
 import { createDemoData } from "../lib/demo-data";
 import { notificationCopy } from "../lib/notification-engine";
 import { EXCLUDED_NOTIFICATION_EVENTS, notificationBellEnabled } from "../lib/notification-policy-registry";
-import { orderMilestoneIntents, sundayWeeklyReminderIntent } from "../lib/notification-policy-v2";
+import { commerceNotificationIntents, deliveryMilestoneIntents, orderMilestoneIntents, sundayWeeklyReminderIntent } from "../lib/notification-policy-v2";
 import { customerInvoiceEmail, customerStatusEmail, outboundEmailDecision } from "../lib/outbound-notification-policy";
 import { createPerformanceSeed } from "../lib/performance-engine";
 
@@ -88,7 +88,7 @@ test("notification escalation copy never falls back to an anonymous team member"
 });
 
 
-test("customer notification policy covers confirmed, out-for-delivery, and delivered milestones", () => {
+test("customer notification policy uses order approval plus authoritative delivery state", () => {
   const customer = data.users.find((user) => user.role === "Customer")!;
   const baseOrder = {
     id: "order-notification-test",
@@ -107,14 +107,35 @@ test("customer notification policy covers confirmed, out-for-delivery, and deliv
   const confirmed = { ...data, orders: [baseOrder] };
   assert.equal(orderMilestoneIntents(confirmed, customer).some((item) => item.title === "Order confirmed"), true);
 
-  const outbound = { ...data, orders: [{ ...baseOrder, status: "Out for delivery" as const }] };
-  assert.equal(orderMilestoneIntents(outbound, customer).some((item) => item.title === "Order out for delivery"), true);
+  const outboundState = {
+    version: 1 as const,
+    overrides: [],
+    tasks: [{
+      id: "delivery-notify-1",
+      orderId: baseOrder.id,
+      driverId: "driver-1",
+      status: "In transit" as const,
+      acceptedAt: "2026-10-12T17:00:00.000Z",
+      acceptedBy: "usr-mia",
+      loadedAt: "2026-10-12T18:00:00.000Z",
+      departedAt: "2026-10-12T18:30:00.000Z",
+      history: [],
+    }],
+  };
+  assert.equal(deliveryMilestoneIntents(confirmed, outboundState, customer).some((item) => item.title === "Order out for delivery"), true);
 
-  const delivered = { ...data, orders: [{ ...baseOrder, status: "Delivered" as const }] };
-  assert.equal(orderMilestoneIntents(delivered, customer).some((item) => item.title === "Order delivered"), true);
+  const deliveredState = {
+    ...outboundState,
+    tasks: [{
+      ...outboundState.tasks[0],
+      status: "Delivered" as const,
+      deliveredAt: "2026-10-12T19:00:00.000Z",
+    }],
+  };
+  assert.equal(deliveryMilestoneIntents(confirmed, deliveredState, customer).some((item) => item.title === "Order delivered"), true);
 });
 
-test("credited sales rep receives a delivered-order milestone", () => {
+test("credited sales rep receives a delivered-order milestone from delivery evidence", () => {
   const rep = data.users.find((user) => user.id === "usr-jordan")!;
   const delivered = {
     ...data,
@@ -133,7 +154,23 @@ test("credited sales rep receives a delivered-order milestone", () => {
       paymentStatus: "Open" as const,
     }],
   };
-  assert.equal(orderMilestoneIntents(delivered, rep).some((item) => item.title === "Your order was delivered"), true);
+  const delivery = {
+    version: 1 as const,
+    overrides: [],
+    tasks: [{
+      id: "delivery-rep-1",
+      orderId: "order-rep-delivered",
+      driverId: "driver-1",
+      status: "Delivered" as const,
+      acceptedAt: "2026-10-12T17:00:00.000Z",
+      acceptedBy: "usr-mia",
+      loadedAt: "2026-10-12T18:00:00.000Z",
+      departedAt: "2026-10-12T18:30:00.000Z",
+      deliveredAt: "2026-10-12T19:00:00.000Z",
+      history: [],
+    }],
+  };
+  assert.equal(deliveryMilestoneIntents(delivered, delivery, rep).some((item) => item.title === "Your order was delivered"), true);
 });
 
 test("Sunday weekly summary reminder does not appear before 7 PM Arizona time", () => {
@@ -201,12 +238,24 @@ test("customer status email prefers accounts payable, while invoices require bil
   assert.equal(customerInvoiceEmail(routed, order.id), "billing@example.com");
 });
 
-test("paid status alone never claims delivery",()=>{
+test("projected Paid order status alone creates neither delivery nor payment notification",()=>{
   const customer=data.users.find(user=>user.role==="Customer")!;
   const order={...data.orders[0],accountId:customer.accountIds![0],status:"Paid" as const,paymentStatus:"Paid" as const};
-  const intents=orderMilestoneIntents({...data,orders:[order]},customer);
-  assert.equal(intents.some(item=>item.id.startsWith("order-delivered")),false);
-  assert.equal(intents.some(item=>item.id.startsWith("payment-received")),true);
+  const scoped={...data,orders:[order]};
+  const orderIntents=orderMilestoneIntents(scoped,customer);
+  assert.equal(orderIntents.some(item=>item.id.startsWith("order-delivered")),false);
+  assert.equal(orderIntents.some(item=>item.id.startsWith("payment-received")),false);
+
+  const commerce={
+    version:1 as const,
+    invoices:[{id:"inv-paid",number:"INV-PAID",orderId:order.id,accountId:order.accountId,issuedAt:"2026-10-12T17:00:00.000Z",terms:"COD" as const,total:order.amount,status:"Paid" as const,createdAt:"2026-10-12T17:00:00.000Z"}],
+    payments:[{id:"pay-paid",accountId:order.accountId,receivedAt:"2026-10-12T18:00:00.000Z",amount:order.amount,method:"ACH" as const,status:"Cleared" as const,createdBy:"usr-mia",createdAt:"2026-10-12T18:00:00.000Z",settledAt:"2026-10-12T18:00:00.000Z",settledBy:"usr-mia"}],
+    allocations:[{id:"alloc-paid",paymentId:"pay-paid",invoiceId:"inv-paid",amount:order.amount,createdAt:"2026-10-12T18:00:00.000Z",createdBy:"usr-mia"}],
+    credits:[],
+    refunds:[],
+    notes:[],
+  };
+  assert.equal(commerceNotificationIntents(scoped,commerce,customer).some(item=>item.id.startsWith("payment-received")),true);
 });
 
 test("separated representatives never qualify for outbound reminder email",()=>{
