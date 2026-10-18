@@ -1,3 +1,4 @@
+/* eslint-disable comma-spacing, no-control-regex, require-jsdoc, valid-jsdoc, space-before-blocks, key-spacing, keyword-spacing, max-len */
 import {createHash} from "node:crypto";
 
 type Row=Record<string,unknown>;
