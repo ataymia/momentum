@@ -9,7 +9,8 @@ import { useInventoryLedger } from "./inventory-ledger-context";
 import { useMarketing } from "./marketing-context";
 import { NotificationProvider as LegacyNotificationProvider, useNotifications as useLegacyNotifications } from "./notification-context-v2";
 import type { NotificationDelivery } from "./notification-engine";
-import { expenseStatusIntents, orderMilestoneIntents, sundayWeeklyReminderIntent, shouldShowActionNotification } from "./notification-policy-v2";
+import { notificationBellEnabled } from "./notification-policy-registry";
+import { expenseStatusIntents, orderMilestoneIntents, sundayWeeklyReminderIntent } from "./notification-policy-v2";
 import { usePerformance } from "./performance-context";
 import { useWorkspace } from "./workspace-context";
 
@@ -42,7 +43,7 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
     const items:NotificationDelivery[]=[];
 
     if(currentUser.role!=="Customer"){
-      for(const action of buildActionNotices({data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger}).filter(shouldShowActionNotification)){
+      for(const action of buildActionNotices({data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger}).filter(item=>notificationBellEnabled(item.policyId))){
         const id=`derived-action:${action.id}`;
         items.push({
           id,
@@ -62,7 +63,7 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
       }
     }
 
-    for(const intent of orderMilestoneIntents(data,currentUser)){
+    for(const intent of orderMilestoneIntents(data,currentUser).filter(item=>notificationBellEnabled(item.policyId))){
       const id=`derived-intent:${intent.id}`;
       items.push({
         id,
@@ -81,7 +82,7 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
       });
     }
 
-    for(const intent of expenseStatusIntents(finance,currentUser)){
+    for(const intent of expenseStatusIntents(finance,currentUser).filter(item=>notificationBellEnabled(item.policyId))){
       const id=`derived-intent:${intent.id}`;
       items.push({
         id,
@@ -101,7 +102,7 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
     }
 
     const reminder=sundayWeeklyReminderIntent(performance,currentUser,clock);
-    if(reminder){
+    if(reminder&&notificationBellEnabled(reminder.policyId)){
       const id=`derived-intent:${reminder.id}`;
       items.push({
         id,
@@ -122,10 +123,11 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
     return items;
   },[currentUser,data,scope,hcm,performance,finance,marketing,accounting,events,ledger,readDerived,clock]);
 
-  const legacyItems=useMemo(()=>legacy.currentUserItems.filter(item=>{
-    if(!item.targetPage||!item.targetRecordId)return true;
-    return !derived.some(other=>other.targetPage===item.targetPage&&other.targetRecordId===item.targetRecordId);
-  }),[legacy.currentUserItems,derived]);
+  // Legacy generated deliveries are intentionally retired during the policy
+  // unification. The canonical registry + derived policy intents own the bell.
+  const legacyItems=useMemo(()=>legacy.currentUserItems.filter(item=>
+    item.sourceEventId.startsWith("manual-notification:")
+  ),[legacy.currentUserItems]);
   const currentUserItems=useMemo(()=>[...derived,...legacyItems].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)),[derived,legacyItems]);
   const unreadCount=currentUserItems.filter(item=>item.status==="Unread").length;
 
