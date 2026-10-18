@@ -5,6 +5,7 @@ import * as adminEvents from "../functions/src/admin-notification-events";
 import * as mailPolicy from "../functions/src/resend-mail-policy";
 
 const policy=(mailPolicy as unknown as {default?:typeof mailPolicy}).default??mailPolicy;
+const adminPolicy=(adminEvents as unknown as {default?:typeof adminEvents}).default??adminEvents;
 const {validMailToSend,verifyResendWebhook,providerStatus,nextMailStatus,emailHash}=policy;
 const base={
  id:"mail-event-100",kind:"order_approved",
@@ -48,7 +49,7 @@ test("provider delivery status is not confused with accepted email",()=>{
 
 
 test("Resend bounce projects a read-only admin in-app event",()=>{
-  const projected=adminEvents.resendAdminNotification({
+  const projected=adminPolicy.resendAdminNotification({
     eventId:"evt-bounce-1",
     status:"Bounced",
     createdAt:"2026-10-18T01:00:00.000Z",
@@ -65,7 +66,7 @@ test("Resend bounce projects a read-only admin in-app event",()=>{
 });
 
 test("Resend delivery success never creates an admin alert",()=>{
-  assert.equal(adminEvents.resendAdminNotification({
+  assert.equal(adminPolicy.resendAdminNotification({
     eventId:"evt-delivered-1",
     status:"Delivered",
     createdAt:"2026-10-18T01:00:00.000Z",
