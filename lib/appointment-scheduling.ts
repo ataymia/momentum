@@ -1,11 +1,10 @@
+import { isValidCalendarDateKey } from "./date-time";
 import type { Appointment } from "./types";
 
 const timeToMinutes = (value: string) => {
-  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
   if (!match) return Number.NaN;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  return hours * 60 + minutes;
+  return Number(match[1]) * 60 + Number(match[2]);
 };
 
 export type AppointmentSlot = {
@@ -16,18 +15,26 @@ export type AppointmentSlot = {
   excludeId?: string;
 };
 
+/** A visit must fit on one valid local calendar day; never accept malformed time values. */
+export function validAppointmentSlot(slot: Pick<AppointmentSlot, "date" | "startTime" | "duration">) {
+  const start = timeToMinutes(slot.startTime);
+  return isValidCalendarDateKey(slot.date) &&
+    Number.isFinite(start) &&
+    Number.isInteger(slot.duration) &&
+    slot.duration > 0 &&
+    start + slot.duration <= 24 * 60;
+}
+
 /** Return the conflicting appointment when an employee would be double-booked. */
 export function appointmentConflict(appointments: readonly Appointment[], slot: AppointmentSlot) {
-  if (!slot.ownerId || !Number.isInteger(slot.duration) || slot.duration < 1) return undefined;
+  if (!slot.ownerId || !validAppointmentSlot(slot)) return undefined;
   const start = timeToMinutes(slot.startTime);
-  if (!Number.isFinite(start)) return undefined;
   const end = start + slot.duration;
   return appointments.find((appointment) => {
     if (appointment.id === slot.excludeId || appointment.ownerId !== slot.ownerId || appointment.date !== slot.date) return false;
     if (["Completed", "Needs follow-up"].includes(appointment.status)) return false;
+    if (!validAppointmentSlot(appointment)) return false;
     const existingStart = timeToMinutes(appointment.startTime);
-    if (!Number.isFinite(existingStart) || !Number.isInteger(appointment.duration) || appointment.duration < 1) return false;
-    const existingEnd = existingStart + appointment.duration;
-    return start < existingEnd && existingStart < end;
+    return start < existingStart + appointment.duration && existingStart < end;
   });
 }
