@@ -942,6 +942,28 @@ describe("confidential HR signed-form receipt metadata",()=>{
  });
 });
 
+describe("server-projected admin notification events",()=>{
+ test("only Administrators can read and no browser role can write",async()=>{
+  await env.withSecurityRulesDisabled(async(context)=>{
+   await setDoc(doc(context.firestore(),"notificationAdminEvents","event-1"),{
+    id:"event-1",policyId:"system.email_bounced",title:"Customer email bounced",
+    detail:"Delivery failed.",createdAt:at,sourceId:"source-1",
+    sourceRecordId:"order-1",outboxId:"outbox-1",status:"Open",
+   });
+  });
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),"notificationAdminEvents","event-1")));
+  for(const uid of [REP,MANAGER,OPS,MARKETING,null]){
+   await assertFails(getDoc(doc(dbFor(uid),"notificationAdminEvents","event-1")));
+  }
+  for(const uid of [ADMIN,REP,MANAGER,OPS,MARKETING,null]){
+   await assertFails(setDoc(doc(dbFor(uid),"notificationAdminEvents","forged"),{
+    id:"forged",policyId:"system.email_failed",title:"Forged",detail:"Forged",
+    createdAt:at,sourceId:"x",sourceRecordId:"x",outboxId:"x",status:"Open",
+   }));
+  }
+ });
+});
+
 describe("server-only external notification transport",()=>{
  test("no browser role can create or tamper with outbox, provider index, webhook or suppression",async()=>{
   for(const collectionName of ["notificationOutbox","notificationProviderIndex","notificationWebhookEvents","notificationSuppressions"]){

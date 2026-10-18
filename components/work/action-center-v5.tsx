@@ -3,6 +3,7 @@
 import { AlertTriangle, BookOpenCheck, Boxes, CalendarClock, ClipboardCheck, FileText, GraduationCap, Megaphone, Receipt, ShieldCheck, UsersRound } from "lucide-react";
 import { buildActionNotices, type ActionUrgency } from "../../lib/action-center-policy-v2";
 import { useAccounting } from "../../lib/accounting-context";
+import { useDelivery } from "../../lib/delivery-context";
 import { useFinance } from "../../lib/finance-context";
 import { useHcm } from "../../lib/hcm-context";
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
@@ -18,13 +19,14 @@ export function ActionCenter(){
   const {data,scope,currentUser,navigate}=useWorkspace();
   const {hcm}=useHcm();
   const {performance}=usePerformance();
+  const {state:delivery}=useDelivery();
   const {finance}=useFinance();
   const {state:marketing}=useMarketing();
   const {accounting,events}=useAccounting();
   const {ledger}=useInventoryLedger();
   if(!currentUser||currentUser.role==="Customer")return null;
 
-  const actions=buildActionNotices({data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger});
+  const actions=buildActionNotices({data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger,delivery});
   const groups=[...new Set(actions.map(item=>item.category))];
   const open=(item:(typeof actions)[number])=>{
     if(item.focus)window.sessionStorage.setItem("momentum-focus-record",item.focus);

@@ -1,4 +1,4 @@
 "use client";
 
-/** Stable import path for the unified notification context. `-v3` mirrors Action Center work and key order milestones into the bell. */
+/** Stable import path for the canonical notification bell and read-state context. */
 export { NotificationProvider, useNotifications } from "./notification-context-v3";

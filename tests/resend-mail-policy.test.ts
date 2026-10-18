@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import {createHmac} from "node:crypto";
 import test from "node:test";
+import * as adminEvents from "../functions/src/admin-notification-events";
 import * as mailPolicy from "../functions/src/resend-mail-policy";
 
 const policy=(mailPolicy as unknown as {default?:typeof mailPolicy}).default??mailPolicy;
+const adminPolicy=(adminEvents as unknown as {default?:typeof adminEvents}).default??adminEvents;
 const {validMailToSend,verifyResendWebhook,providerStatus,nextMailStatus,emailHash}=policy;
 const base={
  id:"mail-event-100",kind:"order_approved",
@@ -43,4 +45,36 @@ test("provider delivery status is not confused with accepted email",()=>{
  assert.equal(nextMailStatus("Provider accepted","email.delivered"),"Delivered");
  assert.equal(nextMailStatus("Delivered","email.bounced"),null);
  assert.equal(emailHash(" PERSON@EXAMPLE.COM "),emailHash("person@example.com"));
+});
+
+
+test("Resend bounce projects a read-only admin in-app event",()=>{
+  const projected=adminPolicy.resendAdminNotification({
+    eventId:"evt-bounce-1",
+    status:"Bounced",
+    createdAt:"2026-10-18T01:00:00.000Z",
+    mail:{
+      id:"outbox-1",
+      kind:"order_confirmed",
+      to:"buyer@example.com",
+      sourceRecordId:"order-1",
+    },
+  });
+  assert.equal(projected?.policyId,"system.email_bounced");
+  assert.equal(projected?.title,"Customer email bounced");
+  assert.equal(projected?.status,"Open");
+});
+
+test("Resend delivery success never creates an admin alert",()=>{
+  assert.equal(adminPolicy.resendAdminNotification({
+    eventId:"evt-delivered-1",
+    status:"Delivered",
+    createdAt:"2026-10-18T01:00:00.000Z",
+    mail:{
+      id:"outbox-2",
+      kind:"order_confirmed",
+      to:"buyer@example.com",
+      sourceRecordId:"order-2",
+    },
+  }),null);
 });

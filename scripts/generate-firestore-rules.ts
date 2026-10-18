@@ -324,6 +324,12 @@ service cloud.firestore {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;
     }
+    // Server-projected operational email failures. Administrators may read,
+    // but no browser role can forge, edit, or delete them.
+    match /notificationAdminEvents/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
     match /emailOutbox/{messageId} {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;

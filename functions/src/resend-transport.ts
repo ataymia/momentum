@@ -3,6 +3,7 @@ import {getFirestore} from "firebase-admin/firestore";
 import {defineSecret} from "firebase-functions/params";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import {onRequest} from "firebase-functions/v2/https";
+import {resendAdminNotification} from "./admin-notification-events";
 import {
   emailHash,nextMailStatus,safeMail,validMailToSend,verifyResendWebhook,
   type ServerMail,
@@ -20,6 +21,13 @@ const fromEmail=()=>process.env.RESEND_FROM_EMAIL??"";
 const from=()=>fromName().trim()?`${fromName().trim()} <${fromEmail().trim()}>`:fromEmail().trim();
 const replyTo=()=>process.env.RESEND_REPLY_TO??"";
 const cutoff=()=>process.env.RESEND_ACTIVATION_CUTOFF??"";
+const writeAdminNotification=async (
+  db:ReturnType<typeof getFirestore>,
+  input:ReturnType<typeof resendAdminNotification>,
+)=>{
+  if(!input)return;
+  await db.doc(`notificationAdminEvents/${input.id}`).set(input);
+};
 
 /**
  * Production send pipeline. No client can create notificationOutbox records.
@@ -87,12 +95,32 @@ export const deliverApprovedNotification=onDocumentCreated({
         });
       });
     }else{
-      await mailRef.update({status:"Review required",
-        lastError:`Resend returned status ${response.status}. Inspect provider console before retry.`});
+      const createdAt=new Date().toISOString();
+      const lastError=`Resend returned status ${response.status}. Inspect provider console before retry.`;
+      await Promise.all([
+        mailRef.update({status:"Review required",lastError}),
+        writeAdminNotification(db,resendAdminNotification({
+          eventId:`send-${snapshot.id}`,
+          status:"Review required",
+          mail:snapshot,
+          createdAt,
+          errorDetail:lastError,
+        })),
+      ]);
     }
   }catch{
-    await mailRef.update({status:"Review required",
-      lastError:"Provider response unknown. Reconcile by idempotency key; do not blind retry."});
+    const createdAt=new Date().toISOString();
+    const lastError="Provider response unknown. Reconcile by idempotency key; do not blind retry.";
+    await Promise.all([
+      mailRef.update({status:"Review required",lastError}),
+      writeAdminNotification(db,resendAdminNotification({
+        eventId:`send-${snapshot.id}`,
+        status:"Review required",
+        mail:snapshot,
+        createdAt,
+        errorDetail:lastError,
+      })),
+    ]);
   }
 });
 
@@ -140,11 +168,21 @@ export const receiveResendWebhook=onRequest({
         outboxId,providerId,type:eventType,receivedAt:new Date().toISOString(),
       });
       if(status){
-        tx.update(outboxRef,{status,updatedAt:new Date().toISOString()});
+        const createdAt=new Date().toISOString();
+        tx.update(outboxRef,{status,updatedAt:createdAt});
         if(["Bounced","Complained","Suppressed"].includes(status)){
           tx.set(db.doc(`notificationSuppressions/${emailHash(current.to)}`),{
-            reason:status,providerId,createdAt:new Date().toISOString(),
+            reason:status,providerId,createdAt,
           });
+        }
+        const adminEvent=resendAdminNotification({
+          eventId,
+          status,
+          mail:current,
+          createdAt,
+        });
+        if(adminEvent){
+          tx.set(db.doc(`notificationAdminEvents/${adminEvent.id}`),adminEvent);
         }
       }
     });
