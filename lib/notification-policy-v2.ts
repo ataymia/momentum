@@ -65,13 +65,15 @@ export function orderMilestoneIntents(
     const customerOrder=customerOwnsAccount(user,order.accountId);
     if (!repOrder && !customerOrder) continue;
 
-    const approvedEvidence=data.approvals
+    const approvalHistory=data.approvals
       .filter((approval)=>approval.recordId===order.id&&
-        ["Order","Low stock sale"].includes(approval.type)&&
-        approval.status==="Approved")
+        ["Order","Low stock sale"].includes(approval.type));
+    const approvedEvidence=approvalHistory
+      .filter((approval)=>approval.status==="Approved")
       .sort((a,b)=>(b.decidedAt??b.submittedAt).localeCompare(a.decidedAt??a.submittedAt))[0];
+    const confirmed=Boolean(approvedEvidence)&&!["Draft","Awaiting approval"].includes(order.status);
 
-    if (order.status === "Approved" && customerOrder) {
+    if (confirmed && customerOrder) {
       intents.push({
         id:`order-confirmed:${order.id}`,
         policyId:"order.confirmed.customer",
@@ -84,7 +86,7 @@ export function orderMilestoneIntents(
         occurredAt:approvedEvidence?.decidedAt,
       });
     }
-    if (order.status === "Approved" && repOrder) {
+    if (confirmed && repOrder) {
       intents.push({
         id:`order-approved-rep:${order.id}`,
         policyId:"order.approved.rep",
@@ -143,7 +145,7 @@ export function deliveryMilestoneIntents(
     const task=delivery.tasks.find((item)=>item.orderId===order.id&&item.status!=="Cancelled");
     const override=delivery.overrides?.find((item)=>item.orderId===order.id);
 
-    if(task?.status==="In transit"&&task.departedAt){
+    if(task&&task.status!=="Cancelled"&&task.departedAt){
       if(customerOrder)intents.push({
         id:`order-out-for-delivery:${order.id}`,
         policyId:"delivery.out_for_delivery.customer",
@@ -239,7 +241,7 @@ export function commerceNotificationIntents(
     const customer=customerOwnsAccount(user,payment.accountId);
     const rep=Boolean(order&&repOwnsOrder(user,order));
 
-    if(payment.status==="Cleared"&&payment.settledAt){
+    if(["Cleared","Reversed"].includes(payment.status)&&payment.settledAt){
       if(customer)intents.push({
         id:`payment-received:${payment.id}`,
         policyId:"payment.received.customer",
