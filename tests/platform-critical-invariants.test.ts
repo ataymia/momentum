@@ -186,7 +186,7 @@ describe("notification routing and actor integrity", () => {
 
   test("notification UI routes directly to its action target and supports individual read state", () => {
     const shell=readFileSync(new URL("../components/app-shell-v4.tsx",import.meta.url),"utf8");
-    const context=readFileSync(new URL("../lib/notification-context-v2.tsx",import.meta.url),"utf8");
+    const context=readFileSync(new URL("../lib/notification-context-v3.tsx",import.meta.url),"utf8");
     assert.match(shell,/openNotification/);
     assert.match(shell,/targetRecordId/);
     assert.match(context,/markRead/);
