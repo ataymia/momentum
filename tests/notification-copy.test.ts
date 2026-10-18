@@ -5,7 +5,7 @@ import type { AuditEvent } from "../lib/audit-engine";
 import { createDemoData } from "../lib/demo-data";
 import { notificationCopy } from "../lib/notification-engine";
 import { EXCLUDED_NOTIFICATION_EVENTS, notificationBellEnabled } from "../lib/notification-policy-registry";
-import { commerceNotificationIntents, deliveryMilestoneIntents, orderMilestoneIntents, pricingNotificationIntents, sundayWeeklyReminderIntent } from "../lib/notification-policy-v2";
+import { commerceNotificationIntents, deliveryMilestoneIntents, orderMilestoneIntents, pricingNotificationIntents, prospectOwnershipReleasedIntents, sundayWeeklyReminderIntent } from "../lib/notification-policy-v2";
 import { customerInvoiceEmail, customerStatusEmail, outboundEmailDecision } from "../lib/outbound-notification-policy";
 import { createPerformanceSeed } from "../lib/performance-engine";
 
@@ -313,6 +313,42 @@ test("customer 30-day pricing warning is generated from active program pricing",
   }:account);
   const intents=pricingNotificationIntents({...data,accounts},customer,"2026-10-01");
   assert.equal(intents.some(item=>item.policyId==="program_pricing.expiring_30d.customer"),true);
+});
+
+
+
+test("prospect ownership release bell uses the prior owner from audit provenance",()=>{
+  const rep=data.users.find(user=>user.id==="usr-jordan")!;
+  const account=data.accounts.find(item=>item.id==="acc-101")!;
+  const releasedData={
+    ...data,
+    accounts:data.accounts.map(item=>item.id===account.id?{...item,stage:"Prospect" as const,ownerId:"",accountManagerId:"",lastActivity:"Prospect released: 5 unsuccessful visits"}:item),
+  };
+  const event:AuditEvent={
+    id:"audit-prospect-release-1",
+    at:"2026-10-17T23:00:00.000Z",
+    actorId:"usr-mia",
+    actorRole:"Administrator",
+    action:"Updated",
+    module:"Workspace",
+    collection:"accounts",
+    entityType:"Workspace.accounts",
+    entityId:account.id,
+    label:account.locationName??account.name,
+    summary:"Prospect ownership released",
+    sensitivity:"operational",
+    relatedAccountId:account.id,
+    changes:[
+      {field:"ownerId",before:rep.id,after:""},
+      {field:"accountManagerId",before:rep.id,after:""},
+      {field:"lastActivity",before:account.lastActivity,after:"Prospect released: 5 unsuccessful visits"},
+    ],
+  };
+  const repIntents=prospectOwnershipReleasedIntents(releasedData,[event],rep);
+  assert.equal(repIntents.some(item=>item.policyId==="crm.prospect_ownership_released"),true);
+
+  const unrelated=data.users.find(user=>user.role==="Administrator")!;
+  assert.equal(prospectOwnershipReleasedIntents(releasedData,[event],unrelated).length,0);
 });
 
 test("separated representatives never qualify for outbound reminder email",()=>{
