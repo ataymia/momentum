@@ -3,7 +3,7 @@ import {createHash} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import {arizonaDateKey} from "./weekly-email-policy";
-import {byId,items,number,row,text} from "./commercial-email-policy";
+import {items,number,row,text} from "./commercial-email-policy";
 import {context,customerMail,repMail,writeIntent} from "./commercial-email-producers";
 
 const hash=(textValue:string)=>createHash("sha256").update(textValue).digest("hex");
@@ -140,7 +140,6 @@ export const sendInventoryReorderWarnings=onSchedule({
     if(low&&previous?.low!==true){
       const sourceId=id+":"+(seq+1);
       for(const recipient of recipients){
-        const role=text(recipient.data().role);
         const email=text(recipient.data().email).toLowerCase();
         if(!email)continue;
         await writeIntent({
