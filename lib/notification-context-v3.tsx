@@ -3,6 +3,8 @@
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { buildActionNotices } from "./action-center-policy-v2";
 import { useAccounting } from "./accounting-context";
+import { useCommerce } from "./commerce-context";
+import { useDelivery } from "./delivery-context";
 import { useFinance } from "./finance-context";
 import { useHcm } from "./hcm-context";
 import { useInventoryLedger } from "./inventory-ledger-context";
@@ -10,7 +12,15 @@ import { useMarketing } from "./marketing-context";
 import { NotificationProvider as LegacyNotificationProvider, useNotifications as useLegacyNotifications } from "./notification-context-v2";
 import type { NotificationDelivery } from "./notification-engine";
 import { notificationBellEnabled } from "./notification-policy-registry";
-import { expenseStatusIntents, orderMilestoneIntents, sundayWeeklyReminderIntent } from "./notification-policy-v2";
+import {
+  commerceNotificationIntents,
+  deliveryMilestoneIntents,
+  expenseStatusIntents,
+  marketingStatusIntents,
+  orderMilestoneIntents,
+  pricingNotificationIntents,
+  type NotificationIntent,
+} from "./notification-policy-v2";
 import { usePerformance } from "./performance-context";
 import { useWorkspace } from "./workspace-context";
 
@@ -26,6 +36,8 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
   const legacy=useLegacyNotifications();
   const {data,scope,currentUser}=useWorkspace();
   const {hcm}=useHcm();
+  const {commerce}=useCommerce();
+  const {state:delivery}=useDelivery();
   const {performance}=usePerformance();
   const {finance}=useFinance();
   const {state:marketing}=useMarketing();
@@ -43,7 +55,7 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
     const items:NotificationDelivery[]=[];
 
     if(currentUser.role!=="Customer"){
-      for(const action of buildActionNotices({data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger}).filter(item=>notificationBellEnabled(item.policyId))){
+      for(const action of buildActionNotices({data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger,delivery}).filter(item=>notificationBellEnabled(item.policyId))){
         const id=`derived-action:${action.id}`;
         items.push({
           id,
@@ -63,8 +75,10 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
       }
     }
 
-    for(const intent of orderMilestoneIntents(data,currentUser).filter(item=>notificationBellEnabled(item.policyId))){
+    const addIntent=(intent:NotificationIntent)=>{
+      if(!notificationBellEnabled(intent.policyId))return;
       const id=`derived-intent:${intent.id}`;
+      const stamp=intent.occurredAt??createdAt;
       items.push({
         id,
         sourceEventId:intent.id,
@@ -73,55 +87,23 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
         title:intent.title,
         detail:intent.detail,
         tone:intent.importance==="critical"||intent.importance==="action"?"warning":intent.importance==="status"?"success":"info",
-        createdAt,
+        createdAt:stamp,
         status:readDerived.has(id)?"Read":"Unread",
-        ...(readDerived.has(id)?{readAt:createdAt}:{}),
+        ...(readDerived.has(id)?{readAt:stamp}:{}),
         targetPage:intent.targetPage,
         targetRecordId:intent.targetRecordId,
         actionLabel:intent.targetPage?"Open":"Review",
       });
-    }
+    };
 
-    for(const intent of expenseStatusIntents(finance,currentUser).filter(item=>notificationBellEnabled(item.policyId))){
-      const id=`derived-intent:${intent.id}`;
-      items.push({
-        id,
-        sourceEventId:intent.id,
-        recipientUserId:currentUser.id,
-        channel:"In app",
-        title:intent.title,
-        detail:intent.detail,
-        tone:"success",
-        createdAt,
-        status:readDerived.has(id)?"Read":"Unread",
-        ...(readDerived.has(id)?{readAt:createdAt}:{}),
-        targetPage:intent.targetPage,
-        targetRecordId:intent.targetRecordId,
-        actionLabel:"Open expense",
-      });
-    }
-
-    const reminder=sundayWeeklyReminderIntent(performance,currentUser,clock);
-    if(reminder&&notificationBellEnabled(reminder.policyId)){
-      const id=`derived-intent:${reminder.id}`;
-      items.push({
-        id,
-        sourceEventId:reminder.id,
-        recipientUserId:currentUser.id,
-        channel:"In app",
-        title:reminder.title,
-        detail:reminder.detail,
-        tone:"warning",
-        createdAt,
-        status:readDerived.has(id)?"Read":"Unread",
-        ...(readDerived.has(id)?{readAt:createdAt}:{}),
-        targetPage:reminder.targetPage,
-        targetRecordId:reminder.targetRecordId,
-        actionLabel:"Open weekly report",
-      });
-    }
+    for(const intent of orderMilestoneIntents(data,currentUser))addIntent(intent);
+    for(const intent of deliveryMilestoneIntents(data,delivery,currentUser))addIntent(intent);
+    for(const intent of commerceNotificationIntents(data,commerce,currentUser))addIntent(intent);
+    for(const intent of pricingNotificationIntents(data,currentUser))addIntent(intent);
+    for(const intent of expenseStatusIntents(finance,currentUser))addIntent(intent);
+    for(const intent of marketingStatusIntents(marketing,currentUser).filter(item=>item.policyId==="marketing.request_approved"))addIntent(intent);
     return items;
-  },[currentUser,data,scope,hcm,performance,finance,marketing,accounting,events,ledger,readDerived,clock]);
+  },[currentUser,data,scope,hcm,performance,finance,marketing,accounting,events,ledger,delivery,commerce,readDerived,clock]);
 
   // Legacy generated deliveries are intentionally retired during the policy
   // unification. The canonical registry + derived policy intents own the bell.
