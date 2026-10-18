@@ -63,7 +63,7 @@ This document is the source-of-truth roadmap for the Momentum notification-syste
 |---|---|---:|---:|---:|---|
 | Payment received / cleared | Customer | No | Yes | Yes | Send only after payment is confirmed/cleared. |
 | Payment received / cleared | Owning / credited rep | No | Yes | No | In-app awareness. |
-| Payment failed | Customer | No | Yes | Yes | Approved event. Must include anti-spam/deduplication parameters so repeated retries do not generate repeated email storms. |
+| Payment failed | Customer | No | Yes | Yes | One failed-payment email at most every 30 minutes, with a maximum of two failed-payment emails in any rolling 24-hour window for the same customer account and recipient email. |
 | Payment refunded / reversed | Customer | No | Yes | Yes | Customer-facing confirmation. |
 | Payment refunded / reversed | Relevant internal owner(s) | As applicable | Yes | Yes for the responsible rep; Admin remains in-app | Final recipient resolver must avoid irrelevant broadcasts. |
 
@@ -169,6 +169,15 @@ No marketing workflow email notifications for now.
 - Customer and rep emails are intentionally selective to protect Resend volume and reduce alert fatigue.
 - No SMS at this stage.
 
+## Payment-failure email rate limit
+
+- Scope: same customer account + recipient email.
+- Minimum spacing: 30 minutes between failed-payment emails.
+- Maximum: 2 failed-payment emails in any rolling 24-hour window.
+- Repeated failed attempts inside the 30-minute cooldown remain visible in platform/payment history but do not create another email.
+- After the second failed-payment email in the rolling 24-hour window, suppress additional failure emails until the rolling window permits another send.
+- This limit applies to failed-payment email only. It does not suppress the underlying payment record, audit evidence, or in-app payment state.
+
 ## Anti-noise controls
 
 Every production notification type must define:
@@ -223,6 +232,10 @@ For every policy row, test:
 - no historical replay.
 
 Production email remains disabled until this policy-backed implementation passes acceptance.
+
+## Policy amendments
+
+- 2026-10-17: Payment-failure email rate limit approved at one email every 30 minutes, maximum two emails per rolling 24 hours per customer account + recipient email.
 
 ## Verified infrastructure as of 2026-10-17
 
