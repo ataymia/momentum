@@ -48,19 +48,35 @@ export const deliverApprovedNotification=onDocumentCreated({
     if(!state.exists)return null;
     const mail=state.data() as ServerMail;
     if(!mail||mail.id!==mailRef.id||validMailToSend(mail,cutoff()))return null;
-    const trustedDeliveryInvoice=
-      mail.authorizationType==="Trusted system"&&
-      mail.policyId==="delivery.delivered.customer"&&
-      mail.kind==="delivered_invoice"&&
-      mail.approvedBy==="system:delivery-invoice";
+    const trustedKinds:Record<string,string>={
+      "order_confirmed":"order.confirmed.customer",
+      "order_cancelled":"order.cancelled.customer",
+      "order_cancelled_rep":"order.cancelled.rep",
+      "order_returned":"order.returned_for_correction",
+      "order_out_for_delivery":"delivery.out_for_delivery.customer",
+      "payment_received":"payment.received.customer",
+      "payment_failed":"payment.failed.customer",
+      "payment_refunded":"payment.refunded.customer",
+      "payment_refunded_rep":"payment.refunded.rep",
+      "pricing_warning_customer":"program_pricing.expiring_30d.customer",
+      "pricing_warning_rep":"program_pricing.expiring_30d.rep",
+      "inventory_reorder":"inventory.reorder_threshold",
+    };
+    const trustedSystem=
+      mail.authorizationType==="Trusted system"&&(
+        (mail.policyId==="delivery.delivered.customer"&&
+         mail.kind==="delivered_invoice"&&
+         mail.approvedBy==="system:delivery-invoice")||
+        (mail.approvedBy==="system:commercial-policy"&&
+         trustedKinds[mail.kind]===mail.policyId));
     const references=[
-      ...(!trustedDeliveryInvoice?[db.doc(`userAccess/${mail.approvedBy}`)]:[]),
+      ...(!trustedSystem?[db.doc(`userAccess/${mail.approvedBy}`)]:[]),
       ...(mail.recipientUid?[db.doc(`userAccess/${mail.recipientUid}`)]:[]),
       db.doc(`notificationSuppressions/${emailHash(mail.to)}`),
     ];
     const found=await Promise.all(references.map((ref)=>tx.get(ref)));
     let index=0;
-    const approver=trustedDeliveryInvoice?null:found[index++];
+    const approver=trustedSystem?null:found[index++];
     const recipient=mail.recipientUid?found[index++]:null;
     const suppression=found[index];
     if((approver&&(approver.data()?.accountState!=="Active"||
