@@ -23,7 +23,11 @@ type AdminNotificationInput = {
 const safeDetail = (value: string) =>
   value.replace(/[\r\n]+/g, " ").slice(0, 600);
 
-/** Build a sanitized Administrator-only event for Resend delivery failures. */
+/**
+ * Build a sanitized Administrator-only event for Resend delivery failures.
+ * @param input Resend delivery result and source-mail metadata.
+ * @return An Administrator event for failures, otherwise null.
+ */
 export function resendAdminNotification(
   input: AdminNotificationInput,
 ): AdminNotificationEvent | null {
