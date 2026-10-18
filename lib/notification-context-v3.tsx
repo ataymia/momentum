@@ -3,6 +3,7 @@
 import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { buildActionNotices } from "./action-center-policy-v2";
 import { useAccounting } from "./accounting-context";
+import { useAudit } from "./audit-context";
 import { useCommerce } from "./commerce-context";
 import { useDelivery } from "./delivery-context";
 import { useFinance } from "./finance-context";
@@ -19,6 +20,7 @@ import {
   marketingStatusIntents,
   orderMilestoneIntents,
   pricingNotificationIntents,
+  prospectOwnershipReleasedIntents,
   sundayWeeklyReminderIntent,
   type NotificationIntent,
 } from "./notification-policy-v2";
@@ -35,6 +37,7 @@ const UnifiedNotificationContext=createContext<NotificationValue|null>(null);
 
 function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
   const legacy=useLegacyNotifications();
+  const {audit}=useAudit();
   const {data,scope,currentUser}=useWorkspace();
   const {hcm}=useHcm();
   const {commerce}=useCommerce();
@@ -101,12 +104,13 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
     for(const intent of deliveryMilestoneIntents(data,delivery,currentUser))addIntent(intent);
     for(const intent of commerceNotificationIntents(data,commerce,currentUser))addIntent(intent);
     for(const intent of pricingNotificationIntents(data,currentUser))addIntent(intent);
+    for(const intent of prospectOwnershipReleasedIntents(data,audit.events,currentUser))addIntent(intent);
     for(const intent of expenseStatusIntents(finance,currentUser))addIntent(intent);
     for(const intent of marketingStatusIntents(marketing,currentUser).filter(item=>item.policyId==="marketing.request_approved"))addIntent(intent);
     const weeklyReminder=sundayWeeklyReminderIntent(performance,currentUser,clock);
     if(weeklyReminder)addIntent(weeklyReminder);
     return items;
-  },[currentUser,data,scope,hcm,performance,finance,marketing,accounting,events,ledger,delivery,commerce,readDerived,clock]);
+  },[currentUser,data,scope,hcm,performance,finance,marketing,accounting,events,ledger,delivery,commerce,audit.events,readDerived,clock]);
 
   // Legacy generated deliveries are intentionally retired during the policy
   // unification. The canonical registry + derived policy intents own the bell.
