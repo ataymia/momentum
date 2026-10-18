@@ -7,6 +7,8 @@ import { useAudit } from "./audit-context";
 import { useCommerce } from "./commerce-context";
 import { useDelivery } from "./delivery-context";
 import { useFinance } from "./finance-context";
+import { useFirebaseSessionOptional } from "./firebase-session-context";
+import { listFirestoreCollection } from "./firebase-firestore-rest";
 import { useHcm } from "./hcm-context";
 import { useInventoryLedger } from "./inventory-ledger-context";
 import { useMarketing } from "./marketing-context";
@@ -14,6 +16,7 @@ import { NotificationProvider as LegacyNotificationProvider, useNotifications as
 import type { NotificationDelivery } from "./notification-engine";
 import { notificationBellEnabled } from "./notification-policy-registry";
 import {
+  adminSystemNotificationIntents,
   commerceNotificationIntents,
   deliveryMilestoneIntents,
   expenseStatusIntents,
@@ -39,6 +42,7 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
   const legacy=useLegacyNotifications();
   const {audit}=useAudit();
   const {data,scope,currentUser}=useWorkspace();
+  const firebase=useFirebaseSessionOptional();
   const {hcm}=useHcm();
   const {commerce}=useCommerce();
   const {state:delivery}=useDelivery();
@@ -48,10 +52,19 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
   const {accounting,events}=useAccounting();
   const {ledger}=useInventoryLedger();
   const [clock,setClock]=useState(()=>new Date());
+  const [systemEvents,setSystemEvents]=useState<unknown[]>([]);
   useEffect(()=>{const timer=window.setInterval(()=>setClock(new Date()),60_000);return()=>window.clearInterval(timer);},[]);
   const [readDerived,setReadDerived]=useState<Set<string>>(()=>readIds(userId));
 
   useEffect(()=>persist(userId,readDerived),[userId,readDerived]);
+  useEffect(()=>{
+    if(!firebase||currentUser?.role!=="Administrator"){setSystemEvents([]);return;}
+    let cancelled=false;
+    void listFirestoreCollection<Record<string,unknown>>("notificationAdminEvents",200)
+      .then((rows)=>{if(!cancelled)setSystemEvents(rows);})
+      .catch(()=>{});
+    return()=>{cancelled=true;};
+  },[firebase,currentUser?.role,clock]);
 
   const derived=useMemo<NotificationDelivery[]>(()=>{
     if(!currentUser)return[];
@@ -104,13 +117,14 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
     for(const intent of deliveryMilestoneIntents(data,delivery,currentUser))addIntent(intent);
     for(const intent of commerceNotificationIntents(data,commerce,currentUser))addIntent(intent);
     for(const intent of pricingNotificationIntents(data,currentUser))addIntent(intent);
+    for(const intent of adminSystemNotificationIntents(systemEvents,currentUser))addIntent(intent);
     for(const intent of prospectOwnershipReleasedIntents(data,audit.events,currentUser))addIntent(intent);
     for(const intent of expenseStatusIntents(finance,currentUser))addIntent(intent);
     for(const intent of marketingStatusIntents(marketing,currentUser).filter(item=>item.policyId==="marketing.request_approved"))addIntent(intent);
     const weeklyReminder=sundayWeeklyReminderIntent(performance,currentUser,clock);
     if(weeklyReminder)addIntent(weeklyReminder);
     return items;
-  },[currentUser,data,scope,hcm,performance,finance,marketing,accounting,events,ledger,delivery,commerce,audit.events,readDerived,clock]);
+  },[currentUser,data,scope,hcm,performance,finance,marketing,accounting,events,ledger,delivery,commerce,audit.events,systemEvents,readDerived,clock]);
 
   // Legacy generated deliveries are intentionally retired during the policy
   // unification. The canonical registry + derived policy intents own the bell.
