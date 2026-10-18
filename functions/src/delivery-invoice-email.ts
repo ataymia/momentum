@@ -157,7 +157,6 @@ const queueDeliveredInvoice=async (
     total:number(invoice.total),
     lines:orderLines(order),
     signature,
-    adminOverride,
   });
 
   const digest=createHash("sha256")
@@ -188,7 +187,9 @@ const queueDeliveredInvoice=async (
         "Hello "+(text(customer?.billingContactName)||text(customer?.name)||"there")+",",
         "",
         "Delivery for order "+text(order.number)+" has been confirmed.",
-        "Your signed invoice "+text(invoice.number)+" is attached as a PDF.",
+        (signature?
+          "Your signed invoice ":
+          "Your invoice ")+text(invoice.number)+" is attached as a PDF.",
         "",
         "Please retain this invoice for your records.",
         "",
