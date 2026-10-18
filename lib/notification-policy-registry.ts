@@ -308,10 +308,10 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     dedupeRule: "One Sunday reminder per user/week.",
   },
   {
-    id: "weekly.delinquent.rep",
+    id: "weekly.delinquent.self",
     title: "Weekly report overdue",
     category: "Performance",
-    recipientStrategy: "Sales Representative whose report is delinquent",
+    recipientStrategy: "Sales Representative or Sales Manager whose own report is delinquent",
     sourceOfTruth: "Current unresolved weekly reporting obligation past due date",
     channels: channels(true, true, false),
     targetPage: "reportingCenter",
