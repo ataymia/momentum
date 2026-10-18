@@ -1,3 +1,5 @@
+import { canManageUser } from "./access";
+import type { AuditEvent } from "./audit-engine";
 import { arizonaDateKey, arizonaHour } from "./date-time";
 import type { CommerceState, Payment, Refund } from "./commerce-engine";
 import type { DeliveryState } from "./delivery-engine";
@@ -427,4 +429,45 @@ export function marketingStatusIntents(
       targetRecordId:request.id,
       occurredAt:request.decidedAt,
     }));
+}
+
+
+export function prospectOwnershipReleasedIntents(
+  data:WorkspaceData,
+  auditEvents:AuditEvent[],
+  user:WorkspaceUser,
+):NotificationIntent[]{
+  const intents:NotificationIntent[]=[];
+  for(const event of auditEvents){
+    if(event.module!=="Workspace"||event.collection!=="accounts"||event.action!=="Updated")continue;
+    const ownerChange=event.changes.find((change)=>change.field==="ownerId");
+    const previousOwnerId=ownerChange?.before?.trim();
+    const nextOwnerId=ownerChange?.after?.trim();
+    if(!previousOwnerId||nextOwnerId)continue;
+
+    const account=data.accounts.find((item)=>item.id===event.entityId);
+    if(!account||account.stage!=="Prospect")continue;
+
+    const recipient=
+      user.id===previousOwnerId||
+      (user.role==="Sales Manager"&&canManageUser(data,user,previousOwnerId,false));
+    if(!recipient)continue;
+
+    const lastActivity=event.changes.find((change)=>change.field==="lastActivity")?.after??"";
+    const reason=lastActivity.startsWith("Prospect released: ")?
+      lastActivity.slice("Prospect released: ".length).trim():
+      "";
+    intents.push({
+      id:`prospect-ownership-released:${event.id}:${user.id}`,
+      policyId:"crm.prospect_ownership_released",
+      recipientUserId:user.id,
+      title:"Prospect ownership released",
+      detail:`${account.locationName??account.name} returned to the unassigned prospect pool${reason?`: ${reason}`:"."}`,
+      importance:"status",
+      targetPage:"accounts",
+      targetRecordId:account.id,
+      occurredAt:event.at,
+    });
+  }
+  return intents;
 }
