@@ -1,4 +1,4 @@
-import type { PageKey } from "./types";
+import type { PageKey, Role } from "./types";
 
 export type NotificationPolicyChannel = {
   actionCenter: boolean;
@@ -29,6 +29,7 @@ export type NotificationPolicyEntry = {
   targetPage?: PageKey;
   templateKey?: string;
   attachmentPolicy?: string;
+  emailRoles?: readonly Role[];
   dedupeRule: string;
   notes?: string;
   emailRateLimit?: {
@@ -92,6 +93,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(true, true, true),
     targetPage: "orders",
     templateKey: "order-returned-v1",
+    emailRoles: ["Sales Representative"],
     dedupeRule: "One email per returned transition/version.",
   },
   {
@@ -103,6 +105,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(false, true, true),
     targetPage: "orders",
     templateKey: "customer-order-confirmed-v1",
+    emailRoles: ["Customer"],
     dedupeRule: "One customer notification per approved order/version.",
     notes: "Confirmed means Administrator approved, not rep submitted.",
   },
@@ -125,6 +128,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(false, true, true),
     targetPage: "orders",
     templateKey: "customer-order-cancelled-v1",
+    emailRoles: ["Customer"],
     dedupeRule: "Only one notice per cancellation version; no customer notice for never-confirmed orders.",
   },
   {
@@ -136,6 +140,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(false, true, true),
     targetPage: "orders",
     templateKey: "rep-order-cancelled-v1",
+    emailRoles: ["Sales Representative"],
     dedupeRule: "One notice per cancellation version.",
   },
   {
@@ -157,6 +162,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(false, true, true),
     targetPage: "orders",
     templateKey: "customer-order-out-for-delivery-v1",
+    emailRoles: ["Customer"],
     dedupeRule: "One customer notice per in-transit transition.",
   },
   {
@@ -178,6 +184,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(false, true, true),
     targetPage: "orders",
     templateKey: "customer-order-delivered-invoice-v1",
+    emailRoles: ["Customer"],
     attachmentPolicy: "Attach signed/live invoice PDF. Billing email only. No fallback for invoice recipient.",
     dedupeRule: "Exactly one delivery email per completed delivery/override version.",
     notes: "Invoice becomes live at delivery. Delivery-only invoice policy.",
@@ -201,6 +208,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(false, true, true),
     targetPage: "orderCash",
     templateKey: "customer-payment-received-v1",
+    emailRoles: ["Customer"],
     dedupeRule: "One confirmation per cleared payment record.",
   },
   {
@@ -222,6 +230,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(false, true, true),
     targetPage: "orderCash",
     templateKey: "customer-payment-failed-v1",
+    emailRoles: ["Customer"],
     dedupeRule: "Suppress repeated failure emails using the policy rate limit below.",
     emailRateLimit: {
       cooldownMinutes: 30,
@@ -240,6 +249,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(false, true, true),
     targetPage: "orderCash",
     templateKey: "customer-payment-refunded-v1",
+    emailRoles: ["Customer"],
     dedupeRule: "One customer notice per refund/reversal record/version.",
   },
   {
@@ -251,6 +261,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(false, true, true),
     targetPage: "orders",
     templateKey: "rep-payment-refunded-v1",
+    emailRoles: ["Sales Representative"],
     dedupeRule: "One rep notice per refund/reversal record/version.",
   },
   {
@@ -262,6 +273,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(false, true, true),
     targetPage: "accounts",
     templateKey: "customer-pricing-30-day-v1",
+    emailRoles: ["Customer"],
     dedupeRule: "One warning per account/program/version.",
   },
   {
@@ -273,6 +285,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(true, true, true),
     targetPage: "accounts",
     templateKey: "rep-pricing-30-day-v1",
+    emailRoles: ["Sales Representative"],
     dedupeRule: "One warning per account/program/version.",
   },
   {
@@ -294,6 +307,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(true, true, true),
     targetPage: "reportingCenter",
     templateKey: "rep-weekly-summary-reminder-v1",
+    emailRoles: ["Sales Representative"],
     dedupeRule: "One Sunday reminder per user/week.",
   },
   {
@@ -305,6 +319,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(true, true, true),
     targetPage: "reportingCenter",
     templateKey: "manager-weekly-summary-reminder-v1",
+    emailRoles: ["Sales Manager"],
     dedupeRule: "One Sunday reminder per user/week.",
   },
   {
@@ -427,6 +442,7 @@ export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
     channels: channels(true, true, true),
     targetPage: "inventory",
     templateKey: "inventory-reorder-threshold-v1",
+    emailRoles: ["Administrator", "Warehouse", "Operations"],
     dedupeRule: "One alert per product/threshold crossing until inventory recovers above reset level.",
   },
   {
