@@ -1,23 +1,25 @@
 import { canAccessPage, canManageUser, canReviewApproval } from "./access";
 import type { AccountingSourceEvent, AccountingState } from "./accounting-engine";
 import { arizonaDateKey, arizonaHour } from "./date-time";
+import type { DeliveryState } from "./delivery-engine";
 import type { FinanceState } from "./finance-engine";
 import type { HCMState } from "./hcm-engine";
 import { inventoryProductStatuses, type InventoryLedgerState } from "./inventory-ledger";
 import type { MarketingState } from "./marketing-engine";
+import { programPricingDaysRemaining } from "./notification-engine";
 import { notificationActionCenterEnabled } from "./notification-policy-registry";
 import { weeklyReportingObligations, type PerformanceState } from "./performance-engine";
 import type { PageKey, WorkspaceData, WorkspaceUser } from "./types";
 
 export type ActionUrgency="Blocking"|"Due"|"Review"|"Watch";
 export type ActionNotice={id:string;policyId:string;title:string;detail:string;category:string;page?:PageKey;urgency:ActionUrgency;focus?:string;peopleTab?:string;weeklyWeekStart?:string};
-export type ActionNoticeInputs={data:WorkspaceData;scope:Pick<WorkspaceData,"appointments">;currentUser:WorkspaceUser;hcm:HCMState;performance:PerformanceState;finance:FinanceState;marketing:MarketingState;accounting:AccountingState;accountingEvents:AccountingSourceEvent[];ledger:InventoryLedgerState;today?:string};
+export type ActionNoticeInputs={data:WorkspaceData;scope:Pick<WorkspaceData,"appointments">;currentUser:WorkspaceUser;hcm:HCMState;performance:PerformanceState;finance:FinanceState;marketing:MarketingState;accounting:AccountingState;accountingEvents:AccountingSourceEvent[];ledger:InventoryLedgerState;delivery:DeliveryState;today?:string};
 
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
 const date=(value:string)=>{const parsed=new Date(/^\d{4}-\d{2}-\d{2}$/.test(value)?`${value}T12:00:00-07:00`:value);return Number.isNaN(parsed.getTime())?value:new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric"}).format(parsed);};
 
 export function buildActionNotices(input:ActionNoticeInputs):ActionNotice[]{
-  const{data,currentUser,hcm,performance,finance,marketing,ledger}=input;
+  const{data,currentUser,hcm,performance,finance,marketing,ledger,delivery}=input;
   const today=input.today??arizonaDateKey();
   const admin=currentUser.role==="Administrator",manager=currentUser.role==="Sales Manager",warehouse=currentUser.role==="Warehouse",operations=currentUser.role==="Operations";
   const actions:ActionNotice[]=[];
@@ -34,6 +36,23 @@ export function buildActionNotices(input:ActionNoticeInputs):ActionNotice[]{
 
   if(admin||manager){
     for(const request of hcm.workflows.filter(item=>item.status==="Submitted"&&item.userId!==currentUser.id&&canManageUser(data,currentUser,item.userId,false)))actions.push({id:`hr:${request.id}`,policyId:"hr.action_required",title:request.title,detail:`${data.users.find(user=>user.id===request.userId)?.name??"Employee"} · ${request.type}`,category:"Human Resources",page:"people",peopleTab:"review",focus:request.id,urgency:"Review"});
+  }
+
+  if(currentUser.role==="Delivery Driver"){
+    for(const task of delivery.tasks.filter(item=>item.driverId===currentUser.id&&item.status!=="Cancelled"&&item.history.some(event=>event.type==="Assigned"))){
+      const order=data.orders.find(item=>item.id===task.orderId);
+      if(!order)continue;
+      actions.push({id:`delivery-assigned:${task.id}`,policyId:"delivery.assigned",title:"Delivery assigned",detail:`${order.number} has been assigned to you.`,category:"Delivery",page:"orders",focus:order.id,urgency:"Due"});
+    }
+  }
+
+  if(currentUser.role==="Sales Representative"){
+    for(const account of data.accounts){
+      if(![account.ownerId,account.accountManagerId,account.programPricingOwnerId].filter(Boolean).includes(currentUser.id))continue;
+      const days=programPricingDaysRemaining(account,today);
+      if(days===undefined||days<0||days>30)continue;
+      actions.push({id:`program-pricing-warning:${account.id}:${account.programPricingExpirationDate}`,policyId:"program_pricing.expiring_30d.rep",title:`Program pricing expires in ${days} day${days===1?"":"s"}`,detail:`${account.locationName??account.name}${account.programPricingLabel?` · ${account.programPricingLabel}`:""} expires ${account.programPricingExpirationDate}.`,category:"Pricing",page:"accounts",focus:account.id,urgency:"Watch"});
+    }
   }
   if(manager){
     for(const rep of data.users.filter(user=>user.role==="Sales Representative"&&user.employmentStatus!=="Separated"&&canManageUser(data,currentUser,user.id,false))){
@@ -52,6 +71,7 @@ export function buildActionNotices(input:ActionNoticeInputs):ActionNotice[]{
     for(const request of marketing.requests.filter(item=>item.status==="Submitted"))actions.push({id:`marketing:${request.id}`,policyId:"marketing.request_submitted",title:"Marketing request needs review",detail:request.title,category:"Marketing",page:"marketing",focus:request.id,urgency:"Review"});
     for(const campaign of marketing.campaigns.filter(item=>item.status==="Awaiting approval"))actions.push({id:`campaign:${campaign.id}`,policyId:"marketing.campaign_budget_approval",title:"Campaign budget needs approval",detail:`${campaign.name} · ${money(campaign.requestedBudget)}`,category:"Marketing",page:"marketing",focus:campaign.id,urgency:"Review"});
   }
+  for(const request of marketing.requests.filter(item=>item.requesterId===currentUser.id&&item.status==="Returned"))actions.push({id:`marketing-returned:${request.id}`,policyId:"marketing.request_returned",title:"Marketing request returned",detail:`${request.title} needs correction.`,category:"Marketing",page:"marketing",focus:request.id,urgency:"Due"});
 
   for(const stock of inventoryProductStatuses(ledger,data).filter(item=>item.reorderNeeded)){if(!(admin||warehouse||operations||(manager&&stock.requiresManagerApproval)))continue;actions.push({id:`stock:${stock.product}`,policyId:stock.requiresManagerApproval?"inventory.low_stock_blocking_sale":"inventory.reorder_threshold",title:stock.requiresManagerApproval?"Low stock blocks unapproved sales":"Inventory reorder required",detail:`${stock.product} · ${stock.available} available sellable cases`,category:"Inventory",page:canAccessPage(currentUser,"inventory")?"inventory":undefined,urgency:stock.requiresManagerApproval?"Blocking":"Due"});}
 
