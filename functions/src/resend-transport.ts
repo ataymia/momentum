@@ -15,7 +15,9 @@ const row=(value:unknown):value is AnyRow=>
   Boolean(value&&typeof value==="object"&&!Array.isArray(value));
 const text=(value:unknown)=>typeof value==="string"?value:"";
 const enabled=()=>process.env.RESEND_LIVE_EMAIL_ENABLED==="true";
-const from=()=>process.env.RESEND_FROM_EMAIL??"";
+const fromName=()=>process.env.RESEND_FROM_NAME??"";
+const fromEmail=()=>process.env.RESEND_FROM_EMAIL??"";
+const from=()=>fromName().trim()?`${fromName().trim()} <${fromEmail().trim()}>`:fromEmail().trim();
 const replyTo=()=>process.env.RESEND_REPLY_TO??"";
 const cutoff=()=>process.env.RESEND_ACTIVATION_CUTOFF??"";
 
@@ -29,7 +31,7 @@ export const deliverApprovedNotification=onDocumentCreated({
   document:"notificationOutbox/{id}",region:"us-central1",
   secrets:[apiKey],maxInstances:2,
 },async (event)=>{
-  if(!enabled()||!safeMail(from())||!safeMail(replyTo())||!cutoff()||!apiKey.value())return;
+  if(!enabled()||!safeMail(fromEmail())||!safeMail(replyTo())||!cutoff()||!apiKey.value())return;
   if(!event.data)return;
   const db=getFirestore();
   const mailRef=event.data.ref;
