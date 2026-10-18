@@ -242,6 +242,9 @@ const observe=(path:string,originRoles:string[])=>
             "We will provide delivery updates as the order progresses.");
         }
         if(policies.includes("order.cancelled.customer")){
+          if(text(actor?.role)==="Sales Representative"&&
+             originUid!==text(current.ownerId)&&
+             originUid!==text(current.creditedRepId))continue;
           await customerMail(state,accountId,eventId,
             "order.cancelled.customer","order_cancelled",path,id,
             "Order "+orderNumber+" cancelled",
@@ -256,6 +259,11 @@ const observe=(path:string,originRoles:string[])=>
         if(text(current.status)!=="Returned"||
            !policies.includes("order.returned_for_correction"))continue;
         const uid=text(current.requesterId);
+        if(text(actor?.role)==="Sales Manager"){
+          const directory=uid?
+            await getFirestore().doc("employeeDirectory/"+uid).get():null;
+          if(text(directory?.data()?.managerId)!==originUid)continue;
+        }
         const linkedOrder=byId(state.orders,text(current.recordId));
         if(!linkedOrder)continue;
         await repMail(uid,text(linkedOrder.accountId),eventId,
