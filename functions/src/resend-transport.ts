@@ -48,16 +48,25 @@ export const deliverApprovedNotification=onDocumentCreated({
     if(!state.exists)return null;
     const mail=state.data() as ServerMail;
     if(!mail||mail.id!==mailRef.id||validMailToSend(mail,cutoff()))return null;
+    const trustedDeliveryInvoice=
+      mail.authorizationType==="Trusted system"&&
+      mail.policyId==="delivery.delivered.customer"&&
+      mail.kind==="delivered_invoice"&&
+      mail.approvedBy==="system:delivery-invoice";
     const references=[
-      db.doc(`userAccess/${mail.approvedBy}`),
+      ...(!trustedDeliveryInvoice?[db.doc(`userAccess/${mail.approvedBy}`)]:[]),
       ...(mail.recipientUid?[db.doc(`userAccess/${mail.recipientUid}`)]:[]),
       db.doc(`notificationSuppressions/${emailHash(mail.to)}`),
     ];
     const found=await Promise.all(references.map((ref)=>tx.get(ref)));
-    if(found[0].data()?.accountState!=="Active"||
-       found[0].data()?.role!=="Administrator"||
-       (mail.recipientUid&&found[1].data()?.accountState!=="Active")||
-       found[found.length-1].exists){
+    let index=0;
+    const approver=trustedDeliveryInvoice?null:found[index++];
+    const recipient=mail.recipientUid?found[index++]:null;
+    const suppression=found[index];
+    if((approver&&(approver.data()?.accountState!=="Active"||
+       approver.data()?.role!=="Administrator"))||
+       (recipient&&recipient.data()?.accountState!=="Active")||
+       suppression?.exists){
       tx.update(mailRef,{status:"Suppressed",lastError:"Access or suppression policy rejected this recipient."});
       return null;
     }
@@ -79,6 +88,13 @@ export const deliverApprovedNotification=onDocumentCreated({
       body:JSON.stringify({
         from:from(),to:[snapshot.to],
         reply_to:replyTo(),subject:snapshot.subject,text:snapshot.text,
+        ...(snapshot.attachments?.length?{
+          attachments:snapshot.attachments.map((attachment)=>({
+            filename:attachment.filename,
+            content:attachment.content,
+            content_type:attachment.contentType,
+          })),
+        }:{}),
       }),
     });
     const payload=await response.json() as unknown;

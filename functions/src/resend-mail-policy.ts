@@ -4,9 +4,16 @@ import {createHash,createHmac,timingSafeEqual} from "node:crypto";
 export type MailStatus=
   "Approved"|"Attempting"|"Provider accepted"|"Delivered"|
   "Deferred"|"Bounced"|"Complained"|"Suppressed"|"Failed"|"Review required";
+export type MailAttachment={
+  filename:string;
+  content:string;
+  contentType:string;
+};
 export type ServerMail={
   id:string;
   kind:string;
+  policyId?:string;
+  authorizationType?:"Human Administrator"|"Trusted system";
   sourcePath:string;
   sourceRecordId:string;
   eventId:string;
@@ -17,6 +24,7 @@ export type ServerMail={
   recipientUid?:string;
   subject:string;
   text:string;
+  attachments?:MailAttachment[];
   idempotencyKey:string;
   status:MailStatus;
   createdAt:string;
@@ -35,6 +43,18 @@ export function validMailToSend(value:ServerMail,cutoff:string){
     !safeText(value.sourcePath,220)||!safeText(value.sourceRecordId,220)||
     !safeText(value.approvedBy,150)||!Number.isFinite(Date.parse(value.approvedAt)))
    return "Missing trusted approval/source identity.";
+ if(value.attachments){
+   if(!Array.isArray(value.attachments)||value.attachments.length>3)
+     return "Invalid attachment set.";
+   for(const attachment of value.attachments){
+     if(!attachment||!safeText(attachment.filename,180)||
+       attachment.contentType!=="application/pdf"||
+       typeof attachment.content!=="string"||
+       attachment.content.length<16||attachment.content.length>8_000_000||
+       !/^[A-Za-z0-9+/=]+$/.test(attachment.content))
+       return "Invalid attachment.";
+   }
+ }
  return null;
 }
 export const emailHash=(value:string)=>createHash("sha256")
