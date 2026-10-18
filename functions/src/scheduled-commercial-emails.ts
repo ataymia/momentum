@@ -42,6 +42,13 @@ export const sendProgramPricingWarnings=onSchedule({
        text(account.programPricingStatus)!=="Active"||
        !Number.isFinite(number(account.programPricePerCase))||
        number(account.programPricePerCase)<=0)continue;
+    const authorizedPricingOwner=text(account.programPricingOwnerId);
+    if(!authorizedPricingOwner)continue;
+    const ownerAccess=await getFirestore()
+      .doc("userAccess/"+authorizedPricingOwner).get();
+    if(ownerAccess.data()?.accountState!=="Active"||
+      !["Administrator","Sales Manager"].includes(
+        text(ownerAccess.data()?.role)))continue;
     const id=text(account.id);
     const eventId="pricing-30d:"+id+":"+expires;
     const note="Program pricing for "+
