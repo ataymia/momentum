@@ -101,10 +101,7 @@ function NotificationBridge({
   useEffect(()=>persist(userId,readDerived),[userId,readDerived]);
 
   useEffect(()=>{
-    if(!firebase||currentUser?.role!=="Administrator"){
-      setSystemEvents([]);
-      return;
-    }
+    if(!firebase||currentUser?.role!=="Administrator")return;
     let cancelled=false;
     void listFirestoreCollection<Record<string,unknown>>(
       "notificationAdminEvents",
@@ -195,7 +192,7 @@ function NotificationBridge({
       addIntent(intent);
     }
     for(const intent of adminSystemNotificationIntents(
-      systemEvents,
+      currentUser.role==="Administrator"?systemEvents:[],
       currentUser,
     ))addIntent(intent);
     for(const intent of prospectOwnershipReleasedIntents(
