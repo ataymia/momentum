@@ -19,6 +19,7 @@ import {
   marketingStatusIntents,
   orderMilestoneIntents,
   pricingNotificationIntents,
+  sundayWeeklyReminderIntent,
   type NotificationIntent,
 } from "./notification-policy-v2";
 import { usePerformance } from "./performance-context";
@@ -102,6 +103,8 @@ function UnifiedBridge({children,userId}:{children:ReactNode;userId:string}){
     for(const intent of pricingNotificationIntents(data,currentUser))addIntent(intent);
     for(const intent of expenseStatusIntents(finance,currentUser))addIntent(intent);
     for(const intent of marketingStatusIntents(marketing,currentUser).filter(item=>item.policyId==="marketing.request_approved"))addIntent(intent);
+    const weeklyReminder=sundayWeeklyReminderIntent(performance,currentUser,clock);
+    if(weeklyReminder)addIntent(weeklyReminder);
     return items;
   },[currentUser,data,scope,hcm,performance,finance,marketing,accounting,events,ledger,delivery,commerce,readDerived,clock]);
 
