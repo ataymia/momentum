@@ -7,6 +7,7 @@ export type NotificationImportance = "critical" | "action" | "status" | "reminde
 
 export type NotificationIntent = {
   id: string;
+  policyId: string;
   recipientUserId: string;
   title: string;
   detail: string;
@@ -24,6 +25,7 @@ export function sundayWeeklyReminderIntent(performance: PerformanceState, user: 
   if (!obligation || obligation.overdue) return null;
   return {
     id: `weekly-sunday-reminder:${user.id}:${obligation.weekStart}`,
+    policyId: user.role === "Sales Manager" ? "weekly.reminder.manager" : "weekly.reminder.rep",
     recipientUserId: user.id,
     title: "Weekly summary reminder",
     detail: "Your weekly report is due tomorrow. Submit the summary and next week's goals before Monday closes.",
@@ -40,17 +42,22 @@ export function orderMilestoneIntents(data: WorkspaceData, user: WorkspaceUser):
     if (!ownsOrder && !customerOrder) continue;
 
     if (order.status === "Approved" && customerOrder) {
-      intents.push({ id:`order-confirmed:${order.id}`, recipientUserId:user.id, title:"Order confirmed", detail:`${order.number} has been confirmed and is moving into fulfillment.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
+      intents.push({ id:`order-confirmed:${order.id}`, policyId:"order.confirmed.customer", recipientUserId:user.id, title:"Order confirmed", detail:`${order.number} has been confirmed and is moving into fulfillment.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
     }
-    if (order.status === "Out for delivery" && customerOrder) {
-      intents.push({ id:`order-out-for-delivery:${order.id}`, recipientUserId:user.id, title:"Order out for delivery", detail:`${order.number} is on the way.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
+    if (order.status === "Approved" && ownsOrder && user.role === "Sales Representative") {
+      intents.push({ id:`order-approved-rep:${order.id}`, policyId:"order.approved.rep", recipientUserId:user.id, title:"Order approved", detail:`${order.number} has been approved.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
+    }
+    if (order.status === "Out for delivery") {
+      if (customerOrder) intents.push({ id:`order-out-for-delivery:${order.id}`, policyId:"delivery.out_for_delivery.customer", recipientUserId:user.id, title:"Order out for delivery", detail:`${order.number} is on the way.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
+      if (ownsOrder && user.role === "Sales Representative") intents.push({ id:`order-out-for-delivery-rep:${order.id}`, policyId:"delivery.out_for_delivery.rep", recipientUserId:user.id, title:"Order out for delivery", detail:`${order.number} is on the way to the customer.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
     }
     if (order.status === "Delivered") {
-      if (customerOrder) intents.push({ id:`order-delivered-customer:${order.id}`, recipientUserId:user.id, title:"Order delivered", detail:`${order.number} has been delivered. Your invoice is available with the order record.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
-      if (ownsOrder) intents.push({ id:`order-delivered-rep:${order.id}`, recipientUserId:user.id, title:"Your order was delivered", detail:`${order.number} has been delivered to the customer.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
+      if (customerOrder) intents.push({ id:`order-delivered-customer:${order.id}`, policyId:"delivery.delivered.customer", recipientUserId:user.id, title:"Order delivered", detail:`${order.number} has been delivered. Your invoice is available with the order record.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
+      if (ownsOrder && user.role === "Sales Representative") intents.push({ id:`order-delivered-rep:${order.id}`, policyId:"delivery.delivered.rep", recipientUserId:user.id, title:"Your order was delivered", detail:`${order.number} has been delivered to the customer.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
     }
-    if (order.paymentStatus === "Paid" && customerOrder) {
-      intents.push({ id:`payment-received:${order.id}`, recipientUserId:user.id, title:"Payment received", detail:`Payment for ${order.number} has been received and recorded.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
+    if (order.paymentStatus === "Paid") {
+      if (customerOrder) intents.push({ id:`payment-received:${order.id}`, policyId:"payment.received.customer", recipientUserId:user.id, title:"Payment received", detail:`Payment for ${order.number} has been received and recorded.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
+      if (ownsOrder && user.role === "Sales Representative") intents.push({ id:`payment-received-rep:${order.id}`, policyId:"payment.received.rep", recipientUserId:user.id, title:"Customer payment received", detail:`Payment for ${order.number} has been received and recorded.`, importance:"status", targetPage:"orders", targetRecordId:order.id });
     }
   }
   return intents;
@@ -62,6 +69,7 @@ export function expenseStatusIntents(finance: FinanceState, user: WorkspaceUser)
     .filter((expense) => expense.requesterId === user.id && expense.status === "Finance approved")
     .map((expense) => ({
       id: `expense-approved:${expense.id}`,
+      policyId: "expense.finance_approved",
       recipientUserId: user.id,
       title: "Expense approved",
       detail: `${expense.merchant} · $${expense.amount.toFixed(2)} has been approved for reimbursement.`,
@@ -71,7 +79,3 @@ export function expenseStatusIntents(finance: FinanceState, user: WorkspaceUser)
     }));
 }
 
-/** Keep accounting-policy work visible in My Work/Finance without creating one bell alert per historical event. */
-export function shouldShowActionNotification(action:{category:string;title:string}):boolean{
-  return !(action.category==="Accounting"&&action.title==="Accounting policy required");
-}
