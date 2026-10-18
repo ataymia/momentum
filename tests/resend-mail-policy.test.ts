@@ -3,9 +3,11 @@ import {createHmac} from "node:crypto";
 import test from "node:test";
 import * as adminEvents from "../functions/src/admin-notification-events";
 import * as mailPolicy from "../functions/src/resend-mail-policy";
+import * as weeklyPolicy from "../functions/src/weekly-email-policy";
 
 const policy=(mailPolicy as unknown as {default?:typeof mailPolicy}).default??mailPolicy;
 const adminPolicy=(adminEvents as unknown as {default?:typeof adminEvents}).default??adminEvents;
+const weekly=(weeklyPolicy as unknown as {default?:typeof weeklyPolicy}).default??weeklyPolicy;
 const {validMailToSend,verifyResendWebhook,providerStatus,nextMailStatus,emailHash}=policy;
 const base={
  id:"mail-event-100",kind:"order_approved",
@@ -77,4 +79,46 @@ test("Resend delivery success never creates an admin alert",()=>{
       sourceRecordId:"order-2",
     },
   }),null);
+});
+
+
+test("Sunday weekly reminder uses Arizona week and stable idempotency",()=>{
+  const today=weekly.arizonaDateKey(new Date("2026-10-19T02:00:00.000Z"));
+  assert.equal(today,"2026-10-18");
+  const weekStart=weekly.mondayForDateKey(today);
+  assert.equal(weekStart,"2026-10-12");
+  const recipient={
+    uid:"usr-rep",
+    email:"REP@EXAMPLE.COM",
+    name:"Jordan Demo",
+    role:"Sales Representative" as const,
+  };
+  const one=weekly.weeklyReminderMail(
+    recipient,weekStart,"2026-10-19T02:00:00.000Z",
+  );
+  const two=weekly.weeklyReminderMail(
+    recipient,weekStart,"2026-10-19T02:01:00.000Z",
+  );
+  assert.equal(one.id,two.id);
+  assert.equal(one.idempotencyKey,two.idempotencyKey);
+  assert.equal(one.to,"rep@example.com");
+  assert.match(one.subject,/due tomorrow/i);
+});
+
+test("Sunday weekly reminder skips an already submitted weekly report",()=>{
+  const reports={items:[{
+    id:"report-1",
+    type:"Weekly progress",
+    userId:"usr-rep",
+    weekStart:"2026-10-12",
+    status:"Submitted",
+  }]};
+  assert.equal(
+    weekly.weeklyReportSubmitted(reports,"usr-rep","2026-10-12"),
+    true,
+  );
+  assert.equal(
+    weekly.weeklyReportSubmitted(reports,"usr-rep","2026-10-05"),
+    false,
+  );
 });
