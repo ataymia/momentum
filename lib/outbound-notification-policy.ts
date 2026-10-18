@@ -1,33 +1,15 @@
+import { notificationPolicyById } from "./notification-policy-registry";
 import type { WorkspaceData, WorkspaceUser } from "./types";
 
 export type OutboundEmailDecision={send:boolean;reason:string};
 
-export function outboundEmailDecision(user:WorkspaceUser,sourceEventId:string):OutboundEmailDecision{
+export function outboundEmailDecision(user:WorkspaceUser,policyId:string):OutboundEmailDecision{
   if(user.employmentStatus==="Separated")return{send:false,reason:"Employee access has been revoked."};
-  if(["Administrator","Operations","Warehouse","Delivery Driver","Brand Ambassador"].includes(user.role))return{send:false,reason:"This role uses in-app notifications only by current policy."};
-
-  if(user.role==="Customer"){
-    const allowed=["order-confirmed:","order-out-for-delivery:","order-delivered-customer:","payment-received:","program-pricing-expiry:"];
-    return allowed.some(prefix=>sourceEventId.startsWith(prefix))
-      ?{send:true,reason:"Approved customer transaction/status email."}
-      :{send:false,reason:"Customer event is in-app only unless specifically approved."};
-  }
-
-  if(user.role==="Sales Representative"){
-    const allowed=["action:approval-returned:","action:timecard-returned:","action:expense-returned:","expense-approved:","weekly-sunday-reminder:","program-pricing-expiry:"];
-    return allowed.some(prefix=>sourceEventId.startsWith(prefix))
-      ?{send:true,reason:"Approved Sales Representative action/reminder email."}
-      :{send:false,reason:"Sales Representative event is in-app only by current policy."};
-  }
-
-  if(user.role==="Sales Manager"){
-    const allowed=["action:rep-weekly-overdue:","weekly-sunday-reminder:","program-pricing-expiry:"];
-    return allowed.some(prefix=>sourceEventId.startsWith(prefix))
-      ?{send:true,reason:"Approved Sales Manager exception/reminder email."}
-      :{send:false,reason:"Sales Manager event is in-app only by current policy."};
-  }
-
-  return{send:false,reason:"No external email policy exists for this event."};
+  const policy=notificationPolicyById(policyId);
+  if(!policy)return{send:false,reason:"No approved notification policy exists for this event."};
+  if(!policy.channels.email)return{send:false,reason:"This event is in-app only by current policy."};
+  if(!policy.emailRoles?.includes(user.role))return{send:false,reason:"This role is not an approved email recipient for this event."};
+  return{send:true,reason:"Approved by the canonical notification policy."};
 }
 
 function customerForOrder(data:WorkspaceData,orderId:string){
