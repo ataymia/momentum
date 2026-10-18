@@ -16,7 +16,7 @@ const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",curr
 const date=(value:string)=>{const parsed=new Date(/^\d{4}-\d{2}-\d{2}$/.test(value)?`${value}T12:00:00-07:00`:value);return Number.isNaN(parsed.getTime())?value:new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric"}).format(parsed);};
 
 export function buildActionNotices(input:ActionNoticeInputs):ActionNotice[]{
-  const{data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents,ledger}=input;
+  const{data,currentUser,hcm,performance,finance,marketing,ledger}=input;
   const today=input.today??arizonaDateKey();
   const admin=currentUser.role==="Administrator",manager=currentUser.role==="Sales Manager",warehouse=currentUser.role==="Warehouse",operations=currentUser.role==="Operations";
   const actions:ActionNotice[]=[];
