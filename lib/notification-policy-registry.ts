@@ -11,6 +11,7 @@ export type NotificationPolicyEntry = {
   id: string;
   title: string;
   category:
+    | "Approvals"
     | "Orders"
     | "Delivery"
     | "Payments"
@@ -50,6 +51,27 @@ const channels = (
 });
 
 export const NOTIFICATION_POLICY_V1: readonly NotificationPolicyEntry[] = [
+  {
+    id: "workflow.approval_required",
+    title: "Approval required",
+    category: "Approvals",
+    recipientStrategy: "Authorized reviewer(s)",
+    sourceOfTruth: "Persisted workflow/approval state requiring an authorized decision",
+    channels: channels(true, true, false),
+    targetPage: "work",
+    dedupeRule: "One active item per approval record/version until resolved.",
+    notes: "Internal non-order approvals remain in-app only.",
+  },
+  {
+    id: "workflow.returned_for_correction",
+    title: "Item returned for correction",
+    category: "Approvals",
+    recipientStrategy: "Original requester",
+    sourceOfTruth: "Persisted non-order workflow/approval transition into Returned",
+    channels: channels(true, true, false),
+    targetPage: "work",
+    dedupeRule: "One active item per returned transition/version.",
+  },
   {
     id: "order.submitted_for_approval",
     title: "Order approval required",
@@ -489,4 +511,12 @@ export function notificationPolicyById(id: string) {
 
 export function notificationEmailEnabled(id: string) {
   return notificationPolicyById(id)?.channels.email === true;
+}
+
+export function notificationActionCenterEnabled(id: string) {
+  return notificationPolicyById(id)?.channels.actionCenter === true;
+}
+
+export function notificationBellEnabled(id: string) {
+  return notificationPolicyById(id)?.channels.bell === true;
 }
