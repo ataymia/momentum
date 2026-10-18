@@ -1,0 +1,257 @@
+/* eslint-disable max-len, comma-spacing, space-before-blocks, indent, keyword-spacing, curly, key-spacing, brace-style, semi-spacing */
+import {createHash} from "node:crypto";
+import {getFirestore} from "firebase-admin/firestore";
+import {onDocumentCreated,onDocumentWritten} from "firebase-functions/v2/firestore";
+import {buildSignedInvoicePdf,type InvoicePdfSignature} from "./signed-invoice-pdf";
+import {safeMail} from "./resend-mail-policy";
+
+type Row=Record<string,unknown>;
+
+const row=(value:unknown):value is Row=>
+  Boolean(value&&typeof value==="object"&&!Array.isArray(value));
+const text=(value:unknown)=>typeof value==="string"?value.trim():"";
+const number=(value:unknown)=>typeof value==="number"&&Number.isFinite(value)?value:0;
+const items=(value:unknown):Row[]=>
+  row(value)&&Array.isArray(value.items)?value.items.filter(row):[];
+const validInstant=(value:unknown)=>typeof value==="string"&&
+  Number.isFinite(Date.parse(value));
+
+const findById=(rows:Row[],id:string)=>rows.find((item)=>text(item.id)===id);
+
+const adminEvent=async (
+  message:string,
+  sourceRecordId:string,
+  eventId:string,
+)=>{
+  const db=getFirestore();
+  const id="delivery-invoice-"+createHash("sha256")
+    .update(eventId+"|"+sourceRecordId+"|"+message).digest("hex").slice(0,32);
+  await db.doc(`notificationAdminEvents/${id}`).set({
+    id,
+    policyId:"system.email_failed",
+    title:"Signed invoice email needs review",
+    detail:message.slice(0,600),
+    createdAt:new Date().toISOString(),
+    sourceId:eventId,
+    sourceRecordId,
+    outboxId:"",
+    status:"Open",
+  });
+};
+
+const signatureFrom=(value:unknown):InvoicePdfSignature|undefined=>{
+  if(!row(value)||!validInstant(value.signedAt)||!Array.isArray(value.strokes)){
+    return undefined;
+  }
+  const strokes:Array<Array<[number,number]>>=[];
+  for(const rawStroke of value.strokes.slice(0,80)){
+    if(!Array.isArray(rawStroke))continue;
+    const stroke:Array<[number,number]>=rawStroke
+      .filter((point):point is [number,number]=>
+        Array.isArray(point)&&point.length===2&&
+        point.every((coordinate)=>typeof coordinate==="number"&&
+          Number.isFinite(coordinate)))
+      .slice(0,300);
+    if(stroke.length>=2)strokes.push(stroke);
+  }
+  if(!strokes.length)return undefined;
+  return {
+    strokes,
+    recipientName:text(value.recipientName)||undefined,
+    signedAt:text(value.signedAt),
+  };
+};
+
+const orderLines=(order:Row)=>{
+  if(Array.isArray(order.lines)){
+    const lines=order.lines.filter(row).map((item)=>({
+      product:text(item.product)||"Golden Eagle Energy Drink",
+      cases:number(item.cases),
+      pricePerCase:number(item.pricePerCase),
+      amount:number(item.amount),
+    })).filter((item)=>item.cases>0&&item.amount>=0);
+    if(lines.length)return lines;
+  }
+  return [{
+    product:text(order.product)||"Golden Eagle Energy Drink",
+    cases:number(order.cases),
+    pricePerCase:number(order.pricePerCase),
+    amount:number(order.amount),
+  }];
+};
+
+const activeAdministrator=async ()=>{
+  const db=getFirestore();
+  const snapshot=await db.collection("userAccess").get();
+  return snapshot.docs.map((doc)=>({uid:doc.id,...doc.data()}))
+    .filter((item)=>item.role==="Administrator"&&item.accountState==="Active")
+    .sort((left,right)=>left.uid.localeCompare(right.uid))[0];
+};
+
+const queueDeliveredInvoice=async (
+  orderId:string,
+  deliveredAt:string,
+  eventId:string,
+  signature?:InvoicePdfSignature,
+  adminOverride=false,
+)=>{
+  const db=getFirestore();
+  const refs=[
+    db.doc("domains/commercial/fields/orders"),
+    db.doc("domains/workspace/fields/orders"),
+    db.doc("domains/workspace/fields/accounts"),
+    db.doc("domains/workspace/fields/customers"),
+    db.doc("domains/commerce/fields/invoices"),
+  ];
+  const [commercial,workspace,accountsDoc,customersDoc,invoicesDoc]=
+    await db.getAll(...refs);
+  const order=findById(items(commercial.data()),orderId)||
+    findById(items(workspace.data()),orderId);
+  if(!order){
+    await adminEvent("Delivered order "+orderId+
+      " could not be found, so its signed invoice was not emailed.",
+      orderId,eventId);
+    return;
+  }
+  const invoice=items(invoicesDoc.data())
+    .find((item)=>text(item.orderId)===orderId&&text(item.status)!=="Void");
+  if(!invoice){
+    await adminEvent("Order "+text(order.number)+
+      " was delivered but no active invoice record exists. No email was sent.",
+      orderId,eventId);
+    return;
+  }
+  const account=findById(items(accountsDoc.data()),text(order.accountId));
+  const customer=account?
+    findById(items(customersDoc.data()),text(account.customerId)):
+    undefined;
+  const billingEmail=text(customer?.billingEmail);
+  if(!safeMail(billingEmail)){
+    await adminEvent("Order "+text(order.number)+
+      " was delivered but the customer has no valid billing email. "+
+      "Invoice "+text(invoice.number)+" was not sent.",
+      orderId,eventId);
+    return;
+  }
+
+  const administrator=await activeAdministrator();
+  if(!administrator){
+    throw new Error("No active Administrator is available for invoice email.");
+  }
+
+  const pdf=buildSignedInvoicePdf({
+    invoiceNumber:text(invoice.number),
+    orderNumber:text(order.number),
+    customerName:text(customer?.name)||text(account?.name)||"Customer",
+    billingEmail,
+    billToAddress:text(invoice.billToAddressSnapshot),
+    shipToAddress:text(invoice.shipToAddressSnapshot),
+    deliveredAt,
+    terms:text(invoice.terms)||"COD",
+    dueDate:text(invoice.dueDate)||undefined,
+    total:number(invoice.total),
+    lines:orderLines(order),
+    signature,
+    adminOverride,
+  });
+
+  const digest=createHash("sha256")
+    .update("delivered-invoice|"+orderId+"|"+text(invoice.id))
+    .digest("hex");
+  const outboxId="delivered-invoice-"+digest;
+  const outbox=db.doc(`notificationOutbox/${outboxId}`);
+  const createdAt=new Date().toISOString();
+  await db.runTransaction(async (tx)=>{
+    const existing=await tx.get(outbox);
+    if(existing.exists)return;
+    tx.create(outbox,{
+      id:outboxId,
+      kind:"delivered_invoice",
+      policyId:"delivery.delivered.customer",
+      authorizationType:"Trusted system",
+      sourcePath:adminOverride?
+        `adminDeliveryOverrides/${orderId}`:
+        "domains/delivery/fields/tasks",
+      sourceRecordId:orderId,
+      eventId,
+      templateVersion:1,
+      approvedBy:"system:delivery-invoice",
+      approvedAt:createdAt,
+      to:billingEmail.toLowerCase(),
+      subject:"Momentum invoice "+text(invoice.number)+" — delivery confirmed",
+      text:[
+        "Hello "+(text(customer?.billingContactName)||text(customer?.name)||"there")+",",
+        "",
+        "Delivery for order "+text(order.number)+" has been confirmed.",
+        "Your signed invoice "+text(invoice.number)+" is attached as a PDF.",
+        "",
+        "Please retain this invoice for your records.",
+        "",
+        "Momentum Distribution Inc.",
+      ].join("\n"),
+      attachments:[{
+        filename:(text(invoice.number)||"Momentum-Invoice")+".pdf",
+        content:pdf.toString("base64"),
+        contentType:"application/pdf",
+      }],
+      idempotencyKey:"momentum-email-v1-"+digest,
+      status:"Approved",
+      createdAt,
+    });
+  });
+};
+
+/**
+ * Queue a signed invoice only when a delivery task first becomes Delivered.
+ */
+export const queueSignedInvoiceOnDelivery=onDocumentWritten({
+  document:"domains/delivery/fields/tasks",
+  region:"us-central1",
+},async (event)=>{
+  if(!event.data)return;
+  const before=new Map(items(event.data.before.data())
+    .map((item)=>[text(item.id),item]));
+  for(const task of items(event.data.after.data())){
+    const id=text(task.id);
+    const previous=before.get(id);
+    if(text(task.status)!=="Delivered"||
+       text(previous?.status)==="Delivered"||
+       !validInstant(task.deliveredAt))continue;
+    const signature=signatureFrom(task.signature);
+    if(!signature){
+      await adminEvent("Delivery task "+id+
+        " reached Delivered without a valid recipient signature. "+
+        "The invoice was not emailed.",
+        text(task.orderId),event.id);
+      continue;
+    }
+    await queueDeliveredInvoice(
+      text(task.orderId),
+      text(task.deliveredAt),
+      event.id,
+      signature,
+      false,
+    );
+  }
+});
+
+/**
+ * Queue an invoice for a trusted Administrator delivery override.
+ */
+export const queueInvoiceOnAdminDeliveryOverride=onDocumentCreated({
+  document:"adminDeliveryOverrides/{orderId}",
+  region:"us-central1",
+},async (event)=>{
+  if(!event.data)return;
+  const value=event.data.data();
+  const orderId=text(value.orderId)||event.params.orderId;
+  const deliveredAt=text(value.deliveredAt);
+  if(!orderId||!validInstant(deliveredAt))return;
+  await queueDeliveredInvoice(
+    orderId,
+    deliveredAt,
+    event.id,
+    undefined,
+    true,
+  );
+});
