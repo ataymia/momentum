@@ -30,7 +30,9 @@ export type InvoicePdfInput={
 
 const ascii=(value:string)=>value
   .replace(/[^\x20-\x7e]/g,"?")
-  .replace(/[\\()]/g,(match)=>"\\\\("+match+")"[match==="\\"?0:match==="("?2:3]);
+  .replace(/\\/g,"\\\\")
+  .replace(/\(/g,"\\(")
+  .replace(/\)/g,"\\)");
 
 const money=(value:number)=>"$"+value.toFixed(2);
 
