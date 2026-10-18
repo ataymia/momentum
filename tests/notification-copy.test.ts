@@ -81,10 +81,11 @@ test("system generated audit events name Momentum instead of a generic team memb
 });
 
 
-test("notification escalation copy never falls back to an anonymous team member", () => {
-  const source = readFileSync("lib/notification-context-v2.tsx", "utf8");
-  assert.doesNotMatch(source, /A team member/);
-  assert.match(source, /User record unavailable/);
+test("unified bell no longer mounts the legacy notification generator", () => {
+  const source = readFileSync("lib/notification-context-v3.tsx", "utf8");
+  assert.doesNotMatch(source, /notification-context-v2/);
+  assert.doesNotMatch(source, /LegacyNotificationProvider/);
+  assert.match(source, /notificationBellEnabled/);
 });
 
 
