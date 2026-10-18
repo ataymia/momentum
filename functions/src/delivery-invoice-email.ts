@@ -83,8 +83,13 @@ const orderLines=(order:Row)=>{
 const activeAdministrator=async ()=>{
   const db=getFirestore();
   const snapshot=await db.collection("userAccess").get();
-  return snapshot.docs.map((doc)=>({uid:doc.id,...doc.data()}))
-    .filter((item)=>item.role==="Administrator"&&item.accountState==="Active")
+  return snapshot.docs.map((doc)=>({
+    uid:doc.id,
+    data:doc.data() as Row,
+  }))
+    .filter((item)=>
+      text(item.data.role)==="Administrator"&&
+      text(item.data.accountState)==="Active")
     .sort((left,right)=>left.uid.localeCompare(right.uid))[0];
 };
 
