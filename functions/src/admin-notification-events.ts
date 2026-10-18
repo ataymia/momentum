@@ -25,8 +25,8 @@ const safeDetail = (value: string) =>
 
 /**
  * Build a sanitized Administrator-only event for Resend delivery failures.
- * @param {AdminNotificationInput} input Resend delivery result and source-mail metadata.
- * @return {AdminNotificationEvent|null} Administrator event for failures, otherwise null.
+ * @param {AdminNotificationInput} input
+ * @return {AdminNotificationEvent|null}
  */
 export function resendAdminNotification(
   input: AdminNotificationInput,
