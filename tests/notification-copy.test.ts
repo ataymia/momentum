@@ -5,7 +5,7 @@ import type { AuditEvent } from "../lib/audit-engine";
 import { createDemoData } from "../lib/demo-data";
 import { notificationCopy } from "../lib/notification-engine";
 import { EXCLUDED_NOTIFICATION_EVENTS, notificationBellEnabled } from "../lib/notification-policy-registry";
-import { commerceNotificationIntents, deliveryMilestoneIntents, orderMilestoneIntents, sundayWeeklyReminderIntent } from "../lib/notification-policy-v2";
+import { commerceNotificationIntents, deliveryMilestoneIntents, orderMilestoneIntents, pricingNotificationIntents, sundayWeeklyReminderIntent } from "../lib/notification-policy-v2";
 import { customerInvoiceEmail, customerStatusEmail, outboundEmailDecision } from "../lib/outbound-notification-policy";
 import { createPerformanceSeed } from "../lib/performance-engine";
 
@@ -256,6 +256,47 @@ test("projected Paid order status alone creates neither delivery nor payment not
     notes:[],
   };
   assert.equal(commerceNotificationIntents(scoped,commerce,customer).some(item=>item.id.startsWith("payment-received")),true);
+});
+
+
+test("confirmed cancellation notifies customer only when Administrator approval evidence exists",()=>{
+  const customer=data.users.find(user=>user.role==="Customer")!;
+  const accountId=customer.accountIds![0];
+  const order={...data.orders[0],id:"cancel-notify-order",number:"GE-CANCEL-1",accountId,status:"Cancelled" as const,cancelledAt:"2026-10-17T18:00:00.000Z",cancelledBy:"usr-mia",cancellationReason:"Customer requested cancellation"};
+  const approved={id:"cancel-notify-approval",type:"Order" as const,title:"Review",detail:"Order",requestedBy:"Rep",requesterId:order.ownerId,recordId:order.id,team:"Sales" as const,submittedAt:"2026-10-17T16:00:00.000Z",dueAt:"2026-10-18T16:00:00.000Z",priority:"High" as const,status:"Approved" as const,decidedBy:"usr-mia",decidedAt:"2026-10-17T17:00:00.000Z"};
+  const withApproval={...data,orders:[order],approvals:[approved]};
+  assert.equal(orderMilestoneIntents(withApproval,customer).some(item=>item.policyId==="order.cancelled.customer"),true);
+  assert.equal(orderMilestoneIntents({...withApproval,approvals:[]},customer).some(item=>item.policyId==="order.cancelled.customer"),false);
+});
+
+test("failed payment creates customer in-app intent from the commerce ledger",()=>{
+  const customer=data.users.find(user=>user.role==="Customer")!;
+  const accountId=customer.accountIds![0];
+  const order={...data.orders[0],id:"failed-pay-order",number:"GE-FAIL-1",accountId};
+  const commerce={
+    version:1 as const,
+    invoices:[{id:"inv-fail",number:"INV-FAIL",orderId:order.id,accountId,issuedAt:"2026-10-17T17:00:00.000Z",terms:"COD" as const,total:order.amount,status:"Open" as const,createdAt:"2026-10-17T17:00:00.000Z"}],
+    payments:[{id:"pay-fail",accountId,receivedAt:"2026-10-17T17:30:00.000Z",amount:order.amount,method:"Card" as const,status:"Failed" as const,createdBy:"usr-mia",createdAt:"2026-10-17T17:30:00.000Z",failedAt:"2026-10-17T17:31:00.000Z",failedBy:"usr-mia",failureReason:"Declined"}],
+    allocations:[{id:"alloc-fail",paymentId:"pay-fail",invoiceId:"inv-fail",amount:order.amount,createdAt:"2026-10-17T17:30:00.000Z",createdBy:"usr-mia"}],
+    credits:[],
+    refunds:[],
+    notes:[],
+  };
+  const intents=commerceNotificationIntents({...data,orders:[order]},commerce,customer);
+  assert.equal(intents.some(item=>item.policyId==="payment.failed.customer"),true);
+});
+
+test("customer 30-day pricing warning is generated from active program pricing",()=>{
+  const customer=data.users.find(user=>user.role==="Customer")!;
+  const accountId=customer.accountIds![0];
+  const accounts=data.accounts.map(account=>account.id===accountId?{
+    ...account,
+    programPricingStatus:"Active" as const,
+    programPricingLabel:"Preferred Partner",
+    programPricingExpirationDate:"2026-10-31",
+  }:account);
+  const intents=pricingNotificationIntents({...data,accounts},customer,"2026-10-01");
+  assert.equal(intents.some(item=>item.policyId==="program_pricing.expiring_30d.customer"),true);
 });
 
 test("separated representatives never qualify for outbound reminder email",()=>{
