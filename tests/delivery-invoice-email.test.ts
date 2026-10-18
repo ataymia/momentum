@@ -54,7 +54,6 @@ test("Resend transport accepts a validated PDF invoice attachment",()=>{
       pricePerCase:24,
       amount:24,
     }],
-    adminOverride:true,
   });
   const mail={
     id:"delivered-invoice-test",
@@ -96,4 +95,34 @@ test("delivery invoice producer requires billing email and delivery proof",()=>{
   assert.match(source,/signatureFrom\(task\.signature\)/);
   assert.match(source,/adminDeliveryOverrides/);
   assert.match(source,/notificationOutbox/);
+});
+
+
+test("customer-facing invoice never exposes internal override terminology",()=>{
+  const pdf=buildSignedInvoicePdf({
+    invoiceNumber:"INV-1003",
+    orderNumber:"GE-1003",
+    customerName:"Demo Retailer",
+    billingEmail:"billing@example.com",
+    deliveredAt:"2026-10-18T22:00:00.000Z",
+    terms:"COD",
+    total:48,
+    lines:[{
+      product:"Golden Eagle Energy Drink",
+      cases:2,
+      pricePerCase:24,
+      amount:48,
+    }],
+  }).toString("latin1");
+  assert.doesNotMatch(pdf,/admin/i);
+  assert.doesNotMatch(pdf,/override/i);
+  assert.match(pdf,/Delivery confirmed/);
+
+  const producer=readFileSync(
+    "functions/src/delivery-invoice-email.ts",
+    "utf8",
+  );
+  const customerCopy=producer.match(/text:\[[\s\S]*?\]\.join\("\\n"\)/)?.[0]??"";
+  assert.doesNotMatch(customerCopy,/admin/i);
+  assert.doesNotMatch(customerCopy,/override/i);
 });

@@ -25,7 +25,6 @@ export type InvoicePdfInput={
   total:number;
   lines:InvoicePdfLine[];
   signature?:InvoicePdfSignature;
-  adminOverride?:boolean;
 };
 
 const ascii=(value:string)=>value
@@ -118,7 +117,7 @@ const buildPdf=(stream:string)=>{
 export function buildSignedInvoicePdf(input:InvoicePdfInput):Buffer{
   let stream="1 w 0 G\n";
   stream+=text("MOMENTUM DISTRIBUTION INC.",72,744,18,true);
-  stream+=text("SIGNED DELIVERY INVOICE",72,720,13,true);
+  stream+=text("DELIVERY INVOICE",72,720,13,true);
   stream+=text("Invoice # "+input.invoiceNumber,390,744,10,true);
   stream+=text("Order # "+input.orderNumber,390,728,9);
   stream+=text("Delivered "+pdfDate(input.deliveredAt),390,712,9);
@@ -176,9 +175,9 @@ export function buildSignedInvoicePdf(input:InvoicePdfInput):Buffer{
       72,72,8,
     );
     stream+=text("Signed: "+pdfDate(input.signature.signedAt),330,72,8);
-  }else if(input.adminOverride){
+  }else{
     stream+=text(
-      "Delivery confirmed by authorized Administrator override.",
+      "Delivery confirmed.",
       72,135,9,true,
     );
     stream+=text("Confirmed: "+pdfDate(input.deliveredAt),72,118,8);
