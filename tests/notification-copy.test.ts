@@ -104,7 +104,23 @@ test("customer notification policy uses order approval plus authoritative delive
     priceBasis: "Tier A",
     paymentStatus: "Open" as const,
   };
-  const confirmed = { ...data, orders: [baseOrder] };
+  const approval = {
+    id: "approval-notification-test",
+    type: "Order" as const,
+    title: "Review GE-NOTIFY-1",
+    detail: "10 cases",
+    requestedBy: "Sales Rep Demo",
+    requesterId: "usr-jordan",
+    recordId: baseOrder.id,
+    team: "Sales" as const,
+    submittedAt: "2026-10-12T16:00:00.000Z",
+    dueAt: "2026-10-13T16:00:00.000Z",
+    priority: "High" as const,
+    status: "Approved" as const,
+    decidedBy: "usr-mia",
+    decidedAt: "2026-10-12T16:30:00.000Z",
+  };
+  const confirmed = { ...data, orders: [baseOrder], approvals: [approval] };
   assert.equal(orderMilestoneIntents(confirmed, customer).some((item) => item.title === "Order confirmed"), true);
 
   const outboundState = {
