@@ -83,9 +83,14 @@ test("system generated audit events name Momentum instead of a generic team memb
 
 test("unified bell no longer mounts the legacy notification generator", () => {
   const source = readFileSync("lib/notification-context-v3.tsx", "utf8");
+  const settings = readFileSync("components/settings/platform-controls.tsx", "utf8");
   assert.doesNotMatch(source, /notification-context-v2/);
   assert.doesNotMatch(source, /LegacyNotificationProvider/);
   assert.match(source, /notificationBellEnabled/);
+  assert.doesNotMatch(settings, /setEscalationHours/);
+  assert.doesNotMatch(settings, /updatePreference/);
+  assert.doesNotMatch(settings, /> SMS</);
+  assert.match(settings, /Canonical policy active/);
 });
 
 
