@@ -4,7 +4,8 @@ import test from "node:test";
 import type { AuditEvent } from "../lib/audit-engine";
 import { createDemoData } from "../lib/demo-data";
 import { notificationCopy } from "../lib/notification-engine";
-import { orderMilestoneIntents, sundayWeeklyReminderIntent, shouldShowActionNotification } from "../lib/notification-policy-v2";
+import { EXCLUDED_NOTIFICATION_EVENTS, notificationBellEnabled } from "../lib/notification-policy-registry";
+import { orderMilestoneIntents, sundayWeeklyReminderIntent } from "../lib/notification-policy-v2";
 import { customerInvoiceEmail, customerStatusEmail, outboundEmailDecision } from "../lib/outbound-notification-policy";
 import { createPerformanceSeed } from "../lib/performance-engine";
 
@@ -143,25 +144,27 @@ test("Sunday weekly summary reminder does not appear before 7 PM Arizona time", 
 });
 
 
-test("outbound email policy keeps administrator and operations traffic in-app only", () => {
+test("outbound email policy follows canonical event and role rules", () => {
   const admin = data.users.find((user) => user.role === "Administrator")!;
-  assert.equal(outboundEmailDecision(admin, "order-confirmed:test").send, false);
+  assert.equal(outboundEmailDecision(admin, "order.confirmed.customer").send, false);
+  assert.equal(outboundEmailDecision(admin, "inventory.reorder_threshold").send, true);
   const operations = data.users.find((user) => user.role === "Operations");
-  if (operations) assert.equal(outboundEmailDecision(operations, "program-pricing-expiry:test").send, false);
+  if (operations) assert.equal(outboundEmailDecision(operations, "inventory.reorder_threshold").send, true);
 });
 
-test("sales rep email policy allows returned approvals, timecards, expense status, weekly reminder, and pricing expiry", () => {
+test("sales rep email policy includes only the approved external-interruption events", () => {
   const rep = data.users.find((user) => user.id === "usr-jordan")!;
-  for (const source of [
-    "action:approval-returned:1",
-    "action:timecard-returned:1",
-    "action:expense-returned:1",
-    "expense-approved:1",
-    "weekly-sunday-reminder:1",
-    "program-pricing-expiry:1",
-  ]) assert.equal(outboundEmailDecision(rep, source).send, true);
-  assert.equal(outboundEmailDecision(rep, "action:training:1").send, false);
-  assert.equal(outboundEmailDecision(rep, "action:document:1").send, false);
+  for (const policyId of [
+    "order.returned_for_correction",
+    "order.cancelled.rep",
+    "payment.refunded.rep",
+    "weekly.reminder.rep",
+    "program_pricing.expiring_30d.rep",
+  ]) assert.equal(outboundEmailDecision(rep, policyId).send, true);
+  assert.equal(outboundEmailDecision(rep, "expense.returned").send, false);
+  assert.equal(outboundEmailDecision(rep, "expense.finance_approved").send, false);
+  assert.equal(outboundEmailDecision(rep, "weekly.delinquent.self").send, false);
+  assert.equal(outboundEmailDecision(rep, "hr.action_required").send, false);
 });
 
 test("customer status email prefers accounts payable, while invoices require billing email", () => {
@@ -208,12 +211,12 @@ test("paid status alone never claims delivery",()=>{
 
 test("separated representatives never qualify for outbound reminder email",()=>{
   const rep=data.users.find(user=>user.role==="Sales Representative")!;
-  assert.equal(outboundEmailDecision({...rep,employmentStatus:"Separated"},"weekly-sunday-reminder:1").send,false);
+  assert.equal(outboundEmailDecision({...rep,employmentStatus:"Separated"},"weekly.reminder.rep").send,false);
 });
 
 
-test("accounting-policy backlog stays in My Work without flooding the notification bell",()=>{
-  assert.equal(shouldShowActionNotification({category:"Accounting",title:"Accounting policy required"}),false);
-  assert.equal(shouldShowActionNotification({category:"Accounting",title:"Accounting event ready"}),true);
-  assert.equal(shouldShowActionNotification({category:"Human Resources",title:"Document acknowledgment required"}),true);
+test("accounting notification noise is excluded while approved HR work stays in-app",()=>{
+  assert.equal(EXCLUDED_NOTIFICATION_EVENTS["accounting.policy_blocked"],"No notification under current staffing model.");
+  assert.equal(EXCLUDED_NOTIFICATION_EVENTS["accounting.event_ready"],"No notification.");
+  assert.equal(notificationBellEnabled("hr.action_required"),true);
 });
