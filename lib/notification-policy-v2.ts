@@ -471,3 +471,35 @@ export function prospectOwnershipReleasedIntents(
   }
   return intents;
 }
+
+
+export function adminSystemNotificationIntents(
+  rows:unknown[],
+  user:WorkspaceUser,
+):NotificationIntent[]{
+  if(user.role!=="Administrator")return[];
+  const intents:NotificationIntent[]=[];
+  for(const value of rows){
+    if(!value||typeof value!=="object"||Array.isArray(value))continue;
+    const row=value as Record<string,unknown>;
+    const id=typeof row.id==="string"?row.id:"";
+    const policyId=typeof row.policyId==="string"?row.policyId:"";
+    const title=typeof row.title==="string"?row.title:"";
+    const detail=typeof row.detail==="string"?row.detail:"";
+    const createdAt=typeof row.createdAt==="string"?row.createdAt:"";
+    if(!id||!["system.email_bounced","system.email_failed"].includes(policyId)||
+      !title||!detail||!Number.isFinite(Date.parse(createdAt)))continue;
+    intents.push({
+      id:`admin-system:${id}`,
+      policyId,
+      recipientUserId:user.id,
+      title,
+      detail,
+      importance:"action",
+      targetPage:"work",
+      targetRecordId:typeof row.sourceRecordId==="string"?row.sourceRecordId:undefined,
+      occurredAt:createdAt,
+    });
+  }
+  return intents;
+}
