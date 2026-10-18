@@ -1,6 +1,6 @@
 import { canAccessPage, canManageUser, canReviewApproval } from "./access";
 import type { AccountingSourceEvent, AccountingState } from "./accounting-engine";
-import { arizonaDateKey } from "./date-time";
+import { arizonaDateKey, arizonaHour } from "./date-time";
 import type { FinanceState } from "./finance-engine";
 import type { HCMState } from "./hcm-engine";
 import { inventoryProductStatuses, type InventoryLedgerState } from "./inventory-ledger";
@@ -23,9 +23,9 @@ export function buildActionNotices(input:ActionNoticeInputs):ActionNotice[]{
   const actions:ActionNotice[]=[];
   for(const approval of data.approvals.filter(item=>item.status==="Pending"&&canReviewApproval(data,currentUser,item)))actions.push({id:`approval:${approval.id}`,policyId:["Order","Low stock sale"].includes(approval.type)?"order.submitted_for_approval":"workflow.approval_required",title:["Order","Low stock sale"].includes(approval.type)?"Order approval required":`${approval.type} approval required`,detail:approval.detail||approval.title,category:"Approvals",page:"work",focus:approval.id,urgency:approval.priority==="Urgent"?"Blocking":"Review"});
   for(const approval of data.approvals.filter(item=>item.status==="Returned"&&(item.requesterId===currentUser.id||item.requestedBy===currentUser.id)))actions.push({id:`approval-returned:${approval.id}`,policyId:["Order","Low stock sale"].includes(approval.type)?"order.returned_for_correction":"workflow.returned_for_correction",title:"Item returned for correction",detail:approval.returnReason?`${approval.title} · ${approval.returnReason}`:approval.title,category:"Approvals",page:["Order","Low stock sale"].includes(approval.type)?"orders":"work",focus:approval.recordId??approval.id,urgency:"Due"});
-  const sunday=new Date(`${today}T12:00:00Z`).getUTCDay()===0;
-  for(const period of weeklyReportingObligations(performance,currentUser.id,today).filter(item=>item.overdue||sunday)){
-    actions.push({id:`weekly:${currentUser.id}:${period.weekStart}`,policyId:period.overdue?"weekly.delinquent.rep":currentUser.role==="Sales Manager"?"weekly.reminder.manager":"weekly.reminder.rep",title:period.overdue?"Weekly report overdue":"Weekly report due",detail:`Week ${date(period.weekStart)} to ${date(period.weekEnd)} · due ${date(period.dueDate)}`,category:"Performance",page:"reportingCenter",weeklyWeekStart:period.weekStart,urgency:period.overdue?"Blocking":"Due"});
+  const sundayReminderWindow=new Date(`${today}T12:00:00Z`).getUTCDay()===0&&arizonaHour()>=19;
+  for(const period of weeklyReportingObligations(performance,currentUser.id,today).filter(item=>item.overdue||sundayReminderWindow)){
+    actions.push({id:`weekly:${currentUser.id}:${period.weekStart}`,policyId:period.overdue?"weekly.delinquent.self":currentUser.role==="Sales Manager"?"weekly.reminder.manager":"weekly.reminder.rep",title:period.overdue?"Weekly report overdue":"Weekly report due",detail:`Week ${date(period.weekStart)} to ${date(period.weekEnd)} · due ${date(period.dueDate)}`,category:"Performance",page:"reportingCenter",weeklyWeekStart:period.weekStart,urgency:period.overdue?"Blocking":"Due"});
   }
 
   for(const document of hcm.documents.filter(item=>item.userId===currentUser.id&&["Missing","Acknowledgment required"].includes(item.status)))actions.push({id:`document:${document.id}`,policyId:"hr.action_required",title:document.status==="Missing"?"Required document missing":"Document acknowledgment required",detail:document.title,category:"Human Resources",page:"people",peopleTab:"documents",focus:document.id,urgency:"Due"});
