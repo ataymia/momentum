@@ -58,10 +58,11 @@ const dateLabel=(value?:string,includeTime=false)=>{
   if(!value)return "";
   const date=new Date(value);
   if(Number.isNaN(date.getTime()))return value;
-  return new Intl.DateTimeFormat("en-US",{
+  const options:Intl.DateTimeFormatOptions={
     timeZone:"America/Phoenix",month:"2-digit",day:"2-digit",year:"numeric",
-    ...(includeTime?{hour:"numeric",minute:"2-digit"}:{}),
-  }).format(date);
+  };
+  if(includeTime){options.hour="numeric";options.minute="2-digit";}
+  return new Intl.DateTimeFormat("en-US",options).format(date);
 };
 const dueLabel=(terms:string,dueDate?:string)=>{
   if(terms==="COD")return "Due upon delivery";
