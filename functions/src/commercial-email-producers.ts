@@ -3,7 +3,7 @@ import {createHash} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {onDocumentWrittenWithAuthContext} from "firebase-functions/v2/firestore";
 import {
-  authorizedActor,byId,items,mailId,maySendFailedPayment,
+  authorizedActor,byId,departureStillVerified,items,mailId,maySendFailedPayment,
   row,staffRecipient,statusRecipient,text,transitionPolicies,
   type MailIntent,type Row,
 } from "./commercial-email-policy";
@@ -79,10 +79,16 @@ const orderForPayment=(state:Context,paymentId:string)=>{
 const nameFor=(value:Row|undefined)=>
   text(value?.locationName)||text(value?.name)||"your business";
 
-const freshSource=(source:string,sourceId:string,current:Row)=>{
+const freshSource=(source:string,sourceId:string,current:Row,actorUid:string)=>{
   const db=getFirestore();
   return db.doc(source).get().then((snapshot)=>{
     const latest=byId(items(snapshot.data()),sourceId);
+    if(source==="domains/delivery/fields/tasks"&&
+       text(current.status)==="In transit"){
+      // A signed delivery may land before this async observer gets scheduled.
+      // Check immutable departure evidence, not only latest status.
+      return departureStillVerified(current,latest,actorUid);
+    }
     return Boolean(latest&&text(latest.status)===text(current.status));
   });
 };
@@ -228,7 +234,7 @@ const observe=(path:string,originRoles:string[])=>
       const previous=before.get(id);
       const policies=transitionPolicies(path,previous,current);
       if(!policies.length)continue;
-      if(!(await freshSource(path,id,current)))continue;
+      if(!(await freshSource(path,id,current,originUid)))continue;
       if(path===docs.commercialOrders){
         const orderNumber=text(current.number);
         const accountId=text(current.accountId);

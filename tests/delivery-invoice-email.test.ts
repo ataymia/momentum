@@ -145,3 +145,12 @@ test("invoice sender resolves patched customer billing and retries recent signed
   assert.match(source,/status\)==="Delivered"/);
   assert.match(source,/event\.id/);
 });
+
+test("signed invoice can queue after signature arrives on already Delivered task",()=>{
+ const source=readFileSync("functions/src/delivery-invoice-email.ts","utf8");
+ assert.match(source,/previouslySigned/);
+ assert.match(source,/signatureFrom\(previous\?\.signature,previous\?\.history\)/);
+ assert.match(source,/if\(previouslySigned\)continue/);
+ assert.match(source,/if\(!signature\)\{/);
+ assert.doesNotMatch(source,/text\(previous\?\.status\)==="Delivered"\|\|/);
+});

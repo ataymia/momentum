@@ -248,17 +248,23 @@ export const queueSignedInvoiceOnDelivery=onDocumentWritten({
     const id=text(task.id);
     const previous=before.get(id);
     if(text(task.status)!=="Delivered"||
-       text(previous?.status)==="Delivered"||
        !validInstant(task.deliveredAt))continue;
     const cutoff=process.env.RESEND_ACTIVATION_CUTOFF??"";
     if(!validInstant(cutoff)||
        Date.parse(text(task.deliveredAt))<Date.parse(cutoff))continue;
     const signature=signatureFrom(task.signature,task.history);
+    const previouslySigned=text(previous?.status)==="Delivered"&&
+      Boolean(signatureFrom(previous?.signature,previous?.history));
+    // A signature might finish syncing in a separate write after Delivered.
+    // Do not lose the customer invoice because the status is unchanged.
+    if(previouslySigned)continue;
     if(!signature){
-      await adminEvent("Delivery task "+id+
-        " reached Delivered without a valid recipient signature. "+
-        "The invoice was not emailed.",
-        text(task.orderId),event.id);
+      if(text(previous?.status)!=="Delivered"){
+        await adminEvent("Delivery task "+id+
+          " reached Delivered without a valid recipient signature. "+
+          "The invoice was not emailed.",
+          text(task.orderId),event.id);
+      }
       continue;
     }
     await queueDeliveredInvoice(

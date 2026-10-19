@@ -99,6 +99,32 @@ export function maySendFailedPayment(sentAt:number[],now:number):boolean{
 }
 
 /**
+ * Confirm that a dispatch event remains authentic after rapid progression.
+ * A delivery may be signed before the asynchronous In transit handler runs.
+ * @param {Row} departed The persisted In transit transition snapshot.
+ * @param {Row|undefined} latest Most recently stored task.
+ * @param {string} actorUid Authenticated principal who initiated departure.
+ * @return {boolean} Whether the departure is still supported by evidence.
+ */
+export function departureStillVerified(
+  departed:Row,latest:Row|undefined,actorUid:string,
+):boolean{
+  if(!actorUid||!latest||!["In transit","Delivered"].includes(text(latest.status))||
+    text(latest.id)!==text(departed.id)||
+    text(latest.orderId)!==text(departed.orderId)||
+    text(latest.driverId)!==text(departed.driverId)||
+    !validTime(departed.departedAt)||
+    text(latest.departedAt)!==text(departed.departedAt)||
+    text(latest.loadedAt)!==text(departed.loadedAt))return false;
+  const departedAt=Date.parse(text(departed.departedAt));
+  return Array.isArray(latest.history)&&latest.history.some((event)=>
+    row(event)&&text(event.type)==="Departed"&&
+    text(event.actorId)===actorUid&&
+    validTime(event.at)&&
+    Math.abs(Date.parse(text(event.at))-departedAt)<=60_000);
+}
+
+/**
  * Return only approved transitions for the named trusted ledger.
  * @param {string} sourcePath Known Firestore document path.
  * @param {Row|undefined} previous Old status-bearing record.
