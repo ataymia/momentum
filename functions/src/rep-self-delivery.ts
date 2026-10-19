@@ -1,4 +1,4 @@
-/* eslint-disable max-len, comma-spacing, space-before-blocks, indent, keyword-spacing, curly, key-spacing, brace-style, semi-spacing, require-jsdoc, one-var, space-before-function-paren */
+/* eslint-disable max-len, comma-spacing, space-before-blocks, indent, keyword-spacing, curly, key-spacing, brace-style, semi-spacing, one-var, space-before-function-paren */
 import {randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 
@@ -31,6 +31,7 @@ const paths={
 const warehouse="node-warehouse-main";
 const node=(actor:string)=>"node-user-"+actor;
 const customerNode=(accountId:string)=>"node-account-"+accountId;
+/** A safe server-policy rejection for rep self-delivery requests. */
 export class RepSelfDeliveryError extends Error{
   /** @param {number} status HTTP status code.
    * @param {string} message Safe error message. */
