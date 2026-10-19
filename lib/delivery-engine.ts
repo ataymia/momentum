@@ -101,6 +101,27 @@ export function deliveryTaskForOrder(state: DeliveryState, orderId: string) {
   return state.tasks.find((task) => task.orderId === orderId && task.status !== "Cancelled");
 }
 
+/** Verify the cloud-refreshed signed delivery matches the user's captured strokes.
+ * Never use cached "Delivered" state or an unsigned inventory posting as proof.
+ */
+export function signedDeliveryCloudConfirmed(
+  serialized: string | null,
+  orderId: string,
+  capturedStrokes: DeliverySignaturePoint[][],
+): boolean {
+  if (!serialized || !orderId || capturedStrokes.length === 0) return false;
+  try {
+    const saved = JSON.parse(serialized) as Partial<DeliveryState>;
+    if (!Array.isArray(saved.tasks)) return false;
+    const task = saved.tasks.find((item) => item?.orderId === orderId);
+    if (!task || task.status !== "Delivered" || !validInstant(task.deliveredAt) ||
+        !Array.isArray(task.history)) return false;
+    const signature = normalizeSignature(task.signature, task);
+    return Boolean(signature && JSON.stringify(signature.strokes) ===
+      JSON.stringify(capturedStrokes.filter((stroke) => stroke.length >= 2)));
+  } catch { return false; }
+}
+
 export function normalizeDeliveryState(input: unknown, data: WorkspaceData): DeliveryState {
   if (!input || typeof input !== "object") return createDeliverySeed();
   const raw = input as Partial<DeliveryState>;
