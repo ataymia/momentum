@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import {createHash} from "node:crypto";
 import test from "node:test";
 import * as mailPolicy from "../functions/src/resend-mail-policy";
-import {
-  buildSignedInvoicePdf,
-} from "../functions/src/signed-invoice-pdf";
+import * as pdfModule from "../functions/src/signed-invoice-pdf";
 
+const pdfExports=(pdfModule as unknown as {default?:typeof pdfModule}).default??pdfModule;
+const buildSignedInvoicePdf=pdfExports.buildSignedInvoicePdf;
 const policy=(mailPolicy as unknown as {default?:typeof mailPolicy}).default??
   mailPolicy;
 
@@ -153,4 +154,74 @@ test("signed invoice can queue after signature arrives on already Delivered task
  assert.match(source,/if\(previouslySigned\)continue/);
  assert.match(source,/if\(!signature\)\{/);
  assert.doesNotMatch(source,/text\(previous\?\.status\)==="Delivered"\|\|/);
+});
+
+test("emailed invoice uses verified CRM artwork and receipt signature area",()=>{
+  const crmArtwork=readFileSync("public/momentum-invoice-brand.jpg");
+  const functionArtwork=readFileSync("functions/assets/momentum-invoice-brand.jpg");
+  assert.equal(
+    createHash("sha256").update(functionArtwork).digest("hex"),
+    createHash("sha256").update(crmArtwork).digest("hex"),
+  );
+  const pdf=buildSignedInvoicePdf({
+    invoiceNumber:"INV-BRANDED",orderNumber:"GE-BRANDED",
+    invoiceDate:"2026-10-18T21:00:00.000Z",
+    customerName:"Local Phoenix Shop",
+    billingEmail:"billing@example.com",
+    billingContact:"Bookkeeper",
+    billToAddress:"105 Sample St, Phoenix, AZ",
+    shipToName:"Store 1",shipToAddress:"105 Sample St, Phoenix, AZ",
+    placedBy:"Representative",deliveredAt:"2026-10-18T22:00:00.000Z",
+    terms:"COD",total:240,paymentsReceived:120,
+    creditsApplied:0,balanceDue:120,
+    lines:[{product:"Golden Eagle Energy Drink",cases:10,
+      pricePerCase:24,amount:240}],
+    signature:{recipientName:"Store Receiver",
+      signedAt:"2026-10-18T22:00:00.000Z",
+      strokes:[[[100,100],[200,130],[300,90]]]},
+  }).toString("latin1");
+  assert.match(pdf,/\/Subtype \/Image/);
+  assert.match(pdf,/\/Im1 Do/);
+  assert.match(pdf,/INVOICE/);
+  assert.match(pdf,/BILL TO/);
+  assert.match(pdf,/SHIP TO/);
+  assert.match(pdf,/PAYMENTS RECEIVED/i);
+  assert.match(pdf,/CUSTOMER SIGNATURE/);
+  assert.match(pdf,/PRINTED NAME/);
+  assert.match(pdf,/DATE \/ TIME/);
+  assert.match(pdf,/Store Receiver/);
+  assert.match(pdf,/TOTAL \/ BALANCE DUE/);
+  assert.match(pdf,/\$120\.00/);
+  assert.match(pdf,/TERMS & CONDITIONS/);
+});
+
+test("branded PDF paginates all order lines rather than silently discarding any",()=>{
+  const lines=Array.from({length:16},(_,index)=>({
+    product:"Golden Eagle Product "+(index+1),
+    cases:1,pricePerCase:24,amount:24,
+  }));
+  const pdf=buildSignedInvoicePdf({
+    invoiceNumber:"INV-MULTI",orderNumber:"GE-MULTI",
+    customerName:"Retail Group",billingEmail:"billing@example.com",
+    deliveredAt:"2026-10-18T22:00:00.000Z",
+    terms:"COD",total:384,lines,
+  }).toString("latin1");
+  assert.match(pdf,/Golden Eagle Product 1\b/);
+  assert.match(pdf,/Golden Eagle Product 16\b/);
+  assert.match(pdf,/Page 1 of 3/);
+  assert.match(pdf,/Page 3 of 3/);
+  assert.equal((pdf.match(/\/Type \/Page \/Parent/g)||[]).length,3);
+});
+
+test("invoice sender reads receipts, credits and refunds from persisted ledgers",()=>{
+  const source=readFileSync("functions/src/delivery-invoice-email.ts","utf8");
+  for(const key of ["payments","allocations","credits","refunds","users"]){
+    assert.match(source,new RegExp("domains/"+
+      (key==="users"?"workspace":"commerce")+"/fields/"+key));
+  }
+  assert.match(source,/status\)==="Cleared"/);
+  assert.match(source,/status\)==="Applied"/);
+  assert.match(source,/status\)==="Settled"/);
+  assert.match(source,/balanceDue:balance/);
+  assert.match(source,/invoiceDate:text\(invoice\.issuedAt\)/);
 });
