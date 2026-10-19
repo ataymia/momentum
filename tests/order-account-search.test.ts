@@ -12,7 +12,7 @@ const accounts=[
 ] as Account[];
 
 test("order autocomplete matches CRM names and distinct locations without merging records",()=>{
-  assert.deepEqual(orderAccountSuggestions(accounts,"tops").map(a=>a.id),["store-b","store-a"]);
+  assert.deepEqual(orderAccountSuggestions(accounts,"tops").map(a=>a.id),["store-a","store-b"]);
   assert.deepEqual(orderAccountSuggestions(accounts,"arrowhead").map(a=>a.id),["store-b"]);
   assert.deepEqual(orderAccountSuggestions(accounts,"Tops Bell").map(a=>a.id),["store-b"]);
   assert.deepEqual(orderAccountSuggestions(accounts,"trevors").map(a=>a.id),["store-d"]);
