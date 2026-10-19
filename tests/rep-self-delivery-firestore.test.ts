@@ -3,9 +3,9 @@ import test from "node:test";
 import {createRequire} from "node:module";
 // The server package is installed after the app's postinstall build. Load it
 // only when the emulator test runs, not as a root application dependency.
-const require=createRequire(import.meta.url);
-const {initializeApp,deleteApp}=require("../functions/node_modules/firebase-admin/app");
-const {getFirestore}=require("../functions/node_modules/firebase-admin/firestore");
+const require=createRequire(new URL("../functions/package.json",import.meta.url));
+const {initializeApp,deleteApp}=require("firebase-admin/app");
+const {getFirestore}=require("firebase-admin/firestore");
 
 test("server self-delivery atomically verifies rep, approval, exact custody, signature and no duplicate posting",async()=>{
   assert.ok(process.env.FIRESTORE_EMULATOR_HOST,"Run only against the Firestore emulator.");
