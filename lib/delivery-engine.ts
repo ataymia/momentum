@@ -101,6 +101,42 @@ export function deliveryTaskForOrder(state: DeliveryState, orderId: string) {
   return state.tasks.find((task) => task.orderId === orderId && task.status !== "Cancelled");
 }
 
+/** Verify the cloud-refreshed signed delivery matches the user's captured strokes.
+ * Never use cached "Delivered" state or an unsigned inventory posting as proof.
+ */
+export function signedDeliveryCloudConfirmed(
+  deliveryRaw: string | null,
+  commercialRaw: string | null,
+  inventoryRaw: string | null,
+  orderId: string,
+  capturedStrokes: DeliverySignaturePoint[][],
+): boolean {
+  if (!deliveryRaw || !commercialRaw || !inventoryRaw || !orderId ||
+      capturedStrokes.length === 0) return false;
+  try {
+    const saved = JSON.parse(deliveryRaw) as Partial<DeliveryState>;
+    if (!Array.isArray(saved.tasks)) return false;
+    const task = saved.tasks.find((item) => item?.orderId === orderId);
+    if (!task || task.status !== "Delivered" || !validInstant(task.deliveredAt) ||
+        !Array.isArray(task.history)) return false;
+    const signature = normalizeSignature(task.signature, task);
+    if (!signature || JSON.stringify(signature.strokes) !==
+      JSON.stringify(capturedStrokes.filter((stroke) => stroke.length >= 2))) return false;
+    const commercial = JSON.parse(commercialRaw) as {orders?: Array<{id:string;status:string;cases:number}>};
+    const order = commercial.orders?.find((item) => item.id === orderId);
+    if (!order || !["Delivered", "Paid"].includes(order.status) ||
+        !Number.isInteger(order.cases) || order.cases < 1) return false;
+    const ledger = JSON.parse(inventoryRaw) as {
+      movements?: Array<{relatedOrderId?:string;type?:string;quantity?:number}>;
+    };
+    const delivered = ledger.movements?.filter((item) =>
+      item.relatedOrderId === orderId && item.type === "Delivery").reduce((total,item) =>
+      total + (typeof item.quantity === "number" && Number.isFinite(item.quantity) ?
+        item.quantity : 0), 0) ?? 0;
+    return delivered >= order.cases;
+  } catch { return false; }
+}
+
 export function normalizeDeliveryState(input: unknown, data: WorkspaceData): DeliveryState {
   if (!input || typeof input !== "object") return createDeliverySeed();
   const raw = input as Partial<DeliveryState>;
