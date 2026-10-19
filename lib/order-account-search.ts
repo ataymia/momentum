@@ -7,7 +7,7 @@ export function orderAccountLabel(account: Pick<Account,"name"|"locationName"|"l
   return place&&place.toLowerCase()!==name.toLowerCase()?name+" · "+place:name;
 }
 
-const normalize=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+const normalize=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[\u0027\u2019]/g,"").replace(/[^a-z0-9]+/g," ").trim();
 
 export function orderAccountSuggestions(accounts: readonly Account[],query:string,limit=8): Account[] {
   const term=normalize(query);
