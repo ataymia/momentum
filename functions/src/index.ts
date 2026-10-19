@@ -13,7 +13,10 @@ import {
   commitAdminDeliveryOverride,
   DeliveryOverrideError,
 } from "./admin-delivery-override";
-import {commitRepSelfDelivery,RepSelfDeliveryError} from "./rep-self-delivery";
+import {
+  commitRepSelfDelivery,
+  RepSelfDeliveryError,
+} from "./rep-self-delivery";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
