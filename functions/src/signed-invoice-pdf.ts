@@ -49,7 +49,7 @@ const formatMoney=(value:number)=>"$"+(Number.isFinite(value)?value:0).toFixed(2
 const clean=(value?:string)=>String(value??"").trim();
 const pdfEscape=(value:string)=>value
   .replace(/[\u2018\u2019]/g,"'")
-  .replace(/[\u201c\u201d]/g,'"')
+  .replace(/[\u201c\u201d]/g,"\"")
   .replace(/[\u2013\u2014]/g,"-")
   .replace(/\u00a0/g," ")
   .replace(/[^\x20-\x7e]/g,"?")
@@ -89,7 +89,7 @@ const wrap=(value:string,maxWidth:number,size:number)=>{
   if(current)rows.push(current);
   return rows;
 };
-const tx=(value:string,x:number,y:number,size=9,bold=false,color=INK)=> 
+const tx=(value:string,x:number,y:number,size=9,bold=false,color=INK)=>
   "BT /"+(bold?"F2":"F1")+" "+size+" Tf "+rgb(color)+
   " rg 1 0 0 1 "+x.toFixed(2)+" "+y.toFixed(2)+
   " Tm ("+pdfEscape(value)+") Tj ET\n";
