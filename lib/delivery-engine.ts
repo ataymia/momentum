@@ -73,7 +73,9 @@ const normalizeSignature = (value: unknown, task: DeliveryTask): DeliverySignatu
   const recorded = task.history.some((event) =>
     event.type === "Delivered" &&
     event.actorId === signature.capturedBy &&
-    event.at === signature.signedAt);
+    validInstant(event.at) && validInstant(signature.signedAt) &&
+    Math.abs(new Date(event.at).getTime() -
+      new Date(signature.signedAt!).getTime()) <= 60_000);
   if (!validInstant(signature.signedAt) || !signature.capturedBy || !recorded ||
       !Array.isArray(signature.strokes)) return undefined;
   const strokes = signature.strokes
