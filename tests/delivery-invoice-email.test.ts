@@ -3,10 +3,10 @@ import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
 import test from "node:test";
 import * as mailPolicy from "../functions/src/resend-mail-policy";
-import {
-  buildSignedInvoicePdf,
-} from "../functions/src/signed-invoice-pdf";
+import * as pdfModule from "../functions/src/signed-invoice-pdf";
 
+const pdfExports=(pdfModule as unknown as {default?:typeof pdfModule}).default??pdfModule;
+const buildSignedInvoicePdf=pdfExports.buildSignedInvoicePdf;
 const policy=(mailPolicy as unknown as {default?:typeof mailPolicy}).default??
   mailPolicy;
 
