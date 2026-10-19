@@ -206,7 +206,7 @@ const isRecord=(value:unknown):value is Record<string,unknown>=>Boolean(value&&t
 const deliveryTaskForCloud=(item:unknown):unknown=>{
   if(!isRecord(item)||!isRecord(item.signature)||
      !Array.isArray(item.signature.strokes))return item;
-  const signature={...item.signature,
+  const signature:Record<string,unknown>={...item.signature,
     strokesJson:JSON.stringify(item.signature.strokes)};
   delete signature.strokes;
   return {...item,signature};
@@ -218,7 +218,7 @@ const deliveryTaskFromCloud=(item:unknown):unknown=>{
   try{
     const strokes=JSON.parse(item.signature.strokesJson);
     if(!Array.isArray(strokes))return item;
-    const signature={...item.signature,strokes};
+    const signature:Record<string,unknown>={...item.signature,strokes};
     delete signature.strokesJson;
     return {...item,signature};
   }catch{return item;}
