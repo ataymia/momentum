@@ -65,7 +65,7 @@ test("server self-delivery atomically verifies rep, approval, exact custody, sig
     assert.equal((await commit(rep,{action:"load",orderId})).replayed,true);
     const departed=await commit(rep,{action:"depart",orderId});
     assert.equal(departed.orderStatus,"Out for delivery");
-    await assert.rejects(()=>commit(rep,{action:"complete",orderId,signature:{recipientName:"",strokes:[]}}),/handwritten signature|required/);
+    await assert.rejects(()=>commit(rep,{action:"complete",orderId,signature:{recipientName:"",strokes:[]}}),/Invalid recipient signature|handwritten signature|required/);
     const signature={recipientName:"Store Receiver",strokes:[[[50,60],[120,110],[210,65]]]};
     const delivered=await commit(rep,{action:"complete",orderId,signature});
     assert.equal(delivered.orderStatus,"Delivered");
