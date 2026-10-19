@@ -120,10 +120,17 @@ const queueDeliveredInvoice=async (
     db.doc("domains/workspace/fields/accounts"),
     db.doc("domains/workspace/fields/customers"),
     db.doc("domains/commerce/fields/invoices"),
+    db.doc("domains/commerce/fields/payments"),
+    db.doc("domains/commerce/fields/allocations"),
+    db.doc("domains/commerce/fields/credits"),
+    db.doc("domains/commerce/fields/refunds"),
+    db.doc("domains/workspace/fields/users"),
     db.doc("domains/commercial/fields/_root"),
   ];
-  const [commercial,workspace,accountsDoc,customersDoc,invoicesDoc,rootDoc]=
-    await db.getAll(...refs);
+  const [
+    commercial,workspace,accountsDoc,customersDoc,invoicesDoc,
+    paymentsDoc,allocationsDoc,creditsDoc,refundsDoc,usersDoc,rootDoc,
+  ]=await db.getAll(...refs);
   const root=row(rootDoc.data()?.data)?rootDoc.data()?.data as Row:{};
   const accountPatches=row(root.accountPatches)?root.accountPatches:{};
   const customerPatches=row(root.customerPatches)?root.customerPatches:{};
@@ -171,17 +178,64 @@ const queueDeliveredInvoice=async (
     throw new Error("No active Administrator is available for invoice email.");
   }
 
+  // Match the CRM invoice balance rather than sending a fabricated
+  // full-balance reminder after cleared payments, applied credits or refunds.
+  const settledPayments=items(paymentsDoc.data())
+    .filter((payment)=>text(payment.status)==="Cleared"&&number(payment.amount)>0);
+  const settledIds=new Set(settledPayments.map((payment)=>text(payment.id)));
+  const invoiceAllocations=items(allocationsDoc.data())
+    .filter((allocation)=>text(allocation.invoiceId)===text(invoice.id)&&
+      settledIds.has(text(allocation.paymentId))&&number(allocation.amount)>0);
+  const allocated=invoiceAllocations.reduce(
+    (sum,allocation)=>sum+number(allocation.amount),0);
+  const relevantPayments=new Set(invoiceAllocations.map(
+    (allocation)=>text(allocation.paymentId)));
+  const settledRefunds=items(refundsDoc.data())
+    .filter((refund)=>text(refund.status)==="Settled"&&
+      relevantPayments.has(text(refund.paymentId))&&number(refund.amount)>0)
+    .reduce((sum,refund)=>sum+number(refund.amount),0);
+  const paid=Math.max(0,allocated-settledRefunds);
+  const credited=items(creditsDoc.data())
+    .filter((credit)=>text(credit.invoiceId)===text(invoice.id)&&
+      text(credit.status)==="Applied"&&number(credit.amount)>0)
+    .reduce((sum,credit)=>sum+number(credit.amount),0);
+  const total=number(invoice.total);
+  const balance=Math.max(0,total-paid-credited);
+  const computedStatus=balance<=0?"Paid":
+    balance<total?"Partially paid":
+      text(invoice.status)==="Draft"?"Draft":"Open";
+  const owner=findById(items(usersDoc.data()),text(order.ownerId));
+  const apExtension=text(customer?.accountsPayableExtension);
+  const apPhone=text(customer?.accountsPayablePhone)||
+    text(customer?.billingPhone);
+  const locationContact=[text(account?.contactName),text(account?.contactRole)]
+    .filter(Boolean).join(" | ");
   const pdf=buildSignedInvoicePdf({
     invoiceNumber:text(invoice.number),
     orderNumber:text(order.number),
+    invoiceDate:text(invoice.issuedAt),
     customerName:text(customer?.name)||text(account?.name)||"Customer",
     billingEmail,
+    billingContact:text(customer?.accountsPayableContactName)||
+      text(customer?.billingContactName)||undefined,
+    billingPhone:apPhone?
+      apPhone+(apExtension?" ext. "+apExtension:""):undefined,
+    az5000Number:text(customer?.az5000Number)||undefined,
     billToAddress:text(invoice.billToAddressSnapshot),
+    shipToName:text(account?.locationName)||text(account?.name)||
+      "Customer location",
     shipToAddress:text(invoice.shipToAddressSnapshot),
+    shipToContact:locationContact||undefined,
+    shipToPhone:text(account?.phone)||undefined,
+    placedBy:text(owner?.name)||text(order.ownerId)||"Not recorded",
     deliveredAt,
     terms:text(invoice.terms)||"COD",
     dueDate:text(invoice.dueDate)||undefined,
-    total:number(invoice.total),
+    status:computedStatus,
+    total,
+    paymentsReceived:paid,
+    creditsApplied:credited,
+    balanceDue:balance,
     lines:orderLines(order),
     signature,
   });
