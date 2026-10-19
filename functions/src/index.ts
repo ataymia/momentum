@@ -1525,7 +1525,7 @@ export const adminDeliveryOverride = onRequest(
   },
 );
 
-/** Sales Representative self-delivery uses only trusted server-ledger writes. */
+/** Rep self-delivery uses trusted server-only ledger writes. */
 export const repSelfDelivery = onRequest(
   {
     cors: true,
