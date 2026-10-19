@@ -1522,31 +1522,51 @@ export const adminDeliveryOverride = onRequest(
   },
 );
 
-/** Sales Representative self-delivery is server-owned, never shared-ledger client-writable. */
-export const repSelfDelivery=onRequest({
-  cors:true,
-  region:"us-central1",
-},async(request,response)=>{
-  if(request.method!=="POST"){
-    json(response,405,{ok:false,message:"POST required."});return;
-  }
-  const authorization=request.headers.authorization??"";
-  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
-  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
-  let actor="";
-  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
-  catch{json(response,401,{ok:false,message:"Session expired. Sign in again."});return;}
-  try{
-    const result=await commitRepSelfDelivery(actor,request.body);
-    json(response,200,{ok:true,...result});
-  }catch(error){
-    if(error instanceof RepSelfDeliveryError){
-      json(response,error.status,{ok:false,message:error.message});return;
+/** Sales Representative self-delivery uses only trusted server-ledger writes. */
+export const repSelfDelivery = onRequest(
+  {
+    cors: true,
+    region: "us-central1",
+  },
+  async (request, response) => {
+    if (request.method !== "POST") {
+      json(response, 405, {ok: false, message: "POST required."});
+      return;
     }
-    console.error("repSelfDelivery failed",error);
-    json(response,502,{ok:false,message:"Self-delivery could not be confirmed. Reopen the order and verify its saved state before retrying."});
-  }
-});
+    const authorization = request.headers.authorization ?? "";
+    const token = authorization.startsWith("Bearer ") ?
+      authorization.slice(7).trim() : "";
+    if (!token) {
+      json(response, 401, {ok: false, message: "Sign in first."});
+      return;
+    }
+    let actor = "";
+    try {
+      actor = (await getAuth().verifyIdToken(token, true)).uid;
+    } catch {
+      json(response, 401, {
+        ok: false,
+        message: "Session expired. Sign in again.",
+      });
+      return;
+    }
+    try {
+      const result = await commitRepSelfDelivery(actor, request.body);
+      json(response, 200, {ok: true, ...result});
+    } catch (error) {
+      if (error instanceof RepSelfDeliveryError) {
+        json(response, error.status, {ok: false, message: error.message});
+        return;
+      }
+      console.error("repSelfDelivery failed", error);
+      json(response, 502, {
+        ok: false,
+        message: "Self-delivery could not be confirmed. " +
+          "Reopen the order and verify its saved state before retrying.",
+      });
+    }
+  },
+);
 
 export {
   captureOrderNotifications,
