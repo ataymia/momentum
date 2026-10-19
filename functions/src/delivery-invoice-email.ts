@@ -244,6 +244,9 @@ export const queueSignedInvoiceOnDelivery=onDocumentWritten({
     if(text(task.status)!=="Delivered"||
        text(previous?.status)==="Delivered"||
        !validInstant(task.deliveredAt))continue;
+    const cutoff=process.env.RESEND_ACTIVATION_CUTOFF??"";
+    if(!validInstant(cutoff)||
+       Date.parse(text(task.deliveredAt))<Date.parse(cutoff))continue;
     const signature=signatureFrom(task.signature,task.history);
     if(!signature){
       await adminEvent("Delivery task "+id+
