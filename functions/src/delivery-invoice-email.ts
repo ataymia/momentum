@@ -40,8 +40,14 @@ const adminEvent=async (
 };
 
 const signatureFrom=(value:unknown,history?:unknown):InvoicePdfSignature|undefined=>{
-  if(!row(value)||!validInstant(value.signedAt)||!Array.isArray(value.strokes)||
-     !text(value.capturedBy))return undefined;
+  if(!row(value)||!validInstant(value.signedAt)||!text(value.capturedBy))return undefined;
+  // The browser converts nested signature strokes to strokesJson for Firestore.
+  let rawStrokes=value.strokes;
+  if(!Array.isArray(rawStrokes)&&typeof value.strokesJson==="string"&&
+     value.strokesJson.length<=250_000){
+    try{rawStrokes=JSON.parse(value.strokesJson);}catch{return undefined;}
+  }
+  if(!Array.isArray(rawStrokes))return undefined;
   // Capture time and Delivered-history timestamp come from separate calls.
   const attested=Array.isArray(history)&&history.some((entry)=>
     row(entry)&&text(entry.type)==="Delivered"&&
@@ -51,7 +57,7 @@ const signatureFrom=(value:unknown,history?:unknown):InvoicePdfSignature|undefin
       Date.parse(text(value.signedAt)))<=60_000);
   if(!attested)return undefined;
   const strokes:Array<Array<[number,number]>>=[];
-  for(const rawStroke of value.strokes.slice(0,80)){
+  for(const rawStroke of rawStrokes.slice(0,80)){
     if(!Array.isArray(rawStroke))continue;
     const stroke:Array<[number,number]>=rawStroke
       .filter((point):point is [number,number]=>
