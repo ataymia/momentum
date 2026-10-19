@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {DOMAIN_SPECS,assembleState,shardState} from "../lib/firestore-domains";
-import {signedDeliveryCloudConfirmed} from "../lib/delivery-engine";
+import {signedDeliveryCloudConfirmed,type DeliverySignaturePoint} from "../lib/delivery-engine";
 import {readFileSync} from "node:fs";
 
 test("delivery signature can round-trip through Firestore without nested arrays",()=>{
@@ -57,7 +57,7 @@ test("malformed signature stroke payload cannot be silently promoted",()=>{
 
 test("signed delivery is confirmed only when all three cloud ledgers match",()=>{
   const stamp="2026-10-18T22:03:00.000Z";
-  const strokes=[[[100,120],[105,125],[112,132]]];
+  const strokes:DeliverySignaturePoint[][]=[[[100,120],[105,125],[112,132]]];
   const delivery={
     version:1,
     tasks:[{
