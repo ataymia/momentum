@@ -1,17 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {createRequire} from "node:module";
-import * as deliveryModule from "../functions/src/rep-self-delivery";
-
-// The Functions package targets NodeNext/CommonJS; accept either tsx module form.
-const exportsObject=(deliveryModule as unknown as {default?:typeof deliveryModule}).default??deliveryModule;
-const commit=exportsObject.commitRepSelfDelivery;
+// The server package is installed after the app's postinstall build. Load it
+// only when the emulator test runs, not as a root application dependency.
 const require=createRequire(import.meta.url);
 const {initializeApp,deleteApp}=require("../functions/node_modules/firebase-admin/app");
 const {getFirestore}=require("../functions/node_modules/firebase-admin/firestore");
 
 test("server self-delivery atomically verifies rep, approval, exact custody, signature and no duplicate posting",async()=>{
   assert.ok(process.env.FIRESTORE_EMULATOR_HOST,"Run only against the Firestore emulator.");
+  const path=new URL("../functions/src/rep-self-delivery.ts",import.meta.url).href;
+  const deliveryModule=await import(path);
+  const exportsObject=deliveryModule.default??deliveryModule;
+  const commit=exportsObject.commitRepSelfDelivery as (uid:string,body:unknown)=>Promise<{
+    taskStatus:string;orderStatus:string;cloudConfirmed:boolean;replayed?:boolean;
+  }>;
   const app=initializeApp({projectId:"momentum-rules-test"},"rep-self-delivery-tests");
   const db=getFirestore(app);
   const rep="rep-self-owner",stranger="rep-self-stranger",orderId="order-rep-self-1";
