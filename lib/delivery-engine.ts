@@ -153,7 +153,11 @@ export function normalizeDeliveryState(input: unknown, data: WorkspaceData): Del
   const tasks = raw.tasks.filter((task): task is DeliveryTask => {
     if (!task || typeof task !== "object" || !task.id || seenTasks.has(task.id) || seenOrders.has(task.orderId)) return false;
     if (!orderIds.has(task.orderId) ||
-        (!driverIds.has(task.driverId) && !(repIds.has(task.driverId) && ownerByOrder.get(task.orderId) === task.driverId) && task.status !== "Delivered") ||
+        (!driverIds.has(task.driverId) &&
+         !(ownerByOrder.get(task.orderId) === task.driverId &&
+           (repIds.has(task.driverId) || !data.users.some((user) => user.id === task.driverId)) &&
+           task.acceptedBy === task.driverId) &&
+         task.status !== "Delivered") ||
         !statusValues.has(task.status)) return false;
     if (!validInstant(task.acceptedAt) || !task.acceptedBy) return false;
     if (task.loadedAt && !validInstant(task.loadedAt)) return false;
