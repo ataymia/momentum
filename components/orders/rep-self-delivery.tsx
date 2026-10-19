@@ -125,7 +125,7 @@ export function RepSelfDelivery(){
       {selected&&step==="complete"&&<div className="rep-self-delivery__signature">
         <p>Have the customer or authorized recipient sign before you complete delivery.</p>
         <DeliverySignaturePad strokes={strokes} onChange={setStrokes}/>
-        <label htmlFor="rep-self-recipient">Recipient's printed name</label>
+        <label htmlFor="rep-self-recipient">Recipient printed name</label>
         <input id="rep-self-recipient" value={recipientName} maxLength={120} onChange={event=>setRecipientName(event.target.value)} placeholder="Name of person accepting delivery"/>
       </div>}
       {selected&&step&&<Button type="button" disabled={busy||(!firebase?.session?.idToken)||
