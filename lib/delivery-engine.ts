@@ -65,10 +65,17 @@ const validInstant = (value?: string) => Boolean(value && !Number.isNaN(new Date
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 const finitePositive = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value > 0;
 const finitePoint = (value: unknown): value is DeliverySignaturePoint => Array.isArray(value) && value.length === 2 && value.every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate)) && value[0] >= 0 && value[0] <= 1000 && value[1] >= 0 && value[1] <= 300;
-const normalizeSignature = (value: unknown, userIds: Set<string>): DeliverySignature | undefined => {
+const normalizeSignature = (value: unknown, task: DeliveryTask): DeliverySignature | undefined => {
   if (!value || typeof value !== "object") return undefined;
   const signature = value as Partial<DeliverySignature>;
-  if (!validInstant(signature.signedAt) || !signature.capturedBy || !userIds.has(signature.capturedBy) || !Array.isArray(signature.strokes)) return undefined;
+  // Delivery proof survives staff separation or a restricted user directory.
+  // Match it to the recorded Delivered event rather than today's roster.
+  const recorded = task.history.some((event) =>
+    event.type === "Delivered" &&
+    event.actorId === signature.capturedBy &&
+    event.at === signature.signedAt);
+  if (!validInstant(signature.signedAt) || !signature.capturedBy || !recorded ||
+      !Array.isArray(signature.strokes)) return undefined;
   const strokes = signature.strokes
     .filter((stroke): stroke is DeliverySignaturePoint[] => Array.isArray(stroke) && stroke.length >= 2 && stroke.length <= 300 && stroke.every(finitePoint))
     .slice(0, 80);
@@ -103,7 +110,9 @@ export function normalizeDeliveryState(input: unknown, data: WorkspaceData): Del
   const seenOrders = new Set<string>();
   const tasks = raw.tasks.filter((task): task is DeliveryTask => {
     if (!task || typeof task !== "object" || !task.id || seenTasks.has(task.id) || seenOrders.has(task.orderId)) return false;
-    if (!orderIds.has(task.orderId) || !driverIds.has(task.driverId) || !statusValues.has(task.status)) return false;
+    if (!orderIds.has(task.orderId) ||
+        (!driverIds.has(task.driverId) && task.status !== "Delivered") ||
+        !statusValues.has(task.status)) return false;
     if (!validInstant(task.acceptedAt) || !task.acceptedBy) return false;
     if (task.loadedAt && !validInstant(task.loadedAt)) return false;
     if (task.departedAt && !validInstant(task.departedAt)) return false;
@@ -124,7 +133,7 @@ export function normalizeDeliveryState(input: unknown, data: WorkspaceData): Del
     ...task,
     note: text(task.note) || undefined,
     collections: (task.collections ?? []).map((collection) => ({ ...collection, reference: text(collection.reference) || undefined })),
-    signature: normalizeSignature(task.signature, userIds),
+    signature: normalizeSignature(task.signature, task),
     history: task.history.map((event) => ({ ...event, note: text(event.note) || undefined })),
   }));
   const overrides=(Array.isArray(raw.overrides)?raw.overrides:[])
