@@ -200,12 +200,38 @@ export function documentReplacesOnWrite(path:string){
   return spec.fields[parsed.field]?.replaceOnWrite===true;
 }
 const isRecord=(value:unknown):value is Record<string,unknown>=>Boolean(value&&typeof value==="object"&&!Array.isArray(value));
+// Firestore does not support an array directly containing another array.
+// A delivery signature is strokes -> points -> [x,y], so encode the exact
+// validated coordinates as a string only in the Firestore representation.
+const deliveryTaskForCloud=(item:unknown):unknown=>{
+  if(!isRecord(item)||!isRecord(item.signature)||
+     !Array.isArray(item.signature.strokes))return item;
+  const signature:Record<string,unknown>={...item.signature,
+    strokesJson:JSON.stringify(item.signature.strokes)};
+  delete signature.strokes;
+  return {...item,signature};
+};
+const deliveryTaskFromCloud=(item:unknown):unknown=>{
+  if(!isRecord(item)||!isRecord(item.signature)||
+     typeof item.signature.strokesJson!=="string"||
+     item.signature.strokesJson.length>250_000)return item;
+  try{
+    const strokes=JSON.parse(item.signature.strokesJson);
+    if(!Array.isArray(strokes))return item;
+    const signature:Record<string,unknown>={...item.signature,strokes};
+    delete signature.strokesJson;
+    return {...item,signature};
+  }catch{return item;}
+};
 export function shardState(spec:DomainSpec,state:unknown):Map<string,Record<string,unknown>>{
   const output=new Map<string,Record<string,unknown>>();if(!isRecord(state))return output;const root:Record<string,unknown>={};
   for(const [key,value] of Object.entries(state)){
     if(spec.omit?.includes(key))continue;const fieldSpec=spec.fields[key];
     if(!Array.isArray(value)||!fieldSpec){root[key]=value;continue;}
-    if(!fieldSpec.userIdField){output.set(sharedDocPath(spec.id,key),{items:value});continue;}
+    if(!fieldSpec.userIdField){output.set(sharedDocPath(spec.id,key),{
+      items:spec.id==="delivery"&&key==="tasks"?
+        value.map(deliveryTaskForCloud):value,
+    });continue;}
     const shared:unknown[]=[];const byUser=new Map<string,unknown[]>();
     for(const item of value){const owner=isRecord(item)?item[fieldSpec.userIdField]:undefined;if(typeof owner==="string"&&owner){const list=byUser.get(owner)??[];list.push(item);byUser.set(owner,list);}else shared.push(item);}
     output.set(sharedDocPath(spec.id,key),{items:shared});
@@ -239,7 +265,8 @@ export function assembleState(spec:DomainSpec,documents:Map<string,Record<string
     }
     const userPaths=[...documents.keys()].filter((path)=>{const parsed=parseDocPath(path);return parsed?.uid&&parsed.domainId===spec.id&&parsed.field===field;}).sort();
     for(const path of userPaths){const doc=documents.get(path);if(doc){found=true;if(Array.isArray(doc.items))items.push(...doc.items);}}
-    state[field]=items;
+    state[field]=spec.id==="delivery"&&field==="tasks"?
+      items.map(deliveryTaskFromCloud):items;
   }
   return found?state:null;
 }

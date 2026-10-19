@@ -50,7 +50,7 @@ type InvoicePrintCenterProps={allowedOrderIds?:string[];title?:string;descriptio
 export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",description="Print a single invoice or select multiple invoices for a delivery run. Browser print also supports Save as PDF."}:InvoicePrintCenterProps={}) {
   const { data, scope } = useWorkspace();
   const { commerce } = useCommerce();
-  const { taskForOrder } = useDelivery();
+  const { state: deliveryState, taskForOrder } = useDelivery();
   const orderIds = useMemo(() => {const scoped=new Set(scope.orders.map((order)=>order.id));return new Set(allowedOrderIds?allowedOrderIds.filter((id)=>scoped.has(id)):[...scoped]);}, [scope.orders,allowedOrderIds]);
   const invoices = useMemo(() => commerce.invoices.filter((invoice) => orderIds.has(invoice.orderId)).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt)), [commerce.invoices, orderIds]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -105,6 +105,8 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
     const lines = order ? orderLinesFor(order) : [];
     const deliveryTask = order ? taskForOrder(order.id) : undefined;
     const deliverySignature = deliveryTask?.signature;
+    const adminConfirmedDelivery = !deliverySignature &&
+      deliveryState.overrides.some((record) => record.orderId === invoice.orderId);
     const paid = invoicePaidAmount(commerce, invoice.id);
     const credits = invoiceCreditAmount(commerce, invoice.id);
     const balance = invoiceBalance(commerce, invoice);
@@ -158,6 +160,13 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
         <div className="invoice-sheet__balance"><span>TOTAL / BALANCE DUE</span><strong>{formatMoney(balance)}</strong></div>
       </section>
 
+      <section className="invoice-sheet__receipt">
+        <div className={deliverySignature ? "invoice-sheet__signature-cell is-signed" : "invoice-sheet__signature-cell"}><span>Customer signature</span>{deliverySignature ? <svg viewBox="0 0 1000 300" aria-label="Customer delivery signature">{deliverySignature.strokes.map((stroke, index) => <polyline key={index} points={stroke.map(([x,y]) => `${x},${y}`).join(" ")} />)}</svg> : adminConfirmedDelivery ? <strong>Delivery confirmed</strong> : <i />}</div>
+        <div><span>Printed name</span>{deliverySignature?.recipientName ? <strong>{deliverySignature.recipientName}</strong> : <i />}</div>
+        <div><span>Date / time</span>{deliverySignature ? <strong>{formatDate(deliverySignature.signedAt, { month: "2-digit", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit" })}</strong> : adminConfirmedDelivery ? <strong>Confirmed delivered</strong> : <i />}</div>
+        <div><span>Payment received</span><i /></div><div><span>Method</span><i /></div><div><span>Reference / check no.</span><i /></div>
+      </section>
+
       <section className="invoice-sheet__terms">
         <h2>Terms & conditions</h2>
         <p><strong>{invoice.terms}</strong> · {dueLabel(invoice.terms, invoice.dueDate)}.</p>
@@ -166,13 +175,6 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
         <p>Reference invoice {invoice.number} with every payment. Sales / order support: {company.salesEmail}. Receivables / documentation: {company.primaryEmail}.</p>
         {invoice.terms === "COD" && <p>COD orders are payable at delivery. The delivery representative may collect payment and document the method/reference below.</p>}
         {customer?.paymentTerms === "Net 30" && <p>Net terms apply only where Momentum has approved the customer account for credit.</p>}
-      </section>
-
-      <section className="invoice-sheet__receipt">
-        <div className={deliverySignature ? "invoice-sheet__signature-cell is-signed" : "invoice-sheet__signature-cell"}><span>Customer signature</span>{deliverySignature ? <svg viewBox="0 0 1000 300" aria-label="Customer delivery signature">{deliverySignature.strokes.map((stroke, index) => <polyline key={index} points={stroke.map(([x,y]) => `${x},${y}`).join(" ")} />)}</svg> : <i />}</div>
-        <div><span>Printed name</span>{deliverySignature?.recipientName ? <strong>{deliverySignature.recipientName}</strong> : <i />}</div>
-        <div><span>Date / time</span>{deliverySignature ? <strong>{formatDate(deliverySignature.signedAt, { month: "2-digit", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit" })}</strong> : <i />}</div>
-        <div><span>Payment received</span><i /></div><div><span>Method</span><i /></div><div><span>Reference / check no.</span><i /></div>
       </section>
 
       <footer className="invoice-sheet__footer"><span>{company.name} · {company.phone}</span><span>{company.street}, {company.cityStateZip}</span><span>Copy {copyIndex + 1}</span></footer>
@@ -198,7 +200,12 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
         const status = computedInvoiceStatus(commerce, invoice);
         const checked = selectedSet.has(invoice.id);
         const order=data.orders.find((item)=>item.id===invoice.orderId);const placedBy=data.users.find((user)=>user.id===order?.ownerId);
-        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{placedBy?.name??order?.ownerId??"Not recorded"}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill></span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => setPreviewId(invoice.id)}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
+        const billingCustomer=location?customerForLocation(data,location):undefined;
+        const isConfirmedDelivered=Boolean(deliveryState.tasks.some((task)=>
+          task.orderId===invoice.orderId&&task.status==="Delivered")||
+          deliveryState.overrides.some((record)=>record.orderId===invoice.orderId));
+        const billingBlocked=isConfirmedDelivered&&!billingCustomer?.billingEmail?.trim();
+        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{placedBy?.name??order?.ownerId??"Not recorded"}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill>{billingBlocked&&<small role="status">Billing email required for delivery invoice.</small>}</span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => setPreviewId(invoice.id)}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
       })}{invoices.length === 0 && <div className="review-empty"><FileText size={24}/><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}</div>
     </Section>
 

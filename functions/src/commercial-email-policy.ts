@@ -120,6 +120,11 @@ export function transitionPolicies(
   }
   if(sourcePath==="domains/commercial/fields/approvals"||
      sourcePath==="domains/workspace/fields/approvals"){
+    if(changedTo(previous,current,"Approved")&&
+      text(previous.status)==="Pending"&&
+      ["Order","Low stock sale"].includes(text(current.type))&&
+      validTime(current.decidedAt)&&text(current.decidedBy))
+      return ["order.confirmed.customer"];
     if(changedTo(previous,current,"Returned")&&
       text(previous.status)==="Pending"&&
       ["Order","Low stock sale"].includes(text(current.type)))

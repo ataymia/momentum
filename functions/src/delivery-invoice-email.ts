@@ -39,12 +39,25 @@ const adminEvent=async (
   });
 };
 
-const signatureFrom=(value:unknown):InvoicePdfSignature|undefined=>{
-  if(!row(value)||!validInstant(value.signedAt)||!Array.isArray(value.strokes)){
-    return undefined;
+const signatureFrom=(value:unknown,history?:unknown):InvoicePdfSignature|undefined=>{
+  if(!row(value)||!validInstant(value.signedAt)||!text(value.capturedBy))return undefined;
+  // The browser converts nested signature strokes to strokesJson for Firestore.
+  let rawStrokes=value.strokes;
+  if(!Array.isArray(rawStrokes)&&typeof value.strokesJson==="string"&&
+     value.strokesJson.length<=250_000){
+    try{rawStrokes=JSON.parse(value.strokesJson);}catch{return undefined;}
   }
+  if(!Array.isArray(rawStrokes))return undefined;
+  // Capture time and Delivered-history timestamp come from separate calls.
+  const attested=Array.isArray(history)&&history.some((entry)=>
+    row(entry)&&text(entry.type)==="Delivered"&&
+    text(entry.actorId)===text(value.capturedBy)&&
+    validInstant(entry.at)&&
+    Math.abs(Date.parse(text(entry.at))-
+      Date.parse(text(value.signedAt)))<=60_000);
+  if(!attested)return undefined;
   const strokes:Array<Array<[number,number]>>=[];
-  for(const rawStroke of value.strokes.slice(0,80)){
+  for(const rawStroke of rawStrokes.slice(0,80)){
     if(!Array.isArray(rawStroke))continue;
     const stroke:Array<[number,number]>=rawStroke
       .filter((point):point is [number,number]=>
@@ -107,9 +120,18 @@ const queueDeliveredInvoice=async (
     db.doc("domains/workspace/fields/accounts"),
     db.doc("domains/workspace/fields/customers"),
     db.doc("domains/commerce/fields/invoices"),
+    db.doc("domains/commercial/fields/_root"),
   ];
-  const [commercial,workspace,accountsDoc,customersDoc,invoicesDoc]=
+  const [commercial,workspace,accountsDoc,customersDoc,invoicesDoc,rootDoc]=
     await db.getAll(...refs);
+  const root=row(rootDoc.data()?.data)?rootDoc.data()?.data as Row:{};
+  const accountPatches=row(root.accountPatches)?root.accountPatches:{};
+  const customerPatches=row(root.customerPatches)?root.customerPatches:{};
+  const withPatch=(record:Row|undefined,patches:Row):Row|undefined=>{
+    if(!record)return undefined;
+    const patch=patches[text(record.id)];
+    return row(patch)?{...record,...patch}:record;
+  };
   const order=findById(items(commercial.data()),orderId)||
     findById(items(workspace.data()),orderId);
   if(!order){
@@ -126,10 +148,15 @@ const queueDeliveredInvoice=async (
       orderId,eventId);
     return;
   }
-  const account=findById(items(accountsDoc.data()),text(order.accountId));
-  const customer=account?
-    findById(items(customersDoc.data()),text(account.customerId)):
-    undefined;
+  const account=withPatch(
+    findById(items(accountsDoc.data()),text(order.accountId)),
+    accountPatches,
+  );
+  const customer=account?withPatch(
+    findById(items(customersDoc.data()),text(account.customerId)),
+    customerPatches,
+  ):undefined;
+  // Customer invoices are billing-email only. A/P or location is not a fallback.
   const billingEmail=text(customer?.billingEmail);
   if(!safeMail(billingEmail)){
     await adminEvent("Order "+text(order.number)+
@@ -223,7 +250,10 @@ export const queueSignedInvoiceOnDelivery=onDocumentWritten({
     if(text(task.status)!=="Delivered"||
        text(previous?.status)==="Delivered"||
        !validInstant(task.deliveredAt))continue;
-    const signature=signatureFrom(task.signature);
+    const cutoff=process.env.RESEND_ACTIVATION_CUTOFF??"";
+    if(!validInstant(cutoff)||
+       Date.parse(text(task.deliveredAt))<Date.parse(cutoff))continue;
+    const signature=signatureFrom(task.signature,task.history);
     if(!signature){
       await adminEvent("Delivery task "+id+
         " reached Delivered without a valid recipient signature. "+
@@ -244,6 +274,65 @@ export const queueSignedInvoiceOnDelivery=onDocumentWritten({
 /**
  * Queue an invoice for a trusted Administrator delivery override.
  */
+
+/**
+ * Recover recent signed deliveries when invoice or billing data arrives later.
+ * No pre-activation imports or old deliveries may be emailed.
+ */
+const reconcileRecentSignedInvoices=async ()=>{
+  const cutoff=process.env.RESEND_ACTIVATION_CUTOFF??"";
+  if(process.env.RESEND_LIVE_EMAIL_ENABLED!=="true"||
+     !validInstant(cutoff))return;
+  const db=getFirestore();
+  const snapshot=await db.doc("domains/delivery/fields/tasks").get();
+  const current=Date.now();
+  const minimum=Math.max(Date.parse(cutoff),current-7*24*60*60*1000);
+  const eligible=items(snapshot.data())
+    .filter((task)=>text(task.status)==="Delivered"&&
+      validInstant(task.deliveredAt)&&
+      Date.parse(text(task.deliveredAt))>=minimum&&
+      Date.parse(text(task.deliveredAt))<=current+60_000&&
+      text(task.orderId)&&
+      Boolean(signatureFrom(task.signature,task.history)))
+    .slice(0,100);
+  for(const task of eligible){
+    await queueDeliveredInvoice(
+      text(task.orderId),text(task.deliveredAt),
+      "recent-signed-delivery:"+text(task.orderId),
+      signatureFrom(task.signature,task.history),false);
+  }
+};
+
+/** Retry after a delayed invoice ledger write, with outbox idempotency. */
+export const retrySignedInvoiceWhenInvoiceReady=onDocumentWritten({
+  document:"domains/commerce/fields/invoices",
+  region:"us-central1",
+},async (event)=>{
+  if(!event.data)return;
+  await reconcileRecentSignedInvoices();
+});
+
+/** Retry only when the billing customer contact record changes. */
+export const retrySignedInvoiceWhenCustomerUpdated=onDocumentWritten({
+  document:"domains/workspace/fields/customers",
+  region:"us-central1",
+},async (event)=>{
+  if(!event.data)return;
+  await reconcileRecentSignedInvoices();
+});
+
+/** Retry on updated commercial customer billing patches, not unrelated edits. */
+export const retrySignedInvoiceWhenBillingPatchUpdated=onDocumentWritten({
+  document:"domains/commercial/fields/_root",
+  region:"us-central1",
+},async (event)=>{
+  if(!event.data)return;
+  const before=JSON.stringify(event.data.before.data()?.data?.customerPatches??{});
+  const after=JSON.stringify(event.data.after.data()?.data?.customerPatches??{});
+  if(before===after)return;
+  await reconcileRecentSignedInvoices();
+});
+
 export const queueInvoiceOnAdminDeliveryOverride=onDocumentCreated({
   document:"adminDeliveryOverrides/{orderId}",
   region:"us-central1",

@@ -1536,6 +1536,9 @@ export {sundayWeeklyReportReminders} from "./weekly-email-scheduler";
 export {
   queueSignedInvoiceOnDelivery,
   queueInvoiceOnAdminDeliveryOverride,
+  retrySignedInvoiceWhenInvoiceReady,
+  retrySignedInvoiceWhenCustomerUpdated,
+  retrySignedInvoiceWhenBillingPatchUpdated,
 } from "./delivery-invoice-email";
 
 export {

@@ -92,7 +92,7 @@ test("delivery invoice producer requires billing email and delivery proof",()=>{
   assert.match(source,/customer\?\.billingEmail/);
   assert.doesNotMatch(source,/accountsPayableEmail/);
   assert.match(source,/status\)!=="Delivered"/);
-  assert.match(source,/signatureFrom\(task\.signature\)/);
+  assert.match(source,/signatureFrom\(task\.signature,task\.history\)/);
   assert.match(source,/adminDeliveryOverrides/);
   assert.match(source,/notificationOutbox/);
 });
@@ -125,4 +125,23 @@ test("customer-facing invoice never exposes internal override terminology",()=>{
   const customerCopy=producer.match(/text:\[[\s\S]*?\]\.join\("\\n"\)/)?.[0]??"";
   assert.doesNotMatch(customerCopy,/admin/i);
   assert.doesNotMatch(customerCopy,/override/i);
+});
+
+test("invoice sender resolves patched customer billing and retries recent signed deliveries",()=>{
+  const source=readFileSync(
+    "functions/src/delivery-invoice-email.ts","utf8",
+  );
+  assert.match(source,/domains\/commercial\/fields\/_root/);
+  assert.match(source,/root\.customerPatches/);
+  assert.match(source,/root\.accountPatches/);
+  assert.match(source,/billingEmail=text\(customer\?\.billingEmail\)/);
+  assert.doesNotMatch(source,/billingEmail.*accountsPayableEmail/);
+  assert.match(source,/reconcileRecentSignedInvoices/);
+  assert.match(source,/retrySignedInvoiceWhenInvoiceReady/);
+  assert.match(source,/retrySignedInvoiceWhenCustomerUpdated/);
+  assert.match(source,/retrySignedInvoiceWhenBillingPatchUpdated/);
+  assert.match(source,/RESEND_ACTIVATION_CUTOFF/);
+  assert.match(source,/7\*24\*60\*60\*1000/);
+  assert.match(source,/status\)==="Delivered"/);
+  assert.match(source,/event\.id/);
 });
