@@ -143,13 +143,21 @@ export function normalizeDeliveryState(input: unknown, data: WorkspaceData): Del
   if (raw.version !== 1 || !Array.isArray(raw.tasks)) return createDeliverySeed();
   const orderIds = new Set(data.orders.map((order) => order.id));
   const driverIds = new Set(data.users.filter((user) => user.role === "Delivery Driver").map((user) => user.id));
+  // Rep deliveries are server-written and valid only on their own orders.
+  // Admin/Operations must retain these tasks on every normalization cycle.
+  const repIds = new Set(data.users.filter((user) => user.role === "Sales Representative").map((user) => user.id));
+  const ownerByOrder = new Map(data.orders.map((order) => [order.id, order.ownerId]));
   const userIds = new Set(data.users.map((user) => user.id));
   const seenTasks = new Set<string>();
   const seenOrders = new Set<string>();
   const tasks = raw.tasks.filter((task): task is DeliveryTask => {
     if (!task || typeof task !== "object" || !task.id || seenTasks.has(task.id) || seenOrders.has(task.orderId)) return false;
     if (!orderIds.has(task.orderId) ||
-        (!driverIds.has(task.driverId) && task.status !== "Delivered") ||
+        (!driverIds.has(task.driverId) &&
+         !(ownerByOrder.get(task.orderId) === task.driverId &&
+           (repIds.has(task.driverId) || !data.users.some((user) => user.id === task.driverId)) &&
+           task.acceptedBy === task.driverId) &&
+         task.status !== "Delivered") ||
         !statusValues.has(task.status)) return false;
     if (!validInstant(task.acceptedAt) || !task.acceptedBy) return false;
     if (task.loadedAt && !validInstant(task.loadedAt)) return false;

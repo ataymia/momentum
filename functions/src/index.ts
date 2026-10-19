@@ -13,6 +13,10 @@ import {
   commitAdminDeliveryOverride,
   DeliveryOverrideError,
 } from "./admin-delivery-override";
+import {
+  commitRepSelfDelivery,
+  RepSelfDeliveryError,
+} from "./rep-self-delivery";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -1516,6 +1520,52 @@ export const adminDeliveryOverride = onRequest(
       json(response, 502, {
         ok: false,
         message: "The override was not saved. No delivery should be assumed.",
+      });
+    }
+  },
+);
+
+/** Rep self-delivery uses trusted server-only ledger writes. */
+export const repSelfDelivery = onRequest(
+  {
+    cors: true,
+    region: "us-central1",
+  },
+  async (request, response) => {
+    if (request.method !== "POST") {
+      json(response, 405, {ok: false, message: "POST required."});
+      return;
+    }
+    const authorization = request.headers.authorization ?? "";
+    const token = authorization.startsWith("Bearer ") ?
+      authorization.slice(7).trim() : "";
+    if (!token) {
+      json(response, 401, {ok: false, message: "Sign in first."});
+      return;
+    }
+    let actor = "";
+    try {
+      actor = (await getAuth().verifyIdToken(token, true)).uid;
+    } catch {
+      json(response, 401, {
+        ok: false,
+        message: "Session expired. Sign in again.",
+      });
+      return;
+    }
+    try {
+      const result = await commitRepSelfDelivery(actor, request.body);
+      json(response, 200, {ok: true, ...result});
+    } catch (error) {
+      if (error instanceof RepSelfDeliveryError) {
+        json(response, error.status, {ok: false, message: error.message});
+        return;
+      }
+      console.error("repSelfDelivery failed", error);
+      json(response, 502, {
+        ok: false,
+        message: "Self-delivery could not be confirmed. " +
+          "Reopen the order and verify its saved state before retrying.",
       });
     }
   },

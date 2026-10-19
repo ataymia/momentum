@@ -78,11 +78,14 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(handle);
   }, [canReconcileCancelledDelivery, data]);
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    // Representatives read their own self-delivery through the trusted server.
+    // They must never overwrite the shared driver task array from client state.
+    if (typeof window !== "undefined" &&
+        ["Administrator","Operations","Delivery Driver"].includes(currentUser?.role??"")) {
       momentumStorage.setItem(DELIVERY_STORAGE_KEY, JSON.stringify(state));
       void momentumStorage.flush();
     }
-  }, [state]);
+  }, [state,currentUser?.role]);
   useRemoteStorageSync(DELIVERY_STORAGE_KEY, () => {
     const next=read();
     stateRef.current=next;
