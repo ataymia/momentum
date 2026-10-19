@@ -5598,3 +5598,16 @@ button.lot-table:hover,button.lot-table.is-selected {
     animation-iteration-count:1!important;
   }
 }
+
+
+/* Staff order entry: searchable, account-ID-backed CRM picker. */
+.order-account-picker{position:relative;min-width:0}
+.order-account-picker__hint,.order-account-picker__selected{display:block;margin-top:6px}
+.order-account-picker__selected{color:var(--green-600)!important;font-weight:650}
+.order-account-picker__results{position:absolute;left:0;right:0;top:43px;z-index:30;max-height:260px;overflow-y:auto;overscroll-behavior:contain;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface);box-shadow:0 15px 32px #071a3826;padding:5px}
+.order-account-picker__option{display:grid;gap:3px;text-align:left;cursor:pointer;border:0;border-radius:7px;background:transparent;width:100%;padding:10px 11px}
+.order-account-picker__option strong{font-size:12px;font-weight:750;overflow-wrap:anywhere}
+.order-account-picker__option span{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.order-account-picker__option:hover,.order-account-picker__option.is-active{background:var(--blue-100)}
+.order-account-picker__option:focus-visible{outline:2px solid var(--blue-500);outline-offset:-2px}
+.order-account-picker__empty{padding:11px;margin:0;font-size:12px;color:var(--muted)}
