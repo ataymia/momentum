@@ -17,6 +17,7 @@ const paths={
   commercial:"domains/commercial/fields/orders",
   workspace:"domains/workspace/fields/orders",
   accounts:"domains/workspace/fields/accounts",
+  accountPatches:"domains/commercial/fields/_root",
   lots:"domains/workspace/fields/inventory",
   extraLots:"domains/commercial/fields/inventoryLots",
   tasks:"domains/delivery/fields/tasks",
@@ -100,7 +101,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
      !/^[A-Za-z0-9_-]{5,120}$/.test(orderId))fail(400,"Invalid order or self-delivery step.");
   const proof=action==="complete"?signatureDraft(body.signature):undefined;
   const db=getFirestore();
-  const allPaths=[paths.access(actor),paths.commercial,paths.workspace,paths.accounts,paths.lots,
+  const allPaths=[paths.access(actor),paths.commercial,paths.workspace,paths.accounts,paths.accountPatches,paths.lots,
     paths.extraLots,paths.tasks,paths.overrides,paths.movements,paths.reservations,paths.nodes,paths.locks];
   const refs=allPaths.map((path)=>db.doc(path));
   const meta=db.doc(paths.meta);
@@ -125,7 +126,13 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
       fail(409,"Order registers disagree. Ask Operations to reconcile this order.");
     const accountId=txt(order.accountId);
     const account=rows(paths.accounts).find((item)=>txt(item.id)===accountId);
-    if(!account||txt(account.ownerId)!==actor)
+    const rootData=saved.get(paths.accountPatches)?.data;
+    const accountPatches=obj(rootData)&&obj(rootData.accountPatches)?
+      rootData.accountPatches as Row:{};
+    const patch=accountPatches[accountId];
+    const effectiveOwner=obj(patch)&&typeof patch.ownerId==="string"?
+      txt(patch.ownerId):txt(account?.ownerId);
+    if(!account||effectiveOwner!==actor)
       fail(403,"This account is no longer assigned to you for self-delivery.");
 
     const tasks=rows(paths.tasks),overrides=rows(paths.overrides);
@@ -141,7 +148,23 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
       orderId,orderStatus:oStatus,taskStatus:tStatus||"Unclaimed",
       cloudConfirmed:true,...(stamp?{deliveredAt:stamp}:{}),...(replayed?{replayed:true}:{}),
     });
-    if(action==="status")return response();
+    if(action==="status"){
+      if(status==="Delivered"&&taskStatus==="Delivered"){
+        const signed=obj(task?.signature)&&typeof task.signature.strokesJson==="string"&&
+          task.signature.strokesJson.length>5&&
+          txt(task.signature.capturedBy)===actor&&
+          Array.isArray(task?.history)&&task.history.some((entry)=>
+            obj(entry)&&txt(entry.type)==="Delivered"&&txt(entry.actorId)===actor);
+        const posted=rows(paths.movements).filter((entry)=>
+          txt(entry.relatedOrderId)===orderId&&txt(entry.type)==="Delivery");
+        const correctInventory=matchExpected(expectedLines(order),posted.map((entry)=>({
+          product:txt(entry.product),quantity:num(entry.quantity),
+        })))&&posted.every((entry)=>txt(entry.fromNodeId)===node(actor)&&
+          txt(entry.toNodeId)===customerNode(accountId));
+        if(!signed||!correctInventory)return {...response(),cloudConfirmed:false};
+      }
+      return response();
+    }
     if(status==="Cancelled"||status==="Draft"||status==="Awaiting approval"||status==="Paid"||
        !["Approved","Allocated","Out for delivery","Delivered"].includes(status))
       fail(409,"Only currently approved, unpaid orders can enter self-delivery.");
@@ -177,14 +200,17 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     const getNode=(id:string)=>nodes.find((row)=>txt(row.id)===id);
     const expected=expectedLines(order);
     const activeForOrder=reservations.filter((row)=>txt(row.orderId)===orderId&&txt(row.status)==="Active");
-    const loaded=movements.filter((row)=>txt(row.relatedOrderId)===orderId&&txt(row.type)==="Transfer"&&
-      txt(row.fromNodeId)===warehouse&&txt(row.toNodeId)===staffNode);
+    const anyOrderTransfer=movements.filter((row)=>txt(row.relatedOrderId)===orderId&&
+      txt(row.type)==="Transfer");
+    const loaded=anyOrderTransfer.filter((row)=>txt(row.fromNodeId)===warehouse&&
+      txt(row.toNodeId)===staffNode);
+    const conflictingTransfers=anyOrderTransfer.length!==loaded.length;
     const loadedCases=loaded.map((movement)=>({
       product:txt(lots.get(txt(movement.lotId))?.product),quantity:num(movement.quantity),
     }));
     if(action==="claim"){
       if(task&&taskStatus==="Accepted"&&status==="Approved")return response(status,"Accepted",undefined,true);
-      if(task||status!=="Approved"||activeForOrder.length||loaded.length||existingDelivery.length)
+      if(task||status!=="Approved"||activeForOrder.length||anyOrderTransfer.length||existingDelivery.length)
         fail(409,"This order is already assigned or in fulfillment. Ask Operations to review it.");
       const fresh={id:uid("rep-delivery"),orderId,driverId:actor,status:"Accepted",
         acceptedAt:stamp,acceptedBy:actor,history:[event(actor,"Accepted","Sales Rep claimed own approved order.")],collections:[]};
@@ -192,7 +218,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     }else if(action==="pack"){
       if(taskStatus!=="Accepted")fail(409,"Claim your own delivery before reserving inventory.");
       if(status==="Allocated"&&activeForOrder.length)return response("Allocated","Accepted",undefined,true);
-      if(status!=="Approved"||activeForOrder.length||loaded.length||existingDelivery.length)
+      if(status!=="Approved"||activeForOrder.length||anyOrderTransfer.length||existingDelivery.length)
         fail(409,"Inventory has previous movements or reservations. Operations must reconcile it.");
       const availableLots=[...lots.values()].filter((lot)=>txt(lot.status)!=="Quality hold")
         .sort((a,b)=>(txt(a.bestBy)||"9999").localeCompare(txt(b.bestBy)||"9999")||
@@ -219,10 +245,17 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     }else if(action==="load"){
       if(taskStatus==="Loaded"&&status==="Allocated"&&matchExpected(expected,loadedCases))
         return response(status,"Loaded",undefined,true);
-      if(taskStatus!=="Accepted"||status!=="Allocated"||loaded.length||existingDelivery.length)
+      if(taskStatus!=="Accepted"||status!=="Allocated"||anyOrderTransfer.length||existingDelivery.length)
         fail(409,"The order must be reserved and not previously loaded.");
-      if(!getNode(warehouse)||!getNode(staffNode)||txt(getNode(staffNode)?.type)!=="Employee custody")
-        fail(409,"Warehouse or rep custody node is missing. Ask Operations to establish inventory locations.");
+      if(!getNode(warehouse))fail(409,"Warehouse location is missing.");
+      const savedStaffNode=getNode(staffNode);
+      if(savedStaffNode&&(txt(savedStaffNode.type)!=="Employee custody"||
+          txt(savedStaffNode.userId)!==actor))
+        fail(409,"Rep inventory custody node is invalid.");
+      if(!savedStaffNode){
+        set(paths.nodes,[...nodes,{id:staffNode,name:"Sales Rep custody",
+          type:"Employee custody",active:true,userId:actor}]);
+      }
       const planned=activeForOrder.map((reservation)=>({
         product:txt(lots.get(txt(reservation.lotId))?.product),quantity:num(reservation.quantity),
       }));
@@ -247,7 +280,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
         return response(status,"In transit",undefined,true);
       if(taskStatus!=="Loaded"||status!=="Allocated")
         fail(409,"Load the exact inventory before starting delivery.");
-      if(!matchExpected(expected,loadedCases)||existingDelivery.length)
+      if(conflictingTransfers||!matchExpected(expected,loadedCases)||existingDelivery.length)
         fail(409,"Driver custody does not match the ordered SKU quantities.");
       for(const movement of loaded)if(balance(movements,txt(movement.lotId),staffNode)<num(movement.quantity))
         fail(409,"Rep custody is missing stock. Ask Operations to reconcile it.");
@@ -258,10 +291,16 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
         return response("Delivered","Delivered",txt(task?.deliveredAt),true);
       if(taskStatus!=="In transit"||status!=="Out for delivery"||!task?.loadedAt||!task?.departedAt)
         fail(409,"Only an in-transit, fully loaded self-delivery can be completed.");
-      if(existingDelivery.length||!matchExpected(expected,loadedCases))
+      if(existingDelivery.length||conflictingTransfers||!matchExpected(expected,loadedCases))
         fail(409,"Existing delivery posting or incomplete SKU load requires Operations reconciliation.");
-      if(!getNode(locationNode)||txt(getNode(locationNode)?.type)!=="Customer")
-        fail(409,"Customer inventory node is missing.");
+      const savedLocation=getNode(locationNode);
+      if(savedLocation&&(txt(savedLocation.type)!=="Customer"||
+        txt(savedLocation.accountId)!==accountId))
+        fail(409,"Customer inventory node is invalid.");
+      if(!savedLocation){
+        set(paths.nodes,[...nodes,{id:locationNode,name:txt(account.locationName)||txt(account.name),
+          type:"Customer",active:true,accountId}]);
+      }
       for(const movement of loaded){
         if(balance(movements,txt(movement.lotId),staffNode)<num(movement.quantity))
           fail(409,"Insufficient rep custody balance for the full order.");
