@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import {normalizeDeliveryState,deliveryTaskForOrder} from "../lib/delivery-engine";
+import type {WorkspaceData} from "../lib/types";
 
 const invoiceSource = readFileSync(new URL("../components/finance/invoice-print-center.tsx", import.meta.url), "utf8");
 const billingSource = readFileSync(new URL("../components/commerce/order-cash-panel.tsx", import.meta.url), "utf8");
@@ -88,4 +90,52 @@ test("print CSS excludes hidden application pages and fits within letter paper",
   assert.ok(invoiceCss.includes("break-before: page !important"));
   assert.ok(invoiceCss.includes("break-after: auto !important"));
   assert.ok(!invoiceCss.includes("min-height:11in!important"));
+});
+
+test("historical delivery signature remains on invoice after driver's roster changes",()=>{
+  const stamp="2026-10-18T21:30:00.000Z";
+  const data={orders:[{id:"order-signed"}],users:[]} as unknown as WorkspaceData;
+  const state=normalizeDeliveryState({
+    version:1,
+    tasks:[{
+      id:"task-signed",orderId:"order-signed",driverId:"former-driver",
+      status:"Delivered",acceptedAt:stamp,acceptedBy:"former-driver",
+      loadedAt:stamp,departedAt:stamp,deliveredAt:stamp,
+      signature:{
+        signedAt:stamp,capturedBy:"former-driver",
+        recipientName:"Receiving Manager",strokes:[[[100,110],[150,135]]],
+      },
+      history:[{
+        id:"event-signed",type:"Delivered",at:stamp,actorId:"former-driver",
+      }],
+    }],
+    overrides:[],
+  },data);
+  assert.equal(state.tasks.length,1);
+  assert.equal(deliveryTaskForOrder(state,"order-signed")?.signature?.recipientName,
+    "Receiving Manager");
+  assert.equal(deliveryTaskForOrder(state,"order-signed")?.signature?.strokes.length,1);
+});
+
+test("delivery signature is rejected if it is not tied to the delivered event",()=>{
+  const stamp="2026-10-18T21:30:00.000Z";
+  const data={orders:[{id:"order-signed"}],users:[]} as unknown as WorkspaceData;
+  const state=normalizeDeliveryState({
+    version:1,
+    tasks:[{
+      id:"task-signed",orderId:"order-signed",driverId:"former-driver",
+      status:"Delivered",acceptedAt:stamp,acceptedBy:"former-driver",
+      loadedAt:stamp,departedAt:stamp,deliveredAt:stamp,
+      signature:{
+        signedAt:stamp,capturedBy:"unknown-signer",
+        strokes:[[[100,110],[150,135]]],
+      },
+      history:[{
+        id:"event-signed",type:"Delivered",at:stamp,actorId:"former-driver",
+      }],
+    }],
+    overrides:[],
+  },data);
+  assert.equal(state.tasks.length,1);
+  assert.equal(state.tasks[0].signature,undefined);
 });
