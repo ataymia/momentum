@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { appointmentConflict } from "../lib/appointment-scheduling";
+import { appointmentConflict, validAppointmentSlot } from "../lib/appointment-scheduling";
 import type { Appointment } from "../lib/types";
 
 const appointment=(overrides:Partial<Appointment>={}):Appointment=>({
@@ -18,4 +18,12 @@ test("overlapping active appointments conflict for the same employee",()=>{
 test("completed work and the appointment being moved do not conflict",()=>{
   assert.equal(appointmentConflict([appointment({status:"Completed"})],{ownerId:"rep",date:"2026-10-12",startTime:"10:15",duration:30}),undefined);
   assert.equal(appointmentConflict([appointment()],{ownerId:"rep",date:"2026-10-12",startTime:"10:15",duration:30,excludeId:"a1"}),undefined);
+});
+
+test("appointment slot validation covers calendar, time, and day boundaries",()=>{
+  assert.equal(validAppointmentSlot({date:"2026-10-18",startTime:"09:00",duration:30}),true);
+  assert.equal(validAppointmentSlot({date:"2026-02-30",startTime:"09:00",duration:30}),false);
+  assert.equal(validAppointmentSlot({date:"2026-10-18",startTime:"24:00",duration:30}),false);
+  assert.equal(validAppointmentSlot({date:"2026-10-18",startTime:"23:50",duration:11}),false);
+  assert.equal(validAppointmentSlot({date:"2026-10-18",startTime:"23:50",duration:10}),true);
 });
