@@ -11,6 +11,7 @@ import {
   quickVisitSuggestions,
 } from "../lib/quick-visit";
 import { weeklyVisitSummary } from "../lib/sales-field-engine";
+import { arizonaDateKey } from "../lib/date-time";
 import { isEmployeeOwnPhysicalTrip, employeePhysicalVisits } from "../lib/employee-admin";
 import { readFileSync } from "node:fs";
 import type { Account } from "../lib/types";
@@ -59,7 +60,7 @@ test("a freehand physical Quick Visit still counts toward the weekly visit targe
     prospectRating:5,
     visitUnsuccessful:true,
   };
-  const asOf=occurredAt.slice(0,10);
+  const asOf=arizonaDateKey(new Date(occurredAt));
   assert.equal(weeklyVisitSummary([interaction],"rep-1",asOf).completed,1);
 });
 
