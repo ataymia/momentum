@@ -256,6 +256,20 @@ const observe=(path:string,originRoles:string[])=>
             " has been cancelled. Review the order record.");
         }
       }else if(path===docs.approvals||path===docs.workspaceApprovals){
+        const linkedOrder=byId(state.orders,text(current.recordId));
+        if(!linkedOrder||text(linkedOrder.status)==="Cancelled")continue;
+        if(policies.includes("order.confirmed.customer")){
+          if(text(actor?.role)!=="Administrator"||
+             text(current.decidedBy)!==originUid)continue;
+          await customerMail(state,text(linkedOrder.accountId),eventId,
+            "order.confirmed.customer","order_confirmed",
+            path,text(linkedOrder.id),
+            "Order "+text(linkedOrder.number)+" confirmed",
+            "Your order "+text(linkedOrder.number)+
+            " has been approved and is moving into fulfillment. "+
+            "We will provide delivery updates as it progresses.");
+          continue;
+        }
         if(text(current.status)!=="Returned"||
            !policies.includes("order.returned_for_correction"))continue;
         const uid=text(current.requesterId);
@@ -264,8 +278,6 @@ const observe=(path:string,originRoles:string[])=>
             await getFirestore().doc("employeeDirectory/"+uid).get():null;
           if(text(directory?.data()?.managerId)!==originUid)continue;
         }
-        const linkedOrder=byId(state.orders,text(current.recordId));
-        if(!linkedOrder)continue;
         await repMail(uid,text(linkedOrder.accountId),eventId,
           "order.returned_for_correction","order_returned",path,id,
           "Order "+text(linkedOrder.number)+" needs correction",
