@@ -138,10 +138,13 @@ export function DeliveriesPage() {
         INVENTORY_LEDGER_STORAGE_KEY, COMMERCIAL_KEY, DELIVERY_STORAGE_KEY,
       ]);
       if (!refreshed.ok || !signedDeliveryCloudConfirmed(
-        momentumStorage.getItem(DELIVERY_STORAGE_KEY), signingOrderId, strokes,
+        momentumStorage.getItem(DELIVERY_STORAGE_KEY),
+        momentumStorage.getItem(COMMERCIAL_KEY),
+        momentumStorage.getItem(INVENTORY_LEDGER_STORAGE_KEY),
+        signingOrderId, strokes,
       )) {
         setSignatureError("The signed delivery is NOT confirmed in Firestore. " +
-          (refreshed.message ?? "The cloud delivery record does not match the captured signature.") +
+          (refreshed.message ?? "Cloud delivery, commercial status, posted inventory, or signature evidence did not match.") +
           " Keep this window open and use Verify cloud save. Do not deliver or sign a second time.");
         return;
       }
