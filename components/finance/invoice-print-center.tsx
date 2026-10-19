@@ -107,8 +107,6 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
     const deliverySignature = deliveryTask?.signature;
     const adminConfirmedDelivery = !deliverySignature &&
       deliveryState.overrides.some((record) => record.orderId === invoice.orderId);
-    const missingBillingEmail = Boolean(deliverySignature || adminConfirmedDelivery) &&
-      !customer?.billingEmail?.trim();
     const paid = invoicePaidAmount(commerce, invoice.id);
     const credits = invoiceCreditAmount(commerce, invoice.id);
     const balance = invoiceBalance(commerce, invoice);
@@ -169,7 +167,6 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
         <div><span>Payment received</span><i /></div><div><span>Method</span><i /></div><div><span>Reference / check no.</span><i /></div>
       </section>
 
-      {missingBillingEmail && <p className="invoice-sheet__billing-alert">Billing email is missing. Add the customer's billing email before the delivery invoice can be emailed.</p>}
       <section className="invoice-sheet__terms">
         <h2>Terms & conditions</h2>
         <p><strong>{invoice.terms}</strong> · {dueLabel(invoice.terms, invoice.dueDate)}.</p>
@@ -203,7 +200,12 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
         const status = computedInvoiceStatus(commerce, invoice);
         const checked = selectedSet.has(invoice.id);
         const order=data.orders.find((item)=>item.id===invoice.orderId);const placedBy=data.users.find((user)=>user.id===order?.ownerId);
-        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{placedBy?.name??order?.ownerId??"Not recorded"}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill></span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => setPreviewId(invoice.id)}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
+        const billingCustomer=location?customerForLocation(data,location):undefined;
+        const isConfirmedDelivered=Boolean(deliveryState.tasks.some((task)=>
+          task.orderId===invoice.orderId&&task.status==="Delivered")||
+          deliveryState.overrides.some((record)=>record.orderId===invoice.orderId));
+        const billingBlocked=isConfirmedDelivered&&!billingCustomer?.billingEmail?.trim();
+        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{placedBy?.name??order?.ownerId??"Not recorded"}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill>{billingBlocked&&<small role="status">Billing email required for delivery invoice.</small>}</span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => setPreviewId(invoice.id)}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
       })}{invoices.length === 0 && <div className="review-empty"><FileText size={24}/><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}</div>
     </Section>
 
