@@ -107,9 +107,18 @@ const queueDeliveredInvoice=async (
     db.doc("domains/workspace/fields/accounts"),
     db.doc("domains/workspace/fields/customers"),
     db.doc("domains/commerce/fields/invoices"),
+    db.doc("domains/commercial/fields/_root"),
   ];
-  const [commercial,workspace,accountsDoc,customersDoc,invoicesDoc]=
+  const [commercial,workspace,accountsDoc,customersDoc,invoicesDoc,rootDoc]=
     await db.getAll(...refs);
+  const root=row(rootDoc.data()?.data)?rootDoc.data()?.data as Row:{};
+  const accountPatches=row(root.accountPatches)?root.accountPatches:{};
+  const customerPatches=row(root.customerPatches)?root.customerPatches:{};
+  const withPatch=(record:Row|undefined,patches:Row):Row|undefined=>{
+    if(!record)return undefined;
+    const patch=patches[text(record.id)];
+    return row(patch)?{...record,...patch}:record;
+  };
   const order=findById(items(commercial.data()),orderId)||
     findById(items(workspace.data()),orderId);
   if(!order){
@@ -126,10 +135,15 @@ const queueDeliveredInvoice=async (
       orderId,eventId);
     return;
   }
-  const account=findById(items(accountsDoc.data()),text(order.accountId));
-  const customer=account?
-    findById(items(customersDoc.data()),text(account.customerId)):
-    undefined;
+  const account=withPatch(
+    findById(items(accountsDoc.data()),text(order.accountId)),
+    accountPatches,
+  );
+  const customer=account?withPatch(
+    findById(items(customersDoc.data()),text(account.customerId)),
+    customerPatches,
+  ):undefined;
+  // Customer invoices are billing-email only. A/P or location is not a fallback.
   const billingEmail=text(customer?.billingEmail);
   if(!safeMail(billingEmail)){
     await adminEvent("Order "+text(order.number)+
