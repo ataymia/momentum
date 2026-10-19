@@ -180,3 +180,15 @@ test("malformed oversized signature evidence is discarded without deleting the d
   assert.equal(state.tasks.length, 1);
   assert.equal(state.tasks[0].signature, undefined);
 });
+
+
+test("rep self-delivery tasks survive reads when the staff roster omits that rep",()=>{
+  const acceptedAt="2026-10-19T19:00:00.000Z";
+  const task={id:"rep-self-task",orderId:data.orders[1].id,
+    driverId:rep.id,status:"Accepted",acceptedAt,acceptedBy:rep.id,
+    history:[{id:"event-self",type:"Accepted",at:acceptedAt,actorId:rep.id}]};
+  assert.equal(normalizeDeliveryState({version:1,tasks:[task]},data).tasks.length,1);
+  const scoped={...data,users:[driver]};
+  assert.equal(normalizeDeliveryState({version:1,tasks:[task]},scoped).tasks.length,1);
+  assert.equal(normalizeDeliveryState({version:1,tasks:[{...task,driverId:"another-user"}]},scoped).tasks.length,0);
+});
