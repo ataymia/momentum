@@ -136,7 +136,7 @@ const renderPdf=(pages:string[],brand:Buffer)=>{
   const alphaId=add("<< /Type /ExtGState /ca 0.10 /CA 0.10 >>");
   const pageIds:number[]=[];
   const contentIds=pages.map((page)=>add(stream("",Buffer.from(page,"latin1"))));
-  const pagesId=objects.length+contentIds.length+1;
+  const pagesId=objects.length+contentIds.length;
   for(const id of contentIds){
     pageIds.push(add("<< /Type /Page /Parent "+pagesId+" 0 R /MediaBox [0 0 612 792] "+
       "/Resources << /Font << /F1 "+fontId+" 0 R /F2 "+boldId+" 0 R >> "+
