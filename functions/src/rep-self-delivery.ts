@@ -70,14 +70,14 @@ const event=(actor:string,type:string,note?:string)=>({
   id:uid("rep-delivery-event"),type,at:at(),actorId:actor,...(note?{note}:{}),
 });
 const signatureDraft=(value:unknown)=>{
-  if(!obj(value)||!Array.isArray(value.strokes))fail(400,"The customer's handwritten signature is required.");
+  if(!obj(value)||!Array.isArray(value.strokes))return fail(400,"The customer's handwritten signature is required.");
   const strokes=value.strokes;
   if(!strokes.length||strokes.length>80)fail(400,"Invalid recipient signature. Please sign again.");
   let count=0;
   for(const stroke of strokes){
     if(!Array.isArray(stroke)||stroke.length<2||stroke.length>300)fail(400,"Signature stroke is invalid.");
     count+=stroke.length;
-    if(!stroke.every((pt)=>Array.isArray(pt)&&pt.length===2&&
+    if(!stroke.every((pt:unknown)=>Array.isArray(pt)&&pt.length===2&&
       pt.every((v:unknown)=>typeof v==="number"&&Number.isFinite(v))&&
       pt[0]>=0&&pt[0]<=1000&&pt[1]>=0&&pt[1]<=300))fail(400,"Signature points are invalid.");
   }
@@ -94,7 +94,7 @@ const signatureDraft=(value:unknown)=>{
  * @return {Promise<Receipt>} Confirmed server state.
  */
 export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<Receipt>{
-  if(!actor||!obj(body))fail(400,"Invalid self-delivery request.");
+  if(!actor||!obj(body))return fail(400,"Invalid self-delivery request.");
   const action=txt(body.action) as Action;
   const orderId=txt(body.orderId);
   if(!["status","claim","pack","load","depart","complete"].includes(action)||
@@ -117,7 +117,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     const commercial=rows(paths.commercial),workspace=rows(paths.workspace);
     const order=commercial.find((item)=>txt(item.id)===orderId)||
       workspace.find((item)=>txt(item.id)===orderId);
-    if(!order)fail(404,"Order not found.");
+    if(!order)return fail(404,"Order not found.");
     if(txt(order.ownerId)!==actor)fail(403,"Only orders placed by you qualify for self-delivery.");
     const copy=commercial.find((item)=>txt(item.id)===orderId);
     const second=workspace.find((item)=>txt(item.id)===orderId);
@@ -133,7 +133,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     const effectiveOwner=obj(patch)&&typeof patch.ownerId==="string"?
       txt(patch.ownerId):txt(account?.ownerId);
     if(!account||effectiveOwner!==actor)
-      fail(403,"This account is no longer assigned to you for self-delivery.");
+      return fail(403,"This account is no longer assigned to you for self-delivery.");
 
     const tasks=rows(paths.tasks),overrides=rows(paths.overrides);
     if(overrides.some((row)=>txt(row.orderId)===orderId))
@@ -330,9 +330,8 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     for(const path of touched.keys())versions[path.replace(/[^A-Za-z0-9]+/g,"_")]=version;
     tx.set(meta,{versions},{merge:true});
     return response(
-      ["pack","depart","complete"].includes(action)?
-        {pack:"Allocated",depart:"Out for delivery",complete:"Delivered"}[action]:status,
-      {claim:"Accepted",pack:"Accepted",load:"Loaded",depart:"In transit",complete:"Delivered"}[action],
+      action==="pack"?"Allocated":action==="depart"?"Out for delivery":action==="complete"?"Delivered":status,
+      action==="claim"||action==="pack"?"Accepted":action==="load"?"Loaded":action==="depart"?"In transit":"Delivered",
       action==="complete"?stamp:undefined,
     );
   });
