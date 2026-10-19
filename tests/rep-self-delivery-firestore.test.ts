@@ -15,7 +15,7 @@ test("server self-delivery atomically verifies rep, approval, exact custody, sig
   const commit=exportsObject.commitRepSelfDelivery as (uid:string,body:unknown)=>Promise<{
     taskStatus:string;orderStatus:string;cloudConfirmed:boolean;replayed?:boolean;
   }>;
-  const app=initializeApp({projectId:"momentum-rules-test"},"rep-self-delivery-tests");
+  const app=initializeApp({projectId:"momentum-rules-test"});
   const db=getFirestore(app);
   const rep="rep-self-owner",stranger="rep-self-stranger",orderId="order-rep-self-1";
   const prefix="domains/";
