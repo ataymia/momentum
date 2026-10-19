@@ -151,3 +151,45 @@ test("approved order emails use the decision source and canonical order identity
   assert.match(source,/path,text\(linkedOrder\.id\)/);
   assert.match(source,/onDocumentWrittenWithAuthContext/);
 });
+
+test("dispatch email accepts a signed delivery that overtook an async departure event",()=>{
+ const time="2026-10-18T22:05:00.000Z";
+ const departed={
+  id:"task-a",orderId:"order-a",driverId:"driver-a",
+  status:"In transit",loadedAt:"2026-10-18T22:00:00.000Z",
+  departedAt:time,
+ };
+ const latest={
+  ...departed,status:"Delivered",
+  deliveredAt:"2026-10-18T22:08:00.000Z",
+  history:[{id:"departure-event",type:"Departed",
+   actorId:"driver-a",at:time}],
+ };
+ assert.equal(m.departureStillVerified(departed,latest,"driver-a"),true);
+ assert.equal(m.departureStillVerified(departed,{
+  ...latest,departedAt:"2026-10-18T22:06:00.000Z",
+ },"driver-a"),false);
+ assert.equal(m.departureStillVerified(departed,{
+  ...latest,status:"Cancelled",
+ },"driver-a"),false);
+ assert.equal(m.departureStillVerified(departed,latest,"unauthorized"),false);
+});
+test("authorized Operations departure does not require Operations to be delivery driver",()=>{
+ const time="2026-10-18T22:05:00.000Z";
+ const departed={
+  id:"task-b",orderId:"order-b",driverId:"driver-b",
+  status:"In transit",loadedAt:"2026-10-18T22:00:00.000Z",
+  departedAt:time,
+ };
+ const latest={...departed,status:"In transit",
+  history:[{type:"Departed",actorId:"operations-a",at:time}]};
+ assert.equal(m.departureStillVerified(departed,latest,"operations-a"),true);
+ assert.equal(m.departureStillVerified(departed,latest,"driver-b"),false);
+});
+test("the commercial mail throttle applies only to failed payments",()=>{
+ const source=readFileSync("functions/src/commercial-email-producers.ts","utf8");
+ assert.match(source,/const failed=intent\.policyId==="payment\.failed\.customer"/);
+ assert.match(source,/failed\?\[ref,throttleRef\]:\[ref\]/);
+ assert.match(source,/if\(failed\)\{/);
+ assert.match(source,/departureStillVerified\(current,latest,actorUid\)/);
+});
