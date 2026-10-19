@@ -33,6 +33,14 @@ test("approval return requires real Pending to Returned transition",()=>{
  assert.deepEqual(m.transitionPolicies(
   "domains/commercial/fields/approvals",
   previous,{...previous,status:"Approved"}),[]);
+ assert.deepEqual(m.transitionPolicies(
+  "domains/commercial/fields/approvals",
+  previous,{...previous,status:"Approved",decidedBy:"admin-uid",decidedAt:at}),
+  ["order.confirmed.customer"]);
+ assert.deepEqual(m.transitionPolicies(
+  "domains/workspace/fields/approvals",
+  previous,{...previous,status:"Approved",decidedBy:"admin-uid",decidedAt:at}),
+  ["order.confirmed.customer"]);
 });
 
 test("dispatch only alerts after loaded task actually departs",()=>{
@@ -134,4 +142,12 @@ test("email observer and Resend transport retain trusted policy gates",()=>{
  assert.match(mail,/trustedKinds/);
  assert.match(mail,/system:commercial-policy/);
  assert.doesNotMatch(producer,/invoice_issued/);
+});
+
+test("approved order emails use the decision source and canonical order identity",()=>{
+  const source=readFileSync("functions/src/commercial-email-producers.ts","utf8");
+  assert.match(source,/decidedBy\)!==originUid/);
+  assert.match(source,/policies\.includes\("order\.confirmed\.customer"\)/);
+  assert.match(source,/path,text\(linkedOrder\.id\)/);
+  assert.match(source,/onDocumentWrittenWithAuthContext/);
 });
