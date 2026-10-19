@@ -20,7 +20,7 @@ import {
 import { useMemo, useState } from "react";
 import { deliveryAddressLabel } from "../../lib/account-address";
 import type { PaymentMethod } from "../../lib/commerce-engine";
-import { DELIVERY_STORAGE_KEY, deliveryStatusForOrder, processedForDelivery, type DeliverySignaturePoint } from "../../lib/delivery-engine";
+import { DELIVERY_STORAGE_KEY, deliveryStatusForOrder, processedForDelivery, signedDeliveryCloudConfirmed, type DeliverySignaturePoint } from "../../lib/delivery-engine";
 import { useDelivery } from "../../lib/delivery-context";
 import { INVENTORY_LEDGER_STORAGE_KEY } from "../../lib/inventory-ledger";
 import { orderLinesFor } from "../../lib/order-lines";
@@ -62,6 +62,7 @@ export function DeliveriesPage() {
   const [signatureStrokes, setSignatureStrokes] = useState<DeliverySignaturePoint[][]>([]);
   const [recipientName, setRecipientName] = useState("");
   const [signatureError, setSignatureError] = useState("");
+  const [savingSignedDelivery, setSavingSignedDelivery] = useState(false);
 
   const isDriver = currentUser?.role === "Delivery Driver";
   const canManage = Boolean(currentUser && ["Administrator", "Operations"].includes(currentUser.role));
@@ -98,13 +99,62 @@ export function DeliveriesPage() {
   const openSignature = (orderId: string) => { setSigningOrderId(orderId); setSignatureStrokes([]); setRecipientName(""); setSignatureError(""); };
   const closeSignature = () => { setSigningOrderId(null); setSignatureStrokes([]); setRecipientName(""); setSignatureError(""); };
   const completeSignedDelivery = async () => {
-    if (!signingOrderId) return;
-    if (!signatureStrokes.some((stroke) => stroke.length >= 2)) { setSignatureError("Have the recipient sign in the box before completing the delivery."); return; }
-    const order = data.orders.find((item) => item.id === signingOrderId);
-    const result = markDelivered(signingOrderId, { strokes: signatureStrokes, recipientName });
-    if (!result.ok) { setSignatureError(result.message ?? "The delivery could not be completed."); return; }
-    closeSignature();
-    await run(result, `${order?.number ?? "Delivery"} delivered. Signature saved to the delivery record and invoice.`);
+    if (!signingOrderId || savingSignedDelivery) return;
+    const strokes = signatureStrokes.filter((stroke) => stroke.length >= 2);
+    if (!strokes.length) {
+      setSignatureError("Have the recipient sign in the box before completing the delivery.");
+      return;
+    }
+    setSavingSignedDelivery(true);
+    setSignatureError("");
+    try {
+      const task = taskForOrder(signingOrderId);
+      if (task?.status === "Delivered") {
+        // A previous save attempt might still be pending. Never post duplicate
+        // stock movements or replace genuine signature evidence on retry.
+        if (JSON.stringify(task.signature?.strokes) !== JSON.stringify(strokes)) {
+          setSignatureError("This delivery already has different local signature evidence. Do not sign again. Ask Operations to reconcile the original delivery.");
+          return;
+        }
+      } else {
+        const result = markDelivered(signingOrderId, { strokes, recipientName });
+        if (!result.ok) {
+          setSignatureError(result.message ?? "Delivery inventory or order status blocked completion. The signature was not posted.");
+          return;
+        }
+      }
+      setNotice("Confirming signed delivery with Momentum cloud…");
+      // Completion is a three-ledger operation. Keep the actual handwriting
+      // visible until inventory, order, and signed task are cloud-confirmed.
+      for (const key of [INVENTORY_LEDGER_STORAGE_KEY, COMMERCIAL_KEY, DELIVERY_STORAGE_KEY]) {
+        const confirmed = await momentumStorage.flushAndConfirm(key, 20_000);
+        if (!confirmed.ok) {
+          setSignatureError("Cloud confirmation failed: " + (confirmed.message ?? "A delivery record is still unsaved.") +
+            " Keep this window open and use Verify cloud save. Do not sign or post this delivery again.");
+          return;
+        }
+      }
+      const refreshed = await momentumStorage.refreshKeys([
+        INVENTORY_LEDGER_STORAGE_KEY, COMMERCIAL_KEY, DELIVERY_STORAGE_KEY,
+      ]);
+      if (!refreshed.ok || !signedDeliveryCloudConfirmed(
+        momentumStorage.getItem(DELIVERY_STORAGE_KEY), signingOrderId, strokes,
+      )) {
+        setSignatureError("The signed delivery is NOT confirmed in Firestore. " +
+          (refreshed.message ?? "The cloud delivery record does not match the captured signature.") +
+          " Keep this window open and use Verify cloud save. Do not deliver or sign a second time.");
+        return;
+      }
+      const order = data.orders.find((item) => item.id === signingOrderId);
+      closeSignature();
+      setNotice(`${order?.number ?? "Delivery"}: genuine signature and Delivered status verified in Momentum cloud. Signed invoice email is now pending its separate send confirmation.`);
+    } catch (error) {
+      setSignatureError("Cloud confirmation could not finish: " +
+        (error instanceof Error ? error.message : "Unknown synchronization issue.") +
+        " Do not recreate this delivery or signature.");
+    } finally {
+      setSavingSignedDelivery(false);
+    }
   };
   const syncText = sync.lastError ? `Sync issue: ${sync.lastError}` : sync.pending || sync.flushing ? `Saving ${sync.pending || 1} change${sync.pending === 1 ? "" : "s"}…` : sync.mode === "firestore" ? "Cloud synced" : "Local demo";
 
@@ -237,7 +287,7 @@ export function DeliveriesPage() {
       </div>}
     </Modal>
 
-    <Modal open={Boolean(signingOrderId)} title="Complete delivery" description="Capture the recipient signature before posting the delivery as complete." onClose={closeSignature} footer={<><Button type="button" variant="secondary" icon={<RefreshCcw size={15}/>} onClick={refreshQueue} disabled={refreshingQueue}>{refreshingQueue?"Syncing…":"Sync queue"}</Button><Button type="button" variant="ghost" onClick={closeSignature}>Cancel</Button><Button type="button" icon={<CheckCircle2 size={16}/>} onClick={completeSignedDelivery} disabled={refreshingQueue}>Save signature & complete</Button></>}>
+    <Modal open={Boolean(signingOrderId)} title="Complete delivery" description="Capture the recipient signature and wait for cloud confirmation before closing." onClose={() => { if (!savingSignedDelivery) closeSignature(); }} footer={<><Button type="button" variant="secondary" icon={<RefreshCcw size={15}/>} onClick={refreshQueue} disabled={refreshingQueue || savingSignedDelivery}>{refreshingQueue?"Syncing…":"Sync queue"}</Button><Button type="button" variant="ghost" onClick={closeSignature} disabled={savingSignedDelivery}>Close</Button><Button type="button" icon={<CheckCircle2 size={16}/>} onClick={completeSignedDelivery} disabled={refreshingQueue || savingSignedDelivery}>{savingSignedDelivery?"Confirming with cloud…":taskForOrder(signingOrderId ?? "")?.status==="Delivered"?"Verify cloud save":"Save signature & complete"}</Button></>}>
       <div className="delivery-signature-modal">
         <p className="delivery-signature-modal__order">{signingOrderId ? data.orders.find((item) => item.id === signingOrderId)?.number : ""} · {signingOrderId ? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.locationName ?? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.name : ""}</p>
         <DeliverySignaturePad strokes={signatureStrokes} onChange={(strokes) => { setSignatureStrokes(strokes); setSignatureError(""); }} />
