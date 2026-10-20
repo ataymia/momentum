@@ -56,7 +56,7 @@ const secondaryNav: NavItem[] = [
 
 const sectionTabs: Partial<Record<PageKey, SectionTab[]>> = {
   work: [{key:"work",label:"Approvals"},{key:"actions",label:"Action center"}],
-  accounts: [{key:"accounts",label:"Accounts"},{key:"quickVisit",label:"Quick Visit"},{key:"salesMap",label:"Map"},{key:"accountSetup",label:"Account setup"},{key:"accountHealth",label:"Account health"}],
+  accounts: [{key:"accounts",label:"Accounts"},{key:"quickVisit",label:"Quick Visit"},{key:"salesMap",label:"Map"},{key:"accountSetup",label:"Account setup"}],
   orders: [{key:"orders",label:"Orders"},{key:"orderCash",label:"Invoices & payments"}],
   inventory: [{key:"inventory",label:"Fulfillment"},{key:"inventoryLedger",label:"Inventory ledger"},{key:"products",label:"Products"}],
   people: [{key:"people",label:"HR home"},{key:"materials",label:"Training & resources"},{key:"employees",label:"Employee directory"},{key:"newHire",label:"New hire"},{key:"onboarding",label:"Onboarding queue"},{key:"trainingAdmin",label:"Training setup"}],
