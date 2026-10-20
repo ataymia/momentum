@@ -498,7 +498,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData((current) => {
       const card = current.timecards.find((item) => item.id === id && item.userId === currentUser.id && (item.status === "Open" || item.status === "Returned"));
       if (!card) return current;
-      if (current.timeEntries.some((item) => item.userId === currentUser.id && item.date >= card.weekStart && item.date <= card.weekEnd && (!item.clockOut || Boolean(item.mealStart && !item.mealEnd)))) return current;
+      if (current.timeEntries.some((item) => item.userId === currentUser.id && item.date >= card.weekStart && item.date <= card.weekEnd && (!item.clockOut || Boolean(item.mealStart && !item.mealEnd) || Boolean(item.note?.includes("Automatically closed at Arizona midnight") && item.source !== "Manual correction")))) return current;
       const exists = current.approvals.some((item) => item.type === "Timecard" && item.recordId === id && item.status === "Pending");
       return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: "Submitted", submittedAt: nowStamp(), attested: true, approvedAt: undefined, approverId: undefined } : item), approvals: exists ? current.approvals : [{ id: `apr-${Date.now()}`, type: "Timecard", title: `${currentUser.name} · weekly timecard`, detail: `${card.weekStart} through ${card.weekEnd} · employee attested`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.team, submittedAt: nowStamp(), dueAt: plusHours(24), priority: "Normal", status: "Pending" }, ...current.approvals] };
     });
