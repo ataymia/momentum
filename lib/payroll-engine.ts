@@ -172,6 +172,9 @@ export function regularPayrollSource(data: WorkspaceData, employeeId: string, pe
   const ordered = [...resolved].sort((left, right) => left.weekStart.localeCompare(right.weekStart));
   if (ordered.some((card, index) => index > 0 && card.weekStart <= ordered[index - 1].weekEnd)) return null;
   const entries = data.timeEntries.filter((entry) => entry.userId === employeeId && isValidCalendarDateKey(entry.date) && resolved.some((card) => entry.date >= card.weekStart && entry.date <= card.weekEnd));
+  // A scheduled closure prevents infinite open shifts but is NOT verified payable work.
+  // A documented employee correction is required before ordinary payroll processing.
+  if (entries.some((entry) => entry.note?.includes("Automatically closed at Arizona midnight") && entry.source !== "Manual correction")) return null;
   const seen = new Set<string>();
   return { timecardIds, entries: entries.filter((entry) => seen.has(entry.id) ? false : (seen.add(entry.id), true)) };
 }
