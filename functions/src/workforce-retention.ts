@@ -89,9 +89,10 @@ export const workforceMidnightAndRouteRetention=onSchedule({
       // Avoid claiming this was an employee punch. A separate server audit
       // carries only counts/IDs, not location coordinates.
       if(time.closed)tx.set(db.doc("workforceMidnightAudit/"+today+"_"+uid),{
-        userId:uid,day:today,closedTimeEntryIds:time.entries.filter((row)=>
-          txt(row.note).includes(autoClosedMidnightNote)&&
-          txt(row.date)<today).map((row)=>txt(row.id)),
+        userId:uid,day:today,closedTimeEntryIds:time.entries.filter((row,index)=>
+          !txt(open[index]?.clockOut)&&txt(row.clockOut)==="23:59"&&
+          txt(row.note).includes(autoClosedMidnightNote))
+          .map((row)=>txt(row.id)),
         recordedAt:new Date().toISOString(),source:"Scheduled rule",
       },{merge:true});
       if(time.closed||savedRoutes.length!==route.length||savedEvents.length!==events.length)
