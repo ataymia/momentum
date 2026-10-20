@@ -206,7 +206,7 @@ export function WorkforceLivePage() {
           <div className="workforce-detail__list">
             {historicalEntries.map((entry) => <article key={entry.id}>
               <span><Clock3 size={16}/></span>
-              <div><strong>{entry.clockIn} → {entry.clockOut ?? "Open"}</strong><p>{entry.source} · {entry.breakMinutes} break min{entry.clockInAt ? ` · punched ${formatDate(entry.clockInAt,{hour:"numeric",minute:"2-digit"})}` : ""}</p></div>
+              <div><strong>{entry.clockIn} → {entry.clockOut ?? "Open"}</strong><p>{entry.source} · {entry.breakMinutes} break min{entry.clockInAt ? ` · punched ${formatDate(entry.clockInAt,{hour:"numeric",minute:"2-digit"})}` : ""}{entry.note?.includes("Automatically closed at Arizona midnight") ? " · Auto-closed at midnight, correction required" : ""}</p></div>
               <StatusPill tone={entry.clockOut?"neutral":"success"}>{entry.clockOut?"Closed":"Open"}</StatusPill>
             </article>)}
             {!historicalEntries.length && <div className="review-empty"><p>No time entry recorded for this date.</p></div>}
