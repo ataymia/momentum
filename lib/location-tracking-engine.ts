@@ -1,4 +1,5 @@
 import { arizonaDateKey } from "./date-time";
+import { retainRouteEvidence } from "./route-retention";
 import type { Role } from "./types";
 
 export const FIELD_TRACKING_STORAGE_KEY = "momentum-field-tracking-v1";
@@ -115,8 +116,8 @@ export function normalizeFieldTrackingState(input: unknown): FieldTrackingState 
     version: 1,
     geofences: Array.isArray(state.geofences) ? state.geofences.filter((item) => validCoordinate(item.latitude, item.longitude) && item.radiusMiles > 0) : [],
     sessions: Array.isArray(state.sessions) ? state.sessions : [],
-    samples: Array.isArray(state.samples) ? state.samples.filter((item) => validCoordinate(item.latitude, item.longitude)).slice(0, MAX_ROUTE_SAMPLES) : [],
-    appointmentEvents: Array.isArray(state.appointmentEvents) ? state.appointmentEvents : [],
+    samples: Array.isArray(state.samples) ? retainRouteEvidence(state.samples.filter((item) => validCoordinate(item.latitude, item.longitude))).slice(0, MAX_ROUTE_SAMPLES) : [],
+    appointmentEvents: Array.isArray(state.appointmentEvents) ? retainRouteEvidence(state.appointmentEvents) : [],
     exceptions: Array.isArray(state.exceptions) ? state.exceptions : [],
     departureAlerts: Array.isArray(state.departureAlerts) ? state.departureAlerts : [],
   };
