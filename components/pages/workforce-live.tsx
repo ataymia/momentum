@@ -3,6 +3,7 @@
 import { Clock3, ExternalLink, LocateFixed, MapPin, Route, UsersRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
+import { routeReviewDates, routeDateWithinRetention, ROUTE_RETENTION_DAYS } from "../../lib/route-retention";
 import { useHcm } from "../../lib/hcm-context";
 import { visibleActiveEmployees } from "../../lib/employee-directory-visibility";
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
@@ -86,6 +87,7 @@ export function WorkforceLivePage() {
   const tracking = useFieldTracking();
   const today = arizonaDateKey();
   const [selectedId, setSelectedId] = useState("");
+  const [reviewDate, setReviewDate] = useState(arizonaDateKey());
   const [view, setView] = useState<"live" | "profiles">("live");
   const [nowMs, setNowMs] = useState(0);
 
@@ -129,10 +131,8 @@ export function WorkforceLivePage() {
 
   const selected = employees.find((user) => user.id === selectedId);
   const selectedRow = employeeRows.find((row) => row.user.id === selectedId);
-  const selectedTodayEntries = selectedRow?.entries
-    .filter((entry) => entry.date === today)
-    .sort((a, b) => b.clockIn.localeCompare(a.clockIn)) ?? [];
-  const route = selected && roleIsTracked(selected.role) ? tracking.routeSamplesForUserDay(selected.id, today) : [];
+  const route = selected && roleIsTracked(selected.role) && routeDateWithinRetention(reviewDate) ? tracking.routeSamplesForUserDay(selected.id, reviewDate) : [];
+  const historicalEntries = selectedRow?.entries.filter((entry) => entry.date === reviewDate).sort((a,b) => b.clockIn.localeCompare(a.clockIn)) ?? [];
   const mapsUrl = googleMapsRouteUrl(route);
   const latestRoutePing = route.at(-1);
 
@@ -172,7 +172,7 @@ export function WorkforceLivePage() {
           </div>
           <div className="workforce-roster__actions">
             <StatusPill tone={row.status.tone}>{row.status.label}</StatusPill>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setSelectedId(row.user.id)}>View</Button>
+            <Button type="button" size="sm" variant="secondary" onClick={() => { setSelectedId(row.user.id); setReviewDate(arizonaDateKey()); }}>View</Button>
           </div>
         </article>)}
         {!employeeRows.length && <div className="review-empty"><p>No active employees are available.</p></div>}
@@ -198,18 +198,22 @@ export function WorkforceLivePage() {
           {roleIsTracked(selected.role) && <div><span>Latest location</span><strong>{selectedRow.latest ? formatDate(selectedRow.latest.at,{hour:"numeric",minute:"2-digit"}) : "None"}</strong><small>{selectedRow.latest ? `Accuracy ±${Math.round(selectedRow.latest.accuracyMeters)} m · ${selectedRow.pingState}` : "Waiting for device permission/location"}</small></div>}
         </div>
 
-        <Section title="Today's punches" description="Clock-in and clock-out evidence from the employee timecard record.">
+        <Section title="Route and punch history" description={`Select one of the last ${ROUTE_RETENTION_DAYS} Arizona dates to review recorded punches and GPS pings. Missing pings are gaps, not proof of absence from work.`}>
+          <label className="workforce-review-date-label" htmlFor="workforce-review-date">Review date</label>
+          <select id="workforce-review-date" value={reviewDate} onChange={(event) => setReviewDate(event.target.value)}>
+            {routeReviewDates().map((date) => <option key={date} value={date}>{date}</option>)}
+          </select>
           <div className="workforce-detail__list">
-            {selectedTodayEntries.map((entry) => <article key={entry.id}>
+            {historicalEntries.map((entry) => <article key={entry.id}>
               <span><Clock3 size={16}/></span>
               <div><strong>{entry.clockIn} → {entry.clockOut ?? "Open"}</strong><p>{entry.source} · {entry.breakMinutes} break min{entry.clockInAt ? ` · punched ${formatDate(entry.clockInAt,{hour:"numeric",minute:"2-digit"})}` : ""}</p></div>
               <StatusPill tone={entry.clockOut?"neutral":"success"}>{entry.clockOut?"Closed":"Open"}</StatusPill>
             </article>)}
-            {!selectedTodayEntries.length && <div className="review-empty"><p>No time entry today.</p></div>}
+            {!historicalEntries.length && <div className="review-empty"><p>No time entry recorded for this date.</p></div>}
           </div>
         </Section>
 
-        {roleIsTracked(selected.role) && <Section title="Clocked-in route" description="Each saved ping is real device evidence. Open the complete route or any individual ping in Google Maps.">
+        {roleIsTracked(selected.role) && <Section title="Recorded route" description="Saved device pings for the selected date. Tracking only occurs while the device is permitted to report and an eligible work clock is open.">
           {latestRoutePing ? <div className="workforce-map">
             <iframe
               title={`Latest location for ${selected.name}`}
@@ -221,7 +225,7 @@ export function WorkforceLivePage() {
               <div><strong>Latest ping</strong><p>{formatDate(latestRoutePing.at,{hour:"numeric",minute:"2-digit"})} · accuracy ±{Math.round(latestRoutePing.accuracyMeters)} m</p></div>
               <Button size="sm" variant="secondary" icon={<ExternalLink size={14}/>} onClick={() => openExternal(googleMapsPointUrl(latestRoutePing))}>View latest ping</Button>
             </div>
-          </div> : <div className="review-empty"><MapPin size={22}/><p>No route ping has been recorded for this employee today.</p></div>}
+          </div> : <div className="review-empty"><MapPin size={22}/><p>No route ping was recorded for this employee on this date. This does not prove they were not working.</p></div>}
 
           {route.length > 0 && <div className="workforce-pings">
             {[...route].reverse().map((sample,index) => <article key={sample.id}>
