@@ -1583,6 +1583,7 @@ export {
   receiveResendWebhook,
 } from "./resend-transport";
 export {sundayWeeklyReportReminders} from "./weekly-email-scheduler";
+export {workforceMidnightAndRouteRetention} from "./workforce-retention";
 export {
   queueSignedInvoiceOnDelivery,
   queueInvoiceOnAdminDeliveryOverride,
