@@ -12,8 +12,8 @@ import { buildAdminAudit, type AdminAuditReport, type AuditCategory } from "../.
 import { useWorkspace } from "../../lib/workspace-context";
 import { Section } from "../ui";
 
-type Tab = "All" | AuditCategory;
-const tabs:Tab[]=["All","Timekeeping","Field","Sales","Accounts"];
+type Tab = "All" | "Visits" | AuditCategory;
+const tabs:Tab[]=["All","Timekeeping","Field","Sales","Visits","Accounts"];
 const localTime=(iso?:string)=>iso?new Intl.DateTimeFormat("en-US",{timeZone:"America/Phoenix",hour:"numeric",minute:"2-digit"}).format(new Date(iso)):"Not recorded";
 const duration=(min?:number)=>min===undefined?"n/a":Math.floor(min/60)+"h "+String(min%60).padStart(2,"0")+"m";
 const rate=(value:number|null)=>value===null?"n/a":value.toFixed(1)+"%";
@@ -29,6 +29,7 @@ export function AdminAuditBot(){
   const [to,setTo]=useState(()=>arizonaDateKey());
   const [person,setPerson]=useState("all");
   const [tab,setTab]=useState<Tab>("All");
+  const [onlyRepeated,setOnlyRepeated]=useState(false);
   const [report,setReport]=useState<AdminAuditReport|null>(null);
   const [error,setError]=useState("");
   const employees=useMemo(()=>data.users.filter(user=>user.role!=="Customer").sort((a,b)=>a.name.localeCompare(b.name)),[data.users]);
@@ -58,6 +59,7 @@ export function AdminAuditBot(){
     ? tab==="All"||tab==="Sales"||d.flags.some(f=>f.category===tab)
     : false)??[];
   const visibleSales=(tab==="All"||tab==="Sales")?report?.sales??[]:[];
+  const visibleVisits=(tab==="All"||tab==="Visits"||tab==="Sales")?(report?.visits??[]).filter(row=>!onlyRepeated||row.visits>1):[];
   const visibleAccounts=(tab==="All"||tab==="Accounts")?report?.accounts??[]:[];
 
   return <Section title="Admin audit bot" description="Run a source-backed review of employee time, field activity, sales conversion and account follow-ups. Administrator access only.">
@@ -83,24 +85,46 @@ export function AdminAuditBot(){
         <article><small>Account follow-ups</small><strong>{report.accounts.length}</strong><span>Missing or overdue next actions</span></article>
       </div>
       <div className="admin-audit-tabs" role="group" aria-label="Audit section">
-        {tabs.map(item=><button type="button" key={item} aria-pressed={tab===item} className={tab===item?"is-selected":""} onClick={()=>setTab(item)}>{item}</button>)}
+        {tabs.map(item=><button type="button" key={item} aria-pressed={tab===item} className={tab===item?"is-selected":""} onClick={()=>setTab(item)}>{item==="Visits"?"Visits by location":item}</button>)}
       </div>
       {(tab==="All"||tab==="Sales")&&<>
         <h3 className="admin-audit-subtitle">Sales and conversion performance</h3>
         <p className="admin-audit-hint">Physical visits, account openings, fully paid buying accounts and currently owned accounts are separate measures. Percentages use distinct account counts, not number of visits.</p>
         <div className="admin-audit-scroll"><table className="admin-audit-table"><thead><tr>
-          <th>Salesperson</th><th>Visits / unique locations</th><th>Opened</th><th>Owned now</th>
+          <th>Salesperson</th><th>Visits / unique locations</th><th>Return visits</th><th>Locations revisited</th><th>Opened</th><th>Owned now</th>
           <th>Accounts sold</th><th>First-time buyers</th><th>Reorder accounts</th><th>Orders placed / paid</th><th>Paid cases</th><th>Visit to paid</th><th>Opened to paid</th><th>Owned book buying</th><th>Net collected</th>
         </tr></thead><tbody>
           {visibleSales.map(s=><tr key={s.userId}>
-            <td><strong>{s.employee}</strong></td><td>{s.physicalVisits} / {s.distinctVisitedAccounts}</td><td>{s.newAccountsOpened}</td><td>{s.accountsOwnedNow}</td>
+            <td><strong>{s.employee}</strong></td><td>{s.physicalVisits} / {s.distinctVisitedAccounts}</td><td>{s.returnVisits}</td><td>{s.revisitedLocations}</td><td>{s.newAccountsOpened}</td><td>{s.accountsOwnedNow}</td>
             <td>{s.accountsSold}</td><td>{s.firstTimeBuyingAccounts}</td><td>{s.reorderingAccounts}</td><td>{s.placedOrders} / {s.paidOrders}</td><td>{s.paidCases}</td>
             <td><strong>{rate(s.visitToPaidPercent)}</strong><small>{s.visitedAccountsThatPaid}/{s.distinctVisitedAccounts} locations</small></td>
             <td><strong>{rate(s.newAccountToPaidPercent)}</strong><small>{s.newAccountsThatPaid}/{s.newAccountsOpened} opened</small></td>
             <td><strong>{rate(s.ownedBookBuyingPercent)}</strong><small>{s.ownedAccountsThatPaid}/{s.accountsOwnedNow} owned</small></td>
             <td>{money(s.netCollected)}</td>
           </tr>)}
-          {!visibleSales.length&&<tr><td colSpan={13}>No sales employees in this selection.</td></tr>}
+          {!visibleSales.length&&<tr><td colSpan={15}>No sales employees in this selection.</td></tr>}
+        </tbody></table></div>
+      </>}
+      {(tab==="All"||tab==="Visits"||tab==="Sales")&&<>
+        <div className="admin-audit-heading"><div>
+          <h3 className="admin-audit-subtitle">Visits by business location</h3>
+          <p className="admin-audit-hint">Count repeat physical CRM visits to the same location for each rep. Different freehand business names may create different records.</p>
+        </div><label className="admin-audit-repeat-filter">
+          <input type="checkbox" checked={onlyRepeated} onChange={e=>setOnlyRepeated(e.target.checked)}/> Show only locations with 2+ visits
+        </label></div>
+        <div className="admin-audit-scroll"><table className="admin-audit-table"><thead><tr>
+          <th>Employee</th><th>Business / location</th><th>Total visits</th><th>Return visits</th><th>Distinct days</th>
+          <th>First and last visit</th><th>Visit dates (Phoenix)</th><th>Unsuccessful visits</th><th>Paid orders credited to rep</th><th>Visits by selected team</th>
+        </tr></thead><tbody>
+          {visibleVisits.map(row=><tr key={row.userId+"-"+row.locationId}>
+            <td>{row.employee}</td><td><strong>{row.location}</strong><small>{row.linkedAccount?"Linked customer location":"Unlinked Quick Visit / CRM location"}</small></td>
+            <td><strong>{row.visits}</strong></td><td>{row.returnVisits}</td><td>{row.distinctVisitDays}</td>
+            <td><small>{row.firstVisitedAt.slice(0,10)} {localTime(row.firstVisitedAt)}</small>
+                <small>{row.lastVisitedAt.slice(0,10)} {localTime(row.lastVisitedAt)}</small></td>
+            <td>{row.visitDates.join(", ")}</td><td>{row.unsuccessfulVisits}</td>
+            <td>{row.linkedAccount?row.paidOrdersCreditedToRep:"Not linked"}</td><td>{row.selectedTeamVisits}</td>
+          </tr>)}
+          {!visibleVisits.length&&<tr><td colSpan={10}>{onlyRepeated?"No repeat visits recorded in this period.":"No physical visits recorded for these employees and dates."}</td></tr>}
         </tbody></table></div>
       </>}
       {(tab==="All"||tab==="Timekeeping"||tab==="Field")&&<>
