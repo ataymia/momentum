@@ -50,7 +50,7 @@ export function AccountTaxProfile({ accountId }:{accountId:string}){
       </label>
       {manager&&<>
         <label className="field"><span>Tax certificate</span>
-          <select value={type} onChange={e=>setType(e.target.value)}>
+          <select value={type} onChange={e=>setType(e.target.value as "5000A"|"5000"|"")}>
             <option value="">Not supplied</option><option value="5000A">Form 5000A · resale</option><option value="5000">Form 5000 · other exemption</option>
           </select>
         </label>
