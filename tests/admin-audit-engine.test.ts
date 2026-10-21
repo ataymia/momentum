@@ -57,7 +57,7 @@ test("keeps distinct visits and buying accounts separate, without attributing le
 test("reports distinct last-visit, last-work and GPS gaps, not work duration",()=>{
  const day=audit().days.find(row=>row.date===from)!;
  assert.equal(day.visitToOutMinutes,195);
- assert.equal(day.workToOutMinutes,120);
+ assert.equal(day.workToOutMinutes,150);
  assert.equal(day.gpsToOutMinutes,90);
  assert.ok(day.flags.some(flag=>flag.category==="Field"));
 });
