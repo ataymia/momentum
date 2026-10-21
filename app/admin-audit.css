@@ -17,6 +17,8 @@
 .admin-audit-tabs{display:flex;flex-wrap:wrap;gap:5px;border-bottom:1px solid #d5dce5;padding:8px 0}
 .admin-audit-tabs button{background:transparent;border:1px solid transparent;border-radius:8px;padding:8px 11px;color:inherit;cursor:pointer;font-size:13px}
 .admin-audit-tabs button.is-selected{border-color:#2368ce;color:#2368ce;font-weight:700}
+.admin-audit-repeat-filter{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;cursor:pointer}
+.admin-audit-repeat-filter input{width:15px;height:15px;accent-color:#2368ce}
 .admin-audit-subtitle{font-size:15px;margin:17px 0 5px}
 .admin-audit-hint{font-size:12px;color:var(--text-secondary,#596474);line-height:1.5;margin:4px 0 10px}
 .admin-audit-scroll{overflow-x:auto;max-width:100%;border:1px solid #d5dce5;border-radius:10px;margin:10px 0 18px}
