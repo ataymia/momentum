@@ -77,14 +77,12 @@ export function SettingsPage() {
     const missingHierarchy=data.accounts.filter((location)=>!location.customerId||!customerIds.has(location.customerId)||!location.locationName);
     const unassigned=data.appointments.filter((appointment)=>appointment.status==="Scheduled"&&!appointment.ownerId&&appointment.date<=today);
     const overdueApprovals=data.approvals.filter((approval)=>approval.status==="Pending"&&approval.dueAt<new Date().toISOString());
-    const staleActions=data.accounts.filter((location)=>location.nextActionDate<today);
     const qualityHolds=data.inventory.filter((lot)=>lot.status==="Quality hold");
     const paidWithoutDate=data.orders.filter((order)=>order.paymentStatus==="Paid"&&!order.paidAt);
     const issues=[
       {label:"Hierarchy exceptions",count:missingHierarchy.length,detail:"Locations missing a valid parent customer or location label"},
       {label:"Unassigned due work",count:unassigned.length,detail:"Scheduled work due today or earlier with no assignee"},
       {label:"Overdue approvals",count:overdueApprovals.length,detail:"Pending decisions past their due timestamp"},
-      {label:"Overdue next actions",count:staleActions.length,detail:"Locations whose promised next-action date has passed"},
       {label:"Quality holds",count:qualityHolds.length,detail:"Inventory unavailable pending disposition"},
       {label:"Paid records missing settlement date",count:paidWithoutDate.length,detail:"Records marked paid without a settlement date"},
     ];
