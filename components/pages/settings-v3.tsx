@@ -6,7 +6,6 @@ import { ACCOUNTING_STORAGE_KEY } from "../../lib/accounting-engine";
 import { AUDIT_STORAGE_KEY } from "../../lib/audit-engine";
 import { COMMERCE_STORAGE_KEY } from "../../lib/commerce-engine";
 import { CRM_STORAGE_KEY } from "../../lib/crm-engine";
-import { arizonaDateKey } from "../../lib/date-time";
 import { DOCUMENT_TEMPLATE_STORAGE_KEY } from "../../lib/document-template-engine";
 import { FINANCE_STORAGE_KEY } from "../../lib/finance-engine";
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
@@ -72,7 +71,6 @@ export function SettingsPage() {
   const [resetOpen,setResetOpen]=useState(false);
   const [resetDone,setResetDone]=useState(false);
   const health = useMemo(() => {
-    const today=arizonaDateKey();
     const customerIds=new Set((data.customers??[]).map((customer)=>customer.id));
     const missingHierarchy=data.accounts.filter((location)=>!location.customerId||!customerIds.has(location.customerId)||!location.locationName);
     const unassigned=data.appointments.filter((appointment)=>appointment.status==="Scheduled"&&!appointment.ownerId&&appointment.date<=today);
