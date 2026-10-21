@@ -144,22 +144,22 @@ export function buildAdminAudit(
       const flags: AuditFlag[] = [];
       const addFlag = (category: AuditCategory, reason: string) => flags.push({ category, reason });
       const autoClosed = entryDay.some(isAutoClosed);
-      if (autoClosed) addFlag("Timekeeping", "Midnight auto-closure: employee missed a clock-out. Verify actual worked hours and correction status.");
-      if (entryDay.some(e => !e.clockOut)) addFlag("Timekeeping", "Open punch remains. Reconcile time actually worked.");
-      if (entryDay.length > 1) addFlag("Timekeeping", "Multiple punch sessions; inspect separately.");
-      if (entryDay.some(e => e.corrections?.length)) addFlag("Timekeeping", "Punch correction history exists; inspect adjustment evidence.");
-      if (!entryDay.length && scheduled.some(s => s.date === date)) addFlag("Timekeeping", "Scheduled shift has no recorded punch; confirm attendance and work.");
-      if (!entryDay.length && workTimes.length) addFlag("Timekeeping", "Work event recorded without a time entry.");
+      if (autoClosed) addFlag("Timekeeping", "Midnight auto-clock-out. Missing punch.");
+      if (entryDay.some(e => !e.clockOut)) addFlag("Timekeeping", "Open punch.");
+      if (entryDay.length > 1) addFlag("Timekeeping", "Multiple punch sessions.");
+      if (entryDay.some(e => e.corrections?.length)) addFlag("Timekeeping", "Punch corrected.");
+      if (!entryDay.length && scheduled.some(s => s.date === date)) addFlag("Timekeeping", "Scheduled shift missing punch.");
+      if (!entryDay.length && workTimes.length) addFlag("Timekeeping", "Work activity without punch.");
       const visitGap = minutesToOut(lastVisit,lastClockOut), workGap = minutesToOut(lastWork,lastClockOut), gpsGap = minutesToOut(lastGps,lastClockOut);
       if (user.role === "Sales Representative" || user.role === "Sales Manager") {
-        if (visitGap !== undefined && visitGap >= 60) addFlag("Field", "Last documented visit precedes clock-out by " + visitGap + " minutes; investigate other duties.");
-        if (workGap !== undefined && workGap >= 60) addFlag("Field", "Last recorded work event precedes clock-out by " + workGap + " minutes; not proof of inactivity.");
-        if (entryDay.length && !workTimes.length) addFlag("Sales", "Punched time but no logged CRM/field/order event.");
+        if (visitGap !== undefined && visitGap >= 60) addFlag("Field", "Last visit to clock-out: " + visitGap + " minutes.");
+        if (workGap !== undefined && workGap >= 60) addFlag("Field", "Last work event to clock-out: " + workGap + " minutes.");
+        if (entryDay.length && !workTimes.length) addFlag("Sales", "No logged work activity.");
       }
       if (user.role === "Sales Representative" && entryDay.length && !geoDay.length)
-        addFlag("Field", "No retained GPS sample; device, permission, or short retention may explain.");
+        addFlag("Field", "No GPS history for day.");
       if (lastWork !== undefined && lastClockOut !== undefined && lastWork > lastClockOut + 60000)
-        addFlag("Timekeeping", "Work activity logged after final clock-out.");
+        addFlag("Timekeeping", "Work event after clock-out.");
       dayRows.push({userId:user.id,employee:user.name,date,timeEntries:entryDay.length,
         firstClockIn:toIso(firstClockIn),lastClockOut:toIso(lastClockOut),
         autoClosed,incompletePunch:entryDay.some(e=>!e.clockOut),corrected:entryDay.some(e=>Boolean(e.corrections?.length)),
@@ -178,7 +178,6 @@ export function buildAdminAudit(
     }
     const created = opened;
     const owned = data.accounts.filter(account => account.ownerId === user.id);
-    const paidAccounts = new Set(paidPeriod.map(f => f.accountId));
     const firstBuyerAccounts = new Set(paidPeriod.filter(f => firstPaidByAccount.get(f.accountId) === f.paidAt).map(f => f.accountId));
     const reorderingAccounts = new Set(paidPeriod.filter(f => {
       const facts = allPaidByAccount.get(f.accountId) ?? [];
