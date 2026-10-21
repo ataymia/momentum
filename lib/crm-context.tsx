@@ -120,9 +120,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     if (!salesRole || !currentUser || (!locationInScope(input.locationId) && !quickVisit) || !interactionTypes.has(input.type) || !input.summary.trim()) return "";
     if (input.contactId && (!locationInScope(input.locationId) || !contactMatchesLocation(state, input.contactId, input.locationId, data))) return "";
     if (input.sampleUnit && (input.type !== "Sample" || !["can", "case"].includes(input.sampleUnit))) return "";
-    const hasNextAction = Boolean(input.nextAction?.trim());
-    const hasNextDate = Boolean(input.nextActionDate);
-    if (hasNextAction !== hasNextDate || (input.nextActionDate && !validDateKey(input.nextActionDate))) return "";
+    if (input.nextActionDate && !validDateKey(input.nextActionDate)) return "";
     const occurredAt = input.occurredAt ?? now();
     if (!validTimestamp(occurredAt)) return "";
     const id = uid("interaction");
