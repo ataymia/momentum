@@ -539,8 +539,6 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
         [enhanced.accountId]: {
           ...(state.accountPatches[enhanced.accountId] ?? {}),
           lastActivity: `${enhanced.type}: ${closeout.outcome}`,
-          nextAction: closeout.nextAction.trim(),
-          nextActionDate: closeout.nextActionDate,
           stage: closeout.outcome === "Order placed" ? "Opening order" : data.accounts.find((item) => item.id === enhanced.accountId)?.stage,
           ...(closeout.outcome === "Order placed" ? { closerId: enhanced.ownerId } : {}),
         },
