@@ -97,7 +97,7 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     if(!customerIds.has(customerId)||!object(raw))continue;const patch:CommercialCustomerPatch={};
     for(const field of ["name","billingContactName","billingEmail","billingPhone","ein","accountsPayableContactName","accountsPayablePhone","accountsPayableEmail","az5000Number","customPaymentTerms","notes"] as const){const value=optionalText(raw[field]);if(value)patch[field]=value as never;}
     // Keep intentional clears of optional tax fields; never silently equate old AZ-5000 data to a TPT license.
-    if(typeof raw.tptLicenseNumber==="string"&&(!raw.tptLicenseNumber||/^\\d{8}$/.test(raw.tptLicenseNumber)))patch.tptLicenseNumber=raw.tptLicenseNumber;
+    if(typeof raw.tptLicenseNumber==="string"&&(!raw.tptLicenseNumber||/^[0-9]{8}$/.test(raw.tptLicenseNumber)))patch.tptLicenseNumber=raw.tptLicenseNumber;
     if(raw.taxCertificateType===""||raw.taxCertificateType==="5000A"||raw.taxCertificateType==="5000")patch.taxCertificateType=raw.taxCertificateType;
     if(typeof raw.taxCertificateReference==="string"&&raw.taxCertificateReference.length<=200)patch.taxCertificateReference=raw.taxCertificateReference;
     const payment=optionalText(raw.paymentTerms);if(payment&&paymentTerms.has(payment))patch.paymentTerms=payment as CommercialCustomerPatch["paymentTerms"];
