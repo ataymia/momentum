@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { normalizeAzTptLicenseNumber } from "../../lib/arizona-tax-documents";
 import { useWorkspace } from "../../lib/workspace-context";
 import type { TaxExemptionStatus } from "../../lib/types";
@@ -18,13 +18,6 @@ export function AccountTaxProfile({ accountId }:{accountId:string}){
   const [reference,setReference]=useState(customer?.taxCertificateReference??"");
   const [status,setStatus]=useState<TaxExemptionStatus>(customer?.taxExemptionStatus??"Missing");
   const [feedback,setFeedback]=useState("");
-  useEffect(()=>{
-    setTpt(customer?.tptLicenseNumber??"");
-    setType(customer?.taxCertificateType??"");
-    setReference(customer?.taxCertificateReference??"");
-    setStatus(customer?.taxExemptionStatus??"Missing");
-    setFeedback("");
-  },[customer?.id,customer?.tptLicenseNumber,customer?.taxCertificateType,customer?.taxCertificateReference,customer?.taxExemptionStatus]);
   if(!account||!customer)return null;
 
   const save=(event:FormEvent<HTMLFormElement>)=>{
