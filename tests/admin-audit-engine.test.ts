@@ -151,3 +151,16 @@ test("account sold counts distinct non-cancelled placed orders before payment",(
  assert.equal(row.ownedBookOrderingPercent,66.7);
  assert.equal("accounts" in report,false);
 });
+
+test("date-only placedAt remains on the Phoenix business date",()=>{
+ const data={
+   ...baseData,
+   orders:[{...baseData.orders[0],id:"date-only-order",accountId:"store-a",status:"Awaiting approval",paymentStatus:"Not invoiced",placedAt:"2026-10-19",paidAt:undefined}],
+ } as WorkspaceData;
+ const report=buildAdminAudit(data,crm,gps,commerce,"2026-10-19","2026-10-19",["rep-1"]);
+ const row=report.sales[0];
+ assert.equal(row.placedOrders,1);
+ assert.equal(row.accountsSold,1);
+ assert.equal(row.visitedAccountsThatOrdered,1);
+ assert.equal(row.newAccountsThatOrdered,1);
+});
