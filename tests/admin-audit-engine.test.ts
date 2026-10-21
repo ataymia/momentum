@@ -46,13 +46,12 @@ test("keeps distinct visits and buying accounts separate, without attributing le
  assert.equal(sales.accountsOwnedNow,3);
  assert.equal(sales.accountsSold,1);
  assert.equal(sales.firstTimeBuyingAccounts,1);
- assert.equal(sales.visitedAccountsThatPaid,1);
- assert.equal(sales.visitToPaidPercent,50);
- assert.equal(sales.newAccountsThatPaid,1);
- assert.equal(sales.newAccountToPaidPercent,50);
- assert.equal(sales.ownedAccountsThatPaid,1);
- assert.equal(sales.ownedBookBuyingPercent,33.3);
- assert.equal(report.accounts.length,1);
+ assert.equal(sales.visitedAccountsThatOrdered,1);
+ assert.equal(sales.visitToOrderPercent,50);
+ assert.equal(sales.newAccountsThatOrdered,1);
+ assert.equal(sales.newAccountToOrderPercent,50);
+ assert.equal(sales.ownedAccountsThatOrdered,1);
+ assert.equal(sales.ownedBookOrderingPercent,33.3);
 });
 test("reports distinct last-visit, last-work and GPS gaps, not work duration",()=>{
  const day=audit().days.find(row=>row.date===from)!;
@@ -66,8 +65,8 @@ test("zero denominators produce n/a, PDF contains header but no GPS coordinates"
  const emptyCrm={version:1 as const,contacts:[],interactions:[],opportunities:[],responsibilityHistory:[]} as CrmState;
  const emptyGps={version:1 as const,geofences:[],sessions:[],samples:[],appointmentEvents:[],exceptions:[],departureAlerts:[]} as FieldTrackingState;
  const result=buildAdminAudit(empty,emptyCrm,emptyGps,commerce,from,to,["rep-1"]);
- assert.equal(result.sales[0].visitToPaidPercent,null);
- assert.equal(result.sales[0].ownedBookBuyingPercent,null);
+ assert.equal(result.sales[0].visitToOrderPercent,null);
+ assert.equal(result.sales[0].ownedBookOrderingPercent,null);
  const pdf=adminAuditPdf(audit());
  assert.equal(pdf.type,"application/pdf");
  const bytes=await pdf.text();
@@ -131,4 +130,24 @@ test("repeat location detail appears in exported PDF",async()=>{
  assert.ok(pdf.includes("Store A"));
  assert.ok(pdf.includes("return visits 1"));
  assert.ok(!pdf.includes("33.5"));
+});
+
+test("account sold counts distinct non-cancelled placed orders before payment",()=>{
+ const pendingOrders=[
+  {...baseData.orders[0],id:"o-2",number:"GE-2",accountId:"store-b",status:"Awaiting approval",paymentStatus:"Not invoiced",placedAt:"2026-10-19T15:00:00-07:00",paidAt:undefined},
+  {...baseData.orders[0],id:"o-3",number:"GE-3",accountId:"store-b",status:"Approved",paymentStatus:"Open",placedAt:"2026-10-19T16:00:00-07:00",paidAt:undefined},
+  {...baseData.orders[0],id:"o-4",number:"GE-4",accountId:"store-c",status:"Cancelled",paymentStatus:"Not invoiced",placedAt:"2026-10-19T17:00:00-07:00",paidAt:undefined},
+ ];
+ const report=buildAdminAudit({...baseData,orders:[...baseData.orders,...pendingOrders]} as WorkspaceData,crm,gps,commerce,from,to,["rep-1"]);
+ const row=report.sales[0];
+ assert.equal(row.placedOrders,3);
+ assert.equal(row.accountsSold,2);
+ assert.equal(row.paidOrders,1);
+ assert.equal(row.visitedAccountsThatOrdered,2);
+ assert.equal(row.visitToOrderPercent,100);
+ assert.equal(row.newAccountsThatOrdered,1);
+ assert.equal(row.newAccountToOrderPercent,50);
+ assert.equal(row.ownedAccountsThatOrdered,2);
+ assert.equal(row.ownedBookOrderingPercent,66.7);
+ assert.equal("accounts" in report,false);
 });
