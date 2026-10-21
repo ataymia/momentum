@@ -34,6 +34,7 @@ import {
   validCoordinate,
 } from "./location-tracking-engine";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
+import { retainRouteEvidence } from "./route-retention";
 import type { Appointment } from "./types";
 import { useWorkspace } from "./workspace-context";
 
@@ -149,8 +150,8 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
     const previous = latestUserSample(stateRef.current, userId);
     if (!force && !shouldPersistRouteSample(previous, point)) return previous;
     const sample: RouteSample = { ...point, id: uid("route"), sessionId, userId, source, appointmentId: appointment?.id, accountId: appointment?.accountId };
-    setState((current) => ({ ...current, samples: [sample, ...current.samples].slice(0, MAX_ROUTE_SAMPLES) }));
-    stateRef.current = { ...stateRef.current, samples: [sample, ...stateRef.current.samples].slice(0, MAX_ROUTE_SAMPLES) };
+    setState((current) => ({ ...current, samples: retainRouteEvidence([sample, ...current.samples]).slice(0, MAX_ROUTE_SAMPLES) }));
+    stateRef.current = { ...stateRef.current, samples: retainRouteEvidence([sample, ...stateRef.current.samples]).slice(0, MAX_ROUTE_SAMPLES) };
     return sample;
   }, [ensureSession]);
 
