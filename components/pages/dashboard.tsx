@@ -3,7 +3,7 @@
 import { AlertTriangle, BellRing, Check, CheckCircle2, Clock3, Megaphone, PackageCheck, PackagePlus, Route, Store, UsersRound } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { canAccessPage, canPostBulletin, isCustomer } from "../../lib/access";
-import { arizonaDateKey, arizonaEndOfDayIso, arizonaHour } from "../../lib/date-time";
+import { addCalendarDays, arizonaDateKey, arizonaEndOfDayIso, arizonaHour } from "../../lib/date-time";
 import type { Bulletin, PageKey, Team } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Avatar, Button, Field, MetricCard, Modal, PageHeader, Section, StatusPill, TextButton, formatDate, formatMoney } from "../ui";
@@ -38,7 +38,8 @@ export function DashboardPage() {
   const approvals = scope.approvals.filter(item => item.status === "Pending");
   const available = scope.inventory.reduce((sum,lot) => sum + lot.available,0);
   const held = scope.inventory.filter(lot => lot.status === "Quality hold").reduce((sum,lot) => sum + lot.onHand,0);
-  const actions = scope.accounts.filter(account => account.nextAction && account.nextActionDate).sort((a,b) => a.nextActionDate.localeCompare(b.nextActionDate)).slice(0,3);
+  const priceReviewEnd=addCalendarDays(today,30);
+  const accountsToReview=scope.accounts.filter(account => account.health==="At risk" || (account.programPricingExpirationDate && account.programPricingExpirationDate>=today && account.programPricingExpirationDate<=priceReviewEnd));
   const hour = arizonaHour(); const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const openAccount = (accountId: string) => { window.sessionStorage.setItem("momentum-focus-record", accountId); navigate("accounts"); };
   const openAppointment = (appointmentId: string) => { window.sessionStorage.setItem("momentum-focus-record", appointmentId); navigate("dispatch"); };
@@ -51,10 +52,10 @@ export function DashboardPage() {
     ];
     if (canAccessPage(currentUser,"retail")) cards.push({ label:"Active placements", value:String(scope.placements.length), detail:"Assigned account locations", trend:`${placements.length} need attention`, tone:"green", page:"retail" });
     if (canAccessPage(currentUser,"inventory")) cards.push({ label:"Available inventory", value:`${available} cs`, detail:"Across recorded lots", trend:`${held} cs held`, tone:"red", page:"inventory" });
-    else cards.push({ label:"Account actions", value:String(actions.length), detail:"Earliest dated follow-ups", trend:"Open accounts", tone:"red", page:"accounts" });
+    else cards.push({ label:"Account health", value:String(accountsToReview.length), detail:"At risk or pricing expiring", trend:"Open accounts", tone:"red", page:"accounts" });
     if (cards.length < 4) cards.push({ label:"Pending decisions", value:String(approvals.length), detail:"Within your review scope", trend:"Open work queue", tone:"red", page:"work" });
     return cards.slice(0,4);
-  }, [actions.length,appointments,approvals,available,currentUser,held,orders.length,placements.length,scope.placements.length]);
+  }, [accountsToReview.length,appointments,approvals,available,currentUser,held,orders.length,placements.length,scope.placements.length]);
   if (isCustomer(currentUser)) return <CustomerDashboard/>;
 
   const submit = (event: FormEvent) => { event.preventDefault(); const ok = createBulletin({ title:form.title, body:form.body, audience:form.audience, team:form.audience === "Team" ? form.team : undefined, priority:form.priority, expiresAt: form.expiresAt ? arizonaEndOfDayIso(form.expiresAt) : undefined }); if (ok) { setBulletinOpen(false); setForm(current => ({...current,title:"",body:""})); } };
