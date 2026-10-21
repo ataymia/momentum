@@ -20,7 +20,7 @@ const rate=(value:number|null)=>value===null?"n/a":value.toFixed(1)+"%";
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
 
 export function AdminAuditBot(){
-  const {data,currentUser}=useWorkspace();
+  const {data,currentUser,navigate}=useWorkspace();
   const {crm}=useCrm();
   const {commerce}=useCommerce();
   const {hcm}=useHcm();
@@ -69,6 +69,7 @@ export function AdminAuditBot(){
         <option value="all">All employees</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name} ({e.role})</option>)}
       </select></label>
       <button type="button" className="admin-audit-primary" onClick={run}><FileSearch2 size={17}/> Run audit</button>
+      <button type="button" className="admin-audit-link" onClick={()=>navigate("workforceLive")}>GPS history</button>
     </div>
     {error&&<p role="alert" className="admin-audit-warning">{error}</p>}
     {report&&<>
