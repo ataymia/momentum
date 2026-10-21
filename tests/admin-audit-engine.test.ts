@@ -29,7 +29,7 @@ const crm={interactions:[
  {id:"visit-3",userId:"rep-1",locationId:"store-b",type:"Visit",physicalVisit:true,occurredAt:"2026-10-19T12:00:00-07:00"},
 ]} as unknown as CrmState;
 const gps={samples:[{id:"gps-1",userId:"rep-1",at:"2026-10-19T15:00:00-07:00",latitude:33.5,longitude:-112,accuracyMeters:20}]} as FieldTrackingState;
-const commerce={invoices:[],payments:[],allocations:[],credits:[],refunds:[],notes:[]} as CommerceState;
+const commerce={version:1 as const,invoices:[],payments:[],allocations:[],credits:[],refunds:[],notes:[]} as CommerceState;
 const audit=()=>buildAdminAudit(baseData,crm,gps,commerce,from,to,["rep-1"]);
 
 test("flags scheduled Phoenix-midnight auto-close even with clockOut set",()=>{
@@ -63,7 +63,9 @@ test("reports distinct last-visit, last-work and GPS gaps, not work duration",()
 });
 test("zero denominators produce n/a, PDF contains header but no GPS coordinates",async()=>{
  const empty={...baseData,accounts:[],orders:[],activities:[],timeEntries:[]} as WorkspaceData;
- const result=buildAdminAudit(empty,{interactions:[]} as CrmState,{samples:[]} as FieldTrackingState,commerce,from,to,["rep-1"]);
+ const emptyCrm={version:1 as const,contacts:[],interactions:[],opportunities:[],responsibilityHistory:[]} as CrmState;
+ const emptyGps={version:1 as const,geofences:[],sessions:[],samples:[],appointmentEvents:[],exceptions:[],departureAlerts:[]} as FieldTrackingState;
+ const result=buildAdminAudit(empty,emptyCrm,emptyGps,commerce,from,to,["rep-1"]);
  assert.equal(result.sales[0].visitToPaidPercent,null);
  assert.equal(result.sales[0].ownedBookBuyingPercent,null);
  const pdf=adminAuditPdf(audit());
