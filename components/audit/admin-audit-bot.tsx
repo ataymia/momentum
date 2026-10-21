@@ -119,8 +119,8 @@ export function AdminAuditBot(){
           {visibleVisits.map(row=><tr key={row.userId+"-"+row.locationId}>
             <td>{row.employee}</td><td><strong>{row.location}</strong><small>{row.linkedAccount?"Linked customer location":"Unlinked Quick Visit / CRM location"}</small></td>
             <td><strong>{row.visits}</strong></td><td>{row.returnVisits}</td><td>{row.distinctVisitDays}</td>
-            <td><small>{row.firstVisitedAt.slice(0,10)} {localTime(row.firstVisitedAt)}</small>
-                <small>{row.lastVisitedAt.slice(0,10)} {localTime(row.lastVisitedAt)}</small></td>
+            <td><small>{arizonaDateKey(row.firstVisitedAt)} {localTime(row.firstVisitedAt)}</small>
+                <small>{arizonaDateKey(row.lastVisitedAt)} {localTime(row.lastVisitedAt)}</small></td>
             <td>{row.visitDates.join(", ")}</td><td>{row.unsuccessfulVisits}</td>
             <td>{row.linkedAccount?row.paidOrdersCreditedToRep:"Not linked"}</td><td>{row.selectedTeamVisits}</td>
           </tr>)}
