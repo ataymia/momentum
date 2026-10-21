@@ -90,7 +90,7 @@ export function AdminAuditBot(){
         <h3 className="admin-audit-subtitle">Sales and conversion performance</h3>
         <div className="admin-audit-scroll"><table className="admin-audit-table"><thead><tr>
           <th>Salesperson</th><th>Visits / unique locations</th><th>Return visits</th><th>Locations revisited</th><th>Opened</th><th>Owned now</th>
-          <th>Accounts sold</th><th>Paid buyers</th><th>Paid repeat buyers</th><th>Orders placed / paid</th><th>Paid cases</th><th>Visit to order</th><th>Opened to order</th><th>Owned book ordering</th><th>Net collected</th>
+          <th>Accounts sold</th><th>First paid buyers</th><th>Repeat paid buyers</th><th>Orders placed / paid</th><th>Paid cases</th><th>Visit to order</th><th>Opened to order</th><th>Owned book ordering</th><th>Net collected</th>
         </tr></thead><tbody>
           {visibleSales.map(s=><tr key={s.userId}>
             <td><strong>{s.employee}</strong></td><td>{s.physicalVisits} / {s.distinctVisitedAccounts}</td><td>{s.returnVisits}</td><td>{s.revisitedLocations}</td><td>{s.newAccountsOpened}</td><td>{s.accountsOwnedNow}</td>
