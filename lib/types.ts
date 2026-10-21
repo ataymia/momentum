@@ -115,7 +115,7 @@ export type CustomerAccount = {
   /** Eight-digit ADOR Transaction Privilege Tax license number, stored as text to preserve zeros. */
   tptLicenseNumber?: string;
   /** 5000A documents purchases for resale. 5000 documents other specific exemptions. */
-  taxCertificateType?: "5000A" | "5000";
+  taxCertificateType?: "5000A" | "5000" | "";
   /** Identifier of the signed certificate in approved restricted document storage. Not a file upload. */
   taxCertificateReference?: string;
   taxExemptionStatus?: TaxExemptionStatus;
