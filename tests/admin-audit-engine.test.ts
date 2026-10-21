@@ -76,3 +76,16 @@ test("zero denominators produce n/a, PDF contains header but no GPS coordinates"
  assert.ok(!bytes.includes("33.5"));
  assert.ok(!bytes.includes("-112"));
 });
+
+test("net collected subtracts already-signed settled refunds exactly once",()=>{
+ const at="2026-10-20T13:00:00-07:00";
+ const ledger={
+   ...commerce,
+   invoices:[{id:"inv-1",number:"INV-1",orderId:"order-1",accountId:"store-a",issuedAt:at,terms:"COD",total:240,status:"Paid",createdAt:at}],
+   payments:[{id:"payment-1",accountId:"store-a",receivedAt:at,settledAt:at,settledBy:"system",amount:240,method:"ACH",status:"Cleared",createdBy:"system",createdAt:at}],
+   allocations:[{id:"allocation-1",paymentId:"payment-1",invoiceId:"inv-1",amount:240,createdAt:at,createdBy:"system"}],
+   refunds:[{id:"refund-1",paymentId:"payment-1",amount:30,reason:"Approved credit",status:"Settled",settledAt:at,createdAt:at,createdBy:"system"}],
+ } as CommerceState;
+ const result=buildAdminAudit(baseData,crm,gps,ledger,from,to,["rep-1"]);
+ assert.equal(result.sales[0].netCollected,210);
+});
