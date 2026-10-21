@@ -32,11 +32,11 @@ function salesLines(row: SalesAudit):string[]{
     row.employee,
     "  Visits "+row.physicalVisits+" | locations visited "+row.distinctVisitedAccounts+" | returns "+row.returnVisits+" | locations revisited "+row.revisitedLocations,
     "  New opened "+row.newAccountsOpened+" | owned now "+row.accountsOwnedNow,
-    "  Placed orders "+row.placedOrders+" | fully paid orders "+row.paidOrders+" | paid buying accounts "+row.accountsSold,
+    "  Placed orders "+row.placedOrders+" | paid orders "+row.paidOrders+" | accounts sold "+row.accountsSold,
     "  First-time paid accounts "+row.firstTimeBuyingAccounts+" | repeat buyers "+row.reorderingAccounts+" | paid cases "+row.paidCases,
-    "  Visited -> paid "+row.visitedAccountsThatPaid+"/"+row.distinctVisitedAccounts+" = "+rate(row.visitToPaidPercent),
-    "  New opened -> paid "+row.newAccountsThatPaid+"/"+row.newAccountsOpened+" = "+rate(row.newAccountToPaidPercent),
-    "  Owned book buyers "+row.ownedAccountsThatPaid+"/"+row.accountsOwnedNow+" = "+rate(row.ownedBookBuyingPercent),
+    "  Visit -> order "+row.visitedAccountsThatOrdered+"/"+row.distinctVisitedAccounts+" = "+rate(row.visitToOrderPercent),
+    "  New opened -> order "+row.newAccountsThatOrdered+"/"+row.newAccountsOpened+" = "+rate(row.newAccountToOrderPercent),
+    "  Owned book ordering "+row.ownedAccountsThatOrdered+"/"+row.accountsOwnedNow+" = "+rate(row.ownedBookOrderingPercent),
     "  Net collected in period "+money(row.netCollected),
     "",
   ];
@@ -54,7 +54,7 @@ function visitLines(row: VisitLocationAudit):string[]{
 }
 /** Generates an actual multipage PDF locally; no third-party service or geocoordinates. */
 export function adminAuditPdf(report: AdminAuditReport): Blob {
-  const alerts = report.days.reduce((n,d)=>n+d.flags.length,0)+report.accounts.length;
+  const alerts = report.days.reduce((n,d)=>n+d.flags.length,0);
   const all = [
     "MOMENTUM DISTRIBUTION INC.",
     "ADMINISTRATOR AUDIT REVIEW | INTERNAL, RESTRICTED",
@@ -70,14 +70,7 @@ export function adminAuditPdf(report: AdminAuditReport): Blob {
     "TIMEKEEPING / FIELD ACTIVITY BY DAY",
     "",
     ...(report.days.length?report.days.flatMap(dayLines):["No work, punch or schedule records found in selected period."]),
-    "ACCOUNT FOLLOW-UP EXCEPTIONS",
-    "",
-    ...(report.accounts.length?report.accounts.flatMap(a=>wrap(a.owner+" | "+a.account+" | "+a.status+" | "+a.issue+" | "+(a.followUp??"no due date"))):["No programmed account exceptions."]),
-    "",
-    "METRIC DEFINITIONS AND INTERPRETATION LIMITS",
-    ...report.definitions.flatMap(d=>wrap("* "+d)),
-    "",
-    "No payroll change or disciplinary conclusion has been made by this report.",
+
   ];
   const chunks:string[][]=[];
   for(let i=0;i<all.length;i+=48)chunks.push(all.slice(i,i+48));

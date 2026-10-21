@@ -104,7 +104,7 @@ export function DispatchPage() {
     objective: "",
     tags: "",
   });
-  const [closeout, setCloseout] = useState({ outcome: "Follow-up scheduled" as AppointmentOutcome, closeoutNote: "", nextAction: "", nextActionDate: dateOffset(1) });
+  const [closeout, setCloseout] = useState({ outcome: "No decision" as AppointmentOutcome, closeoutNote: "", nextAction: "", nextActionDate: "" });
 
   useEffect(() => {
     const handle = window.setInterval(() => setClock(new Date()), 60_000);
@@ -217,12 +217,12 @@ export function DispatchPage() {
     if (!selected) return;
     const result = salesRepOwnWork ? await tracking.completeTrackedAppointment(selected.id, closeout) : { ok: completeAppointment(selected.id, closeout) };
     if (!result.ok) {
-      setError("message" in result && result.message ? result.message : "Outcome, note, next action, and next-action date are required.");
+      setError("message" in result && result.message ? result.message : "Outcome and a work note are required.");
       return;
     }
     setCloseoutOpen(false);
     setError("");
-    setCloseout({ outcome: "Follow-up scheduled", closeoutNote: "", nextAction: "", nextActionDate: dateOffset(1) });
+    setCloseout({ outcome: "No decision", closeoutNote: "", nextAction: "", nextActionDate: "" });
   };
 
   const captureLocationLock = async () => {
@@ -402,12 +402,10 @@ export function DispatchPage() {
         </form>
       </Modal>
 
-      <Modal open={closeoutOpen} title={selectedAlert ? "Departure closeout required" : "Close the work"} description={selectedAlert ? "The tracked device left the customer radius. Outcome, reflection, next action and date are required to close the appointment." : "Outcome, reflection, next action, and date are required."} onClose={() => setCloseoutOpen(false)} footer={<><Button variant="ghost" onClick={() => setCloseoutOpen(false)}>Keep open</Button><Button type="submit" form="closeout-form">Complete work</Button></>}>
+      <Modal open={closeoutOpen} title={selectedAlert ? "Departure closeout required" : "Close the work"} description={selectedAlert ? "The tracked device left the customer radius. Record the outcome and a work note." : undefined} onClose={() => setCloseoutOpen(false)} footer={<><Button variant="ghost" onClick={() => setCloseoutOpen(false)}>Keep open</Button><Button type="submit" form="closeout-form">Complete work</Button></>}>
         <form id="closeout-form" className="form-grid" onSubmit={submitCloseout}>
           <Field label="Outcome"><select value={closeout.outcome} onChange={(event) => setCloseout({ ...closeout, outcome: event.target.value as AppointmentOutcome })}><option>Order placed</option><option>Follow-up scheduled</option><option>Placement verified</option><option>No decision</option><option>Closed lost</option><option>Delivery completed</option></select></Field>
-          <Field label="Next-action date"><input type="date" required value={closeout.nextActionDate} onChange={(event) => setCloseout({ ...closeout, nextActionDate: event.target.value })} /></Field>
           <Field label="Work note" className="field--full"><textarea rows={4} required value={closeout.closeoutNote} onChange={(event) => setCloseout({ ...closeout, closeoutNote: event.target.value })} /></Field>
-          <Field label="Next action" className="field--full"><input required value={closeout.nextAction} onChange={(event) => setCloseout({ ...closeout, nextAction: event.target.value })} /></Field>
           {error && <p className="form-error field--full" role="alert">{error}</p>}
         </form>
       </Modal>

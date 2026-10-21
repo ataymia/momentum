@@ -13,7 +13,15 @@ The audit is a read-only Administrator-only review under Administration. It does
 
 **Sales linkage:** A location's paid-order count is shown only when the location is linked to an actual account and the order is credited to the rep, fully paid and settled in the selected period. An unlinked Quick Visit never creates a customer sale or account automatically. Existing paid-order and net-collected rules remain authoritative.
 
-**Other sales metrics:** Overall distinct locations visited is the denominator for visited-to-paid conversion. Repeats add visit workload, **not** more unique prospects. Return visits and locations revisited are explanatory activity measures, not performance targets that outweigh paid commercial outcomes.
+**Other sales metrics:** Overall distinct locations visited is the denominator for visit-to-order conversion. Repeats add visit workload, **not** more unique prospects. Return visits and locations revisited are explanatory activity measures, not performance targets that outweigh paid commercial outcomes.
+
+## Order-based sales definition and CRM autonomy
+- **Accounts sold:** Count distinct account IDs with non-cancelled orders credited to the rep and placed during the selected Phoenix reporting period. Unpaid orders count; paid invoices are not required to establish an order-based sale. Seven orders on one account count as seven orders and **one account sold**. Cancelled orders are excluded. Date-only `placedAt` values use their actual Arizona calendar date, without UTC conversion.
+- **Visit-to-order:** Distinct locations visited by the rep in the period with a qualifying order on or after the first logged visit's date, divided by unique locations visited. Repeated stops do not inflate the denominator.
+- **New-account-to-order:** Newly opened accounts with qualifying placed orders divided by newly opened accounts in the period. Current ownership and historic account creation remain separate.
+- **Owned-book ordering:** Currently owned accounts with qualifying non-cancelled orders placed in the period divided by current owned accounts. Payment-status and cash-collection reports remain separate.
+- **Prospect autonomy:** Sales staff are not required to set callback dates or next actions in CRM interactions, opportunities, account detail, or visit closeout. The Dashboard and Admin Audit do not flag overdue prospect follow-up dates. Existing historical fields remain stored for backward compatibility and must not cause account deletion. Pricing expirations and actual account inactivity remain valid commercial signals.
+- **Interface:** Default to Sales tab, other audit modules opt-in. Omit boilerplate explanations, account follow-up exception panels, and metric limitations from user-facing PDF and UI. Preserve internal source/metric definitions in this document for audit traceability.
 
 ## Governance and audit limitations
 | Control | Rule |
@@ -33,5 +41,5 @@ The audit is a read-only Administrator-only review under Administration. It does
 1. Confirm scheduler iterates multiple real employee roles and preserves pay history; verify existing midnight closure marker is visible for each relevant employee.
 2. Record two visits to a linked business, one to another, and one freehand Quick Visit; check per-rep counts and distinct dates.
 3. Have a second rep visit the same linked business; confirm the per-rep totals remain separate while selected-team total includes both.
-4. Verify zero-visit and zero-paid denominator behavior, settled refunds, and no GPS coordinates in the PDF.
+4. Verify zero-visit and zero-order denominator behavior, settled refunds, and no GPS coordinates in the PDF.
 5. Confirm non-admin cannot open or export the audit through the UI or backend. Approve deployment only after authenticated production-like tests and owner signoff.

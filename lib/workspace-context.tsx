@@ -527,10 +527,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const completeAppointment = (id: string, closeout: AppointmentCloseout) => {
-    if (!isValidCalendarDateKey(closeout.nextActionDate)) return false;
+    if (closeout.nextActionDate && !isValidCalendarDateKey(closeout.nextActionDate)) return false;
     const enhanced = commercial.appointments.find((item) => item.id === id);
     if (!enhanced) return base.completeAppointment(id, closeout);
-    if (!currentUser || !closeout.closeoutNote.trim() || !closeout.nextAction.trim() || enhanced.status !== "Arrived" || (enhanced.ownerId !== currentUser.id && !canManageSchedule(currentUser))) return false;
+    if (!currentUser || !closeout.closeoutNote.trim() || enhanced.status !== "Arrived" || (enhanced.ownerId !== currentUser.id && !canManageSchedule(currentUser))) return false;
     setCommercial((state) => ({
       ...state,
       appointments: state.appointments.map((item) => item.id === id ? { ...item, status: "Completed", completedAt: now(), ...closeout, closeoutNote: closeout.closeoutNote.trim(), nextAction: closeout.nextAction.trim() } : item),
@@ -539,13 +539,11 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
         [enhanced.accountId]: {
           ...(state.accountPatches[enhanced.accountId] ?? {}),
           lastActivity: `${enhanced.type}: ${closeout.outcome}`,
-          nextAction: closeout.nextAction.trim(),
-          nextActionDate: closeout.nextActionDate,
           stage: closeout.outcome === "Order placed" ? "Opening order" : data.accounts.find((item) => item.id === enhanced.accountId)?.stage,
           ...(closeout.outcome === "Order placed" ? { closerId: enhanced.ownerId } : {}),
         },
       },
-      activities: [{ id: uid("act-closeout"), accountId: enhanced.accountId, type: "visit", title: `${enhanced.type} completed · ${closeout.outcome}`, detail: `${closeout.closeoutNote.trim()} Next: ${closeout.nextAction.trim()} on ${closeout.nextActionDate}.`, at: now(), userId: currentUser.id }, ...state.activities],
+      activities: [{ id: uid("act-closeout"), accountId: enhanced.accountId, type: "visit", title: `${enhanced.type} completed · ${closeout.outcome}`, detail: closeout.closeoutNote.trim(), at: now(), userId: currentUser.id }, ...state.activities],
     }));
     return true;
   };
