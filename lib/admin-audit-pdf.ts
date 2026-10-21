@@ -1,4 +1,4 @@
-import type { AdminAuditReport, AuditDay, SalesAudit } from "./admin-audit-engine";
+import type { AdminAuditReport, AuditDay, SalesAudit, VisitLocationAudit } from "./admin-audit-engine";
 
 const safe = (s: string) => s.normalize("NFKD").replace(/[^\x20-\x7e]/g, "?");
 const escapePdf = (s: string) => safe(s).replace(/[\\()]/g, "\\$&");
@@ -30,13 +30,25 @@ function dayLines(row: AuditDay):string[]{
 function salesLines(row: SalesAudit):string[]{
   return [
     row.employee,
-    "  Visits "+row.physicalVisits+" | locations visited "+row.distinctVisitedAccounts+" | new opened "+row.newAccountsOpened+" | owned now "+row.accountsOwnedNow,
+    "  Visits "+row.physicalVisits+" | locations visited "+row.distinctVisitedAccounts+" | returns "+row.returnVisits+" | locations revisited "+row.revisitedLocations,
+    "  New opened "+row.newAccountsOpened+" | owned now "+row.accountsOwnedNow,
     "  Placed orders "+row.placedOrders+" | fully paid orders "+row.paidOrders+" | paid buying accounts "+row.accountsSold,
     "  First-time paid accounts "+row.firstTimeBuyingAccounts+" | repeat buyers "+row.reorderingAccounts+" | paid cases "+row.paidCases,
     "  Visited -> paid "+row.visitedAccountsThatPaid+"/"+row.distinctVisitedAccounts+" = "+rate(row.visitToPaidPercent),
     "  New opened -> paid "+row.newAccountsThatPaid+"/"+row.newAccountsOpened+" = "+rate(row.newAccountToPaidPercent),
     "  Owned book buyers "+row.ownedAccountsThatPaid+"/"+row.accountsOwnedNow+" = "+rate(row.ownedBookBuyingPercent),
     "  Net collected in period "+money(row.netCollected),
+    "",
+  ];
+}
+function visitLines(row: VisitLocationAudit):string[]{
+  return [
+    ...wrap(row.employee+" | "+row.location+" | "+(row.linkedAccount?"Linked account":"Unlinked CRM visit")),
+    "  Visits "+row.visits+" | return visits "+row.returnVisits+" | days "+row.distinctVisitDays+
+      " | unsuccessful "+row.unsuccessfulVisits+" | selected-team visits "+row.selectedTeamVisits,
+    "  First "+row.firstVisitedAt+" | last "+row.lastVisitedAt,
+    "  Paid orders credited to this rep "+(row.linkedAccount?row.paidOrdersCreditedToRep:"n/a (unlinked)"),
+    ...wrap("  Visit dates: "+row.visitDates.join(", ")),
     "",
   ];
 }
@@ -52,6 +64,9 @@ export function adminAuditPdf(report: AdminAuditReport): Blob {
     "SALES FUNNEL & CONVERSION SUMMARY",
     "",
     ...(report.sales.length?report.sales.flatMap(salesLines):["No sales roles in this selection."]),
+    "VISITS BY EMPLOYEE AND BUSINESS LOCATION",
+    "",
+    ...(report.visits.length?report.visits.flatMap(visitLines):["No physical CRM visits in selected period."]),
     "TIMEKEEPING / FIELD ACTIVITY BY DAY",
     "",
     ...(report.days.length?report.days.flatMap(dayLines):["No work, punch or schedule records found in selected period."]),
