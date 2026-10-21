@@ -1,6 +1,6 @@
 /** Arizona Department of Revenue: TPT licenses are eight digits; resale proof is Form 5000A, not a number. */
 export type ArizonaTaxCertificateType = "5000A" | "5000";
-export const AZ_TPT_LICENSE_PATTERN = /^\d{8}$/;
+export const AZ_TPT_LICENSE_PATTERN = /^[0-9]{8}$/;
 export function normalizeAzTptLicenseNumber(input:string):string|null {
   const value=input.trim();
   return !value||AZ_TPT_LICENSE_PATTERN.test(value) ? value : null;
