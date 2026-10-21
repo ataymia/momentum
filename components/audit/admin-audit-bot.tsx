@@ -31,7 +31,7 @@ export function AdminAuditBot(){
   const [tab,setTab]=useState<Tab>("All");
   const [report,setReport]=useState<AdminAuditReport|null>(null);
   const [error,setError]=useState("");
-  const employees=useMemo(()=>data.users.filter(user=>user.role!=="Customer" && user.employmentStatus!=="Separated").sort((a,b)=>a.name.localeCompare(b.name)),[data.users]);
+  const employees=useMemo(()=>data.users.filter(user=>user.role!=="Customer").sort((a,b)=>a.name.localeCompare(b.name)),[data.users]);
   if(currentUser?.role!=="Administrator")return null;
 
   const run=()=>{
