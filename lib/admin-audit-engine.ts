@@ -48,6 +48,7 @@ const timeAt = (entry: TimeEntry, field: "clockIn" | "clockOut"): number | undef
 };
 const parse = (at?: string): number | undefined => at && Number.isFinite(Date.parse(at)) ? Date.parse(at) : undefined;
 const dateOf = (at?: string) => {
+  if (at && isValidCalendarDateKey(at)) return at;
   const value = parse(at);
   return value === undefined ? "" : arizonaDateKey(new Date(value));
 };
