@@ -4,6 +4,7 @@ import { ReactNode, createContext, useContext, useEffect, useMemo, useState } fr
 import { accountIsVisible, canAdvanceFulfillment, canAssignScheduleUser, canManageSchedule, canReconcileOrderPayment, canReviewApproval, canTransferSalesResponsibility, getWorkspaceScope } from "./access";
 import { appointmentConflict } from "./appointment-scheduling";
 import { validateNewAccountContact } from "./account-creation";
+import { normalizeAzTptLicenseNumber, validArizonaTaxCertificateType, validTaxCertificateReference } from "./arizona-tax-documents";
 import { hasCompleteDeliveryAddress } from "./account-address";
 import { normalizeCommercialState } from "./commercial-state";
 import { addCalendarDays, arizonaDateKey, isValidCalendarDateKey } from "./date-time";
@@ -427,7 +428,11 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const management=["Administrator","Sales Manager"].includes(currentUser.role);
     const repOwned=currentUser.role==="Sales Representative"&&data.accounts.some((account)=>account.customerId===customerId&&account.ownerId===currentUser.id);
     if(!management&&!repOwned)return false;
-    let clean:CommercialCustomerPatch={...patch};
+    // License IDs are not exemption certificates. Signed documents require independent review.
+    const normalizedTpt=patch.tptLicenseNumber!==undefined?normalizeAzTptLicenseNumber(patch.tptLicenseNumber):undefined;
+    if(normalizedTpt===null || !validArizonaTaxCertificateType(patch.taxCertificateType) || !validTaxCertificateReference(patch.taxCertificateReference))return false;
+    if(!management && (patch.taxExemptionStatus!==undefined || patch.taxCertificateType!==undefined || patch.taxCertificateReference!==undefined))return false;
+    let clean:CommercialCustomerPatch={...patch,...(normalizedTpt!==undefined?{tptLicenseNumber:normalizedTpt}:{})};
     if(repOwned&&!management){
       if(patch.paymentTerms&&patch.paymentTerms!=="COD")return false;
       if(patch.creditStatus&&patch.creditStatus!=="Credit Requested"&&patch.creditStatus!==customer.creditStatus)return false;
@@ -435,11 +440,13 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       clean={
         billingContactName:patch.billingContactName,billingEmail:patch.billingEmail,billingPhone:patch.billingPhone,
         ein:patch.ein,accountsPayableContactName:patch.accountsPayableContactName,accountsPayablePhone:patch.accountsPayablePhone,accountsPayableEmail:patch.accountsPayableEmail,
-        az5000Number:patch.az5000Number,taxExemptionStatus:patch.taxExemptionStatus,notes:patch.notes,
+        tptLicenseNumber:clean.tptLicenseNumber,notes:patch.notes,
         ...(patch.creditStatus==="Credit Requested"?{creditStatus:"Credit Requested" as const}:{}),
         ...(patch.onboardingPackageStatus?{onboardingPackageStatus:patch.onboardingPackageStatus}:{}),
       };
     }
+    const mergedTax={...customer,...clean};
+    if(mergedTax.taxExemptionStatus==="Verified"&&(!mergedTax.taxCertificateType||!mergedTax.taxCertificateReference?.trim()))return false;
     if(clean.paymentTerms==="Net 30"&&clean.creditStatus!=="Net 30 Approved"&&customer.creditStatus!=="Net 30 Approved")return false;
     if(clean.paymentTerms==="Custom"&&!clean.customPaymentTerms?.trim())return false;
     if(management&&!clean.paymentTerms)clean.paymentTerms=customer.paymentTerms??"COD";
