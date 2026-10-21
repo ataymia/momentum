@@ -23,6 +23,7 @@ import { useRuntimeMode } from "../../lib/runtime-mode";
 import { useWorkspace } from "../../lib/workspace-context";
 import { FirebaseAccessPanel } from "../settings/firebase-access-panel";
 import { PlatformControls } from "../settings/platform-controls";
+import { AdminAuditBot } from "../audit/admin-audit-bot";
 import { Avatar, Button, Modal, PageHeader, Section, StatusPill } from "../ui";
 
 const integrations = [
@@ -105,6 +106,7 @@ export function SettingsPage() {
     {firebase&&<FirebaseAccessPanel/>}
 
     <PlatformControls/>
+    <AdminAuditBot/>
 
     <div className="settings-grid">
       <Section title="Production architecture" description="Infrastructure plugs into Momentum without becoming a second business system" className="integration-panel"><div className="integration-list">{integrations.map((integration)=>{const Icon=integration.icon;const live=Boolean(firebase&&integration.firebase);return <article key={integration.name}><span><Icon size={19}/></span><div><strong>{integration.name}</strong><p>{integration.provider}</p><small>{integration.boundary}</small></div><StatusPill tone={live?"success":integration.tone} dot={false}>{live?"Connected":integration.status}</StatusPill></article>;})}</div><div className="integration-rule"><Cloud size={18}/><p>Every connector must fail visibly, retry safely, reconcile to a Momentum source record, and never create a hidden second source of truth.</p></div></Section>
