@@ -89,3 +89,46 @@ test("net collected subtracts already-signed settled refunds exactly once",()=>{
  const result=buildAdminAudit(baseData,crm,gps,ledger,from,to,["rep-1"]);
  assert.equal(result.sales[0].netCollected,210);
 });
+
+test("groups repeat visits by employee and exact location with no duplicate team attribution",()=>{
+ const secondRep={id:"rep-2",name:"Rep Two",role:"Sales Representative",employmentStatus:"Active"};
+ const data={...baseData,users:[...baseData.users,secondRep]} as unknown as WorkspaceData;
+ const newCrm={...crm,interactions:[
+   ...crm.interactions,
+   {id:"visit-rep2-storea",userId:"rep-2",locationId:"store-a",type:"Visit",physicalVisit:true,occurredAt:"2026-10-20T11:00:00-07:00"},
+   {id:"visit-freehand1",userId:"rep-2",locationId:"quick-visit:local-bakery-1234",type:"Visit",physicalVisit:true,quickVisitBusinessName:"Local Bakery",occurredAt:"2026-10-19T09:00:00-07:00"},
+   {id:"visit-freehand2",userId:"rep-2",locationId:"quick-visit:local-bakery-1234",type:"Visit",physicalVisit:true,quickVisitBusinessName:"Local Bakery",occurredAt:"2026-10-20T09:00:00-07:00",visitUnsuccessful:true},
+ ]} as CrmState;
+ const result=buildAdminAudit(data,newCrm,gps,commerce,from,to,["rep-1","rep-2"]);
+ const storeARep1=result.visits.find(r=>r.userId==="rep-1"&&r.locationId==="store-a")!;
+ const storeARep2=result.visits.find(r=>r.userId==="rep-2"&&r.locationId==="store-a")!;
+ const bakery=result.visits.find(r=>r.userId==="rep-2"&&r.location==="Local Bakery")!;
+ assert.equal(storeARep1.visits,2);
+ assert.equal(storeARep1.returnVisits,1);
+ assert.equal(storeARep1.distinctVisitDays,1);
+ assert.equal(storeARep1.selectedTeamVisits,3);
+ assert.equal(storeARep1.paidOrdersCreditedToRep,1);
+ assert.equal(storeARep2.visits,1);
+ assert.equal(storeARep2.returnVisits,0);
+ assert.equal(storeARep2.selectedTeamVisits,3);
+ assert.equal(bakery.visits,2);
+ assert.equal(bakery.returnVisits,1);
+ assert.equal(bakery.distinctVisitDays,2);
+ assert.equal(bakery.unsuccessfulVisits,1);
+ assert.equal(bakery.linkedAccount,false);
+ assert.equal(bakery.paidOrdersCreditedToRep,0);
+ assert.equal(result.sales.find(r=>r.userId==="rep-1")!.returnVisits,1);
+ assert.equal(result.sales.find(r=>r.userId==="rep-1")!.revisitedLocations,1);
+ assert.equal(result.sales.find(r=>r.userId==="rep-2")!.returnVisits,1);
+ assert.equal(result.sales.find(r=>r.userId==="rep-2")!.revisitedLocations,1);
+ const single=buildAdminAudit(data,newCrm,gps,commerce,from,to,["rep-1"]);
+ assert.equal(single.visits.find(r=>r.locationId==="store-a")!.selectedTeamVisits,2);
+});
+test("repeat location detail appears in exported PDF",async()=>{
+ const report=audit();
+ const pdf=await adminAuditPdf(report).text();
+ assert.ok(pdf.includes("VISITS BY EMPLOYEE AND BUSINESS LOCATION"));
+ assert.ok(pdf.includes("Store A"));
+ assert.ok(pdf.includes("return visits 1"));
+ assert.ok(!pdf.includes("33.5"));
+});
