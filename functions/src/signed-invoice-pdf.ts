@@ -22,7 +22,7 @@ export type InvoicePdfInput={
   billToAddress?:string;
   billingContact?:string;
   billingPhone?:string;
-  az5000Number?:string;
+
   shipToName?:string;
   shipToAddress?:string;
   shipToContact?:string;
@@ -245,7 +245,6 @@ export function buildSignedInvoicePdf(input:InvoicePdfInput):Buffer{
       input.billingContact?"A/P: "+input.billingContact:"",
       clean(input.billingPhone),
       clean(input.billingEmail),
-      input.az5000Number?"AZ-5000: "+input.az5000Number:"",
     ].filter(Boolean);
     const ship=[
       input.shipToName||"Customer location",

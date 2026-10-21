@@ -5,7 +5,7 @@ import { normalizeStoredOrderLines } from "./order-lines";
 import { canonicalProductDescription } from "./product-catalog";
 
 export type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "streetAddress" | "location" | "postalCode" | "deliveryAddressSameAsBusiness" | "deliveryStreetAddress" | "deliveryLocation" | "deliveryPostalCode" | "programPricingLabel" | "programPricePerCase" | "programPricingEffectiveDate" | "programPricingExpirationDate" | "programPricingStatus" | "programPricingOwnerId" | "lastMeaningfulBusinessAt">>;
-export type CommercialCustomerPatch = Partial<Pick<CustomerAccount,"name"|"billingContactName"|"billingEmail"|"billingPhone"|"ein"|"accountsPayableContactName"|"accountsPayablePhone"|"accountsPayableEmail"|"az5000Number"|"taxExemptionStatus"|"creditStatus"|"paymentTerms"|"customPaymentTerms"|"onboardingPackageStatus"|"onboardingPackagePreparedAt"|"onboardingPackagePreparedBy"|"onboardingProviderStatus"|"notes">>;
+export type CommercialCustomerPatch = Partial<Pick<CustomerAccount,"name"|"billingContactName"|"billingEmail"|"billingPhone"|"ein"|"accountsPayableContactName"|"accountsPayablePhone"|"accountsPayableEmail"|"az5000Number"|"tptLicenseNumber"|"taxCertificateType"|"taxCertificateReference"|"taxExemptionStatus"|"creditStatus"|"paymentTerms"|"customPaymentTerms"|"onboardingPackageStatus"|"onboardingPackagePreparedAt"|"onboardingPackagePreparedBy"|"onboardingProviderStatus"|"notes">>;
 export type CommercialState = { version: 1; accountPatches: Record<string, CommercialAccountPatch>; customerPatches: Record<string,CommercialCustomerPatch>; orders: Order[]; appointments: Appointment[]; approvals: Approval[]; activities: Activity[]; inventoryLots: InventoryLot[]; territories: SalesTerritory[] };
 
 const premiseTypes = new Set(["On-premise", "Off-premise", "Hybrid", "Unclassified"]);
@@ -96,6 +96,10 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
   if(object(input.customerPatches))for(const[customerId,raw]of Object.entries(input.customerPatches)){
     if(!customerIds.has(customerId)||!object(raw))continue;const patch:CommercialCustomerPatch={};
     for(const field of ["name","billingContactName","billingEmail","billingPhone","ein","accountsPayableContactName","accountsPayablePhone","accountsPayableEmail","az5000Number","customPaymentTerms","notes"] as const){const value=optionalText(raw[field]);if(value)patch[field]=value as never;}
+    // Keep intentional clears of optional tax fields; never silently equate old AZ-5000 data to a TPT license.
+    if(typeof raw.tptLicenseNumber==="string"&&(!raw.tptLicenseNumber||/^[0-9]{8}$/.test(raw.tptLicenseNumber)))patch.tptLicenseNumber=raw.tptLicenseNumber;
+    if(raw.taxCertificateType===""||raw.taxCertificateType==="5000A"||raw.taxCertificateType==="5000")patch.taxCertificateType=raw.taxCertificateType;
+    if(typeof raw.taxCertificateReference==="string"&&raw.taxCertificateReference.length<=200)patch.taxCertificateReference=raw.taxCertificateReference;
     const payment=optionalText(raw.paymentTerms);if(payment&&paymentTerms.has(payment))patch.paymentTerms=payment as CommercialCustomerPatch["paymentTerms"];
     const credit=optionalText(raw.creditStatus);if(credit&&creditStatuses.has(credit))patch.creditStatus=credit as CommercialCustomerPatch["creditStatus"];
     const tax=optionalText(raw.taxExemptionStatus);if(tax&&taxStatuses.has(tax))patch.taxExemptionStatus=tax as CommercialCustomerPatch["taxExemptionStatus"];

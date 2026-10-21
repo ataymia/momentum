@@ -220,7 +220,7 @@ const queueDeliveredInvoice=async (
       text(customer?.billingContactName)||undefined,
     billingPhone:apPhone?
       apPhone+(apExtension?" ext. "+apExtension:""):undefined,
-    az5000Number:text(customer?.az5000Number)||undefined,
+
     billToAddress:text(invoice.billToAddressSnapshot),
     shipToName:text(account?.locationName)||text(account?.name)||
       "Customer location",

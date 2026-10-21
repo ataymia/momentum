@@ -4,6 +4,7 @@ import { ReactNode, createContext, useContext, useEffect, useMemo, useState } fr
 import { accountIsVisible, canAdvanceFulfillment, canAssignScheduleUser, canManageSchedule, canReconcileOrderPayment, canReviewApproval, canTransferSalesResponsibility, getWorkspaceScope } from "./access";
 import { appointmentConflict } from "./appointment-scheduling";
 import { validateNewAccountContact } from "./account-creation";
+import { normalizeAzTptLicenseNumber, validArizonaTaxCertificateType, validTaxCertificateReference } from "./arizona-tax-documents";
 import { hasCompleteDeliveryAddress } from "./account-address";
 import { normalizeCommercialState } from "./commercial-state";
 import { addCalendarDays, arizonaDateKey, isValidCalendarDateKey } from "./date-time";
@@ -57,7 +58,7 @@ const tropicalLot: InventoryLot = {
 };
 
 type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "streetAddress" | "location" | "postalCode" | "deliveryAddressSameAsBusiness" | "deliveryStreetAddress" | "deliveryLocation" | "deliveryPostalCode" | "latitude" | "longitude" | "geocodePrecision" | "geocodeProvider" | "geocodedAt" | "geocodeFingerprint" | "geocodeStatus" | "territoryId" | "strategic" | "programPricingLabel" | "programPricePerCase" | "programPricingEffectiveDate" | "programPricingExpirationDate" | "programPricingStatus" | "programPricingOwnerId" | "lastMeaningfulBusinessAt">>;
-type CommercialCustomerPatch = Partial<Pick<CustomerAccount,"name"|"billingContactName"|"billingEmail"|"billingPhone"|"ein"|"accountsPayableContactName"|"accountsPayablePhone"|"accountsPayableEmail"|"az5000Number"|"taxExemptionStatus"|"creditStatus"|"paymentTerms"|"customPaymentTerms"|"onboardingPackageStatus"|"onboardingPackagePreparedAt"|"onboardingPackagePreparedBy"|"onboardingProviderStatus"|"notes">>;
+type CommercialCustomerPatch = Partial<Pick<CustomerAccount,"name"|"billingContactName"|"billingEmail"|"billingPhone"|"ein"|"accountsPayableContactName"|"accountsPayablePhone"|"accountsPayableEmail"|"az5000Number"|"tptLicenseNumber"|"taxCertificateType"|"taxCertificateReference"|"taxExemptionStatus"|"creditStatus"|"paymentTerms"|"customPaymentTerms"|"onboardingPackageStatus"|"onboardingPackagePreparedAt"|"onboardingPackagePreparedBy"|"onboardingProviderStatus"|"notes">>;
 
 /**
  * The only fields the territory/geocoding layer may write on a business location.
@@ -427,7 +428,11 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const management=["Administrator","Sales Manager"].includes(currentUser.role);
     const repOwned=currentUser.role==="Sales Representative"&&data.accounts.some((account)=>account.customerId===customerId&&account.ownerId===currentUser.id);
     if(!management&&!repOwned)return false;
-    let clean:CommercialCustomerPatch={...patch};
+    // License IDs are not exemption certificates. Signed documents require independent review.
+    const normalizedTpt=patch.tptLicenseNumber!==undefined?normalizeAzTptLicenseNumber(patch.tptLicenseNumber):undefined;
+    if(normalizedTpt===null || !validArizonaTaxCertificateType(patch.taxCertificateType) || !validTaxCertificateReference(patch.taxCertificateReference))return false;
+    if(!management && (patch.taxExemptionStatus!==undefined || patch.taxCertificateType!==undefined || patch.taxCertificateReference!==undefined))return false;
+    let clean:CommercialCustomerPatch={...patch,...(normalizedTpt!==undefined?{tptLicenseNumber:normalizedTpt}:{})};
     if(repOwned&&!management){
       if(patch.paymentTerms&&patch.paymentTerms!=="COD")return false;
       if(patch.creditStatus&&patch.creditStatus!=="Credit Requested"&&patch.creditStatus!==customer.creditStatus)return false;
@@ -435,14 +440,18 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       clean={
         billingContactName:patch.billingContactName,billingEmail:patch.billingEmail,billingPhone:patch.billingPhone,
         ein:patch.ein,accountsPayableContactName:patch.accountsPayableContactName,accountsPayablePhone:patch.accountsPayablePhone,accountsPayableEmail:patch.accountsPayableEmail,
-        az5000Number:patch.az5000Number,taxExemptionStatus:patch.taxExemptionStatus,notes:patch.notes,
+        tptLicenseNumber:clean.tptLicenseNumber,notes:patch.notes,
         ...(patch.creditStatus==="Credit Requested"?{creditStatus:"Credit Requested" as const}:{}),
         ...(patch.onboardingPackageStatus?{onboardingPackageStatus:patch.onboardingPackageStatus}:{}),
       };
     }
+    const mergedTax={...customer,...clean};
+    if(mergedTax.taxExemptionStatus==="Verified"&&(!mergedTax.taxCertificateType||!mergedTax.taxCertificateReference?.trim()))return false;
     if(clean.paymentTerms==="Net 30"&&clean.creditStatus!=="Net 30 Approved"&&customer.creditStatus!=="Net 30 Approved")return false;
     if(clean.paymentTerms==="Custom"&&!clean.customPaymentTerms?.trim())return false;
     if(management&&!clean.paymentTerms)clean.paymentTerms=customer.paymentTerms??"COD";
+    // Partial updates must never overwrite unrelated billing or credit fields with undefined.
+    clean=Object.fromEntries(Object.entries(clean).filter(([,value])=>value!==undefined)) as CommercialCustomerPatch;
     setCommercial((state)=>({...state,customerPatches:{...state.customerPatches,[customerId]:{...(state.customerPatches[customerId]??{}),...clean}},activities:[{id:uid("act-customer-commercial"),accountId:data.accounts.find((account)=>account.customerId===customerId)?.id,type:"note",title:management?"Customer commercial setup updated":"Customer onboarding information updated",detail:`${customer.name} setup updated by ${currentUser.name}.`,at:now(),userId:currentUser.id},...state.activities]}));
     window.setTimeout(()=>void momentumStorage.flush(),0);
     return true;
