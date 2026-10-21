@@ -81,12 +81,14 @@ export function buildAdminAudit(
     const legacyWork = data.activities.filter(item => item.userId === user.id && inPeriod(dateOf(item.at), from, to));
     const completed = data.appointments.filter(item => item.ownerId === user.id && item.completedAt && item.status === "Completed" && inPeriod(dateOf(item.completedAt), from, to));
     const geo = tracking.samples.filter(item => item.userId === user.id && inPeriod(dateOf(item.at), from, to));
+    const opened = data.accounts.filter(item => item.createdByUid === user.id && inPeriod(dateOf(item.createdAt), from, to));
     const userOrders = data.orders.filter(order => (order.creditedRepId ?? order.ownerId) === user.id && inPeriod(dateOf(order.placedAt), from, to));
     const paidPeriod = paid.filter(fact => fact.creditedUserId === user.id && inPeriod(fact.paidAt, from, to));
     const scheduled = scheduledShifts.filter(shift => shift.userId === user.id && shift.status !== "Cancelled" && inPeriod(shift.date, from, to));
     const physical = interactions.filter(item => item.type === "Visit" && item.physicalVisit === true);
     const allDates = new Set([...punches.map(e => e.date), ...interactions.map(e => dateOf(e.occurredAt)), ...legacyWork.map(e => dateOf(e.at)),
-      ...completed.map(e => dateOf(e.completedAt)), ...geo.map(e => dateOf(e.at)), ...userOrders.map(e => dateOf(e.placedAt)), ...scheduled.map(e => e.date)].filter(Boolean));
+      ...completed.map(e => dateOf(e.completedAt)), ...geo.map(e => dateOf(e.at)), ...userOrders.map(e => dateOf(e.placedAt)),
+      ...opened.map(e => dateOf(e.createdAt)), ...scheduled.map(e => e.date)].filter(Boolean));
     for (const date of [...allDates].sort()) {
       const entryDay = punches.filter(e => e.date === date);
       const crmDay = interactions.filter(e => dateOf(e.occurredAt) === date);
@@ -98,7 +100,7 @@ export function buildAdminAudit(
         ...completedDay.filter(e => e.type !== "Delivery").map(e => parse(e.completedAt))];
       const workTimes = [...crmDay.map(e => parse(e.occurredAt)), ...legacyDay.map(e => parse(e.at)),
         ...completedDay.map(e => parse(e.completedAt)),
-        ...userOrders.filter(e => dateOf(e.placedAt) === date).map(e => parse(e.placedAt))];
+        ...opened.filter(e => dateOf(e.createdAt) === date).map(e => parse(e.createdAt))];
       const firstClockIn = entryDay.length ? Math.min(...entryDay.map(e => timeAt(e,"clockIn")).filter((n): n is number => n !== undefined)) : undefined;
       const lastClockOut = latest(entryDay.map(e => timeAt(e,"clockOut")));
       const lastVisit = latest(visitTimes), lastWork = latest(workTimes);
@@ -138,7 +140,7 @@ export function buildAdminAudit(
       const prev = visited.get(interaction.locationId);
       if (interaction.locationId && (!prev || day < prev)) visited.set(interaction.locationId, day);
     }
-    const created = data.accounts.filter(account => account.createdByUid === user.id && inPeriod(dateOf(account.createdAt),from,to));
+    const created = opened;
     const owned = data.accounts.filter(account => account.ownerId === user.id);
     const paidAccounts = new Set(paidPeriod.map(f => f.accountId));
     const firstBuyerAccounts = new Set(paidPeriod.filter(f => firstPaidByAccount.get(f.accountId) === f.paidAt).map(f => f.accountId));
@@ -175,12 +177,13 @@ export function buildAdminAudit(
       "Physical visits = CRM Visit interactions marked physicalVisit=true; repeated visits count separately. Distinct visited accounts are unique CRM location IDs.",
       "New accounts opened = locations with an actual createdAt within period and createdByUid matching the employee. Legacy missing provenance is excluded.",
       "Accounts sold = unique locations with fully paid orders credited to the rep and settled within period. Orders placed and payments received are distinct.",
-      "Visited-to-paid = distinct visited locations with a rep-credited paid order on/after the visit during the same period, divided by distinct visited locations. Association does not prove causation.",
+      "Visited-to-paid = distinct visited locations with a rep-credited paid order settled on the same Arizona date as the visit or later in the same period, divided by distinct visited locations. Same-day ordering is unknown; association does not prove causation.",
       "New-account-to-paid = newly created locations credited to this rep that also have a rep-credited paid order during period, divided by new accounts opened.",
       "Owned book buying = currently owned locations with any paid order in period, regardless of who received sales credit, divided by accounts owned NOW; not a historical ownership rate.",
       "Net collected = payment allocations less settled refunds attributed to the rep and settled in the period. This differs from placed order value and can include payments for prior-period orders.",
       "Reordering account = rep-credited paid order with an earlier paid order for that location. Historical missing records can undercount reorders.",
       "GPS is browser-sampled and retained separately for ten Arizona calendar days; missing points are not evidence an employee was inactive.",
+      "Last work event uses attributed CRM/work actions, completed appointments and verified account creation. Order sales credit does not by itself prove who performed the order entry.",
       "All time differences compare existing timestamps, not verified hours worked. Review exceptions, travel, calls, off-platform work and payroll corrections before decisions.",
     ]};
 }
