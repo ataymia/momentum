@@ -69,7 +69,6 @@ export function buildAdminAudit(
   const people = data.users.filter(user => selected.has(user.id) && user.role !== "Customer");
   const paid = resolvedPaidOrderFacts(data, commerce);
   const cash = collectedCashFacts(data, commerce);
-  const orderById = new Map(data.orders.map(order => [order.id, order]));
   const allPaidByAccount = new Map<string, typeof paid>();
   for (const fact of paid) allPaidByAccount.set(fact.accountId, [...(allPaidByAccount.get(fact.accountId) ?? []), fact]);
   const firstPaidByAccount = new Map<string, string>();
