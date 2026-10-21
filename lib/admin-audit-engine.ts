@@ -167,7 +167,7 @@ export function buildAdminAudit(
         lastPhysicalVisit:toIso(lastVisit),lastWorkEvent:toIso(lastWork),lastGps:toIso(lastGps),
         visitToOutMinutes:visitGap,workToOutMinutes:workGap,gpsToOutMinutes:gpsGap,
         physicalVisits:visitDay.length,distinctVisitedAccounts:new Set(visitDay.map(v=>v.locationId)).size,
-        savedGpsPoints:geoDay.length,placedOrders:userOrders.filter(e=>dateOf(e.placedAt)===date).length,
+        savedGpsPoints:geoDay.length,placedOrders:userOrders.filter(e=>e.status!=="Cancelled" && dateOf(e.placedAt)===date).length,
         fullyPaidOrders:paidPeriod.filter(f=>f.paidAt===date).length,flags});
     }
     if (user.role !== "Sales Representative" && user.role !== "Sales Manager") continue;
