@@ -450,6 +450,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     if(clean.paymentTerms==="Net 30"&&clean.creditStatus!=="Net 30 Approved"&&customer.creditStatus!=="Net 30 Approved")return false;
     if(clean.paymentTerms==="Custom"&&!clean.customPaymentTerms?.trim())return false;
     if(management&&!clean.paymentTerms)clean.paymentTerms=customer.paymentTerms??"COD";
+    // Partial updates must never overwrite unrelated billing or credit fields with undefined.
+    clean=Object.fromEntries(Object.entries(clean).filter(([,value])=>value!==undefined)) as CommercialCustomerPatch;
     setCommercial((state)=>({...state,customerPatches:{...state.customerPatches,[customerId]:{...(state.customerPatches[customerId]??{}),...clean}},activities:[{id:uid("act-customer-commercial"),accountId:data.accounts.find((account)=>account.customerId===customerId)?.id,type:"note",title:management?"Customer commercial setup updated":"Customer onboarding information updated",detail:`${customer.name} setup updated by ${currentUser.name}.`,at:now(),userId:currentUser.id},...state.activities]}));
     window.setTimeout(()=>void momentumStorage.flush(),0);
     return true;
