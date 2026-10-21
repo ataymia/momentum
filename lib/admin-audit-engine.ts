@@ -59,7 +59,7 @@ const inPeriod = (date: string, from: string, to: string) => date >= from && dat
 export function buildAdminAudit(
   data: WorkspaceData, crm: CrmState, tracking: FieldTrackingState, commerce: CommerceState,
   from: string, to: string, userIds: readonly string[],
-  scheduledShifts: readonly { userId: string; date: string; status?: string }[] = [],
+  scheduledShifts: readonly { userId?: string; date: string; status?: string }[] = [],
   generatedAt = new Date().toISOString(),
 ): AdminAuditReport {
   if (!isValidCalendarDateKey(from) || !isValidCalendarDateKey(to) || from > to ||
