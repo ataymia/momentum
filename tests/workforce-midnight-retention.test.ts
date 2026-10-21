@@ -27,3 +27,17 @@ test("server location cleanup excludes old GPS and does not erase day-ten bounda
     {id:"edge",at:"2026-10-11T00:01:00-07:00"}];
   assert.deepEqual(mod.retainedLocationItems(rows,"2026-10-20").map((row:{id:string})=>row.id),["new","edge"]);
 });
+
+test("midnight punch closure is role-agnostic across the entire employee workforce",async()=>{
+  const mod=await import(new URL("../functions/src/workforce-retention.ts",import.meta.url).href);
+  const roles=["Sales Representative","Sales Manager","Operations","Warehouse","Administrator"];
+  const rows=roles.map((role,index)=>({
+    id:"punch-"+index,userId:"employee-"+index,role,date:"2026-10-19",
+    clockIn:"08:00",clockInAt:"2026-10-19T15:00:00.000Z",
+    breakMinutes:0,source:"Web clock",
+  }));
+  const result=mod.closePriorDayOpenPunches(rows,"2026-10-20");
+  assert.equal(result.closed,roles.length);
+  assert.equal(result.entries.every((entry:{clockOut?:string;note?:string})=>
+    entry.clockOut==="23:59"&&Boolean(entry.note?.includes("Automatically closed at Arizona midnight"))),true);
+});
