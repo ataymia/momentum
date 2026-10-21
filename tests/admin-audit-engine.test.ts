@@ -36,7 +36,7 @@ test("flags scheduled Phoenix-midnight auto-close even with clockOut set",()=>{
  const report=audit(),day=report.days.find(row=>row.date===to)!;
  assert.equal(day.autoClosed,true);
  assert.equal(day.incompletePunch,false);
- assert.ok(day.flags.some(f=>f.category==="Timekeeping"&&f.reason.includes("missed a clock-out")));
+ assert.ok(day.flags.some(f=>f.category==="Timekeeping"&&f.reason.includes("Midnight auto-clock-out")));
 });
 test("keeps distinct visits and buying accounts separate, without attributing legacy creators",()=>{
  const report=audit(),sales=report.sales[0];
