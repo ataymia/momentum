@@ -110,7 +110,14 @@ export type CustomerAccount = {
   accountsPayableExtension?: string;
   accountsPayablePhone?: string;
   accountsPayableEmail?: string;
+  /** Legacy mislabeled input retained only to avoid deleting stored evidence. Do not print on invoices. */
   az5000Number?: string;
+  /** Eight-digit ADOR Transaction Privilege Tax license number, stored as text to preserve zeros. */
+  tptLicenseNumber?: string;
+  /** 5000A documents purchases for resale. 5000 documents other specific exemptions. */
+  taxCertificateType?: "5000A" | "5000";
+  /** Identifier of the signed certificate in approved restricted document storage. Not a file upload. */
+  taxCertificateReference?: string;
   taxExemptionStatus?: TaxExemptionStatus;
   creditStatus?: CreditStatus;
   /** Displayed on invoices. COD remains the default unless an authorized approval changes this. */
