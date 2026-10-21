@@ -17,6 +17,7 @@ export type AuditDay = {
 };
 export type SalesAudit = {
   userId: string; employee: string; physicalVisits: number; distinctVisitedAccounts: number;
+  returnVisits: number; revisitedLocations: number;
   newAccountsOpened: number; accountsOwnedNow: number;
   accountsSold: number; firstTimeBuyingAccounts: number; reorderingAccounts: number;
   placedOrders: number; paidOrders: number; paidCases: number; netCollected: number;
@@ -24,10 +25,16 @@ export type SalesAudit = {
   newAccountsThatPaid: number; newAccountToPaidPercent: number | null;
   ownedAccountsThatPaid: number; ownedBookBuyingPercent: number | null;
 };
+export type VisitLocationAudit = {
+  userId: string; employee: string; locationId: string; location: string; linkedAccount: boolean;
+  visits: number; returnVisits: number; distinctVisitDays: number; unsuccessfulVisits: number;
+  firstVisitedAt: string; lastVisitedAt: string; visitDates: string[];
+  paidOrdersCreditedToRep: number; selectedTeamVisits: number;
+};
 export type AccountAudit = { accountId: string; account: string; owner: string; status: string; issue: string; followUp?: string };
 export type AdminAuditReport = {
   from: string; to: string; generatedAt: string; reviewedEmployees: number;
-  days: AuditDay[]; sales: SalesAudit[]; accounts: AccountAudit[];
+  days: AuditDay[]; sales: SalesAudit[]; visits: VisitLocationAudit[]; accounts: AccountAudit[];
   definitions: string[];
 };
 
@@ -75,6 +82,8 @@ export function buildAdminAudit(
   for (const [accountId, facts] of allPaidByAccount) firstPaidByAccount.set(accountId, [...facts].map(f => f.paidAt).sort()[0]);
   const dayRows: AuditDay[] = [];
   const sales: SalesAudit[] = [];
+  const visitRows: VisitLocationAudit[] = [];
+  const accountById = new Map(data.accounts.map(account => [account.id, account]));
   for (const user of people) {
     const punches = data.timeEntries.filter(entry => entry.userId === user.id && inPeriod(entry.date, from, to));
     const interactions = crm.interactions.filter(item => item.userId === user.id && inPeriod(dateOf(item.occurredAt), from, to));
@@ -86,6 +95,32 @@ export function buildAdminAudit(
     const paidPeriod = paid.filter(fact => fact.creditedUserId === user.id && inPeriod(fact.paidAt, from, to));
     const scheduled = scheduledShifts.filter(shift => shift.userId === user.id && shift.status !== "Cancelled" && inPeriod(shift.date, from, to));
     const physical = interactions.filter(item => item.type === "Visit" && item.physicalVisit === true);
+    // Count each distinct physical CRM visit record once, grouped by rep and stable location ID.
+    // Freehand Quick Visits reuse a stable ID for the same normalized business name.
+    const physicalByLocation = new Map<string, typeof physical>();
+    for (const interaction of physical) {
+      if (!interaction.locationId) continue;
+      const existing = physicalByLocation.get(interaction.locationId) ?? [];
+      existing.push(interaction);
+      physicalByLocation.set(interaction.locationId, existing);
+    }
+    for (const [locationId, records] of physicalByLocation) {
+      const sorted = [...records].sort((a,b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id));
+      const account = accountById.get(locationId);
+      const freehandName = (sorted[0] as typeof sorted[number] & {quickVisitBusinessName?:string}).quickVisitBusinessName?.trim();
+      const label = account ? (account.locationName?.trim() || account.name.trim()) :
+        freehandName || "Unlinked visit (" + locationId + ")";
+      const visitDates = sorted.map(item => dateOf(item.occurredAt));
+      visitRows.push({
+        userId:user.id, employee:user.name,locationId,location:label,linkedAccount:Boolean(account),
+        visits:sorted.length,returnVisits:Math.max(0,sorted.length-1),
+        distinctVisitDays:new Set(visitDates).size,
+        unsuccessfulVisits:sorted.filter(item=>item.visitUnsuccessful===true).length,
+        firstVisitedAt:sorted[0].occurredAt,lastVisitedAt:sorted[sorted.length-1].occurredAt,
+        visitDates,paidOrdersCreditedToRep:paid.filter(f=>f.accountId===locationId && f.creditedUserId===user.id && inPeriod(f.paidAt,from,to)).length,
+        selectedTeamVisits:0,
+      });
+    }
     const allDates = new Set([...punches.map(e => e.date), ...interactions.map(e => dateOf(e.occurredAt)), ...legacyWork.map(e => dateOf(e.at)),
       ...completed.map(e => dateOf(e.completedAt)), ...geo.map(e => dateOf(e.at)), ...userOrders.map(e => dateOf(e.placedAt)),
       ...opened.map(e => dateOf(e.createdAt)), ...scheduled.map(e => e.date)].filter(Boolean));
@@ -156,7 +191,10 @@ export function buildAdminAudit(
     // collectedCashFacts already returns refunds as negative amounts.
     const netCollected = userCash.reduce((sum,f)=>sum+f.amount,0);
     sales.push({userId:user.id,employee:user.name,physicalVisits:physical.length,
-      distinctVisitedAccounts:visited.size,newAccountsOpened:created.length,accountsOwnedNow:owned.length,
+      distinctVisitedAccounts:visited.size,
+      returnVisits:[...physicalByLocation.values()].reduce((sum,records)=>sum+Math.max(0,records.length-1),0),
+      revisitedLocations:[...physicalByLocation.values()].filter(records=>records.length>1).length,
+      newAccountsOpened:created.length,accountsOwnedNow:owned.length,
       accountsSold:paidAccounts.size,firstTimeBuyingAccounts:firstBuyerAccounts.size,reorderingAccounts:reorderingAccounts.size,
       placedOrders:userOrders.filter(o=>o.status!=="Cancelled").length,paidOrders:paidPeriod.length,
       paidCases:paidPeriod.reduce((sum,f)=>sum+f.cases,0),netCollected,
@@ -165,6 +203,10 @@ export function buildAdminAudit(
       ownedAccountsThatPaid:ownedToPaid,ownedBookBuyingPercent:percent(ownedToPaid,owned.length)});
   }
   dayRows.sort((a,b)=>b.date.localeCompare(a.date)||a.employee.localeCompare(b.employee));
+  const selectedVisitTotals = new Map<string, number>();
+  for (const visit of visitRows) selectedVisitTotals.set(visit.locationId,(selectedVisitTotals.get(visit.locationId)??0)+visit.visits);
+  for (const visit of visitRows) visit.selectedTeamVisits=selectedVisitTotals.get(visit.locationId)??visit.visits;
+  visitRows.sort((a,b)=>b.visits-a.visits||a.employee.localeCompare(b.employee)||a.location.localeCompare(b.location));
   const names = new Map(data.users.map(u=>[u.id,u.name]));
   const accounts: AccountAudit[] = data.accounts.filter(a => selected.has(a.ownerId) && Boolean(a.ownerId))
     .flatMap(a => {
@@ -172,10 +214,14 @@ export function buildAdminAudit(
         a.nextActionDate < to && ["Prospect","Qualified","Sampled","Opening order","At risk"].includes(a.stage) ? "Overdue follow-up" : undefined;
       return issue ? [{accountId:a.id,account:a.locationName??a.name,owner:names.get(a.ownerId)??a.ownerId,status:a.stage,issue,followUp:a.nextActionDate||undefined}] : [];
     }).sort((a,b)=>a.owner.localeCompare(b.owner)||a.account.localeCompare(b.account));
-  return {from,to,generatedAt,reviewedEmployees:people.length,days:dayRows,sales,accounts,
+  return {from,to,generatedAt,reviewedEmployees:people.length,days:dayRows,sales,visits:visitRows,accounts,
     definitions:[
       "Midnight auto-close marker is recorded by the existing Phoenix scheduled job. It is a missed punch needing reconciliation, not verified shift end.",
-      "Physical visits = CRM Visit interactions marked physicalVisit=true; repeated visits count separately. Distinct visited accounts are unique CRM location IDs.",
+      "Physical visits = CRM Visit interactions marked physicalVisit=true; every saved visit record counts once. Unique locations are distinct location IDs for each employee.",
+      "Return visits = physical visit records after the first visit to the same location by the same employee within the selected date range. Revisited locations count location IDs with 2+ visits.",
+      "Visit-by-location records include linked CRM locations and freehand Quick Visit IDs, which may not represent the same location if rep-entered names differ. Unlinked visits are not assumed to be sales accounts.",
+      "Selected-team visits = total physical CRM visit records for a location across only the employees included in this audit, not necessarily the entire company.",
+      "Distinct visit days count unique Phoenix calendar dates, separately from total visits. Multiple records on the same day are counted as separate visits and may merit verification.",
       "New accounts opened = locations with an actual createdAt within period and createdByUid matching the employee. Legacy missing provenance is excluded.",
       "Accounts sold = unique locations with fully paid orders credited to the rep and settled within period. Orders placed and payments received are distinct.",
       "Visited-to-paid = distinct visited locations with a rep-credited paid order settled on the same Arizona date as the visit or later in the same period, divided by distinct visited locations. Same-day ordering is unknown; association does not prove causation.",
