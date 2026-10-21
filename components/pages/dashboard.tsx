@@ -43,7 +43,7 @@ export function DashboardPage() {
   const accountReviewReason=(account:(typeof scope.accounts)[number])=>{
     if(account.programPricingExpirationDate && account.programPricingExpirationDate>=today && account.programPricingExpirationDate<=priceReviewEnd)return "Program pricing expiring";
     const lastOrder=scope.orders.filter(order=>order.accountId===account.id && order.status!=="Cancelled").map(order=>order.placedAt.length===10?order.placedAt:arizonaDateKey(order.placedAt)).sort().at(-1);
-    if(lastOrder && lastOrder<dormantCutoff)return "No order in 90+ days";
+    if(lastOrder && lastOrder<=dormantCutoff)return "No order in 90+ days";
     return account.health==="At risk"?"At-risk account":undefined;
   };
   const accountsToReview=scope.accounts.filter(account=>Boolean(accountReviewReason(account)));
