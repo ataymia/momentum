@@ -10,5 +10,5 @@ export function validArizonaTaxCertificateType(value:string|undefined):boolean {
 }
 /** A secure external document reference is an identifier, NOT the document itself. */
 export function validTaxCertificateReference(value:string|undefined):boolean {
-  return value===undefined||value.length<=200&&/^[\w\- ./#:]+$/.test(value);
+  return value===undefined||value===""||(value.length<=200&&/^[\w\- ./#:]+$/.test(value));
 }
