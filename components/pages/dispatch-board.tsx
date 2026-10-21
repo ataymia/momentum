@@ -217,7 +217,7 @@ export function DispatchPage() {
     if (!selected) return;
     const result = salesRepOwnWork ? await tracking.completeTrackedAppointment(selected.id, closeout) : { ok: completeAppointment(selected.id, closeout) };
     if (!result.ok) {
-      setError("message" in result && result.message ? result.message : "Outcome, note, next action, and next-action date are required.");
+      setError("message" in result && result.message ? result.message : "Outcome and a work note are required.");
       return;
     }
     setCloseoutOpen(false);
