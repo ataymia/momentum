@@ -130,7 +130,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
 
       <section className="invoice-sheet__legacy-grid">
         <div><small>FROM</small><strong>{company.name}</strong><span>{company.street}</span><span>{company.cityStateZip}</span><span>{company.phone} · {company.attention}</span><span>{company.salesEmail}</span></div>
-        <div><small>BILL TO</small><strong>{customer?.name ?? location?.name ?? "Customer"}</strong>{billToAddress && <span>{billToAddress}</span>}{apName && <span>A/P: {apName}</span>}{apPhone && <span>{apPhone}{apExtension ? ` ext. ${apExtension}` : ""}</span>}{apEmail && <span>{apEmail}</span>}{customer?.az5000Number && <span>AZ-5000: {customer.az5000Number}</span>}</div>
+        <div><small>BILL TO</small><strong>{customer?.name ?? location?.name ?? "Customer"}</strong>{billToAddress && <span>{billToAddress}</span>}{apName && <span>A/P: {apName}</span>}{apPhone && <span>{apPhone}{apExtension ? ` ext. ${apExtension}` : ""}</span>}{apEmail && <span>{apEmail}</span>}</div>
         <div><small>SHIP TO</small><strong>{location ? locationLabel(location) : "Customer location"}</strong>{shipToAddress && <span>{shipToAddress}</span>}{location?.contactName && <span>{location.contactName}{location.contactRole ? ` · ${location.contactRole}` : ""}</span>}{location?.phone && <span>{location.phone}</span>}</div>
         
       </section>
