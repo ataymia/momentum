@@ -153,7 +153,8 @@ export function buildAdminAudit(
     const createdToPaid = created.filter(account => paidPeriod.some(f => f.accountId===account.id && f.paidAt>=dateOf(account.createdAt))).length;
     const ownedToPaid = owned.filter(account => (allPaidByAccount.get(account.id)??[]).some(f=>inPeriod(f.paidAt,from,to))).length;
     const userCash = cash.filter(f => f.creditedUserId===user.id && inPeriod(f.settledAt,from,to));
-    const netCollected = userCash.reduce((sum,f)=>sum+(f.kind==="Refund"?-f.amount:f.amount),0);
+    // collectedCashFacts already returns refunds as negative amounts.
+    const netCollected = userCash.reduce((sum,f)=>sum+f.amount,0);
     sales.push({userId:user.id,employee:user.name,physicalVisits:physical.length,
       distinctVisitedAccounts:visited.size,newAccountsOpened:created.length,accountsOwnedNow:owned.length,
       accountsSold:paidAccounts.size,firstTimeBuyingAccounts:firstBuyerAccounts.size,reorderingAccounts:reorderingAccounts.size,
