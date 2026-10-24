@@ -36,8 +36,9 @@ export function appointmentConflict(appointments: readonly Appointment[], slot: 
   return appointments.find((appointment) => {
     if (appointment.id === slot.excludeId || appointment.ownerId !== slot.ownerId || appointment.date !== slot.date) return false;
     if (["Completed", "Needs follow-up"].includes(appointment.status)) return false;
-    if (!isValidAppointmentSlot(appointment)) return false;
     const existingStart = timeToMinutes(appointment.startTime);
+    // Legacy records can cross midnight: keep their occupied same-day interval protected.
+    if (!Number.isFinite(existingStart) || !Number.isInteger(appointment.duration) || appointment.duration < 1) return false;
     const existingEnd = existingStart + appointment.duration;
     return start < existingEnd && existingStart < end;
   });
