@@ -17,6 +17,7 @@ import {
   getWorkspaceScope,
 } from "./access";
 import { addCalendarDays, arizonaDateKey, arizonaTimeKey, startOfLocalWeek } from "./date-time";
+import { appointmentConflict, isValidAppointmentSlot } from "./appointment-scheduling";
 import { createDemoData } from "./demo-data";
 import { useFirebaseSessionOptional } from "./firebase-session-context";
 import { normalizeUsername } from "./username";
@@ -298,11 +299,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser]);
 
   const createAppointment = useCallback((appointment: NewAppointment) => {
-    if (!currentUser || !canCreateScheduleItem(currentUser)) return null;
+    if (!currentUser || !canCreateScheduleItem(currentUser) || !isValidAppointmentSlot(appointment)) return null;
     const account = data.accounts.find((item) => item.id === appointment.accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
     const ownerId = currentUser.role === "Sales Representative" ? currentUser.id : appointment.ownerId || undefined;
     if (ownerId && !canAssignScheduleUser(data, currentUser, ownerId)) return null;
+    if (ownerId && appointmentConflict(data.appointments, { ...appointment, ownerId })) return null;
     const owner = data.users.find((user) => user.id === ownerId);
     const id = `apt-${Date.now()}`;
     setData((current) => ({
@@ -343,6 +345,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const appointment = current.appointments.find((item) => item.id === id);
       if (!appointment || appointment.status !== "Scheduled") return current;
       if (ownerId && !canAssignScheduleUser(current, currentUser, ownerId)) return current;
+      if (!isValidAppointmentSlot(appointment) || (ownerId && appointmentConflict(current.appointments, { ...appointment, ownerId, excludeId: id }))) return current;
       const owner = ownerId ? current.users.find((user) => user.id === ownerId) : undefined;
       const prior = current.users.find((user) => user.id === appointment.ownerId);
       return {
@@ -360,6 +363,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const appointment = current.appointments.find((item) => item.id === id);
       if (!appointment || appointment.status !== "Scheduled") return current;
       if (ownerId && !canAssignScheduleUser(current, currentUser, ownerId)) return current;
+      if (!isValidAppointmentSlot({ date, startTime, duration: appointment.duration }) || (ownerId && appointmentConflict(current.appointments, { ownerId, date, startTime, duration: appointment.duration, excludeId: id }))) return current;
       moved = true;
       const before = `${appointment.ownerId ?? "Unassigned"} · ${appointment.date} ${appointment.startTime}`;
       const after = `${ownerId ?? "Unassigned"} · ${date} ${startTime}`;
