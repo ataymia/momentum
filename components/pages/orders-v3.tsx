@@ -1,5 +1,5 @@
 "use client";
-import { AlertCircle, Box, Building2, CheckCircle2, ChevronRight, CircleDollarSign, Copy, FileText, Mail, MapPin, PackageSearch, Pencil, Plus, Store, Trash2, Truck, UserRound, XCircle } from "lucide-react";
+import { AlertCircle, Box, Building2, CheckCircle2, ChevronRight, CircleDollarSign, Copy, FileText, Mail, MapPin, PackageSearch, Pencil, Plus, SlidersHorizontal, Store, Trash2, Truck, UserRound, XCircle } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { canAdvanceFulfillment, canCreateOrder, isCustomer } from "../../lib/access";
 import { deliveryAddressLabel, hasCompleteDeliveryAddress } from "../../lib/account-address";
@@ -42,6 +42,7 @@ export function OrdersPage(){
  const focused=scope.orders.find((o)=>o.id===focusId);const focusedAccount=scope.accounts.find((a)=>a.id===focusId);
  const[query,setQuery]=useState("");
  const[view,setView]=useState<OrderWorkspaceView>("Active / Pending");
+ const[mobileFiltersOpen,setMobileFiltersOpen]=useState(false);
  const[accountFilter,setAccountFilter]=useState("");
  const[repFilter,setRepFilter]=useState("");
  const[managerFilter,setManagerFilter]=useState("");
@@ -156,7 +157,8 @@ export function OrdersPage(){
   <div className="company-tabs" role="tablist" aria-label="Order status views">
    {(["Active / Pending","Delivered","Hidden / Canceled","All Orders"] as OrderWorkspaceView[]).map((next)=><button key={next} type="button" role="tab" aria-selected={view===next} className={view===next?"is-active":""} onClick={()=>{setView(next);setResultLimit(40);setDetailOpen(false)}}>{next}</button>)}
   </div>
-  <div className="order-workspace-filters">
+  <button type="button" className="device-filter-toggle" aria-expanded={mobileFiltersOpen} aria-controls="device-order-filters" onClick={()=>setMobileFiltersOpen(value=>!value)}><SlidersHorizontal size={18}/>{mobileFiltersOpen?"Hide order filters":"Filter orders"}</button>
+  <div id="device-order-filters" className={`order-workspace-filters ${mobileFiltersOpen?"is-device-open":""}`}>
    <label>Customer / account<input type="search" autoComplete="off" placeholder="Type account or customer…" value={accountFilter} onChange={e=>{setAccountFilter(e.target.value);setResultLimit(40)}}/></label>
    <label>Placed by<input type="search" autoComplete="off" placeholder="Type rep name…" value={repFilter} onChange={e=>{setRepFilter(e.target.value);setResultLimit(40)}}/></label>
    <label>Sales Manager<input type="search" autoComplete="off" placeholder="Type manager name…" value={managerFilter} onChange={e=>{setManagerFilter(e.target.value);setResultLimit(40)}}/></label>

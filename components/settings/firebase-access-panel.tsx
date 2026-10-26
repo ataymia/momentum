@@ -18,7 +18,7 @@ export function SyncStatusPill() {
   const tone = sync.lastError ? "error" : sync.pending || sync.flushing ? "pending" : "ok";
   const label = sync.lastError ? "Sync error" : sync.flushing ? "Saving…" : sync.pending ? `${sync.pending} pending` : sync.lastSyncedAt ? "Cloud synced" : "Connected";
   const detail = sync.lastError ?? (sync.deniedDocuments.length ? `Rules denied: ${sync.deniedDocuments.join(", ")}` : undefined);
-  return <span className="sync-status-pill" data-tone={tone} title={detail}><RefreshCcw size={12} />{label}</span>;
+  return <span className="sync-status-pill" data-tone={tone} aria-label={label} title={detail ?? label}><RefreshCcw size={12} />{label}</span>;
 }
 
 /** Administrator view of Firebase identities and access records. Rendered only in production mode. */
