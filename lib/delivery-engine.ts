@@ -97,6 +97,11 @@ export function processedForDelivery(order: Order) {
   return ["Approved", "Allocated", "Out for delivery", "Delivered", "Paid"].includes(order.status);
 }
 
+/** Terminal orders remain visible for audit but must never enter a new delivery assignment. */
+export function deliveryCanBeAssigned(order: Pick<Order, "status">): boolean {
+  return ["Approved", "Allocated", "Out for delivery"].includes(order.status);
+}
+
 export function deliveryTaskForOrder(state: DeliveryState, orderId: string) {
   return state.tasks.find((task) => task.orderId === orderId && task.status !== "Cancelled");
 }
