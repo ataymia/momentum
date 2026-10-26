@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { deliveryAddressLabel } from "../../lib/account-address";
+import { deliveryReconciliationIssue } from "../../lib/delivery-reconciliation";
 import type { PaymentMethod } from "../../lib/commerce-engine";
 import { DELIVERY_STORAGE_KEY, deliveryStatusForOrder, processedForDelivery, signedDeliveryCloudConfirmed, type DeliverySignaturePoint } from "../../lib/delivery-engine";
 import { useDelivery } from "../../lib/delivery-context";
@@ -81,12 +82,10 @@ export function DeliveriesPage() {
   const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
   const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
   const completedByOverride=(orderId:string)=>state.overrides?.some((record)=>record.orderId===orderId)??false;
-  const complete = visible.filter((order) => ["Delivered","Paid"].includes(order.status) && (taskForOrder(order.id)?.status === "Delivered" || completedByOverride(order.id)));
-  const discrepancies = visible.filter((order)=>{
-    if(completedByOverride(order.id))return false;
-    const task=taskForOrder(order.id);
-    return ["Delivered","Paid"].includes(order.status)?task?.status!=="Delivered":task?.status==="Delivered";
-  });
+  const issueForOrder=(order:typeof eligible[number])=>
+    deliveryReconciliationIssue(order,taskForOrder(order.id),orderDeliveryQuantity(ledger,order.id),completedByOverride(order.id));
+  const discrepancies = visible.filter((order)=>Boolean(issueForOrder(order)));
+  const complete = visible.filter((order) => ["Delivered","Paid"].includes(order.status) && !issueForOrder(order) && (taskForOrder(order.id)?.status === "Delivered" || completedByOverride(order.id)));
   const run = async(result: { ok: boolean; message?: string }, success: string) => {if(!result.ok){setNotice(result.message??"The delivery update was not accepted.");return;}setNotice("Saving delivery change to Momentum cloud…");const checks=await Promise.all([momentumStorage.flushAndConfirm(DELIVERY_STORAGE_KEY),momentumStorage.flushAndConfirm(INVENTORY_LEDGER_STORAGE_KEY),momentumStorage.flushAndConfirm(COMMERCIAL_KEY)]);const failed=checks.find((item)=>!item.ok);setNotice(failed?`Change is still on this device but Momentum cloud has NOT confirmed every record. Do not repeat the action. ${failed.message??"Check the sync status."}`:success);};
   const refreshQueue = async () => {
     if(refreshingQueue)return;
@@ -179,7 +178,8 @@ export function DeliveriesPage() {
     const driver = task ? data.users.find((user) => user.id === task.driverId) : undefined;
     const placedBy = data.users.find((user) => user.id === order.ownerId);
     const status = deliveryStatusForOrder(state, order);
-    const needsReconciliation=discrepancies.some((item)=>item.id===order.id);
+    const reconciliationIssue=issueForOrder(order);
+    const needsReconciliation=Boolean(reconciliationIssue);
     const deliveryPosted=orderDeliveryQuantity(ledger,order.id);
     const ownTask = Boolean(isDriver && task?.driverId === currentUser?.id);
     const selectedDriver = driverByOrder[order.id] ?? drivers[0]?.id ?? "";
@@ -228,7 +228,7 @@ export function DeliveriesPage() {
 
       {linkedMarketing.length > 0 && <div className="delivery-marketing-alert"><Megaphone size={18} /><div><strong>Approved request for this location</strong>{linkedMarketing.map((request) => <p key={request.id}><b>{request.title}</b> · {request.detail}{request.neededBy ? ` · needed ${formatDate(request.neededBy, { month: "short", day: "numeric" })}` : ""}</p>)}</div></div>}
 
-      {needsReconciliation&&<div className="form-callout" role="alert"><strong>Delivery record discrepancy.</strong> Order: {order.status}; driver task: {task?.status??"Missing"}; posted inventory: {deliveryPosted}/{order.cases} cases. Do not collect another signature or post stock again. Operations must review the saved task, order, inventory and invoice before correcting.</div>}
+      {needsReconciliation&&<div className="form-callout" role="alert"><strong>Delivery record discrepancy.</strong> Order: {order.status}; driver task: {task?.status??"Missing"}; posted inventory: {deliveryPosted}/{order.cases} cases. {reconciliationIssue} Do not collect another signature or post stock again. Operations must review the saved task, order, inventory and invoice before correcting.</div>}
       <div className="delivery-card__actions">
         <Button type="button" size="sm" variant="secondary" icon={<Eye size={15} />} onClick={() => setDetailOrderId(order.id)}>View details</Button>
         {!task && isDriver && !needsReconciliation && <Button type="button" size="sm" icon={<UserCheck size={15} />} onClick={() => run(claimDelivery(order.id), `${order.number} claimed. You can now pack it.`)}>Claim delivery</Button>}
