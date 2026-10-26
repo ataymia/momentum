@@ -3,7 +3,7 @@
  * Desktop >=1024px keeps the original sidebar, spacing, table layouts and print.
  * These rules reorganize touch screens instead of shrinking the desktop viewport.
  */
-.device-bottom-nav,.device-nav-layer{display:none}
+.device-bottom-nav,.device-nav-layer,.device-filter-toggle{display:none}
 
 @media screen and (max-width:1023px){
   :root{--device-nav-height:70px}
@@ -93,7 +93,7 @@
   .device-nav-sheet__list>button.is-active{background:#eaf2ff;border-color:#b6cef1;color:#154f9d}
 
   /* Tablet-sized navigation and work surfaces. */
-  .page-container>.section-subnav{scroll-padding-inline:12px}
+  .page-container>.section-subnav{scroll-padding-inline:12px;top:60px}
   .page-container .modal-backdrop{z-index:120}
 }
 
@@ -126,7 +126,19 @@
   .page-container :is(.panel__header,.account-profile-page__hero){padding:14px}
   .page-container .company-tabs{margin-inline:0}
   .page-container .stage-filters{width:100%}
-  .page-container .order-workspace-filters{display:grid;gap:10px}
+  .page--orders .device-filter-toggle{
+    width:100%;display:flex;align-items:center;justify-content:center;gap:9px;
+    min-height:46px;border:1px solid #c9d8ef;border-radius:10px;
+    background:#f2f6fe;color:#153f7e;font-weight:750;margin:8px 0;cursor:pointer
+  }
+  .page--orders .order-workspace-filters:not(.is-device-open){display:none}
+  .page-container .order-workspace-filters.is-device-open{display:grid;gap:10px}
+  .page--accounts .account-table-body>button.account-table :is(strong,small),
+  .page--orders .order-table-body>button.order-table :is(strong,small),
+  .page--deliveries .delivery-card :is(strong,small){overflow-wrap:anywhere;line-height:1.45}
+  .page--accounts .account-table-body>button.account-table small,
+  .page--orders .order-table-body>button.order-table small{font-size:12px}
+
   .page-container .order-workspace-filters>label{min-width:0;width:100%}
   .page-container :is(.order-stats,.work-summary,.inventory-kpis,.retail-kpis){
     grid-template-columns:repeat(2,minmax(0,1fr))
