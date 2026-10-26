@@ -21,9 +21,9 @@ export type SalesAudit = {
   newAccountsOpened: number; accountsOwnedNow: number;
   accountsSold: number; firstTimeBuyingAccounts: number; reorderingAccounts: number;
   placedOrders: number; paidOrders: number; paidCases: number; netCollected: number;
-  visitedAccountsThatPaid: number; visitToPaidPercent: number | null;
-  newAccountsThatPaid: number; newAccountToPaidPercent: number | null;
-  ownedAccountsThatPaid: number; ownedBookBuyingPercent: number | null;
+  visitedAccountsThatOrdered: number; visitToOrderPercent: number | null;
+  newAccountsThatOrdered: number; newAccountToOrderPercent: number | null;
+  ownedAccountsThatOrdered: number; ownedBookOrderingPercent: number | null;
 };
 export type VisitLocationAudit = {
   userId: string; employee: string; locationId: string; location: string; linkedAccount: boolean;
@@ -31,10 +31,9 @@ export type VisitLocationAudit = {
   firstVisitedAt: string; lastVisitedAt: string; visitDates: string[];
   paidOrdersCreditedToRep: number; selectedTeamVisits: number;
 };
-export type AccountAudit = { accountId: string; account: string; owner: string; status: string; issue: string; followUp?: string };
 export type AdminAuditReport = {
   from: string; to: string; generatedAt: string; reviewedEmployees: number;
-  days: AuditDay[]; sales: SalesAudit[]; visits: VisitLocationAudit[]; accounts: AccountAudit[];
+  days: AuditDay[]; sales: SalesAudit[]; visits: VisitLocationAudit[];
   definitions: string[];
 };
 
@@ -49,6 +48,7 @@ const timeAt = (entry: TimeEntry, field: "clockIn" | "clockOut"): number | undef
 };
 const parse = (at?: string): number | undefined => at && Number.isFinite(Date.parse(at)) ? Date.parse(at) : undefined;
 const dateOf = (at?: string) => {
+  if (at && isValidCalendarDateKey(at)) return at;
   const value = parse(at);
   return value === undefined ? "" : arizonaDateKey(new Date(value));
 };
@@ -93,6 +93,8 @@ export function buildAdminAudit(
     const opened = data.accounts.filter(item => item.createdByUid === user.id && inPeriod(dateOf(item.createdAt), from, to));
     const userOrders = data.orders.filter(order => (order.creditedRepId ?? order.ownerId) === user.id && inPeriod(dateOf(order.placedAt), from, to));
     const paidPeriod = paid.filter(fact => fact.creditedUserId === user.id && inPeriod(fact.paidAt, from, to));
+    const placedOrders = userOrders.filter(order => order.status !== "Cancelled");
+    const placedAccountIds = new Set(placedOrders.map(order => order.accountId));
     const scheduled = scheduledShifts.filter(shift => shift.userId === user.id && shift.status !== "Cancelled" && inPeriod(shift.date, from, to));
     const physical = interactions.filter(item => item.type === "Visit" && item.physicalVisit === true);
     // Count each distinct physical CRM visit record once, grouped by rep and stable location ID.
@@ -143,29 +145,29 @@ export function buildAdminAudit(
       const flags: AuditFlag[] = [];
       const addFlag = (category: AuditCategory, reason: string) => flags.push({ category, reason });
       const autoClosed = entryDay.some(isAutoClosed);
-      if (autoClosed) addFlag("Timekeeping", "Midnight auto-closure: employee missed a clock-out. Verify actual worked hours and correction status.");
-      if (entryDay.some(e => !e.clockOut)) addFlag("Timekeeping", "Open punch remains. Reconcile time actually worked.");
-      if (entryDay.length > 1) addFlag("Timekeeping", "Multiple punch sessions; inspect separately.");
-      if (entryDay.some(e => e.corrections?.length)) addFlag("Timekeeping", "Punch correction history exists; inspect adjustment evidence.");
-      if (!entryDay.length && scheduled.some(s => s.date === date)) addFlag("Timekeeping", "Scheduled shift has no recorded punch; confirm attendance and work.");
-      if (!entryDay.length && workTimes.length) addFlag("Timekeeping", "Work event recorded without a time entry.");
+      if (autoClosed) addFlag("Timekeeping", "Midnight auto-clock-out. Missing punch.");
+      if (entryDay.some(e => !e.clockOut)) addFlag("Timekeeping", "Open punch.");
+      if (entryDay.length > 1) addFlag("Timekeeping", "Multiple punch sessions.");
+      if (entryDay.some(e => e.corrections?.length)) addFlag("Timekeeping", "Punch corrected.");
+      if (!entryDay.length && scheduled.some(s => s.date === date)) addFlag("Timekeeping", "Scheduled shift missing punch.");
+      if (!entryDay.length && workTimes.length) addFlag("Timekeeping", "Work activity without punch.");
       const visitGap = minutesToOut(lastVisit,lastClockOut), workGap = minutesToOut(lastWork,lastClockOut), gpsGap = minutesToOut(lastGps,lastClockOut);
       if (user.role === "Sales Representative" || user.role === "Sales Manager") {
-        if (visitGap !== undefined && visitGap >= 60) addFlag("Field", "Last documented visit precedes clock-out by " + visitGap + " minutes; investigate other duties.");
-        if (workGap !== undefined && workGap >= 60) addFlag("Field", "Last recorded work event precedes clock-out by " + workGap + " minutes; not proof of inactivity.");
-        if (entryDay.length && !workTimes.length) addFlag("Sales", "Punched time but no logged CRM/field/order event.");
+        if (visitGap !== undefined && visitGap >= 60) addFlag("Field", "Last visit to clock-out: " + visitGap + " minutes.");
+        if (workGap !== undefined && workGap >= 60) addFlag("Field", "Last work event to clock-out: " + workGap + " minutes.");
+        if (entryDay.length && !workTimes.length) addFlag("Sales", "No logged work activity.");
       }
       if (user.role === "Sales Representative" && entryDay.length && !geoDay.length)
-        addFlag("Field", "No retained GPS sample; device, permission, or short retention may explain.");
+        addFlag("Field", "No GPS history for day.");
       if (lastWork !== undefined && lastClockOut !== undefined && lastWork > lastClockOut + 60000)
-        addFlag("Timekeeping", "Work activity logged after final clock-out.");
+        addFlag("Timekeeping", "Work event after clock-out.");
       dayRows.push({userId:user.id,employee:user.name,date,timeEntries:entryDay.length,
         firstClockIn:toIso(firstClockIn),lastClockOut:toIso(lastClockOut),
         autoClosed,incompletePunch:entryDay.some(e=>!e.clockOut),corrected:entryDay.some(e=>Boolean(e.corrections?.length)),
         lastPhysicalVisit:toIso(lastVisit),lastWorkEvent:toIso(lastWork),lastGps:toIso(lastGps),
         visitToOutMinutes:visitGap,workToOutMinutes:workGap,gpsToOutMinutes:gpsGap,
         physicalVisits:visitDay.length,distinctVisitedAccounts:new Set(visitDay.map(v=>v.locationId)).size,
-        savedGpsPoints:geoDay.length,placedOrders:userOrders.filter(e=>dateOf(e.placedAt)===date).length,
+        savedGpsPoints:geoDay.length,placedOrders:userOrders.filter(e=>e.status!=="Cancelled" && dateOf(e.placedAt)===date).length,
         fullyPaidOrders:paidPeriod.filter(f=>f.paidAt===date).length,flags});
     }
     if (user.role !== "Sales Representative" && user.role !== "Sales Manager") continue;
@@ -177,16 +179,15 @@ export function buildAdminAudit(
     }
     const created = opened;
     const owned = data.accounts.filter(account => account.ownerId === user.id);
-    const paidAccounts = new Set(paidPeriod.map(f => f.accountId));
     const firstBuyerAccounts = new Set(paidPeriod.filter(f => firstPaidByAccount.get(f.accountId) === f.paidAt).map(f => f.accountId));
     const reorderingAccounts = new Set(paidPeriod.filter(f => {
       const facts = allPaidByAccount.get(f.accountId) ?? [];
       return facts.some(prior => prior.orderId !== f.orderId && prior.paidAt <= f.paidAt);
     }).map(f=>f.accountId));
-    const visitedToPaid = [...visited].filter(([accountId,visitDate]) =>
-      paidPeriod.some(f=>f.accountId===accountId && f.paidAt>=visitDate)).length;
-    const createdToPaid = created.filter(account => paidPeriod.some(f => f.accountId===account.id && f.paidAt>=dateOf(account.createdAt))).length;
-    const ownedToPaid = owned.filter(account => (allPaidByAccount.get(account.id)??[]).some(f=>inPeriod(f.paidAt,from,to))).length;
+    const visitedToOrder = [...visited].filter(([accountId,visitDate]) =>
+      placedOrders.some(order=>order.accountId===accountId && dateOf(order.placedAt)>=visitDate)).length;
+    const createdToOrder = created.filter(account => placedOrders.some(order=>order.accountId===account.id && dateOf(order.placedAt)>=dateOf(account.createdAt))).length;
+    const ownedToOrder = owned.filter(account => data.orders.some(order => order.accountId===account.id && order.status!=="Cancelled" && inPeriod(dateOf(order.placedAt),from,to))).length;
     const userCash = cash.filter(f => f.creditedUserId===user.id && inPeriod(f.settledAt,from,to));
     // collectedCashFacts already returns refunds as negative amounts.
     const netCollected = userCash.reduce((sum,f)=>sum+f.amount,0);
@@ -195,26 +196,19 @@ export function buildAdminAudit(
       returnVisits:[...physicalByLocation.values()].reduce((sum,records)=>sum+Math.max(0,records.length-1),0),
       revisitedLocations:[...physicalByLocation.values()].filter(records=>records.length>1).length,
       newAccountsOpened:created.length,accountsOwnedNow:owned.length,
-      accountsSold:paidAccounts.size,firstTimeBuyingAccounts:firstBuyerAccounts.size,reorderingAccounts:reorderingAccounts.size,
-      placedOrders:userOrders.filter(o=>o.status!=="Cancelled").length,paidOrders:paidPeriod.length,
+      accountsSold:placedAccountIds.size,firstTimeBuyingAccounts:firstBuyerAccounts.size,reorderingAccounts:reorderingAccounts.size,
+      placedOrders:placedOrders.length,paidOrders:paidPeriod.length,
       paidCases:paidPeriod.reduce((sum,f)=>sum+f.cases,0),netCollected,
-      visitedAccountsThatPaid:visitedToPaid,visitToPaidPercent:percent(visitedToPaid,visited.size),
-      newAccountsThatPaid:createdToPaid,newAccountToPaidPercent:percent(createdToPaid,created.length),
-      ownedAccountsThatPaid:ownedToPaid,ownedBookBuyingPercent:percent(ownedToPaid,owned.length)});
+      visitedAccountsThatOrdered:visitedToOrder,visitToOrderPercent:percent(visitedToOrder,visited.size),
+      newAccountsThatOrdered:createdToOrder,newAccountToOrderPercent:percent(createdToOrder,created.length),
+      ownedAccountsThatOrdered:ownedToOrder,ownedBookOrderingPercent:percent(ownedToOrder,owned.length)});
   }
   dayRows.sort((a,b)=>b.date.localeCompare(a.date)||a.employee.localeCompare(b.employee));
   const selectedVisitTotals = new Map<string, number>();
   for (const visit of visitRows) selectedVisitTotals.set(visit.locationId,(selectedVisitTotals.get(visit.locationId)??0)+visit.visits);
   for (const visit of visitRows) visit.selectedTeamVisits=selectedVisitTotals.get(visit.locationId)??visit.visits;
   visitRows.sort((a,b)=>b.visits-a.visits||a.employee.localeCompare(b.employee)||a.location.localeCompare(b.location));
-  const names = new Map(data.users.map(u=>[u.id,u.name]));
-  const accounts: AccountAudit[] = data.accounts.filter(a => selected.has(a.ownerId) && Boolean(a.ownerId))
-    .flatMap(a => {
-      const issue = !a.nextActionDate ? "No next action date" :
-        a.nextActionDate < to && ["Prospect","Qualified","Sampled","Opening order","At risk"].includes(a.stage) ? "Overdue follow-up" : undefined;
-      return issue ? [{accountId:a.id,account:a.locationName??a.name,owner:names.get(a.ownerId)??a.ownerId,status:a.stage,issue,followUp:a.nextActionDate||undefined}] : [];
-    }).sort((a,b)=>a.owner.localeCompare(b.owner)||a.account.localeCompare(b.account));
-  return {from,to,generatedAt,reviewedEmployees:people.length,days:dayRows,sales,visits:visitRows,accounts,
+  return {from,to,generatedAt,reviewedEmployees:people.length,days:dayRows,sales,visits:visitRows,
     definitions:[
       "Midnight auto-close marker is recorded by the existing Phoenix scheduled job. It is a missed punch needing reconciliation, not verified shift end.",
       "Physical visits = CRM Visit interactions marked physicalVisit=true; every saved visit record counts once. Unique locations are distinct location IDs for each employee.",
@@ -223,10 +217,10 @@ export function buildAdminAudit(
       "Selected-team visits = total physical CRM visit records for a location across only the employees included in this audit, not necessarily the entire company.",
       "Distinct visit days count unique Phoenix calendar dates, separately from total visits. Multiple records on the same day are counted as separate visits and may merit verification.",
       "New accounts opened = locations with an actual createdAt within period and createdByUid matching the employee. Legacy missing provenance is excluded.",
-      "Accounts sold = unique locations with fully paid orders credited to the rep and settled within period. Orders placed and payments received are distinct.",
-      "Visited-to-paid = distinct visited locations with a rep-credited paid order settled on the same Arizona date as the visit or later in the same period, divided by distinct visited locations. Same-day ordering is unknown; association does not prove causation.",
-      "New-account-to-paid = newly created locations credited to this rep that also have a rep-credited paid order during period, divided by new accounts opened.",
-      "Owned book buying = currently owned locations with any paid order in period, regardless of who received sales credit, divided by accounts owned NOW; not a historical ownership rate.",
+      "Accounts sold = distinct account locations with non-cancelled orders placed and credited to the rep in the reporting period, regardless of payment status.",
+      "Visit-to-order = distinct visited locations with an eligible order dated on/after the first visit in the reporting period, divided by distinct visited locations.",
+      "New-account-to-order = newly opened locations that have an eligible order placed by the rep in the reporting period, divided by newly opened locations.",
+      "Owned-book ordering = currently owned locations with at least one eligible order placed during the period, divided by the currently owned locations.",
       "Net collected = payment allocations less settled refunds attributed to the rep and settled in the period. This differs from placed order value and can include payments for prior-period orders.",
       "Reordering account = rep-credited paid order with an earlier paid order for that location. Historical missing records can undercount reorders.",
       "GPS is browser-sampled and retained separately for ten Arizona calendar days; missing points are not evidence an employee was inactive.",

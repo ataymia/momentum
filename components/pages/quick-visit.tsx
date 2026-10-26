@@ -142,7 +142,7 @@ export function QuickVisitPage(){
       {myTrips.length>historyLimit&&<Button size="sm" variant="secondary" onClick={()=>setHistoryLimit((current)=>current+30)}>Show more trips</Button>}
     </Section>
     {["Administrator","Sales Manager"].includes(currentUser.role)&&<Section title="Weekly sales management" description="Actual CRM, order and account records only. Visit target: 75–80 per full week. Freehand Quick Visits count because the rep physically visited the business.">
-      <div className="company-request-list">{summaries.map(({user,summary})=><article key={user.id}><span><Store size={17}/></span><div><strong>{user.name}</strong><p>{summary.visits} visits · {summary.orders} orders / {summary.orderCases} cases / {formatMoney(summary.orderValue)} · {summary.reorders} reorders · {summary.newAccounts} new accounts · {summary.promisingProspects} promising prospects · {summary.followUpsDue} follow-ups due · {summary.blockers} blockers</p></div><StatusPill tone={summary.visits>=75?"success":summary.visits>=50?"warning":"neutral"}>{summary.visits}/75</StatusPill></article>)}</div>
+      <div className="company-request-list">{summaries.map(({user,summary})=><article key={user.id}><span><Store size={17}/></span><div><strong>{user.name}</strong><p>{summary.visits} visits · {summary.orders} orders / {summary.orderCases} cases / {formatMoney(summary.orderValue)} · {summary.reorders} reorders · {summary.newAccounts} new accounts · {summary.promisingProspects} promising prospects · {summary.blockers} blockers</p></div><StatusPill tone={summary.visits>=75?"success":summary.visits>=50?"warning":"neutral"}>{summary.visits}/75</StatusPill></article>)}</div>
     </Section>}
   </div>;
 }

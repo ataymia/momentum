@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileSearch2, RefreshCw, ShieldCheck } from "lucide-react";
+import { Download, FileSearch2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useCommerce } from "../../lib/commerce-context";
 import { useCrm } from "../../lib/crm-context";
@@ -13,14 +13,14 @@ import { useWorkspace } from "../../lib/workspace-context";
 import { Section } from "../ui";
 
 type Tab = "All" | "Visits" | AuditCategory;
-const tabs:Tab[]=["All","Timekeeping","Field","Sales","Visits","Accounts"];
+const tabs:Tab[]=["Sales","Visits","Timekeeping","Field","All"];
 const localTime=(iso?:string)=>iso?new Intl.DateTimeFormat("en-US",{timeZone:"America/Phoenix",hour:"numeric",minute:"2-digit"}).format(new Date(iso)):"Not recorded";
 const duration=(min?:number)=>min===undefined?"n/a":Math.floor(min/60)+"h "+String(min%60).padStart(2,"0")+"m";
 const rate=(value:number|null)=>value===null?"n/a":value.toFixed(1)+"%";
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
 
 export function AdminAuditBot(){
-  const {data,currentUser}=useWorkspace();
+  const {data,currentUser,navigate}=useWorkspace();
   const {crm}=useCrm();
   const {commerce}=useCommerce();
   const {hcm}=useHcm();
@@ -28,7 +28,7 @@ export function AdminAuditBot(){
   const [from,setFrom]=useState(()=>addCalendarDays(arizonaDateKey(),-6));
   const [to,setTo]=useState(()=>arizonaDateKey());
   const [person,setPerson]=useState("all");
-  const [tab,setTab]=useState<Tab>("All");
+  const [tab,setTab]=useState<Tab>("Sales");
   const [onlyRepeated,setOnlyRepeated]=useState(false);
   const [report,setReport]=useState<AdminAuditReport|null>(null);
   const [error,setError]=useState("");
@@ -59,10 +59,9 @@ export function AdminAuditBot(){
     ? tab==="All"||tab==="Sales"||d.flags.some(f=>f.category===tab)
     : false)??[];
   const visibleSales=(tab==="All"||tab==="Sales")?report?.sales??[]:[];
-  const visibleVisits=(tab==="All"||tab==="Visits"||tab==="Sales")?(report?.visits??[]).filter(row=>!onlyRepeated||row.visits>1):[];
-  const visibleAccounts=(tab==="All"||tab==="Accounts")?report?.accounts??[]:[];
+  const visibleVisits=(tab==="All"||tab==="Visits")?(report?.visits??[]).filter(row=>!onlyRepeated||row.visits>1):[];
 
-  return <Section title="Admin audit bot" description="Run a source-backed review of employee time, field activity, sales conversion and account follow-ups. Administrator access only.">
+  return <Section title="Admin audit bot">
     <div className="admin-audit-controls">
       <label>From<input type="date" value={from} onChange={e=>{setFrom(e.target.value);setReport(null);}}/></label>
       <label>Through<input type="date" value={to} onChange={e=>{setTo(e.target.value);setReport(null);}}/></label>
@@ -70,45 +69,43 @@ export function AdminAuditBot(){
         <option value="all">All employees</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name} ({e.role})</option>)}
       </select></label>
       <button type="button" className="admin-audit-primary" onClick={run}><FileSearch2 size={17}/> Run audit</button>
+      <button type="button" className="admin-audit-link" onClick={()=>navigate("workforceLive")}>GPS history</button>
     </div>
     {error&&<p role="alert" className="admin-audit-warning">{error}</p>}
-    {!report&&<div className="admin-audit-context"><ShieldCheck size={18}/><p>Choose a reporting period of up to 93 days. Audits read company records but never alter wages, employees or source documents.</p></div>}
     {report&&<>
       <div className="admin-audit-heading">
-        <div><strong>Review prepared</strong><p>{report.from} through {report.to} · {report.reviewedEmployees} employees · generated {new Date(report.generatedAt).toLocaleString()}</p></div>
+        <div><strong>{report.from} – {report.to}</strong><p>{report.reviewedEmployees} employees</p></div>
         <button type="button" onClick={download} className="admin-audit-primary"><Download size={16}/> Download PDF</button>
       </div>
       <div className="admin-audit-tiles">
-        <article><small>Employee-days</small><strong>{report.days.length}</strong><span>Days with a punch, schedule or recorded activity</span></article>
-        <article><small>Midnight auto-closures</small><strong>{autoClosed}</strong><span>Unverified end-of-day punches to reconcile</span></article>
-        <article><small>Daily review flags</small><strong>{flagged}</strong><span>Evidence gaps, not findings of misconduct</span></article>
-        <article><small>Account follow-ups</small><strong>{report.accounts.length}</strong><span>Missing or overdue next actions</span></article>
+        <article><small>Employee-days</small><strong>{report.days.length}</strong></article>
+        <article><small>Midnight clock-outs</small><strong>{autoClosed}</strong></article>
+        <article><small>Review flags</small><strong>{flagged}</strong></article>
+        <article><small>Accounts sold</small><strong>{report.sales.reduce((total,row)=>total+row.accountsSold,0)}</strong></article>
       </div>
       <div className="admin-audit-tabs" role="group" aria-label="Audit section">
         {tabs.map(item=><button type="button" key={item} aria-pressed={tab===item} className={tab===item?"is-selected":""} onClick={()=>setTab(item)}>{item==="Visits"?"Visits by location":item}</button>)}
       </div>
       {(tab==="All"||tab==="Sales")&&<>
         <h3 className="admin-audit-subtitle">Sales and conversion performance</h3>
-        <p className="admin-audit-hint">Physical visits, account openings, fully paid buying accounts and currently owned accounts are separate measures. Percentages use distinct account counts, not number of visits.</p>
         <div className="admin-audit-scroll"><table className="admin-audit-table"><thead><tr>
           <th>Salesperson</th><th>Visits / unique locations</th><th>Return visits</th><th>Locations revisited</th><th>Opened</th><th>Owned now</th>
-          <th>Accounts sold</th><th>First-time buyers</th><th>Reorder accounts</th><th>Orders placed / paid</th><th>Paid cases</th><th>Visit to paid</th><th>Opened to paid</th><th>Owned book buying</th><th>Net collected</th>
+          <th>Accounts sold</th><th>First paid buyers</th><th>Repeat paid buyers</th><th>Orders placed / paid</th><th>Paid cases</th><th>Visit to order</th><th>Opened to order</th><th>Owned book ordering</th><th>Net collected</th>
         </tr></thead><tbody>
           {visibleSales.map(s=><tr key={s.userId}>
             <td><strong>{s.employee}</strong></td><td>{s.physicalVisits} / {s.distinctVisitedAccounts}</td><td>{s.returnVisits}</td><td>{s.revisitedLocations}</td><td>{s.newAccountsOpened}</td><td>{s.accountsOwnedNow}</td>
             <td>{s.accountsSold}</td><td>{s.firstTimeBuyingAccounts}</td><td>{s.reorderingAccounts}</td><td>{s.placedOrders} / {s.paidOrders}</td><td>{s.paidCases}</td>
-            <td><strong>{rate(s.visitToPaidPercent)}</strong><small>{s.visitedAccountsThatPaid}/{s.distinctVisitedAccounts} locations</small></td>
-            <td><strong>{rate(s.newAccountToPaidPercent)}</strong><small>{s.newAccountsThatPaid}/{s.newAccountsOpened} opened</small></td>
-            <td><strong>{rate(s.ownedBookBuyingPercent)}</strong><small>{s.ownedAccountsThatPaid}/{s.accountsOwnedNow} owned</small></td>
+            <td><strong>{rate(s.visitToOrderPercent)}</strong><small>{s.visitedAccountsThatOrdered}/{s.distinctVisitedAccounts} locations</small></td>
+            <td><strong>{rate(s.newAccountToOrderPercent)}</strong><small>{s.newAccountsThatOrdered}/{s.newAccountsOpened} opened</small></td>
+            <td><strong>{rate(s.ownedBookOrderingPercent)}</strong><small>{s.ownedAccountsThatOrdered}/{s.accountsOwnedNow} owned</small></td>
             <td>{money(s.netCollected)}</td>
           </tr>)}
           {!visibleSales.length&&<tr><td colSpan={15}>No sales employees in this selection.</td></tr>}
         </tbody></table></div>
       </>}
-      {(tab==="All"||tab==="Visits"||tab==="Sales")&&<>
+      {(tab==="All"||tab==="Visits")&&<>
         <div className="admin-audit-heading"><div>
           <h3 className="admin-audit-subtitle">Visits by business location</h3>
-          <p className="admin-audit-hint">Count repeat physical CRM visits to the same location for each rep. Different freehand business names may create different records.</p>
         </div><label className="admin-audit-repeat-filter">
           <input type="checkbox" checked={onlyRepeated} onChange={e=>setOnlyRepeated(e.target.checked)}/> Show only locations with 2+ visits
         </label></div>
@@ -129,7 +126,6 @@ export function AdminAuditBot(){
       </>}
       {(tab==="All"||tab==="Timekeeping"||tab==="Field")&&<>
         <h3 className="admin-audit-subtitle">Timekeeping and field evidence</h3>
-        <p className="admin-audit-hint">Clock-out is compared separately with the latest recorded physical visit, work event and available GPS ping. A gap is a question for review, not proof of inactivity.</p>
         <div className="admin-audit-scroll"><table className="admin-audit-table"><thead><tr>
           <th>Employee / day</th><th>Clock in/out</th><th>Last physical visit</th><th>Last work event</th><th>Last GPS</th><th>Visit gap</th><th>Work gap</th><th>GPS gap</th><th>Evidence / exceptions</th>
         </tr></thead><tbody>
@@ -143,17 +139,6 @@ export function AdminAuditBot(){
           {!visibleDays.length&&<tr><td colSpan={9}>No matching daily records or exceptions.</td></tr>}
         </tbody></table></div>
       </>}
-      {(tab==="All"||tab==="Accounts")&&<>
-        <h3 className="admin-audit-subtitle">Account follow-up exceptions</h3>
-        <div className="admin-audit-scroll"><table className="admin-audit-table"><thead><tr><th>Account</th><th>Owner</th><th>Stage</th><th>Follow-up due</th><th>Review issue</th></tr></thead><tbody>
-          {visibleAccounts.map(a=><tr key={a.accountId}><td>{a.account}</td><td>{a.owner}</td><td>{a.status}</td><td>{a.followUp??"None"}</td><td>{a.issue}</td></tr>)}
-          {!visibleAccounts.length&&<tr><td colSpan={5}>No programmed account follow-up exceptions.</td></tr>}
-        </tbody></table></div>
-      </>}
-      <details className="admin-audit-definitions"><summary>Metric formulas, limitations and evidence rules</summary>
-        {report.definitions.map((definition,i)=><p key={i}>{definition}</p>)}
-      </details>
-      <div className="admin-audit-context"><RefreshCw size={18}/><p>PDFs are created in this browser from current Momentum records. Save them only to restricted company storage. Corrections happen in the original HR, CRM or sales record, never inside the report.</p></div>
     </>}
   </Section>;
 }
