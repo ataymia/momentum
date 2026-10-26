@@ -80,8 +80,10 @@ export function DeliveriesPage() {
   });
   const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
   const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
-  const complete = visible.filter((order) => taskForOrder(order.id)?.status === "Delivered" && ["Delivered","Paid"].includes(order.status));
+  const completedByOverride=(orderId:string)=>state.overrides?.some((record)=>record.orderId===orderId)??false;
+  const complete = visible.filter((order) => ["Delivered","Paid"].includes(order.status) && (taskForOrder(order.id)?.status === "Delivered" || completedByOverride(order.id)));
   const discrepancies = visible.filter((order)=>{
+    if(completedByOverride(order.id))return false;
     const task=taskForOrder(order.id);
     return ["Delivered","Paid"].includes(order.status)?task?.status!=="Delivered":task?.status==="Delivered";
   });
