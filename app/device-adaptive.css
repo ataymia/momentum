@@ -114,6 +114,14 @@
 @media screen and (max-width:699px){
   .topbar{height:58px;padding-inline:12px}
   .topbar__location strong{font-size:13px;max-width:38vw}
+  .topbar .sync-status-pill{
+    width:34px;min-width:34px;min-height:38px;display:grid;place-items:center;
+    padding:7px;font-size:0!important;overflow:hidden;white-space:nowrap
+  }
+  .topbar .sync-status-pill svg{width:16px;height:16px}
+  .topbar .topbar__notification,.topbar .topbar-search-mobile,.topbar .user-button{
+    min-width:42px;min-height:42px
+  }
   .page{padding:15px 12px 24px}
   .page-header{gap:12px;margin-bottom:14px}
   .page-header h1{font-size:clamp(23px,6vw,30px)}
@@ -183,6 +191,10 @@
   .page--deliveries .delivery-card__actions :is(button,.button,select){width:100%;min-height:44px}
   .page--workforce-live .company-grid{grid-template-columns:minmax(0,1fr)}
   .page-container :is(.bonus-ledger,.company-request-list,.hcm-audit-list){min-width:0}
+  .page-container table{
+    display:block;max-width:100%;overflow-x:auto;
+    overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch
+  }
   .page-container :is(.invoice-register,.time-events-panel,.permission-panel,.fact-register,.metric-dictionary,.lot-panel){
     max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch
   }
