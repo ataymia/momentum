@@ -325,14 +325,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser]);
 
   const completeAppointment = useCallback((id: string, closeout: AppointmentCloseout) => {
-    if (!currentUser || !closeout.closeoutNote.trim() || !closeout.nextAction.trim() || !closeout.nextActionDate) return false;
+    if (!currentUser || !closeout.closeoutNote.trim()) return false;
     const appointment = data.appointments.find((item) => item.id === id);
     if (!appointment || appointment.status !== "Arrived" || (appointment.ownerId !== currentUser.id && !canManageSchedule(currentUser))) return false;
     setData((current) => ({
       ...current,
       appointments: current.appointments.map((item) => item.id === id ? { ...item, status: "Completed", completedAt: nowStamp(), ...closeout, closeoutNote: closeout.closeoutNote.trim(), nextAction: closeout.nextAction.trim() } : item),
-      accounts: current.accounts.map((account) => account.id === appointment.accountId ? { ...account, lastActivity: `${appointment.type}: ${closeout.outcome}`, nextAction: closeout.nextAction.trim(), nextActionDate: closeout.nextActionDate, stage: closeout.outcome === "Order placed" ? "Opening order" : account.stage, closerId: closeout.outcome === "Order placed" ? appointment.ownerId ?? account.closerId : account.closerId } : account),
-      activities: [{ id: `act-${Date.now()}`, accountId: appointment.accountId, type: "visit", title: `${appointment.type} completed · ${closeout.outcome}`, detail: `${closeout.closeoutNote.trim()} Next: ${closeout.nextAction.trim()} on ${closeout.nextActionDate}.`, at: nowStamp(), userId: currentUser.id }, ...current.activities],
+      accounts: current.accounts.map((account) => account.id === appointment.accountId ? { ...account, lastActivity: `${appointment.type}: ${closeout.outcome}`, stage: closeout.outcome === "Order placed" ? "Opening order" : account.stage, closerId: closeout.outcome === "Order placed" ? appointment.ownerId ?? account.closerId : account.closerId } : account),
+      activities: [{ id: `act-${Date.now()}`, accountId: appointment.accountId, type: "visit", title: `${appointment.type} completed · ${closeout.outcome}`, detail: closeout.closeoutNote.trim(), at: nowStamp(), userId: currentUser.id }, ...current.activities],
     }));
     return true;
   }, [currentUser, data.appointments]);
