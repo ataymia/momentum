@@ -22,7 +22,8 @@ import { deliveryAddressLabel } from "../../lib/account-address";
 import type { PaymentMethod } from "../../lib/commerce-engine";
 import { DELIVERY_STORAGE_KEY, deliveryStatusForOrder, processedForDelivery, signedDeliveryCloudConfirmed, type DeliverySignaturePoint } from "../../lib/delivery-engine";
 import { useDelivery } from "../../lib/delivery-context";
-import { INVENTORY_LEDGER_STORAGE_KEY } from "../../lib/inventory-ledger";
+import { INVENTORY_LEDGER_STORAGE_KEY, orderDeliveryQuantity } from "../../lib/inventory-ledger";
+import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import { orderLinesFor } from "../../lib/order-lines";
 import { momentumStorage, useSyncStatus } from "../../lib/persistence";
 import { deliveryDriverProductLabel } from "../../lib/product-catalog";
@@ -33,12 +34,13 @@ import { InvoicePrintCenter } from "../finance/invoice-print-center";
 import { Button, Modal, PageHeader, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const tone = (status: string) => status === "Delivered" ? "success" as const : status === "In transit" || status === "Loaded" ? "info" as const : status.includes("ready") || status === "Accepted" ? "warning" as const : "neutral" as const;
-type CollectionDraft = { amount: string; method: PaymentMethod; reference: string };
-const defaultCollection = (amount: number): CollectionDraft => ({ amount: amount > 0 ? amount.toFixed(2) : "", method: "Check", reference: "" });
+type CollectionDraft = { amount: string; method: PaymentMethod | ""; reference: string };
+const defaultCollection = (amount: number): CollectionDraft => ({ amount: amount > 0 ? amount.toFixed(2) : "", method: "", reference: "" });
 
 export function DeliveriesPage() {
   const { data, currentUser, navigate } = useWorkspace();
   const marketing = useMarketing().state;
+  const { ledger } = useInventoryLedger();
   const {
     state,
     taskForOrder,
@@ -72,11 +74,17 @@ export function DeliveriesPage() {
   const visible = eligible.filter((order) => {
     const task = taskForOrder(order.id);
     if (!isDriver) return true;
-    return !task || task.driverId === currentUser?.id;
+    // A terminal order with no driver assignment must not re-enter the claim/signature queue.
+    if (!task && ["Delivered","Paid"].includes(order.status)) return false;
+    return task?.driverId === currentUser?.id || (!task && ["Approved","Allocated","Out for delivery"].includes(order.status));
   });
   const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
   const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
-  const complete = visible.filter((order) => taskForOrder(order.id)?.status === "Delivered");
+  const complete = visible.filter((order) => taskForOrder(order.id)?.status === "Delivered" && ["Delivered","Paid"].includes(order.status));
+  const discrepancies = visible.filter((order)=>{
+    const task=taskForOrder(order.id);
+    return ["Delivered","Paid"].includes(order.status)?task?.status!=="Delivered":task?.status==="Delivered";
+  });
   const run = async(result: { ok: boolean; message?: string }, success: string) => {if(!result.ok){setNotice(result.message??"The delivery update was not accepted.");return;}setNotice("Saving delivery change to Momentum cloud…");const checks=await Promise.all([momentumStorage.flushAndConfirm(DELIVERY_STORAGE_KEY),momentumStorage.flushAndConfirm(INVENTORY_LEDGER_STORAGE_KEY),momentumStorage.flushAndConfirm(COMMERCIAL_KEY)]);const failed=checks.find((item)=>!item.ok);setNotice(failed?`Change is still on this device but Momentum cloud has NOT confirmed every record. Do not repeat the action. ${failed.message??"Check the sync status."}`:success);};
   const refreshQueue = async () => {
     if(refreshingQueue)return;
@@ -169,6 +177,8 @@ export function DeliveriesPage() {
     const driver = task ? data.users.find((user) => user.id === task.driverId) : undefined;
     const placedBy = data.users.find((user) => user.id === order.ownerId);
     const status = deliveryStatusForOrder(state, order);
+    const needsReconciliation=discrepancies.some((item)=>item.id===order.id);
+    const deliveryPosted=orderDeliveryQuantity(ledger,order.id);
     const ownTask = Boolean(isDriver && task?.driverId === currentUser?.id);
     const selectedDriver = driverByOrder[order.id] ?? drivers[0]?.id ?? "";
     const lines = orderLinesFor(order);
@@ -179,6 +189,8 @@ export function DeliveriesPage() {
     const canRecordCollection = Boolean((ownTask || canManage) && task && ["In transit", "Delivered"].includes(task.status) && remaining > 0);
     const updateCollection = (patch: Partial<CollectionDraft>) => setCollectionDrafts((current) => ({ ...current, [order.id]: { ...collectionDraft, ...patch } }));
     const saveCollection = () => {
+      if (!collectionDraft.method) { setNotice("Choose the actual payment method before recording a collection."); return; }
+      if (collectionDraft.method==="Check"&&!collectionDraft.reference.trim()){setNotice("Enter the check number before recording a check collection.");return;}
       const result = recordDeliveryCollection(order.id, Number(collectionDraft.amount), collectionDraft.method, collectionDraft.reference);
       run(result, result.ok ? `${order.number} payment collection recorded for Finance reconciliation.` : "Payment collection was not saved.");
       if (result.ok) setCollectionDrafts((current) => ({ ...current, [order.id]: defaultCollection(Math.max(0, remaining - Number(collectionDraft.amount))) }));
@@ -192,7 +204,7 @@ export function DeliveriesPage() {
           <p className="delivery-card__address"><MapPin size={16} /> {account ? deliveryAddressLabel(account) : "Location unavailable"}</p>
           {account?.phone && <p><Phone size={16} /> {account.phone}</p>}
         </div>
-        <StatusPill tone={tone(status)}>{status}</StatusPill>
+        <StatusPill tone={needsReconciliation?"danger":tone(status)}>{needsReconciliation?"Reconciliation required":status}</StatusPill>
       </div>
 
       {isDriver && <div className="delivery-driver-load" aria-label="Delivery load summary">
@@ -214,18 +226,19 @@ export function DeliveriesPage() {
 
       {linkedMarketing.length > 0 && <div className="delivery-marketing-alert"><Megaphone size={18} /><div><strong>Approved request for this location</strong>{linkedMarketing.map((request) => <p key={request.id}><b>{request.title}</b> · {request.detail}{request.neededBy ? ` · needed ${formatDate(request.neededBy, { month: "short", day: "numeric" })}` : ""}</p>)}</div></div>}
 
+      {needsReconciliation&&<div className="form-callout" role="alert"><strong>Delivery record discrepancy.</strong> Order: {order.status}; driver task: {task?.status??"Missing"}; posted inventory: {deliveryPosted}/{order.cases} cases. Do not collect another signature or post stock again. Operations must review the saved task, order, inventory and invoice before correcting.</div>}
       <div className="delivery-card__actions">
         <Button type="button" size="sm" variant="secondary" icon={<Eye size={15} />} onClick={() => setDetailOrderId(order.id)}>View details</Button>
-        {!task && isDriver && <Button type="button" size="sm" icon={<UserCheck size={15} />} onClick={() => run(claimDelivery(order.id), `${order.number} claimed. You can now pack it.`)}>Claim delivery</Button>}
-        {!task && canManage && <><select value={selectedDriver} onChange={(event) => setDriverByOrder((current) => ({ ...current, [order.id]: event.target.value }))}>{drivers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><Button type="button" size="sm" disabled={!selectedDriver} onClick={() => run(assignDelivery(order.id, selectedDriver), `${order.number} assigned.`)}>Assign driver</Button></>}
+        {!task && isDriver && !needsReconciliation && <Button type="button" size="sm" icon={<UserCheck size={15} />} onClick={() => run(claimDelivery(order.id), `${order.number} claimed. You can now pack it.`)}>Claim delivery</Button>}
+        {!task && canManage && !needsReconciliation && <><select value={selectedDriver} onChange={(event) => setDriverByOrder((current) => ({ ...current, [order.id]: event.target.value }))}>{drivers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><Button type="button" size="sm" disabled={!selectedDriver} onClick={() => run(assignDelivery(order.id, selectedDriver), `${order.number} assigned.`)}>Assign driver</Button></>}
         {task?.status === "Accepted" && (ownTask || canManage) && <>{order.status === "Approved" && <Button type="button" size="sm" icon={<PackageCheck size={15} />} onClick={() => run(prepareDelivery(order.id), `${order.number} packed and inventory reserved.`)}>Pack / reserve</Button>}{order.status === "Allocated" && <Button type="button" size="sm" icon={<PackageOpen size={15} />} onClick={() => run(markLoaded(order.id), `${order.number} loaded into driver custody.`)}>Mark loaded</Button>}<Button type="button" size="sm" variant="ghost" onClick={() => { const reason = window.prompt("Why is this delivery assignment being released?")?.trim() ?? ""; if (reason) run(cancelDelivery(order.id, reason), `${order.number} returned to the delivery queue.`); }}>{ownTask ? "Release assignment" : "Cancel assignment"}</Button></>}
         {task?.status === "Loaded" && (ownTask || canManage) && <Button type="button" size="sm" icon={<Truck size={15} />} onClick={() => run(startDelivery(order.id), `${order.number} is now in transit.`)}>Start delivery</Button>}
-        {task?.status === "In transit" && (ownTask || canManage) && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => openSignature(order.id)}>Complete delivery & sign</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) run(addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
+        {task?.status === "In transit" && !needsReconciliation && (ownTask || canManage) && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => openSignature(order.id)}>Complete delivery & sign</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) run(addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
       </div>
 
       {canRecordCollection && <div className="delivery-payment-collection">
         <label><small>Amount collected</small><input type="number" min="0.01" step="0.01" max={remaining} value={collectionDraft.amount} onChange={(event) => updateCollection({ amount: event.target.value })} /></label>
-        <label><small>Payment method</small><select value={collectionDraft.method} onChange={(event) => updateCollection({ method: event.target.value as PaymentMethod })}><option>Cash</option><option>Check</option><option>ACH</option><option>Wire</option><option>Card</option><option>Other</option></select></label>
+        <label><small>Payment method</small><select value={collectionDraft.method} onChange={(event) => updateCollection({ method: event.target.value as PaymentMethod })}><option value="">Select actual method</option><option>Cash</option><option>Check</option><option>ACH</option><option>Wire</option><option>Card</option><option>Other</option></select></label>
         <label><small>{collectionDraft.method === "Check" ? "Check number / reference" : "Reference / confirmation"}</small><input required={collectionDraft.method === "Check"} value={collectionDraft.reference} onChange={(event) => updateCollection({ reference: event.target.value })} placeholder={collectionDraft.method === "Check" ? "Required for checks" : "Optional unless available"} /></label>
         <Button type="button" size="sm" icon={<Banknote size={15} />} onClick={saveCollection}>Record collection</Button>
         <small style={{ gridColumn: "1/-1" }}>Records what the driver physically collected. Finance still reconciles settlement before the invoice becomes paid.</small>
@@ -254,7 +267,8 @@ export function DeliveriesPage() {
 
       <InvoicePrintCenter allowedOrderIds={visible.map((order)=>order.id)} title={isDriver?"Delivery invoices":"Delivery-run invoices"} description="Print one invoice or a complete delivery batch directly from the delivery workspace."/>
 
-      <Section title="Delivery queue"><div className="company-request-list">{visible.filter((order) => taskForOrder(order.id)?.status !== "Delivered").map((order) => card(order.id))}{visible.filter((order) => taskForOrder(order.id)?.status !== "Delivered").length === 0 && <div className="review-empty"><Route size={23} /><p>No active deliveries in your scope.</p></div>}</div></Section>
+      {discrepancies.length>0&&<Section title="Delivery reconciliation required" description="Terminal order status and driver task status do not agree. This queue is evidence-only, not an automatic inventory correction."><div className="company-request-list">{discrepancies.map((order)=>card(order.id))}</div></Section>}
+      <Section title="Delivery queue"><div className="company-request-list">{visible.filter((order) => !discrepancies.some((item)=>item.id===order.id) && taskForOrder(order.id)?.status !== "Delivered").map((order) => card(order.id))}{visible.filter((order) => !discrepancies.some((item)=>item.id===order.id) && taskForOrder(order.id)?.status !== "Delivered").length === 0 && <div className="review-empty"><Route size={23} /><p>No active deliveries in your scope.</p></div>}</div></Section>
       {complete.length > 0 && <Section title="Completed deliveries"><div className="company-request-list">{complete.slice(0, 25).map((order) => card(order.id))}</div></Section>}
       {!isDriver && <Section title="Inventory fulfillment" description="Inventory reservations and custody remain auditable. Open Inventory for manual exceptions, counts, holds and reconciliation."><Button type="button" variant="secondary" icon={<PackageCheck size={15} />} onClick={() => navigate("inventory")}>Open inventory fulfillment</Button></Section>}
     </div>
