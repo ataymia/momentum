@@ -16,6 +16,7 @@
   }
   .topbar{position:sticky;top:0;z-index:35;min-width:0;max-width:100%;background:#fff}
   .topbar .menu-button{display:none!important}
+  .topbar .topbar-search-mobile{display:grid!important;place-items:center;min-width:44px;min-height:44px}
   .topbar__left,.topbar__actions{min-width:0}
   .topbar__location{min-width:0}
   .topbar__location strong{display:block;max-width:min(45vw,430px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
