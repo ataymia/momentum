@@ -20,6 +20,7 @@ export function DeviceNavigation({items,currentUser,rootPage,pageParent}:Props){
   const [expanded,setExpanded]=useState(false);
   const triggerRef=useRef<HTMLButtonElement>(null);
   const closeRef=useRef<HTMLButtonElement>(null);
+  const sheetRef=useRef<HTMLElement>(null);
   const primaryKeys:PageKey[]=currentUser.role==="Sales Representative"
     ?["home","accounts","orders","timekeeping"]
     :currentUser.role==="Customer"
@@ -43,7 +44,13 @@ export function DeviceNavigation({items,currentUser,rootPage,pageParent}:Props){
     if(!expanded)return;
     closeRef.current?.focus();
     const onKey=(event:KeyboardEvent)=>{
-      if(event.key==="Escape"){event.preventDefault();setExpanded(false);}
+      if(event.key==="Escape"){event.preventDefault();setExpanded(false);return;}
+      if(event.key!=="Tab"||!sheetRef.current)return;
+      const candidates=[...sheetRef.current.querySelectorAll<HTMLButtonElement>("button:not([disabled])")];
+      if(!candidates.length)return;
+      const first=candidates[0],last=candidates[candidates.length-1];
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
     };
     const onDesktop=()=>{
       if(window.matchMedia("(min-width:1024px)").matches)setExpanded(false);
@@ -81,7 +88,7 @@ export function DeviceNavigation({items,currentUser,rootPage,pageParent}:Props){
     </nav>
     {expanded&&<div className="device-nav-layer">
       <button type="button" className="device-nav-scrim" aria-label="Close navigation" onClick={()=>setExpanded(false)}/>
-      <section id="device-more-menu" className="device-nav-sheet" role="dialog"
+      <section ref={sheetRef} id="device-more-menu" className="device-nav-sheet" role="dialog"
         aria-modal="true" aria-label="All Momentum sections">
         <header className="device-nav-sheet__header">
           <div><strong>Momentum</strong><small>{moreActiveLabel} · {currentUser.role}</small></div>
