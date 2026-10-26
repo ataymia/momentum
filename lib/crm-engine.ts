@@ -111,7 +111,6 @@ export function normalizeCrmState(input:unknown,data:WorkspaceData):CrmState{
   const seedInteractionIds=new Set(seed.interactions.map((interaction)=>interaction.id));
   const extraInteractions=uniqueById((Array.isArray(state.interactions)?state.interactions:[]).filter((interaction):interaction is CrmInteraction=>{
     if(!interaction?.id||seedInteractionIds.has(interaction.id)||!interaction.locationId||!interaction.userId||!interactionTypes.has(interaction.type)||!validTimestamp(interaction.occurredAt)||!interaction.summary?.trim())return false;
-    if(Boolean(interaction.nextAction?.trim())!==Boolean(interaction.nextActionDate))return false;
     if(interaction.nextActionDate&&!validDateKey(interaction.nextActionDate))return false;
     if(interaction.contactId){const contact=contactById.get(interaction.contactId);if(contact&&!contact.active)return false;}
     if(!validRating(interaction.prospectRating)||!validSampleQuantity(interaction.sampleQuantity))return false;
@@ -134,7 +133,7 @@ export function normalizeCrmState(input:unknown,data:WorkspaceData):CrmState{
     if(!opportunity?.id||!opportunity.locationId||!opportunity.customerId||!opportunity.ownerId||!opportunity.name?.trim()||!opportunityStages.has(opportunity.stage)||!opportunityStatuses.has(opportunity.status)||!opportunity.createdBy||!validTimestamp(opportunity.createdAt)||!validTimestamp(opportunity.updatedAt))return false;
     if(opportunity.estimatedCases!==undefined&&(!Number.isFinite(opportunity.estimatedCases)||opportunity.estimatedCases<0))return false;
     if(opportunity.expectedCloseDate&&!validDateKey(opportunity.expectedCloseDate))return false;
-    if(opportunity.status==="Open"&&(!opportunity.nextAction?.trim()||!validDateKey(opportunity.nextActionDate)||terminalStage(opportunity.stage)))return false;
+    if(opportunity.status==="Open"&&terminalStage(opportunity.stage))return false;
     if(opportunity.status==="Won"&&opportunity.stage!=="Won")return false;
     if(opportunity.status==="Lost"&&(opportunity.stage!=="Lost"||!opportunity.lossReason?.trim()))return false;
     return true;
@@ -203,8 +202,6 @@ export function normalizeOpportunityTransition(existing:Opportunity,patch:Opport
 
   if(next.status==="Open"){
     if(terminalStage(next.stage))return{ok:false,message:"Open opportunities cannot use Won or Lost stage."};
-    if(!next.nextAction)return{ok:false,message:"Open opportunities require a next action."};
-    if(!next.nextActionDate||!validDateKey(next.nextActionDate))return{ok:false,message:"Open opportunities require a valid next-action date."};
     next.lossReason=undefined;
   }
   if(next.status==="Won"){next.stage="Won";next.lossReason=undefined;}

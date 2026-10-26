@@ -115,7 +115,7 @@ export function customerOwnershipReview(data: WorkspaceData, account: Account, a
 
 export type WeeklySalesManagementSummary = {
   userId:string;weekStart:string;weekEnd:string;visits:number;orders:number;orderCases:number;orderValue:number;
-  reorders:number;newAccounts:number;promisingProspects:number;followUpsDue:number;blockers:number;
+  reorders:number;newAccounts:number;promisingProspects:number;blockers:number;
 };
 
 export function weeklySalesManagementSummary(data:WorkspaceData,interactions:CrmInteraction[],userId:string,asOf=arizonaDateKey()):WeeklySalesManagementSummary{
@@ -125,8 +125,7 @@ export function weeklySalesManagementSummary(data:WorkspaceData,interactions:Crm
   const reorders=orders.filter((order)=>data.orders.some((prior)=>prior.accountId===order.accountId&&prior.id!==order.id&&prior.placedAt<order.placedAt)).length;
   const newAccounts=new Set(data.activities.filter((activity)=>activity.userId===userId&&activity.accountId&&activity.title==="Customer location created"&&inWeek(activity.at)).map((activity)=>activity.accountId)).size;
   const promisingProspects=data.accounts.filter((account)=>account.ownerId===userId&&["Prospect","Qualified","Sampled"].includes(account.stage)&&(latestProspectRating(interactions,account.id)??0)>=7).length;
-  const followUpsDue=interactions.filter((interaction)=>interaction.userId===userId&&Boolean(interaction.nextAction?.trim())&&inWeek(interaction.nextActionDate)).length;
   const returnedApprovals=data.approvals.filter((approval)=>approval.requesterId===userId&&approval.status==="Returned"&&inWeek(approval.decidedAt??approval.submittedAt)).length;
   const atRisk=data.accounts.filter((account)=>account.ownerId===userId&&account.health==="At risk").length;
-  return{userId,weekStart,weekEnd,visits,orders:orders.length,orderCases:orders.reduce((sum,order)=>sum+order.cases,0),orderValue:orders.reduce((sum,order)=>sum+order.amount,0),reorders,newAccounts,promisingProspects,followUpsDue,blockers:returnedApprovals+atRisk};
+  return{userId,weekStart,weekEnd,visits,orders:orders.length,orderCases:orders.reduce((sum,order)=>sum+order.cases,0),orderValue:orders.reduce((sum,order)=>sum+order.amount,0),reorders,newAccounts,promisingProspects,blockers:returnedApprovals+atRisk};
 }

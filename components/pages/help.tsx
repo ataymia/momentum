@@ -31,7 +31,7 @@ const roleGuides: Partial<Record<Role, RoleGuide>> = {
   },
   "Sales Manager": {
     heading: "Sales Manager",
-    summary: "Manage the sales team, keep field work moving, review submitted work, and make sure account follow-up is happening on time.",
+    summary: "Manage the sales team, keep field work moving, review submitted work, and keep sales and account health visible.",
     priorities: [
       "Start with My Work for approvals, returned items, and team exceptions.",
       "Use CRM & Sales to review locations, ownership, notes, next actions, and order activity.",
@@ -50,13 +50,13 @@ const roleGuides: Partial<Record<Role, RoleGuide>> = {
     priorities: [
       "Check Home and My Work at the start of the day.",
       "Use Dispatch for assigned appointments and complete the visit closeout before moving on.",
-      "Keep CRM notes, contacts, next actions, and location details current.",
+      "Keep CRM notes, contacts, and location details current.",
       "Use Orders for new orders and order status within your assigned accounts.",
     ],
     guardrails: [
       "You only see sales records in your scope.",
       "Do not create a duplicate location. Search first and update the existing record when it already exists.",
-      "A completed visit needs an outcome, a useful note, and the next action when follow-up is required.",
+      "Record a useful outcome and work note when closing a scheduled visit.",
     ],
   },
   "Brand Ambassador": {
