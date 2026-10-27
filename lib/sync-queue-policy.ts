@@ -4,3 +4,8 @@ export function nextFlushableKey(pending:readonly string[],blocked:{has(key:stri
 }
 /** A cloud write may clear the recovery journal only for its exact local revision. */
 export function mayDiscardJournal(captured:number,current:number){return captured===current;}
+
+/** Keep the earliest queued save deadline; repeated GPS/UI updates cannot postpone it. */
+export function shouldScheduleSooner(existingDueAt:number|undefined,proposedDueAt:number){
+  return existingDueAt===undefined || proposedDueAt<existingDueAt;
+}
