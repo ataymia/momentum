@@ -1,6 +1,6 @@
 "use client";
 import {traceNavigationPaint} from "./performance-diagnostics";
-import {setNavigationPage} from "./navigation-store";
+import {getNavigationPage,setNavigationPage} from "./navigation-store";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -263,6 +263,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const currentUser = useMemo(() => data.users.find((user) => user.id === currentUserId) ?? null, [currentUserId, data.users]);
   // A new identity must not inherit the previous employee\'s open screen.
   useEffect(()=>{setNavigationPage("home");},[currentUserId]);
+  // A role downgrade or separation cannot retain an administrative screen.
+  useEffect(()=>{if(currentUser&&!canAccessPage(currentUser,getNavigationPage()))setNavigationPage("home");},[currentUser]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
   const setSidebarCollapsed = useCallback((collapsed: boolean) => { setSidebarCollapsedState(collapsed); momentumStorage.setItem(SIDEBAR_KEY, String(collapsed)); }, []);
   const navigate = useCallback((page: PageKey) => { const allowed=canAccessPage(currentUser,page)?page:"home";traceNavigationPaint(allowed);setNavigationPage(allowed); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: window.matchMedia("(max-width:1023px)").matches?"auto":"smooth" }); }, [currentUser]);
