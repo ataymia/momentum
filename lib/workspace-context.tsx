@@ -169,10 +169,16 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }, [commercial]);
 
-  useRemoteStorageSync(COMMERCIAL_KEY, () => setCommercial(readCommercial(base.data)));
+  useRemoteStorageSync(COMMERCIAL_KEY, () => setCommercial((current) => {
+    const next=readCommercial(base.data);
+    return JSON.stringify(next)===JSON.stringify(current)?current:next;
+  }));
 
   useEffect(() => {
-    const handle = window.setTimeout(() => setCommercial((state) => normalizeCommercialState(state, base.data, today())), 0);
+    const handle = window.setTimeout(() => setCommercial((state) => {
+      const next=normalizeCommercialState(state, base.data, today());
+      return JSON.stringify(next)===JSON.stringify(state)?state:next;
+    }), 0);
     return () => window.clearTimeout(handle);
   }, [base.data]);
 
