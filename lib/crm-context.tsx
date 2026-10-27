@@ -65,7 +65,10 @@ export function CrmProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
-      setCrm((current) => normalizeCrmState(current, data));
+      setCrm((current) => {
+        const normalized=normalizeCrmState(current,data);
+        return JSON.stringify(normalized)===JSON.stringify(current)?current:normalized;
+      });
     }, 0);
     return () => window.clearTimeout(handle);
   }, [data]);
@@ -73,7 +76,10 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window !== "undefined") momentumStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(state));
   }, [state]);
-  useRemoteStorageSync(CRM_STORAGE_KEY, () => setCrm(read()));
+  useRemoteStorageSync(CRM_STORAGE_KEY, () => setCrm((current) => {
+    const next=read();
+    return JSON.stringify(next)===JSON.stringify(current)?current:next;
+  }));
   useEffect(()=>{
     if(!currentUser)return;for(const account of data.accounts){const reason=prospectOwnershipReleaseReason(account,state.interactions);if(reason)releaseProspectOwnership(account.id,reason);}
   },[currentUser,data.accounts,state.interactions,releaseProspectOwnership]);
