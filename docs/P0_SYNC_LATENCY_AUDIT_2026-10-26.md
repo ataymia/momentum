@@ -15,6 +15,7 @@ Incident report from Flo: 3–5 seconds from nearly every click, including movin
 7. Transient Firestore 408, 429, 5xx / UNAVAILABLE / RESOURCE_EXHAUSTED / DEADLINE_EXCEEDED could trigger per-document isolation, multiplying one failed batch into many requests. Now preserve and backoff; isolate individual records only for non-transient failures.
 8. CRM and location-tracking normalization can emit identical state, causing unnecessary rerender and journal writes. No-op state updates now preserve identity. Legitimate GPS session changes and route evidence remain.
 9. Invoices were repeatedly recalculating balance/status for the visible register on each selected-invoice change. Memoize summary per ledger state.
+10. **Second-pass conflict safety (October 27):** a Firestore conflict read could finish after a new local edit and replace the newer in-memory data. The conflict reconciliation now compares the saved revision, retains newer locally journaled edits, and requeues that domain instead of replacing the cache. Add a regression guard to the P0 test suite.
 
 These are established from code paths. They do not prove which explains Flo's full latency.
 
