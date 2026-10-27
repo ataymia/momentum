@@ -35,6 +35,13 @@ test("persistence guards every journal clearing path and blocked retries",()=>{
   assert.match(p,/firestore-write-build/);
   assert.match(source("lib/firebase-firestore-rest.ts"),/operation:"firestore-commit"/);
 });
+test("payment reconciliation does not change identity on unrelated page navigation",()=>{
+  const wrapper=source("lib/workspace-context.tsx");
+  const commerce=source("lib/commerce-context.tsx");
+  assert.match(wrapper,/const reconcileOrderPayment = useCallback\(/);
+  assert.match(wrapper,/\[base\.reconcileOrderPayment, commercial, currentUser, data\]/);
+  assert.match(commerce,/\[commerce, data\.orders, reconcileOrderPayment\]/);
+});
 test("Administrator diagnostics are opt-in and contain timings, not operational records",()=>{
   const component=source("components/settings/performance-health-panel.tsx");
   assert.match(component,/currentUser\?\.role!=="Administrator"/);
