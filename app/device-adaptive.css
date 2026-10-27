@@ -217,3 +217,41 @@
 @media screen and (prefers-reduced-motion:reduce){
   .device-nav-layer,.device-nav-sheet,.device-bottom-nav{animation:none;transition:none}
 }
+
+
+/* Protect the CRM from tablet/desktop table rules when mobile Safari uses a wider
+ * layout viewport. The compact cards must work across the full touch shell. */
+@media screen and (max-width:1023px){
+  .page--accounts{min-width:0;max-width:100%;overflow-x:clip}
+  .page--accounts .account-toolbar{grid-template-columns:minmax(0,1fr);min-width:0}
+  .page--accounts .table-search{min-width:0;max-width:100%}
+  .page--accounts .stage-filters{grid-column:1;order:2;min-width:0;max-width:100%}
+  .page--accounts .account-list-panel{min-width:0!important;width:100%;max-width:100%}
+  .page--accounts .account-table--head{display:none!important}
+  .page--accounts .account-table-body{display:grid;gap:10px;min-width:0}
+  .page--accounts .account-table-body>button.account-table{
+    display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;
+    gap:9px 12px;width:100%;min-width:0;max-width:100%;
+    padding:13px;border:1px solid #e2e8f0;border-radius:12px;
+    background:#fff;text-align:left;align-items:start
+  }
+  .page--accounts .account-table-body>button.account-table>.account-name-cell{grid-column:1;min-width:0}
+  .page--accounts .account-table-body>button.account-table>.account-name-cell>i{flex-shrink:0}
+  .page--accounts .account-table-body>button.account-table .account-name-cell :is(strong,small){
+    white-space:normal;overflow-wrap:anywhere;text-overflow:clip;line-height:1.4
+  }
+  .page--accounts .account-table-body>button.account-table .account-name-cell strong{font-size:13px}
+  .page--accounts .account-table-body>button.account-table .account-name-cell small{font-size:11px}
+  .page--accounts .account-table-body>button.account-table>span:nth-child(2){grid-column:2;justify-self:end}
+  .page--accounts .account-table-body>button.account-table>.account-owner-cell{
+    grid-column:1/-1;min-width:0
+  }
+  .page--accounts .account-table-body>button.account-table>.account-action-cell{
+    grid-column:1/-1;min-width:0;border-top:1px solid #edf0f5;padding-top:8px;
+    max-width:100%;text-align:left
+  }
+  .page--accounts .account-table-body>button.account-table .account-action-cell strong{
+    white-space:normal;overflow-wrap:anywhere;font-size:12px
+  }
+  .page--accounts .account-table-body>button.account-table>svg:last-child{display:none}
+}

@@ -3,7 +3,6 @@
 import { BadgeDollarSign, BarChart3, Bell, Boxes, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, CircleDollarSign, CircleHelp, Command, FileText, KeyRound, LayoutDashboard, LogOut, Mail, Megaphone, Menu, PanelLeftClose, PanelLeftOpen, PartyPopper, Search, Settings, ShoppingCart, UsersRound, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { canAccessPage } from "../lib/access";
-import { evaluateSalesRepAccountBonuses } from "../lib/bonus-engine";
 import { useCommerce } from "../lib/commerce-context";
 import { useCrm } from "../lib/crm-context";
 import { useFirebaseSessionOptional } from "../lib/firebase-session-context";
@@ -80,10 +79,9 @@ const demoTourIds = new Set(["usr-flo", "usr-mia", "usr-avery", "usr-jordan", "u
 const labelFor = (item: NavItem, user: WorkspaceUser) => user.role === "Brand Ambassador" ? (item.key === "brandAmbassadors" ? "My schedule" : item.label) : user.role !== "Customer" ? item.label : item.key === "home" ? "Account overview" : item.key === "accounts" ? "My account" : item.key === "orders" ? "My orders" : item.label;
 
 function NavButton({ item, user }: { item: NavItem; user: WorkspaceUser }) {
-  const { activePage, navigate, scope, data } = useWorkspace(); const Icon = item.icon; const label = labelFor(item, user);
-  const accountIds = new Set(scope.accounts.map((account) => account.id));
-  const earnedSignals = item.key === "accounts" ? evaluateSalesRepAccountBonuses(data).filter((signal) => signal.status === "Earned" && accountIds.has(signal.accountId)).length : 0;
-  const pending = item.key === "work" ? scope.approvals.filter((entry) => entry.status === "Pending").length : earnedSignals;
+  const { activePage, navigate, scope } = useWorkspace(); const Icon = item.icon; const label = labelFor(item, user);
+  // Navigation must remain cheap on phones. The full bonus ledger is calculated only inside Sales incentives.
+  const pending = item.key === "work" ? scope.approvals.filter((entry) => entry.status === "Pending").length : 0;
   const selected = activePage === item.key || pageParent[activePage] === item.key;
   return <button className={`nav-item ${selected ? "is-active" : ""}`} onClick={() => navigate(item.key)} aria-current={selected ? "page" : undefined} title={label}><Icon size={18} strokeWidth={1.9}/><span>{label}</span>{pending > 0 && <i className="nav-count">{pending}</i>}</button>;
 }
