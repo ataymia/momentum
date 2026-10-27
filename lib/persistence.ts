@@ -444,7 +444,7 @@ class FirestoreBackend{
   async flushLatest(){
     const keys=[...this.dirty];
     // Drain oldest first. New interactions must not starve an earlier unsaved order.
-    const oldest=keys[0];
+    const oldest=keys.find((key)=>!this.blockedKeys.has(key));
     if(oldest)await this.flush([oldest]);
   }
 
@@ -548,7 +548,8 @@ class FirestoreBackend{
       for(const key of keys)this.activeFlushKeys.delete(key);
       this.flushing=this.activeFlushKeys.size>0;
       setStatus({flushing:this.flushing,pending:this.dirty.size,deniedDocuments:[...this.denied]});
-      if(this.dirty.size&&!this.retryDelay)this.scheduleFlush(200);
+      // Do not create a 200ms CPU/network retry loop for permanently blocked domains.
+      if([...this.dirty].some((key)=>!this.blockedKeys.has(key))&&!this.retryDelay)this.scheduleFlush(200);
     }
   }
 
@@ -590,7 +591,7 @@ class FirestoreBackend{
     }
     this.retryDelay=failedKeys.size?Math.min(this.retryDelay?this.retryDelay*2:2_000,60_000):0;
     setStatus({lastSyncedAt:anySuccess?new Date().toISOString():status.lastSyncedAt,lastError:messages.length?`Some changes are still safely queued: ${messages.slice(0,2).join(" | ")}`:undefined});
-    if(this.dirty.size)this.scheduleFlush(this.retryDelay||200);
+    if([...this.dirty].some((key)=>!this.blockedKeys.has(key)))this.scheduleFlush(this.retryDelay||200);
   }
 
   /** A batch failed on rules. Retry one document at a time so the offending shard is identified and parked. */
