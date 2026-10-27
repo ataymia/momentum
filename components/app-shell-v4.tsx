@@ -11,6 +11,7 @@ import { useNotifications } from "../lib/notification-context";
 import { useRuntimeMode } from "../lib/runtime-mode";
 import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
+import {useNavigationPage} from "../lib/navigation-store";
 import { AccountsPage } from "./pages/accounts";
 import { BrandAmbassadorsPage } from "./pages/brand-ambassadors";
 import { DashboardPage } from "./pages/dashboard";
@@ -79,7 +80,7 @@ const demoTourIds = new Set(["usr-flo", "usr-mia", "usr-avery", "usr-jordan", "u
 const labelFor = (item: NavItem, user: WorkspaceUser) => user.role === "Brand Ambassador" ? (item.key === "brandAmbassadors" ? "My schedule" : item.label) : user.role !== "Customer" ? item.label : item.key === "home" ? "Account overview" : item.key === "accounts" ? "My account" : item.key === "orders" ? "My orders" : item.label;
 
 function NavButton({ item, user }: { item: NavItem; user: WorkspaceUser }) {
-  const { activePage, navigate, scope } = useWorkspace(); const Icon = item.icon; const label = labelFor(item, user);
+  const { navigate, scope } = useWorkspace(); const activePage=useNavigationPage(); const Icon = item.icon; const label = labelFor(item, user);
   // Navigation must remain cheap on phones. The full bonus ledger is calculated only inside Sales incentives.
   const pending = item.key === "work" ? scope.approvals.filter((entry) => entry.status === "Pending").length : 0;
   const selected = activePage === item.key || pageParent[activePage] === item.key;
@@ -87,7 +88,7 @@ function NavButton({ item, user }: { item: NavItem; user: WorkspaceUser }) {
 }
 
 function SectionSubnav(){
-  const {activePage,currentUser,navigate}=useWorkspace();
+  const {currentUser,navigate}=useWorkspace(); const activePage=useNavigationPage();
   if(!currentUser)return null;
   const root=pageParent[activePage]??activePage;
   const tabs=(sectionTabs[root]??[]).filter((tab)=>canAccessPage(currentUser,tab.key));
@@ -96,7 +97,7 @@ function SectionSubnav(){
 }
 
 function PageView() {
-  const { activePage } = useWorkspace();
+  const activePage=useNavigationPage();
   useEffect(()=>traceNavigationCommit(activePage),[activePage]);
   switch (activePage) {
     case "home": return <DashboardPage/>;
@@ -139,7 +140,8 @@ function PageView() {
 }
 
 export function AppShell() {
-  const { data, scope, currentUser, activePage, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, logout, switchUser, markNotificationsRead } = useWorkspace();
+  const { data, scope, currentUser, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, logout, switchUser, markNotificationsRead } = useWorkspace();
+  const activePage=useNavigationPage();
   const { crm } = useCrm(); const { commerce } = useCommerce(); const runtime = useRuntimeMode(); const generated = useNotifications(); const firebase = useFirebaseSessionOptional();
   const [searchOpen, setSearchOpen] = useState(false); const [notificationsOpen, setNotificationsOpen] = useState(false); const [userOpen, setUserOpen] = useState(false); const [query, setQuery] = useState("");
   const [emailOpen,setEmailOpen]=useState(false); const [newEmail,setNewEmail]=useState(""); const [currentPassword,setCurrentPassword]=useState(""); const [emailError,setEmailError]=useState(""); const [emailMessage,setEmailMessage]=useState(""); const [emailBusy,setEmailBusy]=useState(false);
