@@ -82,8 +82,8 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     // They must never overwrite the shared driver task array from client state.
     if (typeof window !== "undefined" &&
         ["Administrator","Operations","Delivery Driver"].includes(currentUser?.role??"")) {
+      // State was journaled by commitState already; avoid duplicate immediate cloud work.
       momentumStorage.setItem(DELIVERY_STORAGE_KEY, JSON.stringify(state));
-      void momentumStorage.flush();
     }
   }, [state,currentUser?.role]);
   useRemoteStorageSync(DELIVERY_STORAGE_KEY, () => {
