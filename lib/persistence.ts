@@ -3,6 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PLATFORM_META_DOCUMENT, type PersistenceScope } from "./firebase-access";
 import {recordPerformanceSample} from "./performance-diagnostics";
+import {isTransientFirestoreFailure,mayDiscardJournal,nextFlushableKey,shouldScheduleSooner} from "./sync-queue-policy";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite } from "./firebase-firestore-rest";
 import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, resolveUserPhysicalField, shardState, type DomainSpec } from "./firestore-domains";
 
@@ -234,10 +235,13 @@ class FirestoreBackend{
   private cache=new Map<string,string|null>();
   private docs=new Map<string,DocState>();
   private dirty=new Set<string>();
+  // A write finishing after a newer local edit must never erase its recovery journal.
+  private revisions=new Map<string,number>();
   private denied=new Set<string>();
   private blockedKeys=new Map<string,string>();
   private metaVersions:Record<string,string>={};
   private timer:number|undefined;
+  private timerDueAt:number|undefined;
   private pollTimer:number|undefined;
   /** Focus and interval refreshes must not race each other. */
   private polling=false;
@@ -420,6 +424,7 @@ class FirestoreBackend{
   }
 
   setItem(key:string,value:string){
+    const journalStarted=performance.now();
     const previous=this.cache.get(key)??null;
     if(previous===value)return;
     const journalKey=pendingJournalKey(this.scope.uid,key);
@@ -427,7 +432,9 @@ class FirestoreBackend{
     const existing=typeof existingRaw==="string"?decodePendingJournal(existingRaw):undefined;
     const base=existing?(existing.legacy?previous:existing.base):previous;
     this.cache.set(key,value);
+    this.revisions.set(key,(this.revisions.get(key)??0)+1);
     local()?.setItem(journalKey,encodePendingJournal(base,value));
+    recordPerformanceSample({operation:"storage-journal",durationMs:performance.now()-journalStarted,count:value.length});
     this.dirty.delete(key);
     this.dirty.add(key);
     setStatus({pending:this.dirty.size});
@@ -438,14 +445,24 @@ class FirestoreBackend{
 
   async flushLatest(){
     const keys=[...this.dirty];
-    const latest=keys[keys.length-1];
-    if(latest)await this.flush([latest]);
+    // Drain oldest first. New interactions must not starve an earlier unsaved order.
+    const oldest=nextFlushableKey(keys,this.blockedKeys);
+    if(oldest)await this.flush([oldest]);
   }
 
   private scheduleFlush(delay:number){
     if(this.disposed||typeof window==="undefined")return;
-    if(this.timer)window.clearTimeout(this.timer);
-    this.timer=window.setTimeout(()=>void this.flushLatest(),delay);
+    // Background saves may be coalesced, but frequent field pings must not defer them forever.
+    // Retry backoff remains authoritative until an explicit flushAndConfirm occurs.
+    const dueAt=Date.now()+Math.max(delay,this.retryDelay);
+    if(!shouldScheduleSooner(this.timerDueAt,dueAt))return;
+    if(this.timer!==undefined)window.clearTimeout(this.timer);
+    this.timerDueAt=dueAt;
+    this.timer=window.setTimeout(()=>{
+      this.timer=undefined;
+      this.timerDueAt=undefined;
+      void this.flushLatest();
+    },Math.max(0,dueAt-Date.now()));
   }
 
   private buildWrites(keys:string[]){
@@ -483,12 +500,18 @@ class FirestoreBackend{
     const requested=onlyKeys?.length?[...new Set(onlyKeys)].filter((key)=>this.dirty.has(key)):[...this.dirty];
     const keys=requested.filter((key)=>!this.activeFlushKeys.has(key));
     if(keys.length===0)return;
+    const capturedRevisions=new Map(keys.map((key)=>[key,this.revisions.get(key)??0]));
+    const unchangedSinceStart=(key:string)=>mayDiscardJournal(capturedRevisions.get(key)??0,this.revisions.get(key)??0);
     for(const key of keys)this.activeFlushKeys.add(key);
     this.flushing=true;setStatus({flushing:true});
     for(const key of keys)this.dirty.delete(key);
     try{
+      let conflictsExhausted=false;
       for(let attempt=0;attempt<4;attempt++){
+        conflictsExhausted=false;
+        const buildStarted=performance.now();
         const {writes,pathKey,nextDocs}=this.buildWrites(keys);
+        recordPerformanceSample({operation:"firestore-write-build",durationMs:performance.now()-buildStarted,count:writes.length});
         if(writes.length===0){
           for(const key of keys){
             const spec=DOMAIN_BY_KEY.get(key);
@@ -498,7 +521,7 @@ class FirestoreBackend{
               this.blockedKeys.set(key,message);
               this.dirty.add(key);
               setStatus({lastError:message});
-            }else if(!this.blockedKeys.has(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+            }else if(!this.blockedKeys.has(key)&&unchangedSinceStart(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
           }
           break;
         }
@@ -510,24 +533,42 @@ class FirestoreBackend{
           for(const write of writes){this.docs.set(write.path,{data:nextDocs.get(write.path)??null,updateTime:result.updateTimes[write.path]});}
           for(const entry of versionEntries)this.metaVersions[entry]=stamp;
           this.retryDelay=0;
-          for(const key of keys)local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+          for(const key of keys)if(unchangedSinceStart(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
           setStatus({lastSyncedAt:new Date().toISOString(),lastError:undefined});
           break;
         }
         if(isFirestoreConflict(result)){
+          conflictsExhausted=true;
           setStatus({conflicts:status.conflicts+1});
           await this.reconcile(writes.map((write)=>write.path),pathKey,nextDocs);
           continue;
         }
         if(isFirestorePermissionDenied(result)){
-          await this.isolateDenied(writes,pathKey,nextDocs);
+          await this.isolateDenied(writes,pathKey,nextDocs,capturedRevisions);
+          break;
+        }
+        if(isTransientFirestoreFailure(result)){
+          // A cloud outage/rate limit is NOT a corrupt document. Preserve the original
+          // journal, back off, and do not multiply a transient failure into N writes.
+          for(const key of keys)this.dirty.add(key);
+          this.retryDelay=Math.min(this.retryDelay?this.retryDelay*2:2_000,60_000);
+          setStatus({lastError:"Cloud sync temporarily unavailable or throttled; changes remain safely queued."});
+          this.scheduleFlush(this.retryDelay);
           break;
         }
         // A size/validation failure in one noncritical document must never block an order, account,
         // inventory movement, or any other unrelated record in the same flush. Isolate the writes and
         // commit every healthy document independently.
-        await this.isolateWriteFailures(writes,pathKey,nextDocs);
+        await this.isolateWriteFailures(writes,pathKey,nextDocs,capturedRevisions);
         break;
+      }
+      if(conflictsExhausted){
+        // Four races are not a successful write. Keep the journal and back off instead of
+        // silently leaving an order with no scheduled cloud retry.
+        for(const key of keys)this.dirty.add(key);
+        this.retryDelay=Math.min(this.retryDelay?this.retryDelay*2:2_000,60_000);
+        setStatus({lastError:"Concurrent cloud edits remain unresolved; locally saved changes are queued for retry."});
+        this.scheduleFlush(this.retryDelay);
       }
     }catch(error){
       for(const key of keys)this.dirty.add(key);
@@ -538,12 +579,13 @@ class FirestoreBackend{
       for(const key of keys)this.activeFlushKeys.delete(key);
       this.flushing=this.activeFlushKeys.size>0;
       setStatus({flushing:this.flushing,pending:this.dirty.size,deniedDocuments:[...this.denied]});
-      if(this.dirty.size&&!this.retryDelay)this.scheduleFlush(200);
+      // Do not create a 200ms CPU/network retry loop for permanently blocked domains.
+      if([...this.dirty].some((key)=>!this.blockedKeys.has(key))&&!this.retryDelay)this.scheduleFlush(200);
     }
   }
 
   /** A non-conflict batch failed. Commit healthy documents independently so one bad shard cannot poison unrelated records. */
-  private async isolateWriteFailures(writes:FirestoreWrite[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>){
+  private async isolateWriteFailures(writes:FirestoreWrite[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>,capturedRevisions:Map<string,number>){
     const failedKeys=new Set<string>();
     const touchedKeys=new Set<string>();
     const messages:string[]=[];
@@ -576,15 +618,15 @@ class FirestoreBackend{
     }
     for(const key of touchedKeys){
       if(failedKeys.has(key)){if(!this.blockedKeys.has(key))this.dirty.add(key);continue;}
-      local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+      if(mayDiscardJournal(capturedRevisions.get(key)??0,this.revisions.get(key)??0))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
     }
     this.retryDelay=failedKeys.size?Math.min(this.retryDelay?this.retryDelay*2:2_000,60_000):0;
     setStatus({lastSyncedAt:anySuccess?new Date().toISOString():status.lastSyncedAt,lastError:messages.length?`Some changes are still safely queued: ${messages.slice(0,2).join(" | ")}`:undefined});
-    if(this.dirty.size)this.scheduleFlush(this.retryDelay||200);
+    if([...this.dirty].some((key)=>!this.blockedKeys.has(key)))this.scheduleFlush(this.retryDelay||200);
   }
 
   /** A batch failed on rules. Retry one document at a time so the offending shard is identified and parked. */
-  private async isolateDenied(writes:FirestoreWrite[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>){
+  private async isolateDenied(writes:FirestoreWrite[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>,capturedRevisions:Map<string,number>){
     const successfulKeys=new Set<string>();
     const blockedKeys=new Set<string>();
     const ordered=[...writes].sort((left,right)=>{
@@ -618,7 +660,7 @@ class FirestoreBackend{
       if(isFirestoreConflict(result)){if(key&&!this.blockedKeys.has(key))this.dirty.add(key);continue;}
       throw new Error(result.message);
     }
-    for(const key of successfulKeys)if(!blockedKeys.has(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+    for(const key of successfulKeys)if(!blockedKeys.has(key)&&mayDiscardJournal(capturedRevisions.get(key)??0,this.revisions.get(key)??0))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
     setStatus({lastSyncedAt:successfulKeys.size?new Date().toISOString():status.lastSyncedAt,lastError:blockedKeys.size?`Some changes were rejected by Security Rules (${blockedKeys.size} storage key${blockedKeys.size===1?"":"s"}) and were NOT cloud-confirmed.`:undefined});
   }
 
@@ -700,7 +742,8 @@ class FirestoreBackend{
   dispose(){
     this.disposed=true;
     if(typeof window!=="undefined"){
-      if(this.timer)window.clearTimeout(this.timer);
+      if(this.timer!==undefined)window.clearTimeout(this.timer);
+      this.timer=undefined;this.timerDueAt=undefined;
       if(this.pollTimer)window.clearInterval(this.pollTimer);
       window.removeEventListener("focus",this.handleFocus);
       document.removeEventListener("visibilitychange",this.handleFocus);

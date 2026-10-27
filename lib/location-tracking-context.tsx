@@ -115,7 +115,12 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
     stateRef.current = state;
     if (typeof window !== "undefined") momentumStorage.setItem(FIELD_TRACKING_STORAGE_KEY, JSON.stringify(state));
   }, [state]);
-  useRemoteStorageSync(FIELD_TRACKING_STORAGE_KEY, () => setState(readState()));
+  useRemoteStorageSync(FIELD_TRACKING_STORAGE_KEY, () => setState((current)=>{
+    const next=readState();
+    if(JSON.stringify(next)===JSON.stringify(current))return current;
+    stateRef.current=next;
+    return next;
+  }));
 
   const todayEntries = useMemo(() => currentUser ? data.timeEntries.filter((entry) => entry.userId === currentUser.id && entry.date === today()) : [], [currentUser, data.timeEntries]);
   const hasActiveClock = Boolean(currentUser && data.timeEntries.some((entry) => entry.userId === currentUser.id && !entry.clockOut));
@@ -126,7 +131,11 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
 
   const closeActiveSessions = useCallback((userId: string, reason: TrackingSessionEndReason) => {
     const at = now();
-    setState((current) => ({ ...current, sessions: current.sessions.map((session) => session.userId === userId && !session.endedAt ? { ...session, endedAt: at, endReason: reason } : session) }));
+    setState((current) => {
+      // No active session means no state change, no full GPS-history serialization or cloud save.
+      if(!current.sessions.some((session)=>session.userId===userId&&!session.endedAt))return current;
+      return {...current,sessions:current.sessions.map((session)=>session.userId===userId&&!session.endedAt?{...session,endedAt:at,endReason:reason}:session)};
+    });
   }, []);
 
   const ensureSession = useCallback((userId: string) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { accountIsVisible, canAdvanceFulfillment, canAssignScheduleUser, canManageSchedule, canReconcileOrderPayment, canReviewApproval, canTransferSalesResponsibility, getWorkspaceScope } from "./access";
 import { appointmentConflict } from "./appointment-scheduling";
 import { validateNewAccountContact } from "./account-creation";
@@ -164,15 +164,21 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // The change is durably journaled; background cloud writes should coalesce.
       momentumStorage.setItem(COMMERCIAL_KEY, JSON.stringify(commercial));
-      void momentumStorage.flush();
     }
   }, [commercial]);
 
-  useRemoteStorageSync(COMMERCIAL_KEY, () => setCommercial(readCommercial(base.data)));
+  useRemoteStorageSync(COMMERCIAL_KEY, () => setCommercial((current) => {
+    const next=readCommercial(base.data);
+    return JSON.stringify(next)===JSON.stringify(current)?current:next;
+  }));
 
   useEffect(() => {
-    const handle = window.setTimeout(() => setCommercial((state) => normalizeCommercialState(state, base.data, today())), 0);
+    const handle = window.setTimeout(() => setCommercial((state) => {
+      const next=normalizeCommercialState(state, base.data, today());
+      return JSON.stringify(next)===JSON.stringify(state)?state:next;
+    }), 0);
     return () => window.clearTimeout(handle);
   }, [base.data]);
 
@@ -736,7 +742,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
-  const reconcileOrderPayment = (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => {
+  // Stable across navigation so Commerce does not re-reconcile every invoice on every click.
+  const reconcileOrderPayment = useCallback((id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => {
     if (!canReconcileOrderPayment(currentUser)) return;
     if (status === "Paid" && paidAt !== undefined && !isValidCalendarDateKey(paidAt)) return;
     const order = commercial.orders.find((item) => item.id === id);
@@ -757,7 +764,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
     setCommercial(nextCommercial);
     void momentumStorage.flush();
-  };
+  }, [base.reconcileOrderPayment, commercial, currentUser, data]);
 
   const importInventoryLots = (lots: InventoryLot[]) => {
     if (!currentUser || !["Administrator", "Operations", "Warehouse"].includes(currentUser.role)) return 0;

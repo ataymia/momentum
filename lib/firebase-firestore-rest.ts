@@ -76,6 +76,7 @@ export async function deleteFirestoreDocument(documentPath:string):Promise<void>
 }
 
 export async function listFirestoreCollection<T>(collectionPath:string,pageSize=200):Promise<T[]>{
+  const started=performance.now();
   const config=configOrThrow();const session=await sessionOrThrow();
   const results:T[]=[];let pageToken="";
   do{
@@ -86,6 +87,7 @@ export async function listFirestoreCollection<T>(collectionPath:string,pageSize=
     results.push(...(payload.documents??[]).map((document)=>decodedDocument<T>(document)));
     pageToken=payload.nextPageToken??"";
   }while(pageToken);
+  recordPerformanceSample({operation:"firestore-list-read",durationMs:performance.now()-started,count:results.length});
   return results;
 }
 
@@ -116,10 +118,12 @@ function snapshot<T>(config:{projectId:string},document:FirestoreDocument):Fires
 
 /** Read one document and return its update time so callers can write with a precondition. */
 export async function getFirestoreSnapshot<T=Record<string,unknown>>(documentPath:string):Promise<FirestoreSnapshot<T>>{
+  const started=performance.now();
   const config=configOrThrow();const session=await sessionOrThrow();
   const response=await fetch(`https://firestore.googleapis.com/v1/${documentName(config.projectId,documentPath)}`,{headers:authHeaders(session)});
   if(response.status===404)return{path:documentPath,exists:false,data:null};
   const payload=await response.json().catch(()=>null) as FirestoreDocument|null;
+  recordPerformanceSample({operation:"firestore-single-read",durationMs:performance.now()-started,count:1});
   if(!response.ok||!payload){const {code,message}=errorCode(payload,`HTTP_${response.status}`);throw new FirestoreRequestError(response.status,code,`Firestore read failed for ${documentPath}: ${message}`);}
   return snapshot<T>(config,payload);
 }
@@ -141,6 +145,7 @@ export async function getFirestoreSnapshots<T=Record<string,unknown>>(documentPa
       body:JSON.stringify({documents:chunk.map((item)=>documentName(config.projectId,item))}),
     });
     if(response.status===403||response.status===401){
+      recordPerformanceSample({operation:"firestore-batch-permission-fallback",durationMs:performance.now()-started,count:chunk.length});
       const individual=await Promise.all(chunk.map(async(item)=>{
         try{return await getFirestoreSnapshot<T>(item);}
         catch(error){if(error instanceof FirestoreRequestError&&(error.status===403||error.status===401))return{path:item,exists:false,data:null,denied:true} as FirestoreSnapshot<T>;throw error;}
@@ -177,6 +182,7 @@ export async function listFirestoreSnapshots<T=Record<string,unknown>>(collectio
 /** Atomically apply a set of writes. Preconditions (updateTime / create) make concurrent edits fail closed instead of overwriting. */
 export async function commitFirestoreWrites(writes:FirestoreWrite[]):Promise<FirestoreCommitResult>{
   if(writes.length===0)return{ok:true,updateTimes:{}};
+  const started=performance.now();
   const config=configOrThrow();const session=await sessionOrThrow();
   const body={writes:writes.map((write)=>{
     if(write.kind==="delete")return{delete:documentName(config.projectId,write.path),...(write.updateTime?{currentDocument:{updateTime:write.updateTime}}:{})};
@@ -186,6 +192,7 @@ export async function commitFirestoreWrites(writes:FirestoreWrite[]):Promise<Fir
   })};
   const response=await fetch(`https://firestore.googleapis.com/v1/${documentRoot(config.projectId)}:commit`,{method:"POST",headers:authHeaders(session),body:JSON.stringify(body),keepalive:JSON.stringify(body).length<60_000});
   const payload=await response.json().catch(()=>null) as {writeResults?:Array<{updateTime?:string}>;commitTime?:string}|null;
+  recordPerformanceSample({operation:"firestore-commit",durationMs:performance.now()-started,count:writes.length});
   if(!response.ok||!payload){const {code,message}=errorCode(payload,`HTTP_${response.status}`);return{ok:false,status:response.status,code,message};}
   const updateTimes:Record<string,string|undefined>={};
   writes.forEach((write,index)=>{updateTimes[write.path]=payload.writeResults?.[index]?.updateTime??payload.commitTime;});
