@@ -124,7 +124,7 @@ test("secondary order surfaces identify who placed each concrete order",()=>{
   const dashboard=readFileSync("components/pages/dashboard.tsx","utf8");
   const inventory=readFileSync("components/inventory/inventory-ledger-panel-v2.tsx","utf8");
   const marketing=readFileSync("components/pages/marketing.tsx","utf8");
-  const search=readFileSync("components/app-shell-v4.tsx","utf8");
+  const search=readFileSync("components/global-search-modal.tsx","utf8");
   const orderCash=readFileSync("components/commerce/order-cash-panel-v2.tsx","utf8");
   assert.match(dashboard,/Placed by/);
   assert.match(inventory,/Placed by/);

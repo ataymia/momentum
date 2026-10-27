@@ -106,3 +106,18 @@ test("navigation store emits once per real page switch without persisting busine
   const source=read("lib/navigation-store.ts");
   assert.doesNotMatch(source,/momentumStorage\.|window\.localStorage|fetch\(/);
 });
+
+test("global record search does not subscribe the main app shell to sales and commerce",()=>{
+  const shell=read("components/app-shell-v4.tsx");
+  const dialog=read("components/global-search-modal.tsx");
+  assert.doesNotMatch(shell,/useCrm\(|useCommerce\(/);
+  assert.doesNotMatch(shell,/const searchResults/);
+  assert.match(shell,/const GlobalSearchModal=lazy\(\(\)=>import\("\.\/global-search-modal"\)/);
+  assert.match(shell,/searchOpen&&<Suspense fallback=/);
+  assert.match(shell,/<GlobalSearchModal onClose=\{\(\)=>setSearchOpen\(false\)\}/);
+  assert.match(dialog,/const \{crm\}=useCrm\(\)/);
+  assert.match(dialog,/const \{commerce\}=useCommerce\(\)/);
+  assert.match(dialog,/if \(normalized\) \{/);
+  assert.match(dialog,/const visibleSearchResults = searchResults\.slice\(0, 24\)/);
+  assert.match(dialog,/onClick=\{\(\) => openResult\(result\.page, result\.focus\)\}/);
+});
