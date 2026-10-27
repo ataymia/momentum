@@ -3,6 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PLATFORM_META_DOCUMENT, type PersistenceScope } from "./firebase-access";
 import {recordPerformanceSample} from "./performance-diagnostics";
+import {mayDiscardJournal,nextFlushableKey} from "./sync-queue-policy";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite } from "./firebase-firestore-rest";
 import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, resolveUserPhysicalField, shardState, type DomainSpec } from "./firestore-domains";
 
@@ -444,7 +445,7 @@ class FirestoreBackend{
   async flushLatest(){
     const keys=[...this.dirty];
     // Drain oldest first. New interactions must not starve an earlier unsaved order.
-    const oldest=keys.find((key)=>!this.blockedKeys.has(key));
+    const oldest=nextFlushableKey(keys,this.blockedKeys);
     if(oldest)await this.flush([oldest]);
   }
 
@@ -490,7 +491,7 @@ class FirestoreBackend{
     const keys=requested.filter((key)=>!this.activeFlushKeys.has(key));
     if(keys.length===0)return;
     const capturedRevisions=new Map(keys.map((key)=>[key,this.revisions.get(key)??0]));
-    const unchangedSinceStart=(key:string)=>(this.revisions.get(key)??0)===capturedRevisions.get(key);
+    const unchangedSinceStart=(key:string)=>mayDiscardJournal(capturedRevisions.get(key)??0,this.revisions.get(key)??0);
     for(const key of keys)this.activeFlushKeys.add(key);
     this.flushing=true;setStatus({flushing:true});
     for(const key of keys)this.dirty.delete(key);
@@ -587,7 +588,7 @@ class FirestoreBackend{
     }
     for(const key of touchedKeys){
       if(failedKeys.has(key)){if(!this.blockedKeys.has(key))this.dirty.add(key);continue;}
-      if((this.revisions.get(key)??0)===capturedRevisions.get(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+      if(mayDiscardJournal(capturedRevisions.get(key)??0,this.revisions.get(key)??0))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
     }
     this.retryDelay=failedKeys.size?Math.min(this.retryDelay?this.retryDelay*2:2_000,60_000):0;
     setStatus({lastSyncedAt:anySuccess?new Date().toISOString():status.lastSyncedAt,lastError:messages.length?`Some changes are still safely queued: ${messages.slice(0,2).join(" | ")}`:undefined});
@@ -629,7 +630,7 @@ class FirestoreBackend{
       if(isFirestoreConflict(result)){if(key&&!this.blockedKeys.has(key))this.dirty.add(key);continue;}
       throw new Error(result.message);
     }
-    for(const key of successfulKeys)if(!blockedKeys.has(key)&&(this.revisions.get(key)??0)===capturedRevisions.get(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+    for(const key of successfulKeys)if(!blockedKeys.has(key)&&mayDiscardJournal(capturedRevisions.get(key)??0,this.revisions.get(key)??0))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
     setStatus({lastSyncedAt:successfulKeys.size?new Date().toISOString():status.lastSyncedAt,lastError:blockedKeys.size?`Some changes were rejected by Security Rules (${blockedKeys.size} storage key${blockedKeys.size===1?"":"s"}) and were NOT cloud-confirmed.`:undefined});
   }
 
