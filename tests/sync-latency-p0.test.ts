@@ -57,6 +57,24 @@ test("payment reconciliation does not change identity on unrelated page navigati
   assert.match(wrapper,/\[base\.reconcileOrderPayment, commercial, currentUser, data\]/);
   assert.match(commerce,/\[commerce, data\.orders, reconcileOrderPayment\]/);
 });
+test("field tracking preserves route history without no-op session rewrites",()=>{
+  const code=source("lib/location-tracking-context.tsx");
+  assert.match(code,/if\(!current\.sessions\.some\(\(session\)=>session\.userId===userId&&!session\.endedAt\)\)return current/);
+  assert.match(code,/JSON\.stringify\(next\)===JSON\.stringify\(current\)/);
+  assert.match(code,/retainRouteEvidence/);
+});
+test("invoice navigation caches balance calculations and captures paint time",()=>{
+  const code=source("components/commerce/order-cash-panel-v2.tsx");
+  assert.match(code,/const invoiceSummaries=useMemo\(/);
+  assert.match(code,/invoiceSummaries\.get\(invoice\.id\)/);
+  assert.match(code,/operation:"invoice-switch-paint"/);
+});
+test("read timing distinguishes the expensive denied batch fallback",()=>{
+  const code=source("lib/firebase-firestore-rest.ts");
+  assert.match(code,/operation:"firestore-batch-permission-fallback"/);
+  assert.match(code,/operation:"firestore-list-read"/);
+  assert.match(code,/operation:"firestore-single-read"/);
+});
 test("Administrator diagnostics are opt-in and contain timings, not operational records",()=>{
   const component=source("components/settings/performance-health-panel.tsx");
   assert.match(component,/currentUser\?\.role!=="Administrator"/);
