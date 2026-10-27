@@ -1,5 +1,6 @@
 "use client";
 import {traceNavigationPaint} from "./performance-diagnostics";
+import {getNavigationPage,setNavigationPage} from "./navigation-store";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -153,7 +154,6 @@ type WorkspaceContextValue = {
   scope: Scope;
   currentUser: WorkspaceUser | null;
   ready: boolean;
-  activePage: PageKey;
   sidebarOpen: boolean;
   sidebarCollapsed: boolean;
   setSidebarOpen: (open: boolean) => void;
@@ -198,7 +198,6 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // Cloud hydration is not a local edit and must not be immediately re-uploaded.
   const externalHydrationRef=useRef<WorkspaceData|null>(null);
   const [demoUserId, setDemoUserId] = useState<string | null>(null);
-  const [activePage, setActivePage] = useState<PageKey>("home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
   const [ready, setReady] = useState(production);
@@ -262,9 +261,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [data, ready]);
 
   const currentUser = useMemo(() => data.users.find((user) => user.id === currentUserId) ?? null, [currentUserId, data.users]);
+  // A new identity must not inherit the previous employee\'s open screen.
+  useEffect(()=>{setNavigationPage("home");},[currentUserId]);
+  // A role downgrade or separation cannot retain an administrative screen.
+  useEffect(()=>{if(currentUser&&!canAccessPage(currentUser,getNavigationPage()))setNavigationPage("home");},[currentUser]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
   const setSidebarCollapsed = useCallback((collapsed: boolean) => { setSidebarCollapsedState(collapsed); momentumStorage.setItem(SIDEBAR_KEY, String(collapsed)); }, []);
-  const navigate = useCallback((page: PageKey) => { const allowed=canAccessPage(currentUser,page)?page:"home";traceNavigationPaint(allowed);setActivePage(allowed); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: window.matchMedia("(max-width:1023px)").matches?"auto":"smooth" }); }, [currentUser]);
+  const navigate = useCallback((page: PageKey) => { const allowed=canAccessPage(currentUser,page)?page:"home";traceNavigationPaint(allowed);setNavigationPage(allowed); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: window.matchMedia("(max-width:1023px)").matches?"auto":"smooth" }); }, [currentUser]);
 
   const login = useCallback((identifier: string, password: string): LoginResult | Promise<LoginResult> => {
     if (firebase) return firebase.signIn(identifier, password);
@@ -274,12 +277,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const user = data.users.find((item) => (item.username && item.username === asUsername) || item.email.toLowerCase() === typed);
     if (!user || password !== "admin") return { ok: false, message: "Use a demo username or e-mail and the password admin." };
     setDemoUserId(user.id);
-    setActivePage("home");
+    setNavigationPage("home");
     momentumStorage.setItem(SESSION_KEY, user.id);
     return { ok: true };
   }, [data.users, firebase]);
-  const logout = useCallback(() => { if (firebase) { void firebase.signOut(); return; } setDemoUserId(null); setActivePage("home"); momentumStorage.removeItem(SESSION_KEY); }, [firebase]);
-  const switchUser = useCallback((id: string) => { if (firebase || !data.users.some((user) => user.id === id)) return; setDemoUserId(id); setActivePage("home"); momentumStorage.setItem(SESSION_KEY, id); }, [data.users, firebase]);
+  const logout = useCallback(() => { if (firebase) { void firebase.signOut(); return; } setDemoUserId(null); setNavigationPage("home"); momentumStorage.removeItem(SESSION_KEY); }, [firebase]);
+  const switchUser = useCallback((id: string) => { if (firebase || !data.users.some((user) => user.id === id)) return; setDemoUserId(id); setNavigationPage("home"); momentumStorage.setItem(SESSION_KEY, id); }, [data.users, firebase]);
 
   const createAccount = useCallback((account: NewAccount) => {
     if (!currentUser || !canCreateAccount(currentUser)) return null;
@@ -522,9 +525,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser]);
   const acknowledgeBulletin = useCallback((id: string) => { if (!currentUser) return; setData((current) => ({ ...current, bulletins: current.bulletins.map((item) => item.id === id && !item.acknowledgedBy.includes(currentUser.id) ? { ...item, acknowledgedBy: [...item.acknowledgedBy, currentUser.id] } : item) })); }, [currentUser]);
   const markNotificationsRead = useCallback(() => { if (!currentUser) return; const ids = new Set(scope.notifications.map((item) => item.id)); setData((current) => ({ ...current, notifications: current.notifications.map((item) => ids.has(item.id) && !item.readBy.includes(currentUser.id) ? { ...item, readBy: [...item.readBy, currentUser.id] } : item) })); }, [currentUser, scope.notifications]);
-  const resetDemo = useCallback(() => { if (production || currentUser?.role !== "Administrator") return; setData(createNormalizedDemoData()); setActivePage("home"); }, [currentUser, production]);
+  const resetDemo = useCallback(() => { if (production || currentUser?.role !== "Administrator") return; setData(createNormalizedDemoData()); setNavigationPage("home"); }, [currentUser, production]);
 
-  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, activePage, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
+  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 

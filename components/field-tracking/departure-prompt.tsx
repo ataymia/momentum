@@ -4,10 +4,12 @@ import { MapPin, Route } from "lucide-react";
 import { useState } from "react";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import { useWorkspace } from "../../lib/workspace-context";
+import {useNavigationPage} from "../../lib/navigation-store";
 import { Button, Field, Modal } from "../ui";
 
 export function DeparturePrompt() {
-  const { currentUser, data, activePage, navigate } = useWorkspace();
+  const { currentUser, data, navigate } = useWorkspace();
+  const activePage=useNavigationPage();
   const { state, documentOffsiteContinuation } = useFieldTracking();
   const [exceptionOpen, setExceptionOpen] = useState(false);
   const [reason, setReason] = useState("");

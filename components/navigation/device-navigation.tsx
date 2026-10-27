@@ -5,6 +5,7 @@ import {ChevronRight, Grid2X2, X} from "lucide-react";
 import type {LucideIcon} from "lucide-react";
 import type {PageKey, WorkspaceUser} from "../../lib/types";
 import {useWorkspace} from "../../lib/workspace-context";
+import {useNavigationPage} from "../../lib/navigation-store";
 
 export type DeviceNavItem={key:PageKey;label:string;icon:LucideIcon};
 type Props={
@@ -16,7 +17,8 @@ type Props={
 
 /** Navigation designed for touch, while the desktop sidebar remains unchanged. */
 export function DeviceNavigation({items,currentUser,rootPage,pageParent}:Props){
-  const {navigate,activePage,setSidebarOpen}=useWorkspace();
+  const {navigate,setSidebarOpen}=useWorkspace();
+  const activePage=useNavigationPage();
   const [expanded,setExpanded]=useState(false);
   const triggerRef=useRef<HTMLButtonElement>(null);
   const closeRef=useRef<HTMLButtonElement>(null);
