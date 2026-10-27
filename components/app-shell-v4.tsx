@@ -79,7 +79,7 @@ const demoTourIds = new Set(["usr-flo", "usr-mia", "usr-avery", "usr-jordan", "u
 const labelFor = (item: NavItem, user: WorkspaceUser) => user.role === "Brand Ambassador" ? (item.key === "brandAmbassadors" ? "My schedule" : item.label) : user.role !== "Customer" ? item.label : item.key === "home" ? "Account overview" : item.key === "accounts" ? "My account" : item.key === "orders" ? "My orders" : item.label;
 
 function NavButton({ item, user }: { item: NavItem; user: WorkspaceUser }) {
-  const { activePage, navigate, scope, data } = useWorkspace(); const Icon = item.icon; const label = labelFor(item, user);
+  const { activePage, navigate, scope } = useWorkspace(); const Icon = item.icon; const label = labelFor(item, user);
   // Navigation must never run the all-account commission engine on every tap.
   // Earned milestones remain available in the Sales incentives workspace.
   const pending = item.key === "work" ? scope.approvals.filter((entry) => entry.status === "Pending").length : 0;
