@@ -71,7 +71,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   }, [data]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") { momentumStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(state)); void momentumStorage.flush(); }
+    if (typeof window !== "undefined") momentumStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(state));
   }, [state]);
   useRemoteStorageSync(CRM_STORAGE_KEY, () => setCrm(read()));
   useEffect(()=>{
