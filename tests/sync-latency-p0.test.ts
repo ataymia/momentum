@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {readFileSync} from "node:fs";
-import {mayDiscardJournal,nextFlushableKey} from "../lib/sync-queue-policy";
+import {mayDiscardJournal,nextFlushableKey,shouldScheduleSooner} from "../lib/sync-queue-policy";
 
 const source=(path:string)=>readFileSync(new URL("../"+path,import.meta.url),"utf8");
 test("oldest eligible writes are not starved by newer clicks or blocked records",()=>{
@@ -9,6 +9,11 @@ test("oldest eligible writes are not starved by newer clicks or blocked records"
   assert.equal(nextFlushableKey(["blocked","order","crm"],new Set(["blocked"])),"order");
   assert.equal(nextFlushableKey(["denied"],new Set(["denied"])),undefined);
   assert.equal(nextFlushableKey([],new Set()),undefined);
+});
+test("continuous GPS updates cannot keep postponing an earlier queued cloud save",()=>{
+  assert.equal(shouldScheduleSooner(undefined,1000),true);
+  assert.equal(shouldScheduleSooner(1000,1250),false);
+  assert.equal(shouldScheduleSooner(1250,1000),true);
 });
 test("in-flight older cloud commit never clears a newer recovery journal",()=>{
   assert.equal(mayDiscardJournal(4,4),true);
@@ -19,6 +24,7 @@ test("background state effects cannot immediately flush on every React update",(
   const workspace=source("lib/workspace-context-v5.tsx");
   const commercial=source("lib/workspace-context.tsx");
   const crm=source("lib/crm-context.tsx");
+  assert.match(crm,/JSON.stringify\\(normalized\\)===JSON.stringify\\(current\\)/);
   const delivery=source("lib/delivery-context.tsx");
   assert.doesNotMatch(workspace,/momentumStorage\.setItem\(DATA_KEY, JSON\.stringify\(data\)\);\s*void momentumStorage\.flush\(\)/);
   assert.doesNotMatch(commercial,/momentumStorage\.setItem\(COMMERCIAL_KEY, JSON\.stringify\(commercial\)\);\s*void momentumStorage\.flush\(\)/);
@@ -28,6 +34,9 @@ test("background state effects cannot immediately flush on every React update",(
 test("persistence guards every journal clearing path and blocked retries",()=>{
   const p=source("lib/persistence.ts");
   assert.match(p,/nextFlushableKey\(keys,this\.blockedKeys\)/);
+  assert.match(p,/shouldScheduleSooner\\(this\\.timerDueAt,dueAt\\)/);
+  assert.match(p,/if\\(conflictsExhausted\\)/);
+  assert.match(p,/Concurrent cloud edits remain unresolved/);
   assert.match(p,/const capturedRevisions=new Map/);
   assert.match(p,/mayDiscardJournal\(/);
   assert.match(p,/if\(\[\.\.\.this\.dirty\]\.some\(\(key\)=>!this\.blockedKeys\.has\(key\)\)/);
