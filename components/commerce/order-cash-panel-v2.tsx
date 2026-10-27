@@ -41,11 +41,6 @@ export function OrderCashPanel() {
     });
     return()=>{cancelAnimationFrame(firstFrame);cancelAnimationFrame(finalFrame);};
   },[selectedId]);
-  const selectInvoice=(id:string)=>{
-    if(id===selectedId)return;
-    switchStartedRef.current=performance.now();
-    setSelectedId(id);
-  };
   const [invoiceLimit,setInvoiceLimit]=useState(50);
   // Cache only visible rows so large invoice histories do not delay initial screen load.
   const invoiceSummaries=useMemo(()=>new Map(invoices.slice(0,invoiceLimit).map(invoice=>[invoice.id,{
@@ -190,7 +185,7 @@ export function OrderCashPanel() {
               const status=summary?.status??computedInvoiceStatus(commerce,invoice);
               const open=summary?.open??invoiceBalance(commerce,invoice);
               const placedBy = order ? userById.get(order.ownerId) : undefined;
-              return <button id={`commerce-${invoice.id}`} key={invoice.id} className={`invoice-ledger-row ${selected?.id === invoice.id ? "is-selected" : ""} ${focusedInvoice?.id === invoice.id ? "is-focused" : ""}`} onClick={() => selectInvoice(invoice.id)}><span className="invoice-ledger-row__identity"><strong>{invoice.number}</strong><small>{location ? locationLabel(location) : "Location"}</small><small>{order?.number ? `Order ${order.number} · ` : ""}Placed by {placedBy?.name ?? order?.ownerId ?? "Not recorded"}</small></span><span className="invoice-ledger-row__amounts"><StatusPill tone={invoiceTone(status)}>{status}</StatusPill><strong>{formatMoney(invoice.total)}</strong><small>{open > 0 ? `${formatMoney(open)} due` : "Settled"}</small></span></button>;
+              return <button id={`commerce-${invoice.id}`} key={invoice.id} className={`invoice-ledger-row ${selected?.id === invoice.id ? "is-selected" : ""} ${focusedInvoice?.id === invoice.id ? "is-focused" : ""}`} onClick={() => {if(invoice.id!==selectedId){switchStartedRef.current=performance.now();setSelectedId(invoice.id);}}}><span className="invoice-ledger-row__identity"><strong>{invoice.number}</strong><small>{location ? locationLabel(location) : "Location"}</small><small>{order?.number ? `Order ${order.number} · ` : ""}Placed by {placedBy?.name ?? order?.ownerId ?? "Not recorded"}</small></span><span className="invoice-ledger-row__amounts"><StatusPill tone={invoiceTone(status)}>{status}</StatusPill><strong>{formatMoney(invoice.total)}</strong><small>{open > 0 ? `${formatMoney(open)} due` : "Settled"}</small></span></button>;
             })}
             {invoices.length>invoiceLimit&&<Button type="button" size="sm" variant="secondary" onClick={()=>setInvoiceLimit((limit)=>limit+50)}>Show more invoices</Button>}
             {invoices.length === 0 && <div className="review-empty"><ReceiptText size={24} /><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}
