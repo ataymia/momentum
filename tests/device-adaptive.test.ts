@@ -37,3 +37,29 @@ test("delivery-driver independent shell and canonical viewport are preserved",()
   assert.match(layout,/export const viewport/);
   assert.match(layout,/width: "device-width"/);
 });
+
+test("CRM mobile filters omit unverified stage queues without modifying account records",()=>{
+  const accounts=read("components/pages/accounts.tsx");
+  assert.match(accounts,/const stages=\["All","Prospect","Opening order"\] as const/);
+  assert.match(accounts,/stageFilterDisplay=\(stage:/);
+  assert.match(accounts,/"Prospects":"Open accounts"/);
+  assert.match(accounts,/account\.stage===stage/);
+  assert.doesNotMatch(accounts,/stages=\["All","Prospect","Qualified"/);
+});
+
+test("navigation and CRM browsing defer expensive sales calculations until requested",()=>{
+  const shell=read("components/app-shell-v4.tsx");
+  const accounts=read("components/pages/accounts.tsx");
+  assert.doesNotMatch(shell,/evaluateSalesRepAccountBonuses/);
+  assert.match(accounts,/tab==="incentives"\?evaluateSalesRepAccountBonuses/);
+  assert.match(accounts,/tab==="pricing"\?scope\.accounts\.map/);
+  assert.match(accounts,/selected&&\(accountPageId\|\|isCustomer\(currentUser\)\)\?evaluatePartnerPricing/);
+});
+
+test("CRM cards never inherit a wide desktop table on touch viewports",()=>{
+  const css=read("app/device-adaptive.css");
+  assert.match(css,/@media screen and \(max-width:1023px\)\{[\s\S]*?\.page--accounts \.account-list-panel\{min-width:0!important/);
+  assert.match(css,/\.page--accounts \.account-table-body>button\.account-table\{\s*display:grid!important/);
+  assert.match(css,/\.page--accounts \.account-table-body>button\.account-table \.account-name-cell :is\(strong,small\)\{/);
+  assert.match(css,/white-space:normal;overflow-wrap:anywhere/);
+});
