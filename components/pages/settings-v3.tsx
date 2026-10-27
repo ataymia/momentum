@@ -22,6 +22,7 @@ import { PERIOD_LOCK_STORAGE_KEY } from "../../lib/period-lock-engine";
 import { useRuntimeMode } from "../../lib/runtime-mode";
 import { useWorkspace } from "../../lib/workspace-context";
 import { FirebaseAccessPanel } from "../settings/firebase-access-panel";
+import { PerformanceHealthPanel } from "../settings/performance-health-panel";
 import { PlatformControls } from "../settings/platform-controls";
 import { AdminAuditBot } from "../audit/admin-audit-bot";
 import { Avatar, Button, Modal, PageHeader, Section, StatusPill } from "../ui";
@@ -103,6 +104,7 @@ export function SettingsPage() {
 
     {firebase&&<FirebaseAccessPanel/>}
 
+    <PerformanceHealthPanel/>
     <PlatformControls/>
     <AdminAuditBot/>
 
