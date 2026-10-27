@@ -135,6 +135,11 @@
   .page-container :is(.panel__header,.account-profile-page__hero){padding:14px}
   .page-container .company-tabs{margin-inline:0}
   .page-container .stage-filters{width:100%}
+  .page--accounts .stage-filters{flex-wrap:wrap;overflow:visible;gap:6px}
+  .page--accounts .stage-filters button{
+    min-height:44px;padding-inline:13px;font-size:13px;border-color:#d8e1ec
+  }
+  .page--accounts .table-search{min-height:44px;height:auto}
   .page--orders .device-filter-toggle{
     width:100%;display:flex;align-items:center;justify-content:center;gap:9px;
     min-height:46px;border:1px solid #c9d8ef;border-radius:10px;
