@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {readFileSync} from "node:fs";
+import {isOpenCommercialAccount} from "../lib/account-view-filter";
 
 const read=(file:string)=>readFileSync(new URL("../"+file,import.meta.url),"utf8");
 test("device navigation is wired to role-filtered menu with accessible mobile destinations",()=>{
@@ -43,8 +44,20 @@ test("CRM mobile filters omit unverified stage queues without modifying account 
   assert.match(accounts,/const stages=\["All","Prospect","Opening order"\] as const/);
   assert.match(accounts,/stageFilterDisplay=\(stage:/);
   assert.match(accounts,/"Prospects":"Open accounts"/);
-  assert.match(accounts,/account\.stage===stage/);
+  assert.match(accounts,/isOpenCommercialAccount\(account,orderedAccountIds\)/);
   assert.doesNotMatch(accounts,/stages=\["All","Prospect","Qualified"/);
+});
+
+test("open-account grouping uses placed orders without rewriting stale stages",()=>{
+  const orders=new Set(["acc-ordered"]);
+  assert.equal(isOpenCommercialAccount({id:"acc-ordered",stage:"Prospect"},orders),true);
+  assert.equal(isOpenCommercialAccount({id:"acc-opening",stage:"Opening order"},orders),true);
+  assert.equal(isOpenCommercialAccount({id:"acc-placed",stage:"Placed"},orders),true);
+  assert.equal(isOpenCommercialAccount({id:"acc-repeat",stage:"Reordered"},orders),true);
+  assert.equal(isOpenCommercialAccount({id:"acc-risk",stage:"At risk"},orders),true);
+  assert.equal(isOpenCommercialAccount({id:"acc-prospect",stage:"Prospect"},orders),false);
+  assert.equal(isOpenCommercialAccount({id:"acc-qualified",stage:"Qualified"},orders),false);
+  assert.equal(isOpenCommercialAccount({id:"acc-sampled",stage:"Sampled"},orders),false);
 });
 
 test("navigation and CRM browsing defer expensive sales calculations until requested",()=>{
