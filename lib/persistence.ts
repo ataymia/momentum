@@ -540,7 +540,7 @@ class FirestoreBackend{
         if(isFirestoreConflict(result)){
           conflictsExhausted=true;
           setStatus({conflicts:status.conflicts+1});
-          await this.reconcile(writes.map((write)=>write.path),pathKey,nextDocs);
+          await this.reconcile(writes.map((write)=>write.path),pathKey,nextDocs,capturedRevisions);
           continue;
         }
         if(isFirestorePermissionDenied(result)){
@@ -665,7 +665,7 @@ class FirestoreBackend{
   }
 
   /** Re-read conflicting documents, three-way merge with the pending local shard, and republish the merged state. */
-  private async reconcile(paths:string[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>){
+  private async reconcile(paths:string[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>,capturedRevisions:Map<string,number>){
     const snapshots=await getFirestoreSnapshots(paths);
     const overrides=new Map<string,Map<string,Record<string,unknown>|null>>();
     for(const snapshot of snapshots){
@@ -680,6 +680,12 @@ class FirestoreBackend{
       map.set(snapshot.path,merged);overrides.set(key,map);
     }
     for(const [key,map] of overrides){
+      // A user may have edited this same domain while the conflict GET was in flight.
+      // Never let a stale merge replace newer, locally journaled work.
+      if(!mayDiscardJournal(capturedRevisions.get(key)??0,this.revisions.get(key)??0)){
+        this.dirty.add(key);
+        continue;
+      }
       const spec=DOMAIN_BY_KEY.get(key)!;
       this.cache.set(key,this.assemble(spec,map));
       emitKey(key);
