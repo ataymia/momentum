@@ -95,3 +95,16 @@ test("Administrator diagnostics are opt-in and contain timings, not operational 
   assert.doesNotMatch(component,/locationTracking|password|idToken|order\.id/);
   assert.match(source("components/pages/settings-v3.tsx"),/<PerformanceHealthPanel\/>/);
 });
+
+test("a conflict refresh cannot overwrite edits made while Firestore was loading",()=>{
+  const p=source("lib/persistence.ts");
+  const reconcile=p.slice(p.indexOf("  private async reconcile("),p.indexOf("  async poll(){"));
+  assert.match(p,/await this\.reconcile\(writes\.map\(\(write\)=>write\.path\),pathKey,nextDocs,capturedRevisions\)/);
+  assert.match(reconcile,/capturedRevisions:Map<string,number>/);
+  assert.match(reconcile,/if\(!mayDiscardJournal\(capturedRevisions\.get\(key\)\?\?0,this\.revisions\.get\(key\)\?\?0\)\)/);
+  assert.match(reconcile,/this\.dirty\.add\(key\);\s*continue;/);
+  assert.match(reconcile,/this\.cache\.set\(key,this\.assemble\(spec,map\)\)/);
+  assert.ok(reconcile.indexOf("this.dirty.add(key);")<reconcile.indexOf("this.cache.set(key,this.assemble(spec,map))"));
+  assert.equal(mayDiscardJournal(1,2),false);
+  assert.equal(mayDiscardJournal(2,2),true);
+});
