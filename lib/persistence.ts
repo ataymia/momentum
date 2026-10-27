@@ -3,7 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PLATFORM_META_DOCUMENT, type PersistenceScope } from "./firebase-access";
 import {recordPerformanceSample} from "./performance-diagnostics";
-import {mayDiscardJournal,nextFlushableKey,shouldScheduleSooner} from "./sync-queue-policy";
+import {isTransientFirestoreFailure,mayDiscardJournal,nextFlushableKey,shouldScheduleSooner} from "./sync-queue-policy";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite } from "./firebase-firestore-rest";
 import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, resolveUserPhysicalField, shardState, type DomainSpec } from "./firestore-domains";
 
@@ -545,6 +545,15 @@ class FirestoreBackend{
         }
         if(isFirestorePermissionDenied(result)){
           await this.isolateDenied(writes,pathKey,nextDocs,capturedRevisions);
+          break;
+        }
+        if(isTransientFirestoreFailure(result)){
+          // A cloud outage/rate limit is NOT a corrupt document. Preserve the original
+          // journal, back off, and do not multiply a transient failure into N writes.
+          for(const key of keys)this.dirty.add(key);
+          this.retryDelay=Math.min(this.retryDelay?this.retryDelay*2:2_000,60_000);
+          setStatus({lastError:"Cloud sync temporarily unavailable or throttled; changes remain safely queued."});
+          this.scheduleFlush(this.retryDelay);
           break;
         }
         // A size/validation failure in one noncritical document must never block an order, account,
