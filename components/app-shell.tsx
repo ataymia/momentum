@@ -6,6 +6,7 @@ import { commitFirestoreWrites } from "../lib/firebase-firestore-rest";
 import { useFirebaseSessionOptional } from "../lib/firebase-session-context";
 import type { WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
+import {useNavigationPage} from "../lib/navigation-store";
 import { DeliveryDriverShell } from "./delivery-driver-shell";
 import { AppShell as BaseAppShell } from "./app-shell-v4";
 import { RuntimeErrorBoundary } from "./runtime-error-boundary";
@@ -62,7 +63,8 @@ function FoundingProfileRepair(){
 }
 
 export function AppShell(){
-  const {currentUser,activePage,navigate}=useWorkspace();
+  const {currentUser,navigate}=useWorkspace();
+  const activePage=useNavigationPage();
   const scope=`shell:${currentUser?.role??"unknown"}:${activePage}`;
   return <RuntimeErrorBoundary scope={scope} onRecover={()=>navigate("home")}><FoundingProfileRepair/>{currentUser?.role==="Delivery Driver"?<DeliveryDriverShell/>:<BaseAppShell/>}</RuntimeErrorBoundary>;
 }
