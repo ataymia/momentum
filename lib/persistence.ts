@@ -617,7 +617,7 @@ class FirestoreBackend{
       messages.push(`${write.path}: ${result.message||`Firestore write failed (${result.status}).`}`);
     }
     for(const key of touchedKeys){
-      if(failedKeys.has(key)){if(!this.blockedKeys.has(key))this.dirty.add(key);continue;}
+      if(failedKeys.has(key)){this.dirty.add(key);continue;}
       if(mayDiscardJournal(capturedRevisions.get(key)??0,this.revisions.get(key)??0))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
     }
     this.retryDelay=failedKeys.size?Math.min(this.retryDelay?this.retryDelay*2:2_000,60_000):0;
@@ -653,6 +653,7 @@ class FirestoreBackend{
         if(key){
           blockedKeys.add(key);
           this.blockedKeys.set(key,`${write.path}: Security Rules rejected the write. The change remains safely queued and is not cloud-confirmed.`);
+          this.dirty.add(key); // Keep denied changes visible as pending without scheduling blocked retries.
         }
         console.warn(`[momentum] Firestore denied write to ${write.path} for ${key}; the change remains locally journaled and unconfirmed.`);
         continue;
