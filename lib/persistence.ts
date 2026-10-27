@@ -506,7 +506,9 @@ class FirestoreBackend{
     this.flushing=true;setStatus({flushing:true});
     for(const key of keys)this.dirty.delete(key);
     try{
+      let conflictsExhausted=false;
       for(let attempt=0;attempt<4;attempt++){
+        conflictsExhausted=false;
         const buildStarted=performance.now();
         const {writes,pathKey,nextDocs}=this.buildWrites(keys);
         recordPerformanceSample({operation:"firestore-write-build",durationMs:performance.now()-buildStarted,count:writes.length});
@@ -536,6 +538,7 @@ class FirestoreBackend{
           break;
         }
         if(isFirestoreConflict(result)){
+          conflictsExhausted=true;
           setStatus({conflicts:status.conflicts+1});
           await this.reconcile(writes.map((write)=>write.path),pathKey,nextDocs);
           continue;
@@ -549,6 +552,14 @@ class FirestoreBackend{
         // commit every healthy document independently.
         await this.isolateWriteFailures(writes,pathKey,nextDocs,capturedRevisions);
         break;
+      }
+      if(conflictsExhausted){
+        // Four races are not a successful write. Keep the journal and back off instead of
+        // silently leaving an order with no scheduled cloud retry.
+        for(const key of keys)this.dirty.add(key);
+        this.retryDelay=Math.min(this.retryDelay?this.retryDelay*2:2_000,60_000);
+        setStatus({lastError:"Concurrent cloud edits remain unresolved; locally saved changes are queued for retry."});
+        this.scheduleFlush(this.retryDelay);
       }
     }catch(error){
       for(const key of keys)this.dirty.add(key);
