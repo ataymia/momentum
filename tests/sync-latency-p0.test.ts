@@ -95,3 +95,13 @@ test("Administrator diagnostics are opt-in and contain timings, not operational 
   assert.doesNotMatch(component,/locationTracking|password|idToken|order\.id/);
   assert.match(source("components/pages/settings-v3.tsx"),/<PerformanceHealthPanel\/>/);
 });
+
+test("denied shard writes remain pending without automatic permission retry storms",()=>{
+  const code=source("lib/persistence.ts");
+  const isolated=code.slice(code.indexOf("private async isolateWriteFailures"),code.indexOf("private async isolateDenied"));
+  const denied=code.slice(code.indexOf("private async isolateDenied"),code.indexOf("private async reconcile"));
+  assert.match(isolated,/if\(failedKeys\.has\(key\)\)\{this\.dirty\.add\(key\);continue;\}/);
+  assert.match(denied,/this\.blockedKeys\.set\(key,[^\n]+\n\s*this\.dirty\.add\(key\)/);
+  assert.match(code,/nextFlushableKey\(keys,this\.blockedKeys\)/);
+  assert.match(code,/\[\.\.\.this\.dirty\]\.some\(\(key\)=>!this\.blockedKeys\.has\(key\)\)/);
+});
