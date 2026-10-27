@@ -105,3 +105,13 @@ test("denied shard writes remain pending without automatic permission retry stor
   assert.match(code,/nextFlushableKey\(keys,this\.blockedKeys\)/);
   assert.match(code,/\[\.\.\.this\.dirty\]\.some\(\(key\)=>!this\.blockedKeys\.has\(key\)\)/);
 });
+
+
+test("generic flush and pagehide skip previously denied domains without hiding pending edits",()=>{
+  const code=source("lib/persistence.ts");
+  const flush=code.slice(code.indexOf("async flush(onlyKeys?"),code.indexOf("private async isolateWriteFailures"));
+  assert.match(flush,/const keys=requested\.filter\(\(key\)=>!this\.activeFlushKeys\.has\(key\)&&!this\.blockedKeys\.has\(key\)\)/);
+  assert.match(flush,/if\(keys\.length===0\)return/);
+  assert.match(code,/private handlePageHide=\(\)=>\{if\(this\.dirty\.size\)void this\.flush\(\);\}/);
+  assert.match(code,/setStatus\(\{flushing:this\.flushing,pending:this\.dirty\.size/);
+});
