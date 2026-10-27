@@ -77,7 +77,10 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
-      setCommerce((state) => normalizeCommerceState(state, data));
+      setCommerce((state) => {
+        const next=normalizeCommerceState(state,data);
+        return JSON.stringify(next)===JSON.stringify(state)?state:next;
+      });
     }, 0);
     return () => window.clearTimeout(handle);
   }, [data]);
@@ -106,7 +109,10 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window !== "undefined") momentumStorage.setItem(COMMERCE_STORAGE_KEY, JSON.stringify(commerce));
   }, [commerce]);
-  useRemoteStorageSync(COMMERCE_STORAGE_KEY, () => setCommerce(read()));
+  useRemoteStorageSync(COMMERCE_STORAGE_KEY, () => setCommerce((current) => {
+    const next=read();
+    return JSON.stringify(next)===JSON.stringify(current)?current:next;
+  }));
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
