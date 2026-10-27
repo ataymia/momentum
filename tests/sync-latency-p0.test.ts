@@ -35,6 +35,12 @@ test("persistence guards every journal clearing path and blocked retries",()=>{
   assert.match(p,/firestore-write-build/);
   assert.match(source("lib/firebase-firestore-rest.ts"),/operation:"firestore-commit"/);
 });
+test("normalization does not republish unchanged commerce, delivery or inventory",()=>{
+  for(const file of ["lib/commerce-context.tsx","lib/delivery-context.tsx","lib/inventory-ledger-context-v2.tsx"]){
+    const code=source(file);
+    assert.match(code,/JSON\.stringify\(next\)===JSON\.stringify\(current\)|JSON\.stringify\(next\)===JSON\.stringify\(state\)|JSON\.stringify\(normalized\)===JSON\.stringify\(current\)/);
+  }
+});
 test("payment reconciliation does not change identity on unrelated page navigation",()=>{
   const wrapper=source("lib/workspace-context.tsx");
   const commerce=source("lib/commerce-context.tsx");
