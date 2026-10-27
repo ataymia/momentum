@@ -164,8 +164,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // The change is durably journaled; background cloud writes should coalesce.
       momentumStorage.setItem(COMMERCIAL_KEY, JSON.stringify(commercial));
-      void momentumStorage.flush();
     }
   }, [commercial]);
 
