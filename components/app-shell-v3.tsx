@@ -11,6 +11,7 @@ import { useNotifications } from "../lib/notification-context";
 import { useRuntimeMode } from "../lib/runtime-mode";
 import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
+import {useNavigationPage} from "../lib/navigation-store";
 import { AccountingPanel } from "./accounting/accounting-panel";
 import { AuditCenter } from "./audit/audit-center";
 import { OrderCashPanel } from "./commerce/order-cash-panel";
@@ -56,7 +57,7 @@ const demoTourIds = new Set(["usr-flo", "usr-mia", "usr-avery", "usr-jordan", "u
 const labelFor = (item: NavItem, user: WorkspaceUser) => user.role !== "Customer" ? item.label : item.key === "home" ? "Account overview" : item.key === "accounts" ? "My account" : item.key === "orders" ? "My orders" : item.label;
 
 function NavButton({ item, user }: { item: NavItem; user: WorkspaceUser }) {
-  const { activePage, navigate, scope, data } = useWorkspace(); const Icon = item.icon; const label = labelFor(item, user);
+  const { navigate, scope, data } = useWorkspace(); const activePage=useNavigationPage(); const Icon = item.icon; const label = labelFor(item, user);
   const accountIds = new Set(scope.accounts.map((account) => account.id));
   const earnedSignals = item.key === "accounts" ? evaluateSalesRepAccountBonuses(data).filter((signal) => signal.status === "Earned" && accountIds.has(signal.accountId)).length : 0;
   const pending = item.key === "work" ? scope.approvals.filter((entry) => entry.status === "Pending").length : earnedSignals;
@@ -64,7 +65,7 @@ function NavButton({ item, user }: { item: NavItem; user: WorkspaceUser }) {
 }
 
 function PageView() {
-  const { activePage } = useWorkspace();
+  const activePage=useNavigationPage();
   switch (activePage) {
     case "home": return <><DashboardPage/><DashboardPerformance/></>;
     case "work": return <><WorkPage/><ActionCenter/></>;
@@ -85,7 +86,8 @@ function PageView() {
 }
 
 export function AppShell() {
-  const { data, scope, currentUser, activePage, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, logout, switchUser, markNotificationsRead } = useWorkspace();
+  const { data, scope, currentUser, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, logout, switchUser, markNotificationsRead } = useWorkspace();
+  const activePage=useNavigationPage();
   const { crm } = useCrm(); const { commerce } = useCommerce(); const runtime = useRuntimeMode(); const generated = useNotifications(); const firebase = useFirebaseSessionOptional();
   const [searchOpen, setSearchOpen] = useState(false); const [notificationsOpen, setNotificationsOpen] = useState(false); const [userOpen, setUserOpen] = useState(false); const [query, setQuery] = useState("");
   useEffect(() => { const listener = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setSearchOpen(true); } if (event.key === "Escape") { setSearchOpen(false); setNotificationsOpen(false); setUserOpen(false); } }; addEventListener("keydown", listener); return () => removeEventListener("keydown", listener); }, []);
