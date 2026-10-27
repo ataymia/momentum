@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {readFileSync} from "node:fs";
 import {isOpenCommercialAccount} from "../lib/account-view-filter";
+import {getNavigationPage,setNavigationPage,subscribeNavigationPage} from "../lib/navigation-store";
 
 const read=(file:string)=>readFileSync(new URL("../"+file,import.meta.url),"utf8");
 test("device navigation is wired to role-filtered menu with accessible mobile destinations",()=>{
@@ -75,4 +76,33 @@ test("CRM cards never inherit a wide desktop table on touch viewports",()=>{
   assert.match(css,/\.page--accounts \.account-table-body>button\.account-table\{\s*display:grid!important/);
   assert.match(css,/\.page--accounts \.account-table-body>button\.account-table \.account-name-cell :is\(strong,small\)\{/);
   assert.match(css,/white-space:normal;overflow-wrap:anywhere/);
+});
+
+test("navigation is isolated from the shared workspace data context",()=>{
+  const base=read("lib/workspace-context-v5.tsx");
+  const shell=read("components/app-shell-v4.tsx");
+  const app=read("components/app-shell.tsx");
+  const mobile=read("components/navigation/device-navigation.tsx");
+  assert.match(base,/setNavigationPage\(allowed\)/);
+  assert.doesNotMatch(base,/const \[activePage, setActivePage\]/);
+  assert.doesNotMatch(base,/activePage: PageKey/);
+  assert.match(shell,/const activePage=useNavigationPage\(\)/);
+  assert.match(app,/const activePage=useNavigationPage\(\)/);
+  assert.match(mobile,/const activePage=useNavigationPage\(\)/);
+  assert.match(shell,/Suspense fallback=\{<div className="page"/);
+  assert.match(shell,/lazy\(\(\)=>import\("\.\/pages\/focused-workspace-pages"\)/);
+});
+
+test("navigation store emits once per real page switch without persisting business data",()=>{
+  setNavigationPage("home");
+  const events:string[]=[];
+  const unsubscribe=subscribeNavigationPage(()=>events.push(getNavigationPage()));
+  setNavigationPage("accounts");
+  setNavigationPage("accounts");
+  setNavigationPage("settings");
+  unsubscribe();
+  setNavigationPage("home");
+  assert.deepEqual(events,["accounts","settings"]);
+  const source=read("lib/navigation-store.ts");
+  assert.doesNotMatch(source,/momentumStorage|localStorage|Firestore|fetch\(/);
 });
