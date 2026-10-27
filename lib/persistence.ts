@@ -422,6 +422,7 @@ class FirestoreBackend{
   }
 
   setItem(key:string,value:string){
+    const journalStarted=performance.now();
     const previous=this.cache.get(key)??null;
     if(previous===value)return;
     const journalKey=pendingJournalKey(this.scope.uid,key);
@@ -431,6 +432,7 @@ class FirestoreBackend{
     this.cache.set(key,value);
     this.revisions.set(key,(this.revisions.get(key)??0)+1);
     local()?.setItem(journalKey,encodePendingJournal(base,value));
+    recordPerformanceSample({operation:"storage-journal",durationMs:performance.now()-journalStarted,count:value.length});
     this.dirty.delete(key);
     this.dirty.add(key);
     setStatus({pending:this.dirty.size});
@@ -494,7 +496,9 @@ class FirestoreBackend{
     for(const key of keys)this.dirty.delete(key);
     try{
       for(let attempt=0;attempt<4;attempt++){
+        const buildStarted=performance.now();
         const {writes,pathKey,nextDocs}=this.buildWrites(keys);
+        recordPerformanceSample({operation:"firestore-write-build",durationMs:performance.now()-buildStarted,count:writes.length});
         if(writes.length===0){
           for(const key of keys){
             const spec=DOMAIN_BY_KEY.get(key);
