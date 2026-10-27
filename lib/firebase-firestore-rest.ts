@@ -190,7 +190,8 @@ export async function commitFirestoreWrites(writes:FirestoreWrite[]):Promise<Fir
     const precondition=write.create?{currentDocument:{exists:false}}:write.updateTime?{currentDocument:{updateTime:write.updateTime}}:{};
     return{update:{name:documentName(config.projectId,write.path),fields:documentFields(write.data)},...precondition};
   })};
-  const response=await fetch(`https://firestore.googleapis.com/v1/${documentRoot(config.projectId)}:commit`,{method:"POST",headers:authHeaders(session),body:JSON.stringify(body),keepalive:JSON.stringify(body).length<60_000});
+  const encoded=JSON.stringify(body);
+  const response=await fetch(`https://firestore.googleapis.com/v1/${documentRoot(config.projectId)}:commit`,{method:"POST",headers:authHeaders(session),body:encoded,keepalive:encoded.length<60_000});
   const payload=await response.json().catch(()=>null) as {writeResults?:Array<{updateTime?:string}>;commitTime?:string}|null;
   recordPerformanceSample({operation:"firestore-commit",durationMs:performance.now()-started,count:writes.length});
   if(!response.ok||!payload){const {code,message}=errorCode(payload,`HTTP_${response.status}`);return{ok:false,status:response.status,code,message};}

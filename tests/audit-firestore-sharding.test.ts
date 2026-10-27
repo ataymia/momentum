@@ -123,3 +123,36 @@ test("rechunking after growth keeps every proposed physical chunk below its conf
     }
   }
 });
+
+function legacyChunkItems(items:unknown[],maxBytes:number){
+  const chunks:unknown[][]=[];let current:unknown[]=[];
+  for(const item of items){
+    const candidate=[...current,item];
+    if(current.length&&new TextEncoder().encode(JSON.stringify({items:candidate})).byteLength>maxBytes){
+      chunks.push(current);current=[item];
+    }else current=candidate;
+  }
+  if(current.length)chunks.push(current);
+  return chunks;
+}
+
+test("optimized chunking retains exact historic boundaries for Unicode and varied record sizes",()=>{
+  const events=Array.from({length:90},(_,index)=>({
+    id:"unicode-"+String(index).padStart(3,"0"),
+    actorId:ADMIN,
+    at:new Date(Date.UTC(2026,9,1,0,0,index%60)).toISOString(),
+    summary:index%2===0?"📦🔥".repeat(index%7+1):"é".repeat(index%11+1),
+    changes:[{before:"🍊",after:"❄️".repeat(index%5+1)}],
+  }));
+  const ordered=[...events].sort((a,b)=>a.at.localeCompare(b.at)||a.id.localeCompare(b.id));
+  for(const threshold of [100,235,650,1850,5000]){
+    const spec={...auditSpec,fields:{...auditSpec.fields,events:{...auditSpec.fields.events,chunkBytes:threshold}}};
+    const expected=legacyChunkItems(ordered,threshold).map(chunk=>chunk.map(item=>(item as {id:string}).id));
+    const shards=shardState(spec,{events});
+    const path=userDocPath(ADMIN,"audit","events");
+    const manifest=shards.get(path)!;
+    const actual=chunkManifestShardPaths(spec,path,manifest).map(p=>(shards.get(p)?.items as Array<{id:string}>).map(x=>x.id));
+    assert.deepEqual(actual,expected,"chunk boundary mismatch at "+threshold+" bytes");
+    assert.deepEqual(actual.flat().sort(),events.map(x=>x.id).sort());
+  }
+});

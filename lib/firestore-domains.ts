@@ -149,11 +149,26 @@ function orderedChunkItems(items:unknown[]){
 }
 
 function chunkItems(items:unknown[],maxBytes:number){
-  const chunks:unknown[][]=[];let current:unknown[]=[];
+  const chunks:unknown[][]=[];
+  let current:unknown[]=[];
+  // A chunk is exactly {"items":[element,element]}. JSON's commas and UTF-8
+  // element byte lengths are additive, including escaped strings and emoji.
+  // The old implementation reserialized the ENTIRE growing array for every
+  // event, making audit/history writes quadratic on phones.
+  const emptyBytes=serializedBytes({items:[]});
+  let currentBytes=emptyBytes;
   for(const item of orderedChunkItems(items)){
-    const candidate=[...current,item];
-    if(current.length&&serializedBytes({items:candidate})>maxBytes){chunks.push(current);current=[item];}
-    else current=candidate;
+    // Array encoding also handles undefined/non-JSON primitives as JSON null.
+    const itemBytes=serializedBytes([item])-2;
+    const candidateBytes=currentBytes+itemBytes+(current.length?1:0);
+    if(current.length&&candidateBytes>maxBytes){
+      chunks.push(current);
+      current=[item];
+      currentBytes=emptyBytes+itemBytes;
+    }else{
+      current.push(item);
+      currentBytes=candidateBytes;
+    }
   }
   if(current.length)chunks.push(current);
   return chunks;
