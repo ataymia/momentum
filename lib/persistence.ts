@@ -3,7 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PLATFORM_META_DOCUMENT, type PersistenceScope } from "./firebase-access";
 import {recordPerformanceSample} from "./performance-diagnostics";
-import {mayDiscardJournal,nextFlushableKey} from "./sync-queue-policy";
+import {mayDiscardJournal,nextFlushableKey,shouldScheduleSooner} from "./sync-queue-policy";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite } from "./firebase-firestore-rest";
 import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, resolveUserPhysicalField, shardState, type DomainSpec } from "./firestore-domains";
 
@@ -241,6 +241,7 @@ class FirestoreBackend{
   private blockedKeys=new Map<string,string>();
   private metaVersions:Record<string,string>={};
   private timer:number|undefined;
+  private timerDueAt:number|undefined;
   private pollTimer:number|undefined;
   /** Focus and interval refreshes must not race each other. */
   private polling=false;
@@ -451,8 +452,17 @@ class FirestoreBackend{
 
   private scheduleFlush(delay:number){
     if(this.disposed||typeof window==="undefined")return;
-    if(this.timer)window.clearTimeout(this.timer);
-    this.timer=window.setTimeout(()=>void this.flushLatest(),delay);
+    // Background saves may be coalesced, but frequent field pings must not defer them forever.
+    // Retry backoff remains authoritative until an explicit flushAndConfirm occurs.
+    const dueAt=Date.now()+Math.max(delay,this.retryDelay);
+    if(!shouldScheduleSooner(this.timerDueAt,dueAt))return;
+    if(this.timer!==undefined)window.clearTimeout(this.timer);
+    this.timerDueAt=dueAt;
+    this.timer=window.setTimeout(()=>{
+      this.timer=undefined;
+      this.timerDueAt=undefined;
+      void this.flushLatest();
+    },Math.max(0,dueAt-Date.now()));
   }
 
   private buildWrites(keys:string[]){
@@ -712,7 +722,8 @@ class FirestoreBackend{
   dispose(){
     this.disposed=true;
     if(typeof window!=="undefined"){
-      if(this.timer)window.clearTimeout(this.timer);
+      if(this.timer!==undefined)window.clearTimeout(this.timer);
+      this.timer=undefined;this.timerDueAt=undefined;
       if(this.pollTimer)window.clearInterval(this.pollTimer);
       window.removeEventListener("focus",this.handleFocus);
       document.removeEventListener("visibilitychange",this.handleFocus);
