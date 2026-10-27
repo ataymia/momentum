@@ -21,10 +21,6 @@ export function OrderCashPanel() {
   const { commerce, setInvoiceTerms, recordPayment, setPaymentStatus, failPayment, reversePayment, createCredit, approveCredit, applyCredit, requestRefund, approveRefund, markRefundSent, settleRefund, failRefund, addNote, voidInvoice } = useCommerce();
   const orderIds=useMemo(()=>new Set(scope.orders.map((order)=>order.id)),[scope.orders]);
   const invoices=useMemo(()=>commerce.invoices.filter((invoice)=>orderIds.has(invoice.orderId)).sort((a,b)=>b.issuedAt.localeCompare(a.issuedAt)),[commerce.invoices,orderIds]);
-  // Invoice status/balance calculations traverse ledger rows; only recompute when ledger data changes.
-  const invoiceSummaries=useMemo(()=>new Map(invoices.map(invoice=>[invoice.id,{
-    status:computedInvoiceStatus(commerce,invoice),open:invoiceBalance(commerce,invoice),
-  }] as const)),[commerce,invoices]);
   const receivables=useMemo(()=>openReceivables(commerce).filter((item)=>orderIds.has(item.invoice.orderId)),[commerce,orderIds]);
   const orderById=useMemo(()=>new Map(data.orders.map((order)=>[order.id,order])),[data.orders]);
   const accountById=useMemo(()=>new Map(data.accounts.map((account)=>[account.id,account])),[data.accounts]);
@@ -51,6 +47,10 @@ export function OrderCashPanel() {
     setSelectedId(id);
   };
   const [invoiceLimit,setInvoiceLimit]=useState(50);
+  // Cache only visible rows so large invoice histories do not delay initial screen load.
+  const invoiceSummaries=useMemo(()=>new Map(invoices.slice(0,invoiceLimit).map(invoice=>[invoice.id,{
+    status:computedInvoiceStatus(commerce,invoice),open:invoiceBalance(commerce,invoice),
+  }] as const)),[commerce,invoices,invoiceLimit]);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [creditOpen, setCreditOpen] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
