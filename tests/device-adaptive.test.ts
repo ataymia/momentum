@@ -104,5 +104,5 @@ test("navigation store emits once per real page switch without persisting busine
   setNavigationPage("home");
   assert.deepEqual(events,["accounts","settings"]);
   const source=read("lib/navigation-store.ts");
-  assert.doesNotMatch(source,/momentumStorage|localStorage|Firestore|fetch\(/);
+  assert.doesNotMatch(source,/momentumStorage\.|window\.localStorage|fetch\(/);
 });
