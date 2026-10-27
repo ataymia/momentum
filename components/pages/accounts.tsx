@@ -55,7 +55,17 @@ export function AccountsPage(){
 
   useEffect(()=>{if(focusId)window.sessionStorage.removeItem("momentum-focus-record")},[focusId]);
 
-  const filtered=useMemo(()=>{const normalized=query.trim().toLowerCase();return scope.accounts.filter((account)=>{const matchesStage=(stage==="All"||account.stage===stage)&&(tab!=="unassigned"||!account.ownerId);const territory=territoryForPostalCode(data,account.postalCode);const matchesQuery=!normalized||[account.name,account.locationName,account.location,account.streetAddress,account.postalCode,account.deliveryStreetAddress,account.deliveryLocation,account.deliveryPostalCode,territory?.name,account.channel,account.businessType,account.contactName,account.phone,account.mobilePhone,account.fax,account.email].join(" ").toLowerCase().includes(normalized);return matchesStage&&matchesQuery}).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"})||(a.locationName??a.location).localeCompare(b.locationName??b.location,undefined,{sensitivity:"base"}))},[data,query,scope.accounts,stage,tab]);
+  // An account with real orders stays open even when a legacy stage has not been advanced.
+  // Qualified and Sampled remain in the Prospects view; no historic stage is rewritten.
+  const orderedAccountIds=useMemo(()=>new Set(scope.orders.filter((order)=>order.status!=="Cancelled"&&order.status!=="Draft").map((order)=>order.accountId)),[scope.orders]);
+  const filtered=useMemo(()=>{const normalized=query.trim().toLowerCase();return scope.accounts.filter((account)=>{
+    const isOpenAccount=orderedAccountIds.has(account.id)||["Opening order","Placed","Reordered","At risk"].includes(account.stage);
+    const matchesStage=stage==="All"||(stage==="Prospect"?!isOpenAccount:isOpenAccount);
+    if(!matchesStage||(tab==="unassigned"&&account.ownerId))return false;
+    if(!normalized)return true;
+    const territory=territoryForPostalCode(data,account.postalCode);
+    return [account.name,account.locationName,account.streetAddress,account.postalCode,account.deliveryStreetAddress,account.deliveryLocation,account.deliveryPostalCode,territory?.name,account.channel,account.businessType,account.contactName,account.phone,account.mobilePhone,account.fax,account.email].join(" ").toLowerCase().includes(normalized);
+  }).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"})||(a.locationName??a.location).localeCompare(b.locationName??b.location,undefined,{sensitivity:"base"}))},[data,orderedAccountIds,query,scope.accounts,stage,tab]);
   const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
   const visibleAccounts=filtered.slice((Math.min(listPage,totalPages)-1)*pageSize,Math.min(listPage,totalPages)*pageSize);
   const selected=scope.accounts.find((account)=>account.id===(accountPageId??selectedId))??filtered[0];
