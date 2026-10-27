@@ -12,6 +12,7 @@ import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, get
 import { EMPLOYEE_DIRECTORY_META_KEY, metaVersionKey, userDocPath } from "./firestore-domains";
 import type { AccountAccessState, IdentityProvisioningRecord } from "./identity-provisioning";
 import { attachFirestorePersistence, detachFirestorePersistence, momentumStorage, updateFirestoreScope } from "./persistence";
+import {recordPerformanceSample} from "./performance-diagnostics";
 import type { Role, Team, WorkspaceUser } from "./types";
 import { normalizeUsername, usernameProblem } from "./username";
 
@@ -112,6 +113,7 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
   },[]);
 
   const loadWorkspace=useCallback(async(active:FirebaseAuthSession)=>{
+    const started=performance.now();
     setStatus("loading-workspace");
     setError(undefined);
     const accessSnapshot=await getFirestoreSnapshot(`${USER_ACCESS_COLLECTION}/${active.uid}`);
@@ -125,12 +127,17 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
       return;
     }
     setAccess(record);
+    const directoryStarted=performance.now();
     const users=await loadDirectory(record);
+    recordPerformanceSample({operation:"startup-directory",durationMs:performance.now()-directoryStarted});
     const scope=buildPersistenceScope(record,users);
+    const primeStarted=performance.now();
     await attachFirestorePersistence({scope,pollIntervalMs:5_000,onDirectoryChange:()=>{
       const current=accessRef.current??record;
       void loadDirectory(current).then((next)=>updateFirestoreScope(buildPersistenceScope(current,next))).catch(()=>undefined);
     }});
+    recordPerformanceSample({operation:"startup-firestore-prime",durationMs:performance.now()-primeStarted});
+    recordPerformanceSample({operation:"startup-workspace-ready",durationMs:performance.now()-started});
     setStatus("ready");
   },[loadDirectory]);
 
