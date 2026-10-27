@@ -7,7 +7,7 @@ export const PERFORMANCE_DIAGNOSTICS_FLAG="momentum-performance-diagnostics";
 export const PERFORMANCE_DIAGNOSTICS_KEY="momentum-performance-timings";
 export type PerformanceTimingSample={
   at:string;
-  operation:"navigation-paint"|"navigation-commit"|"firestore-batch-read"|"firestore-poll"|"firestore-commit"|"firestore-write-build"|"storage-journal";
+  operation:"navigation-paint"|"navigation-commit"|"invoice-switch-paint"|"firestore-batch-read"|"firestore-single-read"|"firestore-list-read"|"firestore-batch-permission-fallback"|"firestore-poll"|"firestore-commit"|"firestore-write-build"|"storage-journal";
   durationMs:number;
   count?:number;
   page?:string;
