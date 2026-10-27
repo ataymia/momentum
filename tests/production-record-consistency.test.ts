@@ -156,7 +156,7 @@ test("cloud-confirmed commercial work can flush while another domain is already 
   assert.match(persistence,/private activeFlushKeys=new Set<string>\(\)/);
   assert.match(persistence,/this\.dirty\.has\(key\)&&!this\.activeFlushKeys\.has\(key\)\)await this\.flush\(\[key\],true\)/);
   assert.match(persistence,/async flush\(onlyKeys\?:string\[\],allowConcurrent=false\)/);
-  assert.match(persistence,/requested\.filter\(\(key\)=>!this\.activeFlushKeys\.has\(key\)\)/);
+  assert.match(persistence,/requested\.filter\(\(key\)=>!this\.activeFlushKeys\.has\(key\)&&!this\.blockedKeys\.has\(key\)\)/);
 });
 
 test("all intended order-entry roles retain order creation access",()=>{
