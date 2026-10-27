@@ -108,3 +108,14 @@ test("a conflict refresh cannot overwrite edits made while Firestore was loading
   assert.equal(mayDiscardJournal(1,2),false);
   assert.equal(mayDiscardJournal(2,2),true);
 });
+
+test("mobile navigation and account list avoid unnecessary synchronous commercial calculations",()=>{
+  const shell=source("components/app-shell-v4.tsx");
+  const accounts=source("components/pages/accounts.tsx");
+  const workspace=source("lib/workspace-context-v5.tsx");
+  assert.doesNotMatch(shell,/evaluateSalesRepAccountBonuses/);
+  assert.match(accounts,/tab==="incentives"\?evaluateSalesRepAccountBonuses\(data\)/);
+  assert.match(accounts,/tab==="pricing"\?scope.accounts.map\(/);
+  assert.match(accounts,/if\(!normalized\)return true/);
+  assert.match(workspace,/window.scrollTo\(\{ top: 0, behavior: "auto" \}\)/);
+});
