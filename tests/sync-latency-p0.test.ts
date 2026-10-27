@@ -24,7 +24,7 @@ test("background state effects cannot immediately flush on every React update",(
   const workspace=source("lib/workspace-context-v5.tsx");
   const commercial=source("lib/workspace-context.tsx");
   const crm=source("lib/crm-context.tsx");
-  assert.match(crm,/JSON.stringify\\(normalized\\)===JSON.stringify\\(current\\)/);
+  assert.ok(crm.includes('JSON.stringify(normalized)===JSON.stringify(current)'));
   const delivery=source("lib/delivery-context.tsx");
   assert.doesNotMatch(workspace,/momentumStorage\.setItem\(DATA_KEY, JSON\.stringify\(data\)\);\s*void momentumStorage\.flush\(\)/);
   assert.doesNotMatch(commercial,/momentumStorage\.setItem\(COMMERCIAL_KEY, JSON\.stringify\(commercial\)\);\s*void momentumStorage\.flush\(\)/);
@@ -34,8 +34,8 @@ test("background state effects cannot immediately flush on every React update",(
 test("persistence guards every journal clearing path and blocked retries",()=>{
   const p=source("lib/persistence.ts");
   assert.match(p,/nextFlushableKey\(keys,this\.blockedKeys\)/);
-  assert.match(p,/shouldScheduleSooner\\(this\\.timerDueAt,dueAt\\)/);
-  assert.match(p,/if\\(conflictsExhausted\\)/);
+  assert.ok(p.includes('shouldScheduleSooner(this.timerDueAt,dueAt)'));
+  assert.ok(p.includes('if(conflictsExhausted)'));
   assert.match(p,/Concurrent cloud edits remain unresolved/);
   assert.match(p,/const capturedRevisions=new Map/);
   assert.match(p,/mayDiscardJournal\(/);
