@@ -11,7 +11,8 @@ export function shouldScheduleSooner(existingDueAt:number|undefined,proposedDueA
 }
 
 /** Do not fan out an outage, timeout, or rate limit into N individual writes. */
-export function isTransientFirestoreFailure(failure:{ok:false;status:number;code:string}){
+export function isTransientFirestoreFailure(failure:{ok:boolean;status?:number;code?:string}){
+  if(failure.ok)return false;
   return failure.status===408||failure.status===429||failure.status>=500||
     ["UNAVAILABLE","RESOURCE_EXHAUSTED","DEADLINE_EXCEEDED","INTERNAL","UNKNOWN"].includes(failure.code);
 }
