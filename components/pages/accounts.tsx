@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { canClaimUnassignedProspect, canCreateAccount, isCustomer } from "../../lib/access";
 import { validateNewAccountContact } from "../../lib/account-creation";
 import { businessAddressLabel, deliveryAddressLabel } from "../../lib/account-address";
+import { isOpenCommercialAccount } from "../../lib/account-view-filter";
 import { ACCOUNT_PRICING_TIERS } from "../../lib/account-health";
 import { evaluateSalesRepAccountBonuses, SALES_REP_ACCOUNT_BONUS_RULE } from "../../lib/bonus-engine";
 import { useCrm } from "../../lib/crm-context";
@@ -59,12 +60,12 @@ export function AccountsPage(){
   // Qualified and Sampled remain in the Prospects view; no historic stage is rewritten.
   const orderedAccountIds=useMemo(()=>new Set(scope.orders.filter((order)=>order.status!=="Cancelled"&&order.status!=="Draft").map((order)=>order.accountId)),[scope.orders]);
   const filtered=useMemo(()=>{const normalized=query.trim().toLowerCase();return scope.accounts.filter((account)=>{
-    const isOpenAccount=orderedAccountIds.has(account.id)||["Opening order","Placed","Reordered","At risk"].includes(account.stage);
+    const isOpenAccount=isOpenCommercialAccount(account,orderedAccountIds);
     const matchesStage=stage==="All"||(stage==="Prospect"?!isOpenAccount:isOpenAccount);
     if(!matchesStage||(tab==="unassigned"&&account.ownerId))return false;
     if(!normalized)return true;
     const territory=territoryForPostalCode(data,account.postalCode);
-    return [account.name,account.locationName,account.streetAddress,account.postalCode,account.deliveryStreetAddress,account.deliveryLocation,account.deliveryPostalCode,territory?.name,account.channel,account.businessType,account.contactName,account.phone,account.mobilePhone,account.fax,account.email].join(" ").toLowerCase().includes(normalized);
+    return [account.name,account.locationName,account.location,account.streetAddress,account.postalCode,account.deliveryStreetAddress,account.deliveryLocation,account.deliveryPostalCode,territory?.name,account.channel,account.businessType,account.contactName,account.phone,account.mobilePhone,account.fax,account.email].join(" ").toLowerCase().includes(normalized);
   }).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"})||(a.locationName??a.location).localeCompare(b.locationName??b.location,undefined,{sensitivity:"base"}))},[data,orderedAccountIds,query,scope.accounts,stage,tab]);
   const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
   const visibleAccounts=filtered.slice((Math.min(listPage,totalPages)-1)*pageSize,Math.min(listPage,totalPages)*pageSize);
