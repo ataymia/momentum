@@ -73,7 +73,8 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
           history: [{ id: uid("delivery-event"), type: "Cancelled" as const, at: cancelledAt, actorId: cancelledBy, note }, ...task.history],
         };
       });
-      return changed ? { ...normalized, tasks } : normalized;
+      if(changed)return{...normalized,tasks};
+      return JSON.stringify(normalized)===JSON.stringify(current)?current:normalized;
     }), 0);
     return () => window.clearTimeout(handle);
   }, [canReconcileCancelledDelivery, data]);
@@ -88,8 +89,11 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
   }, [state,currentUser?.role]);
   useRemoteStorageSync(DELIVERY_STORAGE_KEY, () => {
     const next=read();
-    stateRef.current=next;
-    setState(next);
+    setState((current)=>{
+      if(JSON.stringify(current)===JSON.stringify(next))return current;
+      stateRef.current=next;
+      return next;
+    });
   });
 
   useEffect(() => {
