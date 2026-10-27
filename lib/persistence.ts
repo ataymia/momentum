@@ -234,6 +234,8 @@ class FirestoreBackend{
   private cache=new Map<string,string|null>();
   private docs=new Map<string,DocState>();
   private dirty=new Set<string>();
+  // A write finishing after a newer local edit must never erase its recovery journal.
+  private revisions=new Map<string,number>();
   private denied=new Set<string>();
   private blockedKeys=new Map<string,string>();
   private metaVersions:Record<string,string>={};
@@ -427,6 +429,7 @@ class FirestoreBackend{
     const existing=typeof existingRaw==="string"?decodePendingJournal(existingRaw):undefined;
     const base=existing?(existing.legacy?previous:existing.base):previous;
     this.cache.set(key,value);
+    this.revisions.set(key,(this.revisions.get(key)??0)+1);
     local()?.setItem(journalKey,encodePendingJournal(base,value));
     this.dirty.delete(key);
     this.dirty.add(key);
@@ -438,8 +441,9 @@ class FirestoreBackend{
 
   async flushLatest(){
     const keys=[...this.dirty];
-    const latest=keys[keys.length-1];
-    if(latest)await this.flush([latest]);
+    // Drain oldest first. New interactions must not starve an earlier unsaved order.
+    const oldest=keys[0];
+    if(oldest)await this.flush([oldest]);
   }
 
   private scheduleFlush(delay:number){
@@ -483,6 +487,8 @@ class FirestoreBackend{
     const requested=onlyKeys?.length?[...new Set(onlyKeys)].filter((key)=>this.dirty.has(key)):[...this.dirty];
     const keys=requested.filter((key)=>!this.activeFlushKeys.has(key));
     if(keys.length===0)return;
+    const capturedRevisions=new Map(keys.map((key)=>[key,this.revisions.get(key)??0]));
+    const unchangedSinceStart=(key:string)=>(this.revisions.get(key)??0)===capturedRevisions.get(key);
     for(const key of keys)this.activeFlushKeys.add(key);
     this.flushing=true;setStatus({flushing:true});
     for(const key of keys)this.dirty.delete(key);
@@ -498,7 +504,7 @@ class FirestoreBackend{
               this.blockedKeys.set(key,message);
               this.dirty.add(key);
               setStatus({lastError:message});
-            }else if(!this.blockedKeys.has(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+            }else if(!this.blockedKeys.has(key)&&unchangedSinceStart(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
           }
           break;
         }
@@ -510,7 +516,7 @@ class FirestoreBackend{
           for(const write of writes){this.docs.set(write.path,{data:nextDocs.get(write.path)??null,updateTime:result.updateTimes[write.path]});}
           for(const entry of versionEntries)this.metaVersions[entry]=stamp;
           this.retryDelay=0;
-          for(const key of keys)local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+          for(const key of keys)if(unchangedSinceStart(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
           setStatus({lastSyncedAt:new Date().toISOString(),lastError:undefined});
           break;
         }
@@ -520,13 +526,13 @@ class FirestoreBackend{
           continue;
         }
         if(isFirestorePermissionDenied(result)){
-          await this.isolateDenied(writes,pathKey,nextDocs);
+          await this.isolateDenied(writes,pathKey,nextDocs,capturedRevisions);
           break;
         }
         // A size/validation failure in one noncritical document must never block an order, account,
         // inventory movement, or any other unrelated record in the same flush. Isolate the writes and
         // commit every healthy document independently.
-        await this.isolateWriteFailures(writes,pathKey,nextDocs);
+        await this.isolateWriteFailures(writes,pathKey,nextDocs,capturedRevisions);
         break;
       }
     }catch(error){
@@ -543,7 +549,7 @@ class FirestoreBackend{
   }
 
   /** A non-conflict batch failed. Commit healthy documents independently so one bad shard cannot poison unrelated records. */
-  private async isolateWriteFailures(writes:FirestoreWrite[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>){
+  private async isolateWriteFailures(writes:FirestoreWrite[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>,capturedRevisions:Map<string,number>){
     const failedKeys=new Set<string>();
     const touchedKeys=new Set<string>();
     const messages:string[]=[];
@@ -576,7 +582,7 @@ class FirestoreBackend{
     }
     for(const key of touchedKeys){
       if(failedKeys.has(key)){if(!this.blockedKeys.has(key))this.dirty.add(key);continue;}
-      local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+      if((this.revisions.get(key)??0)===capturedRevisions.get(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
     }
     this.retryDelay=failedKeys.size?Math.min(this.retryDelay?this.retryDelay*2:2_000,60_000):0;
     setStatus({lastSyncedAt:anySuccess?new Date().toISOString():status.lastSyncedAt,lastError:messages.length?`Some changes are still safely queued: ${messages.slice(0,2).join(" | ")}`:undefined});
@@ -584,7 +590,7 @@ class FirestoreBackend{
   }
 
   /** A batch failed on rules. Retry one document at a time so the offending shard is identified and parked. */
-  private async isolateDenied(writes:FirestoreWrite[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>){
+  private async isolateDenied(writes:FirestoreWrite[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>,capturedRevisions:Map<string,number>){
     const successfulKeys=new Set<string>();
     const blockedKeys=new Set<string>();
     const ordered=[...writes].sort((left,right)=>{
@@ -618,7 +624,7 @@ class FirestoreBackend{
       if(isFirestoreConflict(result)){if(key&&!this.blockedKeys.has(key))this.dirty.add(key);continue;}
       throw new Error(result.message);
     }
-    for(const key of successfulKeys)if(!blockedKeys.has(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
+    for(const key of successfulKeys)if(!blockedKeys.has(key)&&(this.revisions.get(key)??0)===capturedRevisions.get(key))local()?.removeItem(pendingJournalKey(this.scope.uid,key));
     setStatus({lastSyncedAt:successfulKeys.size?new Date().toISOString():status.lastSyncedAt,lastError:blockedKeys.size?`Some changes were rejected by Security Rules (${blockedKeys.size} storage key${blockedKeys.size===1?"":"s"}) and were NOT cloud-confirmed.`:undefined});
   }
 
