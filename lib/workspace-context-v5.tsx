@@ -257,8 +257,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     externalHydrationRef.current=null;
+    // Queue a journaled background save; explicit order actions still call flushAndConfirm.
     momentumStorage.setItem(DATA_KEY, JSON.stringify(data));
-    void momentumStorage.flush();
   }, [data, ready]);
 
   const currentUser = useMemo(() => data.users.find((user) => user.id === currentUserId) ?? null, [currentUserId, data.users]);
