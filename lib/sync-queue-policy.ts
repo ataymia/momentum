@@ -9,3 +9,9 @@ export function mayDiscardJournal(captured:number,current:number){return capture
 export function shouldScheduleSooner(existingDueAt:number|undefined,proposedDueAt:number){
   return existingDueAt===undefined || proposedDueAt<existingDueAt;
 }
+
+/** Do not fan out an outage, timeout, or rate limit into N individual writes. */
+export function isTransientFirestoreFailure(failure:{ok:false;status:number;code:string}){
+  return failure.status===408||failure.status===429||failure.status>=500||
+    ["UNAVAILABLE","RESOURCE_EXHAUSTED","DEADLINE_EXCEEDED","INTERNAL","UNKNOWN"].includes(failure.code);
+}
