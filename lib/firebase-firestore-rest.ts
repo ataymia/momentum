@@ -177,6 +177,7 @@ export async function listFirestoreSnapshots<T=Record<string,unknown>>(collectio
 /** Atomically apply a set of writes. Preconditions (updateTime / create) make concurrent edits fail closed instead of overwriting. */
 export async function commitFirestoreWrites(writes:FirestoreWrite[]):Promise<FirestoreCommitResult>{
   if(writes.length===0)return{ok:true,updateTimes:{}};
+  const started=performance.now();
   const config=configOrThrow();const session=await sessionOrThrow();
   const body={writes:writes.map((write)=>{
     if(write.kind==="delete")return{delete:documentName(config.projectId,write.path),...(write.updateTime?{currentDocument:{updateTime:write.updateTime}}:{})};
@@ -186,6 +187,7 @@ export async function commitFirestoreWrites(writes:FirestoreWrite[]):Promise<Fir
   })};
   const response=await fetch(`https://firestore.googleapis.com/v1/${documentRoot(config.projectId)}:commit`,{method:"POST",headers:authHeaders(session),body:JSON.stringify(body),keepalive:JSON.stringify(body).length<60_000});
   const payload=await response.json().catch(()=>null) as {writeResults?:Array<{updateTime?:string}>;commitTime?:string}|null;
+  recordPerformanceSample({operation:"firestore-commit",durationMs:performance.now()-started,count:writes.length});
   if(!response.ok||!payload){const {code,message}=errorCode(payload,`HTTP_${response.status}`);return{ok:false,status:response.status,code,message};}
   const updateTimes:Record<string,string|undefined>={};
   writes.forEach((write,index)=>{updateTimes[write.path]=payload.writeResults?.[index]?.updateTime??payload.commitTime;});
