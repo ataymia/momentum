@@ -498,7 +498,9 @@ class FirestoreBackend{
     if(this.disposed||this.dirty.size===0)return;
     if(this.flushing&&!allowConcurrent)return;
     const requested=onlyKeys?.length?[...new Set(onlyKeys)].filter((key)=>this.dirty.has(key)):[...this.dirty];
-    const keys=requested.filter((key)=>!this.activeFlushKeys.has(key));
+    // Known-denied domains stay pending, but generic flush/pagehide/sign-out must not
+    // trigger another permission-denied write storm. Explicit recovery requires a fresh session.
+    const keys=requested.filter((key)=>!this.activeFlushKeys.has(key)&&!this.blockedKeys.has(key));
     if(keys.length===0)return;
     const capturedRevisions=new Map(keys.map((key)=>[key,this.revisions.get(key)??0]));
     const unchangedSinceStart=(key:string)=>mayDiscardJournal(capturedRevisions.get(key)??0,this.revisions.get(key)??0);
