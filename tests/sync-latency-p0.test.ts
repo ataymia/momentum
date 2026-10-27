@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {readFileSync} from "node:fs";
-import {mayDiscardJournal,nextFlushableKey,shouldScheduleSooner} from "../lib/sync-queue-policy";
+import {isTransientFirestoreFailure,mayDiscardJournal,nextFlushableKey,shouldScheduleSooner} from "../lib/sync-queue-policy";
 
 const source=(path:string)=>readFileSync(new URL("../"+path,import.meta.url),"utf8");
 test("oldest eligible writes are not starved by newer clicks or blocked records",()=>{
@@ -14,6 +14,17 @@ test("continuous GPS updates cannot keep postponing an earlier queued cloud save
   assert.equal(shouldScheduleSooner(undefined,1000),true);
   assert.equal(shouldScheduleSooner(1000,1250),false);
   assert.equal(shouldScheduleSooner(1250,1000),true);
+});
+test("transient Firestore outage cannot fan a failed batch into many requests",()=>{
+  for(const status of [408,429,500,502,503,504]){
+    assert.equal(isTransientFirestoreFailure({ok:false,status,code:"HTTP_"+status}),true);
+  }
+  for(const code of ["UNAVAILABLE","RESOURCE_EXHAUSTED","DEADLINE_EXCEEDED","INTERNAL"]){
+    assert.equal(isTransientFirestoreFailure({ok:false,status:400,code}),true);
+  }
+  assert.equal(isTransientFirestoreFailure({ok:false,status:400,code:"INVALID_ARGUMENT"}),false);
+  assert.equal(isTransientFirestoreFailure({ok:false,status:403,code:"PERMISSION_DENIED"}),false);
+  assert.equal(isTransientFirestoreFailure({ok:true}),false);
 });
 test("in-flight older cloud commit never clears a newer recovery journal",()=>{
   assert.equal(mayDiscardJournal(4,4),true);
@@ -37,6 +48,7 @@ test("persistence guards every journal clearing path and blocked retries",()=>{
   assert.ok(p.includes('shouldScheduleSooner(this.timerDueAt,dueAt)'));
   assert.ok(p.includes('if(conflictsExhausted)'));
   assert.match(p,/Concurrent cloud edits remain unresolved/);
+  assert.ok(p.includes("if(isTransientFirestoreFailure(result))"));
   assert.match(p,/const capturedRevisions=new Map/);
   assert.match(p,/mayDiscardJournal\(/);
   assert.match(p,/if\(\[\.\.\.this\.dirty\]\.some\(\(key\)=>!this\.blockedKeys\.has\(key\)\)/);
