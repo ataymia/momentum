@@ -16,7 +16,7 @@ test("normal account request accepts validated contact and address data",()=>{
  const check=validateTrustedAccountCreation(valid);
  assert.equal(check.ok,true);
  if(!check.ok)return;
- assert.equal(check.customerName,"ABC Market");
+ assert.equal(check.customerName,"ABC Market LLC");
  assert.equal(check.record.phone,"6025550101");
  assert.equal(check.record.postalCode,"85001");
 });
