@@ -1,5 +1,5 @@
 type RecordValue=Record<string, unknown>;
-type ValidCreation={ok:true;record:RecordValue;customerName:string}|
+type ValidCreation={ok:true;record:RecordValue;customerName:string;legalBusinessName:string;ein?:string;azTptLicenseNumber?:string;taxDocumentType?:string}|
   {ok:false;message:string};
 
 export const object=(value:unknown):value is RecordValue=>
@@ -16,15 +16,23 @@ export function validateTrustedAccountCreation(input:unknown):ValidCreation {
   if (!object(input)) {
     return {ok: false, message: "Account details are required."};
   }
+  const identityAllowed=["legalBusinessName","ein","azTptLicenseNumber","taxDocumentType"];
   const allowed=[
     "name", "customerName", "locationName", "location", "channel",
     "contactName", "contactRole", "phone", "mobilePhone", "fax", "email",
     "streetAddress", "postalCode", "deliveryAddressSameAsBusiness",
     "deliveryStreetAddress", "deliveryLocation", "deliveryPostalCode",
   ];
-  if (Object.keys(input).some((key)=>!allowed.includes(key))) {
+  if (Object.keys(input).some((key)=>!allowed.includes(key)&&!identityAllowed.includes(key))) {
     return {ok: false, message: "Creation cannot set account history."};
   }
+  const legalBusinessName=str(input.legalBusinessName);
+  if(!legalBusinessName||str(input.name)!==legalBusinessName)return{ok:false,message:"Legal business name must match the account name and licensing."};
+  const ein=str(input.ein),azTptLicenseNumber=str(input.azTptLicenseNumber),taxDocumentType=str(input.taxDocumentType)||"Undetermined";
+  if(ein&&!/^\d{2}-?\d{7}$/.test(ein))return{ok:false,message:"Invalid EIN."};
+  if(azTptLicenseNumber&&!/^\d{8}$/.test(azTptLicenseNumber))return{ok:false,message:"Invalid Arizona TPT number."};
+  if(!["Undetermined","Taxable","Resale 5000A","Exemption 5000"].includes(taxDocumentType))return{ok:false,message:"Invalid tax documentation route."};
+  if(taxDocumentType==="Resale 5000A"&&!azTptLicenseNumber)return{ok:false,message:"Resale documentation needs a TPT number."};
   const required=["name", "location", "channel", "contactName", "contactRole"];
   if (required.some((key)=>!str(input[key]))) {
     return {ok: false, message: "Business and contact details are required."};
@@ -56,12 +64,12 @@ export function validateTrustedAccountCreation(input:unknown):ValidCreation {
       return {ok: false, message: "An account field is invalid or too long."};
     }
   }
-  const customerName=str(input.customerName)||str(input.name);
+  const customerName=legalBusinessName;
   if (str(input.email)&&
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str(input.email))) {
     return {ok: false, message: "The contact email is invalid."};
   }
-  return {ok: true, record, customerName};
+  return {ok: true, record, customerName,legalBusinessName,ein,azTptLicenseNumber,taxDocumentType};
 }
 
 /**
