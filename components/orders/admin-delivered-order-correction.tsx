@@ -6,7 +6,7 @@ import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {useCommerce} from "../../lib/commerce-context";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {firebaseFunctionUrl} from "../../lib/firebase-functions";
-import {listFirestoreCollection} from "../../lib/firebase-firestore-rest";
+
 import {orderLinesFor,productsEquivalent} from "../../lib/order-lines";
 import {businessAddressLabel} from "../../lib/account-address";
 import type {Order} from "../../lib/types";
@@ -78,9 +78,16 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
     if(!order||currentUser?.role!=="Administrator")return;
     setLoading(true);
     try{
-      const all=await listFirestoreCollection<RequestRecord>("deliveryCorrectionRequests");
-      setRequests(all.filter(item=>item.orderId===order.id&&["Submitted","Applied","Rejected","Withdrawn"].includes(item.state))
-        .sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,20));
+      const token=firebase?.session?.idToken;
+      if(!token)throw new Error("Administrator session required.");
+      const response=await fetch(firebaseFunctionUrl("listDeliveredOrderCorrections"),{
+        method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+token},
+        body:JSON.stringify({orderId:order.id}),
+      });
+      const payload=await response.json().catch(()=>null) as {ok?:boolean;requests?:RequestRecord[]}|null;
+      if(!response.ok||payload?.ok!==true||!Array.isArray(payload.requests))throw new Error("Read was not confirmed.");
+      setRequests(payload.requests.filter(item=>item.orderId===order.id&&
+        ["Submitted","Applied","Rejected","Withdrawn"].includes(item.state)));
     }catch{setError("Correction history could not load. Verify Administrator access.");}
     finally{setLoading(false);}
   };
