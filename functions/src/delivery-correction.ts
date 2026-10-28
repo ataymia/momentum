@@ -38,21 +38,6 @@ function revision(e:RevisionEvidence):string{
 function forOrder(all:Row[],orderId:string):Row[]{
   return all.filter(x=>text(x.orderId)===orderId||text(x.relatedOrderId)===orderId);
 }
-function financialActivity(invoice:Row,payments:Row[],allocations:Row[],credits:Row[],refunds:Row[]):boolean{
-  const invoiceId=text(invoice.id);
-  const allocated=allocations.filter(x=>text(x.invoiceId)===invoiceId);
-  const paymentIds=new Set(allocated.map(x=>text(x.paymentId)));
-  return allocated.length>0||
-    payments.some(x=>paymentIds.has(text(x.id))&&["Pending","Cleared"].includes(text(x.status)))||
-    credits.some(x=>text(x.invoiceId)===invoiceId&&text(x.status)!=="Void")||
-    refunds.some(x=>paymentIds.has(text(x.paymentId))&&text(x.status)!=="Failed");
-}
-function unreconciledAccountingJournal(e:RevisionEvidence):boolean{
-  return e.accountingJournals.some(j=>
-    text(j.sourceType)==="Invoice issued"&&
-    text(j.sourceId)===text(e.invoice.id)&&
-    text(j.status)!=="Voided");
-}
 function activeInvoice(list:Row[],orderId:string):Row|undefined{
   return list.find(x=>text(x.orderId)===orderId&&text(x.status)!=="Void");
 }
@@ -195,7 +180,8 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
  * A second active Administrator must approve; physical delivery evidence is never modified.
  */
 export async function approveDeliveryCorrection(uid:string,input:unknown){
-  if(!row(input)||!idOk(text(payload.requestId)))fail(400,"Valid correction request required.");
+  if(!row(input)||!idOk(text((input as Row).requestId)))
+    throw new DeliveryCorrectionError(400,"Valid correction request required.");
   const payload=input as Row;
   const approvalNote=text(payload.approvalNote);
   if(payload.reviewConfirmed!==true||approvalNote.length<8||approvalNote.length>800)
@@ -437,13 +423,15 @@ export async function closeDeliveryCorrection(uid:string,input:unknown){
 /** Small, indexed query for the selected order. Avoid downloading every
  * historical correction request when an Administrator opens one order. */
 export async function listDeliveryCorrections(uid:string,input:unknown){
-  if(!row(input)||!idOk(text(input.orderId)))fail(400,"Choose an order.");
+  if(!row(input))throw new DeliveryCorrectionError(400,"Choose an order.");
+  const orderId=text((input as Row).orderId);
+  if(!idOk(orderId))throw new DeliveryCorrectionError(400,"Choose an order.");
   const db=getFirestore();
   const access=await db.doc("userAccess/"+uid).get();
   if(text(access.data()?.role)!=="Administrator"||text(access.data()?.accountState)!=="Active")
     fail(403,"Only an active Administrator can review corrections.");
   const snapshot=await db.collection("deliveryCorrectionRequests")
-    .where("orderId","==",text(input.orderId)).limit(40).get();
+    .where("orderId","==",orderId).limit(40).get();
   return{requests:snapshot.docs.map(doc=>doc.data()).sort((a,b)=>
     text(b.createdAt).localeCompare(text(a.createdAt))).slice(0,20)};
 }
