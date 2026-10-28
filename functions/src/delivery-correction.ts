@@ -83,15 +83,15 @@ const dataPaths={
   refunds:"domains/commerce/fields/refunds",
 } as const;
 
-const db=getFirestore();
+
 function targetReferences(){
-  return Object.entries(dataPaths).map(([name,path])=>({name,ref:db.doc(path)}));
+  return Object.entries(dataPaths).map(([name,path])=>({name,ref:getFirestore().doc(path)}));
 }
 function mapDocuments(targets:ReturnType<typeof targetReferences>,snapshots:FirebaseFirestore.DocumentSnapshot[]):Map<string,Row[]>{
   return new Map(targets.map((target,i)=>[target.name,items(snapshots[i].data())]));
 }
 async function authorize(tx:FirebaseFirestore.Transaction,uid:string){
-  const access=await tx.get(db.doc("userAccess/"+uid));
+  const access=await tx.get(getFirestore().doc("userAccess/"+uid));
   if(text(access.data()?.role)!=="Administrator"||text(access.data()?.accountState)!=="Active")
     fail(403,"Only an active Administrator can submit or approve corrections.");
 }
@@ -107,11 +107,11 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
      evidenceReference.length<6||evidenceReference.length>500||
      billToAddress.length<5||billToAddress.length>500)
     fail(400,"Enter the order, correction reason, evidence reference, and billing address.");
-  const requestRef=db.doc("deliveryCorrectionRequests/"+requestId);
-  const activeRef=db.doc("deliveryCorrectionActive/"+orderId);
+  const requestRef=getFirestore().doc("deliveryCorrectionRequests/"+requestId);
+  const activeRef=getFirestore().doc("deliveryCorrectionActive/"+orderId);
   const targets=targetReferences();
-  const accessRef=db.doc("userAccess/"+uid);
-  return db.runTransaction(async tx=>{
+  const accessRef=getFirestore().doc("userAccess/"+uid);
+  return getFirestore().runTransaction(async tx=>{
     // Read every snapshot before writing anything.
     const [access,current,active,...snapshots]=await Promise.all([
       tx.get(accessRef),tx.get(requestRef),tx.get(activeRef),
@@ -181,17 +181,17 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
  */
 export async function approveDeliveryCorrection(uid:string,input:unknown){
   if(!row(input)||!idOk(text(input.requestId)))fail(400,"Valid correction request required.");
-  const requestId=text(input.requestId),requestRef=db.doc("deliveryCorrectionRequests/"+requestId);
-  const accessRef=db.doc("userAccess/"+uid);
+  const requestId=text(input.requestId),requestRef=getFirestore().doc("deliveryCorrectionRequests/"+requestId);
+  const accessRef=getFirestore().doc("userAccess/"+uid);
   const targets=targetReferences();
-  const invoiceRef=db.doc(dataPaths.invoices);
+  const invoiceRef=getFirestore().doc(dataPaths.invoices);
   const activeDocumentId=text(input.orderId);
   if(!idOk(activeDocumentId))fail(400,"Valid order required.");
-  const activeRef=db.doc("deliveryCorrectionActive/"+activeDocumentId);
-  const reissueRef=db.doc("deliveryInvoiceReissues/"+requestId);
-  const metaRef=db.doc("platform/meta");
-  const auditRef=db.doc("deliveryCorrectionAudit/"+requestId+"-applied");
-  return db.runTransaction(async tx=>{
+  const activeRef=getFirestore().doc("deliveryCorrectionActive/"+activeDocumentId);
+  const reissueRef=getFirestore().doc("deliveryInvoiceReissues/"+requestId);
+  const metaRef=getFirestore().doc("platform/meta");
+  const auditRef=getFirestore().doc("deliveryCorrectionAudit/"+requestId+"-applied");
+  return getFirestore().runTransaction(async tx=>{
     const [access,request,active,reissue,meta,...snapshots]=await Promise.all([
       tx.get(accessRef),tx.get(requestRef),tx.get(activeRef),tx.get(reissueRef),
       tx.get(metaRef),...targets.map(x=>tx.get(x.ref)),
@@ -269,7 +269,7 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
           touched.push(targets[index].ref.path);
         }
       }
-      const movementsRef=db.doc(dataPaths.movements);
+      const movementsRef=getFirestore().doc(dataPaths.movements);
       const oldMovements=items(snapshots[targets.findIndex(t=>t.name==="movements")].data());
       const newMovements=plan.movements.map((m,index)=>({
         id:"correction-"+requestId+"-"+(index+1),lotId:m.lotId,product:m.product,
