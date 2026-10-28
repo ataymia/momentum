@@ -143,7 +143,7 @@ export function AccountsPage(){
     if(!form.contactName.trim())errors.contactName="Enter the primary contact name.";
     if(!form.contactRole.trim())errors.contactRole="Enter the contact's role.";
     if(!form.phone.trim()&&!form.mobilePhone.trim()&&!form.email.trim())errors.phone="Provide a business phone, mobile phone or email.";
-    if(form.email.trim()&&!/^[^\s@]+@[^\s@]+\\.[^\s@]+$/.test(form.email.trim()))errors.email="Enter a valid email address.";
+    if(form.email.trim()&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))errors.email="Enter a valid email address.";
     const validation=validateNewAccountContact(accountInput);
     if(!validation.ok&&!Object.keys(errors).length)errors.name=validation.message;
     setCreateErrors(errors);
