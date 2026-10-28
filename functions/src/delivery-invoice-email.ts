@@ -113,6 +113,7 @@ const queueDeliveredInvoice=async (
   eventId:string,
   signature?:InvoicePdfSignature,
   adminOverride=false,
+  expectedInvoiceId?:string,
 )=>{
   const db=getFirestore();
   const refs=[
@@ -149,6 +150,10 @@ const queueDeliveredInvoice=async (
   }
   const invoice=items(invoicesDoc.data())
     .find((item)=>text(item.orderId)===orderId&&text(item.status)!=="Void");
+  if(expectedInvoiceId&&text(invoice?.id)!==expectedInvoiceId){
+    await adminEvent("Amended invoice for "+text(order.number)+" changed before email preparation.",orderId,eventId);
+    return;
+  }
   if(!invoice){
     await adminEvent("Order "+text(order.number)+
       " was delivered but no active invoice record exists. No email was sent.",
@@ -273,11 +278,13 @@ const queueDeliveredInvoice=async (
       approvedBy:"system:delivery-invoice",
       approvedAt:createdAt,
       to:billingEmail.toLowerCase(),
-      subject:"Momentum invoice "+text(invoice.number)+" — delivery confirmed",
+      subject:(text(invoice.previousInvoiceId)?"Momentum amended invoice ":"Momentum invoice ")+
+        text(invoice.number)+" — delivery confirmed",
       text:[
         "Hello "+(text(customer?.billingContactName)||text(customer?.name)||"there")+",",
         "",
         "Delivery for order "+text(order.number)+" has been confirmed.",
+        ...(text(invoice.previousInvoiceId)?["This amended invoice replaces the previous invoice.",""]:[]),
         (signature?
           "Your signed invoice ":
           "Your invoice ")+text(invoice.number)+" is attached as a PDF.",
@@ -419,4 +426,36 @@ export const queueInvoiceOnAdminDeliveryOverride=onDocumentCreated({
     undefined,
     true,
   );
+});
+
+/** A committed correction creates one unique invoice-reissue event.
+ * This reuses trusted delivered-invoice PDF creation and per-invoice outbox idempotency.
+ */
+export const queueAmendedInvoiceOnCorrection=onDocumentCreated({
+  document:"deliveryInvoiceReissues/{requestId}",
+  region:"us-central1",
+},async(event)=>{
+  if(!event.data)return;
+  const payload=event.data.data();
+  const orderId=text(payload.orderId),invoiceId=text(payload.invoiceId);
+  if(!orderId||!invoiceId)return;
+  const db=getFirestore();
+  const [tasksSnap,overridesSnap]=await db.getAll(
+    db.doc("domains/delivery/fields/tasks"),
+    db.doc("domains/delivery/fields/overrides"),
+  );
+  const task=items(tasksSnap.data()).find(item=>
+    text(item.orderId)===orderId&&text(item.status)==="Delivered");
+  const signature=task?signatureFrom(task.signature,task.history):undefined;
+  const override=items(overridesSnap.data()).find(item=>
+    text(item.orderId)===orderId&&text(item.status)==="Delivered");
+  const deliveredAt=text(task?.deliveredAt)||text(override?.deliveredAt);
+  if(!deliveredAt||(!signature&&!override)){
+    await adminEvent("Reissued invoice needs delivery proof review: "+orderId,
+      orderId,event.id);
+    return;
+  }
+  await queueDeliveredInvoice(orderId,deliveredAt,
+    "amended-invoice:"+event.params.requestId,
+    signature,!signature,invoiceId);
 });
