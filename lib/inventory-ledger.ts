@@ -81,10 +81,10 @@ export function normalizeInventoryLedger(input:unknown,data:WorkspaceData):Inven
   const reservations:InventoryReservation[]=[];const reservedByOrder=new Map<string,number>();
   for(const reservation of uniqueById((Array.isArray(state.reservations)?state.reservations:[]).filter((item):item is InventoryReservation=>Boolean(item?.id)))){
     const order=orderById.get(reservation.orderId);const lot=lotByIdMap.get(reservation.lotId);
-    if(!reservation.orderId||!reservation.lotId||order&&lot&&!orderAcceptsProduct(order,lot.product)||!positiveFiniteQuantity(reservation.quantity)||order&&reservation.quantity>order.cases||!reservationStatuses.has(reservation.status)||!reservation.createdBy||!validTimestamp(reservation.createdAt))continue;
+    if(!reservation.orderId||!reservation.lotId||order&&lot&&!orderAcceptsProduct(order,lot.product)||!positiveFiniteQuantity(reservation.quantity)||order&&reservation.status==="Active"&&reservation.quantity>order.cases||!reservationStatuses.has(reservation.status)||!reservation.createdBy||!validTimestamp(reservation.createdAt))continue;
     if(reservation.status==="Released"&&(!reservation.releasedAt||!validTimestamp(reservation.releasedAt)))continue;
     if(reservation.status==="Fulfilled"&&(!reservation.fulfilledAt||!validTimestamp(reservation.fulfilledAt)))continue;
-    if(reservation.status!=="Released"&&order){const used=reservedByOrder.get(order.id)??0;if(used+reservation.quantity>order.cases+0.005)continue;reservedByOrder.set(order.id,used+reservation.quantity);}
+    if(reservation.status==="Active"&&order){const used=reservedByOrder.get(order.id)??0;if(used+reservation.quantity>order.cases+0.005)continue;reservedByOrder.set(order.id,used+reservation.quantity);}
     reservations.push(reservation);
   }
 
