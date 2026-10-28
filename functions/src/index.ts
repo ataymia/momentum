@@ -17,6 +17,7 @@ import {
   commitRepSelfDelivery,
   RepSelfDeliveryError,
 } from "./rep-self-delivery";
+import {submitDeliveryCorrection,approveDeliveryCorrection,DeliveryCorrectionError} from "./delivery-correction";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -1570,6 +1571,52 @@ export const repSelfDelivery = onRequest(
     }
   },
 );
+
+/** Proposed delivered-order correction only; no inventory or invoice mutation. */
+export const submitDeliveredOrderCorrection=onRequest({
+  cors:true,region:"us-central1",
+},async (request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await submitDeliveryCorrection(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof DeliveryCorrectionError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("submitDeliveredOrderCorrection failed",error);
+    json(response,502,{ok:false,message:"Correction was not submitted. Verify the order before retry."});
+  }
+});
+
+/** Another active Administrator reviews and applies a committed revision. */
+export const approveDeliveredOrderCorrection=onRequest({
+  cors:true,region:"us-central1",
+},async (request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await approveDeliveryCorrection(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof DeliveryCorrectionError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("approveDeliveredOrderCorrection failed",error);
+    json(response,502,{ok:false,message:"Correction was not applied. Check its saved state before retry."});
+  }
+});
 
 export {
   captureOrderNotifications,
