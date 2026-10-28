@@ -3,6 +3,7 @@ import test from "node:test";
 import {readFileSync} from "node:fs";
 import {isOpenCommercialAccount} from "../lib/account-view-filter";
 import {getNavigationPage,setNavigationPage,subscribeNavigationPage} from "../lib/navigation-store";
+import {validateTaxIdentity,taxIdentityMissing} from "../lib/account-tax-identity";
 
 const read=(file:string)=>readFileSync(new URL("../"+file,import.meta.url),"utf8");
 test("device navigation is wired to role-filtered menu with accessible mobile destinations",()=>{
@@ -120,4 +121,53 @@ test("global record search does not subscribe the main app shell to sales and co
   assert.match(dialog,/if \(normalized\) \{/);
   assert.match(dialog,/const visibleSearchResults = searchResults\.slice\(0, 24\)/);
   assert.match(dialog,/onClick=\{\(\) => openResult\(result\.page, result\.focus\)\}/);
+});
+
+test("business identity requires licensed name and validates EIN and AZ TPT formats",()=>{
+  assert.match(validateTaxIdentity({}).legalBusinessName??"",/exact legal business name/);
+  assert.deepEqual(validateTaxIdentity({legalBusinessName:"Licensed Shop LLC",ein:"12-3456789",azTptLicenseNumber:"12345678",taxDocumentType:"Resale 5000A"}),{});
+  assert.match(validateTaxIdentity({legalBusinessName:"Shop",ein:"abc123456789"}).ein??"",/9 digits/);
+  assert.match(validateTaxIdentity({legalBusinessName:"Shop",azTptLicenseNumber:"1234XYZ9"}).azTptLicenseNumber??"",/8 digits/);
+  assert.match(validateTaxIdentity({legalBusinessName:"Shop",taxDocumentType:"Resale 5000A"}).azTptLicenseNumber??"",/TPT number/);
+  assert.deepEqual(validateTaxIdentity({legalBusinessName:"Shop",taxDocumentType:"Undetermined"}),{});
+});
+
+test("tax identities remain unverified, and missing legacy data is visible",()=>{
+  assert.ok(taxIdentityMissing({}).includes("Legal business name"));
+  const profile=read("components/pages/accounts.tsx");
+  const setup=read("components/pages/operations-tools-base.tsx");
+  assert.match(profile,/taxIdentityMissing\(selectedCustomer\)/);
+  assert.match(profile,/updateCustomerCommercial\(selectedCustomer\.id/);
+  assert.match(profile,/legalBusinessName:taxForm\.legalBusinessName/);
+  assert.match(setup,/name="legalName"/);
+  assert.match(setup,/name="tptNumber"/);
+  assert.match(setup,/name="taxDoc"/);
+  assert.doesNotMatch(profile,/taxExemptionStatus:\s*"Verified"/);
+});
+
+test("business identity fields persist in customers and commercial patches",()=>{
+  const types=read("lib/types.ts");
+  const base=read("lib/workspace-context-v5.tsx");
+  const state=read("lib/commercial-state.ts");
+  const normalized=read("lib/workspace-normalization.ts");
+  for(const field of ["legalBusinessName","ein","azTptLicenseNumber","taxDocumentType"]){
+    assert.ok(types.includes(field));
+    assert.ok(base.includes(field));
+    assert.ok(state.includes(field));
+    assert.ok(normalized.includes(field));
+  }
+  assert.match(base,/taxDocumentType:account\.taxDocumentType\?\?"Undetermined"/);
+  assert.match(state,/customerPatches\[customerId\]=patch/);
+});
+
+test("systemwide native invalid forms and explicit field errors mark blockers red",()=>{
+  const component=read("components/form-validation-listener.tsx");
+  const app=read("components/momentum-app.tsx");
+  const ui=read("components/ui.tsx");
+  const css=read("app/globals.css");
+  assert.match(component,/addEventListener\("invalid",onInvalid,true\)/);
+  assert.match(app,/<FormValidationListener\/>/);
+  assert.match(ui,/className="field__error" role="alert"/);
+  assert.match(css,/form\[data-validation-attempted="true"\]/);
+  assert.match(css,/\.field\[data-invalid="true"\]/);
 });
