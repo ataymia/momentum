@@ -45,6 +45,8 @@ test("delivered reduction moves only verified lot stock from customer custody in
     nodes:[{id:"node-account-acc-1",type:"Customer"},
       {id:"node-quality-hold",type:"Quality hold"},
       {id:"node-warehouse-main",type:"Warehouse"}],
+    reservations:[],
+    orderId:"order-1",
     movements:[{lotId:"lot-one",fromNodeId:"node-warehouse-main",
       toNodeId:"node-account-acc-1",quantity:10,type:"Delivery"}],
     adjustments:[{lotId:"lot-one",product:"Golden Eagle Original",quantity:2,
@@ -74,6 +76,8 @@ test("delivered additions must come from verified company custody",()=>{
     lots:[{id:"lot-one",product:"Golden Eagle Original"}],
     nodes:[{id:"node-account-acc-1",type:"Customer"},
       {id:"node-warehouse-main",type:"Warehouse"}],
+    reservations:[],
+    orderId:"order-1",
     movements:[{lotId:"lot-one",fromNodeId:"node-external",
       toNodeId:"node-warehouse-main",quantity:20,type:"Receipt"}],
     adjustments:[{lotId:"lot-one",product:"Golden Eagle Original",quantity:2,
@@ -85,4 +89,19 @@ test("delivered additions must come from verified company custody",()=>{
   if(valid.ok)assert.equal(valid.movements[0].type,"Delivery");
   assert.equal(planDeliveredInventoryCorrection({...initial,adjustments:[
     {...initial.adjustments[0],fromNodeId:"node-external"}]}).ok,false);
+});
+
+test("correction deliveries cannot consume warehouse cases reserved for another order",()=>{
+  const input={accountId:"acc-1",orderId:"order-1",original:originals,
+    proposed:[{...originals[0],cases:12}],
+    lots:[{id:"lot-one",product:"Golden Eagle Original"}],
+    nodes:[{id:"node-account-acc-1",type:"Customer"},{id:"node-warehouse-main",type:"Warehouse"}],
+    movements:[{lotId:"lot-one",fromNodeId:"node-external",toNodeId:"node-warehouse-main",quantity:3}],
+    reservations:[{status:"Active",lotId:"lot-one",orderId:"other-order",quantity:2}],
+    adjustments:[{lotId:"lot-one",product:"Golden Eagle Original",quantity:2,
+      fromNodeId:"node-warehouse-main",toNodeId:"node-account-acc-1",
+      evidenceReference:"verified-custody-and-delivery"}],
+  };
+  assert.equal(planDeliveredInventoryCorrection(input).ok,false);
+  assert.equal(planDeliveredInventoryCorrection({...input,reservations:[]}).ok,true);
 });
