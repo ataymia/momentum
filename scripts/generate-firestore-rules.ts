@@ -308,6 +308,19 @@ service cloud.firestore {
       allow get, list, create, update, delete: if false;
     }
 
+    // Personal CRM shorthand is never stored in shared customers/accounts.
+    // Neither another employee nor an Administrator can read another UID's nickname.
+    match /privateAccountNicknames/{uid}/accounts/{accountId} {
+      allow get, list: if isEmployee() && request.auth.uid == uid;
+      allow create, update: if isEmployee() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['accountId','nickname'])
+        && request.resource.data.accountId == accountId
+        && request.resource.data.nickname is string
+        && request.resource.data.nickname.size() > 0
+        && request.resource.data.nickname.size() <= 80;
+      allow delete: if isEmployee() && request.auth.uid == uid;
+    }
+
     // Backend-only immutable event history for account-profile edits.
     match /accountProfileEditEvents/{eventId} {
       allow get, list: if isAdmin();
