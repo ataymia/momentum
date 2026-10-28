@@ -3,6 +3,9 @@ import test from "node:test";
 import {correctionDiff,correctionApprovalGate} from "../functions/src/delivery-correction-policy";
 import {isolatedSkuUse,sandboxCanPostProductionSideEffects,validateCustomSku} from "../lib/custom-sku-policy";
 import {planDeliveredInventoryCorrection} from "../functions/src/delivery-inventory-revision";
+import {normalizeInventoryLedger,orderDeliveryQuantity} from "../lib/inventory-ledger";
+import {GOLDEN_EAGLE_SKUS} from "../lib/product-catalog";
+import type {WorkspaceData} from "../lib/types";
 
 const originals=[{product:"Golden Eagle Original",cases:10,pricePerCase:24}];
 
@@ -104,4 +107,32 @@ test("correction deliveries cannot consume warehouse cases reserved for another 
   };
   assert.equal(planDeliveredInventoryCorrection(input).ok,false);
   assert.equal(planDeliveredInventoryCorrection({...input,reservations:[]}).ok,true);
+});
+
+test("inventory normalization preserves fulfilled 10-case reservation after a 10-to-8 correction",()=>{
+  const product=GOLDEN_EAGLE_SKUS[0].description;
+  const date="2026-10-20T14:00:00.000Z";
+  const data={
+    users:[],accounts:[{id:"acc-1",name:"Licensed Market LLC"}],
+    inventory:[{id:"lot-one",lotCode:"LOT-ONE",product,receivedAt:date,bestBy:"2027-01-01",
+      onHand:10,reserved:0,available:10,status:"Available",location:"Warehouse"}],
+    orders:[{id:"order-1",number:"GE-1",accountId:"acc-1",cases:8,amount:192,
+      pricePerCase:24,product,status:"Delivered",placedAt:date,ownerId:"admin-1",
+      priceBasis:"Approved",paymentStatus:"Open",
+      lines:[{id:"order-1-line-1",product,cases:8,amount:192,pricePerCase:24}]}],
+  } as unknown as WorkspaceData;
+  const result=normalizeInventoryLedger({version:1,nodes:[],movements:[
+    {id:"delivery-1",lotId:"lot-one",product,quantity:10,type:"Delivery",
+      fromNodeId:"node-warehouse-main",toNodeId:"node-account-acc-1",
+      relatedOrderId:"order-1",reason:"Original fulfilled delivery",at:date,actorId:"admin-1"},
+    {id:"return-1",lotId:"lot-one",product,quantity:2,type:"Return",
+      fromNodeId:"node-account-acc-1",toNodeId:"node-quality-hold",
+      relatedOrderId:"order-1",reason:"Approved correction",at:date,
+      actorId:"admin-2",correctionRequestId:"correction-123"},
+  ],reservations:[{id:"res-one",orderId:"order-1",lotId:"lot-one",quantity:10,
+    status:"Fulfilled",createdAt:date,createdBy:"admin-1",fulfilledAt:date}],
+    counts:[]},data);
+  assert.equal(result.reservations.length,1);
+  assert.equal(result.reservations[0].status,"Fulfilled");
+  assert.equal(orderDeliveryQuantity(result,"order-1"),8);
 });
