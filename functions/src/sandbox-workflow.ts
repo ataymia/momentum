@@ -108,6 +108,7 @@ export async function commitSandboxAction(uid:string,payload:unknown){
     if(!idOk(orderId))fail(400,"Select an existing sandbox order.");
     if(!order.exists)fail(404,"Sandbox order not found.");
     const prior=order.data();
+    if(!prior)throw new SandboxWorkflowError(409,"Sandbox order data is missing.");
     if(text(prior?.skuId)!==skuId)fail(409,"Sandbox order SKU mismatch.");
     if(text(prior?.status)==="Delivered")
       return{action,skuId,orderId,replayed:true};
