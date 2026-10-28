@@ -1023,18 +1023,25 @@ describe("historical correction and isolated sandbox authority",()=>{
     await assertFails(getDoc(doc(dbFor(ADMIN),"deliveryCorrectionActive","acc-1")));
   });
 
-  test("administrator can create only explicitly sandbox test product metadata",async()=>{
+  test("sandbox products are created by trusted server only, with admin-only reads",async()=>{
     const skuId="qa-sku-rules";
     const product={id:skuId,description:"QA Test Widget",shortName:"Widget",
       casePack:24,active:true,environment:"sandbox",createdBy:ADMIN,createdAt:new Date().toISOString()};
     const admin=doc(dbFor(ADMIN),"sandboxProducts",skuId);
-    await assertSucceeds(setDoc(admin,product));
+    await assertFails(setDoc(admin,product));
+    await env.withSecurityRulesDisabled(async context=>{
+      await setDoc(doc(context.firestore(),"sandboxProducts",skuId),product);
+    });
     await assertSucceeds(getDoc(admin));
     await assertFails(getDoc(doc(dbFor(REP),"sandboxProducts",skuId)));
     await assertFails(setDoc(doc(dbFor(REP),"sandboxProducts","qa-rep"),{...product,id:"qa-rep",createdBy:REP}));
     await assertFails(setDoc(doc(dbFor(ADMIN),"sandboxProducts","qa-production"),{...product,id:"qa-production",environment:"production"}));
     await assertFails(setDoc(admin,{...product,description:"Changed"}));
     await assertFails(deleteDoc(admin));
+    for(const uid of [ADMIN,REP,MANAGER,OPS,MARKETING,null]){
+      await assertFails(setDoc(doc(dbFor(uid),"sandboxProductNames","test-name-hash"),{skuId}));
+      await assertFails(getDoc(doc(dbFor(uid),"sandboxProductNames","test-name-hash")));
+    }
   });
 
   test("sandbox stock, orders and simulated invoices are server-only records",async()=>{
