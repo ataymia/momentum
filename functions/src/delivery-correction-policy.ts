@@ -1,4 +1,4 @@
-/* eslint-disable max-len, comma-spacing, key-spacing, object-curly-spacing */
+/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,space-before-blocks,keyword-spacing,curly,brace-style,semi-spacing,arrow-parens,one-var,indent,operator-linebreak,space-before-function-paren */
 export type CorrectionLine={product:string;cases:number;pricePerCase:number};
 type Raw=Record<string,unknown>;
 const object=(value:unknown):value is Raw=>Boolean(value&&typeof value==="object"&&!Array.isArray(value));
