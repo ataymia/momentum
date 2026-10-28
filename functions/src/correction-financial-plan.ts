@@ -1,4 +1,4 @@
-/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing */
+/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,space-before-blocks,keyword-spacing,curly,brace-style,semi-spacing,arrow-parens,one-var,indent,operator-linebreak */
 type Row=Record<string,unknown>;
 const str=(v:unknown)=>typeof v==="string"?v.trim():"";
 const amount=(v:unknown)=>typeof v==="number"&&Number.isFinite(v)&&v>=0?v:NaN;
