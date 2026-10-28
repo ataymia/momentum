@@ -41,7 +41,7 @@ export function SandboxSkuManager({open,onClose}:{open:boolean;onClose:()=>void}
     }catch{setError("Sandbox records could not load. Verify Administrator access and Firestore rules.");}
     finally{setBusy(false);}
   };
-  useEffect(()=>{if(open)void load();},[open]);
+  useEffect(()=>{if(!open)return;const timer=window.setTimeout(()=>void load(),0);return()=>window.clearTimeout(timer);},[open]);
   useEffect(()=>{
     let active=true;
     if(!open||!selected)return;
