@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeft, Building2, CalendarPlus, ChevronLeft, Chevron
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { canClaimUnassignedProspect, canCreateAccount, isCustomer } from "../../lib/access";
 import { validateNewAccountContact } from "../../lib/account-creation";
+import {taxIdentityMissing,validateTaxIdentity,type TaxIdentityInput,type TaxFieldErrors} from "../../lib/account-tax-identity";
 import { businessAddressLabel, deliveryAddressLabel } from "../../lib/account-address";
 import { isOpenCommercialAccount } from "../../lib/account-view-filter";
 import { ACCOUNT_PRICING_TIERS } from "../../lib/account-health";
@@ -25,14 +26,14 @@ const stageFilterDisplay=(stage:(typeof stages)[number])=>stage==="All"?"All":st
 const stageTone=(stage:AccountStage)=>stage==="Reordered"||stage==="Placed"?"success" as const:stage==="At risk"?"danger" as const:stage==="Opening order"||stage==="Sampled"?"gold" as const:"info" as const;
 const bonusTone=(status:string)=>status==="Earned"?"success" as const:status==="Window expired"||status==="Not qualified"?"danger" as const:status==="Awaiting payment"?"warning" as const:"info" as const;
 const pricingTone=(status:string)=>status==="Partner pricing"||status==="Intro partner pricing"?"success" as const:status==="Standard pricing"?"warning" as const:"info" as const;
-const blankForm={name:"",location:"Phoenix, AZ",streetAddress:"",postalCode:"",deliveryAddressSameAsBusiness:true,deliveryStreetAddress:"",deliveryLocation:"",deliveryPostalCode:"",channel:"Independent retail",contactName:"",contactRole:"Owner / buyer",phone:"",mobilePhone:"",fax:"",email:""};
+const blankForm={legalBusinessName:"",ein:"",azTptLicenseNumber:"",taxDocumentType:"Undetermined",name:"",location:"Phoenix, AZ",streetAddress:"",postalCode:"",deliveryAddressSameAsBusiness:true,deliveryStreetAddress:"",deliveryLocation:"",deliveryPostalCode:"",channel:"Independent retail",contactName:"",contactRole:"Owner / buyer",phone:"",mobilePhone:"",fax:"",email:""};
 const pageSize=50;
 
 type AccountTab="accounts"|"unassigned"|"pricing"|"incentives";
 type CommercialForm={premiseType:PremiseType;businessType:string;categoryReviewDate:string;streetAddress:string;location:string;postalCode:string;deliveryAddressSameAsBusiness:boolean;deliveryStreetAddress:string;deliveryLocation:string;deliveryPostalCode:string;pricingTier?:PricingTier};
 
 export function AccountsPage(){
-  const {data,scope,currentUser,createAccount,claimUnassignedProspect,navigate,updateAccountCommercial,transferAccountResponsibility}=useWorkspace();
+  const {data,scope,currentUser,createAccount,claimUnassignedProspect,navigate,updateAccountCommercial,updateCustomerCommercial,transferAccountResponsibility}=useWorkspace();
   const {recordResponsibility}=useCrm();
   const focusId=typeof window!=="undefined"?window.sessionStorage.getItem("momentum-focus-record"):null;
   const focusedAccountId=focusId&&scope.accounts.some((account)=>account.id===focusId)?focusId:null;
@@ -48,6 +49,11 @@ export function AccountsPage(){
   const [listPage,setListPage]=useState(1);
   const [createOpen,setCreateOpen]=useState(false);
   const [manageOpen,setManageOpen]=useState(false);
+  const [taxOpen,setTaxOpen]=useState(false);
+  const [taxForm,setTaxForm]=useState<TaxIdentityInput>({});
+  const [taxErrors,setTaxErrors]=useState<TaxFieldErrors>({});
+  const [taxMessage,setTaxMessage]=useState("");
+  const [createErrors,setCreateErrors]=useState<Record<string,string>>({});
   const [duplicateWarning,setDuplicateWarning]=useState<string|null>(null);
   const [form,setForm]=useState(blankForm);
   const [commercialForm,setCommercialForm]=useState<CommercialForm>({premiseType:"Unclassified",businessType:"",categoryReviewDate:"",streetAddress:"",location:"",postalCode:"",deliveryAddressSameAsBusiness:true,deliveryStreetAddress:"",deliveryLocation:"",deliveryPostalCode:""});
@@ -70,6 +76,7 @@ export function AccountsPage(){
   const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
   const visibleAccounts=filtered.slice((Math.min(listPage,totalPages)-1)*pageSize,Math.min(listPage,totalPages)*pageSize);
   const selected=scope.accounts.find((account)=>account.id===(accountPageId??selectedId))??filtered[0];
+  const selectedCustomer=(data.customers??[]).find(customer=>customer.id===selected?.customerId);
   const selectedTerritory=selected?territoryForPostalCode(data,selected.postalCode):undefined;
   const suggestedRep=selectedTerritory?.ownerId?data.users.find((user)=>user.id===selectedTerritory.ownerId):undefined;
   const responsible=data.users.find((user)=>user.id===selected?.ownerId);
@@ -104,10 +111,55 @@ export function AccountsPage(){
   const handoffTarget=data.users.find((user)=>user.id===handoffTo);
   const handoffDiffersFromSuggestion=Boolean(handoffTarget?.role==="Sales Representative"&&territoryEnabled&&selectedTerritory?.ownerId!==handoffTarget.id);
 
-  const submit=(event:FormEvent)=>{event.preventDefault();const validation=validateNewAccountContact(form);if(!validation.ok){setDuplicateWarning(validation.message);return}const duplicate=findAccountDuplicate(data.accounts,form);if(duplicate){setDuplicateWarning(`${duplicate.reason} Existing record: ${duplicate.account.locationName??duplicate.account.name} (${duplicate.account.location}). Open and edit that record instead.`);return}const id=createAccount(form);if(!id){setDuplicateWarning("Account was not created. Verify the required fields and five-digit ZIP code. If the ZIP differs from your geographic suggestion, the required explanation must be completed when prompted.");return}setSelectedId(id);setAccountPageId(id);setTab("accounts");setCreateOpen(false);setDuplicateWarning(null);setForm(blankForm)};
+  const submit=(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    const errors:Record<string,string>={...validateTaxIdentity(form)};
+    if(!form.name.trim())errors.name="Enter the storefront or trading name.";
+    if(!form.location.trim())errors.location="Enter the business city or market.";
+    if(!/^\\d{5}(?:-\\d{4})?$/.test(form.postalCode.trim()))errors.postalCode="Enter a valid five-digit ZIP code.";
+    if(!form.deliveryAddressSameAsBusiness){
+      if(!form.deliveryStreetAddress.trim())errors.deliveryStreetAddress="Enter the delivery street address.";
+      if(!form.deliveryLocation.trim())errors.deliveryLocation="Enter the delivery city or market.";
+      if(!/^\\d{5}(?:-\\d{4})?$/.test(form.deliveryPostalCode.trim()))errors.deliveryPostalCode="Enter a valid delivery ZIP code.";
+    }
+    if(!form.contactName.trim())errors.contactName="Enter the primary contact name.";
+    if(!form.contactRole.trim())errors.contactRole="Enter the contact's role.";
+    if(!form.phone.trim()&&!form.mobilePhone.trim()&&!form.email.trim())errors.phone="Provide a business phone, mobile phone or email.";
+    if(form.email.trim()&&!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(form.email.trim()))errors.email="Enter a valid email address.";
+    const validation=validateNewAccountContact(form);
+    if(!validation.ok&&!Object.keys(errors).length)errors.name=validation.message;
+    setCreateErrors(errors);
+    if(Object.keys(errors).length){setDuplicateWarning("Correct the highlighted fields before creating the account.");return;}
+    const duplicate=findAccountDuplicate(data.accounts,form);
+    if(duplicate){setDuplicateWarning(`${duplicate.reason} Existing record: ${duplicate.account.locationName??duplicate.account.name} (${duplicate.account.location}). Open and edit that record instead.`);return;}
+    const id=createAccount(form);
+    if(!id){setDuplicateWarning("Account was not created. Check the ZIP, territory exception, and duplicate-account rules.");return;}
+    setSelectedId(id);setAccountPageId(id);setTab("accounts");
+    setCreateOpen(false);setDuplicateWarning(null);setCreateErrors({});setForm(blankForm);
+  };
   const openAccountPage=(accountId:string)=>{setSelectedId(accountId);setAccountPageId(accountId);setShowAllAccountOrders(false)};
   const changeTab=(next:AccountTab)=>{setTab(next);if(next!=="accounts")setAccountPageId(null)};
   const openLinkedPage=(page:"dispatch"|"orders",intent?:"new-order")=>{if(selected)window.sessionStorage.setItem("momentum-focus-record",selected.id);if(intent)window.sessionStorage.setItem("momentum-order-intent",intent);navigate(page)};
+  const openTaxDetails=()=>{
+    if(!selected||!selectedCustomer)return;
+    setTaxForm({legalBusinessName:selectedCustomer.legalBusinessName??"",ein:selectedCustomer.ein??"",azTptLicenseNumber:selectedCustomer.azTptLicenseNumber??"",taxDocumentType:selectedCustomer.taxDocumentType??"Undetermined"});
+    setTaxErrors({});setTaxMessage("");setTaxOpen(true);
+  };
+  const saveTaxDetails=(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(!selectedCustomer)return;
+    const errors=validateTaxIdentity(taxForm);
+    setTaxErrors(errors);
+    if(Object.keys(errors).length){setTaxMessage("Correct the highlighted business identity fields.");return;}
+    const saved=updateCustomerCommercial(selectedCustomer.id,{
+      legalBusinessName:taxForm.legalBusinessName?.trim(),
+      ein:taxForm.ein?.trim(),
+      azTptLicenseNumber:taxForm.azTptLicenseNumber?.trim(),
+      taxDocumentType:taxForm.taxDocumentType as typeof selectedCustomer.taxDocumentType,
+    });
+    if(saved){setTaxOpen(false);setTaxMessage("");}
+    else setTaxMessage("Not saved. Check your editing permissions and retry.");
+  };
   const openManage=()=>{if(!selected)return;setCommercialForm({premiseType:selected.premiseType??"Unclassified",businessType:selected.businessType??selected.channel,categoryReviewDate:selected.categoryReviewDate??"",streetAddress:selected.streetAddress??"",location:selected.location,postalCode:selected.postalCode??"",deliveryAddressSameAsBusiness:selected.deliveryAddressSameAsBusiness!==false,deliveryStreetAddress:selected.deliveryStreetAddress??selected.streetAddress??"",deliveryLocation:selected.deliveryLocation??selected.location,deliveryPostalCode:selected.deliveryPostalCode??selected.postalCode??"",pricingTier:selected.pricingTier==="B"||selected.pricingTier==="C"?selected.pricingTier:undefined});setHandoffTo(selected.ownerId);setHandoffReason("");setManageOpen(true)};
   const saveCommercial=(event:FormEvent)=>{event.preventDefault();if(!selected)return;const common={premiseType:commercialForm.premiseType,businessType:commercialForm.businessType.trim()||selected.channel,categoryReviewDate:commercialForm.categoryReviewDate||undefined,...(canManagePricing?{streetAddress:commercialForm.streetAddress,location:commercialForm.location,postalCode:commercialForm.postalCode,deliveryAddressSameAsBusiness:commercialForm.deliveryAddressSameAsBusiness,...(!commercialForm.deliveryAddressSameAsBusiness?{deliveryStreetAddress:commercialForm.deliveryStreetAddress,deliveryLocation:commercialForm.deliveryLocation,deliveryPostalCode:commercialForm.deliveryPostalCode}: {})}: {})};const saved=updateAccountCommercial(selected.id,canManagePricing?{...common,pricingTier:commercialForm.pricingTier}:common);if(saved)setManageOpen(false)};
   const transfer=()=>{if(!selected||!handoffTo||handoffTo===selected.ownerId||!handoffReason.trim())return;const priorOwner=selected.ownerId;if(!transferAccountResponsibility(selected.id,handoffTo,handoffReason.trim()))return;recordResponsibility({locationId:selected.id,fromUserId:priorOwner,toUserId:handoffTo,reason:handoffReason.trim()});setHandoffReason("")};
@@ -122,6 +174,13 @@ export function AccountsPage(){
         <div className="account-profile-page__metrics"><div><span>Paid cases</span><strong>{paidCases}</strong><small>Cleared orders only</small></div><div><span>Orders</span><strong>{accountOrders.length}</strong><small>{formatMoney(openOrderValue)} still open</small></div><div><span>Reorders</span><strong>{selected.reorderCount}</strong><small>Recorded account history</small></div><div><span>Geographic suggestion</span><strong>{selectedTerritory?.name??"Outside configured map"}</strong><small>{suggestedRep?`Suggested rep: ${suggestedRep.name}`:selected.postalCode?`ZIP ${selected.postalCode} has no configured suggestion`:"ZIP missing"}</small></div><div><span>Pricing</span><strong>{selectedPricing?.effectiveTier?`Tier ${selectedPricing.effectiveTier}`:"Pricing setup required"}</strong><small>{selectedPricing?.currentPricePerCase?`${formatMoney(selectedPricing.currentPricePerCase)}/case · ${selectedPricing.status}`:selectedPricing?.status??"Not started"}</small></div></div>
         <div className="account-profile-page__grid">
           <Section title="Recent activity"><div className="next-action-card"><div><strong>{selected.lastActivity||"No activity logged"}</strong><p>Responsible: {responsible?.name??"Unassigned"}</p></div></div></Section>
+          <Section title="Legal business & Arizona tax details"><dl className="account-profile-facts">
+            <div><dt>Legal business name</dt><dd>{selectedCustomer?.legalBusinessName||"Not collected"}</dd></div>
+            <div><dt>EIN</dt><dd>{selectedCustomer?.ein?"On file":"Not collected"}</dd></div>
+            <div><dt>Arizona TPT license</dt><dd>{selectedCustomer?.azTptLicenseNumber||"Not collected"}</dd></div>
+            <div><dt>Tax documentation</dt><dd>{selectedCustomer?.taxDocumentType??"Undetermined"} · {selectedCustomer?.taxExemptionStatus??"Not verified"}</dd></div>
+          </dl>{selectedCustomer&&taxIdentityMissing(selectedCustomer).length>0&&<p className="form-validation-notice">Still needed: {taxIdentityMissing(selectedCustomer).join("; ")}. Collect and verify documents before applying tax treatment.</p>}
+          {canEditCommercial&&selectedCustomer&&<Button size="sm" variant="secondary" onClick={openTaxDetails}>Edit business identity</Button>}</Section>
           <Section title="Primary contact"><div className="account-profile-contact"><div className="contact-card"><span><UserRound size={17}/></span><div><strong>{selected.contactName||"Contact not yet recorded"}</strong><p>{selected.contactRole}</p></div></div>{selected.phone&&<a href={`tel:${selected.phone}`}><Phone size={15}/> Business: {selected.phone}</a>}{selected.mobilePhone&&<a href={`tel:${selected.mobilePhone}`}><Phone size={15}/> Mobile: {selected.mobilePhone}</a>}{selected.fax&&<span><Phone size={15}/> Fax: {selected.fax}</span>}{selected.email&&<a href={`mailto:${selected.email}`}><Mail size={15}/> {selected.email}</a>}</div></Section>
           <Section title="Account details"><dl className="account-profile-facts"><div><dt>Stage</dt><dd><StatusPill tone={stageTone(selected.stage)}>{stageDisplay(selected.stage)}</StatusPill></dd></div><div><dt>Geographic suggestion</dt><dd>{selectedTerritory?`${selectedTerritory.name}${suggestedRep?` · ${suggestedRep.name}`:""}`:"Outside configured suggestion map"}</dd></div><div><dt>Responsible rep</dt><dd>{responsible?.name??"Unassigned"}</dd></div><div><dt>Business address</dt><dd>{businessAddressLabel(selected)||"Missing"}</dd></div><div><dt>Delivery address</dt><dd>{deliveryAddressLabel(selected)||"Missing"}{selected.deliveryAddressSameAsBusiness!==false?" · same as business":""}</dd></div><div><dt>ZIP</dt><dd>{selected.postalCode??"Missing"}</dd></div><div><dt>Channel</dt><dd>{selected.channel}</dd></div><div><dt>Premise</dt><dd>{selected.premiseType??"Unclassified"}</dd></div><div><dt>Business type</dt><dd>{selected.businessType??selected.channel}</dd></div><div><dt>Current pricing</dt><dd>{selectedPricing?.effectiveTier&&selectedPricing.currentPricePerCase?`Tier ${selectedPricing.effectiveTier} · ${formatMoney(selectedPricing.currentPricePerCase)}/case`:"Pricing setup required"}</dd></div><div><dt>Outside-Partner fallback</dt><dd>{selected.pricingTier==="B"||selected.pricingTier==="C"?`Tier ${selected.pricingTier} · ${formatMoney(ACCOUNT_PRICING_TIERS[selected.pricingTier].pricePerCase)}/case`:"Not assigned"}</dd></div><div><dt>Category review</dt><dd>{selected.categoryReviewDate?formatDate(selected.categoryReviewDate,{month:"short",day:"numeric",year:"numeric"}):"Not scheduled"}</dd></div></dl></Section>
           <Section title="Associated locations" description="Linked locations share a billing customer while keeping separate delivery addresses, orders and inventory records.">
