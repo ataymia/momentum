@@ -11,8 +11,8 @@ export const digitsOnly=(value:string)=>value.replace(/\D/g,"");
 export function validateTaxIdentity(input:TaxIdentityInput,requireLegalName=true):TaxFieldErrors{
   const errors:TaxFieldErrors={};
   if(requireLegalName&&!input.legalBusinessName?.trim())errors.legalBusinessName="Enter the exact legal business name shown on the license or registration.";
-  if(input.ein?.trim()&&!/^\d{9}$/.test(digitsOnly(input.ein)))errors.ein="EIN must contain exactly 9 digits.";
-  if(input.azTptLicenseNumber?.trim()&&!/^\d{8}$/.test(digitsOnly(input.azTptLicenseNumber)))errors.azTptLicenseNumber="Arizona TPT license number must contain 8 digits.";
+  if(input.ein?.trim()&&!/^(?:\d{2}-?\d{7})$/.test(input.ein.trim()))errors.ein="EIN must contain exactly 9 digits.";
+  if(input.azTptLicenseNumber?.trim()&&!/^\d{8}$/.test(input.azTptLicenseNumber.trim()))errors.azTptLicenseNumber="Arizona TPT license number must contain 8 digits.";
   if(input.taxDocumentType==="Resale 5000A"&&!input.azTptLicenseNumber?.trim())errors.azTptLicenseNumber="Enter the TPT number shown on the resale certificate, or leave documentation as Undetermined until collected.";
   return errors;
 }
