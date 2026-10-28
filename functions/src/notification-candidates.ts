@@ -47,6 +47,7 @@ export function notificationCandidates(
   const result = new Map<string, NotificationCandidate>();
   for (const row of rows(after)) {
     if (typeof row.id !== "string" || !row.id || row.id.length > 200) continue;
+    if (row.testOnly === true) continue;
     const old = prior.get(row.id);
     let kind = "";
     if (sourcePath === "domains/commercial/fields/orders" && old &&

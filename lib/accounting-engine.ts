@@ -8,7 +8,7 @@ export const ACCOUNTING_STORAGE_KEY="momentum-accounting-v1";
 export type AccountingBasis="Not configured"|"Cash"|"Accrual";
 export type InventoryValuation="Not configured"|"FIFO"|"Weighted average";
 export type AccountType="Asset"|"Liability"|"Equity"|"Revenue"|"Expense";
-export type LedgerAccount={id:string;code:string;name:string;type:AccountType;active:boolean;systemRole?:"Cash"|"Accounts receivable"|"Sales revenue"|"Refunds / returns"|"Inventory"|"COGS"|"Payroll expense"|"Payroll liability"|"Expense payable"};
+export type LedgerAccount={id:string;code:string;name:string;type:AccountType;active:boolean;systemRole?:"Cash"|"Accounts receivable"|"Sales revenue"|"Refunds / returns"|"Inventory"|"COGS"|"Payroll expense"|"Payroll liability"|"Expense payable"|"Customer credits payable"};
 export type SourceEventType="Invoice issued"|"Payment cleared"|"Payment reversed"|"Credit applied"|"Refund settled"|"Inventory receipt"|"Inventory delivered"|"Inventory adjustment"|"Payroll released"|"Payroll voided"|"Expense paid";
 export type AccountingRule={id:string;eventType:SourceEventType;debitAccountId:string;creditAccountId:string;effectiveDate:string;active:boolean;memoTemplate:string};
 export type JournalLine={id:string;accountId:string;debit:number;credit:number;memo?:string};
@@ -43,6 +43,7 @@ export function createAccountingSeed():AccountingState{return{version:1,settings
   {id:"acct-payroll",code:"6100",name:"Payroll expense",type:"Expense",active:true,systemRole:"Payroll expense"},
   {id:"acct-payroll-liability",code:"2100",name:"Payroll liabilities",type:"Liability",active:true,systemRole:"Payroll liability"},
   {id:"acct-expense-payable",code:"2200",name:"Employee reimbursement payable",type:"Liability",active:true,systemRole:"Expense payable"},
+  {id:"acct-customer-credits",code:"2250",name:"Unapplied customer credits payable",type:"Liability",active:true,systemRole:"Customer credits payable"},
 ],rules:[],journals:[],reconciliations:[]};}
 
 export function journalBalanced(entry:JournalEntry){
@@ -121,7 +122,7 @@ export function buildPaymentReversalJournal(state:AccountingState,payment:Paymen
 }
 
 export function sourceEvents(commerce:CommerceState,inventory:InventoryLedgerState,payroll?:PayrollState,finance?:FinanceState):AccountingSourceEvent[]{const events:AccountingSourceEvent[]=[];
-  for(const invoice of commerce.invoices.filter((item)=>item.status!=="Void"&&finiteNonNegative(item.total)))events.push({id:`invoice:${invoice.id}`,type:"Invoice issued",date:businessDate(invoice.issuedAt),amount:invoice.total,description:`Invoice ${invoice.number}`,sourceId:invoice.id});
+  for(const invoice of commerce.invoices.filter((item)=>item.status!=="Void"&&item.accountingAdjustmentPosted!==true&&finiteNonNegative(item.total)))events.push({id:`invoice:${invoice.id}`,type:"Invoice issued",date:businessDate(invoice.issuedAt),amount:invoice.total,description:`Invoice ${invoice.number}`,sourceId:invoice.id});
   for(const payment of commerce.payments.filter((item)=>item.status==="Cleared"&&finitePositive(item.amount)))events.push({id:`payment:${payment.id}`,type:"Payment cleared",date:paymentSettlementDate(payment)??businessDate(payment.receivedAt),amount:payment.amount,description:`Cleared ${payment.method} payment`,sourceId:payment.id});
   for(const payment of commerce.payments.filter((item)=>item.status==="Reversed"&&finitePositive(item.amount)))events.push({id:`payment-reversal:${payment.id}`,type:"Payment reversed",date:businessDate(payment.reversedAt??payment.receivedAt),amount:payment.amount,description:`Reversed ${payment.method} payment${payment.reversalReason?` · ${payment.reversalReason}`:""}`,sourceId:payment.id});
   for(const credit of commerce.credits.filter((item)=>item.status==="Applied"&&finitePositive(item.amount))){const invoice=commerce.invoices.find((item)=>item.id===credit.invoiceId);events.push({id:`credit:${credit.id}`,type:"Credit applied",date:businessDate(credit.appliedAt??credit.approvedAt??credit.createdAt),amount:credit.amount,description:`Credit applied to ${invoice?.number??credit.invoiceId}`,sourceId:credit.id});}

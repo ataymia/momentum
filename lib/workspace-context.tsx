@@ -214,7 +214,11 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }));
     const appointmentIds = new Set(commercial.appointments.map((item) => item.id));
     const approvals = reconcileApprovals(commercial.approvals, base.data.approvals);
-    const orders = reconcileOrders(commercial.orders, baseOrders, approvals);
+    const allOrders = reconcileOrders(commercial.orders, baseOrders, approvals);
+    const qaIds=new Set(allOrders.filter(order=>order.testOnly).map(order=>order.id));
+    const internalQaVisible=base.currentUser?.role==="Administrator";
+    const orders=internalQaVisible?allOrders:allOrders.filter(order=>!order.testOnly);
+    const visibleApprovals=internalQaVisible?approvals:approvals.filter(approval=>!approval.recordId||!qaIds.has(approval.recordId));
     return {
       ...base.data,
       users,
@@ -224,10 +228,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       territories:commercial.territories,
       orders,
       appointments: [...commercial.appointments, ...base.data.appointments.filter((item) => !appointmentIds.has(item.id))],
-      approvals,
+      approvals:visibleApprovals,
       activities: [...commercial.activities, ...base.data.activities],
     };
-  }, [base.data, commercial, demoMode]);
+  }, [base.data, base.currentUser?.role, commercial, demoMode]);
 
   const currentUser = useMemo(() => demoMode && warehouseSession ? data.users.find((user) => user.id === warehouseUser.id) ?? null : base.currentUser ? data.users.find((user) => user.id === base.currentUser?.id) ?? null : null, [base.currentUser, data.users, demoMode, warehouseSession]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
@@ -603,9 +607,17 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
     if (!hasCompleteDeliveryAddress(account)) return null;
     if(currentUser.role==="Sales Representative"&&!documentTerritoryDeviation(account,currentUser.id,"placing an order"))return null;
-    const pricing=evaluatePartnerPricing(data,accountId);const price=pricing.currentPricePerCase;
-    if(!Number.isFinite(price)||!price||price<=0)return null;
+    const pricing=evaluatePartnerPricing(data,accountId);
     const supplied=input.lines?.length?input.lines:[{product:input.product?.trim()||data.inventory[0]?.product||"Golden Eagle",cases:input.cases??0,inventoryAvailableAtOrder:input.inventoryAvailableAtOrder,sourcePlacementId:input.sourcePlacementId}];
+    const selectedSkus=supplied.map((candidate)=>skuForProductName(candidate.product));
+    if(selectedSkus.some((sku)=>!sku?.active))return null;
+    const testOnly=selectedSkus.every((sku)=>sku?.testOnly===true);
+    if(selectedSkus.some((sku)=>Boolean(sku?.testOnly)!==testOnly))return null;
+    if(testOnly&&currentUser.role!=="Administrator")return null;
+    const testSkuId=testOnly?selectedSkus[0]?.id:undefined;
+    if(testOnly&&(selectedSkus.length!==1||!testSkuId))return null;
+    const price=testOnly?0:pricing.currentPricePerCase;
+    if(typeof price!=="number"||!Number.isFinite(price)||(!testOnly&&price<=0))return null;
     const grouped=new Map<string,EnhancedOrderLineInput>();
     for(const candidate of supplied){
       const sku=skuForProductName(candidate.product);
@@ -616,19 +628,19 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       grouped.set(key,{product,cases:(existing?.cases??0)+cases,inventoryAvailableAtOrder:Math.min(existing?.inventoryAvailableAtOrder??Number.POSITIVE_INFINITY,typeof candidate.inventoryAvailableAtOrder==="number"&&Number.isFinite(candidate.inventoryAvailableAtOrder)&&candidate.inventoryAvailableAtOrder>=0?candidate.inventoryAvailableAtOrder:0),sourcePlacementId:candidate.sourcePlacementId??existing?.sourcePlacementId});
     }
     const lineInputs=[...grouped.values()];if(!lineInputs.length)return null;
-    const id=uid("ord");const number=`GE-${Date.now().toString().slice(-9)}-${Math.floor(Math.random()*1000).toString().padStart(3,"0")}`;const creditedRepId=currentUser.role==="Sales Representative"?currentUser.id:undefined;
-    const priceBasis=pricing.effectiveTier?`Tier ${pricing.effectiveTier} · ${pricing.status}`:pricing.status;
+    const id=uid("ord");const number=`GE-${Date.now().toString().slice(-9)}-${Math.floor(Math.random()*1000).toString().padStart(3,"0")}`;const creditedRepId=!testOnly&&currentUser.role==="Sales Representative"?currentUser.id:undefined;
+    const priceBasis=testOnly?"INTERNAL QA - $0, NO REAL INVENTORY":pricing.effectiveTier?`Tier ${pricing.effectiveTier} · ${pricing.status}`:pricing.status;
     const lines=lineInputs.map((line,index)=>{
       const sourcePlacement=line.sourcePlacementId?data.placements.find((placement)=>placement.id===line.sourcePlacementId&&placement.accountId===accountId&&productsEquivalent(placement.product,line.product)):undefined;
       const available=Number.isFinite(line.inventoryAvailableAtOrder)?Number(line.inventoryAvailableAtOrder):0;
-      return{id:`${id}-line-${index+1}`,product:line.product,cases:line.cases,pricePerCase:price,amount:line.cases*price,inventoryAvailableAtOrder:available,sourcePlacementId:sourcePlacement?.id,lowStockApprovalRequired:available<50};
+      return{id:`${id}-line-${index+1}`,product:line.product,cases:line.cases,pricePerCase:price,amount:line.cases*price,inventoryAvailableAtOrder:available,sourcePlacementId:sourcePlacement?.id,lowStockApprovalRequired:!testOnly&&available<50};
     });
     const cases=lines.reduce((sum,line)=>sum+line.cases,0);const amount=lines.reduce((sum,line)=>sum+line.amount,0);const lowStock=lines.some((line)=>line.lowStockApprovalRequired);const available=Math.min(...lines.map((line)=>line.inventoryAvailableAtOrder??0));
     const product=lines.length===1?lines[0].product:"Multiple products";
-    const order:Order={id,number,accountId,cases,pricePerCase:price,amount,status:"Awaiting approval",placedAt:today(),ownerId:currentUser.id,creditedRepId,sourcePlacementId:lines.length===1?lines[0].sourcePlacementId:undefined,product,inventoryAvailableAtOrder:available,lowStockApprovalRequired:lowStock,priceBasis,paymentStatus:"Not invoiced",lines};
+    const order:Order={id,number,accountId,cases,pricePerCase:price,amount,status:"Awaiting approval",placedAt:today(),ownerId:currentUser.id,creditedRepId,testOnly:testOnly||undefined,testSkuId,sourcePlacementId:lines.length===1?lines[0].sourcePlacementId:undefined,product,inventoryAvailableAtOrder:available,lowStockApprovalRequired:lowStock,priceBasis,paymentStatus:"Not invoiced",lines};
     const lineSummary=lines.map((line)=>`${line.cases} ${line.product}`).join(" · ");
     const approval:Approval={id:uid("apr"),type:lowStock?"Low stock sale":"Order",title:lowStock?`Low-stock approval · ${number}`:`Review order ${number}`,detail:`${lineSummary} · ${cases} total cases · ${account.locationName??account.name}`,requestedBy:currentUser.name,requesterId:currentUser.id,recordId:id,team:currentUser.role==="Customer"?"Sales":currentUser.team,submittedAt:now(),dueAt:new Date(Date.now()+86400000).toISOString(),priority:lowStock?"Urgent":"High",status:"Pending"};
-    const nextCommercial:CommercialState={...commercial,orders:[order,...commercial.orders],approvals:[approval,...commercial.approvals],accountPatches:{...commercial.accountPatches,[accountId]:{...(commercial.accountPatches[accountId]??{}),stage:"Opening order",lastActivity:`Order request ${number} submitted`}},activities:[{id:uid("act-order"),accountId,type:"order",title:lowStock?"Low-stock order submitted":"Order submitted",detail:`${number} · ${lineSummary} · ${cases} total cases · ${price.toFixed(2)}/case.`,at:now(),userId:currentUser.id},...commercial.activities]};
+    const nextCommercial:CommercialState={...commercial,orders:[order,...commercial.orders],approvals:[approval,...commercial.approvals],accountPatches:testOnly?commercial.accountPatches:{...commercial.accountPatches,[accountId]:{...(commercial.accountPatches[accountId]??{}),stage:"Opening order",lastActivity:`Order request ${number} submitted`}},activities:testOnly?commercial.activities:[{id:uid("act-order"),accountId,type:"order",title:lowStock?"Low-stock order submitted":"Order submitted",detail:`${number} · ${lineSummary} · ${cases} total cases · ${price.toFixed(2)}/case.`,at:now(),userId:currentUser.id},...commercial.activities]};
     // Persist immediately. The UI will not call this submitted until Firestore acknowledges this exact key.
     momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
     setCommercial(nextCommercial);
@@ -646,24 +658,24 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const account=data.accounts.find((item)=>item.id===order.accountId);
     if(!account||!accountIsVisible(data,currentUser,account))return{ok:false,message:"The linked account is outside your access scope."};
     const price=order.pricePerCase;
-    if(!Number.isFinite(price)||price<=0)return{ok:false,message:"The existing approved order price is invalid. Correct account pricing before editing."};
+    if(!Number.isFinite(price)||(!order.testOnly&&price<=0)||(order.testOnly&&price!==0))return{ok:false,message:"The existing approved order price is invalid. Correct account pricing before editing."};
     const supplied=input.lines?.length?input.lines:[{product:input.product?.trim()||order.product||"Golden Eagle",cases:input.cases??order.cases,inventoryAvailableAtOrder:input.inventoryAvailableAtOrder,sourcePlacementId:input.sourcePlacementId}];
     const grouped=new Map<string,EnhancedOrderLineInput>();
     for(const candidate of supplied){
-      const sku=skuForProductName(candidate.product);if(!sku?.active)return{ok:false,message:"Every edited line must use an active approved SKU."};
+      const sku=skuForProductName(candidate.product);if(!sku?.active||Boolean(sku.testOnly)!==Boolean(order.testOnly)||(order.testOnly&&sku.id!==order.testSkuId))return{ok:false,message:"Edited order products must stay within their approved test or sellable catalog."};
       const product=sku.description;const cases=Number(candidate.cases);if(!Number.isInteger(cases)||cases<1)return{ok:false,message:"Every edited order line needs a whole-number case quantity of at least 1."};
       const key=product.toLowerCase();const existing=grouped.get(key);
       grouped.set(key,{product,cases:(existing?.cases??0)+cases,inventoryAvailableAtOrder:Math.min(existing?.inventoryAvailableAtOrder??Number.POSITIVE_INFINITY,typeof candidate.inventoryAvailableAtOrder==="number"&&Number.isFinite(candidate.inventoryAvailableAtOrder)&&candidate.inventoryAvailableAtOrder>=0?candidate.inventoryAvailableAtOrder:0),sourcePlacementId:candidate.sourcePlacementId??existing?.sourcePlacementId});
     }
     const lineInputs=[...grouped.values()];if(!lineInputs.length)return{ok:false,message:"Add at least one product line."};
-    const lines=lineInputs.map((line,index)=>{const sourcePlacement=line.sourcePlacementId?data.placements.find((placement)=>placement.id===line.sourcePlacementId&&placement.accountId===order.accountId&&productsEquivalent(placement.product,line.product)):undefined;const available=Number.isFinite(line.inventoryAvailableAtOrder)?Number(line.inventoryAvailableAtOrder):0;return{id:`${id}-line-${index+1}`,product:line.product,cases:line.cases,pricePerCase:price,amount:line.cases*price,inventoryAvailableAtOrder:available,sourcePlacementId:sourcePlacement?.id,lowStockApprovalRequired:available<50};});
+    const lines=lineInputs.map((line,index)=>{const sourcePlacement=line.sourcePlacementId?data.placements.find((placement)=>placement.id===line.sourcePlacementId&&placement.accountId===order.accountId&&productsEquivalent(placement.product,line.product)):undefined;const available=Number.isFinite(line.inventoryAvailableAtOrder)?Number(line.inventoryAvailableAtOrder):0;return{id:`${id}-line-${index+1}`,product:line.product,cases:line.cases,pricePerCase:price,amount:line.cases*price,inventoryAvailableAtOrder:available,sourcePlacementId:sourcePlacement?.id,lowStockApprovalRequired:!order.testOnly&&available<50};});
     const cases=lines.reduce((sum,line)=>sum+line.cases,0);const amount=lines.reduce((sum,line)=>sum+line.amount,0);const lowStock=lines.some((line)=>line.lowStockApprovalRequired);const available=Math.min(...lines.map((line)=>line.inventoryAvailableAtOrder??0));const product=lines.length===1?lines[0].product:"Multiple products";const lineSummary=lines.map((line)=>`${line.cases} ${line.product}`).join(" · ");
     const stamp=now();const adminApprovedAmendment=currentUser.role==="Administrator"&&order.status==="Approved";const nextStatus:OrderStatus=adminApprovedAmendment?"Approved":"Awaiting approval";
     const revisedOrder:Order={...order,cases,amount,status:nextStatus,product,inventoryAvailableAtOrder:available,lowStockApprovalRequired:lowStock,sourcePlacementId:lines.length===1?lines[0].sourcePlacementId:undefined,lines};
     const approval:Approval={id:uid(adminApprovedAmendment?"apr-amend":"apr-resubmit"),type:lowStock?"Low stock sale":"Order",title:adminApprovedAmendment?`Order amendment approved · ${order.number}`:lowStock?`Low-stock approval · ${order.number}`:`Review order ${order.number}`,detail:`${lineSummary} · ${cases} total cases · ${account.locationName??account.name}`,requestedBy:currentUser.name,requesterId:currentUser.id,recordId:id,team:currentUser.role==="Customer"?"Sales":currentUser.team,submittedAt:stamp,dueAt:new Date(Date.now()+86400000).toISOString(),priority:lowStock?"Urgent":"High",status:adminApprovedAmendment?"Approved":"Pending",...(adminApprovedAmendment?{decidedBy:currentUser.id,decidedAt:stamp}:{})};
     const superseded=commercial.approvals.map((item)=>item.recordId===id&&["Order","Low stock sale"].includes(item.type)&&item.status==="Pending"?{...item,status:"Returned" as const,decidedBy:currentUser.id,decidedAt:stamp,returnReason:"Superseded by an edited order version."}:item);
     const action=adminApprovedAmendment?"Order amended after approval":order.status==="Draft"?"Returned order corrected and resubmitted":"Order edited and resubmitted";
-    const nextCommercial:CommercialState={...commercial,orders:commercial.orders.map((item)=>item.id===id?revisedOrder:item),approvals:[approval,...superseded],accountPatches:{...commercial.accountPatches,[order.accountId]:{...(commercial.accountPatches[order.accountId]??{}),lastActivity:`${order.number} edited by ${currentUser.name}`}},activities:[{id:uid("act-order-edit"),accountId:order.accountId,type:"order",title:action,detail:`${order.number} changed by ${currentUser.name}: ${lineSummary} · ${cases} total cases · ${price.toFixed(2)}/case.${adminApprovedAmendment?" Administrator amendment remains approved.":" Administrator approval is required before fulfillment."}`,at:stamp,userId:currentUser.id},...commercial.activities]};
+    const nextCommercial:CommercialState={...commercial,orders:commercial.orders.map((item)=>item.id===id?revisedOrder:item),approvals:[approval,...superseded],accountPatches:order.testOnly?commercial.accountPatches:{...commercial.accountPatches,[order.accountId]:{...(commercial.accountPatches[order.accountId]??{}),lastActivity:`${order.number} edited by ${currentUser.name}`}},activities:order.testOnly?commercial.activities:[{id:uid("act-order-edit"),accountId:order.accountId,type:"order",title:action,detail:`${order.number} changed by ${currentUser.name}: ${lineSummary} · ${cases} total cases · ${price.toFixed(2)}/case.${adminApprovedAmendment?" Administrator amendment remains approved.":" Administrator approval is required before fulfillment."}`,at:stamp,userId:currentUser.id},...commercial.activities]};
     momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));setCommercial(nextCommercial);window.setTimeout(()=>void momentumStorage.flush(),0);return{ok:true,status:nextStatus};
   };
 
@@ -712,7 +724,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       base.setOrderStatus(id, status);
       return;
     }
-    if (!currentUser || !canAdvanceFulfillment(currentUser) || nextFulfillment[order.status] !== status) return;
+    if (!currentUser || order.testOnly || !canAdvanceFulfillment(currentUser) || nextFulfillment[order.status] !== status) return;
     const nextCommercial:CommercialState={...commercial,orders:commercial.orders.map((item)=>item.id===id?{...item,status,paymentStatus:status==="Delivered"&&item.paymentStatus==="Not invoiced"?"Open":item.paymentStatus}:item)};
     momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));
     setCommercial(nextCommercial);

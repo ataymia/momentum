@@ -1007,3 +1007,74 @@ describe("private account nicknames",()=>{
     await assertFails(setDoc(pathOwned,{accountId:"acc-private-invalid",nickname:"okay",ein:"123456789"}));
   });
 });
+
+describe("live internal QA products and virtual inventory",()=>{
+ test("only Administrator reads live QA records; nobody can write them from browser",async()=>{
+  for(const collectionName of ["liveTestProducts","liveTestInventory","liveTestReceipts",
+    "liveTestOrderReservations","liveTestOrderEvents"]){
+   const path=collectionName+"/qa-live-widget-100";
+   await env.withSecurityRulesDisabled(async context=>{
+    await setDoc(doc(context.firestore(),path),{id:"qa-live-widget-100",testOnly:true});
+   });
+   await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+   for(const who of [REP,MANAGER,OPS,MARKETING,null]){
+    await assertFails(getDoc(doc(dbFor(who),path)));
+   }
+   for(const who of [ADMIN,REP,MANAGER,OPS,MARKETING,null]){
+    await assertFails(setDoc(doc(dbFor(who),path),{id:"forged",onHand:99999}));
+   }
+  }
+  for(const who of [ADMIN,REP,MANAGER,OPS,MARKETING,null]){
+   const name=doc(dbFor(who),"liveTestProductNames","name-hash-100");
+   await assertFails(getDoc(name));
+   await assertFails(setDoc(name,{skuId:"qa-live-widget-100"}));
+  }
+ });
+});
+
+describe("historical correction and isolated sandbox authority",()=>{
+  test("correction requests and invoice reissues are readable only by admin, writable by server only",async()=>{
+    for(const [collectionName,docId] of [
+      ["deliveryCorrectionRequests","request-test"],
+      ["deliveryCorrectionAudit","audit-test"],
+      ["deliveryInvoiceReissues","reissue-test"],
+      ["customerCreditDue","credit-test"],
+    ]){
+      const admin=doc(dbFor(ADMIN),collectionName,docId);
+      await assertSucceeds(getDoc(admin));
+      await assertFails(getDoc(doc(dbFor(REP),collectionName,docId)));
+      await assertFails(setDoc(admin,{id:docId,state:"Applied"}));
+    }
+    await assertFails(getDoc(doc(dbFor(ADMIN),"deliveryCorrectionActive","acc-1")));
+  });
+
+  test("sandbox products are created by trusted server only, with admin-only reads",async()=>{
+    const skuId="qa-sku-rules";
+    const product={id:skuId,description:"QA Test Widget",shortName:"Widget",
+      casePack:24,active:true,environment:"sandbox",createdBy:ADMIN,createdAt:new Date().toISOString()};
+    const admin=doc(dbFor(ADMIN),"sandboxProducts",skuId);
+    await assertFails(setDoc(admin,product));
+    await env.withSecurityRulesDisabled(async context=>{
+      await setDoc(doc(context.firestore(),"sandboxProducts",skuId),product);
+    });
+    await assertSucceeds(getDoc(admin));
+    await assertFails(getDoc(doc(dbFor(REP),"sandboxProducts",skuId)));
+    await assertFails(setDoc(doc(dbFor(REP),"sandboxProducts","qa-rep"),{...product,id:"qa-rep",createdBy:REP}));
+    await assertFails(setDoc(doc(dbFor(ADMIN),"sandboxProducts","qa-production"),{...product,id:"qa-production",environment:"production"}));
+    await assertFails(setDoc(admin,{...product,description:"Changed"}));
+    await assertFails(deleteDoc(admin));
+    for(const uid of [ADMIN,REP,MANAGER,OPS,MARKETING,null]){
+      await assertFails(setDoc(doc(dbFor(uid),"sandboxProductNames","test-name-hash"),{skuId}));
+      await assertFails(getDoc(doc(dbFor(uid),"sandboxProductNames","test-name-hash")));
+    }
+  });
+
+  test("sandbox stock, orders and simulated invoices are server-only records",async()=>{
+    for(const name of ["sandboxInventory","sandboxOrders","sandboxInvoices","sandboxStockReceipts"]){
+      const owned=doc(dbFor(ADMIN),name,"qa-sku-rules");
+      await assertSucceeds(getDoc(owned));
+      await assertFails(getDoc(doc(dbFor(REP),name,"qa-sku-rules")));
+      await assertFails(setDoc(owned,{onHand:99999,skuId:"ge-original-250ml-24"}));
+    }
+  });
+});

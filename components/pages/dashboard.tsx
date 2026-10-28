@@ -14,8 +14,8 @@ const bulletinTone = (priority: Bulletin["priority"]) => priority === "Urgent" ?
 function CustomerDashboard() {
   const { data, scope, currentUser, navigate } = useWorkspace();
   const account = scope.accounts[0];
-  const open = scope.orders.filter(order => !["Delivered","Paid","Cancelled"].includes(order.status));
-  const recent = [...scope.orders].sort((a,b) => b.placedAt.localeCompare(a.placedAt)).slice(0,4);
+  const open = scope.orders.filter(order => !order.testOnly && !["Delivered","Paid","Cancelled"].includes(order.status));
+  const recent = scope.orders.filter(order=>!order.testOnly).sort((a,b) => b.placedAt.localeCompare(a.placedAt)).slice(0,4);
   const delivered = recent.find(order => ["Delivered","Paid"].includes(order.status));
   const openOrder = (orderId: string) => { window.sessionStorage.setItem("momentum-focus-record", orderId); navigate("orders"); };
   return <div className="page page--dashboard page--customer-home">
@@ -34,7 +34,7 @@ export function DashboardPage() {
   const today = arizonaDateKey();
   const appointments = scope.appointments.filter(item => item.date === today).sort((a,b) => a.startTime.localeCompare(b.startTime));
   const placements = scope.placements.filter(item => item.status !== "Healthy");
-  const orders = scope.orders.filter(item => !["Delivered","Paid"].includes(item.status));
+  const orders = scope.orders.filter(item => !item.testOnly && !["Delivered","Paid"].includes(item.status));
   const approvals = scope.approvals.filter(item => item.status === "Pending");
   const available = scope.inventory.reduce((sum,lot) => sum + lot.available,0);
   const held = scope.inventory.filter(lot => lot.status === "Quality hold").reduce((sum,lot) => sum + lot.onHand,0);
@@ -42,7 +42,7 @@ export function DashboardPage() {
   const dormantCutoff=addCalendarDays(today,-90);
   const accountReviewReason=(account:(typeof scope.accounts)[number])=>{
     if(account.programPricingExpirationDate && account.programPricingExpirationDate>=today && account.programPricingExpirationDate<=priceReviewEnd)return "Program pricing expiring";
-    const lastOrder=scope.orders.filter(order=>order.accountId===account.id && order.status!=="Cancelled").map(order=>order.placedAt.length===10?order.placedAt:arizonaDateKey(order.placedAt)).sort().at(-1);
+    const lastOrder=scope.orders.filter(order=>!order.testOnly && order.accountId===account.id && order.status!=="Cancelled").map(order=>order.placedAt.length===10?order.placedAt:arizonaDateKey(order.placedAt)).sort().at(-1);
     if(lastOrder && lastOrder<=dormantCutoff)return "No order in 90+ days";
     return account.health==="At risk"?"At-risk account":undefined;
   };

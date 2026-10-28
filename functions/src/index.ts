@@ -1,3 +1,4 @@
+/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,space-before-blocks,keyword-spacing,curly,brace-style,semi-spacing,arrow-parens,one-var,indent,operator-linebreak,space-before-function-paren */
 import {onRequest} from "firebase-functions/v2/https";
 import {setGlobalOptions} from "firebase-functions";
 import {defineString} from "firebase-functions/params";
@@ -17,6 +18,9 @@ import {
   commitRepSelfDelivery,
   RepSelfDeliveryError,
 } from "./rep-self-delivery";
+import {submitDeliveryCorrection,approveDeliveryCorrection,closeDeliveryCorrection,listDeliveryCorrections,DeliveryCorrectionError} from "./delivery-correction";
+import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
+import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -1571,6 +1575,141 @@ export const repSelfDelivery = onRequest(
   },
 );
 
+/** Proposed delivered-order correction only; no inventory or invoice mutation. */
+export const submitDeliveredOrderCorrection=onRequest({
+  cors:true,region:"us-central1",
+},async (request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await submitDeliveryCorrection(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof DeliveryCorrectionError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("submitDeliveredOrderCorrection failed",error);
+    json(response,502,{ok:false,message:"Correction was not submitted. Verify the order before retry."});
+  }
+});
+
+/** Another active Administrator reviews and applies a committed revision. */
+export const approveDeliveredOrderCorrection=onRequest({
+  cors:true,region:"us-central1",
+},async (request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await approveDeliveryCorrection(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof DeliveryCorrectionError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("approveDeliveredOrderCorrection failed",error);
+    json(response,502,{ok:false,message:"Correction was not applied. Check its saved state before retry."});
+  }
+});
+
+/** Read only a selected order's newest correction records. */
+export const listDeliveredOrderCorrections=onRequest({
+  cors:true,region:"us-central1",
+},async(request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await listDeliveryCorrections(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof DeliveryCorrectionError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("listDeliveredOrderCorrections failed",error);
+    json(response,502,{ok:false,message:"Correction history could not be loaded."});
+  }
+});
+
+/** Close a pending correction, preserving the history and releasing its order lock. */
+export const closeDeliveredOrderCorrection=onRequest({
+  cors:true,region:"us-central1",
+},async(request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await closeDeliveryCorrection(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof DeliveryCorrectionError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("closeDeliveredOrderCorrection failed",error);
+    json(response,502,{ok:false,message:"Correction remains pending. Refresh before retrying."});
+  }
+});
+
+/** Create a live internal QA SKU or advance a zero-dollar test order.
+ * Server writes only virtual QA stock and the real order status shard. */
+export const liveTestProductWorkflow=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await operateLiveTestProduct(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof LiveTestProductError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("liveTestProductWorkflow failed",error);
+    json(response,502,{ok:false,message:"QA workflow not confirmed. Reload before retrying."});
+  }
+});
+
+/** Run a wholly separated test SKU, stock, order or delivery operation. */
+export const sandboxWorkflow=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await commitSandboxAction(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof SandboxWorkflowError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("sandboxWorkflow failed",error);
+    json(response,502,{ok:false,message:"Sandbox action was not committed. Refresh before retrying."});
+  }
+});
+
 export {
   captureOrderNotifications,
   captureDeliveryNotifications,
@@ -1590,6 +1729,7 @@ export {
   retrySignedInvoiceWhenInvoiceReady,
   retrySignedInvoiceWhenCustomerUpdated,
   retrySignedInvoiceWhenBillingPatchUpdated,
+  queueAmendedInvoiceOnCorrection,
 } from "./delivery-invoice-email";
 
 export {

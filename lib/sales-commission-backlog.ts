@@ -42,8 +42,8 @@ export function reviewSalesCommissionBacklog(
   data:WorkspaceData,
   commerce:CommerceState,
 ):CommissionBacklogEntry[]{
-  const invoiceByOrder=new Map(commerce.invoices.map((inv)=>[inv.orderId,inv]));
-  return data.orders.map((order)=>{
+  const invoiceByOrder=new Map(commerce.invoices.filter(inv=>inv.status!=="Void").map((inv)=>[inv.orderId,inv]));
+  return data.orders.filter((order)=>!(order as Order & {testOnly?:boolean}).testOnly).map((order)=>{
     const invoice=invoiceByOrder.get(order.id);
     const repId=eligibleRep(data,order);
     // Only actually cleared payment allocations less settled refunds are counted.

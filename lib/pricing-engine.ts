@@ -34,7 +34,7 @@ const isPaid = (order: WorkspaceData["orders"][number]) => order.paymentStatus =
 
 export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, asOf = new Date()): PartnerPricingEvaluation {
   const account = data.accounts.find((item) => item.id === accountId);
-  const orders = data.orders
+  const orders = data.orders.filter(order=>!order.testOnly)
     .filter((order) => order.accountId === accountId)
     .sort((a, b) => a.placedAt.localeCompare(b.placedAt) || a.id.localeCompare(b.id));
   const paidOrders = orders.filter(isPaid);

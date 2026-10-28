@@ -96,6 +96,11 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
       setPrintNotice(`Add the licensed legal business name to the account profile before printing ${missing.length} invoice(s).`);
       return;
     }
+    const archived=unique.filter(id=>invoices.find(invoice=>invoice.id===id)?.status==="Void");
+    if(archived.length){
+      setPrintNotice("Voided invoices are historical records. Print the active amended revision instead.");
+      return;
+    }
     if (typeof window.print !== "function") {
       setPrintNotice("This browser does not expose a print dialog. Open the invoice preview in a browser that supports printing.");
       return;
@@ -115,7 +120,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
     const placedBy = order ? data.users.find((user) => user.id === order.ownerId) : undefined;
     const location = data.accounts.find((item) => item.id === invoice.accountId);
     const customer = location ? customerForLocation(data, location) : undefined;
-    const lines = order ? orderLinesFor(order) : [];
+    const lines = invoice.linesSnapshot?.length ? invoice.linesSnapshot : order ? orderLinesFor(order) : [];
     const deliveryTask = order ? taskForOrder(order.id) : undefined;
     const deliverySignature = deliveryTask?.signature;
     const adminConfirmedDelivery = !deliverySignature &&

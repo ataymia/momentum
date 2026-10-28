@@ -12,6 +12,8 @@ export type ProductSku = {
   /** Flo's historical purchase-order quantity. Reference only, never a current inventory balance. */
   historicalPurchaseOrderCases?: number;
   active: boolean;
+  /** QA master record: available only in administrator test orders. */
+  testOnly?: boolean;
 };
 
 export const GOLDEN_EAGLE_SKUS: ProductSku[] = [
@@ -22,6 +24,25 @@ export const GOLDEN_EAGLE_SKUS: ProductSku[] = [
   { id: "ge-blue-zero-250ml-24", shortName: "Blue", driverNickname: "Blue", canSizeOz: 8.4, description: "0.25L (8.4oz) Golden Eagle Blue (Zero) Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 540, active: true },
   { id: "ge-strawberry-250ml-24", shortName: "Strawberry", driverNickname: "Strawberry", canSizeOz: 8.4, description: "0.25L (8.4oz) Golden Eagle Strawberry Edition (24pack)", casePack: 24, historicalPurchaseOrderCases: 0, active: true },
 ];
+
+/** Ephemeral view of Firestore's server-owned live QA product master.
+ * Only administrator sessions load this list. Never write it to real inventory. */
+let liveTestSkus: ProductSku[] = [];
+export function registerLiveTestSkus(items: Array<{id:string;description:string;shortName:string;casePack:number;active:boolean;testOnly:boolean}>){
+  liveTestSkus=items.filter((item)=>item.testOnly===true&&item.active===true&&
+    item.id.startsWith("qa-live-")&&/^(?:QA|TEST)[ -]/i.test(item.description)&&item.casePack>0)
+    .map((item)=>({id:item.id,description:item.description,
+      shortName:item.shortName,driverNickname:item.shortName,
+      canSizeOz:0,casePack:item.casePack,active:true,testOnly:true}));
+}
+export function activeProductSkus(includeQa=false):ProductSku[]{
+  return [...GOLDEN_EAGLE_SKUS.filter((sku)=>sku.active),
+    ...(includeQa?liveTestSkus:[])];
+}
+export function liveTestSkuByName(value:string):ProductSku|undefined{
+  const normalized=value.trim().toLowerCase();
+  return liveTestSkus.find((item)=>item.description.toLowerCase()===normalized);
+}
 
 const aliases = new Map<string, string>([
   ["golden eagle", "ge-original-250ml-24"],
@@ -45,10 +66,12 @@ const aliases = new Map<string, string>([
 const key = (value: string) => value.trim().toLowerCase().replace(/[·]/g, " ").replace(/\s+/g, " ");
 
 export function skuById(id: string) {
-  return GOLDEN_EAGLE_SKUS.find((sku) => sku.id === id);
+  return [...GOLDEN_EAGLE_SKUS,...liveTestSkus].find((sku) => sku.id === id);
 }
 
 export function skuForProductName(value: string) {
+  const testSku=liveTestSkuByName(value);
+  if(testSku)return testSku;
   const normalized = key(value);
   const exact = GOLDEN_EAGLE_SKUS.find((sku) => key(sku.description) === normalized || key(sku.shortName) === normalized);
   if (exact) return exact;
