@@ -4,11 +4,13 @@ import {createHash} from "node:crypto";
 import test from "node:test";
 import * as mailPolicy from "../functions/src/resend-mail-policy";
 import * as pdfModule from "../functions/src/signed-invoice-pdf";
-import {invoicePlacedByName} from "../functions/src/invoice-placer-name";
-import {invoicePlacerLabel} from "../lib/invoice-placer-name";
+import * as placerModule from "../functions/src/invoice-placer-name";
+import * as clientPlacerModule from "../lib/invoice-placer-name";
 
 const pdfExports=(pdfModule as unknown as {default?:typeof pdfModule}).default??pdfModule;
 const buildSignedInvoicePdf=pdfExports.buildSignedInvoicePdf;
+const invoicePlacedByName=((placerModule as unknown as {default?:typeof placerModule}).default??placerModule).invoicePlacedByName;
+const invoicePlacerLabel=((clientPlacerModule as unknown as {default?:typeof clientPlacerModule}).default??clientPlacerModule).invoicePlacerLabel;
 const policy=(mailPolicy as unknown as {default?:typeof mailPolicy}).default??
   mailPolicy;
 
