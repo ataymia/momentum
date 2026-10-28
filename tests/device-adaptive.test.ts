@@ -177,7 +177,9 @@ test("new full accounts use only licensed canonical name, with independent priva
   const accounts=read("components/pages/accounts.tsx");
   const base=read("lib/workspace-context-v5.tsx");
   assert.match(accounts,/name:legalName,customerName:legalName,locationName:legalName/);
-  assert.match(accounts,/Name matches the business license/);
+  assert.match(accounts,/placeholder="Same as business license"/);
+  assert.match(accounts,/<Field label="Legal business name" error=\{createErrors\.legalBusinessName\}><input required/);
+  assert.doesNotMatch(accounts,/licenseConfirmed|editLicenseConfirmed|Name matches the business license|Updated legal name matches the business license/);
   assert.match(accounts,/Personal nickname \(optional\)/);
   assert.match(accounts,/savePrivateAccountNickname\(currentUser\.id,id,newNickname\)/);
   assert.match(accounts,/nicknames\.get\(account\.id\)\|\|account\.name/);
