@@ -251,7 +251,8 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
     const revisions=existing.filter(inv=>text(inv.orderId)===activeDocumentId&&
       text(inv.id)!==originalInvoiceId).length;
     const revisionNumber=revisions+1;
-    const newInvoiceId=originalInvoiceId+"-r"+revisionNumber;
+    const invoiceRootId=originalInvoiceId.replace(/(?:-r\d+)+$/,"");
+    const newInvoiceId=invoiceRootId+"-r"+revisionNumber;
     if(existing.some(inv=>text(inv.id)===newInvoiceId))
       fail(409,"Invoice revision ID collision.");
     const stamped=now();
