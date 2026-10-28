@@ -13,8 +13,9 @@ export function placedOrderDate(order:Order):string{
 }
 export function orderIsDelivered(order:Order,deliveredTask:boolean):boolean{
   void deliveredTask;
-  // The persisted order state is canonical; driver tasks must reconcile through setOrderStatus.
-  return order.status==="Delivered";
+  // Canonical Paid is a terminal post-delivery state; paymentStatus alone never proves delivery.
+  // Driver tasks must still reconcile through setOrderStatus.
+  return order.status==="Delivered"||order.status==="Paid";
 }
 export function orderIsFullyPaid(order:Order,commerce:CommerceState):boolean{
   const invoice=commerce.invoices.find((row)=>row.orderId===order.id);
