@@ -56,7 +56,7 @@ test("delivered reduction moves only verified lot stock from customer custody in
     reservations:[],
     orderId:"order-1",
     movements:[{lotId:"lot-one",fromNodeId:"node-warehouse-main",
-      toNodeId:"node-account-acc-1",quantity:10,type:"Delivery"}],
+      toNodeId:"node-account-acc-1",quantity:10,type:"Delivery",relatedOrderId:"order-1"}],
     adjustments:[{lotId:"lot-one",product:"Golden Eagle Original",quantity:2,
       fromNodeId:"node-account-acc-1",toNodeId:"node-quality-hold",
       evidenceReference:"confirmed-physical-return"}],
@@ -76,6 +76,15 @@ test("delivered reduction moves only verified lot stock from customer custody in
     {...entry.adjustments[0],lotId:"missing"}]}).ok,false);
   assert.equal(planDeliveredInventoryCorrection({...entry,adjustments:[
     {...entry.adjustments[0],quantity:11}]}).ok,false);
+  // Customer may hold another order's cases of the same SKU/lot.
+  // Existing customer custody is not automatically attributable to this order.
+  const wrongOrder={...entry,movements:[
+    {...entry.movements[0],relatedOrderId:"another-order"},
+  ]};
+  assert.equal(planDeliveredInventoryCorrection(wrongOrder).ok,false);
+  const invalidHold={...entry,nodes:entry.nodes.map(n=>n.id==="node-quality-hold"?
+    {...n,type:"Warehouse"}:n)};
+  assert.equal(planDeliveredInventoryCorrection(invalidHold).ok,false);
 });
 
 test("delivered additions must come from verified company custody",()=>{
@@ -140,4 +149,24 @@ test("inventory normalization preserves fulfilled 10-case reservation after a 10
   assert.equal(result.reservations.length,1);
   assert.equal(result.reservations[0].status,"Fulfilled");
   assert.equal(orderDeliveryQuantity(result,"order-1"),8);
+});
+
+
+test("duplicate order lines with the same SKU aggregate before inventory correction",()=>{
+  const product="Golden Eagle Original";
+  const original=[{product,cases:4,pricePerCase:24},{product,cases:6,pricePerCase:24}];
+  const proposed=[{product,cases:3,pricePerCase:24},{product,cases:5,pricePerCase:24}];
+  const input={accountId:"acc-1",orderId:"order-1",original,proposed,
+    lots:[{id:"lot-one",product,status:"Available"}],
+    nodes:[{id:"node-account-acc-1",type:"Customer"},{id:"node-quality-hold",type:"Quality hold"}],
+    movements:[{lotId:"lot-one",fromNodeId:"node-warehouse-main",
+      toNodeId:"node-account-acc-1",quantity:10,type:"Delivery",relatedOrderId:"order-1"}],
+    reservations:[],
+    adjustments:[{lotId:"lot-one",product,quantity:2,
+      fromNodeId:"node-account-acc-1",toNodeId:"node-quality-hold",
+      evidenceReference:"signed-return-physical-proof"}],
+  };
+  const result=planDeliveredInventoryCorrection(input);
+  assert.equal(result.ok,true);
+  if(result.ok)assert.equal(result.movements.reduce((sum,r)=>sum+r.quantity,0),2);
 });
