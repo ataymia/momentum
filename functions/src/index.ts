@@ -17,7 +17,7 @@ import {
   commitRepSelfDelivery,
   RepSelfDeliveryError,
 } from "./rep-self-delivery";
-import {submitDeliveryCorrection,approveDeliveryCorrection,DeliveryCorrectionError} from "./delivery-correction";
+import {submitDeliveryCorrection,approveDeliveryCorrection,closeDeliveryCorrection,DeliveryCorrectionError} from "./delivery-correction";
 import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
 
 initializeApp();
@@ -1616,6 +1616,29 @@ export const approveDeliveredOrderCorrection=onRequest({
     }
     console.error("approveDeliveredOrderCorrection failed",error);
     json(response,502,{ok:false,message:"Correction was not applied. Check its saved state before retry."});
+  }
+});
+
+/** Close a pending correction, preserving the history and releasing its order lock. */
+export const closeDeliveredOrderCorrection=onRequest({
+  cors:true,region:"us-central1",
+},async(request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await closeDeliveryCorrection(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof DeliveryCorrectionError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("closeDeliveredOrderCorrection failed",error);
+    json(response,502,{ok:false,message:"Correction remains pending. Refresh before retrying."});
   }
 });
 
