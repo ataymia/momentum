@@ -370,6 +370,14 @@ service cloud.firestore {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;
     }
+    match /sandboxInvoices/{invoiceId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /sandboxStockReceipts/{receiptId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
 
     // Backend-only immutable event history for account-profile edits.
     match /accountProfileEditEvents/{eventId} {
