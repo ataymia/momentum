@@ -1008,6 +1008,30 @@ describe("private account nicknames",()=>{
   });
 });
 
+describe("live internal QA products and virtual inventory",()=>{
+ test("only Administrator reads live QA records; nobody can write them from browser",async()=>{
+  for(const collectionName of ["liveTestProducts","liveTestInventory","liveTestReceipts",
+    "liveTestOrderReservations","liveTestOrderEvents"]){
+   const path=collectionName+"/qa-live-widget-100";
+   await env.withSecurityRulesDisabled(async context=>{
+    await setDoc(doc(context.firestore(),path),{id:"qa-live-widget-100",testOnly:true});
+   });
+   await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+   for(const who of [REP,MANAGER,OPS,MARKETING,null]){
+    await assertFails(getDoc(doc(dbFor(who),path)));
+   }
+   for(const who of [ADMIN,REP,MANAGER,OPS,MARKETING,null]){
+    await assertFails(setDoc(doc(dbFor(who),path),{id:"forged",onHand:99999}));
+   }
+  }
+  for(const who of [ADMIN,REP,MANAGER,OPS,MARKETING,null]){
+   const name=doc(dbFor(who),"liveTestProductNames","name-hash-100");
+   await assertFails(getDoc(name));
+   await assertFails(setDoc(name,{skuId:"qa-live-widget-100"}));
+  }
+ });
+});
+
 describe("historical correction and isolated sandbox authority",()=>{
   test("correction requests and invoice reissues are readable only by admin, writable by server only",async()=>{
     for(const [collectionName,docId] of [
