@@ -217,10 +217,10 @@ test("branded PDF paginates all order lines rather than silently discarding any"
 
 test("invoice sender reads receipts, credits and refunds from persisted ledgers",()=>{
   const source=readFileSync("functions/src/delivery-invoice-email.ts","utf8");
-  for(const key of ["payments","allocations","credits","refunds","users"]){
-    assert.match(source,new RegExp("domains/"+
-      (key==="users"?"workspace":"commerce")+"/fields/"+key));
+  for(const key of ["payments","allocations","credits","refunds"]){
+    assert.match(source,new RegExp("domains/commerce/fields/"+key));
   }
+  assert.match(source,/collection\("employeeDirectory"\)/);
   assert.match(source,/status\)==="Cleared"/);
   assert.match(source,/status\)==="Applied"/);
   assert.match(source,/status\)==="Settled"/);
