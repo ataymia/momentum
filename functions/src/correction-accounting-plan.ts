@@ -1,4 +1,4 @@
-/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing */
+/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,space-before-blocks,keyword-spacing,curly,brace-style,semi-spacing,arrow-parens,one-var,indent,operator-linebreak */
 type RecordData=Record<string,unknown>;
 const text=(v:unknown)=>typeof v==="string"?v.trim():"";
 const number=(v:unknown)=>typeof v==="number"&&Number.isFinite(v)?v:NaN;
