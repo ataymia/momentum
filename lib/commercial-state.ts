@@ -95,7 +95,7 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
   const customerPatches:Record<string,CommercialCustomerPatch>={};
   if(object(input.customerPatches))for(const[customerId,raw]of Object.entries(input.customerPatches)){
     if(!customerIds.has(customerId)||!object(raw))continue;const patch:CommercialCustomerPatch={};
-    for(const field of ["name","billingContactName","billingEmail","billingPhone","ein","legalBusinessName","azTptLicenseNumber","accountsPayableContactName","accountsPayablePhone","accountsPayableEmail","az5000Number","customPaymentTerms","notes"] as const){const value=optionalText(raw[field]);if(value)patch[field]=value as never;}
+    for(const field of ["name","billingContactName","billingEmail","billingPhone","ein","legalBusinessName","azTptLicenseNumber","accountsPayableContactName","accountsPayablePhone","accountsPayableEmail","az5000Number","customPaymentTerms","notes"] as const){const value=optionalText(raw[field]);if(value||(["ein","legalBusinessName","azTptLicenseNumber"].includes(field)&&typeof raw[field]==="string"))patch[field]=(value??"") as never;}
     const payment=optionalText(raw.paymentTerms);if(payment&&paymentTerms.has(payment))patch.paymentTerms=payment as CommercialCustomerPatch["paymentTerms"];
     const credit=optionalText(raw.creditStatus);if(credit&&creditStatuses.has(credit))patch.creditStatus=credit as CommercialCustomerPatch["creditStatus"];
     const documentType=optionalText(raw.taxDocumentType);if(documentType&&["Undetermined","Taxable","Resale 5000A","Exemption 5000"].includes(documentType))patch.taxDocumentType=documentType as CommercialCustomerPatch["taxDocumentType"];
