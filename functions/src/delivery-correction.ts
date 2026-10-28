@@ -3,6 +3,7 @@ import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {canonicalLines,orderLinesReconcile,correctionDiff,correctionApprovalGate,correctionCloseGate,text} from "./delivery-correction-policy";
 import {planDeliveredInventoryCorrection,type InventoryCorrectionRow} from "./delivery-inventory-revision";
+import {planFinancialCarry} from "./correction-financial-plan";
 
 type Row=Record<string,unknown>;
 const row=(v:unknown):v is Row=>Boolean(v&&typeof v==="object"&&!Array.isArray(v));
@@ -152,19 +153,18 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
       lots:evidence.lots,nodes:evidence.nodes,movements:evidence.allMovements,
       reservations:evidence.reservations,orderId});
     if(plan.ok===false)throw new DeliveryCorrectionError(409,plan.message);
-    if(text(evidence.order.status)==="Paid"&&diff.quantityChanged)
-      fail(409,"A paid order requires Finance reconciliation before quantity changes.");
+    // Any existing payment is reconciled automatically in the approval transaction.
+    const provisional=planFinancialCarry({oldInvoiceId:text(evidence.invoice.id),
+      newInvoiceId:"proposed-"+requestId,accountId:text(evidence.order.accountId),
+      newTotal:diff.total,allocations:evidence.allocations,payments:evidence.payments,
+      credits:evidence.credits,refunds:evidence.refunds});
+    if(provisional.ok===false)fail(409,provisional.message);
     if(!diff.quantityChanged&&billToAddress===oldAddress)
       fail(400,"No change to order quantities or invoice billing address.");
-    if(text(evidence.invoice.status)==="Paid"||text(evidence.order.paymentStatus)==="Paid")
-      fail(409,"Settled or paid invoices must be reconciled by Finance before amendment.");
-    if(unreconciledAccountingJournal(evidence))
-      fail(409,"Original invoice has an accounting journal. Finance must void or reverse it before amendment.");
     const originalTotal=n(evidence.order.amount);
     if(Math.abs(n(evidence.invoice.total)-originalTotal)>0.005)
       fail(409,"Order and invoice totals disagree. Reconcile before editing.");
-    const hasFinancialActivity=financialActivity(evidence.invoice,evidence.payments,
-      evidence.allocations,evidence.credits,evidence.refunds);
+    const hasFinancialActivity=false; // Verified by automatic carry-forward.
     const stamp=now();
     const request={
       id:requestId,orderId,requesterUid:uid,state:"Submitted",createdAt:stamp,
@@ -177,7 +177,8 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
       originalBillToAddress:oldAddress,proposedBillToAddress:billToAddress,
       inventoryAdjustments:inventoryAdjustments.map(a=>({lotId:a.lotId,product:a.product,quantity:a.quantity,
         fromNodeId:a.fromNodeId,toNodeId:a.toNodeId,evidenceReference:a.evidenceReference})),
-      quantityChanged:diff.quantityChanged,financialReviewRequired:hasFinancialActivity,
+      quantityChanged:diff.quantityChanged,financialReviewRequired:false,
+      estimatedCustomerCreditDue:provisional.creditDue,
       inventoryReviewRequired:diff.quantityChanged,
       history:[{state:"Submitted",at:stamp,actorUid:uid}],
     };
@@ -226,9 +227,7 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       fail(409,"Original order lines and totals changed or disagree. Resubmit after reconciliation.");
     const diff=correctionDiff(original,candidate.proposedLines);
     if(!diff.ok)fail(409,diff.message);
-    if(text(evidence.invoice.status)==="Paid"||text(evidence.order.paymentStatus)==="Paid"||
-       unreconciledAccountingJournal(evidence))
-      fail(409,"Finance must reconcile paid invoices and posted accounting before amendment.");
+    // Paid order receipts are carried forward automatically. No Finance handoff.
     const plan=planDeliveredInventoryCorrection({accountId:text(evidence.order.accountId),
       original,proposed:diff.lines,
       adjustments:Array.isArray(candidate.inventoryAdjustments)?candidate.inventoryAdjustments as InventoryCorrectionRow[]:[],
@@ -240,8 +239,7 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       activeAdministrator:true,
       originalRevision:text(candidate.originalRevision),currentRevision:revision(evidence),
       quantityChanged:diff.quantityChanged,
-      hasFinancialActivity:financialActivity(evidence.invoice,evidence.payments,
-        evidence.allocations,evidence.credits,evidence.refunds),
+      hasFinancialActivity:false, // Automatic reconciliation replaces the manual gate.
       hasInventoryReconciliation:plan.ok,
     });
     if(gate)fail(409,gate);
@@ -257,19 +255,44 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
     if(existing.some(inv=>text(inv.id)===newInvoiceId))
       fail(409,"Invoice revision ID collision.");
     const stamped=now();
+    const financial=planFinancialCarry({oldInvoiceId:originalInvoiceId,
+      newInvoiceId,accountId:text(evidence.order.accountId),newTotal:diff.total,
+      allocations:evidence.allocations,payments:evidence.payments,
+      credits:evidence.credits,refunds:evidence.refunds});
+    if(financial.ok===false)fail(409,financial.message);
     const newInvoice={
       ...evidence.invoice,id:newInvoiceId,
       number:text(evidence.invoice.number).replace(/-R\d+$/,"")+"-R"+revisionNumber,
-      issuedAt:stamped,createdAt:stamped,status:"Open",total:diff.total,
+      issuedAt:stamped,createdAt:stamped,status:financial.status,total:diff.total,
+      linesSnapshot:diff.lines.map((line,index)=>({id:activeDocumentId+"-revision-"+revisionNumber+"-line-"+index,
+        ...line,amount:line.cases*line.pricePerCase})),
       billToAddressSnapshot:text(candidate.proposedBillToAddress),
       previousInvoiceId:originalInvoiceId,correctionRequestId:requestId,
       revisionNumber,
     };
     const revised=existing.map(inv=>text(inv.id)===originalInvoiceId?
       {...inv,status:"Void",voidReason:"Superseded by "+newInvoice.number+" via "+requestId,
+        linesSnapshot:Array.isArray(inv.linesSnapshot)?inv.linesSnapshot:
+          original.map((line,index)=>({id:activeDocumentId+"-original-line-"+index,
+            ...line,amount:line.cases*line.pricePerCase})),
         supersededByInvoiceId:newInvoiceId}:inv);
     tx.set(invoiceRef,{items:[newInvoice,...revised]});
     const touched=[invoiceRef.path];
+    // Same transaction: cash stays real, its invoice allocation moves.
+    const allocationRef=getFirestore().doc(dataPaths.allocations);
+    const creditRef=getFirestore().doc(dataPaths.credits);
+    const oldAllocations=items(snapshots[targets.findIndex(t=>t.name==="allocations")].data());
+    const oldCredits=items(snapshots[targets.findIndex(t=>t.name==="credits")].data());
+    tx.set(allocationRef,{items:[...oldAllocations.filter(a=>text(a.invoiceId)!==originalInvoiceId),...financial.allocations]});
+    tx.set(creditRef,{items:[...oldCredits.filter(c=>text(c.invoiceId)!==originalInvoiceId),...financial.credits]});
+    touched.push(allocationRef.path,creditRef.path);
+    if(financial.creditDue>0){
+      tx.create(getFirestore().doc("customerCreditDue/"+requestId),{
+        id:requestId,orderId:activeDocumentId,accountId:text(evidence.order.accountId),
+        supersededInvoiceId:originalInvoiceId,activeInvoiceId:newInvoiceId,
+        amount:financial.creditDue,status:"Unapplied",appliedAmount:0,
+        createdAt:stamped,reason:"Credit due after historical order correction"});
+    }
     if(diff.quantityChanged){
       const correctedLines=diff.lines.map((item,index)=>({
         ...(Array.isArray(evidence.order.lines)&&row(evidence.order.lines[index])?evidence.order.lines[index] as Row:{}),
@@ -280,7 +303,8 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       }));
       const newCases=diff.lines.reduce((sum,l)=>sum+l.cases,0);
       const amended={...evidence.order,cases:newCases,amount:diff.total,lines:correctedLines,
-        lastCorrectionRequestId:requestId};
+        status:financial.status==="Paid"?"Paid":"Delivered",
+        paymentStatus:financial.status,lastCorrectionRequestId:requestId};
       for(const key of ["commercialOrders","workspaceOrders"] as const){
         const index=targets.findIndex(t=>t.name===key);
         const records=items(snapshots[index].data());
@@ -308,10 +332,13 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
         {state:"Applied",actorUid:uid,at:stamped}]});
     tx.set(activeRef,{orderId:activeDocumentId,requestId,state:"Applied",updatedAt:stamped});
     tx.create(reissueRef,{requestId,orderId:activeDocumentId,
-      invoiceId:newInvoiceId,createdAt:stamped,approvedByUid:uid});
+      invoiceId:newInvoiceId,createdAt:stamped,approvedByUid:uid,
+      customerCreditDue:financial.creditDue});
     tx.create(auditRef,{requestId,orderId:activeDocumentId,requesterUid:candidate.requesterUid,
       approvedByUid:uid,approvalNote,physicalEvidenceReviewed:true,
       originalInvoiceId,replacementInvoiceId:newInvoiceId,
+      cashCarried:financial.paidNet,customerCreditDue:financial.creditDue,
+      priorAllocations:evidence.allocations,priorCredits:evidence.credits,
       before:existing.find(inv=>text(inv.id)===originalInvoiceId),
       after:newInvoice,createdAt:stamped});
     const version=stamped+"#"+randomUUID().slice(0,6);
