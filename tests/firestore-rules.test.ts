@@ -18,7 +18,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 
 import {
   EMPLOYEE_DIRECTORY_COLLECTION,
@@ -973,4 +973,37 @@ describe("server-only external notification transport",()=>{
    }
   }
  });
+});
+
+describe("private account nicknames",()=>{
+  const path=(uid:string,accountId:string)=>doc(dbFor(uid),"privateAccountNicknames",uid,"accounts",accountId);
+
+  test("rep stores, reads and clears only their own personal shorthand",async()=>{
+    const accountId="acc-private-nickname";
+    const own=path(REP,accountId);
+    await assertSucceeds(setDoc(own,{accountId,nickname:"My shorthand"}));
+    const snapshot=await assertSucceeds(getDoc(own));
+    assert.equal(snapshot.data()?.nickname,"My shorthand");
+    await assertSucceeds(getDocs(collection(dbFor(REP),"privateAccountNicknames",REP,"accounts")));
+    await assertSucceeds(deleteDoc(own));
+  });
+
+  test("other reps, managers, and admins cannot read or edit another person's nickname",async()=>{
+    const accountId="acc-private-locked";
+    await assertSucceeds(setDoc(path(REP,accountId),{accountId,nickname:"Private rep name"}));
+    for(const who of [OTHER_REP,MANAGER,ADMIN]){
+      const other=doc(dbFor(who),"privateAccountNicknames",REP,"accounts",accountId);
+      await assertFails(getDoc(other));
+      await assertFails(getDocs(collection(dbFor(who),"privateAccountNicknames",REP,"accounts")));
+      await assertFails(setDoc(other,{accountId,nickname:"Stolen"}));
+    }
+    await assertSucceeds(deleteDoc(path(REP,accountId)));
+  });
+
+  test("nicknames cannot contain different account identifiers or extra sensitive fields",async()=>{
+    const pathOwned=path(REP,"acc-private-invalid");
+    await assertFails(setDoc(pathOwned,{accountId:"acc-other",nickname:"False"}));
+    await assertFails(setDoc(pathOwned,{accountId:"acc-private-invalid",nickname:"x".repeat(81)}));
+    await assertFails(setDoc(pathOwned,{accountId:"acc-private-invalid",nickname:"okay",ein:"123456789"}));
+  });
 });

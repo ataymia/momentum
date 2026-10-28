@@ -57,7 +57,7 @@ const tropicalLot: InventoryLot = {
 };
 
 type CommercialAccountPatch = Partial<Pick<Account, "premiseType" | "businessType" | "categoryReviewDate" | "pricingTier" | "pricingUpdatedAt" | "pricingUpdatedBy" | "ownerId" | "accountManagerId" | "responsibilityStartedAt" | "lastActivity" | "nextAction" | "nextActionDate" | "stage" | "closerId" | "lifetimeCases" | "reorderCount" | "streetAddress" | "location" | "postalCode" | "deliveryAddressSameAsBusiness" | "deliveryStreetAddress" | "deliveryLocation" | "deliveryPostalCode" | "latitude" | "longitude" | "geocodePrecision" | "geocodeProvider" | "geocodedAt" | "geocodeFingerprint" | "geocodeStatus" | "territoryId" | "strategic" | "programPricingLabel" | "programPricePerCase" | "programPricingEffectiveDate" | "programPricingExpirationDate" | "programPricingStatus" | "programPricingOwnerId" | "lastMeaningfulBusinessAt">>;
-type CommercialCustomerPatch = Partial<Pick<CustomerAccount,"name"|"billingContactName"|"billingEmail"|"billingPhone"|"ein"|"accountsPayableContactName"|"accountsPayablePhone"|"accountsPayableEmail"|"az5000Number"|"taxExemptionStatus"|"creditStatus"|"paymentTerms"|"customPaymentTerms"|"onboardingPackageStatus"|"onboardingPackagePreparedAt"|"onboardingPackagePreparedBy"|"onboardingProviderStatus"|"notes">>;
+type CommercialCustomerPatch = Partial<Pick<CustomerAccount,"name"|"billingContactName"|"billingEmail"|"billingPhone"|"ein"|"legalBusinessName"|"azTptLicenseNumber"|"taxDocumentType"|"accountsPayableContactName"|"accountsPayablePhone"|"accountsPayableEmail"|"az5000Number"|"taxExemptionStatus"|"creditStatus"|"paymentTerms"|"customPaymentTerms"|"onboardingPackageStatus"|"onboardingPackagePreparedAt"|"onboardingPackagePreparedBy"|"onboardingProviderStatus"|"notes">>;
 
 /**
  * The only fields the territory/geocoding layer may write on a business location.
@@ -440,7 +440,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       if(patch.onboardingPackageStatus&&!(["Not started","Prepared"] as string[]).includes(patch.onboardingPackageStatus))return false;
       clean={
         billingContactName:patch.billingContactName,billingEmail:patch.billingEmail,billingPhone:patch.billingPhone,
-        ein:patch.ein,accountsPayableContactName:patch.accountsPayableContactName,accountsPayablePhone:patch.accountsPayablePhone,accountsPayableEmail:patch.accountsPayableEmail,
+        ein:patch.ein,legalBusinessName:patch.legalBusinessName,azTptLicenseNumber:patch.azTptLicenseNumber,taxDocumentType:patch.taxDocumentType,accountsPayableContactName:patch.accountsPayableContactName,accountsPayablePhone:patch.accountsPayablePhone,accountsPayableEmail:patch.accountsPayableEmail,
         az5000Number:patch.az5000Number,taxExemptionStatus:patch.taxExemptionStatus,notes:patch.notes,
         ...(patch.creditStatus==="Credit Requested"?{creditStatus:"Credit Requested" as const}:{}),
         ...(patch.onboardingPackageStatus?{onboardingPackageStatus:patch.onboardingPackageStatus}:{}),

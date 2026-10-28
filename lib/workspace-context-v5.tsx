@@ -125,7 +125,7 @@ const createNormalizedDemoData = (): WorkspaceData => {
   };
 };
 
-type NewAccount = Pick<Account, "name" | "location" | "channel" | "contactName" | "contactRole" | "phone" | "email"> & { customerName?: string; locationName?: string; streetAddress?: string; postalCode?:string; deliveryAddressSameAsBusiness?:boolean; deliveryStreetAddress?:string; deliveryLocation?:string; deliveryPostalCode?:string };
+type NewAccount = Pick<Account, "name" | "location" | "channel" | "contactName" | "contactRole" | "phone" | "email"> & { customerName?: string; locationName?: string; streetAddress?: string; postalCode?:string; deliveryAddressSameAsBusiness?:boolean; deliveryStreetAddress?:string; deliveryLocation?:string; deliveryPostalCode?:string;legalBusinessName?:string;ein?:string;azTptLicenseNumber?:string;taxDocumentType?:CustomerAccount["taxDocumentType"] };
 type NewOrder = { accountId: string; cases: number; pricePerCase?: number };
 type NewAppointment = Pick<Appointment, "accountId" | "date" | "startTime" | "duration" | "type" | "objective"> & { ownerId?: string; priority?: Appointment["priority"]; tags?: string[]; arrivalWindow?: string };
 type AppointmentCloseout = { outcome: AppointmentOutcome; closeoutNote: string; nextAction: string; nextActionDate: string };
@@ -286,19 +286,35 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const createAccount = useCallback((account: NewAccount) => {
     if (!currentUser || !canCreateAccount(currentUser)) return null;
+    const legalName=account.legalBusinessName?.trim();
+    if(!legalName||account.name.trim()!==legalName)return null;
+    const expectedCustomerId=`cust-${slug(legalName)}`;
+    const existing=(data.customers??[]).find(customer=>customer.id===expectedCustomerId);
+    if(existing&&(
+      existing.name.trim().toLowerCase()!==legalName.toLowerCase()||
+      (existing.legalBusinessName&&existing.legalBusinessName.trim().toLowerCase()!==legalName.toLowerCase())||
+      (existing.ein&&account.ein&&existing.ein.replace(/\D/g,"")!==account.ein.replace(/\D/g,""))||
+      (existing.azTptLicenseNumber&&account.azTptLicenseNumber&&existing.azTptLicenseNumber!==account.azTptLicenseNumber)
+    ))return null;
     const id = `acc-${Date.now()}`;
     const createdAt=nowStamp();
+    // Identity belongs to the billing entity only, never copied to location/account records.
+    const locationAccount={...account};
+    delete locationAccount.legalBusinessName;
+    delete locationAccount.ein;
+    delete locationAccount.azTptLicenseNumber;
+    delete locationAccount.taxDocumentType;
     const customerName = account.customerName?.trim() || account.name.trim();
     const customerId = `cust-${slug(customerName)}`;
-    const customer: CustomerAccount = { id: customerId, name: customerName, accountType: customerName === account.name ? "Independent" : "Chain / franchise", billingContactName: account.contactName, billingEmail: account.email, billingPhone: account.phone, createdAt: nowStamp() };
+    const customer: CustomerAccount = { id: customerId, name: customerName, accountType: customerName === account.name ? "Independent" : "Chain / franchise", billingContactName: account.contactName, billingEmail: account.email, billingPhone: account.phone, legalBusinessName:account.legalBusinessName?.trim(), ein:account.ein?.trim(), azTptLicenseNumber:account.azTptLicenseNumber?.trim(), taxDocumentType:account.taxDocumentType??"Undetermined", createdAt: nowStamp() };
     setData((current) => ({
       ...current,
-      customers: (current.customers ?? []).some((item) => item.id === customerId) ? current.customers : [customer, ...(current.customers ?? [])],
-      accounts: [{ ...account, id, createdAt, createdByUid:currentUser.id, customerId, locationName: account.locationName?.trim() || account.name, streetAddress: account.streetAddress, stage: "Prospect", ownerId: currentUser.id, originatorId: currentUser.id, accountManagerId: currentUser.id, responsibilityStartedAt: nowStamp(), lastActivity: "Location created", nextAction: "Qualify the decision-maker and buying process", nextActionDate: todayKey(), health: "New", lifetimeCases: 0, reorderCount: 0, notes: "Created in the local demo workspace." }, ...current.accounts],
+      customers: (current.customers ?? []).some((item) => item.id === customerId) ? (current.customers??[]).map((item)=>item.id!==customerId?item:{...item,legalBusinessName:item.legalBusinessName||customer.legalBusinessName,ein:item.ein||customer.ein,azTptLicenseNumber:item.azTptLicenseNumber||customer.azTptLicenseNumber,taxDocumentType:item.taxDocumentType&&item.taxDocumentType!=="Undetermined"?item.taxDocumentType:customer.taxDocumentType}) : [customer, ...(current.customers ?? [])],
+      accounts: [{ ...locationAccount, id, createdAt, createdByUid:currentUser.id, customerId, locationName: account.locationName?.trim() || account.name, streetAddress: account.streetAddress, stage: "Prospect", ownerId: currentUser.id, originatorId: currentUser.id, accountManagerId: currentUser.id, responsibilityStartedAt: nowStamp(), lastActivity: "Location created", nextAction: "Qualify the decision-maker and buying process", nextActionDate: todayKey(), health: "New", lifetimeCases: 0, reorderCount: 0, notes: "Created in the local demo workspace." }, ...current.accounts],
       activities: [{ id: `act-${Date.now()}`, accountId: id, type: "note", title: "Customer location created", detail: `${customerName} · ${account.locationName?.trim() || account.name} added.`, at: nowStamp(), userId: currentUser.id }, ...current.activities],
     }));
     return id;
-  }, [currentUser]);
+  }, [currentUser,data.customers]);
 
   const createAppointment = useCallback((appointment: NewAppointment) => {
     if (!currentUser || !canCreateScheduleItem(currentUser)) return null;

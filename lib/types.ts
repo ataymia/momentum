@@ -106,6 +106,11 @@ export type CustomerAccount = {
   billingEmail?: string;
   billingPhone?: string;
   ein?: string;
+  /** Legal name exactly as shown on a registration or tax document. */
+  legalBusinessName?: string;
+  /** AZ TPT license identifier; not equivalent to a resale/exemption certificate. */
+  azTptLicenseNumber?: string;
+  taxDocumentType?: "Undetermined" | "Taxable" | "Resale 5000A" | "Exemption 5000";
   accountsPayableContactName?: string;
   accountsPayableExtension?: string;
   accountsPayablePhone?: string;

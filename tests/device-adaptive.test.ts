@@ -3,6 +3,8 @@ import test from "node:test";
 import {readFileSync} from "node:fs";
 import {isOpenCommercialAccount} from "../lib/account-view-filter";
 import {getNavigationPage,setNavigationPage,subscribeNavigationPage} from "../lib/navigation-store";
+import {validateTaxIdentity,taxIdentityMissing} from "../lib/account-tax-identity";
+import {legalBillingName} from "../lib/legal-billing-name";
 
 const read=(file:string)=>readFileSync(new URL("../"+file,import.meta.url),"utf8");
 test("device navigation is wired to role-filtered menu with accessible mobile destinations",()=>{
@@ -120,4 +122,103 @@ test("global record search does not subscribe the main app shell to sales and co
   assert.match(dialog,/if \(normalized\) \{/);
   assert.match(dialog,/const visibleSearchResults = searchResults\.slice\(0, 24\)/);
   assert.match(dialog,/onClick=\{\(\) => openResult\(result\.page, result\.focus\)\}/);
+});
+
+test("business identity requires licensed name and validates EIN and AZ TPT formats",()=>{
+  assert.match(validateTaxIdentity({}).legalBusinessName??"",/exact legal business name/);
+  assert.deepEqual(validateTaxIdentity({legalBusinessName:"Licensed Shop LLC",ein:"12-3456789",azTptLicenseNumber:"12345678",taxDocumentType:"Resale 5000A"}),{});
+  assert.match(validateTaxIdentity({legalBusinessName:"Shop",ein:"abc123456789"}).ein??"",/9 digits/);
+  assert.match(validateTaxIdentity({legalBusinessName:"Shop",azTptLicenseNumber:"1234XYZ9"}).azTptLicenseNumber??"",/8 digits/);
+  assert.match(validateTaxIdentity({legalBusinessName:"Shop",taxDocumentType:"Resale 5000A"}).azTptLicenseNumber??"",/TPT number/);
+  assert.deepEqual(validateTaxIdentity({legalBusinessName:"Shop",taxDocumentType:"Undetermined"}),{});
+});
+
+test("tax identities remain unverified, and missing legacy data is visible",()=>{
+  assert.ok(taxIdentityMissing({}).includes("Legal business name"));
+  const profile=read("components/pages/accounts.tsx");
+  const setup=read("components/pages/operations-tools-base.tsx");
+  assert.match(profile,/taxIdentityMissing\(selectedCustomer\)/);
+  assert.match(profile,/updateCustomerCommercial\(selectedCustomer\.id/);
+  assert.match(profile,/legalBusinessName:taxForm\.legalBusinessName/);
+  assert.match(setup,/name="legalName"/);
+  assert.match(setup,/name="tptNumber"/);
+  assert.match(setup,/name="taxDoc"/);
+  assert.doesNotMatch(profile,/taxExemptionStatus:\s*"Verified"/);
+});
+
+test("business identity fields persist in customers and commercial patches",()=>{
+  const types=read("lib/types.ts");
+  const base=read("lib/workspace-context-v5.tsx");
+  const state=read("lib/commercial-state.ts");
+  const normalized=read("lib/workspace-normalization.ts");
+  for(const field of ["legalBusinessName","ein","azTptLicenseNumber","taxDocumentType"]){
+    assert.ok(types.includes(field));
+    assert.ok(base.includes(field));
+    assert.ok(state.includes(field));
+    assert.ok(normalized.includes(field));
+  }
+  assert.match(base,/taxDocumentType:account\.taxDocumentType\?\?"Undetermined"/);
+  assert.match(state,/customerPatches\[customerId\]=patch/);
+});
+
+test("systemwide native invalid forms and explicit field errors mark blockers red",()=>{
+  const component=read("components/form-validation-listener.tsx");
+  const app=read("components/momentum-app.tsx");
+  const ui=read("components/ui.tsx");
+  const css=read("app/globals.css");
+  assert.match(component,/addEventListener\("invalid",onInvalid,true\)/);
+  assert.match(app,/<FormValidationListener\/>/);
+  assert.match(ui,/className="field__error" role="alert"/);
+  assert.match(css,/form\[data-validation-attempted="true"\]/);
+  assert.match(css,/\.field\[data-invalid="true"\]/);
+});
+
+test("new full accounts use only licensed canonical name, with independent private nickname",()=>{
+  const accounts=read("components/pages/accounts.tsx");
+  const base=read("lib/workspace-context-v5.tsx");
+  assert.match(accounts,/name:legalName,customerName:legalName,locationName:legalName/);
+  assert.match(accounts,/Name matches the business license/);
+  assert.match(accounts,/Personal nickname \(optional\)/);
+  assert.match(accounts,/savePrivateAccountNickname\(currentUser\.id,id,newNickname\)/);
+  assert.match(accounts,/nicknames\.get\(account\.id\)\|\|account\.name/);
+  assert.match(base,/if\(!legalName\|\|account\.name\.trim\(\)!==legalName\)return null/);
+  assert.match(base,/delete locationAccount\.legalBusinessName/);
+  assert.match(base,/delete locationAccount\.ein/);
+});
+
+test("private nicknames are scoped to the employee, are not queried per account, and never reach invoice paths",()=>{
+  const client=read("lib/private-account-nicknames.ts");
+  const rules=read("firestore.rules");
+  const generator=read("scripts/generate-firestore-rules.ts");
+  const print=read("components/finance/invoice-print-center.tsx");
+  const delivery=read("functions/src/delivery-invoice-email.ts");
+  assert.match(client,/listFirestoreCollection<PrivateNickname>/);
+  assert.doesNotMatch(client,/Promise\.all\(batch\.map/);
+  assert.match(client,/privateAccountNicknames\/\$\{uid\}\/accounts/);
+  assert.match(rules,/match \/privateAccountNicknames\/\{uid\}\/accounts\/\{accountId\}/);
+  assert.match(generator,/match \/privateAccountNicknames\/\{uid\}\/accounts\/\{accountId\}/);
+  assert.match(rules,/request\.auth\.uid == uid/);
+  assert.doesNotMatch(print,/privateAccountNickname|nicknames\.get/);
+  assert.doesNotMatch(delivery,/privateAccountNickname|nicknames\.get/);
+});
+
+test("invoices require the licensed legal name, not a location, nickname or fallback display name",()=>{
+  assert.equal(legalBillingName({legalBusinessName:"  ABC Market LLC  "}),"ABC Market LLC");
+  assert.equal(legalBillingName({legalBusinessName:""}),null);
+  assert.equal(legalBillingName(null),null);
+  const print=read("components/finance/invoice-print-center.tsx");
+  const delivery=read("functions/src/delivery-invoice-email.ts");
+  assert.match(print,/legalBillingName\(customer\)\?\?"Legal business name required"/);
+  assert.match(print,/Add the licensed legal business name/);
+  assert.match(delivery,/const legalName=text\(customer\?\.legalBusinessName\)/);
+  assert.match(delivery,/customerName:legalName/);
+  assert.match(delivery,/Invoice email held for account review/);
+  assert.doesNotMatch(delivery,/customerName:text\(customer\?\.name\)/);
+});
+
+test("account creation regex accepts legitimate ZIP codes and email formats",()=>{
+  const source=read("components/pages/accounts.tsx");
+  assert.match(source,/\^\\d\{5\}/);
+  assert.match(source,/form\.postalCode\.trim\(\)/);
+  assert.match(source,/\[\^\\s@\]/);
 });

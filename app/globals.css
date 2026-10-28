@@ -428,6 +428,17 @@ a {
   font-size:9px;
   line-height:1.4;
 }
+
+/* Apply native-invalid feedback across the platform only after an attempted submit.
+ * Custom business-rule errors use Field(error) for direct, accessible explanations. */
+form[data-validation-attempted="true"] :is(input,select,textarea):invalid,
+.field[data-invalid="true"] :is(input,select,textarea){
+  border-color:#ba1b1b!important;
+  box-shadow:0 0 0 2px #ba1b1b24!important;
+}
+form[data-validation-attempted="true"] .field:has(:invalid) .field__label,
+.field[data-invalid="true"] .field__label,.field .field__error{color:#a41515}
+.field .field__error{font-size:11px;line-height:1.4;font-weight:650}
 .form-grid {
   grid-template-columns:repeat(2,minmax(0,1fr));
   gap:16px;
