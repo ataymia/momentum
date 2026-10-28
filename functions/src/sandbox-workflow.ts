@@ -93,6 +93,7 @@ export async function commitSandboxAction(uid:string,payload:unknown){
     if(action==="place"){
       if(order.exists){
         const prior=order.data();
+    if(!prior)throw new SandboxWorkflowError(409,"Sandbox order data is missing.");
         if(text(prior?.skuId)!==skuId||Number(prior?.cases)!==cases)
           fail(409,"Sandbox test order ID conflict.");
         return{action,skuId,orderId:requestId,replayed:true};
