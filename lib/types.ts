@@ -321,6 +321,9 @@ export type Order = {
   firstSettledAt?: string;
   priceBasis: string;
   paymentStatus: PaymentStatus;
+  /** Administrator-only zero-dollar QA workflow; never physical stock or revenue. */
+  testOnly?: boolean;
+  testSkuId?: string;
   product?: string;
   /** Sales Representative credited for commission, when different from the owner. */
   creditedRepId?: string;
