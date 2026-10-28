@@ -4,6 +4,8 @@ import {createHash} from "node:crypto";
 import test from "node:test";
 import * as mailPolicy from "../functions/src/resend-mail-policy";
 import * as pdfModule from "../functions/src/signed-invoice-pdf";
+import {invoicePlacedByName} from "../functions/src/invoice-placer-name";
+import {invoicePlacerLabel} from "../lib/invoice-placer-name";
 
 const pdfExports=(pdfModule as unknown as {default?:typeof pdfModule}).default??pdfModule;
 const buildSignedInvoicePdf=pdfExports.buildSignedInvoicePdf;
@@ -224,4 +226,28 @@ test("invoice sender reads receipts, credits and refunds from persisted ledgers"
   assert.match(source,/status\)==="Settled"/);
   assert.match(source,/balanceDue:balance/);
   assert.match(source,/invoiceDate:text\(invoice\.issuedAt\)/);
+});
+
+test("emailed invoices resolve original order creator from employeeDirectory and never print an internal UID",()=>{
+  const source=readFileSync("functions/src/delivery-invoice-email.ts","utf8");
+  assert.match(source,/collection\("employeeDirectory"\)\.doc\(placerUid\)\.get\(\)/);
+  assert.match(source,/placedBy:invoicePlacedByName\(placerProfile\?\.data\(\)\)/);
+  assert.doesNotMatch(source,/domains\/workspace\/fields\/users/);
+  assert.doesNotMatch(source,/placedBy:.*order\.ownerId/);
+  assert.equal(invoicePlacedByName({name:"  Jordan Williams  "}),"Jordan Williams");
+  assert.equal(invoicePlacedByName({name:""}),"Name unavailable");
+  assert.equal(invoicePlacedByName(null),"Name unavailable");
+  assert.equal(invoicePlacedByName({id:"2xAeemsPoeRFX"}),"Name unavailable");
+});
+
+test("invoice browser and register use human-readable labels without leaking an owner UID",()=>{
+  const printable=readFileSync("components/finance/invoice-print-center.tsx","utf8");
+  const register=readFileSync("components/commerce/order-cash-panel-v2.tsx","utf8");
+  assert.match(printable,/invoicePlacerLabel\(placedBy\?\.name\)/);
+  assert.match(register,/invoicePlacerLabel\(placedBy\?\.name\)/);
+  assert.match(register,/invoicePlacerLabel\(data\.users\.find/);
+  assert.doesNotMatch(printable,/placedBy\?\.name\s*\?\?\s*order\?\.ownerId/);
+  assert.doesNotMatch(register,/placedBy\?\.name\s*\?\?\s*order\?\.ownerId/);
+  assert.equal(invoicePlacerLabel("  Jordan Williams "),"Jordan Williams");
+  assert.equal(invoicePlacerLabel(null),"Name unavailable");
 });
