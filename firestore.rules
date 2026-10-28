@@ -237,6 +237,32 @@ service cloud.firestore {
     }
     // The sandbox SKU master and unique-name index are server-owned.
     // Browser metadata writes are denied, even to Administrators.
+    // Live QA products are visible in Administrator product/order screens, but
+    // do not belong to real sellable stock or commerce. Only trusted Functions
+    // may create SKUs, virtual receipts and status-transition events.
+    match /liveTestProducts/{skuId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /liveTestProductNames/{nameHash} {
+      allow read, write: if false;
+    }
+    match /liveTestInventory/{skuId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /liveTestReceipts/{receiptId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /liveTestOrderReservations/{orderId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /liveTestOrderEvents/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
     match /sandboxProducts/{skuId} {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;
