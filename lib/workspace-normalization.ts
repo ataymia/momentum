@@ -68,7 +68,7 @@ function normalizeCustomers(raw: unknown[], fallback: CustomerAccount[]) {
     if (!object(value)) return [];
     const id = text(value.id); const name = text(value.name); const accountType = text(value.accountType); const createdAt = text(value.createdAt);
     if (!id || !name || !accountTypes.has(accountType) || !validInstant(createdAt)) return [];
-    return [{ id, name, accountType: accountType as CustomerAccount["accountType"], billingContactName: optionalText(value.billingContactName), billingEmail: optionalText(value.billingEmail), billingPhone: optionalText(value.billingPhone), notes: optionalText(value.notes), createdAt }];
+    return [{ id, name, accountType: accountType as CustomerAccount["accountType"], billingContactName: optionalText(value.billingContactName), billingEmail: optionalText(value.billingEmail), billingPhone: optionalText(value.billingPhone), legalBusinessName:optionalText(value.legalBusinessName), ein:optionalText(value.ein), azTptLicenseNumber:optionalText(value.azTptLicenseNumber), taxDocumentType:["Undetermined","Taxable","Resale 5000A","Exemption 5000"].includes(text(value.taxDocumentType))?text(value.taxDocumentType) as CustomerAccount["taxDocumentType"]:undefined, az5000Number:optionalText(value.az5000Number), taxExemptionStatus:["Not exempt","Requested","Received","Verified","Missing"].includes(text(value.taxExemptionStatus))?text(value.taxExemptionStatus) as CustomerAccount["taxExemptionStatus"]:undefined, notes: optionalText(value.notes), createdAt }];
   }));
   return normalized.length ? normalized : fallback;
 }
