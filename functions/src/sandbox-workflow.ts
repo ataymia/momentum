@@ -1,4 +1,4 @@
-/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,indent,space-before-blocks,keyword-spacing,curly,brace-style,semi,require-jsdoc */
+/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,indent,space-before-blocks,keyword-spacing,curly,brace-style,semi */
 import {getFirestore} from "firebase-admin/firestore";
 
 type Row=Record<string,unknown>;
