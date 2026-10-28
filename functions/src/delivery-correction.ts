@@ -17,7 +17,7 @@ const n=(v:unknown)=>typeof v==="number"&&Number.isFinite(v)?v:0;
 export class DeliveryCorrectionError extends Error{
   constructor(public readonly status:number,message:string){super(message);}
 }
-const fail=(status:number,message:string):never=>{throw new DeliveryCorrectionError(status,message)};
+const fail=(status:number,message:string):never=>{throw new DeliveryCorrectionError(status,message);};
 
 type RevisionEvidence={
   order:Row;invoice:Row;tasks:Row[];overrides:Row[];
