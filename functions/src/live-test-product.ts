@@ -74,7 +74,7 @@ export async function operateLiveTestProduct(uid:string,payload:unknown){
       if(product.data()?.testOnly!==true||product.data()?.environment!=="production")
         fail(404,"Live QA product not found.");
       const previous=stock.data();
-      if(!previous)fail(409,"Virtual stock record missing.");
+      if(!previous)throw new LiveTestProductError(409,"Virtual stock record missing.");
       if(receipt.exists){
         if(txt(receipt.data()?.skuId)!==skuId||receipt.data()?.cases!==cases)
           fail(409,"Test receipt identifier conflict.");
@@ -110,7 +110,8 @@ export async function operateLiveTestProduct(uid:string,payload:unknown){
       fail(404,"Live QA product is missing.");
     const rows=list(orders);
     const existing=rows.find(r=>txt(r.id)===orderId);
-    if(!existing||existing.testOnly!==true||txt(existing.testSkuId)!==skuId||
+    if(!existing)throw new LiveTestProductError(409,"QA order not found.");
+    if(existing.testOnly!==true||txt(existing.testSkuId)!==skuId||
       existing.amount!==0||existing.pricePerCase!==0||
       !Array.isArray(existing.lines)||existing.lines.length!==1||
       txt((existing.lines[0] as Row).product)!==txt(product.data()?.description))
@@ -127,7 +128,8 @@ export async function operateLiveTestProduct(uid:string,payload:unknown){
     if(!next||action==="cancel"&&!canCancel)
       fail(409,"Only an active pre-delivery QA order can be advanced or cancelled.");
     const cases=Number(existing.cases),data=stock.data();
-    if(!Number.isInteger(cases)||cases<1||!data||
+    if(!data)throw new LiveTestProductError(409,"Virtual stock record missing.");
+    if(!Number.isInteger(cases)||cases<1||
       !Number.isInteger(data.onHand)||!Number.isInteger(data.reserved))
       fail(409,"Virtual quantity state is invalid.");
     const updated:Row={...data};
