@@ -17,7 +17,7 @@ export function orderIsDelivered(order:Order,deliveredTask:boolean):boolean{
   return order.status==="Delivered";
 }
 export function orderIsFullyPaid(order:Order,commerce:CommerceState):boolean{
-  const invoice=commerce.invoices.find((row)=>row.orderId===order.id);
+  const invoice=commerce.invoices.find((row)=>row.orderId===order.id&&row.status!=="Void");
   return Boolean(invoice&&computedInvoiceStatus(commerce,invoice)==="Paid"&&invoiceBalance(commerce,invoice)<=0);
 }
 export function orderWorkspaceView(order:Order,commerce:CommerceState,deliveredTask:boolean):Exclude<OrderWorkspaceView,"All Orders">{
