@@ -111,16 +111,20 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     if (!object(raw)) return [];
     const id = text(raw.id); const accountId = text(raw.accountId); const ownerId = text(raw.ownerId); const status = text(raw.status); const paymentStatus = text(raw.paymentStatus); const product = text(raw.product); const cases = Number(raw.cases); const price = Number(raw.pricePerCase); const amount = Number(raw.amount);
     const owner = userById.get(ownerId);
-    if (!id || !text(raw.number) || !accountId || !owner || (owner.role === "Customer" && !(owner.accountIds ?? []).includes(accountId)) || !wholePositive(cases) || !finite(price) || price <= 0 || !finite(amount) || amount < 0 || Math.abs(amount - cases * price) > 0.01 || !orderStatuses.has(status) || !paymentStatuses.has(paymentStatus) || !validDateOrInstant(raw.placedAt) || !text(raw.priceBasis) || !product || !finite(raw.inventoryAvailableAtOrder) || Number(raw.inventoryAvailableAtOrder) < 0) return [];
+    const testOnly=raw.testOnly===true;
+    const validTest=testOnly&&owner?.role==="Administrator"&&
+      text(raw.testSkuId).startsWith("qa-live-")&&price===0&&amount===0&&
+      !text(raw.creditedRepId)&&paymentStatus==="Not invoiced";
+    if (!id || !text(raw.number) || !accountId || !owner || (owner.role === "Customer" && !(owner.accountIds ?? []).includes(accountId)) || !wholePositive(cases) || !finite(price) || (!validTest&&price<=0) || (testOnly&&!validTest) || !finite(amount) || amount < 0 || Math.abs(amount - cases * price) > 0.01 || !orderStatuses.has(status) || !paymentStatuses.has(paymentStatus) || !validDateOrInstant(raw.placedAt) || !text(raw.priceBasis) || !product || !finite(raw.inventoryAvailableAtOrder) || Number(raw.inventoryAvailableAtOrder) < 0) return [];
     if (!optionalValidDate(raw.paidAt) || !optionalValidDate(raw.firstSettledAt)) return [];
     const creditedRepId = optionalText(raw.creditedRepId); if (creditedRepId && !salesRepIds.has(creditedRepId)) return [];
     const sourcePlacementId = optionalText(raw.sourcePlacementId);
-    const lines=normalizeStoredOrderLines(raw.lines);
+    const lines=normalizeStoredOrderLines(raw.lines,validTest);
     if(lines&&(lines.reduce((sum,line)=>sum+line.cases,0)!==cases||Math.abs(lines.reduce((sum,line)=>sum+line.amount,0)-amount)>0.01))return [];
     const settlementEvidence = optionalText(raw.firstSettledAt) || optionalText(raw.paidAt);
     const safePaymentStatus = paymentStatus === "Paid" && !settlementEvidence ? "Open" : paymentStatus;
     const safeStatus = status === "Paid" && safePaymentStatus !== "Paid" ? "Delivered" : status;
-    return [{ id, number: text(raw.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(raw.placedAt), ownerId, paidAt: optionalText(raw.paidAt), firstSettledAt: optionalText(raw.firstSettledAt), priceBasis: text(raw.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product, creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: Number(raw.inventoryAvailableAtOrder), lowStockApprovalRequired: typeof raw.lowStockApprovalRequired === "boolean" ? raw.lowStockApprovalRequired : undefined, lines, cancelledAt: optionalText(raw.cancelledAt), cancelledBy: optionalText(raw.cancelledBy), cancellationReason: optionalText(raw.cancellationReason) }];
+    return [{ id, number: text(raw.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(raw.placedAt), ownerId, paidAt: optionalText(raw.paidAt), firstSettledAt: optionalText(raw.firstSettledAt), priceBasis: text(raw.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product, creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: Number(raw.inventoryAvailableAtOrder), lowStockApprovalRequired: typeof raw.lowStockApprovalRequired === "boolean" ? raw.lowStockApprovalRequired : undefined, testOnly:validTest||undefined, testSkuId:validTest?text(raw.testSkuId):undefined, lines, cancelledAt: optionalText(raw.cancelledAt), cancelledBy: optionalText(raw.cancelledBy), cancellationReason: optionalText(raw.cancellationReason) }];
   }));
 
   const rawAppointments = Array.isArray(input.appointments) ? input.appointments : [];
