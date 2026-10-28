@@ -120,7 +120,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
     const placedBy = order ? data.users.find((user) => user.id === order.ownerId) : undefined;
     const location = data.accounts.find((item) => item.id === invoice.accountId);
     const customer = location ? customerForLocation(data, location) : undefined;
-    const lines = order ? orderLinesFor(order) : [];
+    const lines = invoice.linesSnapshot?.length ? invoice.linesSnapshot : order ? orderLinesFor(order) : [];
     const deliveryTask = order ? taskForOrder(order.id) : undefined;
     const deliverySignature = deliveryTask?.signature;
     const adminConfirmedDelivery = !deliverySignature &&
