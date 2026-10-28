@@ -1014,6 +1014,7 @@ describe("historical correction and isolated sandbox authority",()=>{
       ["deliveryCorrectionRequests","request-test"],
       ["deliveryCorrectionAudit","audit-test"],
       ["deliveryInvoiceReissues","reissue-test"],
+      ["customerCreditDue","credit-test"],
     ]){
       const admin=doc(dbFor(ADMIN),collectionName,docId);
       await assertSucceeds(getDoc(admin));
