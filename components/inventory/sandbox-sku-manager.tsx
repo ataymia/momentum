@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import {validateCustomSku,type CustomSku} from "../../lib/custom-sku-policy";
-import {getFirestoreDocument,listFirestoreCollection,setFirestoreDocument} from "../../lib/firebase-firestore-rest";
+import {getFirestoreDocument,listFirestoreCollection} from "../../lib/firebase-firestore-rest";
 import {firebaseFunctionUrl} from "../../lib/firebase-functions";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {useWorkspace} from "../../lib/workspace-context";
@@ -56,15 +56,22 @@ export function SandboxSkuManager({open,onClose}:{open:boolean;onClose:()=>void}
     setError("");setNotice("");
     const check=validateCustomSku({description:name,shortName,casePack,environment:"sandbox"},skus);
     if(!check.ok){setError(check.message);return;}
+    const token=firebase?.session?.idToken;
+    if(!token){setError("Sign in as an active Administrator to create a test product.");return;}
     setBusy(true);
     try{
-      const skuId="qa-"+id().replace(/[^A-Za-z0-9_-]/g,"").slice(0,66);
-      const product:CustomSku={...check.draft,id:skuId,active:true,
-        createdBy:currentUser.id,createdAt:new Date().toISOString()};
-      await setFirestoreDocument("sandboxProducts/"+skuId,{...product});
-      setSkus(old=>[...old,product]);setSelected(skuId);setName("");setShortName("");
+      const skuId=requestId(),nonce=requestId();
+      const response=await fetch(firebaseFunctionUrl("sandboxWorkflow"),{
+        method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+token},
+        body:JSON.stringify({action:"createSku",skuId,requestId:nonce,...check.draft}),
+      });
+      const result=await response.json().catch(()=>null) as {ok?:boolean;message?:string}|null;
+      if(!response.ok||result?.ok!==true)throw new Error(result?.message||"The test SKU was not saved.");
+      const records=await listFirestoreCollection<CustomSku>("sandboxProducts");
+      setSkus(records.filter(r=>r.environment==="sandbox"&&r.active));
+      setSelected(skuId);setName("");setShortName("");
       setStock(0);setNotice("Test SKU created in isolated sandbox catalog.");
-    }catch{setError("Test SKU was not created. Check the signed-in role and connection.");}
+    }catch(e){setError(e instanceof Error?e.message:"Test SKU was not created.");}
     finally{setBusy(false);}
   };
   const action=async(command:"receive"|"place"|"deliver",orderId?:string)=>{
