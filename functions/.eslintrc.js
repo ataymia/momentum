@@ -22,7 +22,9 @@ module.exports = {
     "/generated/**/*", // Ignore generated files.
   ],
   overrides: [{
-    files: ["src/resend-mail-policy.ts", "src/resend-transport.ts"],
+    files: ["src/resend-mail-policy.ts", "src/resend-transport.ts",
+      "src/delivery-correction.ts", "src/delivery-correction-policy.ts",
+      "src/delivery-inventory-revision.ts", "src/sandbox-workflow.ts"],
     rules: {"require-jsdoc": "off", "valid-jsdoc": "off"},
   }],
   plugins: [
