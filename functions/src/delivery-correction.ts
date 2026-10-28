@@ -432,3 +432,18 @@ export async function closeDeliveryCorrection(uid:string,input:unknown){
     return{requestId,orderId,state:targetState,replayed:false};
   });
 }
+
+
+/** Small, indexed query for the selected order. Avoid downloading every
+ * historical correction request when an Administrator opens one order. */
+export async function listDeliveryCorrections(uid:string,input:unknown){
+  if(!row(input)||!idOk(text(input.orderId)))fail(400,"Choose an order.");
+  const db=getFirestore();
+  const access=await db.doc("userAccess/"+uid).get();
+  if(text(access.data()?.role)!=="Administrator"||text(access.data()?.accountState)!=="Active")
+    fail(403,"Only an active Administrator can review corrections.");
+  const snapshot=await db.collection("deliveryCorrectionRequests")
+    .where("orderId","==",text(input.orderId)).limit(40).get();
+  return{requests:snapshot.docs.map(doc=>doc.data()).sort((a,b)=>
+    text(b.createdAt).localeCompare(text(a.createdAt))).slice(0,20)};
+}
