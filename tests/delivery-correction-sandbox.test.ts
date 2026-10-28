@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {correctionDiff,correctionApprovalGate} from "../functions/src/delivery-correction-policy";
+import * as correctionImported from "../functions/src/delivery-correction-policy";
 import {isolatedSkuUse,sandboxCanPostProductionSideEffects,validateCustomSku} from "../lib/custom-sku-policy";
-import {planDeliveredInventoryCorrection} from "../functions/src/delivery-inventory-revision";
+import * as inventoryImported from "../functions/src/delivery-inventory-revision";
 import {normalizeInventoryLedger,orderDeliveryQuantity} from "../lib/inventory-ledger";
 import {GOLDEN_EAGLE_SKUS} from "../lib/product-catalog";
 import type {WorkspaceData} from "../lib/types";
+
+const correctionModule=correctionImported as typeof correctionImported & {default?:typeof correctionImported};
+const {correctionDiff,correctionApprovalGate}=correctionModule.default??correctionModule;
+const inventoryModule=inventoryImported as typeof inventoryImported & {default?:typeof inventoryImported};
+const {planDeliveredInventoryCorrection}=inventoryModule.default??inventoryModule;
 
 const originals=[{product:"Golden Eagle Original",cases:10,pricePerCase:24}];
 
