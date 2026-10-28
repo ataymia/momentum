@@ -125,7 +125,7 @@ const createNormalizedDemoData = (): WorkspaceData => {
   };
 };
 
-type NewAccount = Pick<Account, "name" | "location" | "channel" | "contactName" | "contactRole" | "phone" | "email"> & { customerName?: string; locationName?: string; streetAddress?: string; postalCode?:string; deliveryAddressSameAsBusiness?:boolean; deliveryStreetAddress?:string; deliveryLocation?:string; deliveryPostalCode?:string };
+type NewAccount = Pick<Account, "name" | "location" | "channel" | "contactName" | "contactRole" | "phone" | "email"> & { customerName?: string; locationName?: string; streetAddress?: string; postalCode?:string; deliveryAddressSameAsBusiness?:boolean; deliveryStreetAddress?:string; deliveryLocation?:string; deliveryPostalCode?:string;legalBusinessName?:string;ein?:string;azTptLicenseNumber?:string;taxDocumentType?:CustomerAccount["taxDocumentType"] };
 type NewOrder = { accountId: string; cases: number; pricePerCase?: number };
 type NewAppointment = Pick<Appointment, "accountId" | "date" | "startTime" | "duration" | "type" | "objective"> & { ownerId?: string; priority?: Appointment["priority"]; tags?: string[]; arrivalWindow?: string };
 type AppointmentCloseout = { outcome: AppointmentOutcome; closeoutNote: string; nextAction: string; nextActionDate: string };
@@ -290,7 +290,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const createdAt=nowStamp();
     const customerName = account.customerName?.trim() || account.name.trim();
     const customerId = `cust-${slug(customerName)}`;
-    const customer: CustomerAccount = { id: customerId, name: customerName, accountType: customerName === account.name ? "Independent" : "Chain / franchise", billingContactName: account.contactName, billingEmail: account.email, billingPhone: account.phone, createdAt: nowStamp() };
+    const customer: CustomerAccount = { id: customerId, name: customerName, accountType: customerName === account.name ? "Independent" : "Chain / franchise", billingContactName: account.contactName, billingEmail: account.email, billingPhone: account.phone, legalBusinessName:account.legalBusinessName?.trim(), ein:account.ein?.trim(), azTptLicenseNumber:account.azTptLicenseNumber?.trim(), taxDocumentType:account.taxDocumentType??"Undetermined", createdAt: nowStamp() };
     setData((current) => ({
       ...current,
       customers: (current.customers ?? []).some((item) => item.id === customerId) ? current.customers : [customer, ...(current.customers ?? [])],
