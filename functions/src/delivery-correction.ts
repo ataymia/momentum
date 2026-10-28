@@ -57,9 +57,9 @@ function activeInvoice(list:Row[],orderId:string):Row|undefined{
 function currentEvidence(docs:Map<string,Row[]>,orderId:string):RevisionEvidence{
   const order=docs.get("commercialOrders")?.find(x=>text(x.id)===orderId)||
     docs.get("workspaceOrders")?.find(x=>text(x.id)===orderId);
-  if(!order)fail(404,"Order not found.");
+  if(!order)throw new DeliveryCorrectionError(404,"Order not found.");
   const invoice=activeInvoice(docs.get("invoices")||[],orderId);
-  if(!invoice)fail(409,"No active invoice is linked to this order.");
+  if(!invoice)throw new DeliveryCorrectionError(409,"No active invoice is linked to this order.");
   return{
     order,invoice,
     tasks:forOrder(docs.get("tasks")||[],orderId),
@@ -105,10 +105,11 @@ function mapDocuments(targets:ReturnType<typeof targetReferences>,snapshots:Fire
 /** Save an immutable proposal. Changes to inventory, order, or invoice are forbidden in this stage. */
 export async function submitDeliveryCorrection(uid:string,input:unknown){
   if(!row(input))fail(400,"Correction details required.");
-  const orderId=text(input.orderId),requestId=text(input.requestId);
-  const reason=text(input.reason),evidenceReference=text(input.evidenceReference);
-  const billToAddress=text(input.billToAddress);
-  const inventoryAdjustments:Array<InventoryCorrectionRow>=Array.isArray(input.inventoryAdjustments)?input.inventoryAdjustments as InventoryCorrectionRow[]:[];
+  const payload=input as Row;
+  const orderId=text(payload.orderId),requestId=text(payload.requestId);
+  const reason=text(payload.reason),evidenceReference=text(payload.evidenceReference);
+  const billToAddress=text(payload.billToAddress);
+  const inventoryAdjustments:Array<InventoryCorrectionRow>=Array.isArray(payload.inventoryAdjustments)?payload.inventoryAdjustments as InventoryCorrectionRow[]:[];
   if(!idOk(orderId)||!idOk(requestId)||reason.length<12||reason.length>800||
      evidenceReference.length<6||evidenceReference.length>500||
      billToAddress.length<5||billToAddress.length>500)
@@ -143,14 +144,14 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
     const before=canonicalLines(evidence.order);
     if(!orderLinesReconcile(evidence.order,before))
       fail(409,"Original order lines and totals disagree. Reconcile the historic record first.");
-    const diff=correctionDiff(before,input.lines);
+    const diff=correctionDiff(before,payload.lines);
     if(!diff.ok)fail(400,diff.message);
     const oldAddress=text(evidence.invoice.billToAddressSnapshot);
     const plan=planDeliveredInventoryCorrection({accountId:text(evidence.order.accountId),
       original:before,proposed:diff.lines,adjustments:inventoryAdjustments,
       lots:evidence.lots,nodes:evidence.nodes,movements:evidence.allMovements,
       reservations:evidence.reservations,orderId});
-    if(!plan.ok)fail(409,plan.message);
+    if(plan.ok===false)throw new DeliveryCorrectionError(409,plan.message);
     if(text(evidence.order.status)==="Paid"&&diff.quantityChanged)
       fail(409,"A paid order requires Finance reconciliation before quantity changes.");
     if(!diff.quantityChanged&&billToAddress===oldAddress)
@@ -191,15 +192,16 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
  * A second active Administrator must approve; physical delivery evidence is never modified.
  */
 export async function approveDeliveryCorrection(uid:string,input:unknown){
-  if(!row(input)||!idOk(text(input.requestId)))fail(400,"Valid correction request required.");
-  const approvalNote=text(input.approvalNote);
-  if(input.reviewConfirmed!==true||approvalNote.length<8||approvalNote.length>800)
+  if(!row(input)||!idOk(text(payload.requestId)))fail(400,"Valid correction request required.");
+  const payload=input as Row;
+  const approvalNote=text(payload.approvalNote);
+  if(payload.reviewConfirmed!==true||approvalNote.length<8||approvalNote.length>800)
     fail(400,"Review the before/after changes, physical evidence and accounting before approval.");
-  const requestId=text(input.requestId),requestRef=getFirestore().doc("deliveryCorrectionRequests/"+requestId);
+  const requestId=text(payload.requestId),requestRef=getFirestore().doc("deliveryCorrectionRequests/"+requestId);
   const accessRef=getFirestore().doc("userAccess/"+uid);
   const targets=targetReferences();
   const invoiceRef=getFirestore().doc(dataPaths.invoices);
-  const activeDocumentId=text(input.orderId);
+  const activeDocumentId=text(payload.orderId);
   if(!idOk(activeDocumentId))fail(400,"Valid order required.");
   const activeRef=getFirestore().doc("deliveryCorrectionActive/"+activeDocumentId);
   const reissueRef=getFirestore().doc("deliveryInvoiceReissues/"+requestId);
@@ -232,7 +234,7 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       adjustments:Array.isArray(candidate.inventoryAdjustments)?candidate.inventoryAdjustments as InventoryCorrectionRow[]:[],
       lots:evidence.lots,nodes:evidence.nodes,movements:evidence.allMovements,
       reservations:evidence.reservations,orderId:activeDocumentId});
-    if(!plan.ok)fail(409,plan.message);
+    if(plan.ok===false)throw new DeliveryCorrectionError(409,plan.message);
     const gate=correctionApprovalGate({
       requesterUid:text(candidate.requesterUid),approverUid:uid,
       activeAdministrator:true,
@@ -325,8 +327,9 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
  * History remains immutable, and the active-order lock is released atomically. */
 export async function closeDeliveryCorrection(uid:string,input:unknown){
   if(!row(input))fail(400,"Correction closure details required.");
-  const requestId=text(input.requestId),orderId=text(input.orderId);
-  const decision=text(input.decision),reason=text(input.reason);
+  const payload=input as Row;
+  const requestId=text(payload.requestId),orderId=text(payload.orderId);
+  const decision=text(payload.decision),reason=text(payload.reason);
   if(!idOk(requestId)||!idOk(orderId)||
       (decision!=="Reject"&&decision!=="Withdraw")||reason.length<8||reason.length>800)
     fail(400,"Choose a pending correction, an action, and a reason of at least 8 characters.");
