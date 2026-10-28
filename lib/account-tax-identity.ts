@@ -13,6 +13,7 @@ export function validateTaxIdentity(input:TaxIdentityInput,requireLegalName=true
   if(requireLegalName&&!input.legalBusinessName?.trim())errors.legalBusinessName="Enter the exact legal business name shown on the license or registration.";
   if(input.ein?.trim()&&!/^(?:\d{2}-?\d{7})$/.test(input.ein.trim()))errors.ein="EIN must contain exactly 9 digits.";
   if(input.azTptLicenseNumber?.trim()&&!/^\d{8}$/.test(input.azTptLicenseNumber.trim()))errors.azTptLicenseNumber="Arizona TPT license number must contain 8 digits.";
+  if(input.taxDocumentType&&!["Undetermined","Taxable","Resale 5000A","Exemption 5000"].includes(input.taxDocumentType))errors.taxDocumentType="Select a supported tax documentation route.";
   if(input.taxDocumentType==="Resale 5000A"&&!input.azTptLicenseNumber?.trim())errors.azTptLicenseNumber="Enter the TPT number shown on the resale certificate, or leave documentation as Undetermined until collected.";
   return errors;
 }
