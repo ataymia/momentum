@@ -1,4 +1,4 @@
-/* eslint-disable max-len, comma-spacing, key-spacing, object-curly-spacing, indent, space-before-blocks, keyword-spacing, curly, brace-style, semi, require-jsdoc */
+/* eslint-disable max-len, comma-spacing, key-spacing, object-curly-spacing, indent, space-before-blocks, keyword-spacing, curly, brace-style, semi */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {canonicalLines,correctionDiff,correctionApprovalGate,text} from "./delivery-correction-policy";
