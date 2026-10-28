@@ -7,8 +7,8 @@ const text=(v:unknown)=>typeof v==="string"?v.trim():"";
 const qty=(v:unknown)=>typeof v==="number"&&Number.isInteger(v)&&v>0&&v<=10000;
 const idOk=(v:string)=>/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const now=()=>new Date().toISOString();
-const normalizedName=(v:string)=>v.trim().toLowerCase().replace(/\\s+/g," ");
-const reservedName=/\\b(golden\\s*eagle|ge[-\\s]?(original|sugarfree|tropical|red|blue|strawberry))\\b/i;
+const normalizedName=(v:string)=>v.trim().toLowerCase().replace(/\s+/g," ");
+const reservedName=/\b(golden\s*eagle|ge[-\s]?(original|sugarfree|tropical|red|blue|strawberry))\b/i;
 
 
 export class SandboxWorkflowError extends Error{
