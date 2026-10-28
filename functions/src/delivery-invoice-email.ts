@@ -142,6 +142,7 @@ const queueDeliveredInvoice=async (
   };
   const order=findById(items(commercial.data()),orderId)||
     findById(items(workspace.data()),orderId);
+  if(order?.testOnly===true)return;
   if(!order){
     await adminEvent("Delivered order "+orderId+
       " could not be found, so its signed invoice was not emailed.",
