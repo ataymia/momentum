@@ -33,24 +33,24 @@ export function validateTrustedAccountCreation(input:unknown):ValidCreation {
   }
   const legalBusinessName=str(input.legalBusinessName);
   if (!legalBusinessName || str(input.name)!==legalBusinessName) {
-    return {ok:false,
-      message:"Legal business name must match the account name and licensing."};
+    return {ok: false,
+      message: "Legal business name must match the account name and licensing."};
   }
   const ein=str(input.ein);
   const azTptLicenseNumber=str(input.azTptLicenseNumber);
   const taxDocumentType=str(input.taxDocumentType)||"Undetermined";
   if (ein&&!/^\d{2}-?\d{7}$/.test(ein)) {
-    return {ok:false,message:"Invalid EIN."};
+    return {ok: false, message: "Invalid EIN."};
   }
   if (azTptLicenseNumber&&!/^\d{8}$/.test(azTptLicenseNumber)) {
-    return {ok:false,message:"Invalid Arizona TPT number."};
+    return {ok: false, message: "Invalid Arizona TPT number."};
   }
-  if (!["Undetermined","Taxable","Resale 5000A","Exemption 5000"]
+  if (!["Undetermined", "Taxable", "Resale 5000A", "Exemption 5000"]
     .includes(taxDocumentType)) {
-    return {ok:false,message:"Invalid tax documentation route."};
+    return {ok: false, message: "Invalid tax documentation route."};
   }
   if (taxDocumentType==="Resale 5000A"&&!azTptLicenseNumber) {
-    return {ok:false,message:"Resale documentation needs a TPT number."};
+    return {ok: false, message: "Resale documentation needs a TPT number."};
   }
   const required=["name", "location", "channel", "contactName", "contactRole"];
   if (required.some((key)=>!str(input[key]))) {
@@ -88,8 +88,8 @@ export function validateTrustedAccountCreation(input:unknown):ValidCreation {
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str(input.email))) {
     return {ok: false, message: "The contact email is invalid."};
   }
-  return {ok:true,record,customerName,legalBusinessName,ein,
-    azTptLicenseNumber,taxDocumentType};
+  return {ok: true, record, customerName, legalBusinessName, ein,
+    azTptLicenseNumber, taxDocumentType};
 }
 
 /**
