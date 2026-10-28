@@ -7,6 +7,7 @@ import * as financialImported from "../functions/src/correction-financial-plan";
 import * as accountingImported from "../functions/src/correction-accounting-plan";
 import {normalizeInventoryLedger,orderDeliveryQuantity} from "../lib/inventory-ledger";
 import {GOLDEN_EAGLE_SKUS} from "../lib/product-catalog";
+import {normalizeCommerceState} from "../lib/commerce-engine";
 import type {WorkspaceData} from "../lib/types";
 
 const correctionModule=correctionImported as typeof correctionImported & {default?:typeof correctionImported};
@@ -266,4 +267,43 @@ test("posted invoice amendment generates only its delta and an unapplied-credit 
   if(noJournal.ok)assert.equal(noJournal.alreadyPosted,false);
   const unsafe=planCorrectionJournal({...input,journals:[{...input.journals[0],lines:[{id:"one",accountId:"acct-ar",debit:240,credit:0}]}]});
   assert.equal(unsafe.ok,false);
+});
+
+
+test("automatic amendments reject pending overpayments and unsettled refunds",()=>{
+  const financeModule=financialImported as typeof financialImported & {default?:typeof financialImported};
+  const {planFinancialCarry}=financeModule.default??financeModule;
+  const base={oldInvoiceId:"old",newInvoiceId:"new",accountId:"account-1",newTotal:80,
+    payments:[{id:"payment-1",accountId:"account-1",status:"Pending",amount:100}],
+    allocations:[{id:"allocation-1",invoiceId:"old",paymentId:"payment-1",amount:100}],
+    credits:[],refunds:[]};
+  assert.equal(planFinancialCarry(base).ok,false);
+  assert.equal(planFinancialCarry({...base,payments:[{...base.payments[0],status:"Cleared"}],
+    refunds:[{id:"refund-1",paymentId:"payment-1",amount:20,status:"Sent"}]}).ok,false);
+});
+
+test("commerce hydration does not recreate paid demo seed after invoice revision",()=>{
+  const createdAt="2026-10-28T18:00:00.000Z";
+  const data={users:[],accounts:[{id:"account-1",name:"Store"}],inventory:[],
+    orders:[{id:"order-1",number:"GE-001",accountId:"account-1",cases:8,amount:192,
+      pricePerCase:24,product:GOLDEN_EAGLE_SKUS[0].description,status:"Paid",
+      ownerId:"admin-one",placedAt:createdAt,paidAt:createdAt,firstSettledAt:createdAt,
+      priceBasis:"Approved",paymentStatus:"Paid"}]} as unknown as WorkspaceData;
+  const basic={orderId:"order-1",accountId:"account-1",issuedAt:createdAt,createdAt,
+    terms:"COD",billToAddressSnapshot:"100 Test Street"};
+  const state={version:1,invoices:[
+    {...basic,id:"invoice-order-1",number:"INV-001",status:"Void",total:240,
+      voidReason:"Superseded",supersededByInvoiceId:"invoice-order-1-r1"},
+    {...basic,id:"invoice-order-1-r1",number:"INV-001-R1",status:"Paid",total:192,
+      previousInvoiceId:"invoice-order-1"}],
+    payments:[{id:"paid-1",accountId:"account-1",status:"Cleared",amount:192,
+      receivedAt:createdAt,settledAt:createdAt,settledBy:"admin",createdBy:"admin",
+      method:"ACH",createdAt}],
+    allocations:[{id:"alloc-1",invoiceId:"invoice-order-1-r1",paymentId:"paid-1",
+      amount:192,createdAt,createdBy:"admin"}],credits:[],refunds:[],notes:[]};
+  const result=normalizeCommerceState(state,data);
+  assert.equal(result.invoices.length,2);
+  assert.equal(result.payments.length,1);
+  assert.equal(result.allocations.length,1);
+  assert.equal(result.allocations[0].invoiceId,"invoice-order-1-r1");
 });
