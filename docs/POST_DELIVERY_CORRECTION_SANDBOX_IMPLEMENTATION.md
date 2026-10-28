@@ -17,10 +17,19 @@
 5. No browser can approve, forge, or apply a correction by modifying Firestore directly. Authenticated server transaction required.
 6. Desktop and mobile save/reload and latency acceptance must be observed, not inferred from CI.
 
-## Incomplete paths in this PR
-- Correction transaction is preliminary and must pass exact product, accounting, inventory, transaction ordering, idempotency and Firestore tests before being exposed.
-- Authenticated submit/approval endpoints, user interface, and amended-invoice sender still require wiring and testing.
-- Sandbox catalog creation policy and isolated data rules exist as early groundwork; admin management interface, sandbox stock and test-order lifecycle require implementation.
+## Implemented on this draft branch (not deployed)
+- Administrator correction proposal/review UI and two-person server-side approval endpoints exist. The transaction plans exact-SKU/lot inventory movements, amends the order, creates a new invoice revision, and creates an idempotent reissue event.
+- Additional safeguards now block historical source lines with mismatched totals, invalid or partial SKU lines, return movements drawn from another order's customer custody, nonwarehouse stock held for another order, and restricted-lot delivery. Duplicate SKU lines are summed rather than silently replaced.
+- An Administrator can create an isolated **test** SKU through a server-validated, idempotent transaction. The product-name index prevents parallel duplicate registrations. Sandbox SKU, simulated receipts, orders, inventory and invoice records are not production commerce records. Browser writes to SKU metadata are denied.
+- Inventory includes a clearly named test-SKU modal with a prefilled fictional QA product. This is a proposed UI, not a live seeded Firestore product.
+
+## Still incomplete / required before merge
+- **Do not represent the full feature as delivered.** Corrections currently support adjusting quantities on existing order SKU lines and billing address. Arbitrary historical SKU substitution or new line insertion is not implemented.
+- Physical proof is still an approver-reviewed reference string; cryptographic/document-backed custody validation and an actual return-receipt evidence workflow need independent verification. Until then, an approved correction could still be based on false human evidence.
+- Original PDF retention must be proven end to end. Keeping the original invoice record and prior email outbox does not by itself guarantee that the exact original invoice PDF is available for future audit.
+- Production SKU master records remain hard-coded in `lib/product-catalog.ts`. Manual creation of **sellable** SKUs, approved barcodes, receiving, order entry, picking, invoice/reporting integration and safe deactivation is not implemented. Do not use a test SKU as a production SKU.
+- Test flow supports simulated receipt, order and delivery, not a full production-equivalent checkout, card capture, or customer email. This is intentional isolation, but the test coverage must be stated accurately.
+- A draft branch cannot prove cloud persistence, Firebase Function and Firestore rules rollout, reissued PDF/email, offline/concurrent writes, or mobile performance. Require all CI checks, two-admin emulator/role smoke tests, a verified PDF archive path, and release approval before deployment.
 - No feature is released merely because a draft PR was opened.
 
 ## Acceptance
