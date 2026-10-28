@@ -90,12 +90,6 @@ function targetReferences(){
 function mapDocuments(targets:ReturnType<typeof targetReferences>,snapshots:FirebaseFirestore.DocumentSnapshot[]):Map<string,Row[]>{
   return new Map(targets.map((target,i)=>[target.name,items(snapshots[i].data())]));
 }
-async function authorize(tx:FirebaseFirestore.Transaction,uid:string){
-  const access=await tx.get(getFirestore().doc("userAccess/"+uid));
-  if(text(access.data()?.role)!=="Administrator"||text(access.data()?.accountState)!=="Active")
-    fail(403,"Only an active Administrator can submit or approve corrections.");
-}
-
 /** Save an immutable proposal. Changes to inventory, order, or invoice are forbidden in this stage. */
 export async function submitDeliveryCorrection(uid:string,input:unknown){
   if(!row(input))fail(400,"Correction details required.");
@@ -192,9 +186,9 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
   const metaRef=getFirestore().doc("platform/meta");
   const auditRef=getFirestore().doc("deliveryCorrectionAudit/"+requestId+"-applied");
   return getFirestore().runTransaction(async tx=>{
-    const [access,request,active,reissue,meta,...snapshots]=await Promise.all([
+    const [access,request,active,reissue,...snapshots]=await Promise.all([
       tx.get(accessRef),tx.get(requestRef),tx.get(activeRef),tx.get(reissueRef),
-      tx.get(metaRef),...targets.map(x=>tx.get(x.ref)),
+      ...targets.map(x=>tx.get(x.ref)),
     ]);
     if(text(access.data()?.role)!=="Administrator"||text(access.data()?.accountState)!=="Active")
       fail(403,"Only an active Administrator can approve.");
