@@ -214,7 +214,11 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }));
     const appointmentIds = new Set(commercial.appointments.map((item) => item.id));
     const approvals = reconcileApprovals(commercial.approvals, base.data.approvals);
-    const orders = reconcileOrders(commercial.orders, baseOrders, approvals);
+    const allOrders = reconcileOrders(commercial.orders, baseOrders, approvals);
+    const qaIds=new Set(allOrders.filter(order=>order.testOnly).map(order=>order.id));
+    const internalQaVisible=base.currentUser?.role==="Administrator";
+    const orders=internalQaVisible?allOrders:allOrders.filter(order=>!order.testOnly);
+    const visibleApprovals=internalQaVisible?approvals:approvals.filter(approval=>!qaIds.has(approval.recordId));
     return {
       ...base.data,
       users,
@@ -224,10 +228,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       territories:commercial.territories,
       orders,
       appointments: [...commercial.appointments, ...base.data.appointments.filter((item) => !appointmentIds.has(item.id))],
-      approvals,
+      approvals:visibleApprovals,
       activities: [...commercial.activities, ...base.data.activities],
     };
-  }, [base.data, commercial, demoMode]);
+  }, [base.data, base.currentUser?.role, commercial, demoMode]);
 
   const currentUser = useMemo(() => demoMode && warehouseSession ? data.users.find((user) => user.id === warehouseUser.id) ?? null : base.currentUser ? data.users.find((user) => user.id === base.currentUser?.id) ?? null : null, [base.currentUser, data.users, demoMode, warehouseSession]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
