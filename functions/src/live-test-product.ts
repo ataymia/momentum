@@ -36,8 +36,9 @@ export async function operateLiveTestProduct(uid:string,payload:unknown){
     const casePack=input.casePack;
     if(input.testOnly!==true||description.length<3||description.length>120||
        shortName.length<2||shortName.length>48||!whole(casePack)||
+       !/^(?:QA|TEST)[ -]/i.test(description)||
        reserved.test(description)||reserved.test(shortName))
-      fail(400,"Use a fictional internal QA product name and valid case pack.");
+      fail(400,"Start the name with QA or TEST and enter a valid fictional product and case pack.");
     const nameRef=db.doc("liveTestProductNames/"+
       createHash("sha256").update(cleanName(description)).digest("hex"));
     return db.runTransaction(async tx=>{
