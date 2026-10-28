@@ -23,12 +23,14 @@ type RevisionEvidence={
 };
 
 function revision(e:RevisionEvidence):string{
-  // Unrelated inventory or payments must not invalidate an untouched order.
-  const {allMovements,lots,nodes,payments,refunds,...ordered}=e;
-  const relatedPaymentIds=new Set(e.allocations.map(a=>text(a.paymentId)));
-  return hash({...ordered,
-    relevantPayments:payments.filter(p=>relatedPaymentIds.has(text(p.id))),
-    relevantRefunds:refunds.filter(r=>relatedPaymentIds.has(text(r.paymentId))),
+  // Only this order's invoice, delivery and payment records form the source revision.
+  // Unrelated inventory and accounting activity is validated independently at approval.
+  const ids=new Set(e.allocations.map(a=>text(a.paymentId)));
+  return hash({
+    order:e.order,invoice:e.invoice,tasks:e.tasks,overrides:e.overrides,
+    movements:e.movements,allocations:e.allocations,credits:e.credits,
+    relevantPayments:e.payments.filter(p=>ids.has(text(p.id))),
+    relevantRefunds:e.refunds.filter(r=>ids.has(text(r.paymentId))),
   });
 }
 function forOrder(all:Row[],orderId:string):Row[]{
