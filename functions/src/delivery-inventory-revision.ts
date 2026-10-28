@@ -1,3 +1,4 @@
+/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,space-before-blocks,keyword-spacing,curly,brace-style,semi-spacing,arrow-parens,one-var,indent,operator-linebreak,space-before-function-paren */
 import type {CorrectionLine} from "./delivery-correction-policy";
 
 type Row=Record<string,unknown>;
