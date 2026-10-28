@@ -7,11 +7,17 @@ const positive=(value:unknown)=>typeof value==="number"&&Number.isInteger(value)
 
 export function canonicalLines(order:Raw):CorrectionLine[]{
   const raw=Array.isArray(order.lines)&&order.lines.length?order.lines:[order];
-  return raw.filter(object).map(item=>({
+  // Never silently drop a malformed historic line and then rewrite a partial order.
+  if(!raw.every(object))return[];
+  const lines=raw.map(item=>({
     product:text(item.product),
-    cases:Number(item.cases),
-    pricePerCase:Number(item.pricePerCase),
-  })).filter(item=>item.product&&positive(item.cases)&&Number.isFinite(item.pricePerCase)&&item.pricePerCase>0);
+    cases:item.cases,
+    pricePerCase:item.pricePerCase,
+  }));
+  if(lines.some(item=>!item.product||!positive(item.cases)||
+      typeof item.pricePerCase!=="number"||!Number.isFinite(item.pricePerCase)||
+      item.pricePerCase<=0))return[];
+  return lines as CorrectionLine[];
 }
 
 export function correctionDiff(original:CorrectionLine[],proposal:unknown):{
