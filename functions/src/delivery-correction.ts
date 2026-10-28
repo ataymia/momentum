@@ -160,7 +160,7 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
       newInvoiceId:"proposed-"+requestId,accountId:text(evidence.order.accountId),
       newTotal:diff.total,allocations:evidence.allocations,payments:evidence.payments,
       credits:evidence.credits,refunds:evidence.refunds});
-    if(provisional.ok===false)fail(409,provisional.message);
+    if(provisional.ok===false)throw new DeliveryCorrectionError(409,provisional.message);
     if(!diff.quantityChanged&&billToAddress===oldAddress)
       fail(400,"No change to order quantities or invoice billing address.");
     const originalTotal=n(evidence.order.amount);
@@ -262,7 +262,7 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       newInvoiceId,accountId:text(evidence.order.accountId),newTotal:diff.total,
       allocations:evidence.allocations,payments:evidence.payments,
       credits:evidence.credits,refunds:evidence.refunds});
-    if(financial.ok===false)fail(409,financial.message);
+    if(financial.ok===false)throw new DeliveryCorrectionError(409,financial.message);
     const journalRows=items(snapshots[targets.findIndex(t=>t.name==="accountingJournals")].data());
     const accountRows=items(snapshots[targets.findIndex(t=>t.name==="accountingAccounts")].data());
     const journalPlan=planCorrectionJournal({invoices:existing,journals:journalRows,
@@ -270,7 +270,7 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       originalTotal:n(evidence.invoice.total),revisedTotal:diff.total,
       customerCreditDue:financial.creditDue,requestId,actorUid:uid,at:stamped,
       date:new Date(stamped).toLocaleDateString("sv-SE",{timeZone:"America/Phoenix"})});
-    if(journalPlan.ok===false)fail(409,journalPlan.message);
+    if(journalPlan.ok===false)throw new DeliveryCorrectionError(409,journalPlan.message);
     const newInvoice={
       ...evidence.invoice,id:newInvoiceId,
       number:text(evidence.invoice.number).replace(/-R\d+$/,"")+"-R"+revisionNumber,
