@@ -18,6 +18,7 @@ import {
   RepSelfDeliveryError,
 } from "./rep-self-delivery";
 import {submitDeliveryCorrection,approveDeliveryCorrection,DeliveryCorrectionError} from "./delivery-correction";
+import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -1615,6 +1616,27 @@ export const approveDeliveredOrderCorrection=onRequest({
     }
     console.error("approveDeliveredOrderCorrection failed",error);
     json(response,502,{ok:false,message:"Correction was not applied. Check its saved state before retry."});
+  }
+});
+
+/** Run a wholly separated test SKU, stock, order or delivery operation. */
+export const sandboxWorkflow=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await commitSandboxAction(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof SandboxWorkflowError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("sandboxWorkflow failed",error);
+    json(response,502,{ok:false,message:"Sandbox action was not committed. Refresh before retrying."});
   }
 });
 
