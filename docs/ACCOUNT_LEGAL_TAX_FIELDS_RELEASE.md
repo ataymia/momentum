@@ -4,7 +4,7 @@
 
 ## Source-of-truth and intended behavior
 - Each Account is a business location. Its linked CustomerAccount is the billing/legal entity. Personal nicknames are separate, employee-only records and never appear in invoices.
-- Every new full account stores the entered legal business name as its canonical account/customer name, with an explicit staff attestation that it matches the license. Typed data alone is not independent document verification.
+- Every new full account requires the licensed legal name as its canonical account/customer name. The field placeholder says “Same as business license”; there is no redundant confirmation checkbox. Typed data alone is not independent document verification.
 - Capture EIN and AZ TPT license number as distinct identifiers. TPT number is 8 digits per ADOR; optional until collected or a documented exception is approved.
 - Tax documentation route: Undetermined / Taxable / Resale Form 5000A / General exemption Form 5000. This is classification only, never proof.
 - Reuse existing `taxExemptionStatus` and document workflow; never set Verified or exempt based solely on a typed number.
