@@ -334,6 +334,12 @@ service cloud.firestore {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;
     }
+    // Automatically calculated overpayments are auditable liabilities, not
+    // new payments or refunds. Browsers may not create or change amounts.
+    match /customerCreditDue/{requestId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
     match /deliveryInvoiceReissues/{requestId} {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;
