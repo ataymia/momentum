@@ -1,7 +1,7 @@
 /* eslint-disable max-len, comma-spacing, key-spacing, object-curly-spacing, indent, space-before-blocks, keyword-spacing, curly, brace-style, semi */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
-import {canonicalLines,orderLinesReconcile,correctionDiff,correctionApprovalGate,text} from "./delivery-correction-policy";
+import {canonicalLines,orderLinesReconcile,correctionDiff,correctionApprovalGate,correctionCloseGate,text} from "./delivery-correction-policy";
 import {planDeliveredInventoryCorrection,type InventoryCorrectionRow} from "./delivery-inventory-revision";
 
 type Row=Record<string,unknown>;
@@ -317,5 +317,54 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
     for(const path of touched)versions[path.replace(/[^A-Za-z0-9]+/g,"_")]=version;
     tx.set(metaRef,{versions},{merge:true});
     return{requestId,state:"Applied",invoiceId:newInvoiceId,replayed:false};
+  });
+}
+
+
+/** Reject or withdraw a pending correction without altering stock or invoices.
+ * History remains immutable, and the active-order lock is released atomically. */
+export async function closeDeliveryCorrection(uid:string,input:unknown){
+  if(!row(input))fail(400,"Correction closure details required.");
+  const requestId=text(input.requestId),orderId=text(input.orderId);
+  const decision=text(input.decision),reason=text(input.reason);
+  if(!idOk(requestId)||!idOk(orderId)||
+      (decision!=="Reject"&&decision!=="Withdraw")||reason.length<8||reason.length>800)
+    fail(400,"Choose a pending correction, an action, and a reason of at least 8 characters.");
+  const db=getFirestore();
+  const accessRef=db.doc("userAccess/"+uid);
+  const requestRef=db.doc("deliveryCorrectionRequests/"+requestId);
+  const activeRef=db.doc("deliveryCorrectionActive/"+orderId);
+  const auditRef=db.doc("deliveryCorrectionAudit/"+requestId+"-"+decision.toLowerCase());
+  return db.runTransaction(async tx=>{
+    const [access,request,active,audit]=await Promise.all([
+      tx.get(accessRef),tx.get(requestRef),tx.get(activeRef),tx.get(auditRef),
+    ]);
+    const authorized=text(access.data()?.role)==="Administrator"&&
+      text(access.data()?.accountState)==="Active";
+    if(!authorized)fail(403,"Only an active Administrator can close a correction.");
+    if(!request.exists)fail(404,"Correction request not found.");
+    const candidate=request.data() as Row;
+    if(text(candidate.orderId)!==orderId)
+      fail(409,"This request belongs to a different order.");
+    const requesterUid=text(candidate.requesterUid);
+    const gate=correctionCloseGate({actorUid:uid,requesterUid,
+      activeAdministrator:authorized,decision:decision as "Withdraw"|"Reject"});
+    if(gate)fail(403,gate);
+    const targetState=decision==="Reject"?"Rejected":"Withdrawn";
+    if(text(candidate.state)===targetState&&audit.exists)
+      return{requestId,orderId,state:targetState,replayed:true};
+    if(text(candidate.state)!=="Submitted"||text(active.data()?.requestId)!==requestId||
+        text(active.data()?.state)!=="Submitted")
+      fail(409,"This correction is no longer pending.");
+    if(audit.exists)fail(409,"An audit record already exists for this decision.");
+    const stamp=now();
+    tx.update(requestRef,{state:targetState,closedByUid:uid,closedAt:stamp,
+      closureReason:reason,
+      history:[...(Array.isArray(candidate.history)?candidate.history:[]),
+        {state:targetState,actorUid:uid,at:stamp,reason}]});
+    tx.set(activeRef,{orderId,requestId,state:targetState,updatedAt:stamp});
+    tx.create(auditRef,{requestId,orderId,requesterUid,actorUid:uid,
+      decision:targetState,reason,createdAt:stamp});
+    return{requestId,orderId,state:targetState,replayed:false};
   });
 }
