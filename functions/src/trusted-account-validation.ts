@@ -34,7 +34,7 @@ export function validateTrustedAccountCreation(input:unknown):ValidCreation {
   const legalBusinessName=str(input.legalBusinessName);
   if (!legalBusinessName || str(input.name)!==legalBusinessName) {
     return {ok: false,
-      message: "Legal business name must match the account name and licensing."};
+      message: "Account name must match the business license."};
   }
   const ein=str(input.ein);
   const azTptLicenseNumber=str(input.azTptLicenseNumber);
