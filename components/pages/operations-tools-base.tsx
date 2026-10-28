@@ -21,7 +21,7 @@ export function AccountSetupPage(){
   if(!currentUser)return null;
   const account=scope.accounts.find(a=>a.id===accountId);const customer=(data.customers??[]).find(c=>c.id===account?.customerId);const management=["Administrator","Sales Manager"].includes(currentUser.role);
   const saveCustomer=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();if(!customer)return;const form=new FormData(e.currentTarget);const requestCredit=String(form.get("requestCredit")||"no")==="yes";
-    const identity={legalBusinessName:String(form.get("legalName")||""),ein:String(form.get("ein")||""),azTptLicenseNumber:String(form.get("tptNumber")||""),taxDocumentType:String(form.get("taxDoc")||"Undetermined")};
+    const identity={legalBusinessName:String(form.get("legalName")||""),ein:String(form.get("ein")||""),azTptLicenseNumber:String(form.get("tptNumber")||""),taxDocumentType:String(form.get("taxDoc")||"Undetermined") as "Undetermined"|"Taxable"|"Resale 5000A"|"Exemption 5000"};
     const errors=validateTaxIdentity(identity);
     setIdentityErrors(errors);
     if(Object.keys(errors).length){setMessage("Correct the highlighted tax identity fields before saving.");return;}
