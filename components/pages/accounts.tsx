@@ -2,6 +2,7 @@
 
 import { AlertTriangle, ArrowLeft, Building2, CalendarPlus, ChevronLeft, ChevronRight, Mail, MapPin, Phone, Plus, Search, Store, UserRound } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import {loadPrivateAccountNicknames,savePrivateAccountNickname} from "../../lib/private-account-nicknames";
 import { canClaimUnassignedProspect, canCreateAccount, isCustomer } from "../../lib/access";
 import { validateNewAccountContact } from "../../lib/account-creation";
 import {taxIdentityMissing,validateTaxIdentity,type TaxIdentityInput,type TaxFieldErrors} from "../../lib/account-tax-identity";
@@ -56,11 +57,23 @@ export function AccountsPage(){
   const [createErrors,setCreateErrors]=useState<Record<string,string>>({});
   const [duplicateWarning,setDuplicateWarning]=useState<string|null>(null);
   const [form,setForm]=useState(blankForm);
+  const [newNickname,setNewNickname]=useState("");
+  const [nicknames,setNicknames]=useState<Map<string,string>>(new Map());
+  const [nicknameDraft,setNicknameDraft]=useState("");
+  const [nicknameOpen,setNicknameOpen]=useState(false);
+  const [nicknameError,setNicknameError]=useState("");
+  const [nicknameSaving,setNicknameSaving]=useState(false);
   const [commercialForm,setCommercialForm]=useState<CommercialForm>({premiseType:"Unclassified",businessType:"",categoryReviewDate:"",streetAddress:"",location:"",postalCode:"",deliveryAddressSameAsBusiness:true,deliveryStreetAddress:"",deliveryLocation:"",deliveryPostalCode:""});
   const [handoffTo,setHandoffTo]=useState("");
   const [handoffReason,setHandoffReason]=useState("");
 
   useEffect(()=>{if(focusId)window.sessionStorage.removeItem("momentum-focus-record")},[focusId]);
+  useEffect(()=>{
+    let active=true;
+    if(!currentUser||currentUser.role==="Customer")return;
+    loadPrivateAccountNicknames(currentUser.id,scope.accounts.map(a=>a.id)).then(values=>{if(active)setNicknames(values)}).catch(()=>{if(active)setNicknameError("Private nicknames could not load.")});
+    return()=>{active=false};
+  },[currentUser?.id,scope.accounts]);
 
   // An account with real orders stays open even when a legacy stage has not been advanced.
   // Qualified and Sampled remain in the Prospects view; no historic stage is rewritten.
@@ -114,7 +127,9 @@ export function AccountsPage(){
   const submit=(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
     const errors:Record<string,string>={...validateTaxIdentity(form)};
-    if(!form.name.trim())errors.name="Enter the storefront or trading name.";
+    // Full account identity is the licensed name; shorthand stays private.
+    const legalName=form.legalBusinessName.trim();
+    const accountInput={...form,name:legalName,customerName:legalName,locationName:legalName};
     if(!form.location.trim())errors.location="Enter the business city or market.";
     if(!/^\\d{5}(?:-\\d{4})?$/.test(form.postalCode.trim()))errors.postalCode="Enter a valid five-digit ZIP code.";
     if(!form.deliveryAddressSameAsBusiness){
@@ -126,18 +141,32 @@ export function AccountsPage(){
     if(!form.contactRole.trim())errors.contactRole="Enter the contact's role.";
     if(!form.phone.trim()&&!form.mobilePhone.trim()&&!form.email.trim())errors.phone="Provide a business phone, mobile phone or email.";
     if(form.email.trim()&&!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(form.email.trim()))errors.email="Enter a valid email address.";
-    const validation=validateNewAccountContact(form);
+    const validation=validateNewAccountContact(accountInput);
     if(!validation.ok&&!Object.keys(errors).length)errors.name=validation.message;
     setCreateErrors(errors);
     if(Object.keys(errors).length){setDuplicateWarning("Correct the highlighted fields before creating the account.");return;}
-    const duplicate=findAccountDuplicate(data.accounts,form);
+    const duplicate=findAccountDuplicate(data.accounts,accountInput);
     if(duplicate){setDuplicateWarning(`${duplicate.reason} Existing record: ${duplicate.account.locationName??duplicate.account.name} (${duplicate.account.location}). Open and edit that record instead.`);return;}
-    const id=createAccount({...form,taxDocumentType:form.taxDocumentType as "Undetermined"|"Taxable"|"Resale 5000A"|"Exemption 5000"});
+    const id=createAccount({...accountInput,taxDocumentType:form.taxDocumentType as "Undetermined"|"Taxable"|"Resale 5000A"|"Exemption 5000"});
     if(!id){setDuplicateWarning("Account was not created. Check the ZIP, territory exception, and duplicate-account rules.");return;}
     setSelectedId(id);setAccountPageId(id);setTab("accounts");
     setCreateOpen(false);setDuplicateWarning(null);setCreateErrors({});setForm(blankForm);
+    if(newNickname.trim()&&currentUser){
+      void savePrivateAccountNickname(currentUser.id,id,newNickname).then(value=>setNicknames(previous=>new Map(previous).set(id,value))).catch(()=>setNicknameError("Account created. Your personal nickname was not saved; edit it from the account profile."));
+    }
+    setNewNickname("");
   };
   const openAccountPage=(accountId:string)=>{setSelectedId(accountId);setAccountPageId(accountId);setShowAllAccountOrders(false)};
+  const saveNickname=async()=>{
+    if(!selected||!currentUser)return;
+    setNicknameSaving(true);setNicknameError("");
+    try{
+      const value=await savePrivateAccountNickname(currentUser.id,selected.id,nicknameDraft);
+      setNicknames(previous=>{const next=new Map(previous);if(value)next.set(selected.id,value);else next.delete(selected.id);return next});
+      setNicknameOpen(false);
+    }catch{setNicknameError("Nickname could not be saved. Try again.");}
+    finally{setNicknameSaving(false)}
+  };
   const changeTab=(next:AccountTab)=>{setTab(next);if(next!=="accounts")setAccountPageId(null)};
   const openLinkedPage=(page:"dispatch"|"orders",intent?:"new-order")=>{if(selected)window.sessionStorage.setItem("momentum-focus-record",selected.id);if(intent)window.sessionStorage.setItem("momentum-order-intent",intent);navigate(page)};
   const openTaxDetails=()=>{
