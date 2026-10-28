@@ -8,7 +8,7 @@ export const WAREHOUSE_REORDER_THRESHOLD_CASES=500;
 export type InventoryNodeType="Warehouse"|"Bin"|"Vehicle"|"Employee custody"|"Customer"|"Quality hold"|"Disposed"|"External";
 export type InventoryNode={id:string;name:string;type:InventoryNodeType;active:boolean;userId?:string;accountId?:string};
 export type MovementType="Receipt"|"Transfer"|"Allocation"|"Release"|"Delivery"|"Return"|"Sample"|"Damage"|"Shrink"|"Adjustment"|"Disposal";
-export type InventoryMovement={id:string;lotId:string;product:string;quantity:number;type:MovementType;fromNodeId?:string;toNodeId?:string;relatedOrderId?:string;reason:string;at:string;actorId:string};
+export type InventoryMovement={id:string;lotId:string;product:string;quantity:number;type:MovementType;fromNodeId?:string;toNodeId?:string;relatedOrderId?:string;reason:string;at:string;actorId:string;correctionRequestId?:string};
 export type InventoryReservation={id:string;orderId:string;lotId:string;quantity:number;status:"Active"|"Released"|"Fulfilled";createdAt:string;createdBy:string;releasedAt?:string;fulfilledAt?:string};
 export type InventoryCount={id:string;nodeId:string;lotId:string;countedQty:number;systemQty:number;variance:number;countedAt:string;countedBy:string;status:"Open"|"Reconciled";reason?:string;reconciledAt?:string;reconciledBy?:string;adjustmentMovementId?:string};
 export type InventoryLedgerState={version:1;nodes:InventoryNode[];movements:InventoryMovement[];reservations:InventoryReservation[];counts:InventoryCount[]};
@@ -132,7 +132,13 @@ export function movementCanPost(state:InventoryLedgerState,input:{lotId:string;q
   return true;
 }
 
-export function orderDeliveryQuantity(state:InventoryLedgerState,orderId:string){return state.movements.filter((movement)=>movement.relatedOrderId===orderId&&movement.type==="Delivery"&&positiveFiniteQuantity(movement.quantity)).reduce((sum,movement)=>sum+movement.quantity,0);}
+export function orderDeliveryQuantity(state:InventoryLedgerState,orderId:string){
+  const relevant=state.movements.filter(m=>m.relatedOrderId===orderId&&positiveFiniteQuantity(m.quantity));
+  const gross=relevant.filter(m=>m.type==="Delivery").reduce((sum,m)=>sum+m.quantity,0);
+  const correctedReturns=relevant.filter(m=>m.type==="Return"&&Boolean(m.correctionRequestId))
+    .reduce((sum,m)=>sum+m.quantity,0);
+  return Math.max(0,gross-correctedReturns);
+}
 export function orderLotWarehouseNetOutbound(state:InventoryLedgerState,orderId:string,lotId:string){return Math.max(0,state.movements.filter((movement)=>movement.relatedOrderId===orderId&&movement.lotId===lotId&&positiveFiniteQuantity(movement.quantity)).reduce((sum,movement)=>sum+(movement.fromNodeId===warehouseNodeId?movement.quantity:0)-(movement.toNodeId===warehouseNodeId?movement.quantity:0),0));}
 export function orderOutboundQuantity(state:InventoryLedgerState,orderId:string){const lots=[...new Set(state.movements.filter((movement)=>movement.relatedOrderId===orderId).map((movement)=>movement.lotId))];return lots.reduce((sum,lotId)=>sum+orderLotWarehouseNetOutbound(state,orderId,lotId),0);}
 export function orderCanAdvanceInventory(state:InventoryLedgerState,order:Order,nextStatus:"Allocated"|"Out for delivery"|"Delivered"){
