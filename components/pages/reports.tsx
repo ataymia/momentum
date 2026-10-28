@@ -32,7 +32,7 @@ export function ReportsPage() {
   const visibleOrderIds = new Set(records.orders.map((order) => order.id));
   const paidFacts = resolvedPaidOrderFacts(data, commerce).filter((fact) => visibleOrderIds.has(fact.orderId));
   const paid = collectedCashFacts(data, commerce).filter((fact) => visibleOrderIds.has(fact.orderId)).reduce((sum, fact) => sum + fact.amount, 0);
-  const delivered = records.orders.filter((order) => ["Delivered", "Paid"].includes(order.status) || taskForOrder(order.id)?.status === "Delivered").reduce((sum, order) => sum + order.cases, 0);
+  const delivered = records.orders.filter((order) => !order.testOnly && (["Delivered", "Paid"].includes(order.status) || taskForOrder(order.id)?.status === "Delivered")).reduce((sum, order) => sum + order.cases, 0);
   const available = records.inventory.reduce((sum, lot) => sum + warehouseAvailable(ledger, lot.id), 0);
   const onHand = records.inventory.reduce((sum, lot) => sum + Math.max(0, nodeLotBalance(ledger, warehouseNodeId, lot.id)), 0);
   const paidByAccount = new Map<string, number>();
@@ -87,7 +87,7 @@ export function ReportsPage() {
       <div className="reality-flow">{[
         ["Orders", records.orders.length, "Entered"],
         ["Paid", paidFacts.length, "Fully paid from commerce evidence"],
-        ["Delivered", records.orders.filter((item) => ["Delivered", "Paid"].includes(item.status) || taskForOrder(item.id)?.status === "Delivered").length, "Received"],
+        ["Delivered", records.orders.filter((item) => !item.testOnly && (["Delivered", "Paid"].includes(item.status) || taskForOrder(item.id)?.status === "Delivered")).length, "Received"],
         ["Placed", records.placements.length, "Observed"],
         ["Reordered", reordered, "Bought again"],
       ].map(([title, value, detail], index) => <div key={title as string}><span>{index + 1}</span><div><small>{title as string}</small><strong>{value as number}</strong><p>{detail as string}</p></div></div>)}</div>
