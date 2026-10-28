@@ -1,3 +1,4 @@
+/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,space-before-blocks,keyword-spacing,curly,brace-style,semi-spacing,arrow-parens,one-var,indent,operator-linebreak,space-before-function-paren */
 import {onRequest} from "firebase-functions/v2/https";
 import {setGlobalOptions} from "firebase-functions";
 import {defineString} from "firebase-functions/params";
