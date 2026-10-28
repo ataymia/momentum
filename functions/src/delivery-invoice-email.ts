@@ -163,6 +163,12 @@ const queueDeliveredInvoice=async (
     findById(items(customersDoc.data()),text(account.customerId)),
     customerPatches,
   ):undefined;
+  // Only the licensed customer identity may appear as BILL TO. Never use a nickname or trading name.
+  const legalName=text(customer?.legalBusinessName);
+  if(!legalName){
+    await adminEvent("Order "+text(order.number)+" is missing a legal business name. Invoice email held for account review.",orderId,eventId);
+    return;
+  }
   // Customer invoices are billing-email only. A/P or location is not a fallback.
   const billingEmail=text(customer?.billingEmail);
   if(!safeMail(billingEmail)){
@@ -218,7 +224,7 @@ const queueDeliveredInvoice=async (
     invoiceNumber:text(invoice.number),
     orderNumber:text(order.number),
     invoiceDate:text(invoice.issuedAt),
-    customerName:text(customer?.name)||text(account?.name)||"Customer",
+    customerName:legalName,
     billingEmail,
     billingContact:text(customer?.accountsPayableContactName)||
       text(customer?.billingContactName)||undefined,
