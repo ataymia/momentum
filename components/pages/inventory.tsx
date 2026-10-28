@@ -10,7 +10,7 @@ import type { InventoryLot } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Modal, PageHeader, Section, StatusPill, formatDate } from "../ui";
 
-const SandboxSkuManager=lazy(()=>import("../inventory/sandbox-sku-manager").then(m=>({default:m.SandboxSkuManager})));
+const LiveQaSkuManager=lazy(()=>import("../inventory/live-qa-sku-manager").then(m=>({default:m.LiveQaSkuManager})));
 
 const companyCustodyTypes=new Set(["Warehouse","Bin","Vehicle","Employee custody","Quality hold"]);
 const quickProducts=GOLDEN_EAGLE_SKUS.filter((sku)=>sku.active).map((sku)=>sku.description);
@@ -26,7 +26,7 @@ export function InventoryPage() {
   const [selectedLotId, setSelectedLotId] = useState(focusedLot?.id??scope.inventory[0]?.id ?? "");
   const [holdOpen,setHoldOpen] = useState(false); const [decision,setDecision] = useState<"Release"|"Retain">("Retain"); const [reason,setReason] = useState(""); const [error,setError] = useState("");
   const [quickOpen,setQuickOpen]=useState(quickIntent==="quick-add");
-  const [sandboxOpen,setSandboxOpen]=useState(false);
+  const [qaOpen,setQaOpen]=useState(false);
   const [quickRows,setQuickRows]=useState<QuickInventoryRow[]>(freshQuickRows);
   const [receivedAt,setReceivedAt]=useState(arizonaDateKey());
   const [receiptLocation,setReceiptLocation]=useState("Phoenix warehouse");
@@ -105,7 +105,7 @@ export function InventoryPage() {
 
   return (
     <div className="page page--inventory">
-      <PageHeader eyebrow="Supply chain" title="Inventory" actions={currentUser?.role==="Administrator"?<><Button variant="gold" icon={<Plus size={17}/>} onClick={openQuickAdd}>Quick add inventory</Button><Button variant="secondary" onClick={()=>setSandboxOpen(true)}>Test SKUs</Button></>:undefined}/>
+      <PageHeader eyebrow="Supply chain" title="Inventory" actions={currentUser?.role==="Administrator"?<><Button variant="gold" icon={<Plus size={17}/>} onClick={openQuickAdd}>Quick add inventory</Button><Button variant="secondary" onClick={()=>setQaOpen(true)}>Live QA products</Button></>:undefined}/>
       {quickNotice&&<div className="form-callout"><CheckCircle2 size={17}/><p>{quickNotice}</p></div>}
       <div className="inventory-kpis">
         <div><span><Boxes size={19} /></span><div><small>Company custody</small><strong>{onHand} cases</strong></div></div>
@@ -132,7 +132,7 @@ export function InventoryPage() {
           </div>
         )}
       </Section>
-      {sandboxOpen&&<Suspense fallback={<p>Opening sandbox…</p>}><SandboxSkuManager open={sandboxOpen} onClose={()=>setSandboxOpen(false)}/></Suspense>}
+      {qaOpen&&<Suspense fallback={<p>Loading QA catalog…</p>}><LiveQaSkuManager open={qaOpen} onClose={()=>setQaOpen(false)}/></Suspense>}
       <Modal open={quickOpen} title="Quick add inventory" description="Administrator-only opening receipt. Enter only quantities physically in company custody. Lot code and best-by date are required so inventory stays auditable and usable for fulfillment." onClose={()=>setQuickOpen(false)} footer={<><Button variant="ghost" onClick={()=>setQuickOpen(false)}>Cancel</Button><Button type="submit" form="quick-inventory-form" variant="primary">Add inventory</Button></>}>
         <form id="quick-inventory-form" className="form-grid" onSubmit={submitQuickAdd}>
           <Field label="Received date"><input type="date" required value={receivedAt} onChange={(event)=>setReceivedAt(event.target.value)}/></Field>
