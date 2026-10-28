@@ -105,8 +105,12 @@ export async function createTrustedCrmAccount(
     const creatorRef=db.doc("accountCreatorProvenance/"+accountId);
     const customerName=validation.customerName;
     const customerCollision=list(customers.data()).find((row)=>
-      str(row.id)===customerId &&
-      str(row.name).toLowerCase()!==customerName.toLowerCase());
+      str(row.id)===customerId && (
+        str(row.name).toLowerCase()!==customerName.toLowerCase()||
+        (str(row.legalBusinessName)&&str(row.legalBusinessName).toLowerCase()!==validation.legalBusinessName.toLowerCase())||
+        (str(row.ein)&&validation.ein&&str(row.ein).replace(/\\D/g,"")!==validation.ein.replace(/\\D/g,""))||
+        (str(row.azTptLicenseNumber)&&validation.azTptLicenseNumber&&str(row.azTptLicenseNumber)!==validation.azTptLicenseNumber)
+      ));
     if (customerCollision) {
       throw new TrustedAccountCreationError(
         409, "Customer grouping needs review before creation.");
@@ -130,6 +134,9 @@ export async function createTrustedCrmAccount(
     if (!alreadyGrouped) {
       tx.set(customersRef, {items: [{
         id: customerId, name: customerName,
+        legalBusinessName:validation.legalBusinessName,
+        ein:validation.ein||"",azTptLicenseNumber:validation.azTptLicenseNumber||"",
+        taxDocumentType:validation.taxDocumentType||"Undetermined",
         accountType: customerName===str(validation.record.name)?
           "Independent":"Chain / franchise",
         billingContactName: validation.record.contactName,
