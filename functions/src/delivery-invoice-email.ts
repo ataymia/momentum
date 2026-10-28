@@ -3,6 +3,7 @@ import {createHash} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {onDocumentCreated,onDocumentWritten} from "firebase-functions/v2/firestore";
 import {buildSignedInvoicePdf,type InvoicePdfSignature} from "./signed-invoice-pdf";
+import {invoicePlacedByName} from "./invoice-placer-name";
 import {safeMail} from "./resend-mail-policy";
 
 type Row=Record<string,unknown>;
@@ -124,12 +125,11 @@ const queueDeliveredInvoice=async (
     db.doc("domains/commerce/fields/allocations"),
     db.doc("domains/commerce/fields/credits"),
     db.doc("domains/commerce/fields/refunds"),
-    db.doc("domains/workspace/fields/users"),
     db.doc("domains/commercial/fields/_root"),
   ];
   const [
     commercial,workspace,accountsDoc,customersDoc,invoicesDoc,
-    paymentsDoc,allocationsDoc,creditsDoc,refundsDoc,usersDoc,rootDoc,
+    paymentsDoc,allocationsDoc,creditsDoc,refundsDoc,rootDoc,
   ]=await db.getAll(...refs);
   const root=row(rootDoc.data()?.data)?rootDoc.data()?.data as Row:{};
   const accountPatches=row(root.accountPatches)?root.accountPatches:{};
@@ -204,7 +204,11 @@ const queueDeliveredInvoice=async (
   const computedStatus=balance<=0?"Paid":
     balance<total?"Partially paid":
       text(invoice.status)==="Draft"?"Draft":"Open";
-  const owner=findById(items(usersDoc.data()),text(order.ownerId));
+  // Workspace user profiles are deliberately omitted from shared domain shards.
+  // The authoritative display profile is employeeDirectory/{Firebase UID}.
+  const placerUid=text(order.ownerId);
+  const placerProfile=placerUid&&!placerUid.includes("/")?
+    await db.collection("employeeDirectory").doc(placerUid).get():null;
   const apExtension=text(customer?.accountsPayableExtension);
   const apPhone=text(customer?.accountsPayablePhone)||
     text(customer?.billingPhone);
@@ -227,7 +231,7 @@ const queueDeliveredInvoice=async (
     shipToAddress:text(invoice.shipToAddressSnapshot),
     shipToContact:locationContact||undefined,
     shipToPhone:text(account?.phone)||undefined,
-    placedBy:text(owner?.name)||text(order.ownerId)||"Not recorded",
+    placedBy:invoicePlacedByName(placerProfile?.data()),
     deliveredAt,
     terms:text(invoice.terms)||"COD",
     dueDate:text(invoice.dueDate)||undefined,

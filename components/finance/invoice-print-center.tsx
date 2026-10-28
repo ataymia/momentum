@@ -11,6 +11,7 @@ import { useDelivery } from "../../lib/delivery-context";
 import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
 import { orderLinesFor } from "../../lib/order-lines";
 import { invoicePrintPages } from "../../lib/invoice-print-pages";
+import {invoicePlacerLabel} from "../../lib/invoice-placer-name";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Modal, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
@@ -145,7 +146,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
         <div><span>Due</span><strong>{dueLabel(invoice.terms, invoice.dueDate)}</strong></div>
         <div><span>Status</span><strong>{status}</strong></div>
         <div><span>Cases</span><strong>{lines.reduce((sum, line) => sum + line.cases, 0)}</strong></div>
-        <div><span>Placed by</span><strong>{placedBy?.name ?? order?.ownerId ?? "Not recorded"}</strong></div>
+        <div><span>Placed by</span><strong>{order?invoicePlacerLabel(placedBy?.name):"Not recorded"}</strong></div>
       </section>
 
       <table className="invoice-sheet__table">
@@ -205,7 +206,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
           task.orderId===invoice.orderId&&task.status==="Delivered")||
           deliveryState.overrides.some((record)=>record.orderId===invoice.orderId));
         const billingBlocked=isConfirmedDelivered&&!billingCustomer?.billingEmail?.trim();
-        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{placedBy?.name??order?.ownerId??"Not recorded"}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill>{billingBlocked&&<small role="status">Billing email required for delivery invoice.</small>}</span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => setPreviewId(invoice.id)}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
+        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{order?invoicePlacerLabel(placedBy?.name):"Not recorded"}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill>{billingBlocked&&<small role="status">Billing email required for delivery invoice.</small>}</span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => setPreviewId(invoice.id)}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
       })}{invoices.length === 0 && <div className="review-empty"><FileText size={24}/><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}</div>
     </Section>
 

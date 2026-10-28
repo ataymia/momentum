@@ -4,9 +4,13 @@ import {createHash} from "node:crypto";
 import test from "node:test";
 import * as mailPolicy from "../functions/src/resend-mail-policy";
 import * as pdfModule from "../functions/src/signed-invoice-pdf";
+import * as placerModule from "../functions/src/invoice-placer-name";
+import * as clientPlacerModule from "../lib/invoice-placer-name";
 
 const pdfExports=(pdfModule as unknown as {default?:typeof pdfModule}).default??pdfModule;
 const buildSignedInvoicePdf=pdfExports.buildSignedInvoicePdf;
+const invoicePlacedByName=((placerModule as unknown as {default?:typeof placerModule}).default??placerModule).invoicePlacedByName;
+const invoicePlacerLabel=((clientPlacerModule as unknown as {default?:typeof clientPlacerModule}).default??clientPlacerModule).invoicePlacerLabel;
 const policy=(mailPolicy as unknown as {default?:typeof mailPolicy}).default??
   mailPolicy;
 
@@ -215,13 +219,37 @@ test("branded PDF paginates all order lines rather than silently discarding any"
 
 test("invoice sender reads receipts, credits and refunds from persisted ledgers",()=>{
   const source=readFileSync("functions/src/delivery-invoice-email.ts","utf8");
-  for(const key of ["payments","allocations","credits","refunds","users"]){
-    assert.match(source,new RegExp("domains/"+
-      (key==="users"?"workspace":"commerce")+"/fields/"+key));
+  for(const key of ["payments","allocations","credits","refunds"]){
+    assert.match(source,new RegExp("domains/commerce/fields/"+key));
   }
+  assert.match(source,/collection\("employeeDirectory"\)/);
   assert.match(source,/status\)==="Cleared"/);
   assert.match(source,/status\)==="Applied"/);
   assert.match(source,/status\)==="Settled"/);
   assert.match(source,/balanceDue:balance/);
   assert.match(source,/invoiceDate:text\(invoice\.issuedAt\)/);
+});
+
+test("emailed invoices resolve original order creator from employeeDirectory and never print an internal UID",()=>{
+  const source=readFileSync("functions/src/delivery-invoice-email.ts","utf8");
+  assert.match(source,/collection\("employeeDirectory"\)\.doc\(placerUid\)\.get\(\)/);
+  assert.match(source,/placedBy:invoicePlacedByName\(placerProfile\?\.data\(\)\)/);
+  assert.doesNotMatch(source,/domains\/workspace\/fields\/users/);
+  assert.doesNotMatch(source,/placedBy:.*order\.ownerId/);
+  assert.equal(invoicePlacedByName({name:"  Jordan Williams  "}),"Jordan Williams");
+  assert.equal(invoicePlacedByName({name:""}),"Name unavailable");
+  assert.equal(invoicePlacedByName(null),"Name unavailable");
+  assert.equal(invoicePlacedByName({id:"2xAeemsPoeRFX"}),"Name unavailable");
+});
+
+test("invoice browser and register use human-readable labels without leaking an owner UID",()=>{
+  const printable=readFileSync("components/finance/invoice-print-center.tsx","utf8");
+  const register=readFileSync("components/commerce/order-cash-panel-v2.tsx","utf8");
+  assert.match(printable,/invoicePlacerLabel\(placedBy\?\.name\)/);
+  assert.match(register,/invoicePlacerLabel\(placedBy\?\.name\)/);
+  assert.match(register,/invoicePlacerLabel\(data\.users\.find/);
+  assert.doesNotMatch(printable,/placedBy\?\.name\s*\?\?\s*order\?\.ownerId/);
+  assert.doesNotMatch(register,/placedBy\?\.name\s*\?\?\s*order\?\.ownerId/);
+  assert.equal(invoicePlacerLabel("  Jordan Williams "),"Jordan Williams");
+  assert.equal(invoicePlacerLabel(null),"Name unavailable");
 });
