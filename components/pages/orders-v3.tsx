@@ -91,7 +91,7 @@ export function OrdersPage(){
  const canEdit=(order:Order|undefined)=>Boolean(order&&currentUser&&["Draft","Awaiting approval","Approved"].includes(order.status)&&(currentUser.role==="Administrator"||(order.ownerId===currentUser.id&&["Sales Representative","Sales Manager","Customer"].includes(currentUser.role))));
  const canCancel=(order:Order|undefined)=>canCancelOrder(currentUser,order);
  const openInvoice=(orderId:string)=>{window.sessionStorage.setItem("momentum-focus-record",orderId);navigate("orderCash");};
- const selectedInvoice=selected?commerce.invoices.find((invoice)=>invoice.orderId===selected.id):undefined;
+ const selectedInvoice=selected?commerce.invoices.find((invoice)=>invoice.orderId===selected.id&&invoice.status!=="Void"):undefined;
  const selectedInvoicePaymentIds=new Set(selectedInvoice?commerce.allocations.filter((allocation)=>allocation.invoiceId===selectedInvoice.id).map((allocation)=>allocation.paymentId):[]);
  const selectedHasFinancialActivity=Boolean(selectedInvoice&&(commerce.payments.some((payment)=>selectedInvoicePaymentIds.has(payment.id)&&["Pending","Cleared"].includes(payment.status))||commerce.credits.some((credit)=>credit.invoiceId===selectedInvoice.id&&credit.status!=="Void")));
 
