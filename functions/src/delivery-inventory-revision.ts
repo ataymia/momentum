@@ -23,9 +23,9 @@ const stock=(movements:Row[],nodeId:string,lotId:string)=>
  * A caller must additionally verify proof of actual physical custody.
  */
 export function planDeliveredInventoryCorrection(input:{
-  accountId:string;original:CorrectionLine[];proposed:CorrectionLine[];
+  accountId:string;orderId:string;original:CorrectionLine[];proposed:CorrectionLine[];
   adjustments:InventoryCorrectionRow[];
-  lots:Row[];nodes:Row[];movements:Row[];
+  lots:Row[];nodes:Row[];movements:Row[];reservations:Row[];
 }):InventoryPlan{
   const customerNode="node-account-"+input.accountId;
   const holdNode="node-quality-hold";
@@ -56,8 +56,12 @@ export function planDeliveredInventoryCorrection(input:{
       return{ok:false,message:"Correction inventory destination does not exist."};
     const k=adjustment.fromNodeId+"|"+adjustment.lotId;
     const available=balances.has(k)?balances.get(k)!:stock(input.movements,adjustment.fromNodeId,adjustment.lotId);
-    if(available<adjustment.quantity)
-      return{ok:false,message:"Insufficient physically recorded lot custody for correction."};
+    const reservedOther=adjustment.fromNodeId==="node-warehouse-main"?
+      input.reservations.filter(r=>r.status==="Active"&&r.lotId===adjustment.lotId&&
+        r.orderId!==input.orderId).reduce((q,r)=>q+
+        (typeof r.quantity==="number"?r.quantity:0),0):0;
+    if(available-reservedOther<adjustment.quantity)
+      return{ok:false,message:"Insufficient unreserved physical lot custody for correction."};
     balances.set(k,available-adjustment.quantity);
     tally.set(adjustment.product,(tally.get(adjustment.product)||0)+adjustment.quantity);
     prepared.push({...adjustment,type});
