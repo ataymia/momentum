@@ -23,7 +23,13 @@ type RevisionEvidence={
 };
 
 function revision(e:RevisionEvidence):string{
-  return hash(e);
+  // Unrelated inventory or payments must not invalidate an untouched order.
+  const {allMovements,lots,nodes,payments,refunds,...ordered}=e;
+  const relatedPaymentIds=new Set(e.allocations.map(a=>text(a.paymentId)));
+  return hash({...ordered,
+    relevantPayments:payments.filter(p=>relatedPaymentIds.has(text(p.id))),
+    relevantRefunds:refunds.filter(r=>relatedPaymentIds.has(text(r.paymentId))),
+  });
 }
 function forOrder(all:Row[],orderId:string):Row[]{
   return all.filter(x=>text(x.orderId)===orderId||text(x.relatedOrderId)===orderId);
@@ -140,6 +146,8 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
       fail(409,"A paid order requires Finance reconciliation before quantity changes.");
     if(!diff.quantityChanged&&billToAddress===oldAddress)
       fail(400,"No change to order quantities or invoice billing address.");
+    if(text(evidence.invoice.status)==="Paid"||text(evidence.order.paymentStatus)==="Paid")
+      fail(409,"Settled or paid invoices must be reconciled by Finance before amendment.");
     const originalTotal=n(evidence.order.amount);
     if(Math.abs(n(evidence.invoice.total)-originalTotal)>0.005)
       fail(409,"Order and invoice totals disagree. Reconcile before editing.");
@@ -200,6 +208,8 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
     const original=canonicalLines(evidence.order);
     const diff=correctionDiff(original,candidate.proposedLines);
     if(!diff.ok)fail(409,diff.message);
+    if(text(evidence.invoice.status)==="Paid"||text(evidence.order.paymentStatus)==="Paid")
+      fail(409,"Settled or paid invoices require Finance review.");
     const plan=planDeliveredInventoryCorrection({accountId:text(evidence.order.accountId),
       original,proposed:diff.lines,
       adjustments:Array.isArray(candidate.inventoryAdjustments)?candidate.inventoryAdjustments as InventoryCorrectionRow[]:[],
@@ -230,7 +240,7 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
     const newInvoice={
       ...evidence.invoice,id:newInvoiceId,
       number:text(evidence.invoice.number).replace(/-R\d+$/,"")+"-R"+revisionNumber,
-      issuedAt:stamped,createdAt:stamped,status:"Open",
+      issuedAt:stamped,createdAt:stamped,status:"Open",total:diff.total,
       billToAddressSnapshot:text(candidate.proposedBillToAddress),
       previousInvoiceId:originalInvoiceId,correctionRequestId:requestId,
       revisionNumber,
