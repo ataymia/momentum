@@ -1,4 +1,4 @@
-import {deleteFirestoreDocument,getFirestoreDocument,setFirestoreDocument} from "./firebase-firestore-rest";
+import {deleteFirestoreDocument,listFirestoreCollection,setFirestoreDocument} from "./firebase-firestore-rest";
 
 export type PrivateNickname={accountId:string;nickname:string};
 const cache=new Map<string,Map<string,string>>();
@@ -19,16 +19,14 @@ export async function loadPrivateAccountNicknames(uid:string,accountIds:readonly
   if(pending.has(uid))return new Map(await pending.get(uid)!);
   const promise=(async()=>{
     const result=new Map<string,string>();
-    // Read only the visible accounts to avoid a global full-data preload.
-    const identifiers=[...new Set(accountIds)].filter(safeId);
-    const batchSize=5;
-    for(let i=0;i<identifiers.length;i+=batchSize){
-      const batch=identifiers.slice(i,i+batchSize);
-      await Promise.all(batch.map(async accountId=>{
-        const doc=await getFirestoreDocument<PrivateNickname>(privateNicknamePath(uid,accountId));
-        if(doc?.accountId===accountId&&typeof doc.nickname==="string"&&doc.nickname.trim())
-          result.set(accountId,doc.nickname.trim());
-      }));
+    // One scoped collection read; never one request per account (hundreds of accounts
+    // would otherwise reintroduce the mobile lag we just removed).
+    if(!safeId(uid))throw new Error("Invalid employee nickname reference.");
+    const visible=new Set(accountIds);
+    const docs=await listFirestoreCollection<PrivateNickname>(`privateAccountNicknames/${uid}/accounts`);
+    for(const doc of docs){
+      if(safeId(doc.accountId)&&visible.has(doc.accountId)&&typeof doc.nickname==="string"&&doc.nickname.trim())
+        result.set(doc.accountId,doc.nickname.trim());
     }
     cache.set(uid,result);
     return result;
