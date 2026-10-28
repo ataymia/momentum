@@ -1,20 +1,20 @@
 # Arizona account legal identity / validation: release acceptance
 
-**Status: draft, production blocked pending sensitive-data authorization review and workflow acceptance.**
+**Status: code review. Current customer-identifier access remains unchanged at the user's direction; workflow, rules deployment and acceptance tests still required.**
 
 ## Source-of-truth and intended behavior
-- Each Account is a business location. Its linked CustomerAccount is the billing/legal entity.
-- Preserve the storefront/account display name separately from `legalBusinessName` recorded exactly from the business license.
+- Each Account is a business location. Its linked CustomerAccount is the billing/legal entity. Personal nicknames are separate, employee-only records and never appear in invoices.
+- Every new full account stores the entered legal business name as its canonical account/customer name, with an explicit staff attestation that it matches the license. Typed data alone is not independent document verification.
 - Capture EIN and AZ TPT license number as distinct identifiers. TPT number is 8 digits per ADOR; optional until collected or a documented exception is approved.
 - Tax documentation route: Undetermined / Taxable / Resale Form 5000A / General exemption Form 5000. This is classification only, never proof.
 - Reuse existing `taxExemptionStatus` and document workflow; never set Verified or exempt based solely on a typed number.
-- Existing accounts display gaps, but should not be silently blocked from review or historical record access.
+- Existing accounts remain viewable and editable. Printing or emailing a customer-facing invoice is held when the legal business name is absent; it is not silently replaced with a trading or nickname.
 - New accounts require a legal name and highlight rejected fields at submission. Do not hard-require an EIN/TPT from all legal entity types absent a documented exception process.
 - Company-identity edits use existing `updateCustomerCommercial`, authorization, saving journal and record ownership policy; changes are not direct Firestore writes in components.
 - Account Setup and account profiles must use the exact same CustomerAccount fields, without duplicative per-location identity copies.
 
 ## Mandatory release blockers
-1. **Security:** `domains/workspace/fields/customers` and `domains/commercial/fields/_root` are broadly readable by several operational roles. Existing `ein` is sensitive. Before enabling production collection, isolate sensitive EIN access or approve an auditable, least-privilege design with role-based Firestore tests. UI masking alone does not protect backend reads. No new collection until solved.
+1. **Existing EIN access:** Shared customer documents are readable by authorized operational roles, not literally only the creator and managers. The user chose to defer narrowing those existing permissions. This change does not widen that access. Reassess roles and access before staff expansion. Private nicknames have a separate owner-only Firestore rule and must not enter shared customer documents.
 2. Verify who may create, edit, see, and verify identity/tax documents. Sales capture must not imply authority to grant tax exemption. A rep changing identity must not overwrite another legal entity's verified identity.
 3. Verify document verification, retention, exception handling and source of approved tax treatment with Operations/Finance.
 4. Audit multi-location shared customer grouping: slug-derived `customerId` must not silently merge distinct legal entities. Determine safe duplicate collision behavior.
