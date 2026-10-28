@@ -20,6 +20,15 @@ export function canonicalLines(order:Raw):CorrectionLine[]{
   return lines as CorrectionLine[];
 }
 
+/** Preserve every existing order line. If its stored totals disagree with the
+ * order header, stop instead of silently recalculating a historic invoice. */
+export function orderLinesReconcile(order:Raw,lines:CorrectionLine[]):boolean{
+  if(!lines.length||typeof order.cases!=="number"||typeof order.amount!=="number")return false;
+  const cases=lines.reduce((sum,line)=>sum+line.cases,0);
+  const total=lines.reduce((sum,line)=>sum+line.cases*line.pricePerCase,0);
+  return Number.isFinite(total)&&cases===order.cases&&Math.abs(total-order.amount)<0.005;
+}
+
 export function correctionDiff(original:CorrectionLine[],proposal:unknown):{
   ok:boolean;message:string;lines:CorrectionLine[];quantityChanged:boolean;total:number;
 }{
