@@ -25,7 +25,8 @@ module.exports = {
     files: ["src/resend-mail-policy.ts", "src/resend-transport.ts",
       "src/delivery-correction.ts", "src/delivery-correction-policy.ts",
       "src/delivery-inventory-revision.ts", "src/sandbox-workflow.ts",
-      "src/correction-financial-plan.ts", "src/correction-accounting-plan.ts"],
+      "src/correction-financial-plan.ts", "src/correction-accounting-plan.ts",
+      "src/live-test-product.ts"],
     rules: {"require-jsdoc": "off", "valid-jsdoc": "off"},
   }],
   plugins: [
