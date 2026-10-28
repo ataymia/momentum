@@ -19,7 +19,7 @@ const fail=(status:number,message:string):never=>{throw new DeliveryCorrectionEr
 
 type RevisionEvidence={
   order:Row;invoice:Row;tasks:Row[];overrides:Row[];
-  movements:Row[];allMovements:Row[];lots:Row[];nodes:Row[];reservations:Row[];payments:Row[];allocations:Row[];credits:Row[];refunds:Row[];
+  movements:Row[];allMovements:Row[];lots:Row[];nodes:Row[];reservations:Row[];accountingJournals:Row[];payments:Row[];allocations:Row[];credits:Row[];refunds:Row[];
 };
 
 function revision(e:RevisionEvidence):string{
@@ -43,6 +43,12 @@ function financialActivity(invoice:Row,payments:Row[],allocations:Row[],credits:
     credits.some(x=>text(x.invoiceId)===invoiceId&&text(x.status)!=="Void")||
     refunds.some(x=>paymentIds.has(text(x.paymentId))&&text(x.status)!=="Failed");
 }
+function unreconciledAccountingJournal(e:RevisionEvidence):boolean{
+  return e.accountingJournals.some(j=>
+    text(j.sourceType)==="Invoice issued"&&
+    text(j.sourceId)===text(e.invoice.id)&&
+    text(j.status)!=="Voided");
+}
 function activeInvoice(list:Row[],orderId:string):Row|undefined{
   return list.find(x=>text(x.orderId)===orderId&&text(x.status)!=="Void");
 }
@@ -61,6 +67,7 @@ function currentEvidence(docs:Map<string,Row[]>,orderId:string):RevisionEvidence
     lots:[...(docs.get("workspaceLots")||[]),...(docs.get("commercialLots")||[])],
     nodes:docs.get("nodes")||[],
     reservations:docs.get("reservations")||[],
+    accountingJournals:docs.get("accountingJournals")||[],
     payments:docs.get("payments")||[],
     allocations:(docs.get("allocations")||[]).filter(x=>text(x.invoiceId)===text(invoice.id)),
     credits:(docs.get("credits")||[]).filter(x=>text(x.invoiceId)===text(invoice.id)),
@@ -83,6 +90,7 @@ const dataPaths={
   allocations:"domains/commerce/fields/allocations",
   credits:"domains/commerce/fields/credits",
   refunds:"domains/commerce/fields/refunds",
+  accountingJournals:"domains/accounting/fields/journals",
 } as const;
 
 
@@ -145,6 +153,8 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
       fail(400,"No change to order quantities or invoice billing address.");
     if(text(evidence.invoice.status)==="Paid"||text(evidence.order.paymentStatus)==="Paid")
       fail(409,"Settled or paid invoices must be reconciled by Finance before amendment.");
+    if(unreconciledAccountingJournal(evidence))
+      fail(409,"Original invoice has an accounting journal. Finance must void or reverse it before amendment.");
     const originalTotal=n(evidence.order.amount);
     if(Math.abs(n(evidence.invoice.total)-originalTotal)>0.005)
       fail(409,"Order and invoice totals disagree. Reconcile before editing.");
@@ -205,8 +215,9 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
     const original=canonicalLines(evidence.order);
     const diff=correctionDiff(original,candidate.proposedLines);
     if(!diff.ok)fail(409,diff.message);
-    if(text(evidence.invoice.status)==="Paid"||text(evidence.order.paymentStatus)==="Paid")
-      fail(409,"Settled or paid invoices require Finance review.");
+    if(text(evidence.invoice.status)==="Paid"||text(evidence.order.paymentStatus)==="Paid"||
+       unreconciledAccountingJournal(evidence))
+      fail(409,"Finance must reconcile paid invoices and posted accounting before amendment.");
     const plan=planDeliveredInventoryCorrection({accountId:text(evidence.order.accountId),
       original,proposed:diff.lines,
       adjustments:Array.isArray(candidate.inventoryAdjustments)?candidate.inventoryAdjustments as InventoryCorrectionRow[]:[],
