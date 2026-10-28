@@ -293,7 +293,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if(existing&&(
       existing.name.trim().toLowerCase()!==legalName.toLowerCase()||
       (existing.legalBusinessName&&existing.legalBusinessName.trim().toLowerCase()!==legalName.toLowerCase())||
-      (existing.ein&&account.ein&&existing.ein.replace(/\\D/g,"")!==account.ein.replace(/\\D/g,""))||
+      (existing.ein&&account.ein&&existing.ein.replace(/\D/g,"")!==account.ein.replace(/\D/g,""))||
       (existing.azTptLicenseNumber&&account.azTptLicenseNumber&&existing.azTptLicenseNumber!==account.azTptLicenseNumber)
     ))return null;
     const id = `acc-${Date.now()}`;
