@@ -22,10 +22,12 @@
 - Additional safeguards now block historical source lines with mismatched totals, invalid or partial SKU lines, return movements drawn from another order's customer custody, nonwarehouse stock held for another order, and restricted-lot delivery. Duplicate SKU lines are summed rather than silently replaced.
 - An Administrator can create an isolated **test** SKU through a server-validated, idempotent transaction. The product-name index prevents parallel duplicate registrations. Sandbox SKU, simulated receipts, orders, inventory and invoice records are not production commerce records. Browser writes to SKU metadata are denied.
 - Inventory includes a clearly named test-SKU modal with a prefilled fictional QA product. This is a proposed UI, not a live seeded Firestore product.
+- Pending corrections can now be withdrawn by the requesting Administrator or rejected by another Administrator, with server-atomic release of the pending lock and an auditable reason. Neither operation posts inventory or edits an invoice.
 
 ## Still incomplete / required before merge
 - **Do not represent the full feature as delivered.** Corrections currently support adjusting quantities on existing order SKU lines and billing address. Arbitrary historical SKU substitution or new line insertion is not implemented.
 - Physical proof is still an approver-reviewed reference string; cryptographic/document-backed custody validation and an actual return-receipt evidence workflow need independent verification. Until then, an approved correction could still be based on false human evidence.
+- The Paid-order correction action is intentionally hidden until a Finance-controlled reconciliation path exists. Existing paid records remain reviewable without pretending they can be safely amended.
 - Original PDF retention must be proven end to end. Keeping the original invoice record and prior email outbox does not by itself guarantee that the exact original invoice PDF is available for future audit.
 - Production SKU master records remain hard-coded in `lib/product-catalog.ts`. Manual creation of **sellable** SKUs, approved barcodes, receiving, order entry, picking, invoice/reporting integration and safe deactivation is not implemented. Do not use a test SKU as a production SKU.
 - Test flow supports simulated receipt, order and delivery, not a full production-equivalent checkout, card capture, or customer email. This is intentional isolation, but the test coverage must be stated accurately.
