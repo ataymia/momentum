@@ -1,7 +1,8 @@
 /* eslint-disable max-len, comma-spacing, key-spacing, object-curly-spacing, indent, space-before-blocks, keyword-spacing, curly, brace-style, semi, require-jsdoc */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
-import {canonicalLines,correctionDiff,correctionApprovalGate,text,type CorrectionLine} from "./delivery-correction-policy";
+import {canonicalLines,correctionDiff,correctionApprovalGate,text} from "./delivery-correction-policy";
+import {planDeliveredInventoryCorrection,type InventoryCorrectionRow} from "./delivery-inventory-revision";
 
 type Row=Record<string,unknown>;
 const row=(v:unknown):v is Row=>Boolean(v&&typeof v==="object"&&!Array.isArray(v));
@@ -18,7 +19,7 @@ const fail=(status:number,message:string):never=>{throw new DeliveryCorrectionEr
 
 type RevisionEvidence={
   order:Row;invoice:Row;tasks:Row[];overrides:Row[];
-  movements:Row[];payments:Row[];allocations:Row[];credits:Row[];refunds:Row[];
+  movements:Row[];allMovements:Row[];lots:Row[];nodes:Row[];payments:Row[];allocations:Row[];credits:Row[];refunds:Row[];
 };
 
 function revision(e:RevisionEvidence):string{
@@ -50,6 +51,9 @@ function currentEvidence(docs:Map<string,Row[]>,orderId:string):RevisionEvidence
     tasks:forOrder(docs.get("tasks")||[],orderId),
     overrides:forOrder(docs.get("overrides")||[],orderId),
     movements:forOrder(docs.get("movements")||[],orderId),
+    allMovements:docs.get("movements")||[],
+    lots:[...(docs.get("workspaceLots")||[]),...(docs.get("commercialLots")||[])],
+    nodes:docs.get("nodes")||[],
     payments:docs.get("payments")||[],
     allocations:(docs.get("allocations")||[]).filter(x=>text(x.invoiceId)===text(invoice.id)),
     credits:(docs.get("credits")||[]).filter(x=>text(x.invoiceId)===text(invoice.id)),
@@ -64,6 +68,9 @@ const dataPaths={
   tasks:"domains/delivery/fields/tasks",
   overrides:"domains/delivery/fields/overrides",
   movements:"domains/inventoryLedger/fields/movements",
+  nodes:"domains/inventoryLedger/fields/nodes",
+  workspaceLots:"domains/workspace/fields/inventory",
+  commercialLots:"domains/commercial/fields/inventoryLots",
   payments:"domains/commerce/fields/payments",
   allocations:"domains/commerce/fields/allocations",
   credits:"domains/commerce/fields/credits",
@@ -89,6 +96,7 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
   const orderId=text(input.orderId),requestId=text(input.requestId);
   const reason=text(input.reason),evidenceReference=text(input.evidenceReference);
   const billToAddress=text(input.billToAddress);
+  const inventoryAdjustments:Array<InventoryCorrectionRow>=Array.isArray(input.inventoryAdjustments)?input.inventoryAdjustments as InventoryCorrectionRow[]:[];
   if(!idOk(orderId)||!idOk(requestId)||reason.length<12||reason.length>800||
      evidenceReference.length<6||evidenceReference.length>500||
      billToAddress.length<5||billToAddress.length>500)
@@ -124,6 +132,12 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
     const diff=correctionDiff(before,input.lines);
     if(!diff.ok)fail(400,diff.message);
     const oldAddress=text(evidence.invoice.billToAddressSnapshot);
+    const plan=planDeliveredInventoryCorrection({accountId:text(evidence.order.accountId),
+      original:before,proposed:diff.lines,adjustments:inventoryAdjustments,
+      lots:evidence.lots,nodes:evidence.nodes,movements:evidence.allMovements});
+    if(!plan.ok)fail(409,plan.message);
+    if(text(evidence.order.status)==="Paid"&&diff.quantityChanged)
+      fail(409,"A paid order requires Finance reconciliation before quantity changes.");
     if(!diff.quantityChanged&&billToAddress===oldAddress)
       fail(400,"No change to order quantities or invoice billing address.");
     const originalTotal=n(evidence.order.amount);
@@ -141,6 +155,8 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
       originalLines:before,proposedLines:diff.lines,
       originalAmount:originalTotal,proposedAmount:diff.total,
       originalBillToAddress:oldAddress,proposedBillToAddress:billToAddress,
+      inventoryAdjustments:inventoryAdjustments.map(a=>({lotId:a.lotId,product:a.product,quantity:a.quantity,
+        fromNodeId:a.fromNodeId,toNodeId:a.toNodeId,evidenceReference:a.evidenceReference})),
       quantityChanged:diff.quantityChanged,financialReviewRequired:hasFinancialActivity,
       inventoryReviewRequired:diff.quantityChanged,
       history:[{state:"Submitted",at:stamp,actorUid:uid}],
@@ -183,6 +199,12 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
     const evidence=currentEvidence(mapDocuments(targets,snapshots),activeDocumentId);
     const original=canonicalLines(evidence.order);
     const diff=correctionDiff(original,candidate.proposedLines);
+    if(!diff.ok)fail(409,diff.message);
+    const plan=planDeliveredInventoryCorrection({accountId:text(evidence.order.accountId),
+      original,proposed:diff.lines,
+      adjustments:Array.isArray(candidate.inventoryAdjustments)?candidate.inventoryAdjustments as InventoryCorrectionRow[]:[],
+      lots:evidence.lots,nodes:evidence.nodes,movements:evidence.allMovements});
+    if(!plan.ok)fail(409,plan.message);
     const gate=correctionApprovalGate({
       requesterUid:text(candidate.requesterUid),approverUid:uid,
       activeAdministrator:true,
@@ -190,10 +212,9 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       quantityChanged:diff.quantityChanged,
       hasFinancialActivity:financialActivity(evidence.invoice,evidence.payments,
         evidence.allocations,evidence.credits,evidence.refunds),
-      hasInventoryReconciliation:false,
+      hasInventoryReconciliation:plan.ok,
     });
     if(gate)fail(409,gate);
-    if(!diff.ok)fail(409,diff.message);
     if(text(evidence.invoice.id)!==text(candidate.originalInvoiceId))
       fail(409,"A different invoice is now active.");
     if(reissue.exists)fail(409,"Reissue already prepared; review the correction.");
@@ -215,8 +236,41 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       revisionNumber,
     };
     const revised=existing.map(inv=>text(inv.id)===originalInvoiceId?
-      {...inv,status:"Void",voidReason:"Superseded by "+newInvoice.number+" via "+requestId}:inv);
+      {...inv,status:"Void",voidReason:"Superseded by "+newInvoice.number+" via "+requestId,
+        supersededByInvoiceId:newInvoiceId}:inv);
     tx.set(invoiceRef,{items:[newInvoice,...revised]});
+    const touched=[invoiceRef.path];
+    if(diff.quantityChanged){
+      const correctedLines=diff.lines.map((item,index)=>({
+        ...(Array.isArray(evidence.order.lines)&&row(evidence.order.lines[index])?evidence.order.lines[index] as Row:{}),
+        id:text(Array.isArray(evidence.order.lines)&&row(evidence.order.lines[index])?(evidence.order.lines[index] as Row).id:undefined)||
+          activeDocumentId+"-line-"+(index+1),
+        product:item.product,cases:item.cases,pricePerCase:item.pricePerCase,
+        amount:item.cases*item.pricePerCase,
+      }));
+      const newCases=diff.lines.reduce((sum,l)=>sum+l.cases,0);
+      const amended={...evidence.order,cases:newCases,amount:diff.total,lines:correctedLines,
+        lastCorrectionRequestId:requestId};
+      for(const key of ["commercialOrders","workspaceOrders"] as const){
+        const index=targets.findIndex(t=>t.name===key);
+        const records=items(snapshots[index].data());
+        if(records.some(x=>text(x.id)===activeDocumentId)){
+          tx.set(targets[index].ref,{items:records.map(x=>text(x.id)===activeDocumentId?amended:x)});
+          touched.push(targets[index].ref.path);
+        }
+      }
+      const movementsRef=db.doc(dataPaths.movements);
+      const oldMovements=items(snapshots[targets.findIndex(t=>t.name==="movements")].data());
+      const newMovements=plan.movements.map((m,index)=>({
+        id:"correction-"+requestId+"-"+(index+1),lotId:m.lotId,product:m.product,
+        quantity:m.quantity,type:m.type,fromNodeId:m.fromNodeId,toNodeId:m.toNodeId,
+        relatedOrderId:activeDocumentId,at:stamped,actorId:uid,
+        reason:"Approved correction "+requestId+"; "+text(candidate.reason),
+        correctionRequestId:requestId,
+      }));
+      tx.set(movementsRef,{items:[...newMovements,...oldMovements]});
+      touched.push(movementsRef.path);
+    }
     tx.update(requestRef,{state:"Applied",approvedByUid:uid,approvedAt:stamped,
       appliedAt:stamped,replacementInvoiceId:newInvoiceId,
       history:[...(Array.isArray(candidate.history)?candidate.history:[]),
@@ -228,9 +282,10 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       approvedByUid:uid,originalInvoiceId,replacementInvoiceId:newInvoiceId,
       before:existing.find(inv=>text(inv.id)===originalInvoiceId),
       after:newInvoice,createdAt:stamped});
-    const key=invoiceRef.path.replace(/[^A-Za-z0-9]+/g,"_");
-    const versions=row(meta.data()?.versions)?meta.data()!.versions as Row:{};
-    tx.set(metaRef,{versions:{...versions,[key]:stamped+"#"+randomUUID().slice(0,6)}},{merge:true});
+    const version=stamped+"#"+randomUUID().slice(0,6);
+    const versions:Record<string,string>={};
+    for(const path of touched)versions[path.replace(/[^A-Za-z0-9]+/g,"_")]=version;
+    tx.set(metaRef,{versions},{merge:true});
     return{requestId,state:"Applied",invoiceId:newInvoiceId,replayed:false};
   });
 }
