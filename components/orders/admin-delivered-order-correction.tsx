@@ -58,10 +58,13 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
 
   useEffect(()=>{
     if(!order)return;
-    setCases(orderLinesFor(order).map(line=>line.cases));
-    setBillToAddress(activeInvoice?.billToAddressSnapshot||(account?businessAddressLabel(account):""));
-    setReason("");setEvidenceReference("");setAdjustments([]);
-    setError("");setNotice("");
+    const timer=window.setTimeout(()=>{
+      setCases(orderLinesFor(order).map(line=>line.cases));
+      setBillToAddress(activeInvoice?.billToAddressSnapshot||(account?businessAddressLabel(account):""));
+      setReason("");setEvidenceReference("");setAdjustments([]);
+      setError("");setNotice("");
+    },0);
+    return()=>window.clearTimeout(timer);
   },[order?.id,activeInvoice?.id]);
 
   const reloadRequests=async()=>{
@@ -74,7 +77,7 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
     }catch{setError("Correction history could not load. Verify Administrator access.");}
     finally{setLoading(false);}
   };
-  useEffect(()=>{if(order)void reloadRequests();},[order?.id]);
+  useEffect(()=>{if(!order)return;const timer=window.setTimeout(()=>void reloadRequests(),0);return()=>window.clearTimeout(timer);},[order?.id]);
 
   const addAdjustment=(product:string,delta:number)=>{
     const candidates=inventoryLots.filter(l=>productsEquivalent(l.product,product));
