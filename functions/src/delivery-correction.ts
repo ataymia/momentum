@@ -1,7 +1,7 @@
 /* eslint-disable max-len, comma-spacing, key-spacing, object-curly-spacing, indent, space-before-blocks, keyword-spacing, curly, brace-style, semi */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
-import {canonicalLines,correctionDiff,correctionApprovalGate,text} from "./delivery-correction-policy";
+import {canonicalLines,orderLinesReconcile,correctionDiff,correctionApprovalGate,text} from "./delivery-correction-policy";
 import {planDeliveredInventoryCorrection,type InventoryCorrectionRow} from "./delivery-inventory-revision";
 
 type Row=Record<string,unknown>;
@@ -141,6 +141,8 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
     if(!canonicalLines(evidence.order).length)
       fail(409,"Order SKU data needs Administrator review before editing.");
     const before=canonicalLines(evidence.order);
+    if(!orderLinesReconcile(evidence.order,before))
+      fail(409,"Original order lines and totals disagree. Reconcile the historic record first.");
     const diff=correctionDiff(before,input.lines);
     if(!diff.ok)fail(400,diff.message);
     const oldAddress=text(evidence.invoice.billToAddressSnapshot);
@@ -218,6 +220,8 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       fail(409,"This correction is no longer pending.");
     const evidence=currentEvidence(mapDocuments(targets,snapshots),activeDocumentId);
     const original=canonicalLines(evidence.order);
+    if(!orderLinesReconcile(evidence.order,original))
+      fail(409,"Original order lines and totals changed or disagree. Resubmit after reconciliation.");
     const diff=correctionDiff(original,candidate.proposedLines);
     if(!diff.ok)fail(409,diff.message);
     if(text(evidence.invoice.status)==="Paid"||text(evidence.order.paymentStatus)==="Paid"||
