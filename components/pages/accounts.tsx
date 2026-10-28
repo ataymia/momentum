@@ -134,16 +134,16 @@ export function AccountsPage(){
     if(legalName&&!licenseConfirmed)errors.legalBusinessName="Confirm this is the name shown on the license.";
     const accountInput={...form,name:legalName,customerName:legalName,locationName:legalName};
     if(!form.location.trim())errors.location="Enter the business city or market.";
-    if(!/^\\d{5}(?:-\\d{4})?$/.test(form.postalCode.trim()))errors.postalCode="Enter a valid five-digit ZIP code.";
+    if(!/^\d{5}(?:-\d{4})?$/.test(form.postalCode.trim()))errors.postalCode="Enter a valid five-digit ZIP code.";
     if(!form.deliveryAddressSameAsBusiness){
       if(!form.deliveryStreetAddress.trim())errors.deliveryStreetAddress="Enter the delivery street address.";
       if(!form.deliveryLocation.trim())errors.deliveryLocation="Enter the delivery city or market.";
-      if(!/^\\d{5}(?:-\\d{4})?$/.test(form.deliveryPostalCode.trim()))errors.deliveryPostalCode="Enter a valid delivery ZIP code.";
+      if(!/^\d{5}(?:-\d{4})?$/.test(form.deliveryPostalCode.trim()))errors.deliveryPostalCode="Enter a valid delivery ZIP code.";
     }
     if(!form.contactName.trim())errors.contactName="Enter the primary contact name.";
     if(!form.contactRole.trim())errors.contactRole="Enter the contact's role.";
     if(!form.phone.trim()&&!form.mobilePhone.trim()&&!form.email.trim())errors.phone="Provide a business phone, mobile phone or email.";
-    if(form.email.trim()&&!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(form.email.trim()))errors.email="Enter a valid email address.";
+    if(form.email.trim()&&!/^[^\s@]+@[^\s@]+\\.[^\s@]+$/.test(form.email.trim()))errors.email="Enter a valid email address.";
     const validation=validateNewAccountContact(accountInput);
     if(!validation.ok&&!Object.keys(errors).length)errors.name=validation.message;
     setCreateErrors(errors);
