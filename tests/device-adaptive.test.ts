@@ -4,6 +4,7 @@ import {readFileSync} from "node:fs";
 import {isOpenCommercialAccount} from "../lib/account-view-filter";
 import {getNavigationPage,setNavigationPage,subscribeNavigationPage} from "../lib/navigation-store";
 import {validateTaxIdentity,taxIdentityMissing} from "../lib/account-tax-identity";
+import {legalBillingName} from "../lib/legal-billing-name";
 
 const read=(file:string)=>readFileSync(new URL("../"+file,import.meta.url),"utf8");
 test("device navigation is wired to role-filtered menu with accessible mobile destinations",()=>{
@@ -170,4 +171,54 @@ test("systemwide native invalid forms and explicit field errors mark blockers re
   assert.match(ui,/className="field__error" role="alert"/);
   assert.match(css,/form\[data-validation-attempted="true"\]/);
   assert.match(css,/\.field\[data-invalid="true"\]/);
+});
+
+test("new full accounts use only licensed canonical name, with independent private nickname",()=>{
+  const accounts=read("components/pages/accounts.tsx");
+  const base=read("lib/workspace-context-v5.tsx");
+  assert.match(accounts,/name:legalName,customerName:legalName,locationName:legalName/);
+  assert.match(accounts,/Name matches the business license/);
+  assert.match(accounts,/Personal nickname \(optional\)/);
+  assert.match(accounts,/savePrivateAccountNickname\(currentUser\.id,id,newNickname\)/);
+  assert.match(accounts,/nicknames\.get\(account\.id\)\|\|account\.name/);
+  assert.match(base,/if\(!legalName\|\|account\.name\.trim\(\)!==legalName\)return null/);
+  assert.match(base,/delete locationAccount\.legalBusinessName/);
+  assert.match(base,/delete locationAccount\.ein/);
+});
+
+test("private nicknames are scoped to the employee, are not queried per account, and never reach invoice paths",()=>{
+  const client=read("lib/private-account-nicknames.ts");
+  const rules=read("firestore.rules");
+  const generator=read("scripts/generate-firestore-rules.ts");
+  const print=read("components/finance/invoice-print-center.tsx");
+  const delivery=read("functions/src/delivery-invoice-email.ts");
+  assert.match(client,/listFirestoreCollection<PrivateNickname>/);
+  assert.doesNotMatch(client,/Promise\.all\(batch\.map/);
+  assert.match(client,/privateAccountNicknames\/\$\{uid\}\/accounts/);
+  assert.match(rules,/match \/privateAccountNicknames\/\{uid\}\/accounts\/\{accountId\}/);
+  assert.match(generator,/match \/privateAccountNicknames\/\{uid\}\/accounts\/\{accountId\}/);
+  assert.match(rules,/request\.auth\.uid == uid/);
+  assert.doesNotMatch(print,/privateAccountNickname|nicknames\.get/);
+  assert.doesNotMatch(delivery,/privateAccountNickname|nicknames\.get/);
+});
+
+test("invoices require the licensed legal name, not a location, nickname or fallback display name",()=>{
+  assert.equal(legalBillingName({legalBusinessName:"  ABC Market LLC  "}),"ABC Market LLC");
+  assert.equal(legalBillingName({legalBusinessName:""}),null);
+  assert.equal(legalBillingName(null),null);
+  const print=read("components/finance/invoice-print-center.tsx");
+  const delivery=read("functions/src/delivery-invoice-email.ts");
+  assert.match(print,/legalBillingName\(customer\)\?\?"Legal business name required"/);
+  assert.match(print,/Add the licensed legal business name/);
+  assert.match(delivery,/const legalName=text\(customer\?\.legalBusinessName\)/);
+  assert.match(delivery,/customerName:legalName/);
+  assert.match(delivery,/Invoice email held for account review/);
+  assert.doesNotMatch(delivery,/customerName:text\(customer\?\.name\)/);
+});
+
+test("account creation regex accepts legitimate ZIP codes and email formats",()=>{
+  const source=read("components/pages/accounts.tsx");
+  assert.match(source,/\^\\d\{5\}/);
+  assert.match(source,/form\.postalCode\.trim\(\)/);
+  assert.match(source,/\[\^\\s@\]/);
 });
