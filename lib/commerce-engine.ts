@@ -59,6 +59,16 @@ export function createCommerceSeed(data:WorkspaceData):CommerceState{
 
 export function normalizeCommerceState(input:unknown,data:WorkspaceData):CommerceState{
   const seed=createCommerceSeed(data);if(!input||typeof input!=="object")return seed;const state=input as Partial<CommerceState>;
+  // A corrected invoice is authoritative. Never re-seed old demo payments or
+  // original invoices into a revision lineage after server reconciliation.
+  const revisedOrderIds=new Set((Array.isArray(state.invoices)?state.invoices:[])
+    .filter(invoice=>invoice?.previousInvoiceId&&invoice.status!=="Void")
+    .map(invoice=>invoice.orderId));
+  seed.invoices=seed.invoices.filter(invoice=>!revisedOrderIds.has(invoice.orderId));
+  seed.allocations=seed.allocations.filter(allocation=>
+    ![...revisedOrderIds].some(id=>allocation.id==="allocation-"+id+"-seed"));
+  seed.payments=seed.payments.filter(payment=>
+    ![...revisedOrderIds].some(id=>payment.id==="payment-"+id+"-seed"));
   const orderById=new Map(data.orders.map((order)=>[order.id,order]));
   const accountIds=new Set(data.accounts.map((account)=>account.id));
   const storedInvoices=uniqueById((Array.isArray(state.invoices)?state.invoices:[]).filter((invoice):invoice is Invoice=>{const order=invoice&&orderById.get(invoice.orderId);return Boolean(order&&invoice.accountId===order.accountId&&accountIds.has(invoice.accountId)&&invoice.number?.trim()&&validDateOrInstant(invoice.issuedAt)&&validDateOrInstant(invoice.createdAt)&&(!invoice.dueDate||isValidCalendarDateKey(invoice.dueDate))&&invoiceTerms.has(invoice.terms)&&invoiceStatuses.has(invoice.status)&&finiteNonNegative(invoice.total)&&finiteNonNegative(order.amount)&&(Math.abs(invoice.total-order.amount)<0.005||(invoice.status==="Void"&&Boolean(invoice.supersededByInvoiceId)))&&(invoice.status!=="Void"||invoice.voidReason?.trim()));}));
