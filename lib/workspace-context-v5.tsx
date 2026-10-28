@@ -286,6 +286,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const createAccount = useCallback((account: NewAccount) => {
     if (!currentUser || !canCreateAccount(currentUser)) return null;
+    const legalName=account.legalBusinessName?.trim();
+    if(!legalName||account.name.trim()!==legalName)return null;
+    const expectedCustomerId=`cust-${slug(legalName)}`;
+    const existing=(data.customers??[]).find(customer=>customer.id===expectedCustomerId);
+    if(existing&&(
+      existing.name.trim().toLowerCase()!==legalName.toLowerCase()||
+      (existing.legalBusinessName&&existing.legalBusinessName.trim().toLowerCase()!==legalName.toLowerCase())||
+      (existing.ein&&account.ein&&existing.ein.replace(/\\D/g,"")!==account.ein.replace(/\\D/g,""))||
+      (existing.azTptLicenseNumber&&account.azTptLicenseNumber&&existing.azTptLicenseNumber!==account.azTptLicenseNumber)
+    ))return null;
     const id = `acc-${Date.now()}`;
     const createdAt=nowStamp();
     // Identity belongs to the billing entity only, never copied to location/account records.
@@ -304,7 +314,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       activities: [{ id: `act-${Date.now()}`, accountId: id, type: "note", title: "Customer location created", detail: `${customerName} · ${account.locationName?.trim() || account.name} added.`, at: nowStamp(), userId: currentUser.id }, ...current.activities],
     }));
     return id;
-  }, [currentUser]);
+  }, [currentUser,data.customers]);
 
   const createAppointment = useCallback((appointment: NewAppointment) => {
     if (!currentUser || !canCreateScheduleItem(currentUser)) return null;
