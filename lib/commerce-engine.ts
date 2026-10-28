@@ -5,7 +5,7 @@ import type { WorkspaceData } from "./types";
 export const COMMERCE_STORAGE_KEY="momentum-commerce-v1";
 export type InvoiceTerms="Prepaid"|"COD"|"Net 7"|"Net 15"|"Net 30"|"Custom";
 export type InvoiceStatus="Draft"|"Open"|"Partially paid"|"Paid"|"Void";
-export type Invoice={id:string;number:string;orderId:string;accountId:string;issuedAt:string;dueDate?:string;terms:InvoiceTerms;total:number;status:InvoiceStatus;createdAt:string;voidReason?:string;billToAddressSnapshot?:string;shipToAddressSnapshot?:string;previousInvoiceId?:string;supersededByInvoiceId?:string;revisionNumber?:number;correctionRequestId?:string;linesSnapshot?:Array<{id:string;product:string;cases:number;pricePerCase:number;amount:number}>;};
+export type Invoice={id:string;number:string;orderId:string;accountId:string;issuedAt:string;dueDate?:string;terms:InvoiceTerms;total:number;status:InvoiceStatus;createdAt:string;voidReason?:string;billToAddressSnapshot?:string;shipToAddressSnapshot?:string;previousInvoiceId?:string;supersededByInvoiceId?:string;revisionNumber?:number;correctionRequestId?:string;accountingAdjustmentPosted?:boolean;customerCreditDue?:number;linesSnapshot?:Array<{id:string;product:string;cases:number;pricePerCase:number;amount:number}>;};
 export type PaymentStatus="Pending"|"Cleared"|"Failed"|"Reversed";
 export type PaymentMethod="Card"|"ACH"|"Wire"|"Cash"|"Check"|"Other";
 export type Payment={id:string;accountId:string;receivedAt:string;amount:number;method:PaymentMethod;status:PaymentStatus;processorReference?:string;note?:string;createdBy:string;createdAt:string;settledAt?:string;settledBy?:string;failedAt?:string;failedBy?:string;failureReason?:string;reversedAt?:string;reversedBy?:string;reversalReason?:string;reversalReference?:string};
