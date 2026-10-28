@@ -12,7 +12,7 @@ type QaStock={skuId:string;onHand:number;reserved:number};
 const nonce=()=>("qa-live-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,12));
 
 export function LiveQaSkuManager({open,onClose}:{open:boolean;onClose:()=>void}){
- const {currentUser}=useWorkspace();
+ const {currentUser,scope}=useWorkspace();
  const firebase=useFirebaseSessionOptional();
  const [products,setProducts]=useState<QaProduct[]>([]);
  const [selected,setSelected]=useState("");
@@ -71,6 +71,25 @@ export function LiveQaSkuManager({open,onClose}:{open:boolean;onClose:()=>void})
   }catch(e){setError(e instanceof Error?e.message:"Live QA action failed.");}
   finally{setBusy(false);}
  };
+ const advance=async(orderId:string)=>{
+  if(busy||!selected)return;
+  const token=firebase?.session?.idToken;
+  if(!token){setError("Administrator session required.");return;}
+  setBusy(true);setError("");setMessage("");
+  try{
+   const response=await fetch(firebaseFunctionUrl("liveTestProductWorkflow"),{
+    method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+token},
+    body:JSON.stringify({action:"advance",skuId:selected,orderId,requestId:nonce()}),
+   });
+   const result=await response.json().catch(()=>null) as {ok?:boolean;status?:string;message?:string;onHand?:number}|null;
+   if(!response.ok||result?.ok!==true)throw Error(result?.message||"Virtual fulfillment not saved.");
+   setMessage("QA order advanced to "+result.status+". Refresh Orders to see its saved status.");
+   const updated=await getFirestoreDocument<QaStock>("liveTestInventory/"+selected);
+   setStock(updated);
+  }catch(e){setError(e instanceof Error?e.message:"QA fulfillment failed.");}
+  finally{setBusy(false);}
+ };
+ const testOrders=scope.orders.filter(order=>order.testOnly===true&&order.testSkuId===selected);
  if(currentUser?.role!=="Administrator")return null;
  return <Modal open={open} title="Live QA products and virtual cases"
   description="Use these products in the regular Orders workflow. These SKUs are test-only, priced at $0, and never enter physical inventory, receivables or commissions."
@@ -89,6 +108,15 @@ export function LiveQaSkuManager({open,onClose}:{open:boolean;onClose:()=>void})
     <Field label="Virtual cases to add"><input type="number" min="1" max="10000" value={cases} onChange={e=>setCases(Number(e.target.value))}/></Field>
     <div className="field--full"><p>Virtual on-hand: {stock?.onHand??"Not loaded"} cases. Reserved: {stock?.reserved??0} cases.</p></div>
     <Button type="button" disabled={busy||!selected} onClick={()=>void submit("receive")}>Add virtual test cases</Button>
+    <div className="field--full"><strong>Live order pipeline tests</strong><p>Place the QA SKU as a $0 order in Orders and approve it using the normal order approval. Return here to use virtual fulfillment instead of physical inventory custody.</p>
+      {testOrders.map(order=><div className="form-callout" key={order.id}>
+       <p>{order.number} · {order.cases} virtual cases · {order.status} · $0</p>
+       {["Approved","Allocated","Out for delivery"].includes(order.status)&&
+        <Button disabled={busy} size="sm" onClick={()=>void advance(order.id)}>
+         {order.status==="Approved"?"Reserve virtual cases":order.status==="Allocated"?"Move virtual cases out for delivery":"Confirm virtual delivery"}
+        </Button>}
+      </div>)}
+    </div>
     {error&&<p className="form-error field--full" role="alert">{error}</p>}
     {message&&<p className="form-notice field--full" role="status">{message}</p>}
    </div>
