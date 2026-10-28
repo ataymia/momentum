@@ -88,7 +88,10 @@ export async function operateLiveTestProduct(uid:string,payload:unknown){
       return{action,skuId,replayed:false,onHand:before+Number(cases)};
     });
   }
-  if(action!=="advance")fail(400,"Unsupported live-test action.");
+  if(action!=="advance"&&action!=="cancel")fail(400,"Unsupported live-test action.");
+  const cancelReason=txt(input.reason);
+  if(action==="cancel"&&(cancelReason.length<8||cancelReason.length>500))
+    fail(400,"Explain why the virtual test order is being cancelled.");
   const orderId=txt(input.orderId);
   if(!idOk(orderId))fail(400,"Choose a valid test order.");
   const ordersRef=db.doc("domains/commercial/fields/orders");
@@ -117,8 +120,11 @@ export async function operateLiveTestProduct(uid:string,payload:unknown){
     }
     const transitions:Record<string,string>={"Approved":"Allocated",
       "Allocated":"Out for delivery","Out for delivery":"Delivered"};
-    const oldStatus=txt(existing.status),next=transitions[oldStatus];
-    if(!next)fail(409,"Only approved or allocated test orders can move through the test fulfillment flow.");
+    const oldStatus=txt(existing.status);
+    const canCancel=["Approved","Allocated","Out for delivery"].includes(oldStatus);
+    const next=action==="cancel"&&canCancel?"Cancelled":transitions[oldStatus];
+    if(!next||action==="cancel"&&!canCancel)
+      fail(409,"Only an active pre-delivery QA order can be advanced or cancelled.");
     const cases=Number(existing.cases),data=stock.data();
     if(!Number.isInteger(cases)||cases<1||!data||
       !Number.isInteger(data.onHand)||!Number.isInteger(data.reserved))
@@ -126,25 +132,29 @@ export async function operateLiveTestProduct(uid:string,payload:unknown){
     const updated:Row={...data};
     if(oldStatus==="Approved"){
       if(reservation.exists)fail(409,"This order already has a QA reservation.");
-      if(data.onHand-data.reserved<cases)fail(409,"Not enough virtual test cases.");
-      updated.reserved=data.reserved+cases;
-      tx.create(reservationRef,{orderId,skuId,cases,status:"Reserved",createdAt:stamp,actorUid:uid});
+      if(action==="advance"){
+        if(data.onHand-data.reserved<cases)fail(409,"Not enough virtual test cases.");
+        updated.reserved=data.reserved+cases;
+        tx.create(reservationRef,{orderId,skuId,cases,status:"Reserved",createdAt:stamp,actorUid:uid});
+      }
     }else{
       if(!reservation.exists||reservation.data()?.cases!==cases||
          txt(reservation.data()?.skuId)!==skuId||
          txt(reservation.data()?.status)!=="Reserved")
         fail(409,"Virtual order reservation does not match.");
-      if(next==="Delivered"){
-        if(data.onHand<cases||data.reserved<cases)fail(409,"Virtual QA stock has changed.");
-        updated.onHand=data.onHand-cases;
+      if(next==="Delivered"||next==="Cancelled"){
+        if(data.reserved<cases||next==="Delivered"&&data.onHand<cases)fail(409,"Virtual QA stock has changed.");
+        if(next==="Delivered")updated.onHand=data.onHand-cases;
         updated.reserved=data.reserved-cases;
-        tx.update(reservationRef,{status:"Fulfilled",fulfilledAt:stamp,fulfilledBy:uid});
+        tx.update(reservationRef,{status:next==="Delivered"?"Fulfilled":"Released",
+          fulfilledAt:stamp,fulfilledBy:uid});
       }
     }
     updated.updatedAt=stamp;
     tx.set(stockRef,updated);
     tx.set(ordersRef,{items:rows.map(r=>txt(r.id)===orderId?
-      {...r,status:next,paymentStatus:"Not invoiced"}:r)});
+      {...r,status:next,paymentStatus:"Not invoiced",
+        ...(next==="Cancelled"?{cancelledAt:stamp,cancelledBy:uid,cancellationReason:cancelReason}:{})}:r)});
     const version=stamp+"#"+randomUUID().slice(0,6);
     const previousVersions=meta.data()?.versions;
     const pathKey="domains_commercial_fields_orders";
@@ -152,6 +162,7 @@ export async function operateLiveTestProduct(uid:string,payload:unknown){
       [pathKey]:version}},{merge:true});
     tx.create(eventRef,{id:requestId,orderId,skuId,fromStatus:oldStatus,
       status:next,cases,at:stamp,actorUid:uid,testOnly:true,
+      ...(next==="Cancelled"?{reason:cancelReason}:{}),
       realInventoryChanged:false,financialActivity:false});
     return{action,orderId,replayed:false,status:next,onHand:updated.onHand};
   });
