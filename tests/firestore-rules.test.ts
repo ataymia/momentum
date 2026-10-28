@@ -1007,3 +1007,42 @@ describe("private account nicknames",()=>{
     await assertFails(setDoc(pathOwned,{accountId:"acc-private-invalid",nickname:"okay",ein:"123456789"}));
   });
 });
+
+describe("historical correction and isolated sandbox authority",()=>{
+  test("correction requests and invoice reissues are readable only by admin, writable by server only",async()=>{
+    for(const [collectionName,docId] of [
+      ["deliveryCorrectionRequests","request-test"],
+      ["deliveryCorrectionAudit","audit-test"],
+      ["deliveryInvoiceReissues","reissue-test"],
+    ]){
+      const admin=doc(dbFor(ADMIN),collectionName,docId);
+      await assertSucceeds(getDoc(admin));
+      await assertFails(getDoc(doc(dbFor(REP),collectionName,docId)));
+      await assertFails(setDoc(admin,{id:docId,state:"Applied"}));
+    }
+    await assertFails(getDoc(doc(dbFor(ADMIN),"deliveryCorrectionActive","acc-1")));
+  });
+
+  test("administrator can create only explicitly sandbox test product metadata",async()=>{
+    const skuId="qa-sku-rules";
+    const product={id:skuId,description:"QA Test Widget",shortName:"Widget",
+      casePack:24,active:true,environment:"sandbox",createdBy:ADMIN,createdAt:new Date().toISOString()};
+    const admin=doc(dbFor(ADMIN),"sandboxProducts",skuId);
+    await assertSucceeds(setDoc(admin,product));
+    await assertSucceeds(getDoc(admin));
+    await assertFails(getDoc(doc(dbFor(REP),"sandboxProducts",skuId)));
+    await assertFails(setDoc(doc(dbFor(REP),"sandboxProducts","qa-rep"),{...product,id:"qa-rep",createdBy:REP}));
+    await assertFails(setDoc(doc(dbFor(ADMIN),"sandboxProducts","qa-production"),{...product,id:"qa-production",environment:"production"}));
+    await assertFails(setDoc(admin,{...product,description:"Changed"}));
+    await assertFails(deleteDoc(admin));
+  });
+
+  test("sandbox stock, orders and simulated invoices are server-only records",async()=>{
+    for(const name of ["sandboxInventory","sandboxOrders","sandboxInvoices","sandboxStockReceipts"]){
+      const owned=doc(dbFor(ADMIN),name,"qa-sku-rules");
+      await assertSucceeds(getDoc(owned));
+      await assertFails(getDoc(doc(dbFor(REP),name,"qa-sku-rules")));
+      await assertFails(setDoc(owned,{onHand:99999,skuId:"ge-original-250ml-24"}));
+    }
+  });
+});
