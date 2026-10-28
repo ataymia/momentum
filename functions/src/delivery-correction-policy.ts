@@ -60,3 +60,18 @@ export function correctionApprovalGate(input:{
   if(input.quantityChanged&&!input.hasInventoryReconciliation)return"Quantity corrections require verified inventory custody reconciliation before approval.";
   return null;
 }
+
+
+/** Closing a pending proposal must not bypass a separate Administrator's approval.
+ * The requester can withdraw; another Administrator can reject with a reason. */
+export function correctionCloseGate(input:{
+  actorUid:string;requesterUid:string;activeAdministrator:boolean;
+  decision:"Withdraw"|"Reject";
+}):string|null{
+  if(!input.activeAdministrator)return"Only an active Administrator may close a correction.";
+  if(input.decision==="Withdraw"&&input.actorUid!==input.requesterUid)
+    return"Only the requester can withdraw this correction.";
+  if(input.decision==="Reject"&&input.actorUid===input.requesterUid)
+    return"Another Administrator must reject the correction.";
+  return null;
+}
