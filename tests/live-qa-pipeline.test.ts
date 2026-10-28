@@ -4,8 +4,10 @@ import {registerLiveTestSkus,skuForProductName,activeProductSkus} from "../lib/p
 import {normalizeCommercialState} from "../lib/commercial-state";
 import {createCommerceSeed} from "../lib/commerce-engine";
 import {reviewSalesCommissionBacklog} from "../lib/sales-commission-backlog";
-import {notificationCandidates} from "../functions/src/notification-candidates";
+import * as notificationImported from "../functions/src/notification-candidates";
 import type {WorkspaceData} from "../lib/types";
+const notificationModule=notificationImported as typeof notificationImported & {default?:typeof notificationImported};
+const {notificationCandidates}=notificationModule.default??notificationModule;
 
 const sku={id:"qa-live-widget-100",description:"QA Live Widget (test only)",
  shortName:"QA Widget",casePack:24,active:true,testOnly:true,environment:"production"};
