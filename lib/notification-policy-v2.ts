@@ -63,6 +63,7 @@ export function orderMilestoneIntents(
 ): NotificationIntent[] {
   const intents: NotificationIntent[] = [];
   for (const order of data.orders) {
+    if(order.testOnly)continue;
     const repOrder=repOwnsOrder(user,order);
     const customerOrder=customerOwnsAccount(user,order.accountId);
     if (!repOrder && !customerOrder) continue;
@@ -140,6 +141,7 @@ export function deliveryMilestoneIntents(
 ): NotificationIntent[] {
   const intents:NotificationIntent[]=[];
   for(const order of data.orders){
+    if(order.testOnly)continue;
     const repOrder=repOwnsOrder(user,order);
     const customerOrder=customerOwnsAccount(user,order.accountId);
     if(!repOrder&&!customerOrder)continue;
