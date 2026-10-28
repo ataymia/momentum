@@ -31,6 +31,7 @@ import { WorkspaceProvider, useWorkspace } from "../lib/workspace-context";
 import { AppShell } from "./app-shell";
 import { DeparturePrompt } from "./field-tracking/departure-prompt";
 import { FirebaseGate } from "./firebase-gate";
+import {FormValidationListener} from "./form-validation-listener";
 import { OnboardingPortal } from "./hcm/onboarding-portal";
 import { LoginScreen } from "./login-screen";
 import { RuntimeErrorListeners } from "./runtime-error-listeners";
@@ -83,6 +84,6 @@ export function MomentumApp(){
   installPendingJournalStorageGuard();
   ensurePresentationSeed();
   const runtimeMode=useRuntimeModeValue();
-  if(runtimeMode==="demo")return <><RuntimeErrorListeners/><MomentumProviders/></>;
-  return <><RuntimeErrorListeners/><FirebaseSessionProvider><FirebaseGate><MomentumProviders/></FirebaseGate></FirebaseSessionProvider></>;
+  if(runtimeMode==="demo")return <><FormValidationListener/><RuntimeErrorListeners/><MomentumProviders/></>;
+  return <><FormValidationListener/><RuntimeErrorListeners/><FirebaseSessionProvider><FirebaseGate><MomentumProviders/></FirebaseGate></FirebaseSessionProvider></>;
 }
