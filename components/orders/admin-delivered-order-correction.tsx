@@ -22,6 +22,10 @@ type RequestRecord={
   quantityChanged:boolean;financialReviewRequired:boolean;inventoryReviewRequired:boolean;
   originalInvoiceNumber:string;proposedBillToAddress:string;
   proposedLines:Array<{product:string;cases:number;pricePerCase:number}>;
+  originalLines:Array<{product:string;cases:number;pricePerCase:number}>;
+  originalBillToAddress:string;
+  evidenceReference:string;
+  inventoryAdjustments:InventoryAdjustment[];
 };
 type Props={order:Order|null;onClose:()=>void;onSaved:()=>void};
 const uuid=()=>typeof crypto!=="undefined"&&"randomUUID" in crypto?crypto.randomUUID():Date.now()+"-"+Math.random().toString(36).slice(2);
@@ -37,6 +41,9 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
   const [evidenceReference,setEvidenceReference]=useState("");
   const [adjustments,setAdjustments]=useState<InventoryAdjustment[]>([]);
   const [requests,setRequests]=useState<RequestRecord[]>([]);
+  const [reviewRequestId,setReviewRequestId]=useState("");
+  const [approvalNote,setApprovalNote]=useState("");
+  const [reviewConfirmed,setReviewConfirmed]=useState(false);
   const [busy,setBusy]=useState(false);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
@@ -131,9 +138,13 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
   };
   const approve=async(request:RequestRecord)=>{
     if(!order||busy)return;
+    if(reviewRequestId!==request.id||!reviewConfirmed||approvalNote.trim().length<8){
+      setError("Review the before/after changes and confirm the physical evidence with an approval note.");return;
+    }
     setBusy(true);setError("");setNotice("");
     try{
-      await call("approveDeliveredOrderCorrection",{requestId:request.id,orderId:order.id});
+      await call("approveDeliveredOrderCorrection",{requestId:request.id,orderId:order.id,
+        reviewConfirmed:true,approvalNote:approvalNote.trim()});
       setNotice("Amended invoice and order correction committed. Email reissue will be queued.");
       await reloadRequests();onSaved();
     }catch(err){setError(err instanceof Error?err.message:"Correction was not approved.");}
@@ -189,11 +200,43 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
         {requests.map(request=><div className="form-callout" key={request.id}>
           <p><strong>{request.state}:</strong> {request.reason} · {formatMoney(request.originalAmount)} to {formatMoney(request.proposedAmount)}</p>
           <p>{request.originalInvoiceNumber} · {request.createdAt}</p>
-          {request.state==="Submitted"&&<Button size="sm" type="button"
-            disabled={busy||request.requesterUid===currentUser?.id||request.financialReviewRequired}
-            onClick={()=>void approve(request)}>
-            {request.requesterUid===currentUser?.id?"Another administrator required":"Approve correction"}
-          </Button>}
+          {request.state==="Submitted"&&<>
+            <Button size="sm" variant="secondary" type="button"
+              onClick={()=>{
+                setReviewRequestId(reviewRequestId===request.id?"":request.id);
+                setApprovalNote("");setReviewConfirmed(false);
+              }}>{reviewRequestId===request.id?"Hide review":"Review before / after"}</Button>
+            {reviewRequestId===request.id&&<div className="form-grid">
+              <div className="field--full"><strong>SKU and case comparison</strong>
+                {request.originalLines.map((line,i)=><p key={i}>
+                  {line.product}: {line.cases} → {request.proposedLines[i]?.cases??"?"} cases · {formatMoney(line.pricePerCase)} per case
+                </p>)}
+              </div>
+              <div className="field--full"><strong>Billing address</strong>
+                <p>Before: {request.originalBillToAddress}</p>
+                <p>After: {request.proposedBillToAddress}</p>
+              </div>
+              <div className="field--full"><strong>Source evidence:</strong> {request.evidenceReference}
+                {request.inventoryAdjustments?.map((a,i)=><p key={i}>
+                  {a.quantity} {a.product}, lot {a.lotId}: {a.fromNodeId} → {a.toNodeId}
+                  · {a.evidenceReference}
+                </p>)}
+              </div>
+              <label className="field--full"><input type="checkbox"
+                checked={reviewConfirmed} onChange={e=>setReviewConfirmed(e.target.checked)}/>
+                I reviewed the original records and the physical custody evidence
+              </label>
+              <Field label="Approval / reconciliation note" className="field--full">
+                <textarea rows={2} maxLength={800} value={approvalNote} onChange={e=>setApprovalNote(e.target.value)}/>
+              </Field>
+              <Button size="sm" type="button"
+                disabled={busy||request.requesterUid===currentUser?.id||
+                  request.financialReviewRequired||!reviewConfirmed||approvalNote.trim().length<8}
+                onClick={()=>void approve(request)}>
+                {request.requesterUid===currentUser?.id?"Another administrator required":"Approve and amend invoice"}
+              </Button>
+            </div>}
+          </>}
         </div>)}
       </div>
       {error&&<p className="form-error field--full" role="alert">{error}</p>}
