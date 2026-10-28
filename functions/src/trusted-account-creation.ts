@@ -107,9 +107,14 @@ export async function createTrustedCrmAccount(
     const customerCollision=list(customers.data()).find((row)=>
       str(row.id)===customerId && (
         str(row.name).toLowerCase()!==customerName.toLowerCase()||
-        (str(row.legalBusinessName)&&str(row.legalBusinessName).toLowerCase()!==validation.legalBusinessName.toLowerCase())||
-        (str(row.ein)&&validation.ein&&str(row.ein).replace(/\\D/g,"")!==validation.ein.replace(/\\D/g,""))||
-        (str(row.azTptLicenseNumber)&&validation.azTptLicenseNumber&&str(row.azTptLicenseNumber)!==validation.azTptLicenseNumber)
+        (str(row.legalBusinessName)&&
+          str(row.legalBusinessName).toLowerCase()!==
+          validation.legalBusinessName.toLowerCase())||
+        (str(row.ein)&&validation.ein&&
+          str(row.ein).replace(/\\D/g,"")!==
+          validation.ein.replace(/\\D/g,""))||
+        (str(row.azTptLicenseNumber)&&validation.azTptLicenseNumber&&
+          str(row.azTptLicenseNumber)!==validation.azTptLicenseNumber)
       ));
     if (customerCollision) {
       throw new TrustedAccountCreationError(
