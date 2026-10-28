@@ -3,6 +3,7 @@ import test from "node:test";
 import * as correctionImported from "../functions/src/delivery-correction-policy";
 import {isolatedSkuUse,sandboxCanPostProductionSideEffects,validateCustomSku} from "../lib/custom-sku-policy";
 import * as inventoryImported from "../functions/src/delivery-inventory-revision";
+import * as financialImported from "../functions/src/correction-financial-plan";
 import {normalizeInventoryLedger,orderDeliveryQuantity} from "../lib/inventory-ledger";
 import {GOLDEN_EAGLE_SKUS} from "../lib/product-catalog";
 import type {WorkspaceData} from "../lib/types";
@@ -190,4 +191,43 @@ test("correction withdrawal and rejection are separate authorized, non-inventory
   assert.match(correctionCloseGate({...original,activeAdministrator:false})??"",/active Administrator/);
   assert.match(correctionCloseGate({...original,decision:"Reject"})??"",/Another Administrator/);
   assert.equal(correctionCloseGate({...original,actorUid:"admin-two",decision:"Reject"}),null);
+});
+
+
+const financeModule=financialImported as typeof financialImported & {default?:typeof financialImported};
+const {planFinancialCarry}=financeModule.default??financeModule;
+
+test("paid historical corrections automatically carry money and record account credit due",()=>{
+  const input={oldInvoiceId:"invoice-old",newInvoiceId:"invoice-amended",accountId:"account-1",newTotal:192,
+    allocations:[{id:"allocation-1",invoiceId:"invoice-old",paymentId:"payment-1",amount:240}],
+    payments:[{id:"payment-1",accountId:"account-1",status:"Cleared",amount:240}],
+    credits:[],refunds:[]};
+  const plan=planFinancialCarry(input);
+  assert.equal(plan.ok,true);
+  if(!plan.ok)return;
+  assert.equal(plan.status,"Paid");
+  assert.equal(plan.paidNet,192);
+  assert.equal(plan.creditDue,48);
+  assert.deepEqual(plan.allocations.map(x=>[x.paymentId,x.invoiceId,x.amount]),
+    [["payment-1","invoice-amended",192]]);
+  const increase=planFinancialCarry({...input,newTotal:300});
+  assert.equal(increase.ok,true);
+  if(increase.ok){assert.equal(increase.status,"Partially paid");assert.equal(increase.paidNet,240);assert.equal(increase.creditDue,0);}
+});
+
+test("automatic financial correction preserves applied credit and refunds safely",()=>{
+  const basic={oldInvoiceId:"invoice-old",newInvoiceId:"invoice-amended",accountId:"account-1",newTotal:110,
+    allocations:[{id:"allocation-1",invoiceId:"invoice-old",paymentId:"payment-1",amount:100}],
+    payments:[{id:"payment-1",accountId:"account-1",status:"Cleared",amount:100}],
+    credits:[{id:"credit-1",invoiceId:"invoice-old",amount:20,status:"Applied"}],refunds:[]};
+  const credit=planFinancialCarry(basic);
+  assert.equal(credit.ok,true);
+  if(credit.ok){assert.equal(credit.creditDue,10);assert.equal(credit.paidNet,90);
+    assert.equal(credit.credits[0].invoiceId,"invoice-amended");}
+  assert.equal(planFinancialCarry({...basic,newTotal:10}).ok,false);
+  const refund=planFinancialCarry({...basic,newTotal:80,credits:[],
+    refunds:[{id:"refund-1",paymentId:"payment-1",amount:30,status:"Settled"}]});
+  assert.equal(refund.ok,true);
+  if(refund.ok){assert.equal(refund.paidNet,70);assert.equal(refund.creditDue,0);
+    assert.equal(refund.allocations[0].amount,100);}
 });
