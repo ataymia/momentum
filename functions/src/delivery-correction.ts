@@ -4,6 +4,7 @@ import {getFirestore} from "firebase-admin/firestore";
 import {canonicalLines,orderLinesReconcile,correctionDiff,correctionApprovalGate,correctionCloseGate,text} from "./delivery-correction-policy";
 import {planDeliveredInventoryCorrection,type InventoryCorrectionRow} from "./delivery-inventory-revision";
 import {planFinancialCarry} from "./correction-financial-plan";
+import {planCorrectionJournal} from "./correction-accounting-plan";
 
 type Row=Record<string,unknown>;
 const row=(v:unknown):v is Row=>Boolean(v&&typeof v==="object"&&!Array.isArray(v));
@@ -94,6 +95,7 @@ const dataPaths={
   credits:"domains/commerce/fields/credits",
   refunds:"domains/commerce/fields/refunds",
   accountingJournals:"domains/accounting/fields/journals",
+  accountingAccounts:"domains/accounting/fields/accounts",
 } as const;
 
 
@@ -261,10 +263,20 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       allocations:evidence.allocations,payments:evidence.payments,
       credits:evidence.credits,refunds:evidence.refunds});
     if(financial.ok===false)fail(409,financial.message);
+    const journalRows=items(snapshots[targets.findIndex(t=>t.name==="accountingJournals")].data());
+    const accountRows=items(snapshots[targets.findIndex(t=>t.name==="accountingAccounts")].data());
+    const journalPlan=planCorrectionJournal({invoices:existing,journals:journalRows,
+      accounts:accountRows,oldInvoiceId:originalInvoiceId,newInvoiceId,
+      originalTotal:n(evidence.invoice.total),revisedTotal:diff.total,
+      customerCreditDue:financial.creditDue,requestId,actorUid:uid,at:stamped,
+      date:new Date(stamped).toLocaleDateString("sv-SE",{timeZone:"America/Phoenix"})});
+    if(journalPlan.ok===false)fail(409,journalPlan.message);
     const newInvoice={
       ...evidence.invoice,id:newInvoiceId,
       number:text(evidence.invoice.number).replace(/-R\d+$/,"")+"-R"+revisionNumber,
       issuedAt:stamped,createdAt:stamped,status:financial.status,total:diff.total,
+      accountingAdjustmentPosted:journalPlan.alreadyPosted,
+      customerCreditDue:financial.creditDue,
       linesSnapshot:diff.lines.map((line,index)=>({id:activeDocumentId+"-revision-"+revisionNumber+"-line-"+index,
         ...line,amount:line.cases*line.pricePerCase})),
       billToAddressSnapshot:text(candidate.proposedBillToAddress),
@@ -279,6 +291,27 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
         supersededByInvoiceId:newInvoiceId}:inv);
     tx.set(invoiceRef,{items:[newInvoice,...revised]});
     const touched=[invoiceRef.path];
+    if(journalPlan.newJournals.length||journalPlan.voidDraftJournalIds.length){
+      const journalRef=getFirestore().doc(dataPaths.accountingJournals);
+      const voidIds=new Set(journalPlan.voidDraftJournalIds);
+      const updated=journalRows.map(j=>voidIds.has(text(j.id))?{
+        ...j,status:"Voided",voidedAt:stamped,voidedBy:uid,
+        voidReason:"Superseded by historical invoice correction "+requestId}:j);
+      tx.set(journalRef,{items:[...journalPlan.newJournals,...updated]});
+      touched.push(journalRef.path);
+    }
+    if(journalPlan.needsCustomerCreditAccount){
+      const existing=accountRows.find(x=>text(x.id)==="acct-customer-credits");
+      const conflict=accountRows.find(x=>text(x.code)==="2250"&&text(x.id)!=="acct-customer-credits");
+      if(conflict)fail(409,"Customer credits liability account code 2250 is already assigned.");
+      if(!existing){
+        const accountsRef=getFirestore().doc(dataPaths.accountingAccounts);
+        tx.set(accountsRef,{items:[...accountRows,{
+          id:"acct-customer-credits",code:"2250",name:"Unapplied customer credits payable",
+          type:"Liability",active:true,systemRole:"Customer credits payable"}]});
+        touched.push(accountsRef.path);
+      }
+    }
     // Same transaction: cash stays real, its invoice allocation moves.
     const allocationRef=getFirestore().doc(dataPaths.allocations);
     const creditRef=getFirestore().doc(dataPaths.credits);
