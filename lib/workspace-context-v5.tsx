@@ -288,13 +288,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if (!currentUser || !canCreateAccount(currentUser)) return null;
     const id = `acc-${Date.now()}`;
     const createdAt=nowStamp();
+    // Identity belongs to the billing entity only, never copied to location/account records.
+    const locationAccount={...account};
+    delete locationAccount.legalBusinessName;
+    delete locationAccount.ein;
+    delete locationAccount.azTptLicenseNumber;
+    delete locationAccount.taxDocumentType;
     const customerName = account.customerName?.trim() || account.name.trim();
     const customerId = `cust-${slug(customerName)}`;
     const customer: CustomerAccount = { id: customerId, name: customerName, accountType: customerName === account.name ? "Independent" : "Chain / franchise", billingContactName: account.contactName, billingEmail: account.email, billingPhone: account.phone, legalBusinessName:account.legalBusinessName?.trim(), ein:account.ein?.trim(), azTptLicenseNumber:account.azTptLicenseNumber?.trim(), taxDocumentType:account.taxDocumentType??"Undetermined", createdAt: nowStamp() };
     setData((current) => ({
       ...current,
       customers: (current.customers ?? []).some((item) => item.id === customerId) ? (current.customers??[]).map((item)=>item.id!==customerId?item:{...item,legalBusinessName:item.legalBusinessName||customer.legalBusinessName,ein:item.ein||customer.ein,azTptLicenseNumber:item.azTptLicenseNumber||customer.azTptLicenseNumber,taxDocumentType:item.taxDocumentType&&item.taxDocumentType!=="Undetermined"?item.taxDocumentType:customer.taxDocumentType}) : [customer, ...(current.customers ?? [])],
-      accounts: [{ ...account, id, createdAt, createdByUid:currentUser.id, customerId, locationName: account.locationName?.trim() || account.name, streetAddress: account.streetAddress, stage: "Prospect", ownerId: currentUser.id, originatorId: currentUser.id, accountManagerId: currentUser.id, responsibilityStartedAt: nowStamp(), lastActivity: "Location created", nextAction: "Qualify the decision-maker and buying process", nextActionDate: todayKey(), health: "New", lifetimeCases: 0, reorderCount: 0, notes: "Created in the local demo workspace." }, ...current.accounts],
+      accounts: [{ ...locationAccount, id, createdAt, createdByUid:currentUser.id, customerId, locationName: account.locationName?.trim() || account.name, streetAddress: account.streetAddress, stage: "Prospect", ownerId: currentUser.id, originatorId: currentUser.id, accountManagerId: currentUser.id, responsibilityStartedAt: nowStamp(), lastActivity: "Location created", nextAction: "Qualify the decision-maker and buying process", nextActionDate: todayKey(), health: "New", lifetimeCases: 0, reorderCount: 0, notes: "Created in the local demo workspace." }, ...current.accounts],
       activities: [{ id: `act-${Date.now()}`, accountId: id, type: "note", title: "Customer location created", detail: `${customerName} · ${account.locationName?.trim() || account.name} added.`, at: nowStamp(), userId: currentUser.id }, ...current.activities],
     }));
     return id;
