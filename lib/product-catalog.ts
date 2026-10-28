@@ -30,7 +30,7 @@ export const GOLDEN_EAGLE_SKUS: ProductSku[] = [
 let liveTestSkus: ProductSku[] = [];
 export function registerLiveTestSkus(items: Array<{id:string;description:string;shortName:string;casePack:number;active:boolean;testOnly:boolean}>){
   liveTestSkus=items.filter((item)=>item.testOnly===true&&item.active===true&&
-    item.id.startsWith("qa-live-")&&item.description.trim()&&item.casePack>0)
+    item.id.startsWith("qa-live-")&&/^(?:QA|TEST)[ -]/i.test(item.description)&&item.casePack>0)
     .map((item)=>({id:item.id,description:item.description,
       shortName:item.shortName,driverNickname:item.shortName,
       canSizeOz:0,casePack:item.casePack,active:true,testOnly:true}));
