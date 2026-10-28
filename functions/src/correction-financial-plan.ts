@@ -25,7 +25,7 @@ export function planFinancialCarry(input:{
   if(!Number.isFinite(activeCreditTotal)||cents(activeCreditTotal)>cents(newTotal))
     return{ok:false,message:"Existing applied credits exceed amended amount. A credit adjustment is required."};
   const paymentMap=new Map(input.payments.map(p=>[str(p.id),p]));
-  const rows:Array<{item:Row;payment:Row;refund:number}>= [];
+  const rows:Array<{item:Row;payment:Row}>= [];
   const unique=new Set<string>();
   for(const item of original){
     const id=str(item.id),payment=paymentMap.get(str(item.paymentId)),value=amount(item.amount);
@@ -34,27 +34,40 @@ export function planFinancialCarry(input:{
        !["Cleared","Pending"].includes(str(payment.status)))
       return{ok:false,message:"Payment application requires correction before invoice replacement."};
     unique.add(id);
-    const refundRows=input.refunds.filter(r=>str(r.paymentId)===str(payment.id)&&str(r.status)!=="Failed");
-    const refund=refundRows.reduce((sum,r)=>sum+amount(r.amount),0);
-    if(!Number.isFinite(refund)||cents(refund)>cents(value))
-      return{ok:false,message:"Existing customer refund exceeds recorded payment allocation."};
-    rows.push({item,payment,refund});
+    rows.push({item,payment});
   }
   // Allocate cleared money before uncollected pending payments. Preserve
   // payment IDs and receipts; do not create a fake payment for the correction.
   rows.sort((a,b)=>Number(str(a.payment.status)==="Pending")-Number(str(b.payment.status)==="Pending"));
   const allocations:Row[]=[];let available=cents(newTotal-activeCreditTotal);
   let credited=0,paid=0,pending=0;
-  const totalRefundByPayment=new Map<string,number>();
+  const remainingSettled=new Map<string,number>();
+  const remainingCommitted=new Map<string,number>();
+  const paymentTotals=new Map<string,number>();
+  for(const entry of rows){const id=str(entry.payment.id);
+    paymentTotals.set(id,(paymentTotals.get(id)||0)+cents(amount(entry.item.amount)));
+  }
+  for(const [paymentId,total] of paymentTotals){
+    const refundRows=input.refunds.filter(r=>str(r.paymentId)===paymentId&&str(r.status)!=="Failed");
+    const committed=refundRows.reduce((sum,r)=>sum+amount(r.amount),0);
+    const settled=refundRows.filter(r=>str(r.status)==="Settled").reduce((sum,r)=>sum+amount(r.amount),0);
+    if(!Number.isFinite(committed)||cents(committed)>total)
+      return{ok:false,message:"Refund claims exceed the original payment application."};
+    remainingSettled.set(paymentId,cents(settled));
+    remainingCommitted.set(paymentId,cents(committed));
+  }
   for(const entry of rows){
     const key=str(entry.payment.id);
-    if(!totalRefundByPayment.has(key))totalRefundByPayment.set(key,entry.refund);
-    const refund=cents(totalRefundByPayment.get(key)||0);
     const value=cents(amount(entry.item.amount));
     const clearing=str(entry.payment.status)==="Cleared";
-    const net=Math.max(0,value-(clearing?refund:0));
+    const settledPortion=Math.min(value,remainingSettled.get(key)||0);
+    const committedPortion=Math.min(value,remainingCommitted.get(key)||0);
+    remainingSettled.set(key,(remainingSettled.get(key)||0)-settledPortion);
+    remainingCommitted.set(key,(remainingCommitted.get(key)||0)-committedPortion);
+    const net=Math.max(0,value-(clearing?settledPortion:0));
     const keptNet=Math.min(Math.max(available,0),net);
-    const newCents=keptNet+(clearing?refund:0);
+    const newCents=keptNet+(clearing?settledPortion:0);
+    if(newCents<committedPortion)return{ok:false,message:"Open or completed refunds require their original payment coverage."};
     if(newCents>0)allocations.push({...entry.item,invoiceId:newInvoiceId,amount:newCents/100});
     const unused=value-newCents;
     if(clearing)credited+=Math.max(0,unused);
