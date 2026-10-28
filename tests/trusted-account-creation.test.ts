@@ -6,7 +6,7 @@ const moduleRef=imported as typeof imported & {default?:typeof imported};
 const {validateTrustedAccountCreation,potentialDuplicateAccount}=moduleRef.default??moduleRef;
 
 const valid={
-  name:"ABC Market",location:"Phoenix, AZ",channel:"Independent retail",
+  name:"ABC Market LLC",legalBusinessName:"ABC Market LLC",ein:"12-3456789",azTptLicenseNumber:"12345678",taxDocumentType:"Resale 5000A",location:"Phoenix, AZ",channel:"Independent retail",
   contactName:"Main Buyer",contactRole:"Owner",phone:"6025550101",
   postalCode:"85001",streetAddress:"123 Example Street",
   deliveryAddressSameAsBusiness:true,
@@ -60,4 +60,19 @@ test("trusted creation is atomic with provenance/idempotency and currently unexp
  assert.match(source,/accountCreatorProvenance/);
  assert.match(source,/accountCreationRequests/);
  assert.doesNotMatch(index,/export const createCrmAccount\s*=/);
+});
+
+test("trusted account creation rejects trading names and missing licensed identity",()=>{
+  assert.equal(validateTrustedAccountCreation({...valid,legalBusinessName:""}).ok,false);
+  assert.equal(validateTrustedAccountCreation({...valid,name:"My Corner Shop"}).ok,false);
+  assert.equal(validateTrustedAccountCreation({...valid,ein:"bad"}).ok,false);
+  assert.equal(validateTrustedAccountCreation({...valid,azTptLicenseNumber:"abc"}).ok,false);
+  const accepted=validateTrustedAccountCreation({...valid,customerName:"Something different"});
+  assert.equal(accepted.ok,true);
+  if(accepted.ok){
+    assert.equal(accepted.customerName,valid.legalBusinessName);
+    assert.equal(accepted.record.name,valid.legalBusinessName);
+    assert.equal(accepted.record.legalBusinessName,undefined);
+    assert.equal(accepted.legalBusinessName,valid.legalBusinessName);
+  }
 });
