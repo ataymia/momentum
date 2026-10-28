@@ -4,6 +4,7 @@ import * as correctionImported from "../functions/src/delivery-correction-policy
 import {isolatedSkuUse,sandboxCanPostProductionSideEffects,validateCustomSku} from "../lib/custom-sku-policy";
 import * as inventoryImported from "../functions/src/delivery-inventory-revision";
 import * as financialImported from "../functions/src/correction-financial-plan";
+import * as accountingImported from "../functions/src/correction-accounting-plan";
 import {normalizeInventoryLedger,orderDeliveryQuantity} from "../lib/inventory-ledger";
 import {GOLDEN_EAGLE_SKUS} from "../lib/product-catalog";
 import type {WorkspaceData} from "../lib/types";
@@ -230,4 +231,39 @@ test("automatic financial correction preserves applied credit and refunds safely
   assert.equal(refund.ok,true);
   if(refund.ok){assert.equal(refund.paidNet,70);assert.equal(refund.creditDue,0);
     assert.equal(refund.allocations[0].amount,100);}
+});
+
+
+test("posted invoice amendment generates only its delta and an unapplied-credit liability",()=>{
+  const accountingModule=accountingImported as typeof accountingImported & {default?:typeof accountingImported};
+  const {planCorrectionJournal}=accountingModule.default??accountingModule;
+  const input={invoices:[{id:"invoice-original",total:240}],oldInvoiceId:"invoice-original",
+    newInvoiceId:"invoice-original-r1",originalTotal:240,revisedTotal:192,
+    customerCreditDue:48,requestId:"request-1",actorUid:"admin-two",
+    at:"2026-10-28T17:00:00.000Z",date:"2026-10-28",
+    accounts:[{id:"acct-ar",type:"Asset",systemRole:"Accounts receivable"},
+      {id:"acct-sales",type:"Revenue"},
+      {id:"acct-customer-credits",type:"Liability"}],
+    journals:[{id:"original-journal",status:"Posted",sourceType:"Invoice issued",sourceId:"invoice-original",
+      lines:[{id:"old-debit",accountId:"acct-ar",debit:240,credit:0},
+        {id:"old-credit",accountId:"acct-sales",debit:0,credit:240}]}],
+  };
+  const journal=planCorrectionJournal(input);
+  assert.equal(journal.ok,true);
+  if(!journal.ok)return;
+  assert.equal(journal.alreadyPosted,true);
+  assert.equal(journal.newJournals.length,2);
+  const delta=journal.newJournals[0].lines as Array<{accountId:string;debit:number;credit:number}>;
+  assert.equal(delta[0].accountId,"acct-sales");
+  assert.equal(delta[0].debit,48);
+  assert.equal(delta[1].accountId,"acct-ar");
+  const liability=journal.newJournals[1].lines as Array<{accountId:string;debit:number;credit:number}>;
+  assert.equal(liability[0].accountId,"acct-ar");
+  assert.equal(liability[1].accountId,"acct-customer-credits");
+  assert.equal(liability[1].credit,48);
+  const noJournal=planCorrectionJournal({...input,journals:[]});
+  assert.equal(noJournal.ok,true);
+  if(noJournal.ok)assert.equal(noJournal.alreadyPosted,false);
+  const unsafe=planCorrectionJournal({...input,journals:[{...input.journals[0],lines:[{id:"one",accountId:"acct-ar",debit:240,credit:0}]}]});
+  assert.equal(unsafe.ok,false);
 });
