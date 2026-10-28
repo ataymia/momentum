@@ -19,7 +19,7 @@ const fail=(status:number,message:string):never=>{throw new DeliveryCorrectionEr
 
 type RevisionEvidence={
   order:Row;invoice:Row;tasks:Row[];overrides:Row[];
-  movements:Row[];allMovements:Row[];lots:Row[];nodes:Row[];payments:Row[];allocations:Row[];credits:Row[];refunds:Row[];
+  movements:Row[];allMovements:Row[];lots:Row[];nodes:Row[];reservations:Row[];payments:Row[];allocations:Row[];credits:Row[];refunds:Row[];
 };
 
 function revision(e:RevisionEvidence):string{
@@ -60,6 +60,7 @@ function currentEvidence(docs:Map<string,Row[]>,orderId:string):RevisionEvidence
     allMovements:docs.get("movements")||[],
     lots:[...(docs.get("workspaceLots")||[]),...(docs.get("commercialLots")||[])],
     nodes:docs.get("nodes")||[],
+    reservations:docs.get("reservations")||[],
     payments:docs.get("payments")||[],
     allocations:(docs.get("allocations")||[]).filter(x=>text(x.invoiceId)===text(invoice.id)),
     credits:(docs.get("credits")||[]).filter(x=>text(x.invoiceId)===text(invoice.id)),
@@ -75,6 +76,7 @@ const dataPaths={
   overrides:"domains/delivery/fields/overrides",
   movements:"domains/inventoryLedger/fields/movements",
   nodes:"domains/inventoryLedger/fields/nodes",
+  reservations:"domains/inventoryLedger/fields/reservations",
   workspaceLots:"domains/workspace/fields/inventory",
   commercialLots:"domains/commercial/fields/inventoryLots",
   payments:"domains/commerce/fields/payments",
@@ -134,7 +136,8 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
     const oldAddress=text(evidence.invoice.billToAddressSnapshot);
     const plan=planDeliveredInventoryCorrection({accountId:text(evidence.order.accountId),
       original:before,proposed:diff.lines,adjustments:inventoryAdjustments,
-      lots:evidence.lots,nodes:evidence.nodes,movements:evidence.allMovements});
+      lots:evidence.lots,nodes:evidence.nodes,movements:evidence.allMovements,
+      reservations:evidence.reservations,orderId});
     if(!plan.ok)fail(409,plan.message);
     if(text(evidence.order.status)==="Paid"&&diff.quantityChanged)
       fail(409,"A paid order requires Finance reconciliation before quantity changes.");
@@ -207,7 +210,8 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
     const plan=planDeliveredInventoryCorrection({accountId:text(evidence.order.accountId),
       original,proposed:diff.lines,
       adjustments:Array.isArray(candidate.inventoryAdjustments)?candidate.inventoryAdjustments as InventoryCorrectionRow[]:[],
-      lots:evidence.lots,nodes:evidence.nodes,movements:evidence.allMovements});
+      lots:evidence.lots,nodes:evidence.nodes,movements:evidence.allMovements,
+      reservations:evidence.reservations,orderId:activeDocumentId});
     if(!plan.ok)fail(409,plan.message);
     const gate=correctionApprovalGate({
       requesterUid:text(candidate.requesterUid),approverUid:uid,
