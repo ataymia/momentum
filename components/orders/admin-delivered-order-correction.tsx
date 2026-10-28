@@ -20,7 +20,7 @@ type RequestRecord={
   id:string;orderId:string;requesterUid:string;state:string;closureReason?:string;
   reason:string;createdAt:string;originalAmount:number;proposedAmount:number;
   quantityChanged:boolean;financialReviewRequired:boolean;inventoryReviewRequired:boolean;
-  originalInvoiceNumber:string;proposedBillToAddress:string;
+  originalInvoiceNumber:string;proposedBillToAddress:string;estimatedCustomerCreditDue?:number;customerCreditDue?:number;
   proposedLines:Array<{product:string;cases:number;pricePerCase:number}>;
   originalLines:Array<{product:string;cases:number;pricePerCase:number}>;
   originalBillToAddress:string;
@@ -145,7 +145,7 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
     try{
       await call("approveDeliveredOrderCorrection",{requestId:request.id,orderId:order.id,
         reviewConfirmed:true,approvalNote:approvalNote.trim()});
-      setNotice("Amended invoice and order correction committed. Email reissue will be queued.");
+      setNotice("Order, inventory and payment allocations reconciled. Amended invoice queued for email.");
       await reloadRequests();onSaved();
     }catch(err){setError(err instanceof Error?err.message:"Correction was not approved.");}
     finally{setBusy(false);}
@@ -191,7 +191,7 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
         value={reason} onChange={e=>setReason(e.target.value)}/></Field>
       <Field label="Delivery or document proof reference" className="field--full"><input required
         value={evidenceReference} onChange={e=>setEvidenceReference(e.target.value)} placeholder="Signed receipt or verification reference"/></Field>
-      {hasFinancialActivity&&<p role="alert" className="form-error field--full">Payments or credits exist. Finance must reconcile before this correction can be approved.</p>}
+      {hasFinancialActivity&&<p role="status" className="form-notice field--full">Existing receipts and credits will be carried forward automatically. Any excess will be recorded as customer credit due; no refund is sent automatically.</p>}
       {deltas.map(change=><div key={change.product} className="field--full">
         <strong>{change.product}: {Math.abs(change.delta)} case{Math.abs(change.delta)===1?"":"s"} {change.delta<0?"returned to quality hold":"added from company custody"}</strong>
         <Button size="sm" type="button" variant="secondary" onClick={()=>addAdjustment(change.product,change.delta)}>Add lot adjustment</Button>
@@ -217,6 +217,7 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
         {requests.map(request=><div className="form-callout" key={request.id}>
           <p><strong>{request.state}:</strong> {request.reason} · {formatMoney(request.originalAmount)} to {formatMoney(request.proposedAmount)}</p>
           <p>{request.originalInvoiceNumber} · {request.createdAt}</p>
+          {(request.estimatedCustomerCreditDue??request.customerCreditDue??0)>0&&<p role="status">Expected customer credit due: {formatMoney(request.estimatedCustomerCreditDue??request.customerCreditDue??0)}. No refund will be sent automatically.</p>}
           {request.state==="Submitted"&&<>
             <Button size="sm" variant="secondary" type="button"
               onClick={()=>{
@@ -248,7 +249,7 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
               </Field>
               <Button size="sm" type="button"
                 disabled={busy||request.requesterUid===currentUser?.id||
-                  request.financialReviewRequired||!reviewConfirmed||approvalNote.trim().length<8}
+                  !reviewConfirmed||approvalNote.trim().length<8}
                 onClick={()=>void approve(request)}>
                 {request.requesterUid===currentUser?.id?"Another administrator required":"Approve and amend invoice"}
               </Button>
