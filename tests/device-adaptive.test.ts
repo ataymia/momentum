@@ -181,6 +181,7 @@ test("new full accounts use only licensed canonical name, with independent priva
   assert.match(accounts,/<Field label="Legal business name" error=\{createErrors\.legalBusinessName\}><input required/);
   assert.doesNotMatch(accounts,/licenseConfirmed|editLicenseConfirmed|Name matches the business license|Updated legal name matches the business license/);
   assert.match(accounts,/Personal nickname \(optional\)/);
+  assert.doesNotMatch(accounts,/Nine digits\. Not a substitute for a resale certificate\./);
   assert.match(accounts,/savePrivateAccountNickname\(currentUser\.id,id,newNickname\)/);
   assert.match(accounts,/nicknames\.get\(account\.id\)\|\|account\.name/);
   assert.match(base,/if\(!legalName\|\|account\.name\.trim\(\)!==legalName\)return null/);
