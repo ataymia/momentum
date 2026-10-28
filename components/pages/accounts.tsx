@@ -58,6 +58,8 @@ export function AccountsPage(){
   const [duplicateWarning,setDuplicateWarning]=useState<string|null>(null);
   const [form,setForm]=useState(blankForm);
   const [newNickname,setNewNickname]=useState("");
+  const [licenseConfirmed,setLicenseConfirmed]=useState(false);
+  const [editLicenseConfirmed,setEditLicenseConfirmed]=useState(false);
   const [nicknames,setNicknames]=useState<Map<string,string>>(new Map());
   const [nicknameDraft,setNicknameDraft]=useState("");
   const [nicknameOpen,setNicknameOpen]=useState(false);
@@ -129,6 +131,7 @@ export function AccountsPage(){
     const errors:Record<string,string>={...validateTaxIdentity(form)};
     // Full account identity is the licensed name; shorthand stays private.
     const legalName=form.legalBusinessName.trim();
+    if(legalName&&!licenseConfirmed)errors.legalBusinessName="Confirm this is the name shown on the license.";
     const accountInput={...form,name:legalName,customerName:legalName,locationName:legalName};
     if(!form.location.trim())errors.location="Enter the business city or market.";
     if(!/^\\d{5}(?:-\\d{4})?$/.test(form.postalCode.trim()))errors.postalCode="Enter a valid five-digit ZIP code.";
@@ -154,7 +157,7 @@ export function AccountsPage(){
     if(newNickname.trim()&&currentUser){
       void savePrivateAccountNickname(currentUser.id,id,newNickname).then(value=>setNicknames(previous=>new Map(previous).set(id,value))).catch(()=>setNicknameError("Account created. Your personal nickname was not saved; edit it from the account profile."));
     }
-    setNewNickname("");
+    setNewNickname("");setLicenseConfirmed(false);
   };
   const openAccountPage=(accountId:string)=>{setSelectedId(accountId);setAccountPageId(accountId);setShowAllAccountOrders(false)};
   const saveNickname=async()=>{
@@ -172,12 +175,13 @@ export function AccountsPage(){
   const openTaxDetails=()=>{
     if(!selected||!selectedCustomer)return;
     setTaxForm({legalBusinessName:selectedCustomer.legalBusinessName??"",ein:selectedCustomer.ein??"",azTptLicenseNumber:selectedCustomer.azTptLicenseNumber??"",taxDocumentType:selectedCustomer.taxDocumentType??"Undetermined"});
-    setTaxErrors({});setTaxMessage("");setTaxOpen(true);
+    setTaxErrors({});setTaxMessage("");setEditLicenseConfirmed(false);setTaxOpen(true);
   };
   const saveTaxDetails=(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
     if(!selectedCustomer)return;
     const errors=validateTaxIdentity(taxForm);
+    if(taxForm.legalBusinessName?.trim()!==selectedCustomer.legalBusinessName?.trim()&&!editLicenseConfirmed)errors.legalBusinessName="Confirm the updated name matches the license.";
     setTaxErrors(errors);
     if(Object.keys(errors).length){setTaxMessage("Correct the highlighted business identity fields.");return;}
     const saved=updateCustomerCommercial(selectedCustomer.id,{
@@ -241,6 +245,7 @@ export function AccountsPage(){
 <Field label="Federal EIN (if available)" error={createErrors.ein} hint="Nine digits. Not a substitute for a resale certificate."><input inputMode="numeric" autoComplete="off" value={form.ein} onChange={event=>setForm({...form,ein:event.target.value})} placeholder="XX-XXXXXXX"/></Field>
 <Field label="Arizona TPT license number" error={createErrors.azTptLicenseNumber} hint="Eight-digit AZ TPT license number."><input inputMode="numeric" autoComplete="off" value={form.azTptLicenseNumber} onChange={event=>setForm({...form,azTptLicenseNumber:event.target.value})} placeholder="12345678"/></Field>
 <Field label="Tax documentation route" error={createErrors.taxDocumentType}><select value={form.taxDocumentType} onChange={event=>setForm({...form,taxDocumentType:event.target.value})}><option value="Undetermined">Undetermined / collect documentation</option><option value="Taxable">Taxable purchase</option><option value="Resale 5000A">Resale certificate (AZ 5000A)</option><option value="Exemption 5000">General exemption certificate (AZ 5000)</option></select></Field>
+<label className="field--full account-address-toggle"><input type="checkbox" required checked={licenseConfirmed} onChange={event=>setLicenseConfirmed(event.target.checked)}/> Name matches the business license</label>
 <Field label="Personal nickname (optional)" hint="Only you can see this shorthand."><input maxLength={80} value={newNickname} onChange={event=>setNewNickname(event.target.value)} placeholder="My shorthand"/></Field><Field label="Business city / market" error={createErrors.location}><input required value={form.location} onChange={(event)=>{setDuplicateWarning(null);setForm({...form,location:event.target.value})}}/></Field><Field label="Business street address"><input value={form.streetAddress} onChange={(event)=>{setDuplicateWarning(null);setForm({...form,streetAddress:event.target.value})}} placeholder="1234 W Example Ave, Suite 100"/></Field><Field label="Business ZIP code" error={createErrors.postalCode}><input required inputMode="numeric" pattern="[0-9]{5}(?:-[0-9]{4})?" value={form.postalCode} onChange={(event)=>{setDuplicateWarning(null);setForm({...form,postalCode:event.target.value})}} placeholder="85016"/></Field><div className="field--full account-address-toggle"><label><input type="checkbox" checked={form.deliveryAddressSameAsBusiness} onChange={(event)=>{const same=event.target.checked;setForm({...form,deliveryAddressSameAsBusiness:same,...(!same?{deliveryStreetAddress:form.deliveryStreetAddress||form.streetAddress,deliveryLocation:form.deliveryLocation||form.location,deliveryPostalCode:form.deliveryPostalCode||form.postalCode}: {})})}}/><span>Delivery address is the same as business address</span></label></div>{!form.deliveryAddressSameAsBusiness&&<><Field label="Delivery city / market" error={createErrors.deliveryLocation}><input required value={form.deliveryLocation} onChange={(event)=>setForm({...form,deliveryLocation:event.target.value})}/></Field><Field label="Delivery street address" error={createErrors.deliveryStreetAddress}><input required value={form.deliveryStreetAddress} onChange={(event)=>setForm({...form,deliveryStreetAddress:event.target.value})} placeholder="1234 W Example Ave, Suite 100"/></Field><Field label="Delivery ZIP code" error={createErrors.deliveryPostalCode}><input required inputMode="numeric" pattern="[0-9]{5}(?:-[0-9]{4})?" value={form.deliveryPostalCode} onChange={(event)=>setForm({...form,deliveryPostalCode:event.target.value})} placeholder="85016"/></Field></>}<Field label="Channel"><select value={form.channel} onChange={(event)=>setForm({...form,channel:event.target.value})}><option>Independent retail</option><option>Convenience store</option><option>Restaurant / nightlife</option><option>Gym / fitness</option><option>Vending</option><option>Distributor</option></select></Field><Field label="Primary contact" error={createErrors.contactName}><input required value={form.contactName} onChange={(event)=>setForm({...form,contactName:event.target.value})}/></Field><Field label="Contact role" error={createErrors.contactRole}><input required value={form.contactRole} onChange={(event)=>setForm({...form,contactRole:event.target.value})}/></Field><Field label="Business phone" error={createErrors.phone} hint="Business phone, mobile, or email is required."><input type="tel" value={form.phone} onChange={(event)=>{setDuplicateWarning(null);setForm({...form,phone:event.target.value})}}/></Field><Field label="Mobile phone" error={createErrors.mobilePhone}><input type="tel" value={form.mobilePhone} onChange={(event)=>{setDuplicateWarning(null);setForm({...form,mobilePhone:event.target.value})}}/></Field><Field label="Fax"><input type="tel" value={form.fax} onChange={(event)=>setForm({...form,fax:event.target.value})}/></Field><Field label="Email" error={createErrors.email} hint="Optional when a business or mobile phone number is provided."><input type="email" value={form.email} onChange={(event)=>{setDuplicateWarning(null);setForm({...form,email:event.target.value})}}/></Field></form></Modal>
 
     <Modal open={nicknameOpen} title="My account nickname" onClose={()=>setNicknameOpen(false)} footer={<><Button variant="ghost" onClick={()=>setNicknameOpen(false)}>Cancel</Button><Button disabled={nicknameSaving||nicknameDraft.length>80} onClick={()=>void saveNickname()}>{nicknameSaving?"Saving…":"Save nickname"}</Button></>}><div className="form-grid"><Field className="field--full" label="Private nickname" error={nicknameError}><input maxLength={80} value={nicknameDraft} onChange={event=>setNicknameDraft(event.target.value)} placeholder="Your shorthand"/></Field></div></Modal>
@@ -248,6 +253,7 @@ export function AccountsPage(){
       <form id="account-identity-form" className="form-grid" noValidate onChangeCapture={()=>setTaxErrors({})} onSubmit={saveTaxDetails}>
         {taxMessage&&<div className="form-validation-notice field--full" role="alert">{taxMessage}</div>}
         <Field label="Legal business name" error={taxErrors.legalBusinessName}><input required placeholder="Same as business license" value={taxForm.legalBusinessName??""} onChange={event=>setTaxForm({...taxForm,legalBusinessName:event.target.value})}/></Field>
+        <label className="field--full account-address-toggle"><input type="checkbox" checked={editLicenseConfirmed} onChange={event=>setEditLicenseConfirmed(event.target.checked)}/> Updated legal name matches the business license</label>
         <Field label="Federal EIN" error={taxErrors.ein}><input inputMode="numeric" autoComplete="off" value={taxForm.ein??""} onChange={event=>setTaxForm({...taxForm,ein:event.target.value})} placeholder="XX-XXXXXXX"/></Field>
         <Field label="Arizona TPT license number" error={taxErrors.azTptLicenseNumber}><input inputMode="numeric" autoComplete="off" value={taxForm.azTptLicenseNumber??""} onChange={event=>setTaxForm({...taxForm,azTptLicenseNumber:event.target.value})} placeholder="12345678"/></Field>
         <Field label="Tax documentation route" error={taxErrors.taxDocumentType}><select value={taxForm.taxDocumentType??"Undetermined"} onChange={event=>setTaxForm({...taxForm,taxDocumentType:event.target.value})}><option value="Undetermined">Undetermined / documentation pending</option><option value="Taxable">Taxable purchase</option><option value="Resale 5000A">Resale certificate (AZ 5000A)</option><option value="Exemption 5000">General exemption certificate (AZ 5000)</option></select></Field>
