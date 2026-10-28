@@ -1637,6 +1637,7 @@ export {
   retrySignedInvoiceWhenInvoiceReady,
   retrySignedInvoiceWhenCustomerUpdated,
   retrySignedInvoiceWhenBillingPatchUpdated,
+  queueAmendedInvoiceOnCorrection,
 } from "./delivery-invoice-email";
 
 export {
