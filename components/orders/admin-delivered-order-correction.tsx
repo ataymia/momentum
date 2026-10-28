@@ -17,7 +17,7 @@ type InventoryAdjustment={
   fromNodeId:string;toNodeId:string;evidenceReference:string;
 };
 type RequestRecord={
-  id:string;orderId:string;requesterUid:string;state:string;
+  id:string;orderId:string;requesterUid:string;state:string;closureReason?:string;
   reason:string;createdAt:string;originalAmount:number;proposedAmount:number;
   quantityChanged:boolean;financialReviewRequired:boolean;inventoryReviewRequired:boolean;
   originalInvoiceNumber:string;proposedBillToAddress:string;
@@ -79,7 +79,7 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
     setLoading(true);
     try{
       const all=await listFirestoreCollection<RequestRecord>("deliveryCorrectionRequests");
-      setRequests(all.filter(item=>item.orderId===order.id&&["Submitted","Applied"].includes(item.state))
+      setRequests(all.filter(item=>item.orderId===order.id&&["Submitted","Applied","Rejected","Withdrawn"].includes(item.state))
         .sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,20));
     }catch{setError("Correction history could not load. Verify Administrator access.");}
     finally{setLoading(false);}
@@ -150,6 +150,23 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
     }catch(err){setError(err instanceof Error?err.message:"Correction was not approved.");}
     finally{setBusy(false);}
   };
+  const closeRequest=async(request:RequestRecord,decision:"Reject"|"Withdraw")=>{
+    if(!order||busy)return;
+    if(approvalNote.trim().length<8){
+      setError("Enter a reason of at least eight characters before closing this request.");return;
+    }
+    setBusy(true);setError("");setNotice("");
+    try{
+      const result=await call("closeDeliveredOrderCorrection",{
+        requestId:request.id,orderId:order.id,decision,reason:approvalNote.trim(),
+      });
+      setNotice("Correction "+request.id+" "+(result.state==="Rejected"?"rejected":"withdrawn")+
+        ". No inventory, payments, or invoices were changed.");
+      setReviewRequestId("");setApprovalNote("");setReviewConfirmed(false);
+      await reloadRequests();
+    }catch(err){setError(err instanceof Error?err.message:"Correction remains pending.");}
+    finally{setBusy(false);}
+  };
   if(currentUser?.role!=="Administrator")return null;
   return <Modal open={Boolean(order)} title={"Correct delivered order · "+(order?.number??"")}
     description="Original delivery proof remains unchanged. Another Administrator must approve before inventory, order totals and the amended invoice change."
@@ -205,7 +222,7 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
               onClick={()=>{
                 setReviewRequestId(reviewRequestId===request.id?"":request.id);
                 setApprovalNote("");setReviewConfirmed(false);
-              }}>{reviewRequestId===request.id?"Hide review":"Review before / after"}</Button>
+              }}>{reviewRequestId===request.id?"Hide review":"Review / manage correction"}</Button>
             {reviewRequestId===request.id&&<div className="form-grid">
               <div className="field--full"><strong>SKU and case comparison</strong>
                 {request.originalLines.map((line,i)=><p key={i}>
@@ -234,6 +251,12 @@ export function AdminDeliveredOrderCorrection({order,onClose,onSaved}:Props){
                   request.financialReviewRequired||!reviewConfirmed||approvalNote.trim().length<8}
                 onClick={()=>void approve(request)}>
                 {request.requesterUid===currentUser?.id?"Another administrator required":"Approve and amend invoice"}
+              </Button>
+              <Button size="sm" type="button" variant="secondary"
+                disabled={busy||approvalNote.trim().length<8}
+                onClick={()=>void closeRequest(request,
+                  request.requesterUid===currentUser?.id?"Withdraw":"Reject")}>
+                {request.requesterUid===currentUser?.id?"Withdraw my request":"Reject correction"}
               </Button>
             </div>}
           </>}
