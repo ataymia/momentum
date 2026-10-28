@@ -34,7 +34,19 @@ export function LiveQaSkuManager({open,onClose}:{open:boolean;onClose:()=>void})
    setSelected(old=>records.some(x=>x.id===old)?old:records[0]?.id??"");
   }catch{setError("Live QA catalog unavailable. Verify access and Firestore rules.")}
  };
- useEffect(()=>{if(!open)return;void load();},[open]);
+ useEffect(()=>{
+  if(!open||currentUser?.role!=="Administrator")return;
+  let cancelled=false;
+  listFirestoreCollection<QaProduct>("liveTestProducts")
+   .then(records=>{
+    if(cancelled)return;
+    const verified=records.filter(item=>item.testOnly&&item.environment==="production"&&item.active);
+    setProducts(verified);registerLiveTestSkus(verified);
+    setSelected(old=>verified.some(x=>x.id===old)?old:verified[0]?.id??"");
+   })
+   .catch(()=>{if(!cancelled)setError("Live QA catalog unavailable. Verify access and Firestore rules.");});
+  return()=>{cancelled=true;};
+ },[open,currentUser?.role]);
  useEffect(()=>{
   if(!open||!selected)return;
   let active=true;
