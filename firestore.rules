@@ -212,6 +212,56 @@ service cloud.firestore {
       allow delete: if isEmployee() && request.auth.uid == uid;
     }
 
+    // Delivery corrections are evaluated and committed atomically by trusted Functions.
+    // Browsers can review requests but cannot forge approvals, invoice revisions or stock.
+    match /deliveryCorrectionRequests/{requestId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /deliveryCorrectionActive/{orderId} {
+      allow read, write: if false;
+    }
+    match /deliveryCorrectionAudit/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /deliveryInvoiceReissues/{requestId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    // Sandbox product masters cannot be read by any production catalog consumer.
+    // Only Administrator browsers may manage sandbox-only metadata.
+    match /sandboxProducts/{skuId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'id','description','shortName','casePack',
+          'active','environment','createdBy','createdAt'])
+        && request.resource.data.id == skuId
+        && request.resource.data.environment == 'sandbox'
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.description is string
+        && request.resource.data.description.size() >= 3
+        && request.resource.data.description.size() <= 120
+        && request.resource.data.shortName is string
+        && request.resource.data.shortName.size() >= 2
+        && request.resource.data.shortName.size() <= 48
+        && request.resource.data.casePack is int
+        && request.resource.data.casePack > 0
+        && request.resource.data.casePack <= 1000
+        && request.resource.data.active == true
+        && request.resource.data.createdAt is string;
+      allow update, delete: if false;
+    }
+    match /sandboxInventory/{skuId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /sandboxOrders/{orderId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     // Backend-only immutable event history for account-profile edits.
     match /accountProfileEditEvents/{eventId} {
       allow get, list: if isAdmin();
