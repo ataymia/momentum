@@ -236,6 +236,7 @@ const observe=(path:string,originRoles:string[])=>
       if(!policies.length)continue;
       if(!(await freshSource(path,id,current,originUid)))continue;
       if(path===docs.commercialOrders){
+        if(current.testOnly===true)continue;
         const orderNumber=text(current.number);
         const accountId=text(current.accountId);
         if(!byId(state.accounts,accountId))continue;
@@ -263,7 +264,7 @@ const observe=(path:string,originRoles:string[])=>
         }
       }else if(path===docs.approvals||path===docs.workspaceApprovals){
         const linkedOrder=byId(state.orders,text(current.recordId));
-        if(!linkedOrder||text(linkedOrder.status)==="Cancelled")continue;
+        if(!linkedOrder||linkedOrder.testOnly===true||text(linkedOrder.status)==="Cancelled")continue;
         if(policies.includes("order.confirmed.customer")){
           if(text(actor?.role)!=="Administrator"||
              text(current.decidedBy)!==originUid)continue;
@@ -293,7 +294,7 @@ const observe=(path:string,originRoles:string[])=>
         if(text(actor?.role)==="Delivery Driver"&&
            originUid!==text(current.driverId))continue;
         const order=byId(state.orders,text(current.orderId));
-        if(!order)continue;
+        if(!order||order.testOnly===true)continue;
         await customerMail(state,text(order.accountId),eventId,
           "delivery.out_for_delivery.customer","order_out_for_delivery",
           path,id,"Order "+text(order.number)+" is out for delivery",
@@ -307,6 +308,7 @@ const observe=(path:string,originRoles:string[])=>
         const accountId=text(payment.accountId);
         if(!byId(state.accounts,accountId))continue;
         const order=orderForPayment(state,text(payment.id));
+        if(order?.testOnly===true)continue;
         if(policies.includes("payment.received.customer")){
           await customerMail(state,accountId,eventId,
             "payment.received.customer","payment_received",path,id,
