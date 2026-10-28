@@ -111,8 +111,8 @@ export async function createTrustedCrmAccount(
           str(row.legalBusinessName).toLowerCase()!==
           validation.legalBusinessName.toLowerCase())||
         (str(row.ein)&&validation.ein&&
-          str(row.ein).replace(/\\D/g,"")!==
-          validation.ein.replace(/\\D/g,""))||
+          str(row.ein).replace(/\D/g, "")!==
+          validation.ein.replace(/\D/g, ""))||
         (str(row.azTptLicenseNumber)&&validation.azTptLicenseNumber&&
           str(row.azTptLicenseNumber)!==validation.azTptLicenseNumber)
       ));
@@ -139,9 +139,10 @@ export async function createTrustedCrmAccount(
     if (!alreadyGrouped) {
       tx.set(customersRef, {items: [{
         id: customerId, name: customerName,
-        legalBusinessName:validation.legalBusinessName,
-        ein:validation.ein||"",azTptLicenseNumber:validation.azTptLicenseNumber||"",
-        taxDocumentType:validation.taxDocumentType||"Undetermined",
+        legalBusinessName: validation.legalBusinessName,
+        ein: validation.ein||"",
+        azTptLicenseNumber: validation.azTptLicenseNumber||"",
+        taxDocumentType: validation.taxDocumentType||"Undetermined",
         accountType: customerName===str(validation.record.name)?
           "Independent":"Chain / franchise",
         billingContactName: validation.record.contactName,
