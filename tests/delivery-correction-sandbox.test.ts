@@ -8,7 +8,7 @@ import {GOLDEN_EAGLE_SKUS} from "../lib/product-catalog";
 import type {WorkspaceData} from "../lib/types";
 
 const correctionModule=correctionImported as typeof correctionImported & {default?:typeof correctionImported};
-const {canonicalLines,orderLinesReconcile,correctionDiff,correctionApprovalGate}=correctionModule.default??correctionModule;
+const {canonicalLines,orderLinesReconcile,correctionDiff,correctionApprovalGate,correctionCloseGate}=correctionModule.default??correctionModule;
 const inventoryModule=inventoryImported as typeof inventoryImported & {default?:typeof inventoryImported};
 const {planDeliveredInventoryCorrection}=inventoryModule.default??inventoryModule;
 
@@ -180,4 +180,14 @@ test("historic correction refuses malformed or inconsistent original order lines
   assert.equal(orderLinesReconcile({...valid,cases:9},canonicalLines(valid)),false);
   const malformed={...valid,lines:[...valid.lines,{product:"Golden Eagle Red",cases:-1,pricePerCase:24}]};
   assert.equal(canonicalLines(malformed).length,0);
+});
+
+
+test("correction withdrawal and rejection are separate authorized, non-inventory decisions",()=>{
+  const original={actorUid:"admin-one",requesterUid:"admin-one",activeAdministrator:true,decision:"Withdraw" as const};
+  assert.equal(correctionCloseGate(original),null);
+  assert.match(correctionCloseGate({...original,actorUid:"admin-two"})??"",/requester/);
+  assert.match(correctionCloseGate({...original,activeAdministrator:false})??"",/active Administrator/);
+  assert.match(correctionCloseGate({...original,decision:"Reject"})??"",/Another Administrator/);
+  assert.equal(correctionCloseGate({...original,actorUid:"admin-two",decision:"Reject"}),null);
 });
