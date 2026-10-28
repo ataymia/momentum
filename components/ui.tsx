@@ -108,8 +108,8 @@ export function Modal({ open, title, description, onClose, children, footer, wid
   return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><div ref={dialogRef} className={`modal ${wide ? "modal--wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onMouseDown={(event) => event.stopPropagation()}><header className="modal__header"><div><h2 id={titleId}>{title}</h2>{description && <p>{description}</p>}</div><button className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={19} /></button></header><div className="modal__body">{children}</div>{footer && <footer className="modal__footer">{footer}</footer>}</div></div>;
 }
 
-export function Field({ label, hint, children, className = "" }: { label: string; hint?: string; children: ReactNode; className?: string; }) {
-  return <label className={`field ${className}`.trim()}><span className="field__label">{label}</span>{children}{hint && <small>{hint}</small>}</label>;
+export function Field({ label, hint, error, children, className = "" }: { label: string; hint?: string; error?: string; children: ReactNode; className?: string; }) {
+  return <label data-invalid={error?"true":undefined} className={`field ${className}`.trim()}><span className="field__label">{label}</span>{children}{error?<small className="field__error" role="alert">{error}</small>:hint?<small>{hint}</small>:null}</label>;
 }
 
 export function formatDate(value: string | null | undefined, options?: Intl.DateTimeFormatOptions) {
