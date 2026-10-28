@@ -190,6 +190,9 @@ export async function submitDeliveryCorrection(uid:string,input:unknown){
  */
 export async function approveDeliveryCorrection(uid:string,input:unknown){
   if(!row(input)||!idOk(text(input.requestId)))fail(400,"Valid correction request required.");
+  const approvalNote=text(input.approvalNote);
+  if(input.reviewConfirmed!==true||approvalNote.length<8||approvalNote.length>800)
+    fail(400,"Review the before/after changes, physical evidence and accounting before approval.");
   const requestId=text(input.requestId),requestRef=getFirestore().doc("deliveryCorrectionRequests/"+requestId);
   const accessRef=getFirestore().doc("userAccess/"+uid);
   const targets=targetReferences();
@@ -293,6 +296,7 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
       touched.push(movementsRef.path);
     }
     tx.update(requestRef,{state:"Applied",approvedByUid:uid,approvedAt:stamped,
+      approvalNote,physicalEvidenceReviewed:true,
       appliedAt:stamped,replacementInvoiceId:newInvoiceId,
       history:[...(Array.isArray(candidate.history)?candidate.history:[]),
         {state:"Applied",actorUid:uid,at:stamped}]});
@@ -300,7 +304,8 @@ export async function approveDeliveryCorrection(uid:string,input:unknown){
     tx.create(reissueRef,{requestId,orderId:activeDocumentId,
       invoiceId:newInvoiceId,createdAt:stamped,approvedByUid:uid});
     tx.create(auditRef,{requestId,orderId:activeDocumentId,requesterUid:candidate.requesterUid,
-      approvedByUid:uid,originalInvoiceId,replacementInvoiceId:newInvoiceId,
+      approvedByUid:uid,approvalNote,physicalEvidenceReviewed:true,
+      originalInvoiceId,replacementInvoiceId:newInvoiceId,
       before:existing.find(inv=>text(inv.id)===originalInvoiceId),
       after:newInvoice,createdAt:stamped});
     const version=stamped+"#"+randomUUID().slice(0,6);
