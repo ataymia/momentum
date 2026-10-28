@@ -14,7 +14,7 @@ const reservedName=/\b(golden\s*eagle|ge[-\s]?(original|sugarfree|tropical|red|b
 export class SandboxWorkflowError extends Error{
   constructor(public readonly status:number,message:string){super(message);}
 }
-const fail=(status:number,message:string):never=>{throw new SandboxWorkflowError(status,message)};
+const fail=(status:number,message:string):never=>{throw new SandboxWorkflowError(status,message);};
 
 export async function commitSandboxAction(uid:string,payload:unknown){
   if(!payload||typeof payload!=="object"||Array.isArray(payload))fail(400,"Sandbox action required.");
