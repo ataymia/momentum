@@ -617,7 +617,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const testSkuId=testOnly?selectedSkus[0]?.id:undefined;
     if(testOnly&&(selectedSkus.length!==1||!testSkuId))return null;
     const price=testOnly?0:pricing.currentPricePerCase;
-    if(!Number.isFinite(price)||(!testOnly&&price<=0))return null;
+    if(typeof price!=="number"||!Number.isFinite(price)||(!testOnly&&price<=0))return null;
     const grouped=new Map<string,EnhancedOrderLineInput>();
     for(const candidate of supplied){
       const sku=skuForProductName(candidate.product);
