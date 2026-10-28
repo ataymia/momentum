@@ -49,6 +49,8 @@ export function planFinancialCarry(input:{
   }
   for(const [paymentId,total] of paymentTotals){
     const refundRows=input.refunds.filter(r=>str(r.paymentId)===paymentId&&str(r.status)!=="Failed");
+    if(refundRows.some(r=>str(r.status)!=="Settled"))
+      return{ok:false,message:"An in-flight customer refund must settle or fail before amending this invoice."};
     const committed=refundRows.reduce((sum,r)=>sum+amount(r.amount),0);
     const settled=refundRows.filter(r=>str(r.status)==="Settled").reduce((sum,r)=>sum+amount(r.amount),0);
     if(!Number.isFinite(committed)||cents(committed)>total)
@@ -70,6 +72,7 @@ export function planFinancialCarry(input:{
     if(newCents<committedPortion)return{ok:false,message:"Open or completed refunds require their original payment coverage."};
     if(newCents>0)allocations.push({...entry.item,invoiceId:newInvoiceId,amount:newCents/100});
     const unused=value-newCents;
+    if(!clearing&&unused>0)return{ok:false,message:"Pending payment would exceed the amended invoice. Settle or fail it before correction."};
     if(clearing)credited+=Math.max(0,unused);
     if(clearing)paid+=keptNet;else pending+=keptNet;
     available-=keptNet;
