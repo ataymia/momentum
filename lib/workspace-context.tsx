@@ -218,7 +218,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const qaIds=new Set(allOrders.filter(order=>order.testOnly).map(order=>order.id));
     const internalQaVisible=base.currentUser?.role==="Administrator";
     const orders=internalQaVisible?allOrders:allOrders.filter(order=>!order.testOnly);
-    const visibleApprovals=internalQaVisible?approvals:approvals.filter(approval=>!qaIds.has(approval.recordId));
+    const visibleApprovals=internalQaVisible?approvals:approvals.filter(approval=>!approval.recordId||!qaIds.has(approval.recordId));
     return {
       ...base.data,
       users,
