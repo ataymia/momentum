@@ -1,11 +1,14 @@
 /* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,indent,space-before-blocks,keyword-spacing,curly,brace-style,semi */
 import {getFirestore} from "firebase-admin/firestore";
+import {createHash} from "node:crypto";
 
 type Row=Record<string,unknown>;
 const text=(v:unknown)=>typeof v==="string"?v.trim():"";
 const qty=(v:unknown)=>typeof v==="number"&&Number.isInteger(v)&&v>0&&v<=10000;
 const idOk=(v:string)=>/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const now=()=>new Date().toISOString();
+const normalizedName=(v:string)=>v.trim().toLowerCase().replace(/\\s+/g," ");
+const reservedName=/\\b(golden\\s*eagle|ge[-\\s]?(original|sugarfree|tropical|red|blue|strawberry))\\b/i;
 
 
 export class SandboxWorkflowError extends Error{
@@ -16,20 +19,54 @@ const fail=(status:number,message:string):never=>{throw new SandboxWorkflowError
 export async function commitSandboxAction(uid:string,payload:unknown){
   if(!payload||typeof payload!=="object"||Array.isArray(payload))fail(400,"Sandbox action required.");
   const input=payload as Row,action=text(input.action),skuId=text(input.skuId);
-  if(!idOk(skuId))fail(400,"Choose a valid sandbox test SKU.");
-  const productRef=getFirestore().doc("sandboxProducts/"+skuId);
-  const stockRef=getFirestore().doc("sandboxInventory/"+skuId);
-  const accessRef=getFirestore().doc("userAccess/"+uid);
-  const stamp=now();
+  if(!idOk(skuId)||!skuId.startsWith("qa-"))fail(400,"Choose a valid sandbox test SKU.");
   const requestId=text(input.requestId);
   if(!idOk(requestId))fail(400,"Unique sandbox request ID required.");
-  if(!["receive","place","deliver"].includes(action))
+  if(!["createSku","receive","place","deliver"].includes(action))
     fail(400,"Choose a supported sandbox test action.");
+  const db=getFirestore(),accessRef=db.doc("userAccess/"+uid);
+  const stamp=now();
+  if(action==="createSku"){
+    // The server is the only writer of SKU metadata and its unique-name index.
+    // Never create real products, inventory or financial records from this action.
+    const description=text(input.description),shortName=text(input.shortName);
+    const casePack=input.casePack;
+    if(input.environment!=="sandbox"||description.length<3||description.length>120||
+       shortName.length<2||shortName.length>48||
+       typeof casePack!=="number"||!Number.isInteger(casePack)||casePack<1||casePack>1000||
+       reservedName.test(description)||reservedName.test(shortName))
+      fail(400,"Enter a valid fictional test SKU, short label and case pack.");
+    const normalized=normalizedName(description);
+    const nameId=createHash("sha256").update(normalized).digest("hex");
+    const nameRef=db.doc("sandboxProductNames/"+nameId);
+    const productRef=db.doc("sandboxProducts/"+skuId);
+    return db.runTransaction(async tx=>{
+      const [access,product,name]=await Promise.all([
+        tx.get(accessRef),tx.get(productRef),tx.get(nameRef),
+      ]);
+      if(text(access.data()?.role)!=="Administrator"||text(access.data()?.accountState)!=="Active")
+        fail(403,"Only an active Administrator can create test SKUs.");
+      if(product.exists){
+        const prior=product.data();
+        if(text(prior?.createdBy)!==uid||text(prior?.requestId)!==requestId||
+           normalizedName(text(prior?.description))!==normalized||prior?.casePack!==casePack)
+          fail(409,"A different SKU already uses this identifier.");
+        return{action,skuId,replayed:true};
+      }
+      if(name.exists)fail(409,"A sandbox SKU already uses this product name.");
+      tx.create(productRef,{id:skuId,description,shortName,casePack,
+        active:true,environment:"sandbox",createdBy:uid,createdAt:stamp,requestId});
+      tx.create(nameRef,{skuId,descriptionNormalized:normalized,createdAt:stamp});
+      return{action,skuId,replayed:false};
+    });
+  }
+  const productRef=db.doc("sandboxProducts/"+skuId);
+  const stockRef=db.doc("sandboxInventory/"+skuId);
   const orderId=text(input.orderId);
-  const orderRef=getFirestore().doc("sandboxOrders/"+(action==="deliver"?orderId:requestId));
-  const receiptRef=getFirestore().doc("sandboxStockReceipts/"+requestId);
-  const invoiceRef=getFirestore().doc("sandboxInvoices/"+(action==="deliver"?orderId:requestId));
-  return getFirestore().runTransaction(async tx=>{
+  const orderRef=db.doc("sandboxOrders/"+(action==="deliver"?orderId:requestId));
+  const receiptRef=db.doc("sandboxStockReceipts/"+requestId);
+  const invoiceRef=db.doc("sandboxInvoices/"+(action==="deliver"?orderId:requestId));
+  return db.runTransaction(async tx=>{
     const [access,sku,stock,receipt,order,invoice]=await Promise.all([
       tx.get(accessRef),tx.get(productRef),tx.get(stockRef),
       tx.get(receiptRef),tx.get(orderRef),tx.get(invoiceRef),
