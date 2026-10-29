@@ -2,7 +2,7 @@
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { PaymentMethod } from "./commerce-engine";
-import { DELIVERY_STORAGE_KEY, DeliveryEvent, DeliverySignatureDraft, DeliveryState, DeliveryTask, createDeliverySeed, deliveryTaskForOrder, normalizeDeliveryState, processedForDelivery } from "./delivery-engine";
+import { DELIVERY_STORAGE_KEY, DeliveryEvent, DeliverySignatureDraft, DeliveryState, DeliveryTask, createDeliverySeed, deliveryTaskForOrder, normalizeDeliveryState, deliveryCanBeAssigned } from "./delivery-engine";
 import { useInventoryLedger } from "./inventory-ledger-context";
 import { nextVerifiedDeliveryOrderStatus } from "./delivery-status-reconciliation";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
@@ -120,7 +120,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     if (!currentUser) return { ok: false, message: "Sign in first." };
     const order = data.orders.find((item) => item.id === orderId);
     const driver = drivers.find((item) => item.id === driverId);
-    if (!order || !processedForDelivery(order) || !driver) return { ok: false, message: "That order or driver is not eligible for delivery." };
+    if (!order || !deliveryCanBeAssigned(order) || !driver) return { ok: false, message: "Only approved, allocated, or out-for-delivery orders can be assigned. Completed orders cannot be delivered again." };
     const existing = taskForOrder(orderId);
     if (existing) return existing.driverId === driverId ? { ok: true } : { ok: false, message: "That order is already assigned to another driver." };
     const stamp = now();

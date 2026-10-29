@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getWorkspaceScope } from "../lib/access";
 import { normalizeCommercialState } from "../lib/commercial-state";
-import { createDeliverySeed, deliveryStatusForOrder, normalizeDeliveryState, processedForDelivery } from "../lib/delivery-engine";
+import { createDeliverySeed, deliveryCanBeAssigned, deliveryStatusForOrder, normalizeDeliveryState, processedForDelivery } from "../lib/delivery-engine";
 import { validateProvisionRequest } from "../lib/provisioning-contract";
 import type { Order, WorkspaceData, WorkspaceUser } from "../lib/types";
 
@@ -71,6 +71,16 @@ test("delivery queue excludes orders still waiting for approval", () => {
   assert.equal(processedForDelivery(order("Awaiting approval")), false);
   assert.equal(processedForDelivery(order("Approved")), true);
   assert.equal(processedForDelivery(order("Allocated")), true);
+});
+
+test("only unfinished delivery orders can be assigned or claimed", () => {
+  for (const status of ["Approved", "Allocated", "Out for delivery"] as const) {
+    assert.equal(deliveryCanBeAssigned(order(status)), true, `${status} should be assignable`);
+  }
+  for (const status of ["Awaiting approval", "Delivered", "Paid", "Cancelled"] as const) {
+    assert.equal(deliveryCanBeAssigned(order(status)), false, `${status} must not be assigned`);
+  }
+  assert.equal(processedForDelivery(order("Delivered")), true, "completed orders remain available for historical review");
 });
 
 test("delivery normalization keeps valid driver task history", () => {
