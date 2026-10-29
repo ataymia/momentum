@@ -39,7 +39,8 @@ function archiveEvidence(order:Row,byName:Record<PathName,Row[]>,corrections:Row
  const payments=byName.payments.filter(x=>paymentIds.has(s(x.id))||s(x.orderId)===orderId);
  const credits=byName.credits.filter(x=>invoiceIds.has(s(x.invoiceId)));
  const refunds=byName.refunds.filter(x=>paymentIds.has(s(x.paymentId))||s(x.orderId)===orderId);
- const journals=byName.journals.filter(x=>invoiceIds.has(s(x.invoiceId))||s(x.orderId)===orderId);
+ const journals=byName.journals.filter(x=>invoiceIds.has(s(x.invoiceId))||invoiceIds.has(s(x.sourceId))||
+  paymentIds.has(s(x.sourceId))||s(x.orderId)===orderId);
  return{order,tasks:linked(byName.tasks,orderId),overrides:linked(byName.overrides,orderId),
   invoices,allocations,credits,refunds,payments,journals,
   movements:linked(byName.movements,orderId),
@@ -75,6 +76,7 @@ export async function archiveOrder(uid:string,payload:unknown){
    records.legacy.find(x=>s(x.id)===orderId);
   if(!order)fail(404,"Order not found in current production records.");
   const correctionSnapshot=await tx.get(correctionsRef);
+  if(correctionSnapshot.size>=40)fail(409,"Too many linked correction records for safe archival. Contact Operations.");
   const corrections=correctionSnapshot.docs.map(x=>({...x.data(),id:x.id}));
   const evidence=archiveEvidence(order,records,corrections);
   const blocker=orderArchiveBlocker(evidence);
