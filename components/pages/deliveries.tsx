@@ -114,6 +114,10 @@ export function DeliveriesPage() {
       setSignatureError("Have the recipient sign in the box before completing the delivery.");
       return;
     }
+    if (recipientName.trim().length < 2 || recipientName.trim().length > 120) {
+      setSignatureError("Enter the receiving person’s name (2–120 characters) before saving proof of delivery.");
+      return;
+    }
     setSavingSignedDelivery(true);
     setSignatureError("");
     try {
@@ -240,7 +244,7 @@ export function DeliveriesPage() {
 
       {canRecordCollection && <div className="delivery-payment-collection">
         <label><small>Amount collected</small><input type="number" min="0.01" step="0.01" max={remaining} value={collectionDraft.amount} onChange={(event) => updateCollection({ amount: event.target.value })} /></label>
-        <label><small>Payment method</small><select value={collectionDraft.method} onChange={(event) => updateCollection({ method: event.target.value as PaymentMethod })}><option value="">Select actual method</option><option>Cash</option><option>Check</option><option>ACH</option><option>Wire</option><option>Card</option><option>Other</option></select></label>
+        <label><small>Payment method</small><select value={collectionDraft.method} onChange={(event) => updateCollection({ method: event.target.value as PaymentMethod })}><option value="">Select actual method</option><option>Cash</option><option>Check</option>{!isDriver&&<><option>ACH</option><option>Wire</option><option>Card</option><option>Other</option></>}</select></label>
         <label><small>{collectionDraft.method === "Check" ? "Check number / reference" : "Reference / confirmation"}</small><input required={collectionDraft.method === "Check"} value={collectionDraft.reference} onChange={(event) => updateCollection({ reference: event.target.value })} placeholder={collectionDraft.method === "Check" ? "Required for checks" : "Optional unless available"} /></label>
         <Button type="button" size="sm" icon={<Banknote size={15} />} onClick={saveCollection}>Record collection</Button>
         <small style={{ gridColumn: "1/-1" }}>Records what the driver physically collected. Finance still reconciles settlement before the invoice becomes paid.</small>
@@ -310,7 +314,7 @@ export function DeliveriesPage() {
       <div className="delivery-signature-modal">
         <p className="delivery-signature-modal__order">{signingOrderId ? data.orders.find((item) => item.id === signingOrderId)?.number : ""} · {signingOrderId ? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.locationName ?? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.name : ""}</p>
         <DeliverySignaturePad strokes={signatureStrokes} onChange={(strokes) => { setSignatureStrokes(strokes); setSignatureError(""); }} />
-        <label className="delivery-signature-name"><span>Recipient name <small>optional</small></span><input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Name of person receiving delivery" autoComplete="name" /></label>
+        <label className="delivery-signature-name"><span>Recipient name <small>required</small></span><input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Name of person receiving delivery" required maxLength={120} autoComplete="name" /></label>
         <p className="delivery-signature-note">This signature records delivery presence and is copied onto the Momentum invoice. It is not a separate contract or payment authorization.</p>
         {signatureError && <p className="form-error" role="alert">{signatureError}</p>}
       </div>
