@@ -29,7 +29,7 @@ test("financial evidence, physical custody and completed real deliveries block a
  assert.match(orderArchiveBlocker({...evidence(real),payments:[{id:"payment-1"}]})??"",/payment/i);
  assert.match(orderArchiveBlocker({...evidence(real),movements:[{id:"movement-1"}]})??"",/physical stock/i);
  assert.match(orderArchiveBlocker({...evidence(real),tasks:[{status:"In transit"}]})??"",/driver load/i);
- assert.match(orderArchiveBlocker({...evidence({...real,status:"Delivered"} as Order})??"",/Fulfillment/i);
+ assert.match(orderArchiveBlocker(evidence({...real,status:"Delivered"} as Order))??"",/Fulfillment/i);
  assert.match(orderArchiveBlocker({...evidence(real),correctionRequests:[{state:"Submitted"}]})??"",/correction/i);
 });
 test("archived errors stay out of every Orders tab including All Orders",()=>{
