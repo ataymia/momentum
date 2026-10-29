@@ -1,7 +1,7 @@
 /* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,space-before-blocks,keyword-spacing,curly,brace-style,semi-spacing,arrow-parens,one-var,indent,operator-linebreak,space-before-function-paren */
 import {randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
-import {orderArchiveBlocker,type ArchiveRecord,type ArchiveEvidence} from "./order-archive-policy";
+import {orderArchiveBlocker,type ArchiveEvidence} from "./order-archive-policy";
 
 type Row=Record<string,unknown>;
 const s=(v:unknown)=>typeof v==="string"?v.trim():"";
