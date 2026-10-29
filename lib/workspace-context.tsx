@@ -215,10 +215,12 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const appointmentIds = new Set(commercial.appointments.map((item) => item.id));
     const approvals = reconcileApprovals(commercial.approvals, base.data.approvals);
     const allOrders = reconcileOrders(commercial.orders, baseOrders, approvals);
-    const qaIds=new Set(allOrders.filter(order=>order.testOnly).map(order=>order.id));
+    const archivedIds=new Set(allOrders.filter(order=>Boolean(order.archivedAt)).map(order=>order.id));
+    const activeOrders=allOrders.filter(order=>!order.archivedAt);
+    const qaIds=new Set(activeOrders.filter(order=>order.testOnly).map(order=>order.id));
     const internalQaVisible=base.currentUser?.role==="Administrator";
-    const orders=internalQaVisible?allOrders:allOrders.filter(order=>!order.testOnly);
-    const visibleApprovals=internalQaVisible?approvals:approvals.filter(approval=>!approval.recordId||!qaIds.has(approval.recordId));
+    const orders=internalQaVisible?activeOrders:activeOrders.filter(order=>!order.testOnly);
+    const visibleApprovals=approvals.filter(approval=>!approval.recordId||(!archivedIds.has(approval.recordId)&&(internalQaVisible||!qaIds.has(approval.recordId))));
     return {
       ...base.data,
       users,
