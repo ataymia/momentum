@@ -55,7 +55,7 @@ export async function archiveOrder(uid:string,payload:unknown){
   fail(400,"Choose an order, explain the error (12+ characters), and confirm ARCHIVE.");
  const db=getFirestore(),archiveRef=db.doc("archivedOrders/"+orderId);
  const accessRef=db.doc("userAccess/"+uid),metaRef=db.doc("platform/meta");
- const correctionsRef=db.collection("deliveryCorrections").where("orderId","==",orderId).limit(40);
+ const correctionsRef=db.collection("deliveryCorrectionRequests").where("orderId","==",orderId).limit(40);
  const refs=Object.fromEntries(Object.entries(paths).map(([k,path])=>[k,db.doc(path)])) as Record<PathName,FirebaseFirestore.DocumentReference>;
  const stamped=new Date().toISOString();
  return db.runTransaction(async tx=>{
