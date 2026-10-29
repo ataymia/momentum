@@ -94,7 +94,7 @@ const normalizeSignature = (value: unknown, task: DeliveryTask): DeliverySignatu
 export const createDeliverySeed = (): DeliveryState => ({ version: 1, tasks: [], overrides: [] });
 
 export function processedForDelivery(order: Order) {
-  return ["Approved", "Allocated", "Out for delivery", "Delivered", "Paid"].includes(order.status);
+  return !order.archivedAt&&!order.testOnly&&["Approved", "Allocated", "Out for delivery", "Delivered", "Paid"].includes(order.status);
 }
 
 export function deliveryTaskForOrder(state: DeliveryState, orderId: string) {
