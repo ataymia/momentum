@@ -102,6 +102,7 @@ export function AdminOrderArchiveManager({order,onClose,onArchived,archiveListOp
       <p>{item.reason}</p>
       <small>Archived {formatDate(item.archivedAt,{month:"short",day:"numeric",year:"numeric"})} · {item.testOnly?"Internal QA":"Commercial"} · Original status: {item.originalOrder?.status??"Unknown"}</small>
       <p>{item.originalOrder?.cases??0} cases · {formatMoney(item.originalOrder?.amount??0)} · {item.tasks?.length??0} delivery records · {item.invoices?.length??0} invoice records · {item.approvals?.length??0} approvals</p>
+      <details><summary>View preserved record and supporting evidence</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:440,overflowY:"auto"}}>{JSON.stringify(item,null,2)}</pre></details>
      </div>
     </article>)}
    </div>
