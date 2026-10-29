@@ -74,7 +74,7 @@ export async function archiveOrder(uid:string,payload:unknown){
   const records=Object.fromEntries(keys.map((key,index)=>[key,rows(snapshots[index])])) as Record<PathName,Row[]>;
   const order=records.commercial.find(x=>s(x.id)===orderId)||
    records.legacy.find(x=>s(x.id)===orderId);
-  if(!order)fail(404,"Order not found in current production records.");
+  if(!order)throw new OrderArchiveError(404,"Order not found in current production records.");
   const correctionSnapshot=await tx.get(correctionsRef);
   if(correctionSnapshot.size>=40)fail(409,"Too many linked correction records for safe archival. Contact Operations.");
   const corrections=correctionSnapshot.docs.map(x=>({...x.data(),id:x.id}));
