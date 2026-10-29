@@ -1,3 +1,4 @@
+/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,space-before-blocks,keyword-spacing,curly,brace-style,semi-spacing,arrow-parens,one-var,indent,operator-linebreak,space-before-function-paren */
 /* Order archival eligibility is pure so its financial/fulfillment gates are regression-tested. */
 export type ArchiveRecord = Record<string,unknown>;
 const s=(v:unknown)=>typeof v==="string"?v.trim():"";
