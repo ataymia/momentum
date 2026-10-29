@@ -17,7 +17,7 @@ import {
   UserCheck,
   UserRound,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { deliveryAddressLabel } from "../../lib/account-address";
 import { deliveryReconciliationIssue } from "../../lib/delivery-reconciliation";
 import type { PaymentMethod } from "../../lib/commerce-engine";
@@ -58,6 +58,8 @@ export function DeliveriesPage() {
   const sync = useSyncStatus();
   const [driverByOrder, setDriverByOrder] = useState<Record<string, string>>({});
   const [collectionDrafts, setCollectionDrafts] = useState<Record<string, CollectionDraft>>({});
+  const collectionLocks=useRef(new Set<string>());
+  const [collectingOrderId,setCollectingOrderId]=useState<string|null>(null);
   const [notice, setNotice] = useState("");
   const [refreshingQueue, setRefreshingQueue] = useState(false);
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
@@ -200,14 +202,18 @@ export function DeliveriesPage() {
     const collected = (task?.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
     const remaining = Math.max(0, order.amount - collected);
     const collectionDraft = collectionDrafts[order.id] ?? defaultCollection(remaining);
-    const canRecordCollection = Boolean((ownTask || canManage) && task && ["In transit", "Delivered"].includes(task.status) && remaining > 0);
+    const canRecordCollection = Boolean((ownTask || canManage) && task && ["In transit", "Delivered"].includes(task.status) && order.paymentStatus!=="Paid" && remaining > 0);
     const updateCollection = (patch: Partial<CollectionDraft>) => setCollectionDrafts((current) => ({ ...current, [order.id]: { ...collectionDraft, ...patch } }));
-    const saveCollection = () => {
+    const saveCollection = async () => {
+      if(collectionLocks.current.has(order.id))return;
       if (!collectionDraft.method) { setNotice("Choose the actual payment method before recording a collection."); return; }
       if (collectionDraft.method==="Check"&&!collectionDraft.reference.trim()){setNotice("Enter the check number before recording a check collection.");return;}
-      const result = recordDeliveryCollection(order.id, Number(collectionDraft.amount), collectionDraft.method, collectionDraft.reference);
-      run(result, result.ok ? `${order.number} payment collection recorded for Finance reconciliation.` : "Payment collection was not saved.");
-      if (result.ok) setCollectionDrafts((current) => ({ ...current, [order.id]: defaultCollection(Math.max(0, remaining - Number(collectionDraft.amount))) }));
+      collectionLocks.current.add(order.id);setCollectingOrderId(order.id);
+      try{
+       const result = recordDeliveryCollection(order.id, Number(collectionDraft.amount), collectionDraft.method, collectionDraft.reference);
+       await run(result, result.ok ? `${order.number} payment collection recorded for Finance reconciliation.` : "Payment collection was not saved.");
+       if (result.ok) setCollectionDrafts((current) => ({ ...current, [order.id]: defaultCollection(Math.max(0, remaining - Number(collectionDraft.amount))) }));
+      }finally{collectionLocks.current.delete(order.id);setCollectingOrderId(null);}
     };
 
     return <article key={order.id} className="company-request-list__item delivery-card">
@@ -254,7 +260,7 @@ export function DeliveriesPage() {
         <label><small>Amount collected</small><input type="number" min="0.01" step="0.01" max={remaining} value={collectionDraft.amount} onChange={(event) => updateCollection({ amount: event.target.value })} /></label>
         <label><small>Payment method</small><select value={collectionDraft.method} onChange={(event) => updateCollection({ method: event.target.value as PaymentMethod })}><option value="">Select actual method</option><option>Cash</option><option>Check</option>{!isDriver&&<><option>ACH</option><option>Wire</option><option>Card</option><option>Other</option></>}</select></label>
         <label><small>{collectionDraft.method === "Check" ? "Check number / reference" : "Reference / confirmation"}</small><input required={collectionDraft.method === "Check"} value={collectionDraft.reference} onChange={(event) => updateCollection({ reference: event.target.value })} placeholder={collectionDraft.method === "Check" ? "Required for checks" : "Optional unless available"} /></label>
-        <Button type="button" size="sm" icon={<Banknote size={15} />} onClick={saveCollection}>Record collection</Button>
+        <Button type="button" size="sm" icon={<Banknote size={15} />} disabled={collectingOrderId===order.id} onClick={()=>void saveCollection()}>{collectingOrderId===order.id?"Saving collection…":"Record collection"}</Button>
         <small style={{ gridColumn: "1/-1" }}>Records what the driver physically collected. Finance still reconciles settlement before the invoice becomes paid.</small>
       </div>}
     </article>;
