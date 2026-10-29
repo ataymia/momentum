@@ -105,7 +105,15 @@ export function DeliveriesPage() {
       setNotice(error instanceof Error?error.message:"Queue refresh failed. Check your connection.");
     }finally{setRefreshingQueue(false);}
   };
-  const openSignature = (orderId: string) => { setSigningOrderId(orderId); setSignatureStrokes([]); setRecipientName(""); setSignatureError(""); };
+  const openSignature = (orderId: string) => {
+    const saved=taskForOrder(orderId);
+    // A delivered task may need cloud re-verification. Reuse its original
+    // signature evidence; never ask the recipient to create a second one.
+    setSigningOrderId(orderId);
+    setSignatureStrokes(saved?.status==="Delivered"?saved.signature?.strokes??[]:[]);
+    setRecipientName(saved?.status==="Delivered"?saved.signature?.recipientName??"":"");
+    setSignatureError("");
+  };
   const closeSignature = () => { setSigningOrderId(null); setSignatureStrokes([]); setRecipientName(""); setSignatureError(""); };
   const completeSignedDelivery = async () => {
     if (!signingOrderId || savingSignedDelivery) return;
