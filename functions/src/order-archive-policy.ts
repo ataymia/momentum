@@ -34,6 +34,8 @@ export function orderArchiveBlocker(e:ArchiveEvidence):string|undefined{
   return "A driver load, signature or collection exists. Preserve delivery evidence and reconcile before archival.";
  if(e.payments.length||e.allocations.length||e.credits.length||e.refunds.length||
     e.journals.length)return "A payment, credit, refund or accounting entry exists. Reconcile financial records before archival.";
+ if(!order.testOnly&&e.invoices.some(i=>!["Draft","Void"].includes(s(i.status))))
+  return "An issued commercial invoice exists. Reconcile invoice and customer communication before archival.";
  if(e.invoices.some(i=>["Paid","Partially paid"].includes(s(i.status))))
   return "A paid or partially paid invoice cannot be archived without Finance reconciliation.";
  if(s(order.paymentStatus)==="Paid"||s(order.paymentStatus)==="Partially paid"||s(order.firstSettledAt)||s(order.paidAt))
