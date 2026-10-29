@@ -23,8 +23,13 @@ export function compactNotificationDeliveries(deliveries: NotificationDelivery[]
     seen.add(delivery.id);
     unique.push(delivery);
   }
-  const actionable = unique.filter((delivery) => !["Read", "Sent"].includes(delivery.status));
-  const resolved = unique.filter((delivery) => ["Read", "Sent"].includes(delivery.status));
+  // Prioritize unresolved actions, but retain the newest entries within each group.
+  // Otherwise the 500-entry cap can permanently discard fresh notifications when
+  // a long-lived queue already contains 500 older unresolved deliveries.
+  const newestFirst = (left: NotificationDelivery, right: NotificationDelivery) =>
+    right.createdAt.localeCompare(left.createdAt);
+  const actionable = unique.filter((delivery) => !["Read", "Sent"].includes(delivery.status)).sort(newestFirst);
+  const resolved = unique.filter((delivery) => ["Read", "Sent"].includes(delivery.status)).sort(newestFirst);
   const compacted: NotificationDelivery[] = [];
   for (const delivery of [...actionable, ...resolved]) {
     if (compacted.length >= MAX_PERSISTED_NOTIFICATION_DELIVERIES) break;
