@@ -27,6 +27,7 @@ test("internal delivered QA order can enter the immutable Admin graveyard withou
 });
 test("financial evidence, physical custody and completed real deliveries block archive",()=>{
  assert.match(orderArchiveBlocker({...evidence(real),payments:[{id:"payment-1"}]})??"",/payment/i);
+ assert.match(orderArchiveBlocker({...evidence(real),invoices:[{id:"invoice-1",status:"Open"}]})??"",/issued commercial invoice/i);
  assert.match(orderArchiveBlocker({...evidence(real),movements:[{id:"movement-1"}]})??"",/physical stock/i);
  assert.match(orderArchiveBlocker({...evidence(real),tasks:[{status:"In transit"}]})??"",/driver load/i);
  assert.match(orderArchiveBlocker(evidence({...real,status:"Delivered"} as Order))??"",/Fulfillment/i);
