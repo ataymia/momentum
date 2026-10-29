@@ -324,6 +324,10 @@ export type Order = {
   /** Administrator-only zero-dollar QA workflow; never physical stock or revenue. */
   testOnly?: boolean;
   testSkuId?: string;
+  /** Trusted Admin archive: removed from live operational views, retained for audit. */
+  archivedAt?: string;
+  archivedBy?: string;
+  archiveReason?: string;
   product?: string;
   /** Sales Representative credited for commission, when different from the owner. */
   creditedRepId?: string;

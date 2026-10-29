@@ -60,7 +60,7 @@ export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser 
 
 export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, account: Account) => {
   if (["Administrator","Operations","Warehouse"].includes(user.role)) return true;
-  if (user.role === "Delivery Driver") return data.orders.some((order) => order.accountId === account.id && ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status));
+  if (user.role === "Delivery Driver") return data.orders.some((order) => !order.testOnly&&!order.archivedAt&&order.accountId === account.id && ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status));
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
   if (["Brand Ambassador","Marketing"].includes(user.role)) return false;
   if (user.role === "Sales Representative") return account.ownerId === user.id || (!account.ownerId && account.stage === "Prospect");
@@ -120,7 +120,8 @@ export function getWorkspaceScope(data: WorkspaceData, user: WorkspaceUser | nul
         : user.role === "Sales Representative"
           ? data.appointments.filter(item => item.ownerId === user.id)
           : [];
-  const orders = ["Administrator","Operations","Warehouse"].includes(user.role) ? data.orders : user.role === "Delivery Driver" ? data.orders.filter((order) => ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status)) : data.orders.filter(order => accountIds.has(order.accountId));
+  const activeOrders=data.orders.filter(order=>!order.archivedAt);
+  const orders = ["Administrator","Operations","Warehouse"].includes(user.role) ? activeOrders : user.role === "Delivery Driver" ? activeOrders.filter((order) => !order.testOnly&&["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status)) : activeOrders.filter(order => accountIds.has(order.accountId));
   const placements = ["Customer","Operations","Warehouse","Brand Ambassador","Delivery Driver","Marketing"].includes(user.role) ? [] : user.role === "Administrator" ? data.placements : data.placements.filter(item => accountIds.has(item.accountId));
   const approvals = user.role === "Administrator" ? data.approvals : user.role === "Sales Manager" ? data.approvals.filter(item => (item.requesterId && managedIds.has(item.requesterId)) || Boolean(item.team && (user.managedTeams ?? []).includes(item.team))) : data.approvals.filter(item => item.requesterId === user.id);
   const visibleTimeUserIds = user.role === "Administrator" ? new Set(data.users.filter((candidate) => candidate.role !== "Customer").map((candidate) => candidate.id)) : user.role === "Sales Manager" ? managedIds : new Set([user.id]);

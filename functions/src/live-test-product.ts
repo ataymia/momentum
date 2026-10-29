@@ -111,6 +111,7 @@ export async function operateLiveTestProduct(uid:string,payload:unknown){
     const rows=list(orders);
     const existing=rows.find(r=>txt(r.id)===orderId);
     if(!existing)throw new LiveTestProductError(409,"QA order not found.");
+    if(txt(existing.archivedAt))fail(409,"Archived QA orders cannot be advanced or cancelled.");
     if(existing.testOnly!==true||txt(existing.testSkuId)!==skuId||
       existing.amount!==0||existing.pricePerCase!==0||
       !Array.isArray(existing.lines)||existing.lines.length!==1||

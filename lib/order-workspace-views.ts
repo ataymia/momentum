@@ -36,6 +36,7 @@ export function filterOrderWorkspace(data:WorkspaceData,orders:readonly Order[],
   const placedByQuery=options.placedByQuery?.trim().toLowerCase()??"";
   const managerQuery=options.managerQuery?.trim().toLowerCase()??"";
   return orders.filter((order)=>{
+    if(order.archivedAt)return false;
     const account=accounts.get(order.accountId);
     if(options.view!=="All Orders"&&orderWorkspaceView(order,commerce,deliveredTasks.has(order.id))!==options.view)return false;
     if(options.accountId&&order.accountId!==options.accountId&&account?.customerId!==options.accountId)return false;

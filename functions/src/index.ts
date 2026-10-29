@@ -21,6 +21,7 @@ import {
 import {submitDeliveryCorrection,approveDeliveryCorrection,closeDeliveryCorrection,listDeliveryCorrections,DeliveryCorrectionError} from "./delivery-correction";
 import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
+import {archiveOrder,OrderArchiveError} from "./order-archive";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -1686,6 +1687,25 @@ export const liveTestProductWorkflow=onRequest({cors:true,region:"us-central1"},
     }
     console.error("liveTestProductWorkflow failed",error);
     json(response,502,{ok:false,message:"QA workflow not confirmed. Reload before retrying."});
+  }
+});
+
+/** Archive an erroneous order without erasing financial or inventory evidence. */
+export const archiveOrderWorkflow=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await archiveOrder(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof OrderArchiveError){json(response,error.status,{ok:false,message:error.message});return;}
+    console.error("archiveOrderWorkflow failed",error);
+    json(response,502,{ok:false,message:"Order archival not confirmed. Refresh before retrying."});
   }
 });
 

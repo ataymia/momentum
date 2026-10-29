@@ -349,6 +349,10 @@ service cloud.firestore {
     // Live QA products are visible in Administrator product/order screens, but
     // do not belong to real sellable stock or commerce. Only trusted Functions
     // may create SKUs, virtual receipts and status-transition events.
+    match /archivedOrders/{orderId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
     match /liveTestProducts/{skuId} {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;

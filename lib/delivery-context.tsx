@@ -151,7 +151,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
   const taskForActor = (orderId: string) => {
     const task = taskForOrder(orderId);
     if (!task || !currentUser) return undefined;
-    if (canManage || task.driverId === currentUser.id) return task;
+    if (canManage || (isDriver && task.driverId === currentUser.id)) return task;
     return undefined;
   };
 
@@ -193,6 +193,7 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     const strokes = signature.strokes.filter((stroke) => stroke.length >= 2);
     const totalPoints = strokes.reduce((sum, stroke) => sum + stroke.length, 0);
     if (!strokes.length || totalPoints < 2) return { ok: false, message: "Capture the recipient signature before completing the delivery." };
+    if (!signature.recipientName?.trim() || signature.recipientName.trim().length < 2 || signature.recipientName.trim().length > 120) return { ok: false, message: "Enter the receiving person’s name (2–120 characters) before completing delivery." };
     if (totalPoints > 1200) return { ok: false, message: "The signature is too detailed to save. Clear the box and sign again with a shorter stroke." };
     if (!inventory.completeOrderDelivery(orderId, task.driverId)) return { ok: false, message: inventory.deliveryPostingIssue(orderId, task.driverId) ?? "Delivery inventory could not be posted. Ask Operations to review the inventory ledger." };
     const stamp = now();
@@ -210,7 +211,8 @@ export function DeliveryProvider({ children }: { children: ReactNode }) {
     const task = taskForActor(orderId);
     if (!task || !["In transit", "Delivered"].includes(task.status)) return { ok: false, message: "Payment collection can be recorded only while completing or after completing this delivery." };
     const order = data.orders.find((item) => item.id === orderId);
-    if (!order) return { ok: false, message: "Order not found." };
+    if (!order || !processedForDelivery(order) || order.paymentStatus === "Paid") return { ok: false, message: "This order is not eligible for another delivery collection." };
+    if (isDriver && !["Cash","Check"].includes(method)) return { ok: false, message: "Drivers may record only cash or physical checks actually received. Digital payments belong to Finance." };
     if (!Number.isFinite(amount) || amount <= 0) return { ok: false, message: "Enter a valid amount collected." };
     if (method === "Check" && !reference?.trim()) return { ok: false, message: "Enter the check number before saving a check collection." };
     const collected = (task.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
