@@ -2,7 +2,7 @@
 
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { accountIsVisible, canAdvanceFulfillment, canAssignScheduleUser, canManageSchedule, canReconcileOrderPayment, canReviewApproval, canTransferSalesResponsibility, getWorkspaceScope } from "./access";
-import { appointmentConflict } from "./appointment-scheduling";
+import { appointmentConflict, isValidAppointmentSlot } from "./appointment-scheduling";
 import { validateNewAccountContact } from "./account-creation";
 import { hasCompleteDeliveryAddress } from "./account-address";
 import { normalizeCommercialState } from "./commercial-state";
@@ -27,7 +27,6 @@ const today = () => arizonaDateKey();
 const now = () => new Date().toISOString();
 const plusDays = (value: string, days: number) => addCalendarDays(value, days);
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-const validTime = (value: string) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 const isDemoIdentity = (user: WorkspaceUser) => user.email.toLowerCase().endsWith("@momentum.demo");
 
 const warehouseUser: WorkspaceUser = {
@@ -510,7 +509,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
 
   const createAppointment = (appointment: NewAppointmentInput) => {
     if (!currentUser || ["Customer", "Warehouse"].includes(currentUser.role)) return null;
-    if (!isValidCalendarDateKey(appointment.date) || !validTime(appointment.startTime) || !Number.isInteger(appointment.duration) || appointment.duration < 1 || !appointment.objective.trim()) return null;
+    if (!isValidAppointmentSlot(appointment) || !appointment.objective.trim()) return null;
     const account = data.accounts.find((item) => item.id === appointment.accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return null;
     const ownerId = currentUser.role === "Sales Representative" ? currentUser.id : appointment.ownerId || undefined;
@@ -568,6 +567,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     const account=data.accounts.find((item)=>item.id===enhanced.accountId);
     if (ownerId && (!account||!canAssignScheduleUser(data, currentUser, ownerId))) return;
     const owner = ownerId ? data.users.find((user) => user.id === ownerId) : undefined;
+    if(!isValidAppointmentSlot(enhanced))return;
     if(ownerId&&appointmentConflict(data.appointments,{ownerId,date:enhanced.date,startTime:enhanced.startTime,duration:enhanced.duration,excludeId:enhanced.id}))return;
     if(account&&owner?.role==="Sales Representative"&&!documentTerritoryDeviation(account,owner.id,"reassigning this appointment"))return;
     const prior = data.users.find((user) => user.id === enhanced.ownerId);
@@ -575,9 +575,9 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const moveAppointment = (id: string, ownerId: string | undefined, date: string, startTime: string) => {
-    if (!isValidCalendarDateKey(date) || !validTime(startTime)) return false;
     const enhanced = commercial.appointments.find((item) => item.id === id);
     if (!enhanced) return base.moveAppointment(id, ownerId, date, startTime);
+    if (!isValidAppointmentSlot({ date, startTime, duration: enhanced.duration })) return false;
     if (!currentUser || !canManageSchedule(currentUser) || enhanced.status !== "Scheduled") return false;
     const account=data.accounts.find((item)=>item.id===enhanced.accountId);
     if (ownerId && (!account||!canAssignScheduleUser(data, currentUser, ownerId))) return false;
