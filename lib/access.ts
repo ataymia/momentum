@@ -60,7 +60,7 @@ export const canAssignScheduleUser = (data: WorkspaceData, actor: WorkspaceUser 
 
 export const accountIsVisible = (data: WorkspaceData, user: WorkspaceUser, account: Account) => {
   if (["Administrator","Operations","Warehouse"].includes(user.role)) return true;
-  if (user.role === "Delivery Driver") return data.orders.some((order) => order.accountId === account.id && ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status));
+  if (user.role === "Delivery Driver") return data.orders.some((order) => !order.testOnly&&!order.archivedAt&&order.accountId === account.id && ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status));
   if (user.role === "Customer") return (user.accountIds ?? []).includes(account.id);
   if (["Brand Ambassador","Marketing"].includes(user.role)) return false;
   if (user.role === "Sales Representative") return account.ownerId === user.id || (!account.ownerId && account.stage === "Prospect");
