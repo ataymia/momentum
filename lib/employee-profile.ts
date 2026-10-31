@@ -117,7 +117,7 @@ export function shiftClockInEvidence(data: WorkspaceData, hcm: HCMState, userId:
   const punchesByShift = new Map<string, TimeEntry>();
   const shiftsByDate = new Map<string, Shift[]>();
   const clockMinutes = (value: string) => {
-    const match = /^([01]\\d|2[0-3]):([0-5]\\d)$/.exec(value);
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
     return match ? Number(match[1]) * 60 + Number(match[2]) : undefined;
   };
 
