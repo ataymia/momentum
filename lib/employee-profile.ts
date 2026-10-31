@@ -104,23 +104,64 @@ export function appointmentPunctualityEvidence(data: WorkspaceData, tracking: Fi
     });
 }
 
+/**
+ * Associate each same-day punch with the nearest scheduled shift start.
+ * A punch is evidence for at most one shift: using the day's first punch for
+ * every shift fabricates punctuality data for split-shift employees.
+ * This is a read-only reporting projection, not a payroll/timecard edit.
+ */
 export function shiftClockInEvidence(data: WorkspaceData, hcm: HCMState, userId: string, start: string, end: string): PunctualityEvidence[] {
-  return hcm.shifts
+  const shifts = hcm.shifts
     .filter((shift) => shift.userId === userId && ["Published", "Completed"].includes(shift.status) && shift.date >= start && shift.date <= end)
-    .sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime))
-    .map((shift) => {
-      const entry = data.timeEntries.filter((item) => item.userId === userId && item.date === shift.date).sort((a, b) => a.clockIn.localeCompare(b.clockIn))[0];
-      return {
-        id: `shift-${shift.id}`,
-        kind: "Shift clock-in" as const,
-        date: shift.date,
-        scheduledTime: shift.startTime,
-        actualTime: entry?.clockIn,
-        varianceMinutes: entry ? minutes(entry.clockIn) - minutes(shift.startTime) : undefined,
-        sourceId: entry?.id ?? shift.id,
-        note: entry ? "Variance is first clock-in minus scheduled shift start. Negative means early; positive means after scheduled start." : "Published shift has no clock-in record.",
-      };
-    });
+    .sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime));
+  const punchesByShift = new Map<string, TimeEntry>();
+  const shiftsByDate = new Map<string, Shift[]>();
+  const clockMinutes = (value: string) => {
+    const match = /^([01]\\d|2[0-3]):([0-5]\\d)$/.exec(value);
+    return match ? Number(match[1]) * 60 + Number(match[2]) : undefined;
+  };
+
+  for (const shift of shifts) {
+    const dayShifts = shiftsByDate.get(shift.date) ?? [];
+    dayShifts.push(shift);
+    shiftsByDate.set(shift.date, dayShifts);
+  }
+  for (const [date, dayShifts] of shiftsByDate) {
+    const validShifts = dayShifts.filter((shift) => clockMinutes(shift.startTime) !== undefined)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime) || a.id.localeCompare(b.id));
+    const punches = data.timeEntries
+      .filter((entry) => entry.userId === userId && entry.date === date && clockMinutes(entry.clockIn) !== undefined)
+      .sort((a, b) => a.clockIn.localeCompare(b.clockIn) || a.id.localeCompare(b.id));
+    for (const entry of punches) {
+      const punchedAt = clockMinutes(entry.clockIn)!;
+      let closest: Shift | undefined;
+      let closestDistance = Infinity;
+      for (const shift of validShifts) {
+        const distance = Math.abs(punchedAt - clockMinutes(shift.startTime)!);
+        if (distance < closestDistance) {
+          closest = shift;
+          closestDistance = distance;
+        }
+      }
+      // Multiple punches near one shift do not count as attendance for another.
+      if (closest && !punchesByShift.has(closest.id)) punchesByShift.set(closest.id, entry);
+    }
+  }
+  return shifts.map((shift) => {
+    const entry = punchesByShift.get(shift.id);
+    return {
+      id: `shift-${shift.id}`,
+      kind: "Shift clock-in" as const,
+      date: shift.date,
+      scheduledTime: shift.startTime,
+      actualTime: entry?.clockIn,
+      varianceMinutes: entry ? minutes(entry.clockIn) - minutes(shift.startTime) : undefined,
+      sourceId: entry?.id ?? shift.id,
+      note: entry
+        ? "Variance is the associated clock-in minus scheduled shift start. Negative means early; positive means after scheduled start."
+        : "No distinct clock-in could be associated with this shift.",
+    };
+  });
 }
 
 export function averageRecordedVariance(records: PunctualityEvidence[]) {
