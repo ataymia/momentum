@@ -42,3 +42,14 @@ test("order form requires an actual selected CRM account before submission",()=>
   assert.match(picker,/event.key==="Enter"/);
   assert.match(picker,/No matching CRM accounts/);
 });
+
+test("order autocomplete searches the market even when a branch name is present and city is absent",()=>{
+  const legacyBranches=[
+    {id:"phoenix-branch",name:"Golden Eagle Market",locationName:"Camelback",location:"Phoenix",streetAddress:"123 Main St",postalCode:"85018"},
+    {id:"glendale-branch",name:"Golden Eagle Market",locationName:"Arrowhead",location:"Glendale",streetAddress:"456 Bell Rd",postalCode:"85308"},
+  ] as Account[];
+  assert.deepEqual(orderAccountSuggestions(legacyBranches,"Phoenix").map(a=>a.id),["phoenix-branch"]);
+  assert.deepEqual(orderAccountSuggestions(legacyBranches,"Golden Eagle Phoenix").map(a=>a.id),["phoenix-branch"]);
+  assert.deepEqual(orderAccountSuggestions(legacyBranches,"Arrowhead").map(a=>a.id),["glendale-branch"]);
+  assert.deepEqual(orderAccountSuggestions(legacyBranches,"Tucson").map(a=>a.id),[]);
+});
