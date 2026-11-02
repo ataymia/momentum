@@ -16,8 +16,11 @@ export function orderAccountSuggestions(accounts: readonly Account[],query:strin
     const label=normalize(orderAccountLabel(account));
     const name=normalize(account.name);
     const place=normalize(account.locationName||account.location||"");
+    // A named branch and its city/market are separate searchable fields. When locationName is
+    // present, do not hide location from autocomplete for legacy accounts without a city field.
+    const market=normalize(account.location||"");
     const address=normalize([account.streetAddress,account.city,account.postalCode].filter(Boolean).join(" "));
-    const searchable=[name,place,address].join(" ");
+    const searchable=[name,place,market,address].join(" ");
     if(tokens.some((token)=>!searchable.includes(token)))return null;
     const rank=!term?5:name===term||label===term?0:name.startsWith(term)?1:place.startsWith(term)?2:name.includes(term)?3:4;
     return {account,index,rank};
