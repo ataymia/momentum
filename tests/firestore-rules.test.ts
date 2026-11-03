@@ -1078,3 +1078,25 @@ describe("historical correction and isolated sandbox authority",()=>{
     }
   });
 });
+
+describe("location permission reminder read isolation",()=>{
+ test("recipient and Admin read targeted reminder, others cannot; nobody can forge consent",async()=>{
+  const value={targetUid:REP,requestId:"location-test-1",requestedBy:ADMIN,
+   requestedAt:"2026-11-03T10:00:00.000Z",expiresAt:"2026-11-10T10:00:00.000Z",status:"Pending"};
+  await env.withSecurityRulesDisabled(async context=>{
+   await setDoc(doc(context.firestore(),"locationPermissionRequests",REP),value);
+  });
+  await assertSucceeds(getDoc(doc(dbFor(REP),"locationPermissionRequests",REP)));
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),"locationPermissionRequests",REP)));
+  await assertSucceeds(getDocs(collection(dbFor(ADMIN),"locationPermissionRequests")));
+  for(const who of [OTHER_REP,MANAGER,OPS,MARKETING,ONBOARDING,null]){
+   await assertFails(getDoc(doc(dbFor(who),"locationPermissionRequests",REP)));
+   await assertFails(getDocs(collection(dbFor(who),"locationPermissionRequests")));
+  }
+  for(const who of [ADMIN,REP,OTHER_REP,MANAGER,OPS,null]){
+   await assertFails(setDoc(doc(dbFor(who),"locationPermissionRequests",REP),
+    {...value,status:"Responded",outcome:"Enabled"}));
+   await assertFails(deleteDoc(doc(dbFor(who),"locationPermissionRequests",REP)));
+  }
+ });
+});
