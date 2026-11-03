@@ -210,11 +210,12 @@ function sameValue(left: unknown, right: unknown) {
   try { return JSON.stringify(left) === JSON.stringify(right); } catch { return left === right; }
 }
 
+const auditHousekeepingFields=new Set(["updatedAt","updatedBy","lastSyncedAt","syncedAt","lastHydratedAt","hydratedAt","lastPolledAt"]);
 function changeList(before: Record<string, unknown> | undefined, after: Record<string, unknown> | undefined): AuditChange[] {
   const keys = new Set([...(before ? Object.keys(before) : []), ...(after ? Object.keys(after) : [])]);
   const changes: AuditChange[] = [];
   for (const field of keys) {
-    if (field === "updatedAt") continue;
+    if (auditHousekeepingFields.has(field)) continue;
     const beforeValue = before?.[field];
     const afterValue = after?.[field];
     if (!sameValue(beforeValue, afterValue)) changes.push({ field, before: display(beforeValue), after: display(afterValue) });
@@ -405,6 +406,8 @@ export function diffAuditableRecords(
 
     const action: AuditEvent["action"] = !before ? "Created" : !after ? "Deleted" : "Updated";
     const changes = changeList(before?.payload, after?.payload);
+    // Cache refresh and attribution metadata alone are not business mutations.
+    if(action==="Updated" && changes.length===0)continue;
     const source = verifiedProvenance(before, after, action);
 
     // Passive hydration, normalization, polling and derived-state refreshes are not business events.
