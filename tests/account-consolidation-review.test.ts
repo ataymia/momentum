@@ -1,7 +1,7 @@
 import {readFileSync} from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
-import {consolidationCandidates,manualConsolidationCandidate,normalizedBusinessName} from "../lib/account-consolidation-review";
+import {consolidationCandidates,manualConsolidationCandidate,normalizedBusinessName,toggleSelectedAccountId} from "../lib/account-consolidation-review";
 import type {Account} from "../lib/types";
 
 const location=(id:string,name:string,address:string,customerId?:string,ownerId="rep-a"):Account=>({
@@ -69,7 +69,16 @@ test("admin picker searches every CRM location, even outside suggested groups",(
   assert.match(source,/manualConsolidationCandidate\(data\.accounts,selectedIds\)/);
   assert.match(source,/data\.accounts\.filter\(a=>/);
   assert.match(source,/checked=\{selectedSet\.has\(a\.id\)\}/);
-  assert.match(source,/setSelectedIds\(current=>current\.includes\(id\)/);
+  assert.match(source,/toggleSelectedAccountId\(selectedIds,id\)/);
   assert.doesNotMatch(source,/createCustomer\(/);
   assert.doesNotMatch(source,/setCommercial\(/);
+});
+
+test("manual selection toggle preserves choices across searches and can deselect either",()=>{
+  const first=toggleSelectedAccountId([],"location-one");
+  const second=toggleSelectedAccountId(first,"unrelated-location");
+  assert.deepEqual(second,["location-one","unrelated-location"]);
+  assert.deepEqual(toggleSelectedAccountId(second,"location-one"),["unrelated-location"]);
+  assert.deepEqual(toggleSelectedAccountId(second,"unrelated-location"),["location-one"]);
+  assert.deepEqual(first,["location-one"],"Previous selection array stays immutable");
 });
