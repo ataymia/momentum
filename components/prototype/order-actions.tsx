@@ -14,7 +14,8 @@ import {canCreateOrder,canReviewApproval} from "../../lib/access";
 import {hasCompleteDeliveryAddress,deliveryAddressLabel} from "../../lib/account-address";
 import {approvalForOrder} from "../../lib/order-approval-engine";
 import {evaluatePartnerPricing} from "../../lib/pricing-engine";
-import {GOLDEN_EAGLE_SKUS} from "../../lib/product-catalog";
+import {GOLDEN_EAGLE_SKUS,skuForProductName} from "../../lib/product-catalog";
+import {orderLinesFor} from "../../lib/order-lines";
 import {productInventoryStatus} from "../../lib/inventory-ledger";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {momentumStorage} from "../../lib/persistence";
@@ -45,14 +46,25 @@ function DemoGuard({isDemo}:{isDemo:boolean}){
   </div>;
 }
 export function OrderEditor({orderId}:{orderId?:string}){
+  const {scope}=useWorkspace();
+  const order=orderId?scope.orders.find(o=>o.id===orderId&&!o.testOnly):undefined;
+  // Mount the form only when the deep-linked record is loaded. Otherwise its
+  // initial fields would silently retain the blank state from an earlier render.
+  if(orderId&&!order)return <div className="prototype-empty">Order not found or not yet loaded for this account.</div>;
+  return <OrderEditorForm key={orderId??"new"} orderId={orderId} initialOrder={order}/>;
+}
+function OrderEditorForm({orderId,initialOrder}:{orderId?:string;initialOrder?:Order}){
   const {data,scope,currentUser,createOrder,editOrder}=useWorkspace();
   const {ledger,releaseOrderReservationsForEdit}=useInventoryLedger();
   const runtime=useRuntimeMode();
-  const order=orderId?scope.orders.find(o=>o.id===orderId&&!o.testOnly):undefined;
+  const order=initialOrder;
+  const initialLines=order?orderLinesFor(order):[];
   const [accountId,setAccountId]=useState(order?.accountId??"");
   const [accountSearch,setAccountSearch]=useState("");
-  const [counter,setCounter]=useState((order?.lines?.length??1)+1);
-  const [draft,setDraft]=useState<LineDraft[]>(order?.lines?.length?order.lines.map((line,index)=>({key:index+1,product:line.product,cases:String(line.cases)})):[newLine(1)]);
+  const [counter,setCounter]=useState(initialLines.length+1);
+  const [draft,setDraft]=useState<LineDraft[]>(initialLines.length?initialLines.map((line,index)=>({
+    key:index+1,product:skuForProductName(line.product)?.description??line.product,cases:String(line.cases),
+  })):[newLine(1)]);
   const [working,setWorking]=useState(false);
   const [message,setMessage]=useState("");
   const existing=Boolean(orderId);
