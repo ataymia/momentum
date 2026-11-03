@@ -1,7 +1,8 @@
 "use client";
 
 import { Boxes, CircleHelp, Clock3, LogOut, Megaphone, Truck, UsersRound } from "lucide-react";
-import { useState } from "react";
+import { useEffect } from "react";
+import { getNavigationRoute, navigateToRoute, startRouteNavigation, useNavigationRoute } from "../lib/navigation-store";
 import { useWorkspace } from "../lib/workspace-context";
 import { EmployeeDirectory } from "./hcm/employee-directory";
 import { DeliveryRequestsPage } from "./pages/delivery-requests";
@@ -11,11 +12,12 @@ import { InventoryPage } from "./pages/inventory";
 import { PeoplePage } from "./pages/people";
 import { Avatar, BrandMark, Button } from "./ui";
 
-type DriverTab = "deliveries" | "requests" | "inventory" | "time" | "directory" | "help";
+type DriverTab = "deliveries" | "requests" | "map" | "inventory" | "time" | "directory" | "help";
 
 const tabs: Array<{ key: DriverTab; label: string; icon: typeof Truck }> = [
   { key: "deliveries", label: "Deliveries", icon: Truck },
   { key: "requests", label: "Requests", icon: Megaphone },
+  { key: "map", label: "Route Map", icon: Truck },
   { key: "inventory", label: "Inventory", icon: Boxes },
   { key: "time", label: "Time & HR", icon: Clock3 },
   { key: "directory", label: "Directory", icon: UsersRound },
@@ -24,7 +26,14 @@ const tabs: Array<{ key: DriverTab; label: string; icon: typeof Truck }> = [
 
 export function DeliveryDriverShell() {
   const { currentUser, logout } = useWorkspace();
-  const [tab, setTab] = useState<DriverTab>("deliveries");
+  const path=useNavigationRoute();
+  useEffect(()=>{
+    const stop=startRouteNavigation();
+    if(getNavigationRoute()==="/")navigateToRoute("/driver/deliveries",{replace:true});
+    return stop;
+  },[]);
+  const selected=path.split("/")[2] as DriverTab|undefined;
+  const tab: DriverTab=tabs.some(item=>item.key===selected)?selected!:"deliveries";
   if (!currentUser || currentUser.role !== "Delivery Driver") return null;
 
   return <div className="delivery-driver-shell">
@@ -45,11 +54,12 @@ export function DeliveryDriverShell() {
       {tabs.map(({key,label,icon:Icon})=><button type="button" key={key}
         className={`nav-item driver-shell-tab ${tab===key?"is-active":""}`}
         aria-current={tab===key?"page":undefined}
-        onClick={()=>setTab(key)}><Icon size={18}/><span>{label}</span></button>)}
+        onClick={()=>navigateToRoute("/driver/"+key)}><Icon size={18}/><span>{label}</span></button>)}
     </nav>
     <main className="driver-shell-main">
       {tab==="deliveries"&&<DeliveriesPage/>}
       {tab==="requests"&&<DeliveryRequestsPage/>}
+      {tab==="map"&&<div className="page page--focused-tool"><h1>Delivery route map</h1><p>Route visualization and stop sequencing are planned. The existing Deliveries workspace remains the authoritative source for assigned tasks, signatures, exceptions and completion evidence.</p><Button type="button" onClick={()=>navigateToRoute("/driver/deliveries")}>Open my deliveries</Button></div>}
       {tab==="inventory"&&<InventoryPage/>}
       {tab==="time"&&<PeoplePage/>}
       {tab==="directory"&&<div className="page page--focused-tool"><EmployeeDirectory/></div>}
