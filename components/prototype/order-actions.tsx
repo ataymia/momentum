@@ -152,6 +152,8 @@ export function OrderApprovalDirectory(){
   const [status,setStatus]=useState<"Pending"|"Approved"|"Returned"|"All">("Pending");
   const [sort,setSort]=useState<"oldest"|"newest">("oldest");
   const [inFlight,setInFlight]=useState("");
+  const [returningId,setReturningId]=useState("");
+  const [returnReason,setReturnReason]=useState("");
   const [notice,setNotice]=useState("");
   const records=useMemo(()=>scope.approvals
     .filter(a=>a.type==="Order"||a.type==="Low stock sale")
@@ -167,17 +169,18 @@ export function OrderApprovalDirectory(){
     .filter(a=>[a.title,a.type,a.requestedBy,a.detail].join(" ").toLowerCase().includes(search.toLowerCase()))
     .sort((a,b)=>(sort==="newest"?-1:1)*a.submittedAt.localeCompare(b.submittedAt));
   const canDecide=(approval:Approval)=>Boolean(currentUser&&canReviewApproval(data,currentUser,approval)&&runtime.isDemo&&momentumStorage.mode()==="local"&&approval.status==="Pending");
-  const decide=async(approval:Approval,decision:"Approved"|"Returned")=>{
+  const decide=async(approval:Approval,decision:"Approved"|"Returned",reason?:string)=>{
     if(!canDecide(approval)||inFlight)return;
+    if(decision==="Returned"&&(!reason||reason.trim().length<3)){setNotice("Enter a meaningful return reason before sending the request back.");return;}
     setInFlight(approval.id);setNotice("");
     try{
       const previous=scope.approvals.find(a=>a.id===approval.id)?.status;
       if(previous!=="Pending"){setNotice("This approval is no longer pending. Refresh the record.");return;}
-      // Existing engine obtains a reason when a request is returned and applies
-      // the same canonical state transition as the rest of the application.
-      decideApproval(approval.id,decision);
+      // The canonical engine validates the Administrator and preserves the reason in audit history.
+      decideApproval(approval.id,decision,reason);
       const result=await momentumStorage.flushAndConfirm("momentum-commercial-controls-v1");
       if(!result.ok){setNotice("Decision is queued locally, not confirmed remotely. Do not repeat it. "+(result.message??""));return;}
+      setReturningId("");setReturnReason("");
       setNotice("Approval operation checked. Confirm its updated status in the record.");
     }catch{setNotice("Could not verify the decision. Inspect sync status before trying again.");}
     finally{setInFlight("");}
@@ -199,7 +202,18 @@ export function OrderApprovalDirectory(){
           <td>{account?.name??"Account restricted"}</td>
           <td>{valueDate(approval.submittedAt)}</td>
           <td>{approval.priority}</td><td>{approval.status}</td>
-          <td>{approval.status==="Pending"&&canDecide(approval)?<div className="prototype-approval-actions"><button type="button" disabled={Boolean(inFlight)} onClick={()=>void decide(approval,"Approved")}><CheckCircle2 size={14}/> Approve</button><button type="button" disabled={Boolean(inFlight)} onClick={()=>void decide(approval,"Returned")}>Return</button></div>:<span>{approval.status==="Pending"?"Awaiting authorized reviewer":"Reviewed"}</span>}</td>
+          <td>{approval.status==="Pending"&&canDecide(approval)?
+            returningId===approval.id?<div className="prototype-approval-return">
+              <label>Return reason<textarea aria-label={"Reason for returning "+order.number} value={returnReason} onChange={e=>setReturnReason(e.target.value)} rows={3} placeholder="Describe the corrections needed before approval"/></label>
+              <div className="prototype-approval-actions">
+                <button type="button" disabled={Boolean(inFlight)||returnReason.trim().length<3} onClick={()=>void decide(approval,"Returned",returnReason)}>Confirm return</button>
+                <button type="button" disabled={Boolean(inFlight)} onClick={()=>{setReturningId("");setReturnReason("");}}>Cancel</button>
+              </div>
+            </div>:
+            <div className="prototype-approval-actions"><button type="button" disabled={Boolean(inFlight)} onClick={()=>void decide(approval,"Approved")}><CheckCircle2 size={14}/> Approve</button>
+              <button type="button" disabled={Boolean(inFlight)} onClick={()=>{setReturningId(approval.id);setReturnReason("");}}>Return</button>
+            </div>:
+            <span>{approval.status==="Pending"?"Awaiting authorized reviewer":"Reviewed"}</span>}</td>
         </tr>;
       })}</tbody></table></div>
       {!records.length&&<p className="prototype-empty">No matching order approval requests.</p>}
