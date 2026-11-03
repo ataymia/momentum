@@ -5,14 +5,16 @@ import {useFieldTracking} from "../../lib/location-tracking-context";
 import {roleIsTracked} from "../../lib/location-tracking-engine";
 import {employeeLocationReminder,isPendingLocationRequest,updateLocationPermissionRequest,type LocationPermissionRequest} from "../../lib/location-permission-requests";
 import {useWorkspace} from "../../lib/workspace-context";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {Button,Modal} from "../ui";
 
 /** Visible only on the recipient's own signed-in device. Never accesses GPS on Admin's behalf. */
 export function LocationPermissionReminder(){
  const {currentUser}=useWorkspace();
+ const firebase=useFirebaseSessionOptional();
  const tracking=useFieldTracking();
  const eligible=roleIsTracked(currentUser?.role);
- const uid=eligible?currentUser?.id:undefined;
+ const uid=eligible&&firebase?.session?.uid===currentUser?.id?currentUser?.id:undefined;
  const [request,setRequest]=useState<LocationPermissionRequest|null>(null);
  const [dismissed,setDismissed]=useState("");
  const [busy,setBusy]=useState(false);
@@ -33,7 +35,7 @@ export function LocationPermissionReminder(){
   return()=>{active=false;window.clearInterval(id);window.removeEventListener("focus",onFocus);};
  },[uid]);
  const pending=isPendingLocationRequest(request);
- const open=Boolean(pending&&request?.requestId!==dismissed);
+ const open=Boolean(uid&&pending&&request?.targetUid===uid&&request?.requestId!==dismissed);
  const check=()=>{
   if(!uid||!request||busy)return;
   const selected=request;
