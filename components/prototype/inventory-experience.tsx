@@ -1,7 +1,7 @@
 "use client";
 
 /** Read-only inventory directories built on confirmed lot and custody ledgers. */
-import {useMemo,useState} from "react";
+import {useState} from "react";
 import {ArrowDownUp,ArrowLeft,ExternalLink,Search} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
@@ -10,7 +10,6 @@ import {
   type InventoryMovement,type InventoryCount,
 } from "../../lib/inventory-ledger";
 import {navigateToRoute} from "../../lib/navigation-store";
-import type {InventoryLot} from "../../lib/types";
 
 type Direction="asc"|"desc";
 const fmt=(num:number)=>new Intl.NumberFormat("en-US",{maximumFractionDigits:2}).format(num);
@@ -39,7 +38,7 @@ function Facts({items}:{items:{label:string;value:React.ReactNode}[]}){
 function LegacyInventoryControls(){
   return <div className="prototype-legacy-actions"><button type="button" onClick={()=>navigateToRoute("/inventory/workflow")}>Existing inventory operations</button><small>Temporary access to receipts, stock imports, and quality-hold controls. The new inventory directory does not write stock.</small></div>;
 }
-function InventoryViewRows(){
+function useInventoryRows(){
   const {scope}=useWorkspace();const {ledger}=useInventoryLedger();
   return scope.inventory.map(lot=>({
     lot,
@@ -50,7 +49,7 @@ function InventoryViewRows(){
   }));
 }
 export function InventoryDirectory(){
-  const {scope}=useWorkspace();const records=InventoryViewRows();
+  const {scope}=useWorkspace();const records=useInventoryRows();
   const [query,setQuery]=useState(""),[status,setStatus]=useState("all"),[product,setProduct]=useState("all");
   const [bestByFrom,setBestByFrom]=useState(""),[bestByThrough,setBestByThrough]=useState("");
   const sort=useSort("lotCode");
