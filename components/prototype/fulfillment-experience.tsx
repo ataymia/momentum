@@ -7,14 +7,14 @@
  * existing inventory and delivery engines until the new controls pass parity.
  */
 import {useMemo,useState} from "react";
-import {ArrowLeft,ArrowUpDown,Search,ShieldCheck,Truck} from "lucide-react";
+import {ArrowLeft,ArrowUpDown,Search,ShieldCheck} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useDelivery} from "../../lib/delivery-context";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {
   activeReservedForOrder,orderOutboundQuantity,orderDeliveryQuantity,
 } from "../../lib/inventory-ledger";
-import {deliveryStatusForOrder,deliveryTaskForOrder,processedForDelivery,type DeliveryTask} from "../../lib/delivery-engine";
+import {deliveryStatusForOrder,processedForDelivery,type DeliveryTask} from "../../lib/delivery-engine";
 import {navigateToRoute} from "../../lib/navigation-store";
 import type {Order} from "../../lib/types";
 
@@ -193,10 +193,10 @@ export function ShipmentDetail({orderId}:{orderId:string}){
 }
 export function DeliveryOperationsDirectory(){
   const {orders,indexed,accounts,users,ledger,currentUser,state}=useOperationalRecords();
-  if(!currentUser||!["Administrator","Operations","Warehouse"].includes(currentUser.role))
-    return <p className="prototype-empty">Use your assigned delivery workspace. Company-wide delivery operations are restricted.</p>;
   const [query,setQuery]=useState("");
   const [filter,setFilter]=useState("all");
+  if(!currentUser||!["Administrator","Operations","Warehouse"].includes(currentUser.role))
+    return <p className="prototype-empty">Use your assigned delivery workspace. Company-wide delivery operations are restricted.</p>;
   const rows=orders.map(order=>({
     order,task:indexed.get(order.id),status:deliveryStatusForOrder(state,order),
     delivered:orderDeliveryQuantity(ledger,order.id),
