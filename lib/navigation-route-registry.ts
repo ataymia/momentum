@@ -72,7 +72,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Employee Directory", path: "/people/directory", permission: "employees", state: "prototype" },
     { label: "New Hire", path: "/people/new-hire", permission: "newHire", state: "existing" },
     { label: "Onboarding", path: "/people/onboarding", permission: "onboarding", state: "existing" },
-    { label: "Payroll", path: "/people/payroll", permission: "payroll", state: "existing" },
+    { label: "Payroll", path: "/people/payroll", permission: "payroll", state: "prototype" },
     { label: "Training", path: "/people/training", permission: "trainingAdmin", state: "existing" },
   ] },
   { label: "Marketing", entries: [
