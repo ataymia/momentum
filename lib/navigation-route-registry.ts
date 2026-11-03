@@ -154,7 +154,6 @@ const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/admin/access": "settings",
   "/portal/orders": "orders",
   "/crm/map": "salesMap",
-  "/crm/account-map": "salesMap",
   "/retail": "retail",
   "/accounts": "accounts",
   "/orders": "orders",
