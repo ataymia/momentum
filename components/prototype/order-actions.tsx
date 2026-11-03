@@ -130,7 +130,7 @@ function OrderEditorForm({orderId,initialOrder}:{orderId?:string;initialOrder?:O
       <section className="prototype-panel"><h2>2. Items and quantities</h2>
         <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Catalog item</th><th>Case quantity</th><th>Available warehouse cases</th><th>Line value</th><th/></tr></thead>
           <tbody>{summaries.map(line=><tr key={line.key}>
-            <td><select aria-label={"Product for line "+line.key} value={line.product} onChange={e=>setDraft(rows=>rows.map(row=>row.key===line.key?{...row,product:e.target.value}:row))}>{catalog.map(item=><option key={item.id} value={item.description}>{item.shortName} · {item.casePack} cans/case</option>)}</select></td>
+            <td><select aria-label={"Product for line "+line.key} value={line.product} onChange={e=>setDraft(rows=>rows.map(row=>row.key===line.key?{...row,product:e.target.value}:row))}>{!catalog.some(item=>item.description===line.product)&&<option value={line.product} disabled>Unrecognized legacy SKU · select verified item</option>}{catalog.map(item=><option key={item.id} value={item.description}>{item.shortName} · {item.casePack} cans/case</option>)}</select></td>
             <td><input type="number" min="1" step="1" aria-label={"Cases for line "+line.key} value={line.cases} onChange={e=>setDraft(rows=>rows.map(row=>row.key===line.key?{...row,cases:e.target.value}:row))}/></td>
             <td>{line.stock}</td>
             <td>{Number.isSafeInteger(line.casesCount)&&line.casesCount>0&&priceValid?formatMoney(line.casesCount*unitPrice!):"Pending valid quantity"}</td>
@@ -138,6 +138,7 @@ function OrderEditorForm({orderId,initialOrder}:{orderId?:string;initialOrder?:O
           </tr>)}</tbody>
         </table></div>
         <button type="button" className="prototype-secondary-action" onClick={()=>{setDraft(rows=>[...rows,newLine(counter)]);setCounter(n=>n+1)}}><Plus size={15}/> Add product</button>
+        {summaries.some(line=>!catalog.some(item=>item.description===line.product))&&<p role="alert" className="prototype-order-error">This order contains a product that is not in the verified catalog. Select a verified item deliberately before saving; Momentum will not silently substitute a SKU.</p>}
         <Notes>Inventory availability is advisory at order entry. The existing approval, reservation and custody engine validates every later fulfillment step.</Notes>
       </section>
       <section className="prototype-panel"><h2>3. Review and authorization</h2>
