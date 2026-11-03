@@ -136,3 +136,11 @@ User confirmed the redesign covers the **whole business**, not just employee CRM
 - Home cards and rows drill into their appropriate separate left-sidebar module and item URL; no module-level header navigation. Browser Back/Forward restores the prior page.
 - Mobile Home is adapted to screen size, while preserving the functions needed by sales, driver, HR, marketing and customer roles.
 - **Status:** reference captured; screenshot-by-screenshot acceptance and implementation are pending. Existing Home must not be counted as redesigned.
+
+### Home reference and fulfillment module review
+- Mia supplied two images of the General Manager's currently preferred business software Home page on November 3, 2026. These are **visual reference material**, not proof of operational data. Use them for the visual home-screen acceptance review; do not embed screenshots, external product names, product logos, or proprietary layout assets in Momentum's source.
+- Home must show only reliable, role-authorized operational information, with links into module records and meetings. Do not fabricate KPI counts or configure dashboards before data sources, definitions, permissions and audit rules are verified.
+- Fulfillment prototype now includes independently addressable /inventory/packages, /inventory/shipments, /inventory/shipments/{orderId} and /operations/deliveries. Those pages reuse existing delivery tasks, inventory movement and reservation ledgers, and show truthful distinctions between reservation, loaded, in transit, recipient signature and delivery posting.
+- These are **read-only review screens**, not replacements for existing authorized delivery mutations; package numbers, carrier tracking and driver ETAs remain unspecified.
+- Sales-rep self-delivery remains a separate planned interface and must not reuse the general Sales Orders screen as its final design.
+- Release gate: approved role scoping, functional test of all four routes, and final CI; do not merge into main.
