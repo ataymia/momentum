@@ -285,3 +285,28 @@ test("global audit collector memoizes domains and skips serialization for reused
   assert.match(context,/const fieldRecords=useMemo\(\(\)=>collectAuditableRecords\("Field tracking",auditableFieldTracking\),\[auditableFieldTracking\]\)/);
   assert.match(engine,/before\.payload === after\.payload \|\| sameValue/);
 });
+
+
+test("changing sync timestamps and actor metadata alone does not create business audit entries",()=>{
+  const before=collectAuditableRecords("Workspace",{accounts:[{
+    id:"a1",name:"Example",stage:"Prospect",updatedAt:"2026-11-01T12:00:00.000Z",updatedBy:"system",
+  }]});
+  const after=collectAuditableRecords("Workspace",{accounts:[{
+    id:"a1",name:"Example",stage:"Prospect",updatedAt:"2026-11-03T12:00:00.000Z",updatedBy:"system",
+    syncedAt:"2026-11-03T12:00:01.000Z",
+  }]});
+  const events=diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-11-03T12:02:00.000Z",[admin]);
+  assert.deepEqual(events,[]);
+});
+test("verified changes to actual business fields remain auditable",()=>{
+  const before=collectAuditableRecords("Workspace",{accounts:[{
+    id:"a1",name:"Example",stage:"Prospect",updatedAt:"2026-11-01T12:00:00.000Z",updatedBy:"admin-1",
+  }]});
+  const after=collectAuditableRecords("Workspace",{accounts:[{
+    id:"a1",name:"Example",stage:"Qualified",updatedAt:"2026-11-03T12:00:00.000Z",updatedBy:"admin-1",
+  }]});
+  const [event]=diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-11-03T12:02:00.000Z",[admin]);
+  assert.ok(event);
+  assert.equal(event.actorId,"admin-1");
+  assert.deepEqual(event.changes,[{field:"stage",before:"Prospect",after:"Qualified"}]);
+});
