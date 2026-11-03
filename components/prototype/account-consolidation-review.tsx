@@ -154,7 +154,7 @@ export function AccountConsolidationReview(){
         </div>
         {preview&&<div className="prototype-consolidation-plan" role="status">
           <strong>Review plan only: {previewParent}</strong>
-          <p>{selected.locations.length} selected account records and {linked} linked order records. The accounts' distinct IDs, orders, payments, employee credits and audit history remain unchanged.</p>
+          <p>{selected.locations.length} selected account records and {linked} linked order records. The accounts&apos; distinct IDs, orders, payments, employee credits and audit history remain unchanged.</p>
           <p>No parent record was created and no consolidation was executed. Before approval, verify legal and billing identity, location ownership, overlapping physical addresses, tax records, customer portal access, commission and bonus attribution, and any existing financial balances.</p>
           <p>Production consolidation requires an authenticated, audited administrator-controlled master-data operation. This preview cannot silently migrate or delete historical records.</p>
           <div className="prototype-consolidation-action">
