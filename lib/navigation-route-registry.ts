@@ -150,6 +150,7 @@ const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/crm/quick-visit": "quickVisit",
   "/crm/account-map": "salesMap",
   "/work": "work",
+  "/work/workflow": "work",
   "/work/exceptions": "work",
   "/work/completed": "work",
   "/crm/self-delivery": "orders",
@@ -204,6 +205,8 @@ export function routeLabel(path: string): string {
   if (clean.startsWith("/inventory/lots/")) return "Lot details";
   if (clean.startsWith("/sales/customers/")) return "Customer details";
   if (clean==="/sales/orders/workflow") return "Order operations";
+  if(clean==="/sales/orders/new")return "Create sales order";
+  if(clean.startsWith("/sales/orders/")&&clean.endsWith("/edit"))return "Edit sales order";
   if (clean.startsWith("/sales/orders/")) return "Order details";
   if (clean.startsWith("/sales/invoices/")) return "Invoice details";
   if (clean.startsWith("/sales/payments/")) return "Payment details";
@@ -255,7 +258,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
-  if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow")return false;
+  if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
   if (clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
