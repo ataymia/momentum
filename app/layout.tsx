@@ -20,6 +20,7 @@ import "./invoice-print.css";
 import "./mobile-platform.css";
 import "./admin-audit.css";
 import "./device-adaptive.css";
+import "./prototype-navigation.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
