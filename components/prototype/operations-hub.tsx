@@ -12,6 +12,7 @@ import { TerritoryPanel } from "../crm/territory-panel";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience, PayrollExperience } from "./hr-payroll-experiences";
+import { AccountConsolidationReview } from "./account-consolidation-review";
 import type { Order } from "../../lib/types";
 
 function Empty({ children }: { children: ReactNode }) {
@@ -201,6 +202,7 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/people/payroll")return <PayrollExperience/>;
+  if(path==="/admin/accounts")return <AccountConsolidationReview/>;
   if(path==="/admin/employee-profiles")return <div><Heading title="Employee Profiles" description="Preserved administrator-only employee record controls."/><AdminEmployeeProfiles/></div>;
   if(path==="/admin/employees")return <div><Heading title="Employee Directory" description="Administrator view of active staff."/><EmployeeDirectory/></div>;
   if(path==="/crm/territory-map")return <TerritoryMapPreview/>;
