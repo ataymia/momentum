@@ -35,8 +35,10 @@ import {
 } from "./notification-policy-v2";
 import {usePerformance} from "./performance-context";
 import {useWorkspace} from "./workspace-context";
+import {mergeFirstSeenTimes,notificationDisplayTime,parseFirstSeenTimes} from "./notification-display-time";
 
 const READ_KEY="momentum-derived-notification-read-v1";
+const FIRST_SEEN_KEY="momentum-notification-first-seen-v1";
 
 const readIds=(userId:string)=>{
   if(typeof window==="undefined")return new Set<string>();
@@ -63,6 +65,11 @@ const persist=(userId:string,ids:Set<string>)=>{
   }
 };
 
+const readFirstSeen=(userId:string):Record<string,string>=>{
+  if(typeof window==="undefined")return {};
+  try{return parseFirstSeenTimes(JSON.parse(window.localStorage.getItem(FIRST_SEEN_KEY+":"+userId)??"{}"));}
+  catch{return {};}
+};
 type NotificationContextValue={
   currentUserItems:NotificationDelivery[];
   unreadCount:number;
@@ -92,6 +99,9 @@ function NotificationBridge({
   const [readDerived,setReadDerived]=useState<Set<string>>(
     ()=>readIds(userId),
   );
+  const [firstSeen,setFirstSeen]=useState<Record<string,string>>(
+    ()=>readFirstSeen(userId),
+  );
 
   useEffect(()=>{
     const timer=window.setInterval(()=>setClock(new Date()),60_000);
@@ -99,6 +109,18 @@ function NotificationBridge({
   },[]);
 
   useEffect(()=>persist(userId,readDerived),[userId,readDerived]);
+  useEffect(()=>{
+    if(typeof window!=="undefined")window.localStorage.setItem(FIRST_SEEN_KEY+":"+userId,JSON.stringify(firstSeen));
+  },[userId,firstSeen]);
+  // A second tab must not resurrect notifications that another tab already cleared.
+  useEffect(()=>{
+    const onStorage=(event:StorageEvent)=>{
+      if(event.key===READ_KEY+":"+userId)setReadDerived(readIds(userId));
+      if(event.key===FIRST_SEEN_KEY+":"+userId)setFirstSeen(readFirstSeen(userId));
+    };
+    window.addEventListener("storage",onStorage);
+    return()=>window.removeEventListener("storage",onStorage);
+  },[userId]);
 
   useEffect(()=>{
     if(!firebase||currentUser?.role!=="Administrator")return;
@@ -122,7 +144,8 @@ function NotificationBridge({
     const addIntent=(intent:NotificationIntent)=>{
       if(!notificationBellEnabled(intent.policyId))return;
       const id=`derived-intent:${intent.id}`;
-      const stamp=intent.occurredAt??evaluatedAt;
+      if(intent.recipientUserId!==currentUser.id)return;
+      const stamp=notificationDisplayTime(intent.occurredAt,firstSeen[id],evaluatedAt);
       items.push({
         id,
         sourceEventId:intent.id,
@@ -133,9 +156,9 @@ function NotificationBridge({
         tone:intent.importance==="critical"||intent.importance==="action"?
           "warning":
           intent.importance==="status"?"success":"info",
-        createdAt:stamp,
+        createdAt:stamp.time,
+        timestampSource:stamp.source,
         status:readDerived.has(id)?"Read":"Unread",
-        ...(readDerived.has(id)?{readAt:stamp}:{}),
         targetPage:intent.targetPage,
         targetRecordId:intent.targetRecordId,
         actionLabel:intent.targetPage?"Open":"Review",
@@ -157,6 +180,7 @@ function NotificationBridge({
         delivery,
       }).filter((item)=>notificationBellEnabled(item.policyId))){
         const id=`derived-action:${action.id}`;
+        const stamp=notificationDisplayTime(action.occurredAt,firstSeen[id],evaluatedAt);
         items.push({
           id,
           sourceEventId:`action:${action.id}`,
@@ -167,9 +191,9 @@ function NotificationBridge({
           tone:action.urgency==="Blocking"||action.urgency==="Due"?
             "warning":
             "info",
-          createdAt:evaluatedAt,
+          createdAt:stamp.time,
+          timestampSource:stamp.source,
           status:readDerived.has(id)?"Read":"Unread",
-          ...(readDerived.has(id)?{readAt:evaluatedAt}:{}),
           targetPage:action.page,
           targetRecordId:action.focus,
           actionLabel:action.page?"Open":"Review",
@@ -216,7 +240,8 @@ function NotificationBridge({
     );
     if(weeklyReminder)addIntent(weeklyReminder);
 
-    return items.sort((left,right)=>
+    const seen=new Set<string>();
+    return items.filter(item=>!seen.has(item.id)&&Boolean(seen.add(item.id))).sort((left,right)=>
       right.createdAt.localeCompare(left.createdAt),
     );
   },[
@@ -235,9 +260,14 @@ function NotificationBridge({
     audit.events,
     systemEvents,
     readDerived,
+    firstSeen,
     clock,
   ]);
 
+  useEffect(()=>{
+    const missing=currentUserItems.filter(item=>item.timestampSource==="first-seen"&&!firstSeen[item.id]).map(item=>item.id);
+    if(missing.length)setFirstSeen(current=>mergeFirstSeenTimes(current,missing,new Date().toISOString()));
+  },[currentUserItems,firstSeen]);
   const unreadCount=currentUserItems.filter(
     (item)=>item.status==="Unread",
   ).length;
