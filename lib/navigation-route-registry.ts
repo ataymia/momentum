@@ -146,6 +146,7 @@ const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/admin/access": "settings",
   "/portal/orders": "orders",
   "/crm/map": "salesMap",
+  "/crm/account-map": "salesMap",
   "/retail": "retail",
   "/accounts": "accounts",
   "/orders": "orders",
@@ -227,7 +228,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
-  if (clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/portal/")) return true;
+  if (clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
 }
