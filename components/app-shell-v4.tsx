@@ -10,7 +10,7 @@ import { useRuntimeMode } from "../lib/runtime-mode";
 import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
 import {navigateToRoute, startRouteNavigation, useNavigationPage, useNavigationRoute} from "../lib/navigation-store";
-import {MENU_GROUPS, canVisitRoute, requiresPrototypePage, routeLabel} from "../lib/navigation-route-registry";
+import {MENU_GROUPS, canShowModuleInMenu, requiresPrototypePage, routeLabel} from "../lib/navigation-route-registry";
 import {PrototypeOperationsHub} from "./prototype/operations-hub";
 import { AccountsPage } from "./pages/accounts";
 
@@ -122,7 +122,7 @@ function NavigationGroups(){
   if(!currentUser)return null;
   return <nav className="sidebar__nav prototype-sidebar-nav" aria-label="Primary navigation">
     {MENU_GROUPS.map(group=>{
-      const visible=group.entries.filter(entry=>canVisitRoute(currentUser,entry.path));
+      const visible=group.entries.filter(entry=>canShowModuleInMenu(currentUser,entry.path));
       if(!visible.length)return null;
       const open=Boolean(expanded[group.label]);
       return <div className="prototype-nav-group" key={group.label}>
