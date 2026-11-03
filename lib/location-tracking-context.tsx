@@ -113,6 +113,7 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
   const watchRef = useRef<number | null>(null);
   const previousUserRef = useRef<string | null>(null);
   const permissionRequestRef=useRef<Promise<TrackingPermission>|null>(null);
+  const [watchRetryEpoch,setWatchRetryEpoch]=useState(0);
   const requestLocationPermission=useCallback(():Promise<TrackingPermission>=>{
     // Called synchronously from an employee's Clock In or "Check location" click.
     // Starting getCurrentPosition before any await preserves browser user activation.
@@ -120,6 +121,9 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
     setPermission("Requesting");
     const action=requestBrowserPoint().then(():TrackingPermission=>{
       setPermission("Active");
+      // A previous PERMISSION_DENIED may have terminated the browser watcher.
+      // Restart it after fresh employee consent, without changing clock or route history.
+      setWatchRetryEpoch(value=>value+1);
       return "Active";
     }).catch((error):TrackingPermission=>{
       const result:TrackingPermission=error instanceof Error&&error.message.includes("permission")?"Denied":"Unavailable";
@@ -302,7 +306,7 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
       if (watchRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchRef.current);
       watchRef.current = null;
     };
-  }, [appendRouteSample, closeActiveSessions, currentUser, data.appointments, recordAppointmentEvent, shouldTrack]);
+  }, [appendRouteSample, closeActiveSessions, currentUser, data.appointments, recordAppointmentEvent, shouldTrack,watchRetryEpoch]);
 
   useEffect(() => {
     if (!shouldTrack || !currentUser || typeof window === "undefined") return;
