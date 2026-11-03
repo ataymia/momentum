@@ -126,19 +126,14 @@ const EnhancedWorkspaceContext = createContext<EnhancedWorkspace | null>(null);
 const nextAppointment: Record<AppointmentStatus, AppointmentStatus> = { Scheduled: "Dispatched", Dispatched: "En route", "En route": "Arrived", Arrived: "Arrived", Completed: "Completed", "Needs follow-up": "Needs follow-up" };
 const nextFulfillment: Partial<Record<OrderStatus, OrderStatus>> = { Approved: "Allocated", Allocated: "Out for delivery", "Out for delivery": "Delivered" };
 
-function inferredTier(data: WorkspaceData, accountId: string): PricingTier | undefined {
-  const price = data.orders.filter((order) => order.accountId === accountId && order.status !== "Cancelled" && Number.isFinite(order.pricePerCase) && order.pricePerCase > 0).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0]?.pricePerCase;
-  return price === 24 ? "A" : price === 27 ? "B" : price === 30 ? "C" : undefined;
-}
-
 function seedCommercial(data: WorkspaceData): CommercialState {
   const accountPatches: Record<string, CommercialAccountPatch> = {};
   for (const account of data.accounts) {
     accountPatches[account.id] = {
-      premiseType: account.premiseType ?? "Unclassified",
-      businessType: account.businessType ?? account.channel,
-      categoryReviewDate: account.categoryReviewDate ?? plusDays(today(), 90),
-      pricingTier: account.pricingTier ?? inferredTier(data, account.id),
+      premiseType: account.premiseType,
+      businessType: account.businessType,
+      categoryReviewDate: account.categoryReviewDate,
+      pricingTier: account.pricingTier,
       postalCode: normalizePostalCode(account.postalCode) || undefined,
     };
   }
