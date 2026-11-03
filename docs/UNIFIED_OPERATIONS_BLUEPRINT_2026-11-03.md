@@ -125,3 +125,14 @@ User confirmed the redesign covers the **whole business**, not just employee CRM
 - The **prototype-only action** requires Administrator, local demo mode, no connected Firebase workspace, local persistence, billing-owner verification checkbox, a twelve-character reason, and typed confirmation "ASSOCIATE".
 - No live account records have been merged. **Production write action remains open** and requires a transaction-safe privileged endpoint, role and record verification, immutable master-data audit, duplicate-site determination, finance/bonus entitlement reconciliation, and reviewed staging tests.
 - The user explicitly preferred manual selection over a mandatory 70%-similarity scanner. Do not add expensive fuzzy matching unless it provides a proven incremental benefit.
+
+### Home experience: reference and acceptance (owner screenshots, November 3, 2026)
+- Flo's actual commercial-software Home screenshots were supplied in chat as a **visual and interaction reference**, not authority to copy product code, logos, text, branded assets or distinctive artwork.
+- Home is a personalized dashboard, **not another nested legacy page**. Its information hierarchy and navigation density should be tuned against the owner-provided images during visual review.
+- Preserve the eight Momentum departments and permission-scoped module navigation; expand and collapse groups consistently. Never show a customer-only feature to employees or HR records to sales/marketing.
+- Home should display actionable **role-specific** information rather than decorative, unverified activity: assigned work, approval count, upcoming internal meetings and field appointments, recent authorized records and source-linked metrics.
+- Upcoming meeting invitations appear for actual invitees and authorized organizers, with correct local time, record URL, and in-app reminder state. Shared-calendar writes and outbound email are **not** implemented yet.
+- Numbers such as active customer count, receivables, inventory and order conversion must have a precisely defined source, formula, permissions and update frequency before they appear as company performance claims.
+- Home cards and rows drill into their appropriate separate left-sidebar module and item URL; no module-level header navigation. Browser Back/Forward restores the prior page.
+- Mobile Home is adapted to screen size, while preserving the functions needed by sales, driver, HR, marketing and customer roles.
+- **Status:** reference captured; screenshot-by-screenshot acceptance and implementation are pending. Existing Home must not be counted as redesigned.
