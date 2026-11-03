@@ -95,7 +95,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Users & Roles", path: "/admin/access", permission: "settings", state: "existing" },
     { label: "Workforce Live", path: "/admin/workforce", permission: "workforceLive", state: "existing" },
     { label: "Audit Center", path: "/admin/audit", permission: "audit", state: "existing" },
-    { label: "Account Consolidation", path: "/admin/accounts", permission: "settings", state: "planned" },
+    { label: "Account Consolidation", path: "/admin/accounts", permission: "settings", state: "prototype" },
     { label: "Data Exchange", path: "/admin/data-exchange", permission: "dataExchange", state: "existing" },
   ] },
 ];
