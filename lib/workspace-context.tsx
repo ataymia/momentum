@@ -106,7 +106,7 @@ type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | 
   moveAppointment: (id: string, ownerId: string | undefined, date: string, startTime: string) => boolean;
   updatePlacement: BaseWorkspace["updatePlacement"];
   correctTimeEntry: BaseWorkspace["correctTimeEntry"];
-  decideApproval: (id: string, decision: "Approved" | "Returned") => void;
+  decideApproval: (id: string, decision: "Approved" | "Returned", reason?: string) => void;
   setOrderStatus: (id: string, status: OrderStatus) => void;
   reconcileOrderPayment: (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => void;
   cancelOrder: (id: string, reason: string) => { ok: boolean; message?: string };
@@ -674,7 +674,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));setCommercial(nextCommercial);window.setTimeout(()=>void momentumStorage.flush(),0);return{ok:true,status:nextStatus};
   };
 
-  const decideApproval = (id: string, decision: "Approved" | "Returned") => {
+  const decideApproval = (id: string, decision: "Approved" | "Returned", providedReason?: string) => {
     const approval = commercial.approvals.find((item) => item.id === id);
     if (!approval) {
       base.decideApproval(id, decision);
@@ -685,7 +685,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       let returnReason="";
       if(decision==="Returned"){
         if(typeof window==="undefined")return;
-        returnReason=window.prompt("Why is this territory exception being returned? This note will be kept with the account history.")?.trim()??"";
+        returnReason=providedReason!==undefined?providedReason.trim():(window.prompt("Why is this territory exception being returned? This note will be kept with the account history.")?.trim()??"");
         if(returnReason.length<3)return;
       }
       const accountId=approval.recordId;
@@ -699,7 +699,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     let returnReason: string | undefined;
     if (decision === "Returned") {
       if (typeof window === "undefined") return;
-      returnReason = window.prompt("What needs to be corrected before this order can be approved?")?.trim();
+      returnReason = providedReason!==undefined?providedReason.trim():window.prompt("What needs to be corrected before this order can be approved?")?.trim();
       if (!returnReason || returnReason.length < 3) return;
     }
     const decidedAt = now();
