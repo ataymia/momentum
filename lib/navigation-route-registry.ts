@@ -30,7 +30,10 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Contacts", path: "/crm/contacts", permission: "accounts", state: "prototype" },
     { label: "Accounts / Customers", path: "/sales/customers", permission: "accounts", state: "prototype" },
     { label: "Deals", path: "/crm/deals", permission: "accounts", state: "prototype" },
-    { label: "Meetings & Visits", path: "/crm/quick-visit", permission: "quickVisit", state: "existing" },
+    { label: "Quick Visit", path: "/crm/quick-visit", permission: "quickVisit", state: "existing" },
+    { label: "Account Map", path: "/crm/account-map", permission: "salesMap", state: "existing" },
+    { label: "Territory Map", path: "/crm/territory-map", permission: "salesMap", state: "prototype" },
+    { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "existing" },
     { label: "Sales Incentives", path: "/crm/incentives", permission: "accounts", state: "prototype" },
     { label: "Territories & Routes", path: "/crm/territories", permission: "salesMap", state: "existing" },
   ] },
@@ -82,11 +85,38 @@ export const MENU_GROUPS: MenuGroup[] = [
   ] },
   { label: "Administration", entries: [
     { label: "Administration", path: "/admin", permission: "settings", state: "existing" },
+    { label: "Employee Profiles", path: "/admin/employee-profiles", permission: "settings", state: "prototype" },
+    { label: "Employee Directory", path: "/admin/employees", permission: "settings", state: "prototype" },
+    { label: "Users & Roles", path: "/admin/access", permission: "settings", state: "existing" },
+    { label: "Workforce Live", path: "/admin/workforce", permission: "workforceLive", state: "existing" },
     { label: "Audit Center", path: "/admin/audit", permission: "audit", state: "existing" },
     { label: "Account Consolidation", path: "/admin/accounts", permission: "settings", state: "planned" },
     { label: "Data Exchange", path: "/admin/data-exchange", permission: "dataExchange", state: "existing" },
   ] },
 ];
+
+/** Customer-facing navigation is intentionally independent of employee modules. */
+export const CUSTOMER_MENU: MenuEntry[] = [
+  { label: "Home", path: "/", permission: "home", state: "existing" },
+  { label: "Products", path: "/portal/products", permission: "home", state: "prototype" },
+  { label: "My Orders", path: "/portal/orders", permission: "orders", state: "existing" },
+  { label: "Invoices", path: "/portal/invoices", permission: "orders", state: "prototype" },
+  { label: "Payments", path: "/portal/payments", permission: "orders", state: "prototype" },
+  { label: "Deliveries", path: "/portal/deliveries", permission: "orders", state: "prototype" },
+  { label: "Statements", path: "/portal/statements", permission: "home", state: "prototype" },
+  { label: "Documents", path: "/portal/documents", permission: "home", state: "prototype" },
+  { label: "My Account", path: "/portal/account", permission: "accounts", state: "prototype" },
+];
+
+export const DRIVER_MENU = [
+  {label:"My Deliveries",path:"/driver/deliveries"},
+  {label:"Delivery Requests",path:"/driver/requests"},
+  {label:"Route Map",path:"/driver/map"},
+  {label:"Inventory",path:"/driver/inventory"},
+  {label:"Time & HR",path:"/driver/time"},
+  {label:"Employee Directory",path:"/driver/directory"},
+  {label:"Help",path:"/driver/help"},
+] as const;
 
 export const LEGACY_PATHS: Record<PageKey, string> = {
   home: "/", work: "/work", actions: "/work/actions",
@@ -111,6 +141,10 @@ export const LEGACY_PATHS: Record<PageKey, string> = {
 const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/sales/payments": "orderCash",
   "/crm/quick-visit": "quickVisit",
+  "/crm/account-map": "salesMap",
+  "/crm/self-delivery": "orders",
+  "/admin/access": "settings",
+  "/portal/orders": "orders",
   "/crm/map": "salesMap",
   "/retail": "retail",
   "/accounts": "accounts",
@@ -142,7 +176,7 @@ export function routeEntry(path: string): MenuEntry | undefined {
 
 export function routeLabel(path: string): string {
   const clean = normalizeRoutePath(path);
-  const item = routeEntry(clean);
+  const item = routeEntry(clean) ?? CUSTOMER_MENU.find(entry=>entry.path===clean);
   if (item) return item.label;
   if (clean.startsWith("/items/")) return "Item details";
   if (clean.startsWith("/sales/customers/")) return "Customer details";
@@ -154,13 +188,27 @@ export function permissionForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if (clean.startsWith("/items/")) return "products";
   if (clean.startsWith("/sales/customers/")) return "accounts";
+  const portal=CUSTOMER_MENU.find(item=>item.path===clean);
+  if (portal) return portal.permission;
   if (clean.startsWith("/sales/orders/")) return "orders";
   if (routeEntry(clean)) return routeEntry(clean)!.permission;
   return pageForPath(clean);
 }
 
 export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean {
-  return canAccessPage(user, permissionForPath(path) ?? "home");
+  if (!user) return false;
+  const clean=normalizeRoutePath(path);
+  if (user.role==="Customer") {
+    // Maintain direct links used by the existing customer dashboard and order flow.
+    const legacyCustomer = clean==="/sales/orders" || clean==="/sales/customers" ||
+      clean.startsWith("/sales/orders/") || clean.startsWith("/sales/customers/");
+    return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer) &&
+      canAccessPage(user,permissionForPath(clean)??"home");
+  }
+  if (clean.startsWith("/portal/")) return false;
+  if (clean.startsWith("/admin/") && user.role!=="Administrator") return false;
+  const permission=permissionForPath(clean);
+  return permission!==null && canAccessPage(user,permission);
 }
 
 
@@ -170,6 +218,7 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
  */
 export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): boolean {
   if (!user || !canVisitRoute(user,path)) return false;
+  if (user.role==="Customer") return false;
   const group = MENU_GROUPS.find(g=>g.entries.some(e=>e.path===normalizeRoutePath(path)))?.label;
   if (group==="Human Resources" && user.role!=="Administrator") return false;
   if (group==="Marketing" && !["Administrator","Marketing","Brand Ambassador"].includes(user.role)) return false;
@@ -178,7 +227,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
-  if (clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/")) return true;
+  if (clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/portal/")) return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
 }
