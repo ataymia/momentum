@@ -36,18 +36,48 @@ const CUSTOMER_TABS=[{key:"overview",label:"Overview"},{key:"comments",label:"Co
 const ITEM_TABS=[{key:"overview",label:"Overview"},{key:"transactions",label:"Transactions"},{key:"stock",label:"Stock Locations"},{key:"history",label:"History"}];
 const safeTab=(value:string|undefined,allowed:{key:string}[])=>(allowed.some(tab=>tab.key===value)?value:"overview")??"overview";
 
+type AccountsSortField="name"|"location"|"contactName"|"stage"|"postalCode"|"ownerId"|"nextActionDate";
 function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
-  const {scope}=useWorkspace();const [query,setQuery]=useState("");const [asc,setAsc]=useState(true);
-  const records=useMemo(()=>scope.accounts.filter(a=>!leadMode||["Prospect","Qualified","Sampled"].includes(a.stage)).filter(a=>
-    [a.name,a.location,a.contactName,a.postalCode,a.email].join(" ").toLowerCase().includes(query.trim().toLowerCase()))
-    .sort((a,b)=>(asc?1:-1)*(a.name.localeCompare(b.name)||a.location.localeCompare(b.location))),[scope.accounts,leadMode,query,asc]);
-  return <div><Heading title={leadMode?"Leads":"Customers"} description="Searchable, addressable business records with existing role-based visibility."/>
+  const {scope,data}=useWorkspace();
+  const [query,setQuery]=useState("");
+  const [sort,setSort]=useState<AccountsSortField>("name");
+  const [ascending,setAscending]=useState(true);
+  const [repFilter,setRepFilter]=useState("all");
+  const [stageFilter,setStageFilter]=useState("all");
+  const [fromDate,setFromDate]=useState("");
+  const [throughDate,setThroughDate]=useState("");
+  const names=new Map(data.users.map(u=>[u.id,u.name]));
+  const records=useMemo(()=>scope.accounts
+    .filter(a=>!leadMode||["Prospect","Qualified","Sampled"].includes(a.stage))
+    .filter(a=>repFilter==="all"||a.ownerId===repFilter)
+    .filter(a=>stageFilter==="all"||a.stage===stageFilter)
+    .filter(a=>(!fromDate||a.nextActionDate>=fromDate)&&(!throughDate||a.nextActionDate<=throughDate))
+    .filter(a=>[a.name,a.location,a.contactName,a.postalCode,a.email,names.get(a.ownerId)].join(" ").toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((a,b)=>{
+      const value=(loc:typeof a)=>sort==="ownerId"?names.get(loc.ownerId)??"":String(loc[sort]??"");
+      return (ascending?1:-1)*(value(a).localeCompare(value(b),undefined,{numeric:true})||a.id.localeCompare(b.id));
+    }),[scope.accounts,leadMode,repFilter,stageFilter,fromDate,throughDate,query,sort,ascending,data.users]);
+  const selectSort=(field:AccountsSortField)=>{if(sort===field)setAscending(v=>!v);else{setSort(field);setAscending(true);}};
+  const header=(field:AccountsSortField,label:string)=><button type="button" aria-label={"Sort by "+label} aria-sort={sort===field?(ascending?"ascending":"descending"):undefined} onClick={()=>selectSort(field)}>{label} <ArrowUpDown size={14}/></button>;
+  const repIds=[...new Set(scope.accounts.map(a=>a.ownerId).filter(Boolean))].sort((a,b)=>(names.get(a)??"").localeCompare(names.get(b)??""));
+  const stages=[...new Set(scope.accounts.map(a=>a.stage))].sort();
+  return <div><Heading title={leadMode?"Leads":"Accounts & Customers"} description="Searchable, filtered and sortable business locations. Open any record for its linked customer profile."/>
   <section className="prototype-panel">
-    <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search businesses" placeholder="Search business, location, contact, ZIP" value={query} onChange={e=>setQuery(e.target.value)}/></label>
-    <button type="button" onClick={()=>setAsc(!asc)}><ArrowUpDown size={15}/> Business {asc?"A–Z":"Z–A"}</button></div>
-    <table className="prototype-table"><thead><tr><th><button onClick={()=>setAsc(!asc)}>Business <ArrowUpDown size={14}/></button></th><th>Location</th><th>Contact</th><th>Stage</th></tr></thead><tbody>{records.map(a=><tr key={a.id}>
-      <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.location}</td><td>{a.contactName||"Unrecorded"}</td><td>{a.stage}</td>
-    </tr>)}</tbody></table>{!records.length&&<Empty>No matching records.</Empty>}
+    <div className="prototype-controls">
+      <label className="prototype-search"><Search size={16}/><input aria-label="Search businesses" placeholder="Business, location, contact, ZIP, rep" value={query} onChange={e=>setQuery(e.target.value)}/></label>
+      <label>Representative <select aria-label="Filter accounts by representative" value={repFilter} onChange={e=>setRepFilter(e.target.value)}>
+        <option value="all">All visible representatives</option>{repIds.map(id=><option key={id} value={id}>{names.get(id)??id}</option>)}</select></label>
+      <label>Stage <select aria-label="Filter account stage" value={stageFilter} onChange={e=>setStageFilter(e.target.value)}>
+        <option value="all">All stages</option>{stages.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+      <label>Next action from <input type="date" aria-label="Next action from date" value={fromDate} onChange={e=>setFromDate(e.target.value)}/></label>
+      <label>Through <input type="date" aria-label="Next action through date" value={throughDate} onChange={e=>setThroughDate(e.target.value)}/></label>
+    </div>
+    <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
+      <th>{header("name","Business")}</th><th>{header("location","Location")}</th><th>{header("contactName","Contact")}</th><th>{header("stage","Stage")}</th><th>{header("postalCode","ZIP")}</th><th>{header("ownerId","Assigned rep")}</th><th>{header("nextActionDate","Next action")}</th>
+    </tr></thead><tbody>{records.map(a=><tr key={a.id}>
+      <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.location}</td><td>{a.contactName||"Unrecorded"}</td><td>{a.stage}</td><td>{a.postalCode||"Unrecorded"}</td><td>{names.get(a.ownerId)??"Unassigned"}</td><td>{a.nextActionDate||"None"}</td>
+    </tr>)}</tbody></table></div>{!records.length&&<Empty>No matching business records.</Empty>}
+    <p className="prototype-note">{records.length} matching records. Sorting and filters affect your view only, not account ownership or history.</p>
   </section></div>;
 }
 function CustomerRecord({id,section}:{id:string;section:string}){
