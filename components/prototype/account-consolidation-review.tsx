@@ -11,7 +11,7 @@ import {momentumStorage} from "../../lib/persistence";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {navigateToRoute} from "../../lib/navigation-store";
-import {consolidationCandidates,manualConsolidationCandidate} from "../../lib/account-consolidation-review";
+import {consolidationCandidates,manualConsolidationCandidate,toggleSelectedAccountId} from "../../lib/account-consolidation-review";
 
 export function AccountConsolidationReview(){
   const {data,currentUser,associateCustomerLocations}=useWorkspace();
@@ -50,7 +50,7 @@ export function AccountConsolidationReview(){
     setTarget(defaultParent(ids));setParentName("");resetReview();
   };
   const toggle=(id:string)=>{
-    const next=selectedIds.includes(id)?selectedIds.filter(entry=>entry!==id):[...selectedIds,id];
+    const next=toggleSelectedAccountId(selectedIds,id);
     setSelectedIds(next);setTarget(defaultParent(next));resetReview();
   };
   const previewParent=target==="new"?(parentName.trim()||selected?.name||"New parent pending verification"):existingParents.find(c=>c.id===target)?.name;
