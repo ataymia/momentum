@@ -175,10 +175,26 @@ function IncentivePreview(){
     <section className="prototype-panel"><p className="prototype-note">PREVIEW ONLY: This does not post earnings. Accounts with unverified parentage, historical compensation, timing and attribution must be reconciled before using any new calculation for payroll.</p>
     <table className="prototype-table"><thead><tr><th>Business</th><th>Locations</th><th>Settled cases, opening 90 days</th><th>Milestone progress</th></tr></thead><tbody>{entries.map(e=><tr key={e.id}><td>{e.name}</td><td>{e.locations}</td><td>{e.cases}</td><td><div className="prototype-progress"><div style={{width:Math.min(100,(e.cases/40)*100)+"%"}}/></div><small>10 {e.cases>=10?"✓":"○"} · 20 {e.cases>=20?"✓":"○"} · 40 {e.cases>=40?"✓":"○"}</small></td></tr>)}</tbody></table></section></div>;
 }
+type ContactSortField="contactName"|"name"|"contactRole"|"email"|"phone"|"location"|"stage";
 function ContactsDirectory(){
-  const {scope}=useWorkspace();const [q,setQ]=useState("");const rows=scope.accounts.filter(a=>a.contactName&&[a.contactName,a.name,a.email].join(" ").toLowerCase().includes(q.toLowerCase()));
-  return <div><Heading title="Contacts" description="Existing decision-makers linked to visible customer locations."/><section className="prototype-panel"><label className="prototype-search"><Search size={16}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search contacts" aria-label="Search contacts"/></label>
-    <table className="prototype-table"><thead><tr><th>Contact</th><th>Business</th><th>Role</th><th>Email</th></tr></thead><tbody>{rows.map(a=><tr key={a.id}><td>{a.contactName}</td><td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.contactRole}</td><td>{a.email||"Not recorded"}</td></tr>)}</tbody></table></section></div>;
+  const {scope}=useWorkspace();const [query,setQuery]=useState("");
+  const [sort,setSort]=useState<ContactSortField>("contactName");
+  const [ascending,setAscending]=useState(true);
+  const rows=useMemo(()=>scope.accounts.filter(a=>a.contactName&&[a.contactName,a.name,a.email,a.phone,a.contactRole,a.location,a.stage].join(" ").toLowerCase().includes(query.toLowerCase())).sort((a,b)=>{
+    const value=(a:typeof b)=>String(a[sort]??"");
+    return (ascending?1:-1)*(value(a).localeCompare(value(b),undefined,{numeric:true})||a.id.localeCompare(b.id));
+  }),[scope.accounts,query,sort,ascending]);
+  const header=(key:ContactSortField,label:string)=><button type="button" aria-label={"Sort by "+label} onClick={()=>{if(sort===key)setAscending(v=>!v);else{setSort(key);setAscending(true);}}}>{label}<ArrowUpDown size={14}/></button>;
+  return <div><Heading title="Contacts" description="All recorded decision-makers linked to your accessible customer locations."/>
+    <section className="prototype-panel">
+      <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search contacts" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Contact, business, email, phone, role"/></label></div>
+      <div className="prototype-table-scroll"><table className="prototype-table">
+        <thead><tr><th>{header("contactName","Contact")}</th><th>{header("name","Business")}</th><th>{header("contactRole","Role")}</th><th>{header("email","Email")}</th><th>{header("phone","Phone")}</th><th>{header("location","Location")}</th><th>{header("stage","Stage")}</th></tr></thead>
+        <tbody>{rows.map(a=><tr key={a.id}><td>{a.contactName}</td><td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.contactRole||"Not recorded"}</td><td>{a.email||"Not recorded"}</td><td>{a.phone||"Not recorded"}</td><td>{a.location}</td><td>{a.stage}</td></tr>)}</tbody>
+      </table></div>
+      {!rows.length&&<Empty>No matching contacts.</Empty>}
+      <p className="prototype-note">{rows.length} contact-location associations. Distinct standalone contact IDs and deduplication are planned.</p>
+    </section></div>;
 }
 
 /** A separate customer-facing surface with account-scoped records, not staff-wide ledgers. */
