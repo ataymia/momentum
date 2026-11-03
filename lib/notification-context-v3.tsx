@@ -266,7 +266,9 @@ function NotificationBridge({
 
   useEffect(()=>{
     const missing=currentUserItems.filter(item=>item.timestampSource==="first-seen"&&!firstSeen[item.id]).map(item=>item.id);
-    if(missing.length)setFirstSeen(current=>mergeFirstSeenTimes(current,missing,new Date().toISOString()));
+    if(!missing.length)return;
+    const handle=window.setTimeout(()=>setFirstSeen(current=>mergeFirstSeenTimes(current,missing,new Date().toISOString())),0);
+    return()=>window.clearTimeout(handle);
   },[currentUserItems,firstSeen]);
   const unreadCount=currentUserItems.filter(
     (item)=>item.status==="Unread",
