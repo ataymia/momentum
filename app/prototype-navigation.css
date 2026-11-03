@@ -77,3 +77,19 @@
 .prototype-table-scroll{overflow-x:auto}
 .prototype-product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:.8rem}
 .prototype-product-card{display:flex;flex-direction:column;border:1px solid var(--border,#dfe4eb);padding:.75rem;border-radius:10px}
+
+
+/* Dedicated commerce registers and source-linked detail pages */
+.prototype-commerce-filters{display:flex;align-items:end;gap:.8rem;flex-wrap:wrap;margin:0 0 1rem}
+.prototype-commerce-filters>.prototype-search{flex:1 1 230px;min-width:min(100%,230px)}
+.prototype-commerce-filters>label:not(.prototype-search){display:flex;flex-direction:column;gap:.3rem;font-size:.78rem;font-weight:600;color:var(--muted,#667085);min-width:130px}
+.prototype-commerce-filters input[type="date"],.prototype-commerce-filters select{padding:.49rem .58rem;min-width:0;max-width:100%;border:1px solid var(--border,#dfe4eb);border-radius:8px;background:var(--surface,#fff);color:inherit;font:inherit}
+.prototype-status{display:inline-flex;align-items:center;max-width:100%;border-radius:6px;padding:.23rem .47rem;background:var(--surface-muted,#f1f3f6);font-size:.75rem;font-weight:650;overflow-wrap:anywhere}
+.prototype-status--paid,.prototype-status--delivered,.prototype-status--cleared{background:#e7f5ed;color:#17613c}
+.prototype-status--partially-paid,.prototype-status--out-for-delivery,.prototype-status--awaiting-approval,.prototype-status--pending{background:#fff2d9;color:#755009}
+.prototype-status--void,.prototype-status--cancelled,.prototype-status--reversed,.prototype-status--failed{background:#ffeae8;color:#8d292b}
+.prototype-legacy-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;padding:.85rem;margin-top:1rem;border-top:1px solid var(--border,#dfe4eb)}
+.prototype-legacy-actions button{background:var(--surface-muted,#f3f5f8);color:inherit;border:1px solid var(--border,#dfe4eb);border-radius:8px;padding:.6rem .85rem;font-weight:600;cursor:pointer}
+.prototype-legacy-actions small{color:var(--muted,#667085);font-size:.78rem;flex:1 1 280px}
+.prototype-columns .prototype-work-list{align-items:start}
+@media (max-width:680px){.prototype-commerce-filters>label:not(.prototype-search){flex:1 1 125px}.prototype-metrics{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}}
