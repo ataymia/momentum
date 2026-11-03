@@ -21,6 +21,8 @@ test("both clock-in entry points punch independently and request GPS only when c
  const tracking=source("lib/location-tracking-context.tsx");
  assert.match(tracking,/requestLocationPermission=useCallback/);
  assert.match(tracking,/const action=requestBrowserPoint\(\)\.then/);
+ assert.match(tracking,/setWatchRetryEpoch\(value=>value\+1\)/);
+ assert.match(tracking,/shouldTrack,watchRetryEpoch\]/);
  assert.doesNotMatch(tracking,/requestLocationPermission\(\).*toggleClock/s);
 });
 test("Admin reminders are server-authorized, throttle repeated sends, and never grant GPS remotely",()=>{
