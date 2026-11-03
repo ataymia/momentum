@@ -115,16 +115,13 @@ function NavigationGroups(){
   const {currentUser,setSidebarOpen}=useWorkspace();
   const path=useNavigationRoute();
   const [expanded,setExpanded]=useState<Record<string,boolean>>({"Workspace":true,"Sales & CRM":true,"Commerce":true});
-  useEffect(()=>{
-    const matching=MENU_GROUPS.find(group=>group.entries.some(entry=>entry.path===path||entry.path!=="/"&&path.startsWith(entry.path+"/")));
-    if(matching)setExpanded(current=>current[matching.label]?current:{...current,[matching.label]:true});
-  },[path]);
+  const matching=MENU_GROUPS.find(group=>group.entries.some(entry=>entry.path===path||(entry.path!=="/"&&path.startsWith(entry.path+"/"))));
   if(!currentUser)return null;
   return <nav className="sidebar__nav prototype-sidebar-nav" aria-label="Primary navigation">
     {MENU_GROUPS.map(group=>{
       const visible=group.entries.filter(entry=>canShowModuleInMenu(currentUser,entry.path));
       if(!visible.length)return null;
-      const open=Boolean(expanded[group.label]);
+      const open=expanded[group.label] ?? matching?.label===group.label;
       return <div className="prototype-nav-group" key={group.label}>
         <button type="button" className="prototype-nav-group-title" aria-expanded={open}
           onClick={()=>setExpanded(current=>({...current,[group.label]:!current[group.label]}))}>
