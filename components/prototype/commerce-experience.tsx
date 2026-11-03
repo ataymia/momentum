@@ -2,8 +2,9 @@
 
 /**
  * Independent commerce directories and records for the prototype.
- * These views are read-only until each existing order/settlement control has a
- * tested migration. No purchase, payment, invoice creation or email is triggered.
+ * Commerce financial directories remain read-only. Order submission and
+ * approvals are prototyped separately with local-only demo mutation guards.
+ * No payment, invoice issuance or email is triggered from this file.
  */
 import {useMemo,useState} from "react";
 import {ArrowLeft,ArrowUpDown,ExternalLink,Search} from "lucide-react";
@@ -14,7 +15,8 @@ import {
   invoicePendingAmount,invoiceCreditAmount,paymentSettlementDate,
   type Invoice,type Payment,
 } from "../../lib/commerce-engine";
-import {canAccessPage} from "../../lib/access";
+import {canAccessPage,canCreateOrder} from "../../lib/access";
+import {OrderApprovalSummary} from "./order-actions";
 import {navigateToRoute} from "../../lib/navigation-store";
 import type {Order} from "../../lib/types";
 
@@ -97,6 +99,7 @@ export function OrdersDirectory(){
   const options=[...new Set(scope.orders.filter(o=>!o.testOnly).map(o=>o.status))].sort();
   const repIds=[...new Set(scope.orders.flatMap(o=>[o.ownerId,o.creditedRepId].filter((id):id is string=>Boolean(id))))];
   return <div><Title title="Sales Orders" detail="Dedicated order register with customer, owner, volume and fulfillment status. Each order has its own URL."/>
+    {currentUser?.role!=="Customer"&&canCreateOrder(currentUser)&&<div className="prototype-page-actionbar"><button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/sales/orders/new")}>Create sales order</button><span className="prototype-note">New order review and submission are available in local demo only until production acceptance.</span></div>}
     <CatalogSummary data={[{label:"Visible orders",value:rows.length},{label:"Cases in filtered orders",value:rows.reduce((n,o)=>n+o.cases,0)},{label:"Non-cancelled order value",value:money(rows.filter(o=>o.status!=="Cancelled").reduce((n,o)=>n+o.amount,0))}]}/>
     <section className="prototype-panel"><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statusOptions={options} from={from} setFrom={setFrom} to={to} setTo={setTo} searchLabel="Search orders, accounts, rep" repOptions={repIds.map(id=>({id,name:userById.get(id)??id})).sort((a,b)=>a.name.localeCompare(b.name))} rep={rep} setRep={setRep}/>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
@@ -109,7 +112,7 @@ export function OrdersDirectory(){
       </tr>)}</tbody></table></div>
       {!rows.length&&<Empty text="No orders match your filters."/>}
       <p className="prototype-note">Order value represents submitted transactions, not collected revenue. Cancelled and test-only orders are excluded from the total.</p>
-      {currentUser?.role!=="Customer"&&<div className="prototype-legacy-actions"><button type="button" onClick={()=>navigateToRoute("/sales/orders/workflow")}>Open existing order operations</button><small>Temporary access to creation, editing, approval, fulfillment and self-delivery controls while those actions are redesigned. No workflow has been removed.</small></div>}
+      {currentUser?.role!=="Customer"&&<div className="prototype-legacy-actions"><button type="button" onClick={()=>navigateToRoute("/sales/orders/workflow")}>Existing order operations</button><small>Temporary access to fulfillment, exception controls and rep self-delivery while those interfaces are redesigned. The separate new order editor is in the prototype.</small></div>}
     </section>
   </div>;
 }
@@ -125,8 +128,14 @@ export function OrderDetail({id}:{id:string}){
   const lines=o.lines??(o.product?[{id:o.id,product:o.product,cases:o.cases,pricePerCase:o.pricePerCase,amount:o.amount}]:[]);
   const owner=data.users.find(u=>u.id===o.ownerId);
   const rep=data.users.find(u=>u.id===o.creditedRepId);
+  const canEdit=Boolean(currentUser?.id&&["Draft","Awaiting approval","Approved"].includes(o.status)&&
+    (currentUser.role==="Administrator"||(["Sales Representative","Sales Manager"].includes(currentUser.role)&&o.ownerId===currentUser.id)));
   return <div><Title title={"Order "+o.number} detail={"Customer: "+customerName} back="/sales/orders"/>
     <CatalogSummary data={[{label:"Order status",value:o.status},{label:"Cases",value:o.cases},{label:"Order value",value:money(o.amount)}]}/>
+    <div className="prototype-page-actionbar">
+      {canEdit&&<button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/sales/orders/"+encodeURIComponent(o.id)+"/edit")}>{o.status==="Draft"?"Correct and resubmit":"Edit order"}</button>}
+      <OrderApprovalSummary order={o}/>
+    </div>
     <div className="prototype-columns">
       <section className="prototype-panel"><h2>Order details</h2><dl className="prototype-facts">
         <Fact label="Customer" value={account?<Link url={"/sales/customers/"+encodeURIComponent(account.id)}>{account.name} · {account.location}</Link>:"Not available"}/>
