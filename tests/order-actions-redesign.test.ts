@@ -73,3 +73,12 @@ test("return reasons travel through the canonical approval engine with an inline
   assert.match(engine,/if \(!returnReason \|\| returnReason\.length < 3\) return/);
   assert.match(engine,/returnReason\}/);
 });
+
+
+test("deep-linked order edits initialize from stored line items after the record loads",()=>{
+  const src=readFileSync("components/prototype/order-actions.tsx","utf8");
+  assert.match(src,/OrderEditorForm key=\{orderId\?\?"new"\}/);
+  assert.match(src,/if\(orderId&&!order\)return/);
+  assert.match(src,/orderLinesFor\(order\)/);
+  assert.match(src,/skuForProductName\(line\.product\)\?\.description/);
+});
