@@ -677,7 +677,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   const decideApproval = (id: string, decision: "Approved" | "Returned", providedReason?: string) => {
     const approval = commercial.approvals.find((item) => item.id === id);
     if (!approval) {
-      base.decideApproval(id, decision);
+      base.decideApproval(id, decision, providedReason);
       return;
     }
     if (!currentUser || approval.status !== "Pending" || !canReviewApproval(data, currentUser, approval)) return;
