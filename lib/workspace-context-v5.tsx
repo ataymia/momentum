@@ -24,6 +24,8 @@ import { normalizeUsername } from "./username";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { normalizeWorkspaceData } from "./workspace-normalization";
 import { preserveExplicitCustomerHierarchy } from "./customer-hierarchy-preservation";
+import {applyAccountAssociation,type AccountAssociationResult,type AccountAssociationRequest} from "./account-association-engine";
+import {currentRuntimeMode} from "./runtime-mode-store";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import type {
   Account,
@@ -39,6 +41,9 @@ import type {
   WorkspaceUser,
 } from "./types";
 
+type DemoAssociationInput=Pick<AccountAssociationRequest,"accountIds"|"reason"|"verifiedCommonBillingOwner">&{
+  parent:{kind:"new";name:string}|{kind:"existing";id:string};
+};
 const DATA_KEY = "momentum-demo-workspace-v5";
 const SESSION_KEY = "momentum-demo-session-v2";
 const SIDEBAR_KEY = "momentum-sidebar-collapsed-v1";
@@ -125,6 +130,7 @@ type WorkspaceContextValue = {
   logout: () => void;
   switchUser: (userId: string) => void;
   createAccount: (account: NewAccount) => string | null;
+  associateCustomerLocations:(input:DemoAssociationInput)=>AccountAssociationResult;
   createAppointment: (appointment: NewAppointment) => string | null;
   advanceAppointment: (id: string) => void;
   completeAppointment: (id: string, closeout: AppointmentCloseout) => boolean;
@@ -277,6 +283,23 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }));
     return id;
   }, [currentUser,data.customers]);
+
+  const associateCustomerLocations=useCallback((input:DemoAssociationInput):AccountAssociationResult=>{
+    // Prototype-only. Real parent changes require an authenticated, audited
+    // backend transaction and approved bonus/financial reconciliation.
+    if(currentUser?.role!=="Administrator"||production||currentRuntimeMode()!=="demo"||momentumStorage.mode()!=="local")
+      return {ok:false,message:"Account association is disabled for connected and production workspaces."};
+    const operationId="local-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,12);
+    const parent:AccountAssociationRequest["parent"]=input.parent.kind==="new"
+      ?{kind:"new",id:"cust-demo-assoc-"+operationId,name:input.parent.name}
+      :input.parent;
+    const result=applyAccountAssociation(data,{
+      ...input,parent,operatorId:currentUser.id,recordedAt:new Date().toISOString(),operationId,
+    });
+    if(!result.ok)return result;
+    setData(result.data);
+    return result;
+  },[data,currentUser,production]);
 
   const createAppointment = useCallback((appointment: NewAppointment) => {
     if (!currentUser || !canCreateScheduleItem(currentUser)) return null;
@@ -511,7 +534,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const markNotificationsRead = useCallback(() => { if (!currentUser) return; const ids = new Set(scope.notifications.map((item) => item.id)); setData((current) => ({ ...current, notifications: current.notifications.map((item) => ids.has(item.id) && !item.readBy.includes(currentUser.id) ? { ...item, readBy: [...item.readBy, currentUser.id] } : item) })); }, [currentUser, scope.notifications]);
   const resetDemo = useCallback(() => { if (production || currentUser?.role !== "Administrator") return; setData(createNormalizedDemoData()); setNavigationPage("home"); }, [currentUser, production]);
 
-  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
+  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, associateCustomerLocations, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, associateCustomerLocations, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 
