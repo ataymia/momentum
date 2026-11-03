@@ -23,6 +23,7 @@ import { useFirebaseSessionOptional } from "./firebase-session-context";
 import { normalizeUsername } from "./username";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { normalizeWorkspaceData } from "./workspace-normalization";
+import { preserveExplicitCustomerHierarchy } from "./customer-hierarchy-preservation";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import type {
   Account,
@@ -67,45 +68,7 @@ const previousWeekRange = () => {
   };
 };
 
-const normalizeCustomerHierarchy = (data: WorkspaceData): WorkspaceData => {
-  const customers = new Map((data.customers ?? []).map((customer) => [customer.id, customer]));
-  const accounts = data.accounts.map((account) => {
-    const customerId = account.customerId ?? customerIdFor(account.name);
-    const customerName = parentCustomerName(account.name);
-    if (!customers.has(customerId)) {
-      customers.set(customerId, {
-        id: customerId,
-        name: customerName,
-        accountType: customerName !== account.name ? "Chain / franchise" : "Independent",
-        billingContactName: account.contactName,
-        billingEmail: account.email,
-        billingPhone: account.phone,
-        createdAt: nowStamp(),
-      });
-    }
-    return {
-      ...account,
-      customerId,
-      locationName: account.locationName ?? account.name,
-      originatorId: account.originatorId ?? account.ownerId,
-      accountManagerId: account.accountManagerId ?? account.ownerId,
-      responsibilityStartedAt: account.responsibilityStartedAt ?? nowStamp(),
-    };
-  });
-  const customerByLocation = new Map(accounts.map((account) => [account.id, account.customerId]));
-  return {
-    ...data,
-    customers: [...customers.values()],
-    accounts,
-    appointments: data.appointments.map((appointment) => ({
-      ...appointment,
-      customerId: appointment.customerId ?? customerByLocation.get(appointment.accountId),
-      priority: appointment.priority ?? "Normal",
-      tags: appointment.tags ?? [],
-    })),
-  };
-};
-
+const normalizeCustomerHierarchy = preserveExplicitCustomerHierarchy;
 const createNormalizedDemoData = (): WorkspaceData => {
   const data = normalizeCustomerHierarchy(createDemoData());
   const previousWeek = previousWeekRange();
