@@ -22,28 +22,34 @@ export const MENU_GROUPS: MenuGroup[] = [
   { label: "Workspace", entries: [
     { label: "Home", path: "/", permission: "home", state: "existing" },
     { label: "My Work", path: "/work", permission: "work", state: "existing" },
-    { label: "Calendar", path: "/calendar", permission: "work", state: "prototype" },
+    { label: "Shared Calendar", path: "/calendar", permission: "work", state: "prototype" },
     { label: "Meetings", path: "/calendar/meetings", permission: "work", state: "prototype" },
-  ]},
-  { label: "Items", entries: [
-    { label: "Items", path: "/items", permission: "products", state: "prototype" },
-  ]},
-  { label: "Inventory", entries: [
-    { label: "Inventory", path: "/inventory", permission: "inventory", state: "existing" },
-    { label: "Inventory Adjustments", path: "/inventory/adjustments", permission: "inventory", state: "planned" },
-    { label: "Packages", path: "/inventory/packages", permission: "inventory", state: "planned" },
-    { label: "Shipments", path: "/inventory/shipments", permission: "inventory", state: "planned" },
-    { label: "Inventory Ledger", path: "/inventory/ledger", permission: "inventoryLedger", state: "existing" },
-  ]},
-  { label: "Sales", entries: [
-    { label: "Customers", path: "/sales/customers", permission: "accounts", state: "existing" },
+  ] },
+  { label: "Sales & CRM", entries: [
+    { label: "Leads", path: "/crm/leads", permission: "accounts", state: "prototype" },
+    { label: "Contacts", path: "/crm/contacts", permission: "accounts", state: "prototype" },
+    { label: "Accounts / Customers", path: "/sales/customers", permission: "accounts", state: "prototype" },
+    { label: "Deals", path: "/crm/deals", permission: "accounts", state: "prototype" },
+    { label: "Meetings & Visits", path: "/crm/quick-visit", permission: "quickVisit", state: "existing" },
+    { label: "Sales Incentives", path: "/crm/incentives", permission: "accounts", state: "prototype" },
+    { label: "Territories & Routes", path: "/crm/territories", permission: "salesMap", state: "existing" },
+  ] },
+  { label: "Commerce", entries: [
+    { label: "Items / Products", path: "/items", permission: "products", state: "prototype" },
+    { label: "Price Books", path: "/commerce/price-books", permission: "products", state: "planned" },
     { label: "Sales Orders", path: "/sales/orders", permission: "orders", state: "existing" },
     { label: "Invoices", path: "/sales/invoices", permission: "orderCash", state: "existing" },
     { label: "Payments Received", path: "/sales/payments", permission: "orderCash", state: "existing" },
     { label: "Sales Returns", path: "/sales/returns", permission: "orders", state: "planned" },
     { label: "Credit Notes", path: "/sales/credit-notes", permission: "orderCash", state: "planned" },
-  ]},
-  { label: "Purchases", entries: [
+    { label: "Customer Portal", path: "/commerce/customer-portal", permission: "orders", state: "planned" },
+  ] },
+  { label: "Operations", entries: [
+    { label: "Inventory", path: "/inventory", permission: "inventory", state: "existing" },
+    { label: "Inventory Adjustments", path: "/inventory/adjustments", permission: "inventory", state: "planned" },
+    { label: "Packages", path: "/inventory/packages", permission: "inventory", state: "planned" },
+    { label: "Shipments", path: "/inventory/shipments", permission: "inventory", state: "planned" },
+    { label: "Inventory Ledger", path: "/inventory/ledger", permission: "inventoryLedger", state: "existing" },
     { label: "Vendors", path: "/purchases/vendors", permission: "accounting", state: "planned" },
     { label: "Expenses", path: "/purchases/expenses", permission: "accounting", state: "planned" },
     { label: "Purchase Orders", path: "/purchases/orders", permission: "accounting", state: "planned" },
@@ -51,33 +57,35 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Bills", path: "/purchases/bills", permission: "accounting", state: "planned" },
     { label: "Payments Made", path: "/purchases/payments", permission: "accounting", state: "planned" },
     { label: "Vendor Credits", path: "/purchases/credits", permission: "accounting", state: "planned" },
-  ]},
-  { label: "CRM & Field Sales", entries: [
-    { label: "Leads", path: "/crm/leads", permission: "accounts", state: "prototype" },
-    { label: "Contacts", path: "/crm/contacts", permission: "accounts", state: "prototype" },
-    { label: "Deals", path: "/crm/deals", permission: "accounts", state: "prototype" },
-    { label: "Visits & Map", path: "/crm/map", permission: "salesMap", state: "existing" },
-    { label: "Sales Incentives", path: "/crm/incentives", permission: "accounts", state: "prototype" },
-    { label: "Territories & Routes", path: "/crm/territories", permission: "salesMap", state: "existing" },
-  ]},
-  { label: "Teams", entries: [
-    { label: "People & HR", path: "/people", permission: "people", state: "existing" },
+    { label: "Delivery Operations", path: "/operations/deliveries", permission: "orders", state: "planned" },
+  ] },
+  { label: "Human Resources", entries: [
+    { label: "HR Overview", path: "/people", permission: "people", state: "existing" },
     { label: "Employee Directory", path: "/people/directory", permission: "employees", state: "existing" },
+    { label: "New Hire", path: "/people/new-hire", permission: "newHire", state: "existing" },
+    { label: "Onboarding", path: "/people/onboarding", permission: "onboarding", state: "existing" },
     { label: "Payroll", path: "/people/payroll", permission: "payroll", state: "existing" },
-    { label: "Marketing", path: "/marketing", permission: "marketing", state: "existing" },
+    { label: "Training", path: "/people/training", permission: "trainingAdmin", state: "existing" },
+  ] },
+  { label: "Marketing", entries: [
+    { label: "Marketing Overview", path: "/marketing", permission: "marketing", state: "existing" },
+    { label: "Campaigns", path: "/marketing/campaigns", permission: "marketing", state: "planned" },
     { label: "Brand Ambassadors", path: "/marketing/ambassadors", permission: "brandAmbassadors", state: "existing" },
-  ]},
-  { label: "Insights & Records", entries: [
+  ] },
+  { label: "Insights & Support", entries: [
+    { label: "Forecasts", path: "/reports/forecasts", permission: "reports", state: "planned" },
     { label: "Reports", path: "/reports", permission: "reports", state: "existing" },
-    { label: "Accounting", path: "/finance", permission: "finance", state: "existing" },
+    { label: "Dashboards", path: "/reports/performance", permission: "performance", state: "existing" },
+    { label: "Cases", path: "/support/cases", permission: "work", state: "planned" },
     { label: "Documents", path: "/documents", permission: "materials", state: "prototype" },
-  ]},
+    { label: "Help", path: "/help", permission: "help", state: "existing" },
+  ] },
   { label: "Administration", entries: [
     { label: "Administration", path: "/admin", permission: "settings", state: "existing" },
     { label: "Audit Center", path: "/admin/audit", permission: "audit", state: "existing" },
     { label: "Account Consolidation", path: "/admin/accounts", permission: "settings", state: "planned" },
     { label: "Data Exchange", path: "/admin/data-exchange", permission: "dataExchange", state: "existing" },
-  ]},
+  ] },
 ];
 
 export const LEGACY_PATHS: Record<PageKey, string> = {
@@ -102,6 +110,7 @@ export const LEGACY_PATHS: Record<PageKey, string> = {
 
 const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/sales/payments": "orderCash",
+  "/crm/quick-visit": "quickVisit",
   "/crm/map": "salesMap",
   "/retail": "retail",
   "/accounts": "accounts",
