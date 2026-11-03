@@ -8,6 +8,9 @@ import { navigateToRoute, useNavigationRoute } from "../../lib/navigation-store"
 import { GOLDEN_EAGLE_SKUS, skuForProductName } from "../../lib/product-catalog";
 import { orderFirstSettlementDate } from "../../lib/bonus-engine";
 import { useWorkspace } from "../../lib/workspace-context";
+import { TerritoryPanel } from "../crm/territory-panel";
+import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
+import { EmployeeDirectory } from "../hcm/employee-directory";
 import type { Order } from "../../lib/types";
 
 function Empty({ children }: { children: ReactNode }) {
@@ -145,10 +148,59 @@ function ContactsDirectory(){
   return <div><Heading title="Contacts" description="Existing decision-makers linked to visible customer locations."/><section className="prototype-panel"><label className="prototype-search"><Search size={16}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search contacts" aria-label="Search contacts"/></label>
     <table className="prototype-table"><thead><tr><th>Contact</th><th>Business</th><th>Role</th><th>Email</th></tr></thead><tbody>{rows.map(a=><tr key={a.id}><td>{a.contactName}</td><td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.contactRole}</td><td>{a.email||"Not recorded"}</td></tr>)}</tbody></table></section></div>;
 }
+
+/** A separate customer-facing surface with account-scoped records, not staff-wide ledgers. */
+function CustomerPortalContent({section}:{section:string}){
+  const {scope,currentUser}=useWorkspace();
+  if(currentUser?.role!=="Customer") return <Empty>Customer access only.</Empty>;
+  const current=scope.accounts[0];
+  const orders=scope.orders.filter(o=>!o.testOnly).sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
+  if(section==="products"){
+    return <div><Heading title="Products" description="Browse the Golden Eagle wholesale catalog."/>
+      <section className="prototype-panel"><div className="prototype-product-grid">{GOLDEN_EAGLE_SKUS.filter(s=>s.active).map(item=>
+        <div key={item.id} className="prototype-product-card"><strong>{item.shortName}</strong><p>{item.description}</p><small>{item.casePack} cans per case</small></div>)}</div>
+      <p className="prototype-note">A verified customer price book, availability check and live checkout will be connected before ordering from this catalog is enabled. To create an order, use My Orders.</p>
+      <OpenLink to="/portal/orders">My Orders</OpenLink></section></div>;
+  }
+  if(section==="account"){
+    return <div><Heading title="My Account" description="Details available to your authenticated customer identity."/>
+      <section className="prototype-panel"><h2>Account information</h2>{current?
+      <dl className="prototype-facts"><div><dt>Business name</dt><dd>{current.name}</dd></div><div><dt>Contact name</dt><dd>{current.contactName||"Not recorded"}</dd></div>
+      <div><dt>Contact email</dt><dd>{current.email||"Not recorded"}</dd></div><div><dt>Phone</dt><dd>{current.phone||"Not recorded"}</dd></div>
+      <div><dt>Location</dt><dd>{current.streetAddress??""} {current.location}</dd></div></dl>:<Empty>No authorized business account is linked.</Empty>}
+      <p className="prototype-note">Any future self-service edits must verify account ownership and protect tax, payment terms and legal identity fields.</p></section></div>;
+  }
+  if(section==="deliveries"){
+    return <div><Heading title="My Deliveries" description="Order progress from your account's approved records."/>
+      <section className="prototype-panel"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Status</th><th>Cases</th></tr></thead><tbody>{orders.map(o=>
+      <tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{o.placedAt}</td><td>{o.status}</td><td>{o.cases}</td></tr>)}</tbody></table>
+      {!orders.length&&<Empty>No recorded orders.</Empty>}<p className="prototype-note">Live driver ETA and shipment tracking are not connected yet. This displays existing order statuses only.</p></section></div>;
+  }
+  const descriptions:Record<string,{title:string,body:string}>={
+    invoices:{title:"My Invoices",body:"Invoice balances and PDFs will be sourced from issued, delivery-verified invoices. The review prototype does not invent financial balances."},
+    payments:{title:"Payments",body:"Hosted invoice payment links and secure customer-portal payments will appear after payment-provider approval, webhook verification and reconciliation. No payment processor is active in this view."},
+    statements:{title:"Account Statements",body:"Statements will combine issued invoices, cleared payments, credits and refunds from the accounting ledger. No statement is fabricated from sales orders."},
+    documents:{title:"My Documents",body:"Signed documents, verified tax forms and shared account files will be shown only to authorized customer contacts after document access policy is finished."},
+  };
+  const v=descriptions[section];
+  if(!v)return <Empty>Customer portal page not found.</Empty>;
+  return <div><Heading title={v.title} description="Customer self-service • prototype"/><section className="prototype-panel"><h2>{v.title}</h2><Empty>{v.body}</Empty></section></div>;
+}
+function TerritoryMapPreview(){
+  return <div><Heading title="Territories & Map" description="Existing ZIP assignments and geographic controls retained."/>
+    <section className="prototype-panel"><h2>Territory management</h2><TerritoryPanel/>
+    <p className="prototype-note">Map overlay, geocoded ZIP boundaries and routing require verified mapping data/provider. Do not mistake a ZIP listing for a plotted geographic boundary.</p>
+    <OpenLink to="/crm/account-map">Account map</OpenLink></section></div>;
+}
+
 export function PrototypeOperationsHub(){
   const path=useNavigationRoute();const {currentUser}=useWorkspace();
   if(!canVisitRoute(currentUser,path))return <Empty>You do not have permission to view this module.</Empty>;
   const segments=path.split("/").filter(Boolean);
+  if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
+  if(path==="/admin/employee-profiles")return <div><Heading title="Employee Profiles" description="Preserved administrator-only employee record controls."/><AdminEmployeeProfiles/></div>;
+  if(path==="/admin/employees")return <div><Heading title="Employee Directory" description="Administrator view of active staff."/><EmployeeDirectory/></div>;
+  if(path==="/crm/territory-map")return <TerritoryMapPreview/>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
   if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2])return <OrderRecord id={decodeURIComponent(segments[2])}/>;
