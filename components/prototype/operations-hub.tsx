@@ -15,6 +15,7 @@ import { PeopleExperience, PayrollExperience } from "./hr-payroll-experiences";
 import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
+import {PackagesDirectory,ShipmentsDirectory,ShipmentDetail,DeliveryOperationsDirectory} from "./fulfillment-experience";
 import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
 import {ActionCenterExperience} from "./action-center-experience";
 import type { Order } from "../../lib/types";
@@ -293,6 +294,10 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="sales"&&segments[1]==="invoices"&&segments[2])return <InvoiceDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="sales"&&segments[1]==="payments"&&segments[2])return <PaymentDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="inventory"&&segments[1]==="lots"&&segments[2])return <InventoryLotDetail id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="inventory"&&segments[1]==="shipments"&&segments[2])return <ShipmentDetail orderId={decodeURIComponent(segments[2])}/>;
+  if(path==="/inventory/packages")return <PackagesDirectory/>;
+  if(path==="/inventory/shipments")return <ShipmentsDirectory/>;
+  if(path==="/operations/deliveries")return <DeliveryOperationsDirectory/>;
   if(path==="/inventory")return <InventoryDirectory/>;
   if(path==="/inventory/ledger")return <InventoryLedgerDirectory/>;
   if(path==="/inventory/adjustments")return <InventoryAdjustmentDirectory/>;
