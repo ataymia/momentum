@@ -16,6 +16,8 @@ import {
 } from "../../lib/location-tracking-engine";
 import type { TimeEntry, WorkspaceUser } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
+import {updateLocationPermissionRequest,type LocationPermissionRequest} from "../../lib/location-permission-requests";
+import {listFirestoreCollection} from "../../lib/firebase-firestore-rest";
 import { Button, Modal, PageHeader, Section, StatusPill, formatDate } from "../ui";
 
 const FRESH_PING_MS = 20 * 60_000;
@@ -90,6 +92,9 @@ export function WorkforceLivePage() {
   const [reviewDate, setReviewDate] = useState(arizonaDateKey());
   const [view, setView] = useState<"live" | "profiles">("live");
   const [nowMs, setNowMs] = useState(0);
+  const [permissionRequests,setPermissionRequests]=useState<Record<string,LocationPermissionRequest>>({});
+  const [permissionBusy,setPermissionBusy]=useState("");
+  const [permissionNotice,setPermissionNotice]=useState("");
 
   useEffect(() => {
     const refresh = () => setNowMs(Date.now());
@@ -99,6 +104,27 @@ export function WorkforceLivePage() {
   }, []);
 
   const firebase = useFirebaseSessionOptional();
+  useEffect(()=>{
+    if(currentUser?.role!=="Administrator"||!firebase?.session?.uid)return;
+    let active=true;
+    void listFirestoreCollection<LocationPermissionRequest>("locationPermissionRequests")
+     .then(items=>{if(active)setPermissionRequests(Object.fromEntries(items.map(item=>[item.targetUid,item])));})
+     .catch(()=>{if(active)setPermissionNotice("Location request history is unavailable. Sending still requires server confirmation.");});
+    return()=>{active=false;};
+  },[currentUser?.role,firebase?.session?.uid]);
+  const sendPermissionRequest=async(user:WorkspaceUser)=>{
+    if(currentUser?.role!=="Administrator"||!roleIsTracked(user.role)||permissionBusy)return;
+    setPermissionBusy(user.id);setPermissionNotice("");
+    try{
+     const result=await updateLocationPermissionRequest({action:"send",targetUid:user.id});
+     setPermissionRequests(prev=>({...prev,[user.id]:{
+      targetUid:user.id,requestId:result.requestId??"",requestedAt:result.requestedAt??new Date().toISOString(),requestedBy:currentUser.id,
+      expiresAt:new Date(Date.now()+7*86400000).toISOString(),status:"Pending",outcome:null,
+     }}));
+     setPermissionNotice("Location reminder sent to "+user.name+". They can respond in Momentum on their own device. Native permission prompts are controlled by their browser.");
+    }catch(e){setPermissionNotice(e instanceof Error?e.message:"The location reminder could not be sent.");}
+    finally{setPermissionBusy("");}
+  };
   const employees = useMemo(() => visibleActiveEmployees(data.users,firebase?.accessRecords)
     .sort((a, b) => a.name.localeCompare(b.name)), [data.users, firebase?.accessRecords]);
 
@@ -161,6 +187,7 @@ export function WorkforceLivePage() {
     </Section>
 
     <Section title="Employee clock board" description="Use View to open that employee's time and route detail without stretching the page.">
+      {permissionNotice&&<div className="form-callout" role="status"><MapPin size={17}/><p>{permissionNotice}</p></div>}
       <div className="workforce-roster">
         {employeeRows.map((row) => <article key={row.user.id}>
           <span className="workforce-roster__icon"><UsersRound size={17}/></span>
@@ -169,9 +196,11 @@ export function WorkforceLivePage() {
             <strong>{row.user.name}</strong>
             <p>{row.shift ? `Scheduled ${row.shift.startTime}–${row.shift.endTime} · ` : "No published shift today · "}{punchLabel(row.status.entry)}</p>
             {roleIsTracked(row.user.role) && <em>Location: {row.pingState}{row.latest ? ` · latest ${formatDate(row.latest.at,{hour:"numeric",minute:"2-digit"})}` : ""}</em>}
+            {roleIsTracked(row.user.role)&&permissionRequests[row.user.id]&&<small>Reminder: {permissionRequests[row.user.id].status==="Pending"?"Awaiting employee":permissionRequests[row.user.id].outcome??"Responded"} · {formatDate(permissionRequests[row.user.id].requestedAt,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}. A fresh GPS ping separately confirms tracking.</small>}
           </div>
           <div className="workforce-roster__actions">
             <StatusPill tone={row.status.tone}>{row.status.label}</StatusPill>
+            {roleIsTracked(row.user.role)&&<Button type="button" size="sm" variant="secondary" disabled={permissionBusy===row.user.id} onClick={()=>void sendPermissionRequest(row.user)}>{permissionBusy===row.user.id?"Sending…":"Request location access"}</Button>}
             <Button type="button" size="sm" variant="secondary" onClick={() => { setSelectedId(row.user.id); setReviewDate(arizonaDateKey()); }}>View</Button>
           </div>
         </article>)}
