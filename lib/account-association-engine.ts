@@ -1,4 +1,4 @@
-import type {WorkspaceData,CustomerAccount,Account,Activity} from "./types";
+import type {WorkspaceData,CustomerAccount,Activity} from "./types";
 import {manualConsolidationCandidate} from "./account-consolidation-review";
 
 export type AccountAssociationRequest={
