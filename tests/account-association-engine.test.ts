@@ -20,11 +20,12 @@ const fixtures=():WorkspaceData=>{
   return {
     users:[],accounts,customers:[],activities:[],appointments:[],orders:[{
       id:"ord-a",number:"ORDER-A",accountId:"a",cases:12,pricePerCase:24,amount:288,
+      priceBasis:"Demo fixture: recorded legacy order price",
       ownerId:"rep-1",creditedRepId:"rep-1",status:"Delivered",
-      paymentStatus:"Paid",placedAt:"2026-09-10",
+      paymentStatus:"Paid",placedAt:"2026-09-10",firstSettledAt:"2026-09-11T12:00:00Z",
     }],placements:[],inventory:[],approvals:[],timeEntries:[],timecards:[],
     notifications:[],bulletins:[],
-  } as WorkspaceData;
+  };
 };
 const request=():AccountAssociationRequest=>({
   accountIds:["a","b"],parent:{kind:"new",id:"cust-unique-demo",name:"Verified Two Knuckles Billing Group"},
