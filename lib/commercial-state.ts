@@ -1,4 +1,4 @@
-import { addCalendarDays, isValidCalendarDateKey } from "./date-time";
+import { isValidCalendarDateKey } from "./date-time";
 import { normalizePostalCode, normalizeTerritories } from "./territory-engine";
 import type { Account, Activity, Appointment, Approval, CustomerAccount, InventoryLot, Order, PricingTier, SalesTerritory, WorkspaceData } from "./types";
 import { normalizeStoredOrderLines } from "./order-lines";
@@ -35,14 +35,9 @@ const wholePositive = (value: unknown) => Number.isInteger(value) && Number(valu
 const wholeNonnegative = (value: unknown) => Number.isInteger(value) && Number(value) >= 0;
 const uniqueById = <T extends { id: string }>(records: T[]) => { const seen = new Set<string>(); return records.filter((record) => !seen.has(record.id) && (seen.add(record.id), true)); };
 
-function inferredTier(data: WorkspaceData, accountId: string): PricingTier | undefined {
-  const price = data.orders.filter((order) => order.accountId === accountId && Number.isFinite(order.pricePerCase) && order.pricePerCase > 0).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0]?.pricePerCase;
-  return price === 24 ? "A" : price === 27 ? "B" : price === 30 ? "C" : undefined;
-}
-
-export function seedCommercialState(data: WorkspaceData, todayKey: string): CommercialState {
+export function seedCommercialState(data: WorkspaceData, _todayKey: string): CommercialState {
   const accountPatches: Record<string, CommercialAccountPatch> = {};
-  for (const account of data.accounts) accountPatches[account.id] = { premiseType: account.premiseType ?? "Unclassified", businessType: account.businessType ?? account.channel, categoryReviewDate: account.categoryReviewDate ?? addCalendarDays(todayKey, 90), pricingTier: account.pricingTier ?? inferredTier(data, account.id), postalCode: normalizePostalCode(account.postalCode) || undefined };
+  for (const account of data.accounts) accountPatches[account.id] = { premiseType: account.premiseType, businessType: account.businessType, categoryReviewDate: account.categoryReviewDate, pricingTier: account.pricingTier, postalCode: normalizePostalCode(account.postalCode) || undefined };
   return { version: 1, accountPatches, customerPatches:{}, orders: [], appointments: [], approvals: [], activities: [], inventoryLots: [], territories: normalizeTerritories(data.territories??[],data.users) };
 }
 
