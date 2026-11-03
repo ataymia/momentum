@@ -61,3 +61,15 @@ test("order editor uses approved pricing and authoritative warehouse availabilit
   assert.match(src,/hasCompleteDeliveryAddress\(selected\)/);
   assert.match(src,/Number\.isSafeInteger\(line\.casesCount\)/);
 });
+
+
+test("return reasons travel through the canonical approval engine with an inline required input",()=>{
+  const ui=readFileSync("components/prototype/order-actions.tsx","utf8");
+  const engine=readFileSync("lib/workspace-context.tsx","utf8");
+  assert.match(ui,/aria-label=\{"Reason for returning "\+order\.number\}/);
+  assert.match(ui,/returnReason\.trim\(\)\.length<3/);
+  assert.match(ui,/decideApproval\(approval\.id,decision,reason\)/);
+  assert.match(engine,/providedReason!==undefined\?providedReason\.trim\(\)/);
+  assert.match(engine,/if \(!returnReason \|\| returnReason\.length < 3\) return/);
+  assert.match(engine,/returnReason\}/);
+});
