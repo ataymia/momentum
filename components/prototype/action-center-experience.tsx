@@ -2,7 +2,7 @@
 
 /** Action Center is a read-only source-linked work queue, never a second task ledger. */
 import {useState} from "react";
-import {ArrowDownUp,ExternalLink,Search} from "lucide-react";
+import {ExternalLink,Search} from "lucide-react";
 import {buildActionNotices,type ActionNotice,type ActionUrgency} from "../../lib/action-center-policy-v2";
 import {useAccounting} from "../../lib/accounting-context";
 import {useDelivery} from "../../lib/delivery-context";
