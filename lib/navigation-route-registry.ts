@@ -145,6 +145,7 @@ export const LEGACY_PATHS: Record<PageKey, string> = {
 
 const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/sales/payments": "orderCash",
+  "/sales/orders/workflow": "orders",
   "/crm/quick-visit": "quickVisit",
   "/crm/account-map": "salesMap",
   "/work": "work",
@@ -188,7 +189,10 @@ export function routeLabel(path: string): string {
   if (item) return item.label;
   if (clean.startsWith("/items/")) return "Item details";
   if (clean.startsWith("/sales/customers/")) return "Customer details";
+  if (clean==="/sales/orders/workflow") return "Order operations";
   if (clean.startsWith("/sales/orders/")) return "Order details";
+  if (clean.startsWith("/sales/invoices/")) return "Invoice details";
+  if (clean.startsWith("/sales/payments/")) return "Payment details";
   return clean === "/" ? "Home" : "Workspace";
 }
 
@@ -199,6 +203,7 @@ export function permissionForPath(path: string): PageKey | null {
   const portal=CUSTOMER_MENU.find(item=>item.path===clean);
   if (portal) return portal.permission;
   if (clean.startsWith("/sales/orders/")) return "orders";
+  if (clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")) return "orderCash";
   if (routeEntry(clean)) return routeEntry(clean)!.permission;
   return pageForPath(clean);
 }
@@ -235,7 +240,8 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
-  if (clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
+  if(clean==="/sales/orders/workflow")return false;
+  if (clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
 }
