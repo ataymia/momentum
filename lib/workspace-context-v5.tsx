@@ -53,9 +53,6 @@ const minutesBetween = (start: string, end: string) => {
 };
 const validTime = (value?: string) => !value || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 const minuteOfDay = (value: string) => { const [hours, minutes] = value.split(":").map(Number); return hours * 60 + minutes; };
-const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-const parentCustomerName = (name: string) => name.replace(/\s+#\d+\s*$/, "").trim() || name;
-const customerIdFor = (name: string) => `cust-${slug(parentCustomerName(name))}`;
 
 const previousWeekRange = () => {
   const currentWeekStart = startOfLocalWeek(arizonaDateKey());
