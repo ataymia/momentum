@@ -10,7 +10,7 @@ import { useRuntimeMode } from "../lib/runtime-mode";
 import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
 import {navigateToRoute, startRouteNavigation, useNavigationPage, useNavigationRoute} from "../lib/navigation-store";
-import {MENU_GROUPS, canShowModuleInMenu, requiresPrototypePage, routeLabel} from "../lib/navigation-route-registry";
+import {MENU_GROUPS, CUSTOMER_MENU, canVisitRoute, canShowModuleInMenu, requiresPrototypePage, routeLabel} from "../lib/navigation-route-registry";
 import {PrototypeOperationsHub} from "./prototype/operations-hub";
 import { AccountsPage } from "./pages/accounts";
 
@@ -117,6 +117,13 @@ function NavigationGroups(){
   const [expanded,setExpanded]=useState<Record<string,boolean>>({"Workspace":true,"Sales & CRM":true,"Commerce":true});
   const matching=MENU_GROUPS.find(group=>group.entries.some(entry=>entry.path===path||(entry.path!=="/"&&path.startsWith(entry.path+"/"))));
   if(!currentUser)return null;
+  if(currentUser.role==="Customer") return <nav className="sidebar__nav prototype-sidebar-nav" aria-label="Customer portal navigation">
+    <div className="prototype-nav-group"><div className="prototype-nav-group-title">Customer Portal</div>
+    <div className="prototype-nav-group-entries">{CUSTOMER_MENU.filter(entry=>canVisitRoute(currentUser,entry.path)).map(entry=>
+    <button type="button" key={entry.path} className={"nav-item prototype-nav-item"+(path===entry.path?" is-active":"")}
+      aria-current={path===entry.path?"page":undefined} onClick={()=>{navigateToRoute(entry.path);setSidebarOpen(false);}}>
+      <span>{entry.label}</span>{entry.state==="planned"&&<small className="prototype-nav-planned">Planned</small>}
+    </button>)}</div></div></nav>;
   return <nav className="sidebar__nav prototype-sidebar-nav" aria-label="Primary navigation">
     {MENU_GROUPS.map(group=>{
       const visible=group.entries.filter(entry=>canShowModuleInMenu(currentUser,entry.path));
