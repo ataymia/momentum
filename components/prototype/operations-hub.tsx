@@ -14,6 +14,7 @@ import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience, PayrollExperience } from "./hr-payroll-experiences";
 import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
+import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
 import type { Order } from "../../lib/types";
 
 function Empty({ children }: { children: ReactNode }) {
@@ -285,6 +286,10 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2])return <OrderDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="sales"&&segments[1]==="invoices"&&segments[2])return <InvoiceDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="sales"&&segments[1]==="payments"&&segments[2])return <PaymentDetail id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="inventory"&&segments[1]==="lots"&&segments[2])return <InventoryLotDetail id={decodeURIComponent(segments[2])}/>;
+  if(path==="/inventory")return <InventoryDirectory/>;
+  if(path==="/inventory/ledger")return <InventoryLedgerDirectory/>;
+  if(path==="/inventory/adjustments")return <InventoryAdjustmentDirectory/>;
   if(path==="/sales/orders")return <OrdersDirectory/>;
   if(path==="/sales/invoices")return <InvoiceDirectory/>;
   if(path==="/sales/payments")return <PaymentsDirectory/>;
