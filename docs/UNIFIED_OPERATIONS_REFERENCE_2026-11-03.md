@@ -78,3 +78,38 @@
 - Existing operational workflows still reachable; modules not implemented explicitly identify status.
 - Mobile and desktop accessible; real tests must pass prior to deployment.
 - No automatic emails, payment capture, commission posting, account merging, or user invitations from prototype.
+
+
+## Scope expansion: November 3 all-role review
+User confirmed the redesign covers the **whole business**, not just employee CRM. The existing delivery-driver shell, customer login and sales-rep self-delivery are critical workflows; they remain preserved during navigation refactoring.
+
+### Concrete retention map
+| Role | Entry / routes | Preserve now | New/proposed |
+| --- | --- | --- | --- |
+| Administrator | /admin, /admin/employee-profiles, /admin/employees | Existing SettingsPage security, provisioning, user roles, document/integration, audits, data exchange, operational controls; AdminEmployeeProfiles and EmployeeDirectory | Consolidation queue, per-permission action matrix, approved integration management |
+| Sales Representative | /crm/quick-visit, /crm/account-map, /crm/territory-map, /crm/self-delivery, /sales/orders | Existing QuickVisitPage, SalesMapPage, TerritoryPanel, OrdersPage/RepSelfDelivery and historical sales attribution | ZIP polygons, route optimizer, searchable rep selectors and parent-level incentives |
+| Sales Manager | /crm/*, /sales/*, /calendar | Team/account assignment, territory suggestions and appointments | Approval/exception trail and performance views |
+| Delivery Driver | /driver/deliveries, /driver/requests, /driver/map, /driver/inventory, /driver/time, /driver/directory, /driver/help | **Dedicated DeliveryDriverShell** and its delivery task/signature, delivery-requests, inventory, HR/time and employee directory screens | Native browser URL navigation, route sequencing/map and later tracking / delivery exceptions; map tab is an honest placeholder until mapped data is available |
+| Customer | / (dashboard), /portal/products, /portal/orders, /portal/invoices, /portal/payments, /portal/deliveries, /portal/statements, /portal/documents, /portal/account | Existing customer login, scoped orders and customer dashboard | Separate portal navigation, verified price/product detail, delivery status, payment checkout and statements from authoritative ledgers |
+| Operations / Warehouse | /inventory, /inventory/ledger, /sales/orders, /operations/deliveries | Order/lot/delivery/receipt and custody controls | Stock-adjustment, package and shipment workspaces with audit evidence |
+| Human Resources | /people and /admin/employee-profiles as authorized | HR employee self-service and admin-only employee records | Dedicated Human Resources administrative section; employee self-service does not imply HR privileges |
+| Marketing | /marketing, /marketing/ambassadors | Campaigns and brand ambassador workflows | Role-scoped marketing workspace; no HR admin content |
+
+**Do not remove existing account map/territory data, Quick Visit, self-delivery, admin tools, or client dashboard.** Hiding Dispatch from a preferred navigation is not deleting backend scheduling/delivery state. The driver workflow is operationally distinct from redundant office Dispatch navigation.
+
+### Delivery and customer ecosystem references
+- Zoho Inventory customer self-service: https://www.zoho.com/us/inventory/help/customer-portal/
+- Zoho Inventory portal function inventory: https://www.zoho.com/us/inventory/help/customer-portal/functions.html
+- RouteIQ route planning and map: https://help.zoho.com/portal/en/kb/routeiq/introduction/articles/introduction-to-routeiq-for-zoho-crm
+- RouteIQ delivery and check-in matrix: https://help.zoho.com/portal/en/kb/routeiq/introduction/articles/routeiq-feature-list
+- Zoho Creator proof-of-delivery: https://www.zoho.com/creator/solutions/logistics/proof-of-delivery.html
+
+### Explicitly not built or signed off yet
+- Actual ZIP polygon rendering, route optimization and driver ETAs.
+- Employee-to-employee calendar invitations, production email notifications or completed Google Calendar integration.
+- Merchant-connected payments or customer account registration.
+- Account merge execution and compensation recalculation.
+- Mails/statement balances from reconciled financial or provider records.
+- Truly configurable per-user granular permissions; current prototype reuses role capabilities and protects admin/customer directories by role.
+
+**Mandatory acceptance:** test every user role in demo and production-like staging with simulated data, deep-link refresh, mobile usability, record scoping, back/forward, no sensitive data in URLs, safe account transfers, no duplicate earning, and existing delivery signature/self-delivery functions. Never deploy directly from the prototype without review and explicit approval.
