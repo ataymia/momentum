@@ -9,7 +9,7 @@
  * readiness receives explicit operational authorization.
  */
 import {useMemo,useState,type FormEvent} from "react";
-import {ArrowLeft,CheckCircle2,ClipboardCheck,Plus,Search,ShieldCheck,Trash2} from "lucide-react";
+import {ArrowLeft,CheckCircle2,Plus,Search,ShieldCheck,Trash2} from "lucide-react";
 import {canCreateOrder,canReviewApproval} from "../../lib/access";
 import {hasCompleteDeliveryAddress,deliveryAddressLabel} from "../../lib/account-address";
 import {approvalForOrder} from "../../lib/order-approval-engine";
@@ -17,7 +17,6 @@ import {evaluatePartnerPricing} from "../../lib/pricing-engine";
 import {GOLDEN_EAGLE_SKUS} from "../../lib/product-catalog";
 import {productInventoryStatus} from "../../lib/inventory-ledger";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
-import {COMMERCE_STORAGE_KEY} from "../../lib/commerce-engine";
 import {momentumStorage} from "../../lib/persistence";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {useWorkspace} from "../../lib/workspace-context";
@@ -42,7 +41,7 @@ function Back({to}:{to:string}){
 }
 function DemoGuard({isDemo}:{isDemo:boolean}){
   return <div className="prototype-guard" role="note"><ShieldCheck size={18}/>
-    <p>{isDemo?"Local demo mode: actions create or update only local prototype records. This is not authorization to submit a commercial customer order.":"Read-only prototype: order mutations and approvals are disabled outside local demo mode. This prevents accidental live order changes while the redesign is under review."}</p>
+    <p>{isDemo&&momentumStorage.mode()==="local"?"Local-only demo: actions change demonstration records on this device, not production commerce records.":"Read-only prototype: order mutations and approvals require local demo mode with no connected persistence backend. They cannot change a connected company database while the redesign is under review."}</p>
   </div>;
 }
 export function OrderEditor({orderId}:{orderId?:string}){
@@ -52,7 +51,7 @@ export function OrderEditor({orderId}:{orderId?:string}){
   const order=orderId?scope.orders.find(o=>o.id===orderId&&!o.testOnly):undefined;
   const [accountId,setAccountId]=useState(order?.accountId??"");
   const [accountSearch,setAccountSearch]=useState("");
-  const [counter,setCounter]=useState(2);
+  const [counter,setCounter]=useState((order?.lines?.length??1)+1);
   const [draft,setDraft]=useState<LineDraft[]>(order?.lines?.length?order.lines.map((line,index)=>({key:index+1,product:line.product,cases:String(line.cases)})):[newLine(1)]);
   const [working,setWorking]=useState(false);
   const [message,setMessage]=useState("");
@@ -72,7 +71,7 @@ export function OrderEditor({orderId}:{orderId?:string}){
   const totalCases=readyRows?summaries.reduce((sum,line)=>sum+line.casesCount,0):0;
   const priceValid=typeof unitPrice==="number"&&Number.isFinite(unitPrice)&&unitPrice>0;
   const valid=Boolean(selected&&hasCompleteDeliveryAddress(selected)&&readyRows&&priceValid);
-  const writeEnabled=runtime.isDemo&&canUse&&(!existing||canEdit);
+  const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local"&&canUse&&(!existing||canEdit);
   const reference=existing?"/sales/orders/"+encodeURIComponent(orderId!):"/sales/orders";
   if(!canUse)return <div className="prototype-empty">Order creation is not available to your role. Customer checkout remains in the customer portal.</div>;
   if(existing&&!order)return <div className="prototype-empty">Order not found or outside your authorized scope.</div>;
@@ -163,7 +162,11 @@ export function OrderApprovalDirectory(){
     .sort((a,b)=>(sort==="newest"?-1:1)*(a.approval.submittedAt.localeCompare(b.approval.submittedAt)||a.approval.id.localeCompare(b.approval.id)))
   ,[scope.approvals,scope.orders,scope.accounts,status,sort,search]);
   const pending=scope.approvals.filter(a=>a.status==="Pending"&&["Order","Low stock sale"].includes(a.type)).length;
-  const canDecide=(approval:Approval)=>Boolean(currentUser&&canReviewApproval(data,currentUser,approval)&&runtime.isDemo&&approval.status==="Pending");
+  const otherApprovals=scope.approvals.filter(a=>!["Order","Low stock sale"].includes(a.type))
+    .filter(a=>status==="All"||a.status===status)
+    .filter(a=>[a.title,a.type,a.requestedBy,a.detail].join(" ").toLowerCase().includes(search.toLowerCase()))
+    .sort((a,b)=>(sort==="newest"?-1:1)*a.submittedAt.localeCompare(b.submittedAt));
+  const canDecide=(approval:Approval)=>Boolean(currentUser&&canReviewApproval(data,currentUser,approval)&&runtime.isDemo&&momentumStorage.mode()==="local"&&approval.status==="Pending");
   const decide=async(approval:Approval,decision:"Approved"|"Returned")=>{
     if(!canDecide(approval)||inFlight)return;
     setInFlight(approval.id);setNotice("");
@@ -180,10 +183,10 @@ export function OrderApprovalDirectory(){
     finally{setInFlight("");}
   };
   return <div>
-    <header className="prototype-heading"><h1>Order Approvals</h1><p>Administrator-governed request review, priority, account context and status history.</p></header>
+    <header className="prototype-heading"><h1>Approvals</h1><p>Order decisions, team requests, priority and status history. Order approval remains Administrator-governed.</p></header>
     <DemoGuard isDemo={runtime.isDemo}/>
     <div className="prototype-metrics"><div><small>Open order approval requests</small><strong>{pending}</strong></div><div><small>Matching approvals</small><strong>{records.length}</strong></div><div><small>Authority</small><strong>{currentUser?.role==="Administrator"?"Administrator":"View only"}</strong></div></div>
-    <section className="prototype-panel">
+    <section className="prototype-panel"><h2>Sales order approvals</h2>
       <div className="prototype-commerce-filters">
         <label className="prototype-search"><Search size={15}/><input aria-label="Search order approvals" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Order, customer or request"/></label>
         <label>Status<select aria-label="Filter order approval status" value={status} onChange={e=>setStatus(e.target.value as typeof status)}><option>Pending</option><option>Approved</option><option>Returned</option><option>All</option></select></label>
@@ -202,6 +205,16 @@ export function OrderApprovalDirectory(){
       {!records.length&&<p className="prototype-empty">No matching order approval requests.</p>}
       {notice&&<p role="status" className="prototype-note">{notice}</p>}
       <Notes>Only Administrator users can approve actual orders. A Sales Manager's access to other approval types does not authorize sales-order approval. No delivery can advance merely because this page displays a request.</Notes>
+    </section>
+    <section className="prototype-panel"><h2>Other workflow approvals</h2>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Request</th><th>Type</th><th>Requester</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+        {otherApprovals.map(approval=><tr key={approval.id}><td>{approval.title}<small className="prototype-description">{approval.detail}</small></td>
+          <td>{approval.type}</td><td>{approval.requestedBy}</td><td>{valueDate(approval.submittedAt)}</td><td>{approval.status}</td>
+          <td><button type="button" className="prototype-link" onClick={()=>navigateToRoute("/work/workflow")}>Open existing approval controls</button></td>
+        </tr>)}
+      </tbody></table></div>
+      {!otherApprovals.length&&<p className="prototype-empty">No other requests match this status and search.</p>}
+      <Notes>Non-order approvals remain in the original authorized workflow until their new specialized decision screens have equivalent validation and audit controls.</Notes>
     </section>
   </div>;
 }
