@@ -116,3 +116,12 @@ User confirmed the redesign covers the **whole business**, not just employee CRM
 3. Staging tests validate permission boundaries, deep-link refresh, all roles, and parity with existing functions.
 4. Payment provider, financial reconciliation, portal scoping, and notification state are separately verified.
 5. Merge or deployment requires Mia's explicit approval. No production changes from this branch.
+
+### C17/C18: administrator-selected consolidation, updated November 3
+- Account Consolidation at /admin/accounts now supports **manual selection from every visible account** and multi-search persistence. It does not require exact matching names or fuzzy-comparison percentages. The existing exact-name suggestions remain optional.
+- A business-name variation such as "Two Knuckle Sports and Fitness" versus "Two Knuckles Sports MMA and Fitness" can be manually selected as one candidate review group. These are illustrative examples from operator feedback, **not evidence of verified common ownership**.
+- The administrator can preview the selected account IDs, old parent relationships, assigned representatives, physical locations, linked order count, and selected parent or new proposed display name.
+- A pure association engine maintains immutable historical order, payout and financial references while changing **only** account-to-parent IDs and adding actor/time/reason location activities. Blocks missing records, conflicting existing parents, physically duplicated location addresses, and unverified billing ownership.
+- The **prototype-only action** requires Administrator, local demo mode, no connected Firebase workspace, local persistence, billing-owner verification checkbox, a twelve-character reason, and typed confirmation "ASSOCIATE".
+- No live account records have been merged. **Production write action remains open** and requires a transaction-safe privileged endpoint, role and record verification, immutable master-data audit, duplicate-site determination, finance/bonus entitlement reconciliation, and reviewed staging tests.
+- The user explicitly preferred manual selection over a mandatory 70%-similarity scanner. Do not add expensive fuzzy matching unless it provides a proven incremental benefit.
