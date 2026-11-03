@@ -13,6 +13,7 @@ import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience, PayrollExperience } from "./hr-payroll-experiences";
 import { AccountConsolidationReview } from "./account-consolidation-review";
+import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
 import type { Order } from "../../lib/types";
 
 function Empty({ children }: { children: ReactNode }) {
@@ -140,16 +141,6 @@ function ProductRecord({skuId,section}:{skuId:string;section:string}){
     {tab==="history"&&<section className="prototype-panel"><h2>Item activity</h2><p className="prototype-note">This prototype shows order and lot links, not a full audit history. The existing audit ledger should provide authoritative changes and actors in the completed experience.</p>
       {matched.slice(0,30).map(({order})=><p className="prototype-activity" key={order.id}><strong>{order.placedAt} • {order.number}</strong><span>{order.status} • {scope.accounts.find(a=>a.id===order.accountId)?.name??"Restricted location"}</span></p>)}
       {!matched.length&&<Empty>No linked order activity.</Empty>}</section>}
-  </div>;
-}
-function OrderRecord({id}:{id:string}){
-  const {scope}=useWorkspace(); const o=scope.orders.find(v=>v.id===id);
-  if(!o)return <Empty>Order not found or not accessible.</Empty>;
-  const account=scope.accounts.find(a=>a.id===o.accountId);
-  return <div><Heading title={"Sales order "+o.number} back="/sales/orders" description="Read-only source-linked order summary"/>
-    <div className="prototype-metrics"><div><small>Cases</small><strong>{o.cases}</strong></div><div><small>Order status</small><strong>{o.status}</strong></div><div><small>Payment status</small><strong>{o.paymentStatus}</strong></div></div>
-    <section className="prototype-panel"><h2>Associated account</h2>{account?<OpenLink to={"/sales/customers/"+encodeURIComponent(account.id)}>{account.name} • {account.location}</OpenLink>:<Empty>Account access not available.</Empty>}
-    <h2>Product lines</h2><table className="prototype-table"><thead><tr><th>Item</th><th>Cases</th><th>Price/case</th></tr></thead><tbody>{(o.lines??(o.product?[{id:o.id,product:o.product,cases:o.cases,pricePerCase:o.pricePerCase}]:[])).map(line=><tr key={line.id}><td>{line.product}</td><td>{line.cases}</td><td>{line.pricePerCase.toFixed(2)}</td></tr>)}</tbody></table></section>
   </div>;
 }
 function CalendarPreview({meetingsOnly}:{meetingsOnly:boolean}){
@@ -291,7 +282,12 @@ export function PrototypeOperationsHub(){
   if(path==="/crm/territory-map")return <TerritoryMapPreview/>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
-  if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2])return <OrderRecord id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2])return <OrderDetail id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="sales"&&segments[1]==="invoices"&&segments[2])return <InvoiceDetail id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="sales"&&segments[1]==="payments"&&segments[2])return <PaymentDetail id={decodeURIComponent(segments[2])}/>;
+  if(path==="/sales/orders")return <OrdersDirectory/>;
+  if(path==="/sales/invoices")return <InvoiceDirectory/>;
+  if(path==="/sales/payments")return <PaymentsDirectory/>;
   if(path==="/items")return <ProductDirectory/>;
   if(path==="/sales/customers")return <AccountsDirectory/>;
   if(path==="/crm/leads")return <AccountsDirectory leadMode/>;
