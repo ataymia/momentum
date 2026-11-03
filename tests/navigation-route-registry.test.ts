@@ -55,3 +55,32 @@ test("unbuilt workflows remain visibly identified and never appear as existing",
   assert.ok(planned.length>0);
   for(const item of planned)assert.equal(requiresPrototypePage(item.path),true);
 });
+
+
+test("deep-linked records retain their parent active page instead of Home",()=>{
+  for(const [path,expected] of [
+    ["/sales/customers/account-1/comments","accounts"],
+    ["/sales/orders/order-1","orders"],
+    ["/sales/invoices/invoice-1","orderCash"],
+    ["/sales/payments/payment-1","orderCash"],
+    ["/inventory/lots/lot-1","inventory"],
+    ["/items/item-1/transactions","products"],
+  ] as const){
+    assert.equal(pageForPath(path),expected,path);
+  }
+  assert.equal(pageForPath("/inventory/workflow"),"inventory");
+  assert.equal(pageForPath("/sales/orders/workflow"),"orders");
+});
+
+test("new module routes retain a meaningful active page and unknown paths stay unresolved",()=>{
+  for(const [path,expected] of [
+    ["/calendar","work"],
+    ["/calendar/meetings","work"],
+    ["/crm/leads","accounts"],
+    ["/crm/incentives","accounts"],
+    ["/purchases/vendors","accounting"],
+    ["/portal/orders","orders"],
+    ["/portal/account","accounts"],
+  ] as const)assert.equal(pageForPath(path),expected,path);
+  assert.equal(pageForPath("/this-module-does-not-exist"),null);
+});
