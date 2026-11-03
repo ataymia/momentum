@@ -7,11 +7,16 @@
 import {useMemo,useState} from "react";
 import {AlertTriangle,Building2,GitMerge,Search,CheckSquare,Square,X} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
+import {momentumStorage} from "../../lib/persistence";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {consolidationCandidates,manualConsolidationCandidate} from "../../lib/account-consolidation-review";
 
 export function AccountConsolidationReview(){
-  const {data,currentUser}=useWorkspace();
+  const {data,currentUser,associateCustomerLocations}=useWorkspace();
+  const runtime=useRuntimeMode();
+  const firebase=useFirebaseSessionOptional();
   const [suggestedSearch,setSuggestedSearch]=useState("");
   const [manualSearch,setManualSearch]=useState("");
   const [visibleLimit,setVisibleLimit]=useState(40);
@@ -19,6 +24,10 @@ export function AccountConsolidationReview(){
   const [target,setTarget]=useState("new");
   const [parentName,setParentName]=useState("");
   const [preview,setPreview]=useState(false);
+  const [verifiedOwner,setVerifiedOwner]=useState(false);
+  const [reason,setReason]=useState("");
+  const [typedConfirmation,setTypedConfirmation]=useState("");
+  const [operationMessage,setOperationMessage]=useState("");
   const candidates=useMemo(()=>consolidationCandidates(data.accounts),[data.accounts]);
   const selected=useMemo(()=>manualConsolidationCandidate(data.accounts,selectedIds),[data.accounts,selectedIds]);
   if(currentUser?.role!=="Administrator")return <div className="prototype-empty">Administrator authorization required.</div>;
@@ -33,16 +42,33 @@ export function AccountConsolidationReview(){
   const selectedAccounts=data.accounts.filter(a=>selectedSet.has(a.id));
   const linked=selected?selected.locations.reduce((n,a)=>n+data.orders.filter(o=>o.accountId===a.id&&!o.testOnly).length,0):0;
   const existingParents=(data.customers??[]).filter(c=>selected?.existingCustomerIds.includes(c.id));
+  const demoAssociationEnabled=runtime.isDemo&&momentumStorage.mode()==="local"&&!firebase;
+  const resetReview=()=>{setPreview(false);setVerifiedOwner(false);setReason("");setTypedConfirmation("");setOperationMessage("");};
+  const defaultParent=(ids:readonly string[])=>data.accounts.find(a=>ids.includes(a.id)&&a.customerId)?.customerId??"new";
   const choose=(ids:readonly string[])=>{
     setSelectedIds([...new Set(ids)]);
-    setTarget("new");setParentName("");setPreview(false);
+    setTarget(defaultParent(ids));setParentName("");resetReview();
   };
   const toggle=(id:string)=>{
-    setSelectedIds(current=>current.includes(id)?current.filter(entry=>entry!==id):[...current,id]);
-    setTarget("new");setPreview(false);
+    const next=selectedIds.includes(id)?selectedIds.filter(entry=>entry!==id):[...selectedIds,id];
+    setSelectedIds(next);setTarget(defaultParent(next));resetReview();
   };
   const previewParent=target==="new"?(parentName.trim()||selected?.name||"New parent pending verification"):existingParents.find(c=>c.id===target)?.name;
+  const associate=()=>{
+    if(!demoAssociationEnabled||!selected||typedConfirmation!=="ASSOCIATE"||!verifiedOwner||reason.trim().length<12)return;
+    const parent=target==="new"
+      ?{kind:"new" as const,name:parentName.trim()||selected.name}
+      :{kind:"existing" as const,id:target};
+    const result=associateCustomerLocations({
+      accountIds:selected.locations.map(a=>a.id),parent,reason,verifiedCommonBillingOwner:verifiedOwner,
+    });
+    if(!result.ok){setOperationMessage(result.message);return;}
+    setOperationMessage("Local demonstration only: "+result.updatedAccountIds.length+
+      " location records are now linked under parent "+result.parentId+". Original order, rep, and payment records were not rewritten.");
+    setSelectedIds([]);setPreview(false);setTypedConfirmation("");setVerifiedOwner(false);setReason("");
+  };
   return <div className="prototype-domain">
+    {operationMessage&&<p role="status" className="prototype-consolidation-plan">{operationMessage}</p>}
     <header className="prototype-heading">
       <h1>Account consolidation</h1>
       <p>Choose any two or more CRM accounts, regardless of name, to prepare a parent business and location review. Nothing is merged automatically.</p>
@@ -130,7 +156,24 @@ export function AccountConsolidationReview(){
           <strong>Review plan only: {previewParent}</strong>
           <p>{selected.locations.length} selected account records and {linked} linked order records. The accounts' distinct IDs, orders, payments, employee credits and audit history remain unchanged.</p>
           <p>No parent record was created and no consolidation was executed. Before approval, verify legal and billing identity, location ownership, overlapping physical addresses, tax records, customer portal access, commission and bonus attribution, and any existing financial balances.</p>
-          <p>Actual consolidation requires a separate audited administrator-controlled master-data operation. This preview cannot silently migrate or delete historical records.</p>
+          <p>Production consolidation requires an authenticated, audited administrator-controlled master-data operation. This preview cannot silently migrate or delete historical records.</p>
+          <div className="prototype-consolidation-action">
+            <h3>Confirm association in local demo only</h3>
+            <p>Testing is enabled only on a local development workspace, with no connected Firebase backend. It does not modify the live company database.</p>
+            {demoAssociationEnabled?<div className="prototype-consolidation-confirmation">
+              <label><input type="checkbox" checked={verifiedOwner} onChange={event=>setVerifiedOwner(event.target.checked)}/>
+                I have verified that these selected records belong to the same billing owner, and reviewed the listed conflicts.</label>
+              <label>Reason for association
+                <textarea aria-label="Account consolidation audit reason" rows={3} value={reason} onChange={event=>setReason(event.target.value)}
+                  placeholder="Record the source of verification and why these locations belong under one parent"/>
+              </label>
+              <label>Type ASSOCIATE to confirm
+                <input aria-label="Type ASSOCIATE to confirm demo account association" value={typedConfirmation} onChange={event=>setTypedConfirmation(event.target.value)} />
+              </label>
+              <button type="button" disabled={!verifiedOwner||reason.trim().length<12||typedConfirmation!=="ASSOCIATE"}
+                onClick={associate}>Apply association to local demonstration records</button>
+            </div>:<p className="prototype-note">Live association is intentionally disabled. This is a review and planning tool until secure server-side merge, audit and bonus-integrity checks are approved.</p>}
+          </div>
         </div>}
       </>}
     </section>
