@@ -46,7 +46,7 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
   const [stageFilter,setStageFilter]=useState("all");
   const [fromDate,setFromDate]=useState("");
   const [throughDate,setThroughDate]=useState("");
-  const names=new Map(data.users.map(u=>[u.id,u.name]));
+  const names=useMemo(()=>new Map(data.users.map(u=>[u.id,u.name])),[data.users]);
   const records=useMemo(()=>scope.accounts
     .filter(a=>!leadMode||["Prospect","Qualified","Sampled"].includes(a.stage))
     .filter(a=>repFilter==="all"||a.ownerId===repFilter)
@@ -56,7 +56,7 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
     .sort((a,b)=>{
       const value=(loc:typeof a)=>sort==="ownerId"?names.get(loc.ownerId)??"":String(loc[sort]??"");
       return (ascending?1:-1)*(value(a).localeCompare(value(b),undefined,{numeric:true})||a.id.localeCompare(b.id));
-    }),[scope.accounts,leadMode,repFilter,stageFilter,fromDate,throughDate,query,sort,ascending,data.users]);
+    }),[scope.accounts,leadMode,repFilter,stageFilter,fromDate,throughDate,query,sort,ascending,names]);
   const selectSort=(field:AccountsSortField)=>{if(sort===field)setAscending(v=>!v);else{setSort(field);setAscending(true);}};
   const header=(field:AccountsSortField,label:string)=><button type="button" aria-label={"Sort by "+label} aria-sort={sort===field?(ascending?"ascending":"descending"):undefined} onClick={()=>selectSort(field)}>{label} <ArrowUpDown size={14}/></button>;
   const repIds=[...new Set(scope.accounts.map(a=>a.ownerId).filter(Boolean))].sort((a,b)=>(names.get(a)??"").localeCompare(names.get(b)??""));
