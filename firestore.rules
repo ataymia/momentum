@@ -240,6 +240,12 @@ service cloud.firestore {
     // Live QA products are visible in Administrator product/order screens, but
     // do not belong to real sellable stock or commerce. Only trusted Functions
     // may create SKUs, virtual receipts and status-transition events.
+    // Targeted Admin reminder: readable by recipient or Administrator, never directly writable.
+    match /locationPermissionRequests/{uid} {
+      allow get: if isAdmin() || (request.auth != null && request.auth.uid == uid && isActiveRole('Sales Representative'));
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
+    }
     match /liveTestProducts/{skuId} {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;
