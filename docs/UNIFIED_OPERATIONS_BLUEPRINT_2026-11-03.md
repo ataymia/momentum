@@ -91,3 +91,28 @@ User confirmed the redesign covers the **whole business**, not just employee CRM
 - Truly configurable per-user granular permissions; current prototype reuses role capabilities and protects admin/customer directories by role.
 
 **Mandatory acceptance:** test every user role in demo and production-like staging with simulated data, deep-link refresh, mobile usability, record scoping, back/forward, no sensitive data in URLs, safe account transfers, no duplicate earning, and existing delivery signature/self-delivery functions. Never deploy directly from the prototype without review and explicit approval.
+
+## Working acceptance notes and current prototype delta
+**Updated November 3, 2026.** This is a tracking update, not launch authorization.
+
+### Commerce migration, built in isolated prototype
+- Dedicated Sales Orders directory and record routes, plus /sales/orders/new and /sales/orders/{orderId}/edit.
+- Approvals at /work/approvals shows visible workflow approvals. Order approvals have a newly designed action surface; non-order approvals still use preserved controls.
+- Reuses canonical Workspace order validation, customer and territory checks, pricing engine, inventory ledger, reservation release, Administrator-only approval and mandatory return reasons. No duplicate order or payment engine.
+- **Prototype mutation guard:** order creation, editing and decisions execute only in local demo mode when persistence also reports local. Connected backends remain read-only from these interfaces.
+- Existing /sales/orders/workflow and /work/workflow remain reachable during parity migration. Linking them does not count as completing the redesign.
+- Invoices and payments remain read-only. Hosted checkout, webhook verification and customer-portal payment flows are not yet built.
+
+### Visual redesign feedback, explicitly reinforced by Mia
+- **Human Resources:** Initial prototype is not accepted. Redesign as a complete people operations experience with independently accessible onboarding, attendance, time-off, staff profiles, HR documents, reviews and employee self-service. Payroll remains a distinct specialized workflow. Preserve confidentiality and historical records.
+- **Marketing:** Initial prototype is not accepted. Build role-scoped campaign planning, calendars, approvals, creative assets, brand-ambassador management and verifiable qualified-demand attribution into purpose-built marketing screens. Preserve real existing workflows.
+- **Sales-representative self-delivery:** Existing /crm/self-delivery currently links into the legacy Orders view and is **not accepted**. Build its own mobile-first delivery workflow separately from normal order creation. Retain authorized pickup and custody evidence, delivery task states, customer confirmation, exceptions and auditing. Never infer delivery authority simply from the order sales owner. A Delivery Driver retains a distinct interface.
+- **These three items remain outstanding.** A sidebar destination alone does not satisfy their acceptance criteria.
+- Each department uses an appropriate business-process layout, with unified Momentum navigation and original implementation assets.
+
+### Release checkpoints
+1. Current branch CI passes typechecking, lint, logic, Firestore/storage permission tests, Functions, and production build.
+2. Local demo validates new-order, edit/resubmit, approval and meaningful return reasons using the canonical workflow.
+3. Staging tests validate permission boundaries, deep-link refresh, all roles, and parity with existing functions.
+4. Payment provider, financial reconciliation, portal scoping, and notification state are separately verified.
+5. Merge or deployment requires Mia's explicit approval. No production changes from this branch.
