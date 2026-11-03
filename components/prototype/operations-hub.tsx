@@ -122,19 +122,19 @@ function CalendarPreview({meetingsOnly}:{meetingsOnly:boolean}){
   const upcoming=scope.appointments.filter(a=>a.date>=new Date().toISOString().slice(0,10)).sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
   return <div><Heading title={meetingsOnly?"Meetings":"Shared calendar"} description="Field appointments currently recorded by Momentum; staff meeting invitations are a separate planned workflow."/>
     <section className="prototype-panel"><h2>Upcoming authorized field appointments</h2><table className="prototype-table"><thead><tr><th>Date</th><th>Time</th><th>Type</th><th>Assigned to</th><th>Business</th></tr></thead><tbody>{upcoming.map(a=><tr key={a.id}><td>{a.date}</td><td>{a.startTime}</td><td>{a.type}</td><td>{data.users.find(u=>u.id===a.ownerId)?.name??"Unassigned"}</td><td>{scope.accounts.find(ac=>ac.id===a.accountId)?.name??"Restricted"}</td></tr>)}</tbody></table>{!upcoming.length&&<Empty>No upcoming field appointments visible to your role.</Empty>}</section>
-    <section className="prototype-panel"><h2>Staff meetings: next phase</h2><p>Authorized organizers will schedule a meeting, select attendees, check conflicts, send invitations, add it to each attendee's calendar, and display a reminder on Home. This is not an active scheduler yet.</p></section>
+    <section className="prototype-panel"><h2>Staff meetings: next phase</h2><p>Authorized organizers will schedule a meeting, select attendees, check conflicts, send invitations, add it to each attendee calendar, and display a reminder on Home. This is not an active scheduler yet.</p></section>
   </div>;
 }
 function IncentivePreview(){
   const {scope,data}=useWorkspace();
   const groups=new Map<string,{name:string;ids:Set<string>}>();
   for(const loc of scope.accounts){const key=loc.customerId??loc.id;const group=groups.get(key)??{name:loc.name,ids:new Set<string>()};group.ids.add(loc.id);groups.set(key,group);}
-  const entries=[...groups].map(([id,g])=>{
+  const entries=[...groups].map(([,g])=>{
     const orders=scope.orders.filter(o=>g.ids.has(o.accountId)&&!o.testOnly&&o.status!=="Cancelled").sort((a,b)=>a.placedAt.localeCompare(b.placedAt));
     const first=orders[0];const firstDate=first?.placedAt.slice(0,10);
     const start=firstDate ? new Date(firstDate+"T12:00:00Z").getTime():0;const end=start+90*86400000;
     const settled=orders.filter(o=>{const day=orderFirstSettlementDate(data,o);const ms=day?new Date(day+"T12:00:00Z").getTime():Infinity;return Boolean(day&&ms>=start&&ms<=end&&ms<=Date.now());});
-    return {id,name:g.name,locations:g.ids.size,cases:settled.reduce((n,o)=>n+o.cases,0)};
+    return {id:[...g.ids].sort().join(":"),name:g.name,locations:g.ids.size,cases:settled.reduce((n,o)=>n+o.cases,0)};
   }).sort((a,b)=>a.name.localeCompare(b.name));
   return <div><Heading title="Sales incentives" description="One read-only progress row per stored parent customer; 20 cases is a marker, not a new bonus."/>
     <section className="prototype-panel"><p className="prototype-note">PREVIEW ONLY: This does not post earnings. Accounts with unverified parentage, historical compensation, timing and attribution must be reconciled before using any new calculation for payroll.</p>
@@ -147,7 +147,7 @@ function ContactsDirectory(){
 }
 export function PrototypeOperationsHub(){
   const path=useNavigationRoute();const {currentUser}=useWorkspace();
-  if(!canVisitRoute(currentUser,path))return <Empty>You don't have permission to view this module.</Empty>;
+  if(!canVisitRoute(currentUser,path))return <Empty>You do not have permission to view this module.</Empty>;
   const segments=path.split("/").filter(Boolean);
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
