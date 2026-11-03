@@ -82,3 +82,11 @@ test("deep-linked order edits initialize from stored line items after the record
   assert.match(src,/orderLinesFor\(order\)/);
   assert.match(src,/skuForProductName\(line\.product\)\?\.description/);
 });
+
+
+test("unrecognized legacy SKU blocks editing instead of silently selecting first product",()=>{
+  const src=readFileSync("components/prototype/order-actions.tsx","utf8");
+  assert.match(src,/!catalog\.some\(item=>item\.description===line\.product\)/);
+  assert.match(src,/Unrecognized legacy SKU/);
+  assert.match(src,/will not silently substitute a SKU/);
+});
