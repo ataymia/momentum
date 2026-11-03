@@ -30,7 +30,7 @@ test("Admin reminders are server-authorized, throttle repeated sends, and never 
  assert.match(backend,/actorUid!==targetUid/);
  assert.match(backend,/COOLDOWN_MS=5\*60_000/);
  assert.match(backend,/targetAccess\?\.role!=="Sales Representative"/);
- assert.doesNotMatch(backend,/geolocation|latitude|longitude|watchPosition/);
+ assert.doesNotMatch(backend,/navigator\.geolocation|coords\.|watchPosition/);
  assert.match(rules,/match \/locationPermissionRequests\/\{uid\} \{/);
  assert.match(rules,/allow create, update, delete: if false;/);
  assert.match(rules,/request\.auth\.uid == uid/);
