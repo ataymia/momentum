@@ -55,8 +55,8 @@ export const MENU_GROUPS: MenuGroup[] = [
   { label: "Operations", entries: [
     { label: "Inventory", path: "/inventory", permission: "inventory", state: "prototype" },
     { label: "Inventory Adjustments", path: "/inventory/adjustments", permission: "inventory", state: "prototype" },
-    { label: "Packages", path: "/inventory/packages", permission: "inventory", state: "planned" },
-    { label: "Shipments", path: "/inventory/shipments", permission: "inventory", state: "planned" },
+    { label: "Packages", path: "/inventory/packages", permission: "inventory", state: "prototype" },
+    { label: "Shipments", path: "/inventory/shipments", permission: "inventory", state: "prototype" },
     { label: "Inventory Ledger", path: "/inventory/ledger", permission: "inventoryLedger", state: "prototype" },
     { label: "Vendors", path: "/purchases/vendors", permission: "accounting", state: "planned" },
     { label: "Expenses", path: "/purchases/expenses", permission: "accounting", state: "planned" },
@@ -65,7 +65,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Bills", path: "/purchases/bills", permission: "accounting", state: "planned" },
     { label: "Payments Made", path: "/purchases/payments", permission: "accounting", state: "planned" },
     { label: "Vendor Credits", path: "/purchases/credits", permission: "accounting", state: "planned" },
-    { label: "Delivery Operations", path: "/operations/deliveries", permission: "orders", state: "planned" },
+    { label: "Delivery Operations", path: "/operations/deliveries", permission: "orders", state: "prototype" },
   ] },
   { label: "Human Resources", entries: [
     { label: "HR Overview", path: "/people", permission: "people", state: "prototype" },
@@ -176,7 +176,7 @@ export function pageForPath(path: string): PageKey | null {
   if(clean.startsWith("/sales/orders/"))return "orders";
   if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/"))return "orderCash";
   if(clean.startsWith("/sales/customers/"))return "accounts";
-  if(clean.startsWith("/inventory/lots/"))return "inventory";
+  if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if(clean.startsWith("/items/"))return "products";
   const legacy = (Object.keys(LEGACY_PATHS) as PageKey[]).find(key => LEGACY_PATHS[key] === clean);
   if(legacy)return legacy;
@@ -203,6 +203,7 @@ export function routeLabel(path: string): string {
   if (clean.startsWith("/items/")) return "Item details";
   if(clean==="/inventory/workflow")return "Inventory operations";
   if (clean.startsWith("/inventory/lots/")) return "Lot details";
+  if (clean.startsWith("/inventory/shipments/")) return "Shipment details";
   if (clean.startsWith("/sales/customers/")) return "Customer details";
   if (clean==="/sales/orders/workflow") return "Order operations";
   if(clean==="/sales/orders/new")return "Create sales order";
@@ -216,7 +217,7 @@ export function routeLabel(path: string): string {
 export function permissionForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if (clean.startsWith("/items/")) return "products";
-  if(clean.startsWith("/inventory/lots/"))return "inventory";
+  if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if (clean.startsWith("/sales/customers/")) return "accounts";
   const portal=CUSTOMER_MENU.find(item=>item.path===clean);
   if (portal) return portal.permission;
@@ -240,6 +241,7 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
       canAccessPage(user,permissionForPath(clean)??"home");
   }
   if (clean.startsWith("/portal/")) return false;
+  if(clean==="/operations/deliveries" && !["Administrator","Operations","Warehouse"].includes(user.role)) return false;
   if (clean.startsWith("/admin/") && user.role!=="Administrator") return false;
   const permission=permissionForPath(clean);
   return permission!==null && canAccessPage(user,permission);
@@ -262,7 +264,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
-  if (clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
+  if (clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
 }
