@@ -171,8 +171,19 @@ export function normalizeRoutePath(path: string): string {
 export function pageForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if (ROUTE_OVERRIDES[clean]) return ROUTE_OVERRIDES[clean];
+  // Deep-linked records must retain their owning workspace page, not fall back to Home.
+  if(clean.startsWith("/sales/orders/"))return "orders";
+  if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/"))return "orderCash";
+  if(clean.startsWith("/sales/customers/"))return "accounts";
+  if(clean.startsWith("/inventory/lots/"))return "inventory";
+  if(clean.startsWith("/items/"))return "products";
   const legacy = (Object.keys(LEGACY_PATHS) as PageKey[]).find(key => LEGACY_PATHS[key] === clean);
-  return legacy ?? null;
+  if(legacy)return legacy;
+  // Prototype-only modules still need a meaningful active page for breadcrumbs
+  // and other navigation consumers, even though their content is route-driven.
+  const menu=MENU_GROUPS.flatMap(group=>group.entries).find(entry=>entry.path===clean)
+    ??CUSTOMER_MENU.find(entry=>entry.path===clean);
+  return menu?.permission??null;
 }
 
 export function routeForPage(page: PageKey): string {
