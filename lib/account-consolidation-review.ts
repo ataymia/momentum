@@ -95,3 +95,9 @@ export function manualConsolidationCandidate(
     conflicts,
   };
 }
+
+/** Toggles one explicitly selected account, without coupling selection to search results. */
+export function toggleSelectedAccountId(current:readonly string[],id:string):string[] {
+  if(!id.trim())return [...current];
+  return current.includes(id)?current.filter(item=>item!==id):[...current,id];
+}
