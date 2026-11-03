@@ -231,8 +231,11 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
   const clean=normalizeRoutePath(path);
   if (user.role==="Customer") {
     // Maintain direct links used by the existing customer dashboard and order flow.
+    const customerOrderDetail = clean.startsWith("/sales/orders/") &&
+      clean!=="/sales/orders/new" && clean!=="/sales/orders/workflow" &&
+      !clean.endsWith("/edit");
     const legacyCustomer = clean==="/sales/orders" || clean==="/sales/customers" ||
-      clean.startsWith("/sales/orders/") || clean.startsWith("/sales/customers/");
+      customerOrderDetail || clean.startsWith("/sales/customers/");
     return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer) &&
       canAccessPage(user,permissionForPath(clean)??"home");
   }
