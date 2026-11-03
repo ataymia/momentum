@@ -36,6 +36,7 @@ const wholeNonnegative = (value: unknown) => Number.isInteger(value) && Number(v
 const uniqueById = <T extends { id: string }>(records: T[]) => { const seen = new Set<string>(); return records.filter((record) => !seen.has(record.id) && (seen.add(record.id), true)); };
 
 export function seedCommercialState(data: WorkspaceData, _todayKey: string): CommercialState {
+  void _todayKey; // Retained for legacy callers; no inferred business date is created.
   const accountPatches: Record<string, CommercialAccountPatch> = {};
   for (const account of data.accounts) accountPatches[account.id] = { premiseType: account.premiseType, businessType: account.businessType, categoryReviewDate: account.categoryReviewDate, pricingTier: account.pricingTier, postalCode: normalizePostalCode(account.postalCode) || undefined };
   return { version: 1, accountPatches, customerPatches:{}, orders: [], appointments: [], approvals: [], activities: [], inventoryLots: [], territories: normalizeTerritories(data.territories??[],data.users) };
