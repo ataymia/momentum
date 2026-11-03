@@ -231,7 +231,7 @@ export function OrderApprovalDirectory(){
       })}</tbody></table></div>
       {!records.length&&<p className="prototype-empty">No matching order approval requests.</p>}
       {notice&&<p role="status" className="prototype-note">{notice}</p>}
-      <Notes>Only Administrator users can approve actual orders. A Sales Manager's access to other approval types does not authorize sales-order approval. No delivery can advance merely because this page displays a request.</Notes>
+      <Notes>Only Administrator users can approve actual orders. A Sales Manager&apos;s access to other approval types does not authorize sales-order approval. No delivery can advance merely because this page displays a request.</Notes>
     </section>
     <section className="prototype-panel"><h2>Other workflow approvals</h2>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Request</th><th>Type</th><th>Requester</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead><tbody>
