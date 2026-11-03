@@ -163,6 +163,19 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
   return canAccessPage(user, permissionForPath(path) ?? "home");
 }
 
+
+/** Prototype-only department visibility. Final policy will use per-action grants.
+ * Department menus should not imply the user has HR or Marketing administrative access.
+ * Individual employee self-service must be provided separately from HR management.
+ */
+export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): boolean {
+  if (!user || !canVisitRoute(user,path)) return false;
+  const group = MENU_GROUPS.find(g=>g.entries.some(e=>e.path===normalizeRoutePath(path)))?.label;
+  if (group==="Human Resources" && user.role!=="Administrator") return false;
+  if (group==="Marketing" && !["Administrator","Marketing","Brand Ambassador"].includes(user.role)) return false;
+  return true;
+}
+
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   if (clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/")) return true;
