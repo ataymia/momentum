@@ -160,20 +160,57 @@ function CalendarPreview({meetingsOnly}:{meetingsOnly:boolean}){
     <section className="prototype-panel"><h2>Staff meetings: next phase</h2><p>Authorized organizers will schedule a meeting, select attendees, check conflicts, send invitations, add it to each attendee calendar, and display a reminder on Home. This is not an active scheduler yet.</p></section>
   </div>;
 }
+type IncentiveSortField="name"|"locations"|"cases"|"rep";
 function IncentivePreview(){
   const {scope,data}=useWorkspace();
-  const groups=new Map<string,{name:string;ids:Set<string>}>();
-  for(const loc of scope.accounts){const key=loc.customerId??loc.id;const group=groups.get(key)??{name:loc.name,ids:new Set<string>()};group.ids.add(loc.id);groups.set(key,group);}
+  const [query,setQuery]=useState("");
+  const [repFilter,setRepFilter]=useState("all");
+  const [sort,setSort]=useState<IncentiveSortField>("name");
+  const [ascending,setAscending]=useState(true);
+  const names=new Map(data.users.map(u=>[u.id,u.name]));
+  const groups=new Map<string,{name:string;ids:Set<string>;reps:Set<string>}>();
+  // Only explicitly shared parent IDs are grouped. Names alone are not merge authority.
+  for(const loc of scope.accounts){
+    const key=loc.customerId??loc.id;
+    const group=groups.get(key)??{name:loc.name,ids:new Set<string>(),reps:new Set<string>()};
+    group.ids.add(loc.id);if(loc.ownerId)group.reps.add(loc.ownerId);
+    groups.set(key,group);
+  }
   const entries=[...groups].map(([,g])=>{
     const orders=scope.orders.filter(o=>g.ids.has(o.accountId)&&!o.testOnly&&o.status!=="Cancelled").sort((a,b)=>a.placedAt.localeCompare(b.placedAt));
-    const first=orders[0];const firstDate=first?.placedAt.slice(0,10);
-    const start=firstDate ? new Date(firstDate+"T12:00:00Z").getTime():0;const end=start+90*86400000;
-    const settled=orders.filter(o=>{const day=orderFirstSettlementDate(data,o);const ms=day?new Date(day+"T12:00:00Z").getTime():Infinity;return Boolean(day&&ms>=start&&ms<=end&&ms<=Date.now());});
-    return {id:[...g.ids].sort().join(":"),name:g.name,locations:g.ids.size,cases:settled.reduce((n,o)=>n+o.cases,0)};
-  }).sort((a,b)=>a.name.localeCompare(b.name));
-  return <div><Heading title="Sales incentives" description="One read-only progress row per stored parent customer; 20 cases is a marker, not a new bonus."/>
-    <section className="prototype-panel"><p className="prototype-note">PREVIEW ONLY: This does not post earnings. Accounts with unverified parentage, historical compensation, timing and attribution must be reconciled before using any new calculation for payroll.</p>
-    <table className="prototype-table"><thead><tr><th>Business</th><th>Locations</th><th>Settled cases, opening 90 days</th><th>Milestone progress</th></tr></thead><tbody>{entries.map(e=><tr key={e.id}><td>{e.name}</td><td>{e.locations}</td><td>{e.cases}</td><td><div className="prototype-progress"><div style={{width:Math.min(100,(e.cases/40)*100)+"%"}}/></div><small>10 {e.cases>=10?"✓":"○"} · 20 {e.cases>=20?"✓":"○"} · 40 {e.cases>=40?"✓":"○"}</small></td></tr>)}</tbody></table></section></div>;
+    const firstDate=orders[0]?.placedAt.slice(0,10);
+    const start=firstDate?new Date(firstDate+"T12:00:00Z").getTime():0;
+    const settled=orders.filter(o=>{
+      const day=orderFirstSettlementDate(data,o);
+      const ms=day?new Date(day+"T12:00:00Z").getTime():Infinity;
+      return Boolean(day&&ms>=start&&ms<=start+90*86400000&&ms<=Date.now());
+    });
+    return {id:[...g.ids].sort().join(":"),name:g.name,locations:g.ids.size,cases:settled.reduce((n,o)=>n+o.cases,0),repIds:[...g.reps]};
+  }).filter(e=>(repFilter==="all"||e.repIds.includes(repFilter))&&[e.name,...e.repIds.map(id=>names.get(id)??id)].join(" ").toLowerCase().includes(query.toLowerCase()))
+    .sort((a,b)=>{
+      const value=(e:typeof a)=>sort==="name"?e.name:sort==="rep"?e.repIds.map(id=>names.get(id)??id).join(", "):e[sort];
+      const ax=value(a),bx=value(b),comp=typeof ax==="number"&&typeof bx==="number"?ax-bx:String(ax).localeCompare(String(bx),undefined,{numeric:true});
+      return (ascending?1:-1)*(comp||a.id.localeCompare(b.id));
+    });
+  const reps=[...new Set(scope.accounts.map(a=>a.ownerId).filter(Boolean))].sort((a,b)=>(names.get(a)??"").localeCompare(names.get(b)??""));
+  const header=(key:IncentiveSortField,label:string)=><button type="button" aria-label={"Sort by "+label} onClick={()=>{if(sort===key)setAscending(v=>!v);else{setSort(key);setAscending(true);}}}>{label}<ArrowUpDown size={14}/></button>;
+  return <div><Heading title="Sales incentives" description="Continuous case-volume progress. Every eligible case increments the displayed value; no artificial 20-case milestone."/>
+    <section className="prototype-panel">
+      <p className="prototype-note">READ-ONLY PREVIEW: Case totals use the current modeled 90-day opening window and known settlement evidence. This is not a payroll approval, commission statement, or verified bonus award. Historical rep credit may differ from current assigned representatives.</p>
+      <div className="prototype-controls">
+        <label className="prototype-search"><Search size={16}/><input aria-label="Search business incentive progress" placeholder="Business or assigned representative" value={query} onChange={e=>setQuery(e.target.value)}/></label>
+        <label>Current assigned rep <select aria-label="Filter incentive progress by representative" value={repFilter} onChange={e=>setRepFilter(e.target.value)}>
+          <option value="all">All visible reps</option>{reps.map(id=><option key={id} value={id}>{names.get(id)??id}</option>)}
+        </select></label>
+      </div>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
+        <th>{header("name","Business")}</th><th>{header("rep","Assigned reps")}</th><th>{header("locations","Locations")}</th><th>{header("cases","Settled cases")}</th><th>Continuous progress</th>
+      </tr></thead><tbody>{entries.map(e=><tr key={e.id}>
+        <td>{e.name}</td><td>{e.repIds.map(id=>names.get(id)??"Unassigned").join(", ")||"Unassigned"}</td><td>{e.locations}</td><td>{e.cases}</td>
+        <td><div role="progressbar" aria-label={"Case volume progress for "+e.name} aria-valuemin={0} aria-valuemax={40} aria-valuenow={Math.min(40,e.cases)} className="prototype-progress"><div style={{width:Math.min(100,(e.cases/40)*100)+"%"}}/></div><small>{e.cases} of 40 cases{e.cases>=40?" · 40-case threshold met":""}</small></td>
+      </tr>)}</tbody></table></div>
+      {!entries.length&&<Empty>No eligible visible businesses match your filters.</Empty>}
+    </section></div>;
 }
 type ContactSortField="contactName"|"name"|"contactRole"|"email"|"phone"|"location"|"stage";
 function ContactsDirectory(){
