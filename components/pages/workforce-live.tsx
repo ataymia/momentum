@@ -107,10 +107,15 @@ export function WorkforceLivePage() {
   useEffect(()=>{
     if(currentUser?.role!=="Administrator"||!firebase?.session?.uid)return;
     let active=true;
-    void listFirestoreCollection<LocationPermissionRequest>("locationPermissionRequests")
-     .then(items=>{if(active)setPermissionRequests(Object.fromEntries(items.map(item=>[item.targetUid,item])));})
-     .catch(()=>{if(active)setPermissionNotice("Location request history is unavailable. Sending still requires server confirmation.");});
-    return()=>{active=false;};
+    const refresh=()=>{
+     if(typeof document!=="undefined"&&document.visibilityState!=="visible")return;
+     void listFirestoreCollection<LocationPermissionRequest>("locationPermissionRequests")
+      .then(items=>{if(active)setPermissionRequests(Object.fromEntries(items.map(item=>[item.targetUid,item])));})
+      .catch(()=>{if(active)setPermissionNotice("Location request history is unavailable. Sending still requires server confirmation.");});
+    };
+    refresh();
+    const timer=window.setInterval(refresh,60_000);
+    return()=>{active=false;window.clearInterval(timer);};
   },[currentUser?.role,firebase?.session?.uid]);
   const sendPermissionRequest=async(user:WorkspaceUser)=>{
     if(currentUser?.role!=="Administrator"||!roleIsTracked(user.role)||permissionBusy)return;
