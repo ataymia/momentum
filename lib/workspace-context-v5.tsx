@@ -134,7 +134,7 @@ type WorkspaceContextValue = {
   reconcileOrderPayment: (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => void;
   createOrder: (order: NewOrder) => string | null;
   updatePlacement: (id: string, stock: number, facings: number, cold: boolean, shelfPrice: number) => void;
-  decideApproval: (id: string, decision: "Approved" | "Returned") => void;
+  decideApproval: (id: string, decision: "Approved" | "Returned", reason?: string) => void;
   resolveInventoryHold: (id: string, decision: "Release" | "Retain", reason: string) => boolean;
   toggleClock: () => void;
   startMeal: () => void;
@@ -404,20 +404,26 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData((current) => ({ ...current, placements: current.placements.map((item) => item.id === id ? { ...item, observedStock, facings, cold, shelfPrice, lastChecked: todayKey(), status: observedStock === 0 ? "Out of stock" : facings === 0 || !cold ? "Check soon" : "Healthy" } : item) }));
   }, [currentUser, data]);
 
-  const decideApproval = useCallback((id: string, decision: "Approved" | "Returned") => {
+  const decideApproval = useCallback((id: string, decision: "Approved" | "Returned", providedReason?: string) => {
     if (!currentUser) return;
+    const matching=data.approvals.find(item=>item.id===id);
+    const isOrder=Boolean(matching&&["Order","Low stock sale"].includes(matching.type));
+    const returnReason=decision==="Returned"
+      ?(providedReason!==undefined?providedReason.trim():isOrder&&typeof window!=="undefined"?window.prompt("What needs to be corrected before this order can be approved?")?.trim():undefined)
+      :undefined;
+    if(decision==="Returned"&&isOrder&&(!returnReason||returnReason.length<3))return;
     setData((current) => {
       const approval = current.approvals.find((item) => item.id === id);
       if (!approval || approval.status !== "Pending" || !canReviewApproval(current, currentUser, approval)) return current;
       const decidedAt = nowStamp();
       return {
         ...current,
-        approvals: current.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt } : item),
-        orders: current.orders.map((order) => ["Order", "Low stock sale"].includes(approval.type) && (order.id === approval.recordId || approval.title.includes(order.number)) ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
-        activities: approval.recordId ? [{ id: `act-${Date.now()}`, accountId: current.orders.find((order) => order.id === approval.recordId)?.accountId, type: "order", title: decision === "Approved" ? "Order approved" : "Order returned for edits", detail: `${approval.title} ${decision.toLowerCase()} by ${currentUser.name}.`, at: decidedAt, userId: currentUser.id }, ...current.activities] : current.activities,
+        approvals: current.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt, returnReason: returnReason||undefined } : item),
+        orders: current.orders.map((order) => ["Order", "Low stock sale"].includes(approval.type) && (approval.recordId ? order.id === approval.recordId : approval.title.includes(order.number)) ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
+        activities: approval.recordId ? [{ id: `act-${Date.now()}`, accountId: current.orders.find((order) => order.id === approval.recordId)?.accountId, type: "order", title: decision === "Approved" ? "Order approved" : "Order returned for edits", detail: `${approval.title} ${decision.toLowerCase()} by ${currentUser.name}.${returnReason?" Reason: "+returnReason:""}`, at: decidedAt, userId: currentUser.id }, ...current.activities] : current.activities,
       };
     });
-  }, [currentUser]);
+  }, [currentUser,data.approvals]);
 
   const resolveInventoryHold = useCallback((id: string, decision: "Release" | "Retain", reason: string) => {
     if (!currentUser || !["Administrator", "Operations"].includes(currentUser.role) || reason.trim().length < 8) return false;
