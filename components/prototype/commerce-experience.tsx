@@ -77,7 +77,7 @@ export function OrdersDirectory(){
     .filter(o=>status==="all"||o.status===status)
     .filter(o=>rep==="all"||o.ownerId===rep||o.creditedRepId===rep)
     .filter(o=>(!from||o.placedAt.slice(0,10)>=from)&&(!to||o.placedAt.slice(0,10)<=to))
-    .filter(o=>[o.number,o.status,accountById.get(o.accountId)?.name,accountById.get(o.accountId)?.location,userById.get(o.ownerId),userById.get(o.creditedRepId),o.paymentStatus].join(" ").toLowerCase().includes(query.toLowerCase()))
+    .filter(o=>[o.number,o.status,accountById.get(o.accountId)?.name,accountById.get(o.accountId)?.location,userById.get(o.ownerId),o.creditedRepId?userById.get(o.creditedRepId):"",o.paymentStatus].join(" ").toLowerCase().includes(query.toLowerCase()))
     .sort((a,b)=>{
       const value=(order:Order):string|number=>{
         const account=accountById.get(order.accountId);
@@ -97,7 +97,7 @@ export function OrdersDirectory(){
   const options=[...new Set(scope.orders.filter(o=>!o.testOnly).map(o=>o.status))].sort();
   const repIds=[...new Set(scope.orders.flatMap(o=>[o.ownerId,o.creditedRepId].filter((id):id is string=>Boolean(id))))];
   return <div><Title title="Sales Orders" detail="Dedicated order register with customer, owner, volume and fulfillment status. Each order has its own URL."/>
-    <CatalogSummary data={[{label:"Visible orders",value:rows.length},{label:"Cases in filtered orders",value:rows.reduce((n,o)=>n+o.cases,0)},{label:"Submitted order value",value:money(rows.filter(o=>o.status!=="Cancelled").reduce((n,o)=>n+o.amount,0))}]}/>
+    <CatalogSummary data={[{label:"Visible orders",value:rows.length},{label:"Cases in filtered orders",value:rows.reduce((n,o)=>n+o.cases,0)},{label:"Non-cancelled order value",value:money(rows.filter(o=>o.status!=="Cancelled").reduce((n,o)=>n+o.amount,0))}]}/>
     <section className="prototype-panel"><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statusOptions={options} from={from} setFrom={setFrom} to={to} setTo={setTo} searchLabel="Search orders, accounts, rep" repOptions={repIds.map(id=>({id,name:userById.get(id)??id})).sort((a,b)=>a.name.localeCompare(b.name))} rep={rep} setRep={setRep}/>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
       {([["number","Order"],["account","Customer"],["placedAt","Placed"],["rep","Sales rep"],["cases","Cases"],["amount","Order amount"],["status","Fulfillment"],["payment","Payment"]] as const).map(([key,label])=><Header key={key} name={label} selected={sorter.field===key} direction={sorter.direction} onClick={()=>sorter.select(key)}/>)}
