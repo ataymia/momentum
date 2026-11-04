@@ -7,6 +7,8 @@ import {useHcm} from "../../lib/hcm-context";
 import {activeCompensation} from "../../lib/hcm-engine";
 import {downloadCsv} from "../../lib/browser-export";
 import {navigateToRoute} from "../../lib/navigation-store";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {momentumStorage} from "../../lib/persistence";
 
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
 const profilePath=(id:string,section?:string)=>"/admin/employee-profiles/"+encodeURIComponent(id)+(section?"/"+section:"");
@@ -58,6 +60,7 @@ export function HrPersonnelDirectory(){
 
 export function HrPersonnelRecord({id,section="overview"}:{id:string;section?:string}){
   const {data,currentUser}=useWorkspace();const {hcm}=useHcm();
+  const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
   if(currentUser?.role!=="Administrator")return <div className="prototype-empty">Employee records require Administrator access.</div>;
   const user=data.users.find(u=>u.id===id&&u.role!=="Customer");
   if(!user)return <div className="prototype-empty">Employee not found.</div>;
@@ -88,7 +91,7 @@ export function HrPersonnelRecord({id,section="overview"}:{id:string;section?:st
       <button type="button" className="prototype-back" onClick={()=>navigateToRoute("/admin/employee-profiles")}><ArrowLeft size={15}/> Back to employee records</button>
       <h1>{user.name}</h1><p>{employment?.jobTitle??user.title} · {employment?.department??user.team} · {employment?.status??"Employment not configured"}</p>
     </header>
-    <div className="prototype-controls"><button type="button" onClick={exportProfile}><Download size={14}/> Download profile summary</button><button type="button" onClick={()=>{if(typeof window!=="undefined")window.sessionStorage.setItem("momentum-employee-profile-focus",id);navigateToRoute("/admin/employee-profiles/workflow");}}>Open secure profile editor</button></div>
+    <div className="prototype-controls"><button type="button" onClick={exportProfile}><Download size={14}/> Download profile summary</button><button type="button" disabled={!writeEnabled} onClick={()=>{if(typeof window!=="undefined")window.sessionStorage.setItem("momentum-employee-profile-focus",id);navigateToRoute("/admin/employee-profiles/workflow");}}>Open secure profile editor</button></div>
     <nav className="prototype-tabs" aria-label="Employee record sections">{sections.map(s=><button key={s} type="button" className={area===s?"is-active":""} aria-current={area===s?"page":undefined} onClick={()=>navigateToRoute(profilePath(id,s==="overview"?undefined:s))}>{s[0].toUpperCase()+s.slice(1)}</button>)}</nav>
     {area==="overview"&&<div className="prototype-columns"><section className="prototype-panel"><h2>Employment</h2><dl className="prototype-facts">
       <div><dt>Employee number</dt><dd>{employment?.employeeNumber??"Not configured"}</dd></div>
