@@ -18,7 +18,7 @@ Internal estimate -> draft review -> approved immutable snapshot -> prepared pro
 | Withholding estimates | Configured percentages | Internal estimate only | Real W-4, FICA, wage caps, additional Medicare, state tax tables, provider validation |
 | Gross to net, draft generation, status | Payroll engine | Existing | Specific adjustments, deductions and corrections |
 | Pay-run submission/review/approval | Existing admin approval | Partial | Maker-checker permissions, comments and delegated approval |
-| Regular and monthly bonus runs | Native payroll | Existing | Off-cycle, termination/final pay, supplemental correction workflows |
+| Regular and monthly bonus runs | Native payroll | Existing | Configured pay groups, settlement and payroll provider acceptance |
 | Disbursement instruction and settlement | Existing ledger | Existing | Actual provider integration and bank reconciliation |
 | Tax liability scheduling/payment evidence | Existing ledger | Existing | Jurisdiction deposit schedule, cross-period rollforward, refund/offset |
 | Provider handoff / totals / discrepancies | New provider lifecycle | Implemented in this branch | Provider-specific approved data mapping and secure transmission |
@@ -33,6 +33,15 @@ Internal estimate -> draft review -> approved immutable snapshot -> prepared pro
 | General ledger posting and reports | Accounting system | Partial | Payroll journal batches, cost centers, liabilities, close reconciliation |
 | W-2/W-3, 940/941/944 and state forms | External provider + filing register | Evidence tracking only | Form-specific validated data and filing adapters |
 | 1099 contractors | Not Zoho Payroll US native | Separate workstream | Worker classification, 1099 provider workflow and reporting |
+
+## Special-pay increment (isolated branch, November 4)
+- **Off-cycle:** Admin-selected active/on-leave employee, approved taxable amount in cents, source reference and reason; new draft calculates internal estimated withholding without repeating fixed standard-period deductions.
+- **Final pay:** Verified HR `Separated` status/date; Admin selects exact approved, unconsumed hourly timecards and/or an evidenced taxable final adjustment. Full salary-period proration is never guessed. Existing payroll account metadata may be inactive after separation without cancelling owed final wages.
+- Both types use the existing Draft → Approved pipeline and the new provider review. **For special runs, provider acceptance is required before the existing release action records payout instructions.** No wire/ACH/filing is executed in this branch.
+- Idempotency rules prevent reuse of a timecard or special earnings evidence reference for the same employee, unless the earlier run is fully voided. Payroll drift rechecks source math before handoff.
+- A released special run with provider submission or filing evidence cannot be blindly voided/reissued. Provider-returned-for-correction batches may proceed to the controlled correction flow if no settled funds or paid liabilities exist.
+- New components: `lib/payroll-special-runs.ts`, `components/payroll/special-payroll-panel.tsx`, and `tests/payroll-special-runs.test.ts`. New write controls are isolated local demo only until acceptance.
+- **Not yet covered:** salary proration engine, severance classification, garnishments, non-taxable expenses, retroactive payroll corrections with settlement history, state-specific final payday deadline engine, government filing data schemas, processor API, and fully authenticated employee payslip access.
 
 ## Rules
 1. Draft amounts are internal estimates; do not represent configured percentage withholding as actual IRS W-4/FICA computation.
