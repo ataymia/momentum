@@ -9,7 +9,7 @@ const intent:TrustedTimecardRequest={
  punch:{clockIn:"08:00",clockOut:"17:00",breakMinutes:30},
  expectedBefore:{clockIn:"08:00",clockOut:"16:00",breakMinutes:30},
 };
-const receipt={ok:true,requestId:intent.requestId,cardId:intent.cardId,
+const receipt={ok:true,requestId:intent.requestId,cardId:"timecard-1234",
  status:"Recorded",replayed:false,serverRecordedAt:"2026-11-04T20:00:00.000Z"};
 
 test("authenticated timecard response must have matching durable reference and timecard",()=>{
@@ -24,7 +24,7 @@ test("authenticated timecard response must have matching durable reference and t
    {...receipt,ok:false},
    {...receipt,replayed:"false"},
  ]){
-   assert.throws(()=>validateTimecardCorrectionReceipt(intent,changed));
+   assert.throws(()=>validateTimecardCorrectionReceipt(intent,changed as Parameters<typeof validateTimecardCorrectionReceipt>[1]));
  }
 });
 test("create-week receipts may return server-generated timecard ID only after commitment",()=>{
