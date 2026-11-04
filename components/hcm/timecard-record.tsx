@@ -63,8 +63,8 @@ export function TimecardRecord({timecardId,history=true}:{timecardId:string;hist
       const result=adding?adminInsertMissedPunch(card.userId,card.id,newDate,values,form.reason.trim()):
         adminAmendTimeEntry(editing!.id,values,form.reason.trim());
       if(!result.ok){setError(result.error??"Correction could not be saved.");return;}
-    }else if(editing&&!correctTimeEntry(editing.id,values,form.reason.trim())){
-      setError("Correction could not be recorded. Check the timecard status and retry.");return;
+    }else if(editing){
+      correctTimeEntry(editing.id,values,form.reason.trim());
     }
     setEditingId(null);setAdding(false);setForm(blank);setError("");
   };
