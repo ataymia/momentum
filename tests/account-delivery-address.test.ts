@@ -49,10 +49,16 @@ test("a separate delivery destination overrides only the delivery-facing address
   assert.equal(deliveryAddressLabel(account),"900 Warehouse Rd, Tempe, AZ, 85281");
 });
 
-test("order delivery validation requires a street, market and five-digit ZIP",()=>{
+test("order delivery validation requires a street, market and valid five-digit or ZIP+4 code",()=>{
   assert.equal(hasCompleteDeliveryAddress(baseAccount),true);
   assert.equal(hasCompleteDeliveryAddress({...baseAccount,streetAddress:""}),false);
   assert.equal(hasCompleteDeliveryAddress({...baseAccount,postalCode:"8501"}),false);
+  assert.equal(hasCompleteDeliveryAddress({...baseAccount,postalCode:"85016-1234"}),true);
+  assert.equal(hasCompleteDeliveryAddress({...baseAccount,postalCode:"85016-123"}),false);
+  assert.equal(hasCompleteDeliveryAddress({...baseAccount,postalCode:"85016-12345"}),false);
+  assert.equal(hasCompleteDeliveryAddress({...baseAccount,postalCode:"85016-12ab"}),false);
+  assert.equal(hasCompleteDeliveryAddress({...baseAccount,deliveryAddressSameAsBusiness:false,deliveryStreetAddress:"900 Warehouse Rd",deliveryLocation:"Tempe, AZ",deliveryPostalCode:"85281-4567"}),true);
+  assert.equal(hasCompleteDeliveryAddress({...baseAccount,deliveryAddressSameAsBusiness:false,deliveryStreetAddress:"900 Warehouse Rd",deliveryLocation:"Tempe, AZ",deliveryPostalCode:"85281-456"}),false);
   assert.equal(hasCompleteDeliveryAddress({...baseAccount,deliveryAddressSameAsBusiness:false,deliveryStreetAddress:"900 Warehouse Rd",deliveryLocation:"Tempe, AZ",deliveryPostalCode:"85281"}),true);
   assert.equal(hasCompleteDeliveryAddress({...baseAccount,deliveryAddressSameAsBusiness:false,deliveryStreetAddress:"",deliveryLocation:"Tempe, AZ",deliveryPostalCode:"85281"}),false);
   assert.deepEqual(deliveryAddressForAccount({...baseAccount,deliveryAddressSameAsBusiness:false,deliveryStreetAddress:"",deliveryLocation:"Tempe, AZ",deliveryPostalCode:"85281"}),{streetAddress:undefined,location:"Tempe, AZ",postalCode:"85281"});
