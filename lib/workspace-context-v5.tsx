@@ -541,10 +541,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const adminCreateMissingTimecard=useCallback((userId:string,weekDate:string,reason:string)=>{
     if(currentUser?.role!=="Administrator")return{ok:false,error:"Administrator access is required."};
     const payload={actorId:currentUser.id,userId,weekDate,reason,at:nowStamp(),cardId:"tc-admin-"+Date.now()+"-"+Math.random().toString(36).slice(2,7)};
-    const preview=insertMissingTimecard(data,payload);
+    const preview=insertMissingTimecard(data,payrollForCorrection(),payload);
     if(!preview.ok)return{ok:false,error:preview.error};
     setData(current=>{
-      const next=insertMissingTimecard(current,payload);
+      const next=insertMissingTimecard(current,payrollForCorrection(),payload);
       return next.ok?next.data:current;
     });
     return{ok:true,id:payload.cardId};
