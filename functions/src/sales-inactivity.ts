@@ -121,7 +121,7 @@ export const salesCRMClockStatus = onRequest({cors:true,region:"us-central1"},as
   const timeRef=db.doc(doc(uid,"timeEntries"));
   const cardsRef=db.doc(doc(uid,"timecards"));
   try{
-    const result=await db.runTransaction(async(tx)=>{
+    const result=await db.runTransaction(async (tx)=>{
       const refs=action==="clockIn"?[stateRef,timeRef,cardsRef]:[stateRef];
       const reads=await Promise.all(refs.map(ref=>tx.get(ref)));
       const state=reads[0].data()||{};
