@@ -48,8 +48,8 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Sales Orders", path: "/sales/orders", permission: "orders", state: "prototype" },
     { label: "Invoices", path: "/sales/invoices", permission: "orderCash", state: "prototype" },
     { label: "Payments Received", path: "/sales/payments", permission: "orderCash", state: "prototype" },
-    { label: "Sales Returns", path: "/sales/returns", permission: "orders", state: "planned" },
-    { label: "Credit Notes", path: "/sales/credit-notes", permission: "orderCash", state: "planned" },
+    { label: "Sales Returns", path: "/sales/returns", permission: "orders", state: "prototype" },
+    { label: "Credit Notes", path: "/sales/credit-notes", permission: "orderCash", state: "prototype" },
     { label: "Customer Portal", path: "/commerce/customer-portal", permission: "orders", state: "planned" },
   ] },
   { label: "Operations", entries: [
@@ -174,7 +174,8 @@ export function pageForPath(path: string): PageKey | null {
   if (ROUTE_OVERRIDES[clean]) return ROUTE_OVERRIDES[clean];
   // Deep-linked records must retain their owning workspace page, not fall back to Home.
   if(clean.startsWith("/sales/orders/"))return "orders";
-  if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/"))return "orderCash";
+  if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
+  if(clean.startsWith("/sales/returns/"))return "orders";
   if(clean.startsWith("/sales/customers/"))return "accounts";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if(clean.startsWith("/items/"))return "products";
@@ -211,6 +212,8 @@ export function routeLabel(path: string): string {
   if (clean.startsWith("/sales/orders/")) return "Order details";
   if (clean.startsWith("/sales/invoices/")) return "Invoice details";
   if (clean.startsWith("/sales/payments/")) return "Payment details";
+  if (clean.startsWith("/sales/returns/")) return "Return details";
+  if (clean.startsWith("/sales/credit-notes/")) return "Credit note details";
   return clean === "/" ? "Home" : "Workspace";
 }
 
@@ -222,7 +225,8 @@ export function permissionForPath(path: string): PageKey | null {
   const portal=CUSTOMER_MENU.find(item=>item.path===clean);
   if (portal) return portal.permission;
   if (clean.startsWith("/sales/orders/")) return "orders";
-  if (clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")) return "orderCash";
+  if (clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/")) return "orderCash";
+  if (clean.startsWith("/sales/returns/")) return "orders";
   if (routeEntry(clean)) return routeEntry(clean)!.permission;
   return pageForPath(clean);
 }
@@ -264,7 +268,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
-  if (clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
+  if (clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
 }
