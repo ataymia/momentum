@@ -60,14 +60,14 @@ export function PayrollWorkflowExperience(){
     if(!periodStart||!periodEnd||!payDate||periodStart>periodEnd){setError("Select a valid start date, end date and payday.");return;}
     const id=buildRegularRun(periodStart,periodEnd,payDate);
     if(!id){setError("No draft was created. Check approved, unused timecards; effective compensation; withholding configuration; payroll locks and dates in the existing payroll controls.");return;}
-    setSelectedId(id);setNotice("Regular payroll draft calculated from approved source records. Review every line and exception before approval.");
+    setSelectedId(id);setNotice("Draft creation requested in local demo. Confirm the new run appears in the register before continuing.");
   };
   const approve=()=>{
     if(!writeEnabled){setError("Read-only prototype: payroll approval requires isolated local demo mode.");return;}
     if(!selected||selected.status!=="Draft"||issues.length)return;
     if(!window.confirm("Approve this payroll draft after reviewing hours, employee setup, taxes and deductions? This approval is recorded but does not pay employees."))return;
     setNotice("");setError("");
-    if(setRunStatus(selected.id,"Approved"))setNotice("Payroll run approved. No funds have been disbursed. Use controlled release and settlement workflow.");
+    if(setRunStatus(selected.id,"Approved"))setNotice("Approval requested in local demo. Confirm the recorded status is Approved; no funds have been disbursed.");
     else setError("Run not approved. A payroll source, permission or period-lock control rejected the action.");
   };
   if(!currentUser||currentUser.role==="Customer")return <div className="prototype-empty">Payroll access is restricted.</div>;
