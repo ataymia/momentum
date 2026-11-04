@@ -56,7 +56,7 @@ export function payLinesMatch(recorded: PayLine, expected: PayLine) {
 
 function expectedLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, run: PayRun, line: PayLine) {
   if (run.kind === "Regular") {
-    return calculateRegularLine(state, data, hcm, line.employeeId, run.periodStart, run.periodEnd, line.sourceTimecardIds);
+    return calculateRegularLine(state, data, hcm, line.employeeId, run.periodStart, run.periodEnd, line.sourceTimecardIds,run.calculationVersion??1);
   }
 
   const ids = [...new Set(line.sourceBonusIds)];
@@ -70,7 +70,7 @@ function expectedLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, r
   if (signals.some((signal) => !signal)) return null;
   if (signals.some((signal) => signal?.repId !== line.employeeId)) return null;
   const amount = signals.reduce((sum, signal) => sum + (signal?.amount ?? 0), 0);
-  return calculateBonusLine(state, hcm, line.employeeId, run.payDate, amount, ids);
+  return calculateBonusLine(state, hcm, line.employeeId, run.payDate, amount, ids,run.calculationVersion??1);
 }
 
 export function payrollRunDrift(state: PayrollState, data: WorkspaceData, hcm: HCMState, run: PayRun) {
