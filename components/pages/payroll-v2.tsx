@@ -16,6 +16,7 @@ import { usePayroll } from "../../lib/payroll-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import {PayrollProviderPanel} from "../payroll/provider-handoff-panel";
 import {SpecialPayrollPanel} from "../payroll/special-payroll-panel";
+import {RetroPayrollPanel} from "../payroll/retro-payroll-panel";
 import { Button, Field, PageHeader, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const today = () => arizonaDateKey();
@@ -28,7 +29,7 @@ export function PayrollPage() {
   const { hcm } = useHcm();
   const { payroll, savePayGroup, savePayrollEmployee, saveWithholding, saveEmployerTaxRule, buildRegularRun, buildBonusRun, setRunStatus, voidAndReissue, settleDisbursement, failDisbursement, retryDisbursement, updateLiability, resetPayroll } = usePayroll();
   const admin = currentUser?.role === "Administrator";
-  const [tab, setTab] = useState<"self" | "earnings" | "processing" | "tax" | "provider" | "setup">("self");
+  const [tab, setTab] = useState<"self" | "earnings" | "processing" | "tax" | "provider" | "retro" | "setup">("self");
   const [notice, setNotice] = useState("");
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
@@ -148,8 +149,9 @@ export function PayrollPage() {
 
   return <div className="page page--payroll">
     <PageHeader eyebrow="Workforce compensation" title="Payroll" description="Native payroll consumes effective HR compensation, approved time, monthly earned bonuses, active benefit elections, configured withholding, and payment instructions." actions={<div className="request-actions">{notice && <StatusPill tone="success">{notice}</StatusPill>}<StatusPill tone="gold">Native payroll</StatusPill>{admin && <Button size="sm" variant="ghost" icon={<RefreshCcw size={14}/>} onClick={() => { resetPayroll(); setNotice("Payroll demo reset"); }}>Reset payroll demo</Button>}</div>} />
-    <div className="company-tabs"><button className={tab === "self" ? "is-active" : ""} onClick={() => setTab("self")}>My pay</button>{admin && <button className={tab === "earnings" ? "is-active" : ""} onClick={() => setTab("earnings")}>Earnings</button>}{admin && <button className={tab === "processing" ? "is-active" : ""} onClick={() => setTab("processing")}>Pay runs</button>}{admin && <button className={tab === "tax" ? "is-active" : ""} onClick={() => setTab("tax")}>Taxes & disbursement</button>}{admin && <button className={tab === "provider" ? "is-active" : ""} onClick={() => setTab("provider")}>Processor & tax filings</button>}{admin && <button className={tab === "setup" ? "is-active" : ""} onClick={() => setTab("setup")}>Payroll setup</button>}</div>
+    <div className="company-tabs"><button className={tab === "self" ? "is-active" : ""} onClick={() => setTab("self")}>My pay</button>{admin && <button className={tab === "earnings" ? "is-active" : ""} onClick={() => setTab("earnings")}>Earnings</button>}{admin && <button className={tab === "processing" ? "is-active" : ""} onClick={() => setTab("processing")}>Pay runs</button>}{admin && <button className={tab === "tax" ? "is-active" : ""} onClick={() => setTab("tax")}>Taxes & disbursement</button>}{admin && <button className={tab === "provider" ? "is-active" : ""} onClick={() => setTab("provider")}>Processor & tax filings</button>}{admin && <button className={tab === "retro" ? "is-active" : ""} onClick={() => setTab("retro")}>Retro corrections</button>}{admin && <button className={tab === "setup" ? "is-active" : ""} onClick={() => setTab("setup")}>Payroll setup</button>}</div>
 
+    {tab === "retro" && admin && <RetroPayrollPanel/>}
     {tab === "self" && myEarnings && <Section title="Hours & earnings awaiting payroll">
       <div className="hcm-metrics payroll-ytd">
         <article><span>Approved regular hours</span><strong>{myEarnings.regularHours.toFixed(2)}</strong></article>
