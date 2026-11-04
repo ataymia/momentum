@@ -47,14 +47,14 @@ function dueLabel(terms: string, dueDate?: string) {
   return "Due according to approved terms";
 }
 
-type InvoicePrintCenterProps={allowedOrderIds?:string[];title?:string;description?:string};
+type InvoicePrintCenterProps={allowedOrderIds?:string[];allowedInvoiceIds?:string[];title?:string;description?:string};
 
-export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",description="Print a single invoice or select multiple invoices for a delivery run. Browser print also supports Save as PDF."}:InvoicePrintCenterProps={}) {
+export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Customer invoices",description="Print a single invoice or select multiple invoices for a delivery run. Browser print also supports Save as PDF."}:InvoicePrintCenterProps={}) {
   const { data, scope } = useWorkspace();
   const { commerce } = useCommerce();
   const { state: deliveryState, taskForOrder } = useDelivery();
   const orderIds = useMemo(() => {const scoped=new Set(scope.orders.map((order)=>order.id));return new Set(allowedOrderIds?allowedOrderIds.filter((id)=>scoped.has(id)):[...scoped]);}, [scope.orders,allowedOrderIds]);
-  const invoices = useMemo(() => commerce.invoices.filter((invoice) => orderIds.has(invoice.orderId)).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt)), [commerce.invoices, orderIds]);
+  const invoices = useMemo(() => commerce.invoices.filter((invoice) => orderIds.has(invoice.orderId)&&(!allowedInvoiceIds||allowedInvoiceIds.includes(invoice.id))).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt)), [commerce.invoices, orderIds,allowedInvoiceIds]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [copies, setCopies] = useState<Copies>(1);
@@ -208,7 +208,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
       <div className="invoice-print-toolbar">
         <Button type="button" size="sm" variant="secondary" icon={allSelected ? <CheckSquare2 size={15}/> : <Square size={15}/>} onClick={toggleAll}>{allSelected ? "Clear all" : "Select all"}</Button>
         <label className="invoice-copy-select"><span>Copies per invoice</span><select value={copies} onChange={(event) => setCopies(Number(event.target.value) as Copies)}><option value={1}>1 copy</option><option value={2}>2 copies</option></select></label>
-        <Button type="button" size="sm" icon={<Printer size={15}/>} disabled={!selectedIds.length} onClick={() => startPrint(selectedIds)}>Print selected ({selectedIds.length})</Button>
+        <Button type="button" size="sm" icon={<Printer size={15}/>} disabled={!selectedIds.length} onClick={() => startPrint(selectedIds)}>Print selected ({selectedIds.length})</Button><Button type="button" size="sm" variant="secondary" icon={<Printer size={15}/>} disabled={!invoices.some(invoice=>invoice.status!=="Void")} onClick={() => startPrint(invoices.filter(invoice=>invoice.status!=="Void").map(invoice=>invoice.id))}>Print all active ({invoices.filter(invoice=>invoice.status!=="Void").length})</Button>
       </div>
       {printNotice && <p className="form-notice invoice-print-notice" role="status">{printNotice}</p>}
 
