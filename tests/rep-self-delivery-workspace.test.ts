@@ -99,5 +99,6 @@ test("new rep delivery mutations default to read-only and require an exact isola
   assert.match(ui,/NEXT_PUBLIC_REP_DELIVERY_REVIEW_MUTATIONS==="true"/);
   assert.match(ui,/NEXT_PUBLIC_REP_DELIVERY_STAGING_PROJECT_ID/);
   assert.match(ui,/reviewMutationsEnabled&&step&&accepted/);
+  assert.match(ui,/step==="complete"&&reviewMutationsEnabled&&/);
   assert.match(ui,/if\(!reviewMutationsEnabled\|\|!ready/);
 });
