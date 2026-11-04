@@ -40,6 +40,7 @@ export function PayrollProvider({children}:{children:ReactNode}){
   const buildBonusRun=(month:string,payDate:string)=>{if(!isAdmin||!validMonth(month)||!validDateKey(payDate))return null;const start=`${month}-01`;const end=monthEndKey(month);if(!end||locks.isRangeLocked("Payroll",start,end)||locks.isLocked("Payroll",payDate))return null;const earnings=earnedBonusesForMonth(payroll,data,month);const byEmployee=new Map<string,{amount:number;ids:string[]}>();for(const item of earnings){const current=byEmployee.get(item.signal.repId)??{amount:0,ids:[]};current.amount+=item.signal.amount;current.ids.push(item.signal.id);byEmployee.set(item.signal.repId,current);}if(!byEmployee.size)return null;const lineCandidates=[...byEmployee.entries()].map(([employeeId,earning])=>calculateBonusLine(payroll,hcm,employeeId,payDate,earning.amount,earning.ids));const lines=lineCandidates.filter((line):line is NonNullable<typeof line>=>Boolean(line));if(lines.length!==byEmployee.size)return null;const id=uid("bonus-run");const run:PayRun={id,kind:"Monthly bonus",createdAt:now(),periodStart:start,periodEnd:end,payDate,status:"Draft",lines,calculationVersion:2};setPayroll((state)=>{const consumed=new Set(state.runs.filter((item)=>item.status!=="Voided").flatMap((item)=>item.lines.flatMap((line)=>line.sourceBonusIds)));if(lines.some((line)=>line.sourceBonusIds.some((sourceId)=>consumed.has(sourceId))))return state;return{...state,runs:[run,...state.runs]};});return id;};
   const createSpecialDraft=(input:SpecialPayDraftInput):{ok:boolean;id?:string;error?:string}=>{
     if(!isAdmin||!currentUser)return{ok:false,error:"Administrator permission required."};
+    if(!runtime.isDemo||momentumStorage.mode()!=="local")return{ok:false,error:"Special payroll writes are restricted to isolated local demo until the release is approved."};
     if(locks.isRangeLocked("Payroll",input.periodStart,input.periodEnd)||locks.isLocked("Payroll",input.payDate))
       return{ok:false,error:"Payroll period or pay date is locked."};
     const clock={id:uid("special-run"),actorId:currentUser.id,at:now()};
@@ -64,6 +65,7 @@ export function PayrollProvider({children}:{children:ReactNode}){
   // The provider's confirmation is evidence, not an API call or money movement.
   const providerAction=(operation:(state:PayrollState,clock:{actorId:string;at:string;id:string})=>{state:PayrollState;ok:boolean;error?:string}):ProviderActionFeedback=>{
     if(!isAdmin||!currentUser)return{ok:false,error:"Administrator access required."};
+    if(!runtime.isDemo||momentumStorage.mode()!=="local")return{ok:false,error:"Provider and filing writes are restricted to isolated local demo until the release is approved."};
     const clock={actorId:currentUser.id,at:now(),id:uid("provider-audit")};
     const preview=operation(payroll,clock);
     if(!preview.ok)return{ok:false,error:preview.error};
