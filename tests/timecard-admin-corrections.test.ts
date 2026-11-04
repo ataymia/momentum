@@ -3,6 +3,7 @@ import test from "node:test";
 import {amendTimeEntry,insertMissedPunch,insertMissingTimecard} from "../lib/timecard-admin-corrections";
 import {createPayrollSeed} from "../lib/payroll-engine";
 import {normalizeWorkspaceData} from "../lib/workspace-normalization";
+import {verifyTimecardCorrectionEnvironment} from "../lib/timecard-correction-environment";
 import type {WorkspaceData} from "../lib/types";
 
 const at="2026-11-04T20:00:00.000Z";
@@ -110,4 +111,20 @@ test("a missing week cannot be added when paid or approved payroll overlaps that
  const result=insertMissingTimecard(src,p,{actorId:"admin",userId:"worker",weekDate:"2026-10-28",
    cardId:"new-timecard",reason:"Need a verified missing week",at});
  assert.equal(result.ok,false);
+});
+
+
+test("timecard correction environment fails closed without validated local payroll source locks",()=>{
+ const local={runtimeMode:"demo" as const,storageMode:"local" as const,connectedSession:false,
+  payrollSnapshot:JSON.stringify(createPayrollSeed())};
+ assert(verifyTimecardCorrectionEnvironment(local).ok);
+ assert.equal(verifyTimecardCorrectionEnvironment({...local,payrollSnapshot:null}).ok,false);
+ assert.equal(verifyTimecardCorrectionEnvironment({...local,payrollSnapshot:"{broken"}).ok,false);
+ assert.equal(verifyTimecardCorrectionEnvironment({...local,payrollSnapshot:"{}"}).ok,false);
+ assert.equal(verifyTimecardCorrectionEnvironment({...local,runtimeMode:"production"}).ok,false);
+ assert.equal(verifyTimecardCorrectionEnvironment({...local,storageMode:"firestore"}).ok,false);
+ assert.equal(verifyTimecardCorrectionEnvironment({...local,connectedSession:true}).ok,false);
+ const invalid=JSON.parse(local.payrollSnapshot);
+ invalid.runs=[{id:"run-1",status:"Approved",kind:"Invalid"}];
+ assert.equal(verifyTimecardCorrectionEnvironment({...local,payrollSnapshot:JSON.stringify(invalid)}).ok,false);
 });
