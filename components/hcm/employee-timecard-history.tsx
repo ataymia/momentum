@@ -3,8 +3,6 @@
 import {useState} from "react";
 import {Download} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
-import {useHcm} from "../../lib/hcm-context";
-import {appendAudit} from "../../lib/hcm-engine";
 import {downloadPayrollCsv} from "../../lib/payroll-download";
 import {TimecardRecord} from "./timecard-record";
 import {Button,Field,Section,StatusPill,hoursBetween} from "../ui";
@@ -12,7 +10,6 @@ import {Button,Field,Section,StatusPill,hoursBetween} from "../ui";
 /** Backdated corrections must remain accessible for employee re-attestation. */
 export function EmployeeTimecardHistory(){
  const {data,currentUser,submitTimecard}=useWorkspace();
- const {setHcm}=useHcm();
  const [selectedId,setSelectedId]=useState("");
  const [attest,setAttest]=useState(false);
  const [note,setNote]=useState("");
@@ -28,9 +25,7 @@ export function EmployeeTimecardHistory(){
   if(!selected||!["Open","Returned"].includes(selected.status)||!attest)return;
   if(incomplete){setError("Resolve missing clock-outs and unfinished meals before submitting this week.");return;}
   if(selected.status==="Returned"&&note.trim().length<8){setError("Explain the change or confirm what you reviewed before re-attesting.");return;}
-  setHcm(state=>appendAudit(state,{actorId:currentUser.id,action:selected.status==="Returned"?
-   "Timecard resubmitted after correction":"Timecard submitted",entityType:"TimecardReview",entityId:selected.id,reason:note.trim()||undefined}));
-  submitTimecard(selected.id);
+  submitTimecard(selected.id,note.trim());
   setError("");setNotice("Submission requested. Confirm the card changes to Submitted; a manager must approve it again.");
   setAttest(false);setNote("");
  };
