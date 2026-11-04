@@ -159,7 +159,7 @@ User confirmed the redesign covers the **whole business**, not just employee CRM
 - Full fulfillment controls snapshot succeeded in GitHub Actions run 41747640132.
 - Full Home and source-metric snapshot succeeded in run 41748406061.
 - Full Sales Returns / Credit Notes snapshot succeeded in run 41748805461.
-- Work Exceptions / Reviewed Work snapshot validation is separate and must not be marked passing until the result is checked.
+- Full Work Exceptions / Reviewed Work snapshot succeeded in run 41749309681, including all mandatory CI checks and production build.
 - All of these changes remain on the isolated review branch. **No merge, production release, customer payment, external message, or money movement has been authorized.**
 
 ### Outstanding decisions and integration dependencies
@@ -177,3 +177,9 @@ User confirmed the redesign covers the **whole business**, not just employee CRM
 - **Outcomes affected:** Inventory custody reliability, approval processing, administrative visibility, order-through-invoice traceability and eventual cash reconciliation. No revenue growth or KPI improvement is claimed from UI commits.
 - **Blockers/escalation:** Production identity/legal readiness, external payment provider selection, owner approval and full staging data validation.
 - **Next decision:** Is the current Home layout suitable as the prototype direction once rendered, and which transaction workflow is first authorized for staged end-to-end testing?
+
+### Independent main-branch advancement detected during prototype QA
+- A separate merge advanced main from 21c64c37f2f963c30eaade67fcc44f242c4e6dec to df7b85b9ba6fcd9bd63eb08a57575656278dee08 at the time checked. It contains employee clock-in location permission recovery and administrator field reminders. This advancement **did not come from this redesign sprint**.
+- Repository comparison identifies the branches as diverged, with a common base at 21c64c37f2f963c30eaade67fcc44f242c4e6dec. The new main changes touch shared app shell, package scripts and other employee/location infrastructure. These areas require conflict and regression analysis before any staged integration.
+- No branch sync, rebase, merge, deployment, customer changes or external commitments were made by this sprint. Fixed-snapshot CI passes apply to the prototype contents at the listed commit snapshots, not the combined future result after resolving conflicts.
+- **Recommended next decision:** Approve a separate reconciliation plan and visual review before requesting any merge. Continue unapproved modules strictly as prototypes on the isolated branch.
