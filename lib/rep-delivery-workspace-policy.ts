@@ -24,7 +24,7 @@ export function repDeliveryNextStep(record:RepDeliveryReceipt|null,orderId:strin
 }
 export function repDeliveryCandidate(order:Order,repId:string):boolean{
   return Boolean(repId&&!order.testOnly&&order.ownerId===repId&&
-    ["Approved","Allocated","Out for delivery","Delivered"].includes(order.status));
+    ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status));
 }
 export function repDeliveryProofRecorded(record:RepDeliveryReceipt|null,orderId:string):boolean{
   return Boolean(record&&record.ok===true&&record.cloudConfirmed===true&&
