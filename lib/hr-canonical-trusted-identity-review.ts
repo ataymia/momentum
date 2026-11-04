@@ -56,7 +56,7 @@ function checkedClaims(value: unknown, projectId: string, now: number): Verified
       claims.auth_time > claims.iat || claims.iat >= claims.exp ||
       claims.iat > now + 60 || claims.exp <= now) return null;
   return {
-    uid: claims.uid, subject: claims.sub,
+    uid: claims.uid, subject: claims.uid,
     issuedAt: claims.iat, authenticatedAt: claims.auth_time, expiresAt: claims.exp,
   };
 }
