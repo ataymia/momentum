@@ -6,6 +6,7 @@ import {useWorkspace} from "../../lib/workspace-context";
 import {usePayroll} from "../../lib/payroll-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {momentumStorage} from "../../lib/persistence";
+import {connectedTimecardCorrectionEnabled,newTimecardCorrectionId,submitTrustedTimecardCorrection} from "../../lib/timecard-trusted-client";
 import {consumedTimecards} from "../../lib/payroll-engine";
 import {downloadPayrollCsv} from "../../lib/payroll-download";
 import {TimecardRecord} from "./timecard-record";
@@ -15,6 +16,8 @@ export function AdminTimecardCorrectionCenter(){
  const {data,currentUser,adminCreateMissingTimecard}=useWorkspace();
  const {payroll}=usePayroll();
  const runtime=useRuntimeMode();const writeDemo=runtime.isDemo&&momentumStorage.mode()==="local";
+ const connectedWrite=!runtime.isDemo&&connectedTimecardCorrectionEnabled&&momentumStorage.mode()==="firestore";
+ const writeEnabled=writeDemo||connectedWrite;
  const [search,setSearch]=useState("");
  const [status,setStatus]=useState("all");
  const [selectedId,setSelectedId]=useState("");
@@ -23,6 +26,8 @@ export function AdminTimecardCorrectionCenter(){
  const [creationReason,setCreationReason]=useState("");
  const [creationError,setCreationError]=useState("");
  const [creationMessage,setCreationMessage]=useState("");
+ const [creationRequestId,setCreationRequestId]=useState("");
+ const [creating,setCreating]=useState(false);
 
  const admin=currentUser?.role==="Administrator";
  const consumed=consumedTimecards(payroll);
@@ -34,12 +39,31 @@ export function AdminTimecardCorrectionCenter(){
  }).sort((a,b)=>b.weekEnd.localeCompare(a.weekEnd)):[],
  [admin,data.users,data.timecards,status,search,consumed]);
  const selected=records.find(c=>c.id===selectedId);
- const createMissingWeek=()=>{
+ const createMissingWeek=async()=>{
+   if(creating)return;
    setCreationError("");setCreationMessage("");
+   if(connectedWrite){
+     const requestId=creationRequestId||newTimecardCorrectionId();
+     setCreationRequestId(requestId);setCreating(true);
+     try{
+       const outcome=await submitTrustedTimecardCorrection({
+         requestId,action:"create_week",targetUid:newEmployeeId,
+         weekDate:newWeekDate,reason:creationReason.trim(),
+       });
+       setSearch("");setStatus("all");setSelectedId(outcome.cardId);
+       setCreationMessage(outcome.refreshed?
+         "Server recorded the missing week. Add verified shifts and request employee attestation.":
+         outcome.refreshWarning??"Server recorded the missing week. Refresh before adding shifts.");
+       setCreationReason("");setNewWeekDate("");setCreationRequestId("");
+     }catch(problem){
+       setCreationError(problem instanceof Error?problem.message:"Missing-week request was not confirmed.");
+     }finally{setCreating(false);}
+     return;
+   }
    const result=adminCreateMissingTimecard(newEmployeeId,newWeekDate,creationReason);
    if(!result.ok){setCreationError(result.error??"Missing timecard could not be created.");return;}
    setSearch("");setStatus("all");setSelectedId(result.id??"");
-   setCreationMessage("Missing timecard created for employee review. Open it below and add verified shifts, then request employee attestation.");
+   setCreationMessage("Demo missing week created. Add verified shifts, then request employee attestation.");
    setCreationReason("");setNewWeekDate("");
  };
  const exportRows=records.map(card=>{
@@ -55,17 +79,17 @@ export function AdminTimecardCorrectionCenter(){
  if(!admin)return null;
  return <Section title="Administrator timecard corrections"
   description="Find any employee's timecard, correct punches or breaks, and record verified missed shifts. Unpaid edits return the card for employee re-attestation and another approval.">
-  {!writeDemo&&<p className="form-hint">This connected environment is read-only for timecard corrections until a server-authoritative payroll transaction is available. Existing records and exports remain viewable.</p>}
+  {!writeEnabled&&<p className="form-hint">Connected corrections remain read-only until the client and server release switches are approved. Records and exports remain available.</p>}
   <div className="form-grid">
-    <Field label="Employee missing an entire week"><select value={newEmployeeId} onChange={e=>setNewEmployeeId(e.target.value)}>
+    <Field label="Employee missing an entire week"><select value={newEmployeeId} onChange={e=>{setNewEmployeeId(e.target.value);setCreationRequestId("");}}>
       <option value="">Select an employee</option>
       {data.users.filter(u=>u.role!=="Customer").sort((a,b)=>a.name.localeCompare(b.name)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
     </select></Field>
-    <Field label="Date during missing week"><input type="date" value={newWeekDate} onChange={e=>setNewWeekDate(e.target.value)}/></Field>
-    <Field label="Reason and source of verification"><input value={creationReason} onChange={e=>setCreationReason(e.target.value)}
+    <Field label="Date during missing week"><input type="date" value={newWeekDate} onChange={e=>{setNewWeekDate(e.target.value);setCreationRequestId("");}}/></Field>
+    <Field label="Reason and source of verification"><input value={creationReason} onChange={e=>{setCreationReason(e.target.value);setCreationRequestId("");}}
       placeholder="Employee verified the missed week"/></Field>
-    <Button variant="secondary" disabled={!writeDemo||!newEmployeeId||!newWeekDate||creationReason.trim().length<8}
-      onClick={createMissingWeek}>Create missing timecard</Button>
+    <Button variant="secondary" disabled={!writeEnabled||creating||!newEmployeeId||!newWeekDate||creationReason.trim().length<8}
+      onClick={createMissingWeek}>{creating?"Recording securely…":"Create missing timecard"}</Button>
   </div>
   {creationError&&<p role="alert" className="form-error">{creationError}</p>}
   {creationMessage&&<p role="status" className="form-notice">{creationMessage}</p>}
