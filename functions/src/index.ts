@@ -1764,3 +1764,6 @@ export {
   sendProgramPricingWarnings,
   sendInventoryReorderWarnings,
 } from "./scheduled-commercial-emails";
+
+// Sales activity timekeeping is enforced on the server, independently of the tablet.
+export {salesCRMInactivityClockOut,salesCRMClockStatus} from "./sales-inactivity";
