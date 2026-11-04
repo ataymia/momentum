@@ -115,6 +115,7 @@ test("duplicate IDs and evidence, malformed cents, and changed original source a
  if(!first.ok)return;
  assert.equal(proposeRetroCorrection(first.state,input(140),clock("case-1")).ok,false);
  assert.equal(proposeRetroCorrection(first.state,input(140),clock("case-2")).ok,false);
+ assert.equal(proposeRetroCorrection(first.state,{...input(140),evidenceReference:"entirely-new-evidence"},clock("case-3")).ok,false);
  first.state.runs[0].lines[0].grossPay=120;
  assert.equal(reviewRetroCorrection(first.state,"case-1",clock("review-2")).ok,false);
 });
