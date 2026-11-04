@@ -70,7 +70,8 @@ export function retroCasesValid(input:unknown):input is RetroCorrectionCase[]{
   return true;
  });
 }
-export function proposeRetroCorrection(state:PayrollState,input:RetroInput,clock:RetroClock):RetroResult{
+export function proposeRetroCorrection(state:PayrollState,input:RetroInput,clock:RetroClock,
+  verification?:{data:WorkspaceData;hcm:HCMState}):RetroResult{
  if(!clockValid(clock))return fail("Authenticated author, case identifier and timestamp are required.");
  if(!cents(input.correctedGross))return fail("The corrected gross must be a valid USD amount to the cent.");
  if(input.reason.trim().length<8||input.evidenceReference.trim().length<5)
@@ -88,6 +89,16 @@ export function proposeRetroCorrection(state:PayrollState,input:RetroInput,clock
        w.overtimeThresholdHours,w.originalWeeklyGross,w.correctedWeeklyGross].every(n=>Number.isFinite(n)&&n>=0)||
      Math.abs(money(originalGross+w.correctedWeeklyGross-w.originalWeeklyGross)-input.correctedGross)>0.005)
      return fail("Hourly wage calculation evidence does not reconcile to the proposed corrected gross.");
+   if(!verification)return fail("Source-backed hourly calculations require a fresh workspace and HR verification.");
+   const recomputed=calculateRetroWeekGross(state,verification.data,verification.hcm,
+     input.sourceRunId,input.employeeId,w.sourceTimecardId,w.correctedWeekHours);
+   if(!recomputed.ok||Math.abs(recomputed.correctedGross-input.correctedGross)>0.005||
+     Math.abs(recomputed.originalWeekHours-w.originalWeekHours)>0.005||
+     Math.abs(recomputed.historicalHourlyRate-w.historicalHourlyRate)>0.005||
+     Math.abs(recomputed.overtimeThresholdHours-w.overtimeThresholdHours)>0.005||
+     Math.abs(recomputed.originalWeeklyGross-w.originalWeeklyGross)>0.005||
+     Math.abs(recomputed.correctedWeeklyGross-w.correctedWeeklyGross)>0.005)
+     return fail("Historical wage evidence changed. Recalculate from the current original source before opening this case.");
  }
  if(state.retroCases.some(c=>c.sourceRunId===input.sourceRunId&&c.employeeId===input.employeeId&&c.status!=="Closed"))
    return fail("An unresolved correction already exists for this employee and original paycheck. Reconcile that case before starting another.");
