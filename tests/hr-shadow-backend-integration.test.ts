@@ -199,3 +199,55 @@ test("denied HCM shard is quarantined by actual prime read, never interpreted as
     assert.equal((await backend.refreshKeys([HCM])).ok, false);
   } finally { backend.dispose(); }
 });
+
+const AUDIT = "momentum-audit-v1";
+const auditManifestPath = "userDomains/synthetic-actor/audit/events";
+const auditChunkPath = "userDomains/synthetic-actor/audit/events__chunk_000000";
+const auditManifest = { shardManifestVersion: 1, shards: ["events__chunk_000000"], itemCount: 1 };
+const auditChunk = (actorId: string, marker: string) =>
+  ({ items: [{ id: marker, actorId, marker }] });
+
+test("review backend hydrates a complete owner-verified audit chunk", async () => {
+  const reads = new SyntheticReads();
+  reads.put(auditManifestPath, auditManifest);
+  reads.put(auditChunkPath, auditChunk("synthetic-actor", "complete-audit"));
+  const backend = makeBackend(reads, scope("synthetic-actor", "Administrator"));
+  try {
+    await backend.prime();
+    assert.equal(hasMarker(backend.getItem(AUDIT), "complete-audit"), true);
+    assert.ok(reads.calls.some((paths) => paths.includes(auditChunkPath)));
+  } finally { backend.dispose(); }
+});
+
+test("review backend quarantines denied, missing and cross-owned chunk manifests without partial audit history", async () => {
+  for (const scenario of ["denied", "missing", "wrong-owner"] as const) {
+    const reads = new SyntheticReads();
+    reads.put(auditManifestPath, auditManifest);
+    if (scenario !== "missing") reads.put(auditChunkPath,
+      auditChunk(scenario === "wrong-owner" ? "synthetic-other" : "synthetic-actor", scenario),
+      scenario === "denied");
+    const backend = makeBackend(reads, scope("synthetic-actor", "Administrator"));
+    try {
+      await backend.prime();
+      assert.equal(backend.getItem(AUDIT), null, scenario);
+      assert.equal(hasMarker(backend.getItem(AUDIT), scenario), false);
+    } finally { backend.dispose(); }
+  }
+});
+
+test("delayed chunk hydration from a previous authority epoch cannot enter review backend cache", async () => {
+  const reads = new SyntheticReads();
+  reads.put(auditManifestPath, auditManifest);
+  reads.put(auditChunkPath, auditChunk("synthetic-actor", "revoked-audit"));
+  const backend = makeBackend(reads, scope("synthetic-actor", "Administrator"));
+  const pause = reads.pauseNextBatch((paths) => paths.includes(auditChunkPath));
+  try {
+    const oldPrime = backend.prime();
+    await pause.entered;
+    await backend.updateScope(scope("synthetic-actor", "Sales Representative"));
+    pause.resume();
+    await oldPrime;
+    assert.equal(backend.getItem(AUDIT), null);
+    assert.equal(hasMarker(backend.getItem(AUDIT), "revoked-audit"), false);
+  } finally { pause.resume(); backend.dispose(); }
+});
