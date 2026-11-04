@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {amendTimeEntry,insertMissedPunch,insertMissingTimecard} from "../lib/timecard-admin-corrections";
-import {createPayrollSeed,type PayRun} from "../lib/payroll-engine";
+import {createPayrollSeed} from "../lib/payroll-engine";
 import {normalizeWorkspaceData} from "../lib/workspace-normalization";
 import type {WorkspaceData} from "../lib/types";
 
@@ -21,7 +21,7 @@ const processed=()=>{
  const payroll=createPayrollSeed();
  payroll.runs.push({
   id:"processed-1",kind:"Regular",createdAt:at,periodStart:"2026-10-26",periodEnd:"2026-11-01",payDate:"2026-11-06",status:"Draft",
-  lines:[{employeeId:"worker",sourceTimecardIds:["card-1"],sourceBonusIds:[]} as PayRun["lines"][number]],
+  lines:[{employeeId:"worker",regularHours:8,overtimeHours:0,regularPay:160,overtimePay:0,bonusPay:0,grossPay:160,benefitDeduction:0,taxableWages:160,federalTax:16,stateTax:8,localTax:0,additionalWithholding:0,postTaxDeduction:0,employeeTaxes:24,employerTaxes:12,netPay:136,sourceTimecardIds:["card-1"],sourceBonusIds:[]}],
  });
  return payroll;
 };
