@@ -53,6 +53,7 @@ export function PeopleExperience(){
     <div className="prototype-domain-cards">
       <NavTile label="Employee Directory" path="/people/directory" detail={admin?"Active staff and reporting lines":"Authorized directory access"}/>
       <NavTile label="My Employee Profile" path="/people/me" detail="My onboarding, training, time, requests and documents"/>
+      <NavTile label={admin?"HR Request Reviews":"My HR Requests"} path="/people/requests" detail="Open recorded leave and personnel requests with scoped review details"/>
       {admin&&<NavTile label="Employee Profiles" path="/admin/employee-profiles" detail="Restricted personnel files and reviews"/>}
       {admin&&<NavTile label="Onboarding Queue" path="/people/onboarding" detail="Existing onboarding administration"/>}
       {admin&&<NavTile label="Checklist Review" path="/people/onboarding/review" detail="Read-only open cases and task status"/>}
