@@ -72,9 +72,10 @@ export function PayrollProvider({children}:{children:ReactNode}){
     setPayroll(state=>{const latest=operation(state,clock);return latest.ok?latest.state:state;});
     return{ok:true};
   };
-  const prepareProviderPacketAction=(runId:string,provider:string)=>providerAction((state,clock)=>prepareProviderPacket(state,runId,provider,clock));
-  const submitProviderPacketAction=(runId:string,reference:string)=>providerAction((state,clock)=>submitProviderPacket(state,runId,reference,clock));
-  const reviewProviderPacketAction=(runId:string,reference:string,actual:ProviderTotals,reason:string)=>providerAction((state,clock)=>reviewProviderPacket(state,runId,reference,actual,clock,reason));
+  const providerPreflight=(runId:string)=>{const run=payroll.runs.find(r=>r.id===runId);return Boolean(run&&!runLocked(run)&&!runSourcesInvalid(run));};
+  const prepareProviderPacketAction=(runId:string,provider:string)=>providerPreflight(runId)?providerAction((state,clock)=>prepareProviderPacket(state,runId,provider,clock)):{ok:false,error:"Source records changed or payroll period locked. Re-review the run before sending."};
+  const submitProviderPacketAction=(runId:string,reference:string)=>providerPreflight(runId)?providerAction((state,clock)=>submitProviderPacket(state,runId,reference,clock)):{ok:false,error:"Source records changed or payroll period locked. Re-review before submission."};
+  const reviewProviderPacketAction=(runId:string,reference:string,actual:ProviderTotals,reason:string)=>providerPreflight(runId)?providerAction((state,clock)=>reviewProviderPacket(state,runId,reference,actual,clock,reason)):{ok:false,error:"Payroll sources changed while awaiting processor review. Resolve before acceptance."};
   const reconcileProviderPayAction=(runId:string)=>providerAction((state,clock)=>reconcileProviderPay(state,runId,clock));
   const addFilingCaseAction=(runId:string,input:Pick<PayrollFilingCase,"id"|"formCode"|"agency"|"periodStart"|"periodEnd"|"dueDate">,amendmentOf?:string)=>providerAction((state,clock)=>addFilingCase(state,runId,input,clock,amendmentOf));
   const submitFilingCaseAction=(runId:string,filingId:string,provider:string,reference:string)=>providerAction((state,clock)=>submitFilingCase(state,runId,filingId,provider,reference,clock));
