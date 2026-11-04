@@ -47,5 +47,5 @@ test("future HCM chunk fields require the same complete owner-verified manifest"
   const source = { shardManifestVersion: 1, shards: ["documents__chunk_000000"], itemCount: 1 };
   const snapshot: FirestoreSnapshot = { path: hcmShard, exists: true, data: { items: [{ id: "doc", userId: "synthetic-employee" }] } };
   assert.equal(reviewChunkHydration(future, hcmPath, source, [snapshot]).ok, true);
-  assert.equal(reviewChunkHydration(future, hcmPath, source, [{ ...snapshot, denied: true }]).ok, false);
+  assert.equal(reviewChunkHydration(future, hcmPath, source, [{ ...snapshot, denied: true } as FirestoreSnapshot & { denied: boolean }]).ok, false);
 });
