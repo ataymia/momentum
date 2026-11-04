@@ -12,6 +12,7 @@ import { PAYROLL_STORAGE_KEY, BenefitTaxRule, BenefitTaxTreatment, Disbursement,
 import {prepareProviderPacket,submitProviderPacket,reviewProviderPacket,reconcileProviderPay,addFilingCase,submitFilingCase,decideFilingCase,type ProviderTotals,type PayrollFilingCase} from "./payroll-provider-lifecycle";
 import { useWorkspace } from "./workspace-context";
 import {createSpecialPayDraft,type SpecialPayDraftInput} from "./payroll-special-runs";
+import {proposeRetroCorrection,reviewRetroCorrection,approveRetroCorrection,draftRetroSupplement,closeRecoveryReview,type RetroInput} from "./payroll-retro-corrections";
 
 const now=()=>new Date().toISOString();const uid=(prefix:string)=>`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 const validDateKey=(value:string)=>isValidCalendarDateKey(value);
@@ -22,7 +23,7 @@ const paymentMethods=new Set<PayrollEmployee["paymentMethod"]>(["ACH","Check","M
 const monthEndKey=(month:string)=>{if(!validMonth(month))return"";const[year,monthNumber]=month.split("-").map(Number);const nextYear=monthNumber===12?year+1:year;const nextMonth=monthNumber===12?1:monthNumber+1;return addCalendarDays(`${nextYear}-${String(nextMonth).padStart(2,"0")}-01`,-1);};
 type LiabilityEvidence={reference?:string;date?:string};
 type ProviderActionFeedback={ok:boolean;error?:string};
-type PayrollContextValue={createSpecialDraft:(input:SpecialPayDraftInput)=>{ok:boolean;id?:string;error?:string};prepareProviderPacket:(runId:string,provider:string)=>ProviderActionFeedback;submitProviderPacket:(runId:string,reference:string)=>ProviderActionFeedback;reviewProviderPacket:(runId:string,providerReference:string,actual:ProviderTotals,reason:string)=>ProviderActionFeedback;reconcileProviderPay:(runId:string)=>ProviderActionFeedback;addFilingCase:(runId:string,input:Pick<PayrollFilingCase,"id"|"formCode"|"agency"|"periodStart"|"periodEnd"|"dueDate">,amendmentOf?:string)=>ProviderActionFeedback;submitFilingCase:(runId:string,filingId:string,provider:string,reference:string)=>ProviderActionFeedback;decideFilingCase:(runId:string,filingId:string,decision:"Filed"|"Rejected",reference:string,filedDate:string,reason:string)=>ProviderActionFeedback;payroll:PayrollState;savePayGroup:(input:Omit<PayGroup,"id">)=>string;savePayrollEmployee:(input:PayrollEmployee)=>void;saveWithholding:(input:WithholdingProfile)=>void;saveEmployerTaxRule:(input:Omit<EmployerTaxRule,"id">)=>string;saveBenefitTaxRule:(planId:string,tierId:string,treatment:BenefitTaxTreatment,effectiveDate:string)=>string|null;buildRegularRun:(periodStart:string,periodEnd:string,payDate:string)=>string|null;buildBonusRun:(month:string,payDate:string)=>string|null;setRunStatus:(runId:string,status:"Approved"|"Released",reason?:string)=>boolean;voidRunForCorrection:(runId:string,reason:string)=>boolean;voidAndReissue:(runId:string,reason:string)=>string|null;settleDisbursement:(id:string,reference:string,settlementDate:string)=>boolean;failDisbursement:(id:string,reason:string)=>boolean;retryDisbursement:(id:string)=>string|null;updateLiability:(id:string,status:TaxLiabilityStatus,evidence?:LiabilityEvidence)=>boolean;resetPayroll:()=>void};
+type PayrollContextValue={createRetroCase:(input:RetroInput)=>{ok:boolean;id?:string;error?:string};reviewRetroCase:(id:string)=>{ok:boolean;error?:string};approveRetroCase:(id:string)=>{ok:boolean;error?:string};draftRetroSupplement:(id:string,payDate:string)=>{ok:boolean;id?:string;error?:string};closeRetroRecovery:(id:string,reference:string)=>{ok:boolean;error?:string};createSpecialDraft:(input:SpecialPayDraftInput)=>{ok:boolean;id?:string;error?:string};prepareProviderPacket:(runId:string,provider:string)=>ProviderActionFeedback;submitProviderPacket:(runId:string,reference:string)=>ProviderActionFeedback;reviewProviderPacket:(runId:string,providerReference:string,actual:ProviderTotals,reason:string)=>ProviderActionFeedback;reconcileProviderPay:(runId:string)=>ProviderActionFeedback;addFilingCase:(runId:string,input:Pick<PayrollFilingCase,"id"|"formCode"|"agency"|"periodStart"|"periodEnd"|"dueDate">,amendmentOf?:string)=>ProviderActionFeedback;submitFilingCase:(runId:string,filingId:string,provider:string,reference:string)=>ProviderActionFeedback;decideFilingCase:(runId:string,filingId:string,decision:"Filed"|"Rejected",reference:string,filedDate:string,reason:string)=>ProviderActionFeedback;payroll:PayrollState;savePayGroup:(input:Omit<PayGroup,"id">)=>string;savePayrollEmployee:(input:PayrollEmployee)=>void;saveWithholding:(input:WithholdingProfile)=>void;saveEmployerTaxRule:(input:Omit<EmployerTaxRule,"id">)=>string;saveBenefitTaxRule:(planId:string,tierId:string,treatment:BenefitTaxTreatment,effectiveDate:string)=>string|null;buildRegularRun:(periodStart:string,periodEnd:string,payDate:string)=>string|null;buildBonusRun:(month:string,payDate:string)=>string|null;setRunStatus:(runId:string,status:"Approved"|"Released",reason?:string)=>boolean;voidRunForCorrection:(runId:string,reason:string)=>boolean;voidAndReissue:(runId:string,reason:string)=>string|null;settleDisbursement:(id:string,reference:string,settlementDate:string)=>boolean;failDisbursement:(id:string,reason:string)=>boolean;retryDisbursement:(id:string)=>string|null;updateLiability:(id:string,status:TaxLiabilityStatus,evidence?:LiabilityEvidence)=>boolean;resetPayroll:()=>void};
 const PayrollContext=createContext<PayrollContextValue|null>(null);
 
 export function PayrollProvider({children}:{children:ReactNode}){
@@ -51,6 +52,26 @@ export function PayrollProvider({children}:{children:ReactNode}){
       return current.ok?{...state,runs:[current.run,...state.runs]}:state;
     });
     return{ok:true,id:proposed.run.id};
+  };
+  const retroFeedback=(operate:(state:PayrollState,actor:{id:string;actorId:string;at:string})=>ReturnType<typeof proposeRetroCorrection>, prefix:string)=>{
+    if(!isAdmin||!currentUser)return{ok:false,error:"Administrator access required."};
+    if(!runtime.isDemo||momentumStorage.mode()!=="local")
+      return{ok:false,error:"Retroactive wage corrections are restricted to isolated local demo until the provider workflow is accepted."};
+    const actor={id:uid(prefix),actorId:currentUser.id,at:now()};
+    const preview=operate(payroll,actor);
+    if(!preview.ok)return{ok:false,error:preview.error};
+    setPayroll(state=>{const latest=operate(state,actor);return latest.ok?latest.state:state;});
+    return{ok:true,id:preview.runId??preview.case.id};
+  };
+  const createRetroCase=(input:RetroInput)=>retroFeedback((state,clock)=>
+    proposeRetroCorrection(state,input,clock),"retro-case");
+  const reviewRetroCase=(id:string)=>retroFeedback((state,clock)=>reviewRetroCorrection(state,id,clock),"retro-review");
+  const approveRetroCase=(id:string)=>retroFeedback((state,clock)=>approveRetroCorrection(state,id,clock),"retro-approval");
+  const closeRetroRecovery=(id:string,reference:string)=>retroFeedback((state,clock)=>
+    closeRecoveryReview(state,id,reference,clock),"retro-recovery");
+  const draftRetroSupplementAction=(id:string,payDate:string)=>{
+    if(locks.isLocked("Payroll",payDate))return{ok:false,error:"Supplemental payroll date is locked."};
+    return retroFeedback((state,clock)=>draftRetroSupplement(state,data,hcm,id,payDate,clock),"retro-payrun");
   };
   const runLocked=(run:PayRun)=>locks.isRangeLocked("Payroll",run.periodStart,run.periodEnd)||locks.isLocked("Payroll",run.payDate);
   const runSourcesInvalid=(run:PayRun)=>payrollRunControlIssues(payroll,data,hcm,run).length>0;
@@ -81,6 +102,6 @@ export function PayrollProvider({children}:{children:ReactNode}){
   const submitFilingCaseAction=(runId:string,filingId:string,provider:string,reference:string)=>providerAction((state,clock)=>submitFilingCase(state,runId,filingId,provider,reference,clock));
   const decideFilingCaseAction=(runId:string,filingId:string,decision:"Filed"|"Rejected",reference:string,filedDate:string,reason:string)=>providerAction((state,clock)=>decideFilingCase(state,runId,filingId,decision,reference,filedDate,clock,reason));
   const resetPayroll=()=>{if(runtime.isDemo&&isAdmin)setPayroll(createPayrollSeed());};
-  return <PayrollContext.Provider value={{createSpecialDraft,prepareProviderPacket:prepareProviderPacketAction,submitProviderPacket:submitProviderPacketAction,reviewProviderPacket:reviewProviderPacketAction,reconcileProviderPay:reconcileProviderPayAction,addFilingCase:addFilingCaseAction,submitFilingCase:submitFilingCaseAction,decideFilingCase:decideFilingCaseAction,payroll,savePayGroup,savePayrollEmployee,saveWithholding,saveEmployerTaxRule,saveBenefitTaxRule,buildRegularRun,buildBonusRun,setRunStatus,voidRunForCorrection,voidAndReissue,settleDisbursement,failDisbursement,retryDisbursement,updateLiability,resetPayroll}}>{children}</PayrollContext.Provider>;
+  return <PayrollContext.Provider value={{createRetroCase,reviewRetroCase,approveRetroCase,draftRetroSupplement:draftRetroSupplementAction,closeRetroRecovery,createSpecialDraft,prepareProviderPacket:prepareProviderPacketAction,submitProviderPacket:submitProviderPacketAction,reviewProviderPacket:reviewProviderPacketAction,reconcileProviderPay:reconcileProviderPayAction,addFilingCase:addFilingCaseAction,submitFilingCase:submitFilingCaseAction,decideFilingCase:decideFilingCaseAction,payroll,savePayGroup,savePayrollEmployee,saveWithholding,saveEmployerTaxRule,saveBenefitTaxRule,buildRegularRun,buildBonusRun,setRunStatus,voidRunForCorrection,voidAndReissue,settleDisbursement,failDisbursement,retryDisbursement,updateLiability,resetPayroll}}>{children}</PayrollContext.Provider>;
 }
 export function usePayroll(){const value=useContext(PayrollContext);if(!value)throw new Error("usePayroll must be used inside PayrollProvider");return value;}
