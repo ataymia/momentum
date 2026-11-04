@@ -68,6 +68,7 @@ test("final pay must match confirmed HR separation; computes approved hourly wag
  assert.equal(createSpecialPayDraft(p,d,h,final(),clock("final-1")).ok,false);
  h.employees[0].status="Separated";
  h.employees[0].separationDate="2026-10-30";
+ p.employees[0].active=false; // separation must not silently suppress final owed wages
  const result=createSpecialPayDraft(p,d,h,final(),clock("final-2"));
  assert(result.ok);
  if(!result.ok)return;
