@@ -152,7 +152,7 @@ export function evaluateHrCanonicalRead(
   return projectDocument(command, authorization.path, document);
 }
 
-function authorityFingerprint(value: HrCanonicalAuthority): string {
+export function authorityFingerprint(value: HrCanonicalAuthority): string {
   const actor = value.actorAccess;
   const target = value.targetAccess;
   const a = value.actorDirectory;
