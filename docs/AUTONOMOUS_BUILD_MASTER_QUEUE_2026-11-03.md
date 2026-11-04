@@ -123,3 +123,12 @@ For every run record: local date/time; main and review-branch SHAs; item number;
 - **Owner:** Platform engineering for further cache/session work; Mia for staging and release approval; HR security/compliance reviewer for confidentiality and statutory signoff. No deadline, financial transaction or KPI improvement. 00 MASTER chat not updated.
 - **Unchanged:** no main/integration/parent edits, runtime persistence, Firestore/Storage rule deployment, production data, payroll, account status, customer messages, charges, inventory, GPS or external action.
 - **Next unblocked action (exactly one):** implement review-only shadow-mode persistence refresh/session-switch cache invalidation regressions proving revoked access cannot rehydrate previously cached confidential shards.
+
+
+### Continuity entry: November 4, 2026, 04:17 Phoenix (task 01)
+- **Source heads:** main `df7b85b9ba6fcd9bd63eb08a57575656278dee08`; integration `059ae91d0ea8d5e9ea42dd8c3202e7dd1eb0af3a`; parent review PR #114 `847b503817dd5a898537138210b81d82856f0b7a`. Parent queue blob `c744b839deb546350510e838b61b8da0815f38d5`. Separate child branch `review/hr-shadow-cache-revocation-2026-11-04-0417`; no upstream edits.
+- **Task 01:** BUILT-UNVERIFIED pending exact-SHA CI; VISUAL/STAGING QA NEEDED; NOT USER ACCEPTED or RELEASED. Review-only shadow cache invalidation and session-transition candidate, not runtime activation.
+- **Files:** `lib/hr-shadow-cache-revocation.ts`, `tests/hr-shadow-cache-revocation.test.ts`, `docs/HR_SHADOW_CACHE_REVOCATION_2026-11-04.md`, `package.json`, and this queue. Synthetic tests cover stale cross-employee HCM cache, downgrade, manager reassignment, identity switch, suspended/separated/customer, pending journals, denied refresh and in-flight response epochs.
+- **Risk:** Current `persistence.ts` retains old docs on `updateScope` and can rehydrate cached HCM fields during refresh/poll. New pure candidate is deliberately unwired; production cache/rules vulnerabilities remain. No staging inventory or browser proof. No source data inspected.
+- **Unchanged:** main, integration, parent review, runtime persistence, generated rules, employee records/status, payroll, money, external messages and deployment. No KPI/financial impact established.
+- **Next unblocked action (exactly one):** implement a review-only runtime HCM scope-epoch/cache invalidation adapter with role/session regression tests while preserving unsaved journals and non-HR domains.
