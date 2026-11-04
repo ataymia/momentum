@@ -51,6 +51,8 @@ type ActionResult = { ok: boolean; message?: string; decision?: GeofenceDecision
 type FieldTrackingContextValue = {
   state: FieldTrackingState;
   permission: TrackingPermission;
+  /** Trigger a browser geolocation request directly from an employee click. Never changes time punches. */
+  requestLocationPermission: () => Promise<TrackingPermission>;
   currentSample?: RouteSample;
   currentSession?: TrackingSession;
   currentUserTrackingActive: boolean;
@@ -110,6 +112,28 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
   const outsideSinceRef = useRef<Record<string, string>>({});
   const watchRef = useRef<number | null>(null);
   const previousUserRef = useRef<string | null>(null);
+  const permissionRequestRef=useRef<Promise<TrackingPermission>|null>(null);
+  const [watchRetryEpoch,setWatchRetryEpoch]=useState(0);
+  const requestLocationPermission=useCallback(():Promise<TrackingPermission>=>{
+    // Called synchronously from an employee's Clock In or "Check location" click.
+    // Starting getCurrentPosition before any await preserves browser user activation.
+    if(permissionRequestRef.current)return permissionRequestRef.current;
+    setPermission("Requesting");
+    const action=requestBrowserPoint().then(():TrackingPermission=>{
+      setPermission("Active");
+      // A previous PERMISSION_DENIED may have terminated the browser watcher.
+      // Restart it after fresh employee consent, without changing clock or route history.
+      setWatchRetryEpoch(value=>value+1);
+      return "Active";
+    }).catch((error):TrackingPermission=>{
+      const result:TrackingPermission=error instanceof Error&&error.message.includes("permission")?"Denied":"Unavailable";
+      setPermission(result);
+      return result;
+    }).finally(()=>{permissionRequestRef.current=null;});
+    permissionRequestRef.current=action;
+    return action;
+  },[]);
+
 
   useEffect(() => {
     stateRef.current = state;
@@ -282,7 +306,7 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
       if (watchRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchRef.current);
       watchRef.current = null;
     };
-  }, [appendRouteSample, closeActiveSessions, currentUser, data.appointments, recordAppointmentEvent, shouldTrack]);
+  }, [appendRouteSample, closeActiveSessions, currentUser, data.appointments, recordAppointmentEvent, shouldTrack,watchRetryEpoch]);
 
   useEffect(() => {
     if (!shouldTrack || !currentUser || typeof window === "undefined") return;
@@ -398,7 +422,7 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
   const openAlertForAppointment = (appointmentId: string) => openDepartureAlert(state, appointmentId);
   const resetTracking = () => { if (currentUser?.role !== "Administrator") return false; setState(createFieldTrackingSeed()); return true; };
 
-  const value: FieldTrackingContextValue = { state, permission, currentSample, currentSession, currentUserTrackingActive: Boolean(currentSession && permission === "Active"), transitionAppointment, completeTrackedAppointment, captureGeofence, configureGeofence, geofenceForAccount, decisionForAppointment, openAlertForAppointment, documentOffsiteContinuation, routeSamplesForUserDay, eventsForAppointment, latestSampleForUser, canViewUserTracking, resetTracking };
+  const value: FieldTrackingContextValue = { state, permission, requestLocationPermission, currentSample, currentSession, currentUserTrackingActive: Boolean(currentSession && permission === "Active"), transitionAppointment, completeTrackedAppointment, captureGeofence, configureGeofence, geofenceForAccount, decisionForAppointment, openAlertForAppointment, documentOffsiteContinuation, routeSamplesForUserDay, eventsForAppointment, latestSampleForUser, canViewUserTracking, resetTracking };
   return <FieldTrackingContext.Provider value={value}>{children}</FieldTrackingContext.Provider>;
 }
 

@@ -4,6 +4,7 @@ import { BookOpen, Clock3, MapPin, PackageSearch } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { mapsIntegrationStatus, projectAccounts } from "../../lib/maps-integration";
 import { useFieldTracking } from "../../lib/location-tracking-context";
+import {LocationPermissionHelp} from "../field-tracking/location-permission-help";
 import { ROUTE_PING_INTERVAL_MINUTES, roleIsTracked } from "../../lib/location-tracking-engine";
 import { GOLDEN_EAGLE_SKUS, PRODUCT_CATALOG_INVENTORY_POLICY } from "../../lib/product-catalog";
 import { useTrainingLibrary } from "../../lib/training-library-context";
@@ -48,13 +49,14 @@ export function TimekeepingPage(){
   const hours=entries.slice(0,7).reduce((sum,entry)=>sum+hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes),0);
   const tracked=roleIsTracked(currentUser.role);
   return <div className="page">
-    <PageHeader eyebrow="Timekeeping" title="Clock In & Time" description="Self-service timekeeping. Clock punches use Arizona time and sync into the same records used for timecards." actions={<Button variant={open?"secondary":"gold"} icon={<Clock3 size={17}/>} onClick={()=>toggleClock()}>{open?"Clock out":"Clock in"}</Button>}/>
+    <PageHeader eyebrow="Timekeeping" title="Clock In & Time" description="Self-service timekeeping. Clock punches use Arizona time and sync into the same records used for timecards." actions={<Button variant={open?"secondary":"gold"} icon={<Clock3 size={17}/>} onClick={()=>{toggleClock();if(!open&&tracked)void tracking.requestLocationPermission();}}>{open?"Clock out":"Clock in"}</Button>}/>
     <Section title="Current shift">
       <div className="company-rule-facts">
         <div><span>Status</span><strong>{open?`Clocked in · ${open.clockIn}`:"Off clock"}</strong><small>{open?.clockInAt?`Punch recorded ${new Date(open.clockInAt).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}`:""}</small></div>
         <div><span>Recent recorded hours</span><strong>{hours.toFixed(2)}</strong></div>
         {tracked&&<div><span>Field location</span><strong>{open?tracking.permission:"Stopped"}</strong><small>{open?`Route evidence is sampled about every ${ROUTE_PING_INTERVAL_MINUTES} minutes`:"No off-duty route collection"}</small></div>}
       </div>
+      <LocationPermissionHelp/>
       {tracked&&<div className="form-callout"><MapPin size={17}/><p>{open?"While you are clocked in, this device may request location permission and record work-route pings for Administrator review. If the browser suspends location in the background, the system records a gap instead of guessing your location.":"Location route tracking is stopped because you are not clocked in."}</p></div>}
       {open&&<div className="account-detail__actions">{!open.mealStart&&<Button size="sm" variant="secondary" onClick={startMeal}>Start meal</Button>}{open.mealStart&&!open.mealEnd&&<Button size="sm" variant="secondary" onClick={endMeal}>End meal</Button>}</div>}
     </Section>
