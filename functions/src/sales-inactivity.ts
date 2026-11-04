@@ -3,7 +3,7 @@ import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
 import {onRequest} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
-import {lastSalesActivityAt,hasSalesTimedOut} from "./sales-inactivity-core";
+import {CRM_AUTO_CLOCKOUT_MS,lastSalesActivityAt,hasSalesTimedOut} from "./sales-inactivity-core";
 
 type Data = Record<string, unknown>;
 type Notice = {entryId: string; clockOutAt: string; lastActivityAt: string; thresholdAt: string; acknowledgedAt?: string};
@@ -82,7 +82,7 @@ export const salesCRMInactivityClockOut = onSchedule({
           note:[txt(entry.note),"System clock-out after 60 minutes without saved CRM activity or an authenticated sign-in. Employee may report work not yet recorded."].filter(Boolean).join(" | "),
         });
         const notice:Notice={entryId:txt(active.id), clockOutAt,
-          lastActivityAt:new Date(latest).toISOString(), thresholdAt:new Date(latest+HOUR_MS).toISOString()};
+          lastActivityAt:new Date(latest).toISOString(), thresholdAt:new Date(latest+CRM_AUTO_CLOCKOUT_MS).toISOString()};
         tx.set(timeRef,{items:changed});
         tx.set(statusRef,{...sessionState,notice});
         tx.create(db.doc("salesInactivityAudit/"+uid+"_"+txt(active.id).replace(/[^A-Za-z0-9_-]/g,"_")),{
