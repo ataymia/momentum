@@ -42,7 +42,7 @@ export type HrCanonicalDocument = {
 export type HrCanonicalReadDenial =
   | "invalid-command" | "session-revoked" | "actor-not-authorized"
   | "target-not-authorized" | "field-restricted" | "canonical-invalid"
-  | "authority-changed" | "unavailable" | "disabled";
+  | "authority-changed" | "canonical-changed" | "unavailable" | "disabled";
 export type HrCanonicalReadResult =
   | { ok: false; reason: HrCanonicalReadDenial }
   | { ok: true; field: HrCanonicalReadField; version: string;
@@ -169,6 +169,8 @@ function authorityFingerprint(value: HrCanonicalAuthority): string {
 export type HrCanonicalReadTransport = {
   readAuthority: () => Promise<HrCanonicalAuthority>;
   readCanonical: (serverComputedPath: string) => Promise<HrCanonicalDocument | null>;
+  /** Trusted revision read, not a browser-provided version or cached value. */
+  readCanonicalVersion: (serverComputedPath: string) => Promise<string | null>;
 };
 
 /**
@@ -192,7 +194,17 @@ export async function executeHrCanonicalReadReview(
     const after = await transport.readAuthority();
     if (beforeFingerprint !== authorityFingerprint(after))
       return deny("authority-changed");
-    return evaluateHrCanonicalRead(command, after, document);
+    if (!document) return deny("canonical-invalid");
+    // Reject a document replaced between its initial read and projection.
+    // A real server handler must additionally pin all reads transactionally.
+    if (typeof transport.readCanonicalVersion !== "function") return deny("unavailable");
+    const currentVersion = await transport.readCanonicalVersion(authorized.path);
+    if (currentVersion !== document.version) return deny("canonical-changed");
+    // Revocation may happen while the version read is in flight.
+    const finalAuthority = await transport.readAuthority();
+    if (beforeFingerprint !== authorityFingerprint(finalAuthority))
+      return deny("authority-changed");
+    return evaluateHrCanonicalRead(command, finalAuthority, document);
   } catch {
     return deny("unavailable");
   }
