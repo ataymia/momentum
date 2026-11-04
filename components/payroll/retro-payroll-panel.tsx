@@ -84,11 +84,11 @@ export function RetroPayrollPanel(){
     <div className="company-grid company-grid--two">
       <div className="form-grid">
         <Field label="Original released and settled payroll"><select value={runId}
-          onChange={e=>{setRunId(e.target.value);setEmployeeId("");setCorrectedGross("");setTimecardId("");setCorrectedWeekHours("");setWeekEvidence(undefined);setHistoricalPolicyConfirmed(false);setHistoricalPolicyConfirmed(false);}}>
+          onChange={e=>{setRunId(e.target.value);setEmployeeId("");setCorrectedGross("");setTimecardId("");setCorrectedWeekHours("");setWeekEvidence(undefined);setHistoricalPolicyConfirmed(false);}}>
           <option value="">Choose verified paid run</option>
           {runs.map(r=><option value={r.id} key={r.id}>{r.id} | {r.payDate} | {r.kind}</option>)}
         </select></Field>
-        <Field label="Employee"><select value={employeeId} onChange={e=>{setEmployeeId(e.target.value);setCorrectedGross("");setTimecardId("");setCorrectedWeekHours("");setWeekEvidence(undefined);}}>
+        <Field label="Employee"><select value={employeeId} onChange={e=>{setEmployeeId(e.target.value);setCorrectedGross("");setTimecardId("");setCorrectedWeekHours("");setWeekEvidence(undefined);setHistoricalPolicyConfirmed(false);}}>
           <option value="">Choose employee from settled run</option>
           {payable.map(l=><option key={l.employeeId} value={l.employeeId}>
             {data.users.find(u=>u.id===l.employeeId)?.name??l.employeeId}
@@ -98,7 +98,7 @@ export function RetroPayrollPanel(){
         {weekCards.length>0&&<div className="form-grid">
           <h3>Calculate a corrected hourly workweek</h3>
           <Field label="Original paid weekly timecard"><select value={timecardId}
-            onChange={e=>{setTimecardId(e.target.value);setCorrectedWeekHours("");setWeekEvidence(undefined);}}>
+            onChange={e=>{setTimecardId(e.target.value);setCorrectedWeekHours("");setWeekEvidence(undefined);setHistoricalPolicyConfirmed(false);}}>
             <option value="">Choose original timecard</option>
             {weekCards.map(card=><option key={card.id} value={card.id}>
               {card.weekStart} to {card.weekEnd} | {card.id}</option>)}
