@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {createHcmSeed} from "../lib/hcm-engine";
-import {createPayrollSeed,normalizePayrollState,type PayrollState} from "../lib/payroll-engine";
+import {createPayrollSeed,normalizePayrollState,calculateRegularLine,type PayrollState} from "../lib/payroll-engine";
 import {createSpecialPayDraft} from "../lib/payroll-special-runs";
 import {
   proposeRetroCorrection,reviewRetroCorrection,approveRetroCorrection,
-  draftRetroSupplement,closeRecoveryReview,retroDelta,
+  draftRetroSupplement,closeRecoveryReview,retroDelta,calculateRetroWeekGross,
 } from "../lib/payroll-retro-corrections";
 import {payrollRunControlIssues} from "../lib/payroll-controls";
 import type {WorkspaceData} from "../lib/types";
@@ -123,4 +123,54 @@ test("correction evidence requires valid effective payroll configuration before 
  const {d,h,p}=fixture();const a=advance(p,180);
  a.approved.state.withholdingProfiles=[];
  assert.equal(draftRetroSupplement(a.approved.state,d,h,"retro-case-1","2026-11-06",clock("run-2")).ok,false);
+});
+
+
+test("historical single-week hourly calculator reproduces settled payroll before computing corrected gross",()=>{
+ const {d,h,p}=fixture();
+ d.timecards=[{id:"tc-week-1",userId:"worker-1",weekStart:"2026-10-26",weekEnd:"2026-11-01",
+   status:"Manager approved",attested:true}];
+ d.timeEntries=[{id:"clock-1",userId:"worker-1",date:"2026-10-27",clockIn:"08:00",
+   clockOut:"18:00",breakMinutes:30,source:"Web clock"}];
+ const line=calculateRegularLine(p,d,h,"worker-1","2026-10-26","2026-11-01",["tc-week-1"],2);
+ assert(line);
+ const regular={id:"regular-wages",kind:"Regular" as const,createdAt:"2026-10-29T10:00:00.000Z",
+   periodStart:"2026-10-26",periodEnd:"2026-11-01",payDate:"2026-11-03",status:"Released" as const,
+   approvedAt:"2026-11-02T10:00:00.000Z",approvedBy:"admin-1",
+   releasedAt:"2026-11-03T10:00:00.000Z",releasedBy:"admin-1",calculationVersion:2 as const,
+   lines:[line]};
+ p.runs.push(regular);
+ p.disbursements.push({id:"regular-settlement",payRunId:"regular-wages",userId:"worker-1",
+   amount:line.netPay,method:"ACH",tokenLabel:"****1234",status:"Settled",
+   createdAt:"2026-11-03T10:00:00.000Z",settledAt:"2026-11-03"});
+ const result=calculateRetroWeekGross(p,d,h,"regular-wages","worker-1","tc-week-1",11.5);
+ assert(result.ok);
+ if(!result.ok)return;
+ assert.equal(result.originalWeekHours,9.5);
+ assert.equal(result.historicalHourlyRate,20);
+ assert.equal(result.originalWeeklyGross,190);
+ assert.equal(result.correctedWeeklyGross,230);
+ assert.equal(result.correctedGross,230);
+ assert.equal(result.deltaGross,40);
+ const proposal=proposeRetroCorrection(p,{
+   sourceRunId:"regular-wages",employeeId:"worker-1",correctedGross:result.correctedGross,
+   reason:"Employee verified omitted overtime hours",
+   evidenceReference:"approved-timecard-case-3",
+   weekEvidence:{sourceTimecardId:result.sourceTimecardId,
+     originalWeekHours:result.originalWeekHours,correctedWeekHours:result.correctedWeekHours,
+     historicalHourlyRate:result.historicalHourlyRate,overtimeThresholdHours:result.overtimeThresholdHours,
+     originalWeeklyGross:result.originalWeeklyGross,correctedWeeklyGross:result.correctedWeeklyGross},
+ },clock("case-hours"));
+ assert(proposal.ok);
+ if(!proposal.ok)return;
+ assert.equal(normalizePayrollState(proposal.state).retroCases[0].weekEvidence?.correctedWeekHours,11.5);
+ assert.equal(proposeRetroCorrection(p,{
+  sourceRunId:"regular-wages",employeeId:"worker-1",correctedGross:300,
+  reason:"Wrong wage total not supported by source",
+  evidenceReference:"approved-timecard-case-4",
+  weekEvidence:proposal.case.weekEvidence,
+ },clock("case-wrong")).ok,false);
+ assert.equal(calculateRetroWeekGross(p,d,h,"regular-wages","worker-1","wrong-card",11.5).ok,false);
+ p.runs.find(r=>r.id==="regular-wages")!.lines[0].regularPay=180;
+ assert.equal(calculateRetroWeekGross(p,d,h,"regular-wages","worker-1","tc-week-1",11.5).ok,false);
 });
