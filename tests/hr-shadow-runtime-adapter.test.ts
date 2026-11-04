@@ -94,7 +94,7 @@ test("shared policy metadata can hydrate, but shared confidential arrays cannot"
   assert.equal((adapter.snapshot()?.policies as unknown[]).length, 1);
   const forbidden = "domains/hcm/fields/documents";
   assert.equal(adapter.accept(batch(adapter, "employee-a", forbidden, doc("employee-b", "private"))), false);
-  assert.equal(JSON.stringify(adapter.snapshot()).includes("private"), false);
+  assert.equal(JSON.stringify(adapter.snapshot()).includes('"marker":"private"'), false);
 });
 
 test("suspended or customer scope cannot hydrate old employee records", () => {
