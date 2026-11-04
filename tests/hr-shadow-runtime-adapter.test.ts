@@ -115,3 +115,15 @@ test("a second transition cannot clear an unresolved quarantined HR journal", ()
   assert.deepEqual(adapter.journalKeysRequiringReview, ["momentum-hcm-v4"]);
   assert.equal(adapter.accept(batch(adapter, "employee-a", own("employee-a"), doc("employee-a", "unsafe"))), false);
 });
+
+test("mutable scope sets cannot retroactively change a previous authority snapshot", () => {
+  const mutable = scope("manager", "Sales Manager", ["employee-a"]);
+  const adapter = new HrShadowRuntimeAdapter(mutable);
+  assert.equal(adapter.accept(batch(adapter, "manager", own("employee-a"), doc("employee-a", "report"))), true);
+  mutable.managedUserIds.delete("employee-a");
+  mutable.readableUserIds.delete("employee-a");
+  const transition = adapter.transition(mutable);
+  assert.ok(transition.plan.evictPaths.includes(own("employee-a")));
+  assert.equal(adapter.snapshot(), null);
+  assert.equal(adapter.accept(batch(adapter, "manager", own("employee-a"), doc("employee-a", "leak"))), false);
+});
