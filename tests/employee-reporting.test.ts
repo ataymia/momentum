@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validAdditionalManagerIds, reportingManagerCandidates } from "../lib/employee-reporting";
+import { activeReportingManagerIds, validAdditionalManagerIds, reportingManagerCandidates, selectableReportingManagerCandidates, validSelectableAdditionalManagerIds } from "../lib/employee-reporting";
 import { createHcmSeed } from "../lib/hcm-engine";
 import { normalizePersistedHcmState } from "../lib/hcm-persistence";
 import type { WorkspaceData } from "../lib/types";
@@ -27,4 +27,18 @@ test("employee HCM reporting assignments survive normalization",()=>{
  const after=result.employees.find((e)=>e.userId==="rep");
  assert.equal(after?.managerId,"mia");
  assert.deepEqual(after?.additionalManagerIds,["flo"]);
+});
+
+test("inactive reporting managers cannot be selected for new assignments while historical validation remains intact",()=>{
+ const activeIds=new Set(["mia","rep","rep2"]);
+ assert.deepEqual(selectableReportingManagerCandidates(data,"rep",activeIds).map((user)=>user.id),["mia"]);
+ assert.deepEqual(validSelectableAdditionalManagerIds(["flo","mia","mia","rep2"],data,"rep",undefined,activeIds),["mia"]);
+ // Historical HCM normalization must not erase a former manager merely because access ended.
+ assert.deepEqual(validAdditionalManagerIds(["flo"],data,"rep"),["flo"]);
+});
+
+test("suspended manager access is not selectable even when HR directory status is stale",()=>{
+ const activeIds=activeReportingManagerIds(data,{flo:{accountState:"Suspended"},mia:{accountState:"Active"}});
+ assert.deepEqual(selectableReportingManagerCandidates(data,"rep",activeIds).map((user)=>user.id),["mia"]);
+ assert.deepEqual(validSelectableAdditionalManagerIds(["flo","mia"],data,"rep",undefined,activeIds),["mia"]);
 });
