@@ -1,13 +1,13 @@
 # HR shadow runtime epoch adapter: guarded review increment
 
-**Date:** November 4, 2026 (Phoenix). **Queue:** 01. **Review:** PR #116, child of #115. **Status:** BUILT, automated audit pending at implementation SHA `95845d55c0a685dfd1223878ab92ebad04645889`; VISUAL/STAGING QA NEEDED, NOT USER ACCEPTED, NOT RELEASED.
+**Date:** November 4, 2026 (Phoenix). **Queue:** 01. **Review:** PR #116, child of #115. **Status:** BUILT, automated audit pending at implementation SHA `cd9652cb2c9106adda3a8c39c9fe28ef1406fc1c`; VISUAL/STAGING QA NEEDED, NOT USER ACCEPTED, NOT RELEASED.
 
 ## Implemented (no live activation)
 
 - `lib/hr-shadow-runtime-adapter.ts` owns a monotonic epoch, scoped HCM document cache, revoked/denied quarantine state and unresolved journal-key evidence. Old requests cannot repopulate new identities or roles; a denied or cross-owned payload blanks the cache. Journals are never deleted or flushed by this adapter.
-- `lib/persistence.ts` contains a deliberately **disabled-by-default internal** `hrShadowReview` option on `FirestoreBackend`. No existing caller enables it. When enabled in an independently approved test harness, HCM reads use shadow-compatible paths and the adapter; scope changes blank the HCM snapshot before refetch; HR writes and manual refresh are refused; pending HR journals remain for controlled reconciliation. Non-HR domains retain existing behavior.
+- `lib/persistence.ts` contains a deliberately **disabled-by-default internal** `hrShadowReview` option on `FirestoreBackend`. No existing caller enables it. Cross-UID updates now invalidate all cached domains and require a fresh backend attachment; a disposed backend refuses reads and writes. When enabled in an independently approved test harness, HCM reads use shadow-compatible paths and the adapter; scope changes blank the HCM snapshot before refetch; HR writes and manual refresh are refused; pending HR journals remain for controlled reconciliation. Non-HR domains retain existing behavior.
 - In guarded review mode, a changed HCM cloud version invalidates the cached HCM model rather than silently retaining stale records. An old in-flight scope update or poll is discarded by epoch.
-- `tests/hr-shadow-runtime-adapter.test.ts` covers initial blank state, UID switch, manager reassignment, denied reads, malformed ownership, suspended/customer roles, shared private-field exclusion, journal quarantine and repeat-transition safety.
+- `tests/hr-shadow-runtime-adapter.test.ts` covers initial blank state, UID switch, manager reassignment, denied reads, malformed ownership, suspended/customer roles, shared private-field exclusion, journal quarantine and repeat-transition safety, including mutation of scope sets in place.
 
 ## Known limitations / release blockers
 
