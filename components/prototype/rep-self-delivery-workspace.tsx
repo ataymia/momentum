@@ -184,7 +184,7 @@ function RepDetail({order}:{order:Order}){
         <label htmlFor="rep-delivery-recipient">Recipient printed name <span>Required</span></label>
         <input id="rep-delivery-recipient" autoComplete="off" maxLength={120} value={recipientName} onChange={e=>setRecipientName(e.target.value)} placeholder="Name of the person receiving the cases"/>
       </div>}
-      {!reviewMutationsEnabled&&<p className="rep-delivery-alert">Review-only: shipment actions are disabled until an explicitly configured isolated staging environment is approved. Connected company production records cannot be changed from this new interface.</p>}
+      {!reviewMutationsEnabled&&<p className="rep-delivery-alert">Review-only in this environment: shipment actions require separate, explicitly approved non-production staging configuration. Do not use production Firebase credentials to test this redesigned workflow.</p>}
       <label className="rep-delivery-confirm"><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)} disabled={busy||checking||!reviewMutationsEnabled}/>
         {step==="claim"?"I have confirmed this order is the one I intend to deliver":
          step==="pack"?"I understand that the full order and all SKUs must be reserved before loading":
