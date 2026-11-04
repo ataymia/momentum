@@ -1,5 +1,6 @@
 import {isValidCalendarDateKey} from "./date-time";
 import {type HCMState} from "./hcm-engine";
+import {compensationForPayrollDate,hourlyWagesForApprovedTimecards,regularPayrollSource,payrollHourBreakdown} from "./payroll-engine";
 import {type PayRun,type PayrollState} from "./payroll-engine";
 import {createSpecialPayDraft} from "./payroll-special-runs";
 import type {WorkspaceData} from "./types";
@@ -144,4 +145,69 @@ export function closeRecoveryReview(state:PayrollState,id:string,externalReferen
  const next:RetroCorrectionCase={...c,status:"Closed",
    resolvedAt:clock.at,resolvedBy:clock.actorId,resolutionReference:externalReference.trim()};
  return{ok:true,state:{...state,retroCases:state.retroCases.map(x=>x.id===id?next:x)},case:next};
+}
+
+
+export type RetroWeekHoursCalculation={
+ ok:true;correctedGross:number;deltaGross:number;
+ originalWeekHours:number;correctedWeekHours:number;
+ historicalHourlyRate:number;overtimeThresholdHours:number;
+ originalWeeklyGross:number;correctedWeeklyGross:number;
+ sourceTimecardId:string;
+}|{ok:false;error:string};
+
+/** 
+ * Reconstruct one historical, already-paid weekly hourly source without
+ * overwriting it. Refuse to infer from a changed rate, missing timecard,
+ * unreconciled original wage line, or incomplete original clock evidence.
+ */
+export function calculateRetroWeekGross(
+ state:PayrollState,data:WorkspaceData,hcm:HCMState,
+ sourceRunId:string,employeeId:string,sourceTimecardId:string,correctedWeekHours:number,
+):RetroWeekHoursCalculation{
+ const source=findLine(state,sourceRunId,employeeId);
+ if(!source||source.run.kind!=="Regular")
+   return{ok:false,error:"Choose a settled regular payroll run to calculate an hourly week adjustment."};
+ const line=source.line;
+ if(!line.sourceTimecardIds.includes(sourceTimecardId))
+   return{ok:false,error:"Select a timecard included in that original employee payroll line."};
+ if(!Number.isFinite(correctedWeekHours)||correctedWeekHours<0||correctedWeekHours>168||
+    Math.abs(correctedWeekHours*100-Math.round(correctedWeekHours*100))>0.00001)
+   return{ok:false,error:"Corrected weekly hours must be a verified value in hundredths of an hour, from 0 to 168."};
+ const employee=state.employees.find(e=>e.userId===employeeId);
+ const group=state.payGroups.find(g=>g.id===employee?.payGroupId);
+ const threshold=group?.overtimeThresholdHours;
+ if(!group||!Number.isFinite(threshold)||threshold===undefined||threshold<0)
+   return{ok:false,error:"Historical overtime threshold is unavailable. Obtain a processor-reviewed gross calculation."};
+ const originalSource=regularPayrollSource(data,employeeId,source.run.periodStart,
+   source.run.periodEnd,line.sourceTimecardIds);
+ if(!originalSource)return{ok:false,error:"Original approved timecard evidence is unavailable or incomplete."};
+ const originalPriced=hourlyWagesForApprovedTimecards(data,hcm,employeeId,originalSource,threshold);
+ if(!originalPriced||
+    Math.abs(money(originalPriced.regularPay)-line.regularPay)>0.005||
+    Math.abs(money(originalPriced.overtimePay)-line.overtimePay)>0.005||
+    Math.abs(originalPriced.regularHours-line.regularHours)>0.001||
+    Math.abs(originalPriced.overtimeHours-line.overtimeHours)>0.001)
+   return{ok:false,error:"Historical rate, overtime threshold or hours no longer reproduce the paid payroll. Do not infer a correction."};
+ const card=data.timecards.find(c=>c.id===sourceTimecardId&&c.userId===employeeId);
+ if(!card)return{ok:false,error:"Original source timecard was not found."};
+ const startRate=compensationForPayrollDate(hcm,employeeId,card.weekStart);
+ const endRate=compensationForPayrollDate(hcm,employeeId,card.weekEnd);
+ if(!startRate||!endRate||startRate.id!==endRate.id||
+    startRate.basis!=="Hourly"||!Number.isFinite(startRate.rate)||startRate.rate<0)
+   return{ok:false,error:"The original week has ambiguous hourly rates. Use a verified manual gross correction."};
+ const entries=originalSource.entries.filter(e=>e.date>=card.weekStart&&e.date<=card.weekEnd);
+ const old=payrollHourBreakdown(data,employeeId,{timecardIds:[card.id],entries},threshold);
+ if(!old)return{ok:false,error:"Cannot reconstruct original weekly hours."};
+ const originalWeeklyGross=money(old.regularHours*startRate.rate+old.overtimeHours*startRate.rate*1.5);
+ const newRegular=Math.min(correctedWeekHours,threshold);
+ const newOvertime=Math.max(0,correctedWeekHours-threshold);
+ const correctedWeeklyGross=money(newRegular*startRate.rate+newOvertime*startRate.rate*1.5);
+ const adjusted=money(line.grossPay+correctedWeeklyGross-originalWeeklyGross);
+ if(!cents(adjusted))return{ok:false,error:"Calculated corrected gross is invalid."};
+ return{ok:true,sourceTimecardId,
+   originalWeekHours:money(old.totalHours),correctedWeekHours:money(correctedWeekHours),
+   historicalHourlyRate:startRate.rate,overtimeThresholdHours:threshold,
+   originalWeeklyGross,correctedWeeklyGross,correctedGross:adjusted,
+   deltaGross:money(adjusted-line.grossPay)};
 }
