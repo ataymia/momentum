@@ -31,8 +31,19 @@ const shadowReadRules = sourceRules.replace(pattern,
   (_match, prefix: string, predicate: string, end: string) => prefix + guard(predicate) + end);
 const writePattern = /(match \/hcm\/fields\/\{field\} \{\s*allow get, list: if [^\n]+;\s*allow write: if )([^\n]+)(;)/;
 assert.match(shadowReadRules, writePattern, "generated HCM shared write rule must be present");
-const shadowRules = shadowReadRules.replace(writePattern,
+const sharedShadowRules = shadowReadRules.replace(writePattern,
   (_match, prefix: string, predicate: string, end: string) => prefix + guard(predicate) + end);
+// HCM audit is actor-sharded, not subject-sharded; an actor might read/write
+// another employee's before/after history. This is a SHADOW-ONLY candidate.
+const auditBlockStart = sharedShadowRules.indexOf("match /{uid}/hcm/{field} {");
+const auditBlockEnd = sharedShadowRules.indexOf("\n    }", auditBlockStart);
+assert.ok(auditBlockStart >= 0 && auditBlockEnd > auditBlockStart, "HCM user-shard rules missing");
+const auditBlock = sharedShadowRules.slice(auditBlockStart, auditBlockEnd);
+const shadowAuditBlock = auditBlock
+  .replace("allow get, list: if", "allow get, list: if (field != 'audit' || isAdmin()) &&")
+  .replace("allow write: if", "allow write: if (field != 'audit' || isAdmin()) &&");
+const shadowRules = sharedShadowRules.slice(0, auditBlockStart) + shadowAuditBlock +
+  sharedShadowRules.slice(auditBlockEnd);
 assert.notEqual(shadowRules, sourceRules, "shadow policy must actually differ from current rules");
 
 type Environment = RulesTestEnvironment;
@@ -74,6 +85,10 @@ async function seed(env: Environment) {
         items: [{ id: `synthetic-${field}`, userId: "uid-jordan", marker: "OWNER_ONLY" }],
       });
     }
+    await setDoc(doc(db, "userDomains/uid-alex/hcm/audit"), {
+      items: [{ id: "synthetic-cross-audit", actorId: "uid-alex",
+        entityId: "uid-jordan", before: "SYNTHETIC_OTHER_EMPLOYEE" }],
+    });
     await setDoc(doc(db, "domains/hcm/fields/policies"), { items: [] });
     await setDoc(doc(db, "domains/hcm/fields/audit"), { items: [{ id: "synthetic-audit" }] });
   });
@@ -140,6 +155,19 @@ test("SHADOW leaves manager access to a verified direct report's shard unchanged
   const ownReport = "userDomains/uid-alex/hcm/documents";
   await assertSucceeds(getDoc(doc(contextDb(shadow, "uid-manager"), ownReport)));
   await assertFails(getDoc(doc(contextDb(shadow, "uid-manager"), "userDomains/uid-jordan/hcm/documents")));
+});
+
+test("CURRENT actor can read/write another employee audit history; SHADOW denies", async () => {
+  const target = "userDomains/uid-alex/hcm/audit";
+  const currentActor = contextDb(current, "uid-alex");
+  const existing = await assertSucceeds(getDoc(doc(currentActor, target)));
+  assert.equal(existing.data()?.items?.[0]?.entityId, "uid-jordan");
+  await assertSucceeds(setDoc(doc(currentActor, target), {
+    items: [{ id: "synthetic-forged", actorId: "uid-alex", entityId: "uid-jordan" }],
+  }));
+  await assertFails(getDoc(doc(contextDb(shadow, "uid-alex"), target)));
+  await assertFails(setDoc(doc(contextDb(shadow, "uid-alex"), target), { items: [] }));
+  await assertSucceeds(getDoc(doc(contextDb(shadow, "uid-admin"), target)));
 });
 
 test("CURRENT manager can write shared private HCM fields in emulator ONLY", async () => {
