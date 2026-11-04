@@ -30,7 +30,11 @@ const candidateRules = sourceRules.replace(marker,
 
 const client = (uid: string) => env.authenticatedContext(uid).firestore();
 async function privileged<T>(callback: (db: ReturnType<ReturnType<RulesTestEnvironment["unauthenticatedContext"]>["firestore"]>) => Promise<T>): Promise<T> {
-  return env.withSecurityRulesDisabled(async (context) => callback(context.firestore()));
+  let result!: T;
+  await env.withSecurityRulesDisabled(async (context) => {
+    result = await callback(context.firestore());
+  });
+  return result;
 }
 before(async () => {
   env = await initializeTestEnvironment({
