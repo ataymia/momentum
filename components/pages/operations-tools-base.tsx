@@ -1,7 +1,7 @@
 "use client";
 import { TrainingMaterialLink } from "../hcm/training-material-link";
 import { BookOpen, Clock3, MapPin, PackageSearch } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { mapsIntegrationStatus, projectAccounts } from "../../lib/maps-integration";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import {LocationPermissionHelp} from "../field-tracking/location-permission-help";
@@ -11,6 +11,7 @@ import { useTrainingLibrary } from "../../lib/training-library-context";
 import { useHcm } from "../../lib/hcm-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import { arizonaDateKey } from "../../lib/date-time";
+import { evaluateSalesCRMInactivity } from "../../lib/sales-crm-inactivity";
 import {validateTaxIdentity} from "../../lib/account-tax-identity";
 import { Button, Field, PageHeader, Section, StatusPill, hoursBetween } from "../ui";
 
@@ -43,8 +44,22 @@ export function ProductsPage(){return <div className="page"><PageHeader eyebrow=
 export function TimekeepingPage(){
   const{data,currentUser,toggleClock,startMeal,endMeal}=useWorkspace();
   const tracking=useFieldTracking();
+  const [reviewNowMs,setReviewNowMs]=useState<number|null>(null);
+  useEffect(()=>{
+    const refresh=()=>setReviewNowMs(Date.now());
+    refresh();
+    const onVisible=()=>{if(!document.hidden)refresh();};
+    document.addEventListener("visibilitychange",onVisible);
+    const interval=window.setInterval(refresh,60_000);
+    return ()=>{document.removeEventListener("visibilitychange",onVisible);window.clearInterval(interval);};
+  },[]);
   if(!currentUser)return null;
   const open=data.timeEntries.find((entry)=>entry.userId===currentUser.id&&!entry.clockOut);
+  const crmReview=open&&currentUser.role==="Sales Representative"&&reviewNowMs!==null
+    ?evaluateSalesCRMInactivity(open.clockInAt,
+      data.activities.filter((activity)=>activity.userId===currentUser.id)
+        .map((activity)=>({at:activity.at,kind:"crm" as const})),
+      reviewNowMs):null;
   const entries=data.timeEntries.filter((entry)=>entry.userId===currentUser.id).sort((a,b)=>`${b.date}T${b.clockIn}`.localeCompare(`${a.date}T${a.clockIn}`));
   const hours=entries.slice(0,7).reduce((sum,entry)=>sum+hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes),0);
   const tracked=roleIsTracked(currentUser.role);
@@ -56,6 +71,12 @@ export function TimekeepingPage(){
         <div><span>Recent recorded hours</span><strong>{hours.toFixed(2)}</strong></div>
         {tracked&&<div><span>Field location</span><strong>{open?tracking.permission:"Stopped"}</strong><small>{open?`Route evidence is sampled about every ${ROUTE_PING_INTERVAL_MINUTES} minutes`:"No off-duty route collection"}</small></div>}
       </div>
+      {crmReview&&(crmReview.state==="warning"||crmReview.state==="review")&&<div role={crmReview.state==="review"?"alert":"status"} className="form-callout">
+        <Clock3 size={18}/><p><strong>{crmReview.state==="review"?"CRM activity review required":"CRM activity reminder"}:</strong>{" "}
+        {crmReview.hadCRMEvent?"No newer saved CRM work event":"No saved CRM work event yet"} in the last {crmReview.elapsedMinutes} minutes.
+        Record any completed visits, orders or follow-ups when practical. Travel, customer conversations and offline work can be legitimate work.
+        Your time entry remains open; this notification does not change payroll hours. Contact your manager about any missing records.</p>
+      </div>}
       <LocationPermissionHelp/>
       {tracked&&<div className="form-callout"><MapPin size={17}/><p>{open?"While you are clocked in, this device may request location permission and record work-route pings for Administrator review. If the browser suspends location in the background, the system records a gap instead of guessing your location.":"Location route tracking is stopped because you are not clocked in."}</p></div>}
       {open&&<div className="account-detail__actions">{!open.mealStart&&<Button size="sm" variant="secondary" onClick={startMeal}>Start meal</Button>}{open.mealStart&&!open.mealEnd&&<Button size="sm" variant="secondary" onClick={endMeal}>End meal</Button>}</div>}
