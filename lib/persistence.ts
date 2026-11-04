@@ -743,6 +743,7 @@ class FirestoreBackend{
   async poll(){
     if(this.disposed||this.flushing||this.polling)return;
     const shadowEpoch=this.hrShadow?.epoch;
+    let expectedShadowEpoch=shadowEpoch;
     this.polling=true;
     const pollStarted=performance.now();
     let changedCount=0;
@@ -762,13 +763,14 @@ class FirestoreBackend{
       let paths=changed.map((key)=>byMeta.get(key)).filter((path):path is string=>Boolean(path)&&!this.denied.has(path!));
       if(this.hrShadow&&paths.some((path)=>parseDocPath(path)?.domainId==="hcm")){
         this.hrShadow.deny();
+        expectedShadowEpoch=this.hrShadow.epoch;
         for(const path of [...this.docs.keys()])if(parseDocPath(path)?.domainId==="hcm")this.docs.delete(path);
         this.cache.set("momentum-hcm-v4",null);emitKey("momentum-hcm-v4");
         paths=paths.filter((path)=>parseDocPath(path)?.domainId!=="hcm");
       }
       if(paths.length===0){for(const key of changed)this.metaVersions[key]=versions[key];return;}
       const snapshots=await getFirestoreSnapshots(paths);
-      if(this.hrShadow&&shadowEpoch!==this.hrShadow.epoch&&shadowEpoch!==this.hrShadow.epoch-1)return;
+      if(this.hrShadow&&expectedShadowEpoch!==this.hrShadow.epoch)return;
       const touched=new Map<string,Map<string,Record<string,unknown>|null>>();
       for(const snapshot of snapshots){
         const parsedPath=parseDocPath(snapshot.path);
