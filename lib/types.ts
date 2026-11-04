@@ -467,6 +467,8 @@ export type Timecard = {
   returnedAt?: string;
   returnedBy?: string;
   returnReason?: string;
+  /** Employee-entered explanation carried with the next attestation after a correction. */
+  resubmissionNote?: string;
 };
 
 export type NotificationTone = "info" | "warning" | "success";
