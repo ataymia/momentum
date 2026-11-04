@@ -5,6 +5,7 @@ import {defineString} from "firebase-functions/params";
 import {initializeApp} from "firebase-admin/app";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
+import {commitTrustedTimecardCorrection,TrustedTimecardError} from "./timecard-trusted-transaction";
 import {
   separateEmployee,
   EmployeeSeparationError,
@@ -1727,6 +1728,33 @@ export const sandboxWorkflow=onRequest({cors:true,region:"us-central1"},async(re
     }
     console.error("sandboxWorkflow failed",error);
     json(response,502,{ok:false,message:"Sandbox action was not committed. Refresh before retrying."});
+  }
+});
+
+/**
+ * Disabled by default. In approved deployments, a verified Administrator
+ * requests a server-owned timecard correction without receiving payroll
+ * secrets, writing shared business records directly or bypassing locks.
+ */
+export const correctEmployeeTimecard=onRequest({
+  cors:true,region:"us-central1",
+},async(request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const raw=request.headers.authorization??"";
+  const token=raw.startsWith("Bearer ")?raw.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actorUid="";
+  try{actorUid=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await commitTrustedTimecardCorrection(actorUid,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof TrustedTimecardError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("correctEmployeeTimecard transaction failed",error);
+    json(response,502,{ok:false,message:"Timecard correction was not confirmed. Refresh the employee and payroll records before retrying."});
   }
 });
 
