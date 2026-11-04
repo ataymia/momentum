@@ -102,6 +102,7 @@ export function assessHrLegacyBatchDryRun(input: {
     }
   }
   const seenIndexes = new Set<number>();
+  const seenIds = new Set<string>();
   for (const candidate of plan.copyCandidates) {
     if (!Number.isSafeInteger(candidate.sourceIndex) || candidate.sourceIndex < 0 ||
         seenIndexes.has(candidate.sourceIndex) ||
@@ -109,10 +110,45 @@ export function assessHrLegacyBatchDryRun(input: {
         candidate.destinationPath !== userDocPath(candidate.ownerUid, "hcm", plan.field) ||
         canonical(candidate.record) !== canonical(Array.isArray(sourceItems) ? sourceItems[candidate.sourceIndex] : undefined))
       issues.push("candidate-mismatch");
+    const raw = Array.isArray(sourceItems) ? sourceItems[candidate.sourceIndex] : undefined;
+    const expectedId = plan.field === "privateProfiles"
+      ? "profile:" + candidate.ownerUid
+      : object(raw) ? raw.id : undefined;
+    if (candidate.recordId !== expectedId || typeof expectedId !== "string" ||
+        seenIds.has(candidate.recordId)) issues.push("candidate-mismatch");
     seenIndexes.add(candidate.sourceIndex);
+    seenIds.add(candidate.recordId);
   }
-  if (plan.copyCandidates.length + plan.alreadyPresent + plan.identicalSourceDuplicates >
-      plan.sourceCount) issues.push("invalid-plan");
+  if (plan.quarantine.length === 0 && plan.identicalSourceDuplicates === 0 &&
+      plan.copyCandidates.length + plan.alreadyPresent !== plan.sourceCount)
+    issues.push("invalid-plan");
+  // Claims that a record is already present require an inventoried exact match.
+  if (Array.isArray(sourceItems) && fieldSpec?.userIdField) {
+    let verifiedPresent = 0;
+    for (const [index, raw] of sourceItems.entries()) {
+      if (!object(raw) || !validUid(raw[fieldSpec.userIdField])) continue;
+      const uid = raw[fieldSpec.userIdField] as string;
+      const id = plan.field === "privateProfiles" ? "profile:" + uid : raw.id;
+      if (typeof id !== "string") { issues.push("invalid-plan"); continue; }
+      const target = before.byPath.get(userDocPath(uid, "hcm", plan.field));
+      const targetItems = target?.data?.items;
+      if (target && target.version !== null && !Array.isArray(targetItems))
+        issues.push("invalid-snapshot");
+      const matches = Array.isArray(targetItems) ? targetItems.filter((item) =>
+        object(item) && item[fieldSpec.userIdField!] === uid &&
+        (plan.field === "privateProfiles" ? "profile:" + uid : item.id) === id) : [];
+      if (matches.length > 1) issues.push("invalid-snapshot");
+      if (seenIndexes.has(index)) {
+        if (matches.length) issues.push("candidate-mismatch");
+      } else if (matches.length === 1 && canonical(matches[0]) === canonical(raw)) {
+        verifiedPresent++;
+      } else {
+        issues.push("candidate-mismatch");
+      }
+    }
+    if (plan.quarantine.length === 0 && plan.identicalSourceDuplicates === 0 &&
+        verifiedPresent !== plan.alreadyPresent) issues.push("candidate-mismatch");
+  }
   for (const path of required) {
     const expected = before.byPath.get(path);
     const observed = now.byPath.get(path);
