@@ -2,6 +2,7 @@ import { evaluateSalesRepAccountBonuses, orderFirstSettlementDate, type BonusMil
 import { arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import { activeBenefitEnrollments, activeCompensation, type HCMState } from "./hcm-engine";
 import type { TimeEntry, WorkspaceData } from "./types";
+import type {PayrollRunExtension} from "./payroll-provider-lifecycle";
 
 export const PAYROLL_STORAGE_KEY = "momentum-payroll-v5";
 export type PayrollRunKind = "Regular" | "Monthly bonus";
@@ -36,7 +37,7 @@ export type PayLine = {
   sourceBonusIds: string[];
 };
 export type PayRunStatus = "Draft" | "Approved" | "Released" | "Voided";
-export type PayRun = { id: string; kind: PayrollRunKind; createdAt: string; periodStart: string; periodEnd: string; payDate: string; status: PayRunStatus; lines: PayLine[]; approvedAt?: string; approvedBy?: string; releasedAt?: string; releasedBy?: string; voidedAt?: string; voidedBy?: string; voidReason?: string; reissueOf?: string };
+export type PayRun = PayrollRunExtension & { id: string; kind: PayrollRunKind; createdAt: string; periodStart: string; periodEnd: string; payDate: string; status: PayRunStatus; lines: PayLine[]; approvedAt?: string; approvedBy?: string; releasedAt?: string; releasedBy?: string; voidedAt?: string; voidedBy?: string; voidReason?: string; reissueOf?: string };
 export type TaxLiabilityType = "Federal employee" | "State employee" | "Local employee" | "Employer";
 export type TaxLiabilityStatus = "Accrued" | "Scheduled" | "Paid" | "Reversed";
 export type TaxLiability = { id: string; payRunId: string; type: TaxLiabilityType; amount: number; status: TaxLiabilityStatus; createdAt: string; dueDate?: string };
