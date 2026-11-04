@@ -367,6 +367,16 @@ class FirestoreBackend{
 
   /** Directory changed (new hire, role change): fetch any newly readable shards and republish affected engines. */
   async updateScope(scope:PersistenceScope){
+    if(this.disposed)return;
+    // A different Firebase UID requires a fresh backend. Never carry non-HR cache across identities.
+    if(this.hrShadow&&scope.uid!==this.scope.uid){
+      this.hrShadow.transition(scope,[]);
+      this.docs.clear();this.cache.clear();this.scope=scope;
+      this.dispose();
+      for(const key of DOMAIN_BY_KEY.keys())emitKey(key);
+      setStatus({lastError:"Account changed. Reattach cloud storage before reading or saving."});
+      return;
+    }
     const epochBefore=this.hrShadow?.epoch;
     if(this.hrShadow){
       const hcm=DOMAIN_SPECS.find((spec)=>spec.id==="hcm")!;
@@ -406,6 +416,7 @@ class FirestoreBackend{
   }
 
   getItem(key:string){
+    if(this.disposed)return null;
     if(this.hrShadow&&key==="momentum-hcm-v4"){
       const snapshot=this.hrShadow.snapshot();return snapshot?JSON.stringify(snapshot):null;
     }
@@ -469,6 +480,7 @@ class FirestoreBackend{
   }
 
   setItem(key:string,value:string){
+    if(this.disposed){setStatus({lastError:"Cloud session ended. No change was saved."});return;}
     if(this.hrShadow&&key==="momentum-hcm-v4"){
       setStatus({lastError:"HR shadow review is read-only. No HR edit was saved or submitted."});return;
     }
