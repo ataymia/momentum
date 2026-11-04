@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHcmSeed } from "../lib/hcm-engine";
 import { hrRequestReviewRows, hrRequestReviewDetail, planHrRequestDecision } from "../lib/hr-request-review";
+import { canVisitRoute, pageForPath, requiresPrototypePage } from "../lib/navigation-route-registry";
 import type { WorkspaceData, WorkspaceUser } from "../lib/types";
 
 const person = (id: string, role: WorkspaceUser["role"], employmentStatus: "Active" | "Separated" = "Active") =>
@@ -128,4 +129,14 @@ test("invalid time off and timestamps are rejected without writing", () => {
   const invalid = planHrRequestDecision({ ...input(admin, hcm), data, kind: "leave",
     requestId: "leave-rep", decision: "Approved", note: "", decidedAt: "not-a-date" });
   assert.equal(invalid.ok, false);
+});
+
+test("request queue and deep links preserve routing and deny customer access", () => {
+  for (const path of ["/people/requests", "/people/requests/leave/leave-rep", "/people/requests/workflow/workflow-rep"]) {
+    assert.equal(pageForPath(path), "people");
+    assert.equal(requiresPrototypePage(path), true);
+    assert.equal(canVisitRoute(admin, path), true);
+    assert.equal(canVisitRoute(rep, path), true, "employee can open only own record after scoped selector");
+    assert.equal(canVisitRoute(customer, path), false);
+  }
 });
