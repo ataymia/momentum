@@ -78,6 +78,12 @@ const overlaps=(entries:Row[],userId:string,date:string,p:Punch,exclude:string)=
  entries.some(e=>str(e.userId)===userId&&str(e.date)===date&&str(e.id)!==exclude&&
    (!clockRe.test(str(e.clockIn))||!clockRe.test(str(e.clockOut))||
     (mins(str(e.clockIn))<mins(p.clockOut)&&mins(p.clockIn)<mins(str(e.clockOut)))));
+/**
+ * Evaluate a server-owned transaction snapshot without trusting client records.
+ * @param {CorrectionIntent} intent Proposed change with a stable request ID.
+ * @param {CorrectionSnapshot} state Fresh authenticated Firestore records.
+ * @return {CorrectionDecision} Transaction plan or explicit denial.
+ */
 export function planTrustedTimecardCorrection(intent:CorrectionIntent,state:CorrectionSnapshot):CorrectionDecision{
  const {actorUid,actor,target,now,todayArizona}=state;
  if(!refOk(intent.requestId)||!refOk(intent.targetUid)||!["amend","add_shift","create_week"].includes(intent.action))
