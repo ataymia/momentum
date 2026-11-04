@@ -7,9 +7,9 @@ import {readFileSync} from "node:fs";
 import test,{before,after,beforeEach} from "node:test";
 import {initializeTestEnvironment,assertFails,type RulesTestEnvironment} from "@firebase/rules-unit-testing";
 import {doc,getDoc,runTransaction,setDoc} from "firebase/firestore";
-import {
-  planTrustedTimecardCorrection,type CorrectionIntent,type CorrectionSnapshot,type Row,
-} from "../functions/src/timecard-correction-policy";
+import * as trustedPolicy from "../functions/src/timecard-correction-policy";
+import type {CorrectionIntent,CorrectionSnapshot,Row} from "../functions/src/timecard-correction-policy";
+const planTrustedTimecardCorrection=(trustedPolicy as unknown as {default?:typeof trustedPolicy}).default?.planTrustedTimecardCorrection??trustedPolicy.planTrustedTimecardCorrection;
 
 let env:RulesTestEnvironment;
 const project="momentum-timecard-trusted-review";
