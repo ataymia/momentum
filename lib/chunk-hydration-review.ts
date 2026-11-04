@@ -36,7 +36,7 @@ export function reviewChunkHydration(
   let count = 0;
   for (const path of paths) {
     const snapshot = byPath.get(path);
-    if (!snapshot || snapshot.denied || !snapshot.exists || !snapshot.data)
+    if (!snapshot || (snapshot as FirestoreSnapshot & { denied?: boolean }).denied || !snapshot.exists || !snapshot.data)
       return fail("missing-or-denied-shard");
     const items = snapshot.data.items;
     if (!Array.isArray(items)) return fail("invalid-shard");
