@@ -1,0 +1,20 @@
+# HR legacy versioned reconciliation and recovery gate (review only)
+**Date:** November 4, 2026 (Phoenix). **Queue:** 01. **No production inventory, migration, rules update or deployment.**
+
+## Built
+- `lib/hr-legacy-reconciliation.ts` consumes an existing, pure `planHrLegacySharedField` result plus **separately supplied** baseline and just-before-execution inventories. Each inventoried document has a canonical path, opaque authoritative version and explicit presence/absence. Missing paths, duplicate paths, invalid version tokens, source/target drift, changed absence, quarantined/duplicate source records, unrecognized owner or candidate mismatch block the entire dry run.
+- Ready reports contain only counts, bounded batch metadata and exact version preconditions; no employee record values. They are **not** a migration executor or Firestore transaction. A future approved executor must re-check all source and target preconditions **atomically inside the transaction**, ensure idempotent upserts, and stop on any conflict. The current source must remain recoverable and must not be deleted.
+- Restore readiness requires independent version-matched, verified and **restore-tested** backup receipts for every planned document, including verified absence, and refuses a changed source. A positive dry-run status is only an evidence checkpoint. No backup is created, restored or verified by this code.
+- Chunk-aware `audit/events` inspector checks version-1 manifest, strictly ordered physical shard names, all versioned shard snapshots, event actor ownership and item counts. It refuses missing/reordered/extra chunks and count drift. This is inspection only. **HCM actor-audit remains explicitly excluded from migration** because `actorId` does not prove the subject of the event. The platform audit inspector is not a substitute for subject-level confidentiality controls.
+- Synthetic logic tests cover unchanged replay, source and destination drift, verified-absence races, duplicate/missing inventory, unsafe candidate, bounded batches, missing/unverified backups, source-change restore gate, and chunk owner/count/ordering errors. The full CI script includes them.
+
+## Design limitations requiring separate authorization
+1. An opaque Firestore updateTime/ETag is supplied by a privileged approved staging inventory, **not generated or fetched** by this module. A matching string alone cannot prevent a race; only transaction-time preconditions do. Never use a client clock as a version.
+2. Current planner copies only unchunked, owner-tagged HCM fields. Unknown ownership, conflicted records, and HCM actor-audit require a documented authorized reviewer; no fuzzy assignment, automatic suspension or source deletion.
+3. Before any actual staging backfill: owner-approved isolated Firebase project, least-privileged test identities, access logs, versioned backups, tested restoration, older-client read-path compatibility, per-owner transaction budget and replay/rollback drills.
+4. The CURRENT generated Firestore rules still expose legacy shared confidential HCM field reads and manager writes, plus actor-audit access. The prior SHADOW rules exist in tests only. Do not deploy them before a staged migration and client-read transition.
+5. Any future report persisted outside an approved secure boundary must **redact paths, UIDs, version strings, source payloads and private record IDs**. Only aggregated counts and issue codes are suitable for ordinary handoff.
+
+**Status:** Built on review branch; automated verification and exact SHA evidence recorded in the queue when observed. Visual/staging QA needed; user acceptance and release outstanding. No actual data, financial or HR state changed.
+
+**Next unblocked action:** add a review-only read-path compatibility matrix that proves old and new HCM client hydration behavior against the proposed shared-field shadow policy, with no production rules changes.
