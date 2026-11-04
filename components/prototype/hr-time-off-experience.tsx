@@ -29,7 +29,7 @@ export function HrTimeOffExperience(){
   const record:LeaveRequest={id,userId:currentUser.id,policyId:assignment?.policyId,startDate:start,endDate:end,requestedHours,reason:reason.trim(),submittedAt:new Date().toISOString(),status:"Submitted"};
   setHcm(s=>appendAudit({...s,leaveRequests:[record,...s.leaveRequests]},{actorId:currentUser.id,action:"Time-off request submitted",entityType:"LeaveRequest",entityId:id,reason:reason.trim()}));
   setStart("");setEnd("");setHours("");setReason("");
-  setNotice("Request sent to the existing HR validation and audit workflow. Verify its status below.");
+  setNotice("Local demo request submitted to HR validation. Verify the recorded status below; no live employer notification was sent.");
  };
  const exportHistory=()=>downloadCsv("momentum-leave-register.csv",rows.map(r=>({employee:data.users.find(u=>u.id===r.userId)?.name??"Employee",start:r.startDate,end:r.endDate,hours:r.requestedHours,status:r.status,reason:r.reason,submittedAt:r.submittedAt,decision:r.decisionNote??""})),["employee","start","end","hours","status","reason","submittedAt","decision"]);
  return <div className="prototype-domain prototype-domain--people">
