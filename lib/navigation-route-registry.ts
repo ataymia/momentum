@@ -173,7 +173,7 @@ export function pageForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if (ROUTE_OVERRIDES[clean]) return ROUTE_OVERRIDES[clean];
   // Deep-linked records must retain their owning workspace page, not fall back to Home.
-  if(clean==="/people/me"||clean==="/people/onboarding/review"||clean.startsWith("/people/employees/")||clean.startsWith("/people/onboarding/cases/"))return "people";
+  if(clean==="/people/me"||clean==="/people/requests"||clean.startsWith("/people/requests/")||clean==="/people/onboarding/review"||clean.startsWith("/people/employees/")||clean.startsWith("/people/onboarding/cases/"))return "people";
   if(clean.startsWith("/crm/self-delivery/"))return "orders";
   if(clean.startsWith("/sales/orders/"))return "orders";
   if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
@@ -204,6 +204,8 @@ export function routeLabel(path: string): string {
   const item = routeEntry(clean) ?? CUSTOMER_MENU.find(entry=>entry.path===clean);
   if (item) return item.label;
   if (clean==="/people/me") return "My employee profile";
+  if (clean==="/people/requests") return "HR requests";
+  if (clean.startsWith("/people/requests/")) return "HR request review";
   if (clean==="/people/onboarding/review") return "Onboarding review";
   if (clean.startsWith("/people/onboarding/cases/")) return "Onboarding checklist";
   if (clean.startsWith("/people/employees/")) return "Employee profile";
@@ -253,7 +255,7 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
     return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer) &&
       canAccessPage(user,permissionForPath(clean)??"home");
   }
-  if (clean==="/people/me") return true; // Self profile; record selector still checks active identity.
+  if (clean==="/people/me"||clean==="/people/requests"||clean.startsWith("/people/requests/")) return true; // Record selector enforces self or Administrator.
   if (clean==="/people/onboarding/review"||clean.startsWith("/people/onboarding/cases/")||clean.startsWith("/people/employees/")) return user.role==="Administrator";
   if (clean.startsWith("/portal/")) return false;
   if ((clean==="/crm/self-delivery"||clean.startsWith("/crm/self-delivery/")) && user.role!=="Sales Representative")return false;
