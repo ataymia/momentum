@@ -107,7 +107,7 @@ export function payrollRunControlIssues(state: PayrollState, data: WorkspaceData
 export function payrollCorrectionBlockers(state: PayrollState, run: PayRun) {
   const blockers: string[] = [];
   if (run.status === "Voided") blockers.push("Payroll run is already voided.");
-  if(run.providerHandoff&&run.providerHandoff.status!=="Prepared")
+  if(run.providerHandoff&&!["Prepared","Returned for correction"].includes(run.providerHandoff.status))
     blockers.push("Provider already received or reviewed this payroll. Confirm formal recall/adjustment before correction.");
   if(run.filingCases?.some(f=>f.status==="Sent to provider"||f.status==="Filed"))
     blockers.push("External filing already submitted or filed. Use an amended filing workflow.");
