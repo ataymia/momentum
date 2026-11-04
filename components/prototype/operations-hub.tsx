@@ -11,7 +11,7 @@ import { useWorkspace } from "../../lib/workspace-context";
 import { TerritoryPanel } from "../crm/territory-panel";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
-import { PeopleExperience, PayrollExperience } from "./hr-payroll-experiences";
+import { PeopleExperience, PeopleEmployeeDetail, PeopleOnboardingReview, PeopleOnboardingCase, PayrollExperience } from "./hr-payroll-experiences";
 import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
@@ -277,6 +277,8 @@ function TerritoryMapPreview(){
     <OpenLink to="/crm/account-map">Account map</OpenLink></section></div>;
 }
 
+const decodeRecordId=(encoded:string)=>{try{return decodeURIComponent(encoded);}catch{return "";}};
+
 export function PrototypeOperationsHub(){
   const path=useNavigationRoute();const {currentUser}=useWorkspace();
   if(!canVisitRoute(currentUser,path))return <Empty>You do not have permission to view this module.</Empty>;
@@ -284,6 +286,10 @@ export function PrototypeOperationsHub(){
   if(path==="/")return <WorkspaceHome/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   if(path==="/people")return <PeopleExperience/>;
+  if(path==="/people/me")return <PeopleEmployeeDetail employeeId={currentUser?.id??""}/>;
+  if(segments[0]==="people"&&segments[1]==="employees"&&segments.length===3)return <PeopleEmployeeDetail employeeId={decodeRecordId(segments[2])}/>;
+  if(path==="/people/onboarding/review")return <PeopleOnboardingReview/>;
+  if(segments[0]==="people"&&segments[1]==="onboarding"&&segments[2]==="cases"&&segments.length===4)return <PeopleOnboardingCase caseId={decodeRecordId(segments[3])}/>;
   if(path==="/people/payroll")return <PayrollExperience/>;
   if(path==="/admin/accounts")return <AccountConsolidationReview/>;
   if(path==="/admin/employee-profiles")return <div><Heading title="Employee Profiles" description="Preserved administrator-only employee record controls."/><AdminEmployeeProfiles/></div>;
