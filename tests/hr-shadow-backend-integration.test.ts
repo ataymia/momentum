@@ -251,3 +251,18 @@ test("delayed chunk hydration from a previous authority epoch cannot enter revie
     assert.equal(hasMarker(backend.getItem(AUDIT), "revoked-audit"), false);
   } finally { pause.resume(); backend.dispose(); }
 });
+
+test("suspension during initial HCM prime rejects the delayed pre-revocation batch", async () => {
+  const reads = new SyntheticReads();
+  reads.put(own("synthetic-a"), employeeDoc("synthetic-a", "pre-suspension"));
+  const backend = makeBackend(reads, scope("synthetic-a"));
+  const pause = reads.pauseNextBatch((paths) => paths.includes(own("synthetic-a")));
+  try {
+    const oldPrime = backend.prime();
+    await pause.entered;
+    await backend.updateScope(scope("synthetic-a", "Sales Representative", [], "Suspended"));
+    pause.resume();
+    await oldPrime;
+    assert.equal(backend.getItem(HCM), null);
+  } finally { pause.resume(); backend.dispose(); }
+});
