@@ -183,3 +183,10 @@ User confirmed the redesign covers the **whole business**, not just employee CRM
 - Repository comparison identifies the branches as diverged, with a common base at 21c64c37f2f963c30eaade67fcc44f242c4e6dec. The new main changes touch shared app shell, package scripts and other employee/location infrastructure. These areas require conflict and regression analysis before any staged integration.
 - No branch sync, rebase, merge, deployment, customer changes or external commitments were made by this sprint. Fixed-snapshot CI passes apply to the prototype contents at the listed commit snapshots, not the combined future result after resolving conflicts.
 - **Recommended next decision:** Approve a separate reconciliation plan and visual review before requesting any merge. Continue unapproved modules strictly as prototypes on the isolated branch.
+
+### Non-mutating integration overlap check
+Comparison from common base 21c64c37f2f963c30eaade67fcc44f242c4e6dec found **two overlapping changed files**:
+1. components/app-shell-v4.tsx: both branches changed the app shell. A reconciliation must preserve navigation, notification behavior, and the newly introduced employee clock-in permission components.
+2. package.json: both branches updated scripts. Combine rather than overwrite the order/Home/fulfillment regressions and the new location-permission test.
+
+The other 14 changed files on the independently updated main were not modified in the prototype comparison at the time checked, but may still have runtime dependencies on shared providers and layouts. This is **not** a merge-conflict guarantee. A later reconciliation branch must validate import compatibility, role behavior, CI, and visual QA without modifying main. No merge was attempted here.
