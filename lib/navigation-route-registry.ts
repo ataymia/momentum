@@ -76,6 +76,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Payroll", path: "/people/payroll", permission: "payroll", state: "prototype" },
     { label: "Payroll Processing & Settings", path: "/people/payroll/workflow", permission: "payroll", state: "existing" },
     { label: "Training", path: "/people/training", permission: "trainingAdmin", state: "existing" },
+    { label: "Time Off & Leave", path: "/people/leave", permission: "people", state: "prototype" },
   ] },
   { label: "Marketing", entries: [
     { label: "Marketing Overview", path: "/marketing", permission: "marketing", state: "existing" },
