@@ -4,6 +4,8 @@ import {useMemo,useState} from "react";
 import {Download,Search,ShieldAlert} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {usePayroll} from "../../lib/payroll-context";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {momentumStorage} from "../../lib/persistence";
 import {consumedTimecards} from "../../lib/payroll-engine";
 import {downloadPayrollCsv} from "../../lib/payroll-download";
 import {TimecardRecord} from "./timecard-record";
@@ -12,6 +14,7 @@ import {Button,Field,Section,StatusPill,hoursBetween} from "../ui";
 export function AdminTimecardCorrectionCenter(){
  const {data,currentUser,adminCreateMissingTimecard}=useWorkspace();
  const {payroll}=usePayroll();
+ const runtime=useRuntimeMode();const writeDemo=runtime.isDemo&&momentumStorage.mode()==="local";
  const [search,setSearch]=useState("");
  const [status,setStatus]=useState("all");
  const [selectedId,setSelectedId]=useState("");
@@ -52,6 +55,7 @@ export function AdminTimecardCorrectionCenter(){
  if(!admin)return null;
  return <Section title="Administrator timecard corrections"
   description="Find any employee's timecard, correct punches or breaks, and record verified missed shifts. Unpaid edits return the card for employee re-attestation and another approval.">
+  {!writeDemo&&<p className="form-hint">This connected environment is read-only for timecard corrections until a server-authoritative payroll transaction is available. Existing records and exports remain viewable.</p>}
   <div className="form-grid">
     <Field label="Employee missing an entire week"><select value={newEmployeeId} onChange={e=>setNewEmployeeId(e.target.value)}>
       <option value="">Select an employee</option>
@@ -60,7 +64,7 @@ export function AdminTimecardCorrectionCenter(){
     <Field label="Date during missing week"><input type="date" value={newWeekDate} onChange={e=>setNewWeekDate(e.target.value)}/></Field>
     <Field label="Reason and source of verification"><input value={creationReason} onChange={e=>setCreationReason(e.target.value)}
       placeholder="Employee verified the missed week"/></Field>
-    <Button variant="secondary" disabled={!newEmployeeId||!newWeekDate||creationReason.trim().length<8}
+    <Button variant="secondary" disabled={!writeDemo||!newEmployeeId||!newWeekDate||creationReason.trim().length<8}
       onClick={createMissingWeek}>Create missing timecard</Button>
   </div>
   {creationError&&<p role="alert" className="form-error">{creationError}</p>}
