@@ -178,7 +178,7 @@ function RepDetail({order}:{order:Order}){
           step==="load"?"Physically check all cases before transferring them into your employee custody.":
           step==="depart"?"Confirm the full load is in your custody before marking the order out for delivery.":
           "Capture the authorized recipient's handwritten signature and printed name before posting delivery."}</p></div></div>
-      {step==="complete"&&<div className="rep-delivery-signature">
+      {step==="complete"&&reviewMutationsEnabled&&<div className="rep-delivery-signature">
         <label>Recipient signature <span>Required</span></label>
         <DeliverySignaturePad strokes={strokes} onChange={setStrokes}/>
         <label htmlFor="rep-delivery-recipient">Recipient printed name <span>Required</span></label>
