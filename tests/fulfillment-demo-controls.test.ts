@@ -40,6 +40,7 @@ test("UI defers approval, stock reservation and driver custody authorization to 
     assert.match(source,new RegExp("\\b"+action+"\\("));
   }
   assert.match(source,/useFirebaseSessionOptional\(\)/);
+  assert.match(source,/hasFirebaseSession:Boolean\(session\?\.session\?\.uid\)/);
   assert.match(source,/momentumStorage\.mode\(\)/);
   assert.match(source,/canMutatePrototypeFulfillment\(/);
   assert.doesNotMatch(source,/markDelivered\(/);
