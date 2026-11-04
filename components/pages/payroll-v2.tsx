@@ -31,10 +31,10 @@ export function PayrollPage() {
   const admin = currentUser?.role === "Administrator";
   const [tab, setTab] = useState<"self" | "earnings" | "processing" | "tax" | "provider" | "retro" | "setup">("self");
   useEffect(()=>{
-    if(typeof window!=="undefined"&&window.sessionStorage.getItem("momentum-payroll-open-tab")==="retro"){
-      window.sessionStorage.removeItem("momentum-payroll-open-tab");
-      setTab("retro");
-    }
+    if(typeof window==="undefined"||window.sessionStorage.getItem("momentum-payroll-open-tab")!=="retro")return;
+    window.sessionStorage.removeItem("momentum-payroll-open-tab");
+    const handle=window.setTimeout(()=>setTab("retro"),0);
+    return()=>window.clearTimeout(handle);
   },[]);
   const [notice, setNotice] = useState("");
   const [periodStart, setPeriodStart] = useState("");
