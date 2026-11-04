@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {weeklyReporterEligible} from "../lib/weekly-compliance";
+import type {WorkspaceUser} from "../lib/types";
 import {
   WEEKLY_REPORTING_LAUNCH_DATE,
   createPerformanceSeed,
@@ -112,4 +114,12 @@ test("a missed due date becomes blocking/overdue on the next day",()=>{
   assert.equal(periods[0].weekStart,"2026-10-05");
   assert.equal(periods[0].overdue,true);
   assert.equal(periods[0].dueToday,false);
+});
+
+test("Administrators review weekly reports but never owe their own submission",()=>{
+ const base:WorkspaceUser={id:"usr-admin",name:"Test Administrator",firstName:"Test",email:"admin@example.invalid",initials:"TA",title:"Operations",role:"Administrator",team:"Leadership",accent:"#123456"};
+ assert.equal(weeklyReporterEligible(base),false);
+ assert.equal(weeklyReporterEligible({...base,role:"Sales Representative"}),true);
+ assert.equal(weeklyReporterEligible({...base,role:"Sales Manager"}),true);
+ assert.equal(weeklyReporterEligible({...base,role:"Sales Representative",employmentStatus:"Separated"}),false);
 });
