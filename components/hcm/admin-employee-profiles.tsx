@@ -185,7 +185,7 @@ export function AdminEmployeeProfiles() {
   const delivery = useDelivery();
   const tracking = useFieldTracking();
   const { visibleEvents } = useAudit();
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(()=>typeof window==="undefined"?"":window.sessionStorage.getItem("momentum-employee-profile-focus")??"");
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<ProfileTab>("overview");
   const [showFormer, setShowFormer] = useState(false);
