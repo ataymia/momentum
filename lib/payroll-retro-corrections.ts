@@ -32,7 +32,7 @@ const clockValid=(c:RetroClock)=>Boolean(c.id.trim()&&c.actorId.trim()&&atValid(
 const reference=(s:string)=>s.trim().toLowerCase();
 const findLine=(state:PayrollState,runId:string,employeeId:string)=>{
  const run=state.runs.find(r=>r.id===runId&&r.status==="Released");
- if(!run)return null;
+ if(!run||run.special?.retroCaseId)return null;
  const matches=run.lines.filter(l=>l.employeeId===employeeId);
  if(matches.length!==1)return null;
  const line=matches[0];
@@ -78,9 +78,8 @@ export function proposeRetroCorrection(state:PayrollState,input:RetroInput,clock
  const originalGross=source.line.grossPay;
  const delta=retroDelta(originalGross,input.correctedGross);
  if(delta===null)return fail("Original payroll amount is not valid.");
- if(state.retroCases.some(c=>c.sourceRunId===input.sourceRunId&&c.employeeId===input.employeeId&&
-    c.status!=="Closed"&&reference(c.evidenceReference)===reference(input.evidenceReference)))
-   return fail("An open correction already cites this employee, pay run and evidence reference.");
+ if(state.retroCases.some(c=>c.sourceRunId===input.sourceRunId&&c.employeeId===input.employeeId&&c.status!=="Closed"))
+   return fail("An unresolved correction already exists for this employee and original paycheck. Reconcile that case before starting another.");
  const item:RetroCorrectionCase={
    id:clock.id,sourceRunId:input.sourceRunId,employeeId:input.employeeId,
    originalGross,correctedGross:money(input.correctedGross),deltaGross:delta,
