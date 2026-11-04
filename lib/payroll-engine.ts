@@ -306,22 +306,34 @@ export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeI
 }
 
 function calculateNet(state: PayrollState, employeeId: string, asOf: string, regularHours: number, overtimeHours: number, regularPay: number, overtimePay: number, bonusPay: number, sourceTimecardIds: string[], sourceBonusIds: string[], withholding: WithholdingProfile, benefits: PayrollBenefitDeductions): PayLine | null {
-  if (!isValidCalendarDateKey(asOf) || !activeEmployerTaxConfigurationValid(state, asOf) || ![regularHours,overtimeHours,regularPay,overtimePay,bonusPay].every(finiteNonNegative) || !withholdingProfileValid(withholding)) return null;
-  const grossPay = regularPay + overtimePay + bonusPay;
-  if (!finiteNonNegative(grossPay) || !finiteNonNegative(benefits.preTax) || !finiteNonNegative(benefits.postTax)) return null;
-  const rawTaxableWages = grossPay - benefits.preTax;
-  if (!Number.isFinite(rawTaxableWages) || rawTaxableWages < -0.005) return null;
-  const taxableWages = Math.max(0, rawTaxableWages);
-  const federalTax = taxableWages * (withholding.federalPercent / 100);
-  const stateTax = taxableWages * (withholding.statePercent / 100);
-  const localTax = taxableWages * (withholding.localPercent / 100);
-  const employeeTaxes = federalTax + stateTax + localTax + withholding.additionalWithholding;
-  const employerTaxes = activeEmployerTaxes(state, asOf).reduce((sum, rule) => sum + taxableWages * (rule.percent / 100), 0);
-  if (![federalTax, stateTax, localTax, employeeTaxes, employerTaxes].every(finiteNonNegative)) return null;
-  const rawNetPay = grossPay - benefits.preTax - benefits.postTax - employeeTaxes - withholding.postTaxDeduction;
-  if (!Number.isFinite(rawNetPay) || rawNetPay < -0.005) return null;
-  const netPay = Math.max(0, rawNetPay);
-  const benefitDeduction = benefits.total;
-  const line = { employeeId, regularHours, overtimeHours, regularPay, overtimePay, bonusPay, grossPay, benefitDeduction, preTaxBenefitDeduction: benefits.preTax, postTaxBenefitDeduction: benefits.postTax, taxableWages, federalTax, stateTax, localTax, additionalWithholding: withholding.additionalWithholding, postTaxDeduction: withholding.postTaxDeduction, employeeTaxes, employerTaxes, netPay, sourceTimecardIds, sourceBonusIds };
+  if (!isValidCalendarDateKey(asOf) || !activeEmployerTaxConfigurationValid(state, asOf) ||
+    ![regularHours,overtimeHours,regularPay,overtimePay,bonusPay].every(finiteNonNegative) ||
+    !withholdingProfileValid(withholding)) return null;
+  // Currency is stored to cents at the employee-line boundary. This is an internal
+  // estimate using configured percentages, NOT W-4/IRS tables or certified FICA.
+  const cents=(n:number)=>Math.round((n+Number.EPSILON)*100)/100;
+  regularPay=cents(regularPay);overtimePay=cents(overtimePay);bonusPay=cents(bonusPay);
+  const preTax=cents(benefits.preTax),postTax=cents(benefits.postTax);
+  const extraTax=cents(withholding.additionalWithholding),postTaxDeduction=cents(withholding.postTaxDeduction);
+  const grossPay=cents(regularPay+overtimePay+bonusPay);
+  if (![grossPay,preTax,postTax,extraTax,postTaxDeduction].every(finiteNonNegative)) return null;
+  const taxableWages=cents(grossPay-preTax);
+  if (taxableWages<0) return null;
+  const federalTax=cents(taxableWages*withholding.federalPercent/100);
+  const stateTax=cents(taxableWages*withholding.statePercent/100);
+  const localTax=cents(taxableWages*withholding.localPercent/100);
+  const employeeTaxes=cents(federalTax+stateTax+localTax+extraTax);
+  const employerTaxes=cents(activeEmployerTaxes(state,asOf).reduce((total,rule)=>
+    total+cents(taxableWages*rule.percent/100),0));
+  if (![federalTax,stateTax,localTax,employeeTaxes,employerTaxes].every(finiteNonNegative)) return null;
+  const netPay=cents(grossPay-preTax-postTax-employeeTaxes-postTaxDeduction);
+  if (netPay<0) return null;
+  const benefitDeduction=cents(preTax+postTax);
+  const line:PayLine={
+    employeeId,regularHours,overtimeHours,regularPay,overtimePay,bonusPay,grossPay,
+    benefitDeduction,preTaxBenefitDeduction:preTax,postTaxBenefitDeduction:postTax,
+    taxableWages,federalTax,stateTax,localTax,additionalWithholding:extraTax,
+    postTaxDeduction,employeeTaxes,employerTaxes,netPay,sourceTimecardIds,sourceBonusIds,
+  };
   return payLineValid(line) ? line : null;
 }
