@@ -1,6 +1,7 @@
 "use client";
 import { TrainingMaterialLink } from "../hcm/training-material-link";
 import {AdminTimecardCorrectionCenter} from "../hcm/admin-timecard-correction-center";
+import {EmployeeTimecardHistory} from "../hcm/employee-timecard-history";
 import { BookOpen, Clock3, MapPin, PackageSearch } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { mapsIntegrationStatus, projectAccounts } from "../../lib/maps-integration";
@@ -62,6 +63,7 @@ export function TimekeepingPage(){
       {open&&<div className="account-detail__actions">{!open.mealStart&&<Button size="sm" variant="secondary" onClick={startMeal}>Start meal</Button>}{open.mealStart&&!open.mealEnd&&<Button size="sm" variant="secondary" onClick={endMeal}>End meal</Button>}</div>}
     </Section>
     <Section title="Recent time entries"><div className="company-request-list">{entries.slice(0,10).map((entry)=><article key={entry.id}><span><Clock3 size={16}/></span><div><strong>{entry.date}</strong><p>{entry.clockIn} → {entry.clockOut??"Open"} · {entry.breakMinutes} break min · {entry.source}</p></div></article>)}</div></Section>
+    <EmployeeTimecardHistory/>
     {currentUser.role==="Administrator"&&<AdminTimecardCorrectionCenter/>}
   </div>;
 }
