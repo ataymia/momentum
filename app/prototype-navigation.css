@@ -149,3 +149,20 @@
 .prototype-consolidation-confirmation textarea{resize:vertical;min-height:76px}
 .prototype-consolidation-confirmation>button{align-self:start;padding:.6rem .9rem;border:1px solid var(--accent,#c29535);border-radius:9px;background:var(--accent,#c29535);color:#14191d;font-weight:700;cursor:pointer}
 .prototype-consolidation-confirmation>button:disabled{opacity:.55;cursor:not-allowed}
+
+/* Source-led fulfillment work panel and local-demo action controls. */
+.prototype-fulfillment-workflow{max-width:1100px}
+.prototype-fulfillment-workflow>.prototype-work-list{align-items:center;gap:1.1rem}
+.prototype-fulfillment-workflow>.prototype-work-list>span{text-align:right}
+.prototype-fulfillment-field{display:flex;flex-direction:column;gap:.7rem;width:min(100%,560px);padding:.65rem 0}
+.prototype-fulfillment-field label{display:flex;flex-direction:column;gap:.4rem;font-size:.85rem;font-weight:600}
+.prototype-fulfillment-field select,.prototype-fulfillment-field textarea{width:100%;padding:.65rem;border:1px solid var(--border,#dfe4eb);border-radius:8px;color:inherit;background:var(--surface,#fff);font:inherit;font-weight:400}
+.prototype-fulfillment-field textarea{resize:vertical;min-height:80px}
+.prototype-fulfillment-field button{align-self:flex-start;padding:.55rem .9rem;border-radius:8px;border:1px solid var(--border,#dfe4eb);background:var(--surface,#fff);color:inherit;cursor:pointer}
+.prototype-fulfillment-field button:disabled{opacity:.55;cursor:not-allowed}
+.prototype-fulfillment-confirm{display:flex;align-items:flex-start;gap:.6rem;margin:1rem 0;font-size:.88rem;max-width:700px}
+.prototype-fulfillment-confirm input{margin-top:.12rem;accent-color:var(--accent,#c29535)}
+.prototype-fulfillment-workflow .prototype-primary-action{display:inline-flex;gap:.45rem}
+.prototype-fulfillment-secondary-actions{display:flex;gap:.55rem;flex-wrap:wrap}
+.prototype-fulfillment-result{margin:.7rem 0;border:1px solid var(--border,#dfe4eb);border-radius:8px;padding:.65rem .8rem}
+@media (max-width:700px){.prototype-fulfillment-workflow>.prototype-work-list{align-items:flex-start;flex-direction:column}.prototype-fulfillment-workflow>.prototype-work-list>span{text-align:left}}
