@@ -8,9 +8,11 @@
 export type Row=Record<string,unknown>;
 export type CorrectionAction="amend"|"add_shift"|"create_week";
 export type Punch={clockIn:string;clockOut:string;mealStart?:string;mealEnd?:string;breakMinutes:number};
+export type ExpectedPunch={clockIn:string;clockOut?:string;mealStart?:string;mealEnd?:string;breakMinutes:number};
 export type CorrectionIntent={
  requestId:string;targetUid:string;action:CorrectionAction;reason:string;
  cardId?:string;entryId?:string;date?:string;weekDate?:string;punch?:Punch;
+ expectedBefore?:ExpectedPunch;
 };
 export type CorrectionSnapshot={
  actorUid:string;actor:Row|null;target:Row|null;now:string;todayArizona:string;
@@ -109,6 +111,8 @@ export function planTrustedTimecardCorrection(intent:CorrectionIntent,state:Corr
    if(!isoDate(str(intent.weekDate))||str(intent.weekDate)>todayArizona)
      return bad(400,"Missing-week date must be a real Arizona date that is not in the future.");
    ({start,end}=week(str(intent.weekDate)));
+   if(newEntries.some(e=>str(e.date)>=start&&str(e.date)<=end))
+     return bad(409,"Existing punch evidence in the missing week needs reconciliation before creating a new card.");
    if(newCards.some(c=>str(c.weekStart)<=end&&str(c.weekEnd)>=start))
      return bad(409,"An existing timecard already covers this employee's week.");
    if(periodLocked(state.periodLocks,start,end)||payRunLock(state.payrollRuns,intent.targetUid,
@@ -138,6 +142,14 @@ export function planTrustedTimecardCorrection(intent:CorrectionIntent,state:Corr
      if(matched.length!==1||str(matched[0].date)!==date)
        return bad(409,"The original punch was changed or not found.");
      targetEntry=matched[0];
+     const expected=intent.expectedBefore;
+     if(!expected||!clockRe.test(expected.clockIn)||
+        expected.clockIn!==str(targetEntry.clockIn)||
+        str(expected.clockOut)!==str(targetEntry.clockOut)||
+        str(expected.mealStart)!==str(targetEntry.mealStart)||
+        str(expected.mealEnd)!==str(targetEntry.mealEnd)||
+        expected.breakMinutes!==targetEntry.breakMinutes)
+       return bad(409,"This original punch changed since it was opened. Refresh before correcting it.");
      if(overlaps(newEntries,intent.targetUid,date,intent.punch!,str(targetEntry.id)))
        return bad(409,"Corrected hours overlap another punch.");
      const before={clockIn:targetEntry.clockIn,clockOut:targetEntry.clockOut,
