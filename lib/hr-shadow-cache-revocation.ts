@@ -22,7 +22,7 @@ export type HrShadowCacheTransition = {
   evictPaths: string[];
   retainPaths: string[];
   requestPaths: string[];
-  quarantinePendingPaths: string[];
+  quarantinePendingKeys: string[];
 };
 
 /**
@@ -33,7 +33,8 @@ export function planHrShadowCacheTransition(input: {
   previousScope: PersistenceScope | null;
   nextScope: PersistenceScope;
   cachedPaths: readonly string[];
-  pendingWritePaths?: readonly string[];
+  /** Actual browser journal keys are domain storage keys, not Firestore paths. */
+  pendingStorageKeys?: readonly string[];
   deniedReadPaths?: readonly string[];
 }): HrShadowCacheTransition {
   const nextAllowed = allowed(input.nextScope);
@@ -49,9 +50,9 @@ export function planHrShadowCacheTransition(input: {
   const retainPaths = reset ? [] : cached.filter((path) => nextAllowed.has(path));
   const retained = new Set(retainPaths);
   const evictPaths = cached.filter((path) => !retained.has(path));
-  const quarantinePendingPaths = reset
-    ? sorted((input.pendingWritePaths ?? []).filter(isHcmPath)) : [];
-  const blockedByPendingOrDenied = denied || quarantinePendingPaths.length > 0;
+  const quarantinePendingKeys = reset
+    ? sorted((input.pendingStorageKeys ?? []).filter((key) => key === HCM!.key)) : [];
+  const blockedByPendingOrDenied = denied || quarantinePendingKeys.length > 0;
   return {
     invalidateHcmSnapshot: reset || evictPaths.length > 0,
     blockedByPendingOrDenied,
@@ -59,7 +60,7 @@ export function planHrShadowCacheTransition(input: {
     retainPaths,
     requestPaths: blockedByPendingOrDenied ? [] :
       sorted([...nextAllowed].filter((path) => !retained.has(path))),
-    quarantinePendingPaths,
+    quarantinePendingKeys,
   };
 }
 
@@ -71,7 +72,14 @@ export function assembleAuthorizedHrShadowSnapshot(
   const permitted = allowed(scope);
   const safe = new Map<string, Record<string, unknown> | null>();
   for (const [path, value] of documents) {
-    if (isHcmPath(path) && permitted.has(path)) safe.set(path, value);
+    if (!isHcmPath(path) || !permitted.has(path)) continue;
+    const parsed = parseDocPath(path);
+    const ownerField = parsed?.uid ? HCM!.fields[parsed.field]?.userIdField : undefined;
+    // A malformed or cross-owned shard is not safe merely because its path is readable.
+    if (ownerField && value && Array.isArray(value.items) && value.items.some((item) =>
+      !item || typeof item !== "object" || Array.isArray(item) ||
+      (item as Record<string, unknown>)[ownerField] !== parsed!.uid)) return null;
+    safe.set(path, value);
   }
   return assembleState(HCM!, safe);
 }

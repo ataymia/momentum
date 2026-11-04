@@ -110,10 +110,10 @@ test("pending HCM journal on revocation is quarantined, never auto-flushed or re
     previousScope: scope("uid-a", "Administrator"),
     nextScope: scope("uid-a", "Sales Representative"),
     cachedPaths: [own("uid-a", "documents")],
-    pendingWritePaths: [own("uid-a", "documents"), "domains/workspace/fields/orders"],
+    pendingStorageKeys: ["momentum-hcm-v4", "momentum-demo-workspace-v5"],
   });
   assert.equal(transition.blockedByPendingOrDenied, true);
-  assert.deepEqual(transition.quarantinePendingPaths, [own("uid-a", "documents")]);
+  assert.deepEqual(transition.quarantinePendingKeys, ["momentum-hcm-v4"]);
   assert.deepEqual(transition.requestPaths, []);
 });
 
@@ -160,4 +160,14 @@ test("current-epoch authorized own shard fetch passes, but extra or denied paths
   assert.equal(acceptHrShadowFetch({ ...base, returnedPaths: [path, own("uid-b", "documents")] }), false);
   assert.equal(acceptHrShadowFetch({ ...base, deniedPaths: [shared("documents")] }), false);
   assert.equal(acceptHrShadowFetch({ ...base, requestEpoch: -1 }), false);
+});
+
+test("a readable shard containing a different employee's record fails closed", () => {
+  const poisoned = new Map(docs);
+  poisoned.set(own("uid-a", "documents"), {
+    items: [{ id: "bad-owner", userId: "uid-b", marker: "SPOOFED_OWNER" }],
+  });
+  assert.equal(assembleAuthorizedHrShadowSnapshot(
+    scope("uid-a", "Sales Representative"), poisoned,
+  ), null);
 });
