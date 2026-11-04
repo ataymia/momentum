@@ -5634,3 +5634,11 @@ button.lot-table:hover,button.lot-table.is-selected {
 .rep-self-delivery__signature{display:grid;gap:10px}
 .rep-self-delivery__signature p{margin:0;font-size:12px;color:var(--muted)}
 .rep-self-delivery__complete{display:flex;gap:8px;align-items:center;color:var(--green-600);font-weight:700}
+
+
+/* Readability uplift requested for field tablets and smaller screens.
+   Keep spacing/layout values unchanged pending responsive review. */
+body { font-size: 16px; }
+button, input, select, textarea { font-size: inherit; }
+.status-pill { font-size: 12px; line-height: 1.2; }
+.form-callout p { font-size: 15px; line-height: 1.5; }
