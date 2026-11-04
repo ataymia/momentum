@@ -172,6 +172,7 @@ test("default-disabled transport never performs reads; denial short-circuits bef
   let canonicalReads = 0;
   const transport = {
     readAuthority: async () => { authorityReads++; return authority(); },
+    readCanonicalVersion: async () => "canonical-v1",
     readCanonical: async () => { canonicalReads++; return doc("leaveRequests", [leave]); },
   };
   assert.deepEqual(await executeHrCanonicalReadReview(cmd(), transport), { ok: false, reason: "disabled" });
@@ -194,7 +195,8 @@ test("in-flight session revocation, role downgrade, manager reassignment and tar
     let current = authority();
     const result = await executeHrCanonicalReadReview(cmd(), {
       readAuthority: async () => current,
-      readCanonical: async () => {
+      readCanonicalVersion: async () => "canonical-v1",
+    readCanonical: async () => {
         const next = structuredClone(current);
         change(next);
         current = next;
@@ -206,6 +208,7 @@ test("in-flight session revocation, role downgrade, manager reassignment and tar
   let current = authority(manager);
   const managerResult = await executeHrCanonicalReadReview(cmd(), {
     readAuthority: async () => current,
+    readCanonicalVersion: async () => "canonical-v1",
     readCanonical: async () => {
       current = { ...current, targetDirectory: { ...rep, managerId: "stranger" } };
       return doc("leaveRequests", [leave]);
@@ -218,6 +221,7 @@ test("same-reference authority mutation during IO cannot bypass pinned pre-read 
   const shared = authority();
   const result = await executeHrCanonicalReadReview(cmd(), {
     readAuthority: async () => shared,
+    readCanonicalVersion: async () => "canonical-v1",
     readCanonical: async () => {
       shared.session!.epoch = 8;
       return doc("leaveRequests", [leave]);
@@ -229,12 +233,47 @@ test("same-reference authority mutation during IO cannot bypass pinned pre-read 
 test("transport fails closed on denied/missing read and on exceptions without echoing payloads", async () => {
   const base = authority();
   const denied = await executeHrCanonicalReadReview(cmd(), {
-    readAuthority: async () => base, readCanonical: async () => null,
+    readAuthority: async () => base, readCanonicalVersion: async () => "canonical-v1",
+    readCanonical: async () => null,
   }, true);
   assert.deepEqual(denied, { ok: false, reason: "canonical-invalid" });
   const failure = await executeHrCanonicalReadReview(cmd(), {
     readAuthority: async () => base,
+    readCanonicalVersion: async () => "canonical-v1",
     readCanonical: async () => { throw new Error("PRIVATE EMPLOYEE PAYLOAD"); },
   }, true);
   assert.deepEqual(failure, { ok: false, reason: "unavailable" });
+});
+
+
+test("canonical revision change during IO fails closed without returning stale HR rows", async () => {
+  let revision = "canonical-v1";
+  const result = await executeHrCanonicalReadReview(cmd(), {
+    readAuthority: async () => authority(),
+    readCanonical: async () => { revision = "canonical-v2"; return doc("leaveRequests", [leave]); },
+    readCanonicalVersion: async () => revision,
+  }, true);
+  assert.deepEqual(result, { ok: false, reason: "canonical-changed" });
+});
+
+test("revocation during revision verification is rejected by final authority check", async () => {
+  let current = authority();
+  const result = await executeHrCanonicalReadReview(cmd(), {
+    readAuthority: async () => current,
+    readCanonical: async () => doc("leaveRequests", [leave]),
+    readCanonicalVersion: async () => {
+      current = { ...current, actorAccess: access(rep, "Suspended") };
+      return "canonical-v1";
+    },
+  }, true);
+  assert.deepEqual(result, { ok: false, reason: "authority-changed" });
+});
+
+test("missing revision verifier fails closed even for authorized records", async () => {
+  const result = await executeHrCanonicalReadReview(cmd(), {
+    readAuthority: async () => authority(),
+    readCanonical: async () => doc("leaveRequests", [leave]),
+    readCanonicalVersion: undefined as unknown as () => Promise<string | null>,
+  }, true);
+  assert.deepEqual(result, { ok: false, reason: "unavailable" });
 });
