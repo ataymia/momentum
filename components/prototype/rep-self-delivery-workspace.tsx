@@ -11,7 +11,7 @@ import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {momentumStorage} from "../../lib/persistence";
 import {COMMERCIAL_KEY,useWorkspace} from "../../lib/workspace-context";
 import {repDeliveryRequest} from "../../lib/rep-delivery-workspace-client";
-import {repDeliveryCandidate,repDeliveryNextStep,repDeliveryProofRecorded,repDeliveryStepLabel,repDeliverySteps,type RepDeliveryAction,type RepDeliveryReceipt} from "../../lib/rep-delivery-workspace-policy";
+import {canExecuteRepDeliveryReviewMutation,repDeliveryCandidate,repDeliveryNextStep,repDeliveryProofRecorded,repDeliveryStepLabel,repDeliverySteps,type RepDeliveryAction,type RepDeliveryReceipt} from "../../lib/rep-delivery-workspace-policy";
 import type {DeliverySignaturePoint} from "../../lib/delivery-engine";
 import {navigateToRoute} from "../../lib/navigation-store";
 import type {Order} from "../../lib/types";
@@ -71,6 +71,12 @@ function RepDetail({order}:{order:Order}){
   const {scope,currentUser}=useWorkspace();
   const firebase=useFirebaseSessionOptional();
   const idToken=firebase?.session?.idToken;
+  const reviewMutationsEnabled=canExecuteRepDeliveryReviewMutation({
+    enabled:process.env.NEXT_PUBLIC_REP_DELIVERY_REVIEW_MUTATIONS==="true",
+    currentProjectId:firebase?.projectId,
+    approvedStagingProjectId:process.env.NEXT_PUBLIC_REP_DELIVERY_STAGING_PROJECT_ID,
+    persistenceMode:momentumStorage.mode(),
+  });
   const [serverState,setServerState]=useState<{token:string;receipt:RepDeliveryReceipt}|null>(null);
   const [checkedToken,setCheckedToken]=useState("");
   const [error,setError]=useState("");
@@ -87,7 +93,7 @@ function RepDetail({order}:{order:Order}){
   const step=repDeliveryNextStep(record,order.id);
   const completed=repDeliveryProofRecorded(record,order.id);
   const hasSignature=recipientName.trim().length>0&&strokes.some(stroke=>stroke.length>=2);
-  const ready=Boolean(step&&accepted&&!busy&&!checking&&idToken&&
+  const ready=Boolean(reviewMutationsEnabled&&step&&accepted&&!busy&&!checking&&idToken&&
     currentUser?.role==="Sales Representative"&&order.ownerId===currentUser.id&&
     (step!=="complete"||hasSignature));
   const stepIndex=step?repDeliverySteps.indexOf(step):completed?repDeliverySteps.length:0;
@@ -120,7 +126,7 @@ function RepDetail({order}:{order:Order}){
     finally{setRefreshing(false);}
   };
   const advance=async()=>{
-    if(!ready||!step||!idToken)return;
+    if(!reviewMutationsEnabled||!ready||!step||!idToken)return;
     const action:RepDeliveryAction=step;
     const signature=action==="complete"?{strokes,recipientName:recipientName.trim()}:undefined;
     setBusy(true);setError("");setNotice("");
@@ -178,7 +184,8 @@ function RepDetail({order}:{order:Order}){
         <label htmlFor="rep-delivery-recipient">Recipient printed name <span>Required</span></label>
         <input id="rep-delivery-recipient" autoComplete="off" maxLength={120} value={recipientName} onChange={e=>setRecipientName(e.target.value)} placeholder="Name of the person receiving the cases"/>
       </div>}
-      <label className="rep-delivery-confirm"><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)} disabled={busy||checking}/>
+      {!reviewMutationsEnabled&&<p className="rep-delivery-alert">Review-only: shipment actions are disabled until an explicitly configured isolated staging environment is approved. Connected company production records cannot be changed from this new interface.</p>}
+      <label className="rep-delivery-confirm"><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)} disabled={busy||checking||!reviewMutationsEnabled}/>
         {step==="claim"?"I have confirmed this order is the one I intend to deliver":
          step==="pack"?"I understand that the full order and all SKUs must be reserved before loading":
          step==="load"?"I have physically verified the full case count and accept custody":
