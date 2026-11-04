@@ -1,0 +1,25 @@
+# HCM legacy shared-field confidentiality: review-only test harness
+**Date:** November 4, 2026 (Phoenix). **Task:** 01. **Scope:** isolated draft PR #112, not a production fix or migration.
+
+## Verified from repository source (not from live employee data)
+- `lib/firestore-domains.ts` shreds owner-tagged HCM records into `userDomains/{uid}/hcm/{field}` but retains ownerless records at `domains/hcm/fields/{field}`. Existing legacy shared arrays may also contain owner-tagged records until migrated. No production documents were inspected.
+- The current generated `firestore.rules` grants `hasAccess()` reads to shared HCM `privateProfiles`, `documents`, `compensation`, `leaveRequests` and other user-owned fields. The same shared HCM rule permits active Sales Managers to write these fields. A direct client Firestore read/write bypasses UI projection filters. This is a **confirmed rules-level confidentiality/authorization weakness in repository code**, not evidence that private production data has been exposed or changed.
+- Existing `userDomains` shards have distinct self, Administrator and manager permissions. The shared-field problem cannot be resolved solely by hiding a UI route.
+- `audit` is chunked; this harness deliberately refuses to plan a chunked migration without manifest-aware reconciliation. It also does not implement retention, backup, restore, compliance e-sign, or any live data operation.
+
+## Built, not executed against production
+1. `lib/hr-legacy-migration-plan.ts`: pure, versioned (`1`) planner accepting **explicitly supplied** shared records, authorized known UIDs and existing per-user shard snapshots. It returns deterministic in-memory copy candidates, already-present matches and source-index-only quarantine reasons. Missing/invalid/unknown owner, missing record ID, conflicting duplicates, malformed target and target conflict fail closed. It does not fetch, write, delete, log or mark any record migrated. Source history is retained. Sensitive candidate payloads must never be emitted to console, PRs, analytics or issue comments.
+2. `tests/hr-legacy-migration-plan.test.ts`: synthetic fixtures for deterministic replays, same-content idempotency, cross-owner ID collisions, duplicate conflicts, no overwrite, no invented identity and unsupported chunked fields.
+3. `tests/hr-legacy-confidentiality-rules.test.ts`: two isolated Firestore emulator projects. **CURRENT** rules reproduce shared cross-employee reads and manager write authority with fake records. **SHADOW** rules restrict reads and writes to sensitive shared HCM fields to Administrator only, while preserving non-sensitive onboarding policy access and existing per-user shard permissions. Shadow rules exist only as a test-time string; `firestore.rules`, its generator and production authorization are unchanged.
+4. `package.json`: runs the planner tests in `test:logic` and the emulator matrix in `test:rules`, including the normal CI audit.
+
+## Mandatory migration and release gates
+- **Inventory owner: authorized Platform/HR security lead, pending Mia approval.** In an approved *non-production* Firebase project, capture only field presence, counts, ownership integrity and version stamps with access logging. Do not export raw employee values into CI, browser fixtures or this document. A production inventory needs separate authorization.
+- **Migration owner: Platform engineering.** Define stable snapshot/version preconditions, per-owner atomic/idempotent upserts, reconciliation counts, target collision resolution, bounded batches, retries, backup/restore drills and chunk-aware audit handling. Unknown owners require Administrator review, never fuzzy mapping. Preserve original documents and historical access audit.
+- **Read-path owner: Platform engineering.** Update `domainDocuments` and legacy persistence/hydration before tightening generated Firestore shared-field read/write rules. Explicitly test older-client behavior and restore/recovery; current client still requests broad shared fields. The SHADOW policy is a candidate security boundary, not a drop-in deployable change.
+- **Acceptance owner: Mia + authorized security/compliance reviewer.** Require exact-SHA CI, ordinary employee/manager/Administrator/Marketing/onboarding/separated/customer matrix, staged browser/mobile deep links, no cross-user leakage, preserved own self-service and HR history, verified rollback and explicit release signoff. No automatic employee suspension or status change.
+- **External dependencies:** official HR form/provider compliance review, retention policy, approved staging project and test identities. No deadline, business KPI uplift or financial result has been established.
+
+**Current status:** Planner and emulator characterization BUILT; automation verification and staged compatibility gates are recorded separately in the master queue. **USER ACCEPTED: no. RELEASED: no.**
+
+**Next unblocked engineering action:** add a version-preconditioned, chunk-aware **dry-run** reconciliation design for migration batches, including stale-snapshot and rollback tests, without touching production records.
