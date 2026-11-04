@@ -562,7 +562,9 @@ class FirestoreBackend{
     if(this.disposed||this.dirty.size===0)return;
     if(this.flushing&&!allowConcurrent)return;
     const requested=onlyKeys?.length?[...new Set(onlyKeys)].filter((key)=>this.dirty.has(key)):[...this.dirty];
-    const keys=requested.filter((key)=>!this.activeFlushKeys.has(key)&&!(this.hrShadow&&key==="momentum-hcm-v4"));
+    const keys=requested.filter((key)=>!this.activeFlushKeys.has(key));
+    // Preserve concurrent per-domain flush behavior; only the opt-in shadow HR domain is read-only.
+    if(this.hrShadow){const index=keys.indexOf("momentum-hcm-v4");if(index>=0)keys.splice(index,1);}
     if(keys.length===0)return;
     const capturedRevisions=new Map(keys.map((key)=>[key,this.revisions.get(key)??0]));
     const unchangedSinceStart=(key:string)=>mayDiscardJournal(capturedRevisions.get(key)??0,this.revisions.get(key)??0);
