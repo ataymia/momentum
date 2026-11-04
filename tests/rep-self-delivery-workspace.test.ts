@@ -74,6 +74,9 @@ test("dedicated rep screen delegates to existing atomic server workflow with rea
   assert.match(api,/value\.orderId!==orderId\|\|value\.cloudConfirmed!==true/);
   assert.match(backend,/db\.runTransaction\(/);
   assert.match(backend,/access\?\.role/);
+  assert.match(backend,/txt\(order\.ownerId\)!==actor/);
+  assert.match(backend,/effectiveOwner!==actor/);
+  assert.match(backend,/txt\(access\?\.accountState\)!=="Active"/);
   assert.doesNotMatch(ui,/\bsetOrderStatus\(/);
   assert.doesNotMatch(ui,/\bpostMovement\(/);
   assert.doesNotMatch(ui,/\bmarkDelivered\(/);
