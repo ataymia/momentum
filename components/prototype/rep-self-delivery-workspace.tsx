@@ -71,11 +71,15 @@ function RepDetail({order}:{order:Order}){
   const {scope,currentUser}=useWorkspace();
   const firebase=useFirebaseSessionOptional();
   const idToken=firebase?.session?.idToken;
-  const [record,setRecord]=useState<RepDeliveryReceipt|null>(null);
+  const [serverState,setServerState]=useState<{token:string;receipt:RepDeliveryReceipt}|null>(null);
+  const [checkedToken,setCheckedToken]=useState("");
   const [error,setError]=useState("");
   const [notice,setNotice]=useState("");
   const [busy,setBusy]=useState(false);
-  const [checking,setChecking]=useState(false);
+  const [refreshing,setRefreshing]=useState(false);
+  const checking=Boolean(idToken&&checkedToken!==idToken)||refreshing;
+  const record=idToken&&serverState?.token===idToken?serverState.receipt:null;
+  const errorText=idToken?error:"Sign in with your employee account to verify this delivery.";
   const [accepted,setAccepted]=useState(false);
   const [recipientName,setRecipientName]=useState("");
   const [strokes,setStrokes]=useState<DeliverySignaturePoint[][]>([]);
@@ -91,25 +95,29 @@ function RepDetail({order}:{order:Order}){
     repDeliveryRequest(token,order.id,"status",undefined,signal);
 
   useEffect(()=>{
+    if(!idToken)return;
     const controller=new AbortController();
-    setRecord(null);setNotice("");setError("");setAccepted(false);
-    setRecipientName("");setStrokes([]);
-    if(!idToken){setError("Sign in with your employee account to verify this delivery.");return()=>controller.abort();}
     let active=true;
-    setChecking(true);
-    void getState(idToken,controller.signal)
-      .then(r=>{if(active){setRecord(r);setError("");}})
-      .catch(e=>{if(active&&!controller.signal.aborted)setError(e instanceof Error?e.message:"Server verification is unavailable.");})
-      .finally(()=>{if(active)setChecking(false);});
+    void repDeliveryRequest(idToken,order.id,"status",undefined,controller.signal)
+      .then(receipt=>{
+        if(!active)return;
+        setServerState({token:idToken,receipt});setCheckedToken(idToken);
+        setAccepted(false);setError("");setNotice("");
+      })
+      .catch(e=>{
+        if(!active||controller.signal.aborted)return;
+        setServerState(null);setCheckedToken(idToken);setAccepted(false);
+        setError(e instanceof Error?e.message:"Server verification is unavailable.");
+      });
     return()=>{active=false;controller.abort();};
   },[order.id,idToken]);
 
   const refresh=async()=>{
     if(!idToken||busy)return;
-    setChecking(true);setError("");setNotice("");setAccepted(false);
-    try{setRecord(await getState(idToken));}
-    catch(e){setRecord(null);setError(e instanceof Error?e.message:"Unable to refresh verified state.");}
-    finally{setChecking(false);}
+    setRefreshing(true);setError("");setNotice("");setAccepted(false);
+    try{setServerState({token:idToken,receipt:await getState(idToken)});setCheckedToken(idToken);}
+    catch(e){setServerState(null);setCheckedToken(idToken);setError(e instanceof Error?e.message:"Unable to refresh verified state.");}
+    finally{setRefreshing(false);}
   };
   const advance=async()=>{
     if(!ready||!step||!idToken)return;
@@ -122,7 +130,7 @@ function RepDetail({order}:{order:Order}){
       if(fresh.taskStatus!==ack.taskStatus||fresh.orderStatus!==ack.orderStatus)throw new Error(
         "The saved order and newly-read delivery state disagree. Stop and ask Operations to reconcile.",
       );
-      setRecord(fresh);setAccepted(false);
+      setServerState({token:idToken,receipt:fresh});setCheckedToken(idToken);setAccepted(false);
       if(action==="complete"){setStrokes([]);setRecipientName("");}
       setNotice((ack.replayed?"This step was already recorded. ":"")+"Cloud-verified delivery state updated. Check the next action before continuing.");
       void momentumStorage.refreshKeys([COMMERCIAL_KEY]).catch(()=>undefined);
@@ -130,7 +138,7 @@ function RepDetail({order}:{order:Order}){
       setError((e instanceof Error?e.message:"Cloud verification failed.")+
         " Check the latest state before repeating this step. Do not duplicate a custody action.");
       setAccepted(false);
-      try{setRecord(await getState(idToken));}catch{setRecord(null);}
+      try{setServerState({token:idToken,receipt:await getState(idToken)});setCheckedToken(idToken);}catch{setServerState(null);setCheckedToken(idToken);}
     }finally{setBusy(false);}
   };
   return <div className="rep-delivery-page">
@@ -153,7 +161,7 @@ function RepDetail({order}:{order:Order}){
         <div><small>Server delivery task</small><strong>{record?.taskStatus??"Not verified"}</strong></div>
       </div>
       {checking&&<p role="status" className="rep-delivery-alert"><Cloud size={16}/> Checking existing delivery task and inventory posting with the server.</p>}
-      {error&&<p role="alert" className="rep-delivery-alert is-error"><CloudOff size={16}/>{error}</p>}
+      {errorText&&<p role="alert" className="rep-delivery-alert is-error"><CloudOff size={16}/>{errorText}</p>}
       {notice&&<p role="status" className="rep-delivery-alert is-success"><CheckCircle2 size={16}/>{notice}</p>}
     </section>
     {step&&record?.cloudConfirmed===true&&<section className="rep-delivery-panel rep-delivery-action-panel">
@@ -185,7 +193,7 @@ function RepDetail({order}:{order:Order}){
     {completed&&<section className="rep-delivery-panel rep-delivery-complete">
       <CheckCircle2 size={28}/><div><h2>Delivery recorded and verified</h2><p>The server confirms the signed task and recorded inventory posting. Invoice delivery and payment settlement are separate workflows.</p></div>
     </section>}
-    {!completed&&!step&&!checking&&!error&&<section className="rep-delivery-panel"><p className="rep-delivery-empty">No authorized next step is available from the server&apos;s current order and delivery states. Refresh or ask Operations to review the record. Do not move stock based on a local status.</p></section>}
+    {!completed&&!step&&!checking&&!errorText&&<section className="rep-delivery-panel"><p className="rep-delivery-empty">No authorized next step is available from the server&apos;s current order and delivery states. Refresh or ask Operations to review the record. Do not move stock based on a local status.</p></section>}
     <section className="rep-delivery-panel rep-delivery-support">
       <h2>Delivery exception or reconciliation needed?</h2>
       <p>Pause the delivery transition if cases, custody, customer confirmation or the cloud record do not match. Capture the issue and contact Operations. This page does not override a lock, record a cash payment, or manufacture delivery proof.</p>
