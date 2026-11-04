@@ -19,7 +19,7 @@ const blank:CorrectionForm={clockIn:"",mealStart:"",mealEnd:"",clockOut:"",break
 const minutes=(value:string)=>{const[hour,minute]=value.split(":").map(Number);return hour*60+minute;};
 
 export function TimecardRecord({timecardId,history=true}:{timecardId:string;history?:boolean}){
-  const {data,currentUser,correctTimeEntry,adminAmendTimeEntry,adminInsertMissedPunch}=useWorkspace();
+  const {data,currentUser,navigate,correctTimeEntry,adminAmendTimeEntry,adminInsertMissedPunch}=useWorkspace();
   const {payroll}=usePayroll();
   const runtime=useRuntimeMode();const adminDemo=runtime.isDemo&&momentumStorage.mode()==="local";
   const connectedAdmin=!runtime.isDemo&&connectedTimecardCorrectionEnabled&&momentumStorage.mode()==="firestore";
@@ -109,7 +109,7 @@ export function TimecardRecord({timecardId,history=true}:{timecardId:string;hist
     {card.resubmissionNote&&card.status!=="Returned"&&<div className="timecard-resubmit-note"><CheckCircle2 size={17}/><div><strong>Employee attestation note</strong><p>{card.resubmissionNote}</p></div></div>}
     {lastResubmission?.reason&&card.status!=="Returned"&&<div className="timecard-resubmit-note"><CheckCircle2 size={17}/><div><strong>Employee resubmission note</strong><p>{lastResubmission.reason}</p><small>{formatDate(lastResubmission.at,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})}</small></div></div>}
     <div className="timecard-record__checks"><div><CheckCircle2 size={16}/><span>Employee attestation</span><strong>{card.status==="Returned"?"Required again":card.attested?"Complete":"Required"}</strong></div><div><Clock3 size={16}/><span>Open or incomplete punches</span><strong>{incomplete.length}</strong></div><div><FileCheck2 size={16}/><span>Manual corrections</span><strong>{corrected.length}</strong></div></div>
-    {consumed&&<div className="timecard-return-banner"><AlertTriangle size={18}/><div><strong>Payroll processing lock</strong><p>This timecard is already included in a payroll run. Do not change the original punch; create an approved payroll adjustment instead.</p></div></div>}
+    {consumed&&<div className="timecard-return-banner"><AlertTriangle size={18}/><div><strong>Payroll processing lock</strong><p>This timecard is already included in a payroll run. Do not change the original punch; create an approved payroll adjustment instead.</p>{admin&&<Button size="sm" variant="secondary" onClick={()=>{window.sessionStorage.setItem("momentum-payroll-open-tab","retro");navigate("payroll");}}>Open retroactive payroll correction</Button>}</div></div>}
     {admin&&!adminDemo&&!connectedAdmin&&<p className="form-hint">Connected-timecard corrections remain read-only until both the server and client release gates are approved.</p>}
     {notice&&<p role="status" className="form-notice">{notice}</p>}
     {admin&&(adminDemo||connectedAdmin)&&!consumed&&<div className="request-actions"><Button size="sm" icon={<Pencil size={14}/>} onClick={openMissing}>Add missed shift / punch</Button><span>Edits return the timecard for employee review and approval again.</span></div>}
