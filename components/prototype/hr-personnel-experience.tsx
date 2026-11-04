@@ -1,7 +1,7 @@
 "use client";
 
 import {useMemo,useState} from "react";
-import {ArrowLeft,Download,FileText,GraduationCap,UserRound,WalletCards} from "lucide-react";
+import {ArrowLeft,Download,FileText,UserRound,WalletCards} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useHcm} from "../../lib/hcm-context";
 import {activeCompensation} from "../../lib/hcm-engine";
