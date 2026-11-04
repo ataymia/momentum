@@ -21,6 +21,7 @@ const original=():CorrectionSnapshot=>({
 const amend:CorrectionIntent={action:"amend",requestId:"request-0001",targetUid:"employee-0001",
   cardId:"card-0001",entryId:"entry-001",date:"2026-10-27",
   reason:"Employee verified a missed hour",
+  expectedBefore:{clockIn:"08:00",clockOut:"17:00",breakMinutes:30},
   punch:{clockIn:"08:00",clockOut:"18:00",breakMinutes:30},
 };
 const newWeek:CorrectionIntent={action:"create_week",requestId:"request-0002",targetUid:"employee-0001",
@@ -117,4 +118,19 @@ test("missing week begins with no shifts, cannot duplicate weekly card or paid p
  assertDenied(newWeek,{...original(),payrollRuns:[{id:"pay-2",kind:"Regular",status:"Approved",
    periodStart:"2026-10-19",periodEnd:"2026-10-25",
    lines:[{employeeId:"employee-0001",sourceTimecardIds:["card-other"]}]}]});
+});
+
+
+test("stale Administrator editing view cannot overwrite a newer verified punch",()=>{
+ const snapshot=original();
+ assertDenied({...amend,expectedBefore:{clockIn:"08:00",clockOut:"16:30",breakMinutes:30}},snapshot);
+ const prior=original();
+ prior.entries[0].clockOut="17:30";
+ assertDenied(amend,prior);
+});
+test("missing week cannot overwrite an unlinked historical shift without a card",()=>{
+ const snapshot=original();
+ snapshot.entries.push({id:"orphan-1",userId:"employee-0001",date:"2026-10-21",
+   clockIn:"09:00",clockOut:"13:00",breakMinutes:0});
+ assertDenied(newWeek,snapshot);
 });
