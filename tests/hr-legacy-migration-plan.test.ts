@@ -8,10 +8,18 @@ const path = (uid: string, field: string) => userDocPath(uid, "hcm", field);
 const doc = (items: unknown[]) => ({ items });
 const plan = (
   field: string, items: unknown[],
-  existingUserDocuments = new Map<string, { items?: unknown }>(),
-) => planHrLegacySharedField({
-  field, sharedDocument: doc(items), knownUserIds: uids, existingUserDocuments,
-});
+  existingUserDocuments = new Map<string, { items?: unknown } | null>(),
+) => {
+  // Synthetic inventory explicitly verifies absence for both owners. A missing
+  // map entry in the real planner is NOT assumed to mean an empty target.
+  const inventoried = new Map<string, { items?: unknown } | null>();
+  for (const uid of uids) inventoried.set(path(uid, field), null);
+  for (const [key, value] of existingUserDocuments) inventoried.set(key, value);
+  return planHrLegacySharedField({
+    field, sharedDocument: doc(items), knownUserIds: uids,
+    existingUserDocuments: inventoried,
+  });
+};
 
 test("legacy HR planner is pure, deterministic and versioned; never deletes shared history", () => {
   const source = [
@@ -114,6 +122,19 @@ test("compensation records remain review-only even when owner is valid", () => {
   assert.equal(result.copyCandidates.length, 1);
   assert.equal(result.needsHumanReconciliation, false);
   assert.equal(typeof (result as unknown as Record<string, unknown>).apply, "undefined");
+});
+
+test("an un-inventoried target is quarantined, never assumed empty", () => {
+  const result = planHrLegacySharedField({
+    field: "documents",
+    sharedDocument: doc([{ id: "doc-1", userId: "uid-alex" }]),
+    knownUserIds: uids,
+    existingUserDocuments: new Map(),
+  });
+  assert.equal(result.copyCandidates.length, 0);
+  assert.deepEqual(result.quarantine, [
+    { sourceIndex: 0, reason: "target-not-inventoried" },
+  ]);
 });
 
 test("unsupported, shared, chunked and malformed inputs never create a plan", () => {
