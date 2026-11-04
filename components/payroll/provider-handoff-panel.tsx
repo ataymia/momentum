@@ -51,7 +51,7 @@ export function PayrollProviderPanel(){
    setError("");setNotice(action+" recorded in the local payroll state. Verify remote sync before treating this as final.");
  };
  const exportRun=()=>{
-   if(!run)return;
+   if(!run||!["Approved","Released"].includes(run.status)){setError("Only approved or released runs may be exported for provider handoff.");return;}
    downloadPayrollCsv("momentum-provider-"+run.id+".csv",providerExportRows(run),PROVIDER_EXPORT_COLUMNS);
  };
  const exportFilings=()=>{
@@ -105,7 +105,7 @@ export function PayrollProviderPanel(){
        </div>}
      </div>
      {run?<div className="request-actions">
-       <Button variant="secondary" icon={<Download size={15}/>} onClick={exportRun}>Download processor CSV</Button>
+       <Button variant="secondary" icon={<Download size={15}/>} disabled={run.status==="Draft"} onClick={exportRun}>Download approved-run CSV</Button>
        <StatusPill tone={statusTone(handoff?.status??"Prepared")}>{handoff?.status??"No handoff"}</StatusPill>
      </div>:<p>No payroll runs exist. Create and approve a run in Payroll Processing first.</p>}
      <p className="form-hint">The CSV carries internal calculations, source identifiers and no bank routing or Social Security numbers. The processor must use its securely maintained employee identity/payment mapping. A downloaded CSV is not evidence of transmission.</p>
