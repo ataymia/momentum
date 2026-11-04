@@ -14,6 +14,9 @@ import {
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import { DOMAIN_SPECS, assembleState, domainDocuments, parseDocPath } from "../lib/firestore-domains";
+import { planHrShadowReadPaths } from "../lib/hr-shadow-read-compatibility";
+import type { PersistenceScope } from "../lib/firebase-access";
 
 const sourceRules = readFileSync("firestore.rules", "utf8");
 const privateFields = [
@@ -85,6 +88,17 @@ async function seed(env: Environment) {
         items: [{ id: `synthetic-${field}`, userId: "uid-jordan", marker: "OWNER_ONLY" }],
       });
     }
+    await setDoc(doc(db, "userDomains/uid-alex/hcm/documents"), {
+      items: [{ id: "synthetic-alex-own", userId: "uid-alex", marker: "ALEX_ONLY" }],
+    });
+    // Deliberate legacy-only self-service history: a new client must not
+    // mistake an empty owner shard for successful backfill.
+    await setDoc(doc(db, "domains/hcm/fields/leaveRequests"), {
+      items: [
+        { id: "synthetic-jordan-leave", userId: "uid-jordan", marker: "OTHER_EMPLOYEE" },
+        { id: "synthetic-alex-leave", userId: "uid-alex", marker: "LEGACY_ONLY" },
+      ],
+    });
     await setDoc(doc(db, "userDomains/uid-alex/hcm/audit"), {
       items: [{ id: "synthetic-cross-audit", actorId: "uid-alex",
         entityId: "uid-jordan", before: "SYNTHETIC_OTHER_EMPLOYEE" }],
@@ -179,4 +193,75 @@ test("SHADOW blocks non-admin writes to sensitive shared fields", async () => {
   for (const uid of ["uid-alex", "uid-manager", "uid-marketing", "uid-separated"]) {
     await assertFails(setDoc(doc(contextDb(shadow, uid), target), { items: [] }));
   }
+});
+
+const hcmSpec = DOMAIN_SPECS.find((spec) => spec.id === "hcm")!;
+const shadowScope = (
+  uid: string, role: PersistenceScope["role"],
+  accountState: PersistenceScope["accountState"] = "Active",
+  reports: string[] = [],
+): PersistenceScope => ({
+  uid, role, accountState,
+  readableUserIds: new Set([uid, ...reports]),
+  managedUserIds: new Set(reports),
+  supervisedBrandAmbassadorIds: new Set(),
+});
+
+/** Model the exact direct-document read + assembleState path used by persistence.ts. */
+async function hydrateHcmShadow(uid: string, scope: PersistenceScope) {
+  const plan = planHrShadowReadPaths(scope);
+  const documents = new Map<string, Record<string, unknown> | null>();
+  const paths = plan.readable.map((entry) => entry.path).filter((path) =>
+    ["_root", "employees", "policies", "documents", "leaveRequests", "compensation", "audit"]
+      .includes(parseDocPath(path)?.field ?? ""));
+  for (const path of paths) {
+    const snapshot = await assertSucceeds(getDoc(doc(contextDb(shadow, uid), path)));
+    documents.set(path, snapshot.exists() ? snapshot.data() : null);
+  }
+  return assembleState(hcmSpec, documents);
+}
+
+test("old HCM client cannot hydrate under shadow rules; new read plan succeeds for own shards", async () => {
+  const employee = shadowScope("uid-alex", "Sales Representative");
+  const oldPaths = domainDocuments(hcmSpec, employee).map((entry) => entry.path);
+  assert.ok(oldPaths.includes("domains/hcm/fields/documents"));
+  await assertFails(getDoc(doc(contextDb(shadow, "uid-alex"), "domains/hcm/fields/documents")));
+  const result = await hydrateHcmShadow("uid-alex", employee);
+  assert.deepEqual((result?.documents as { marker: string }[]).map((item) => item.marker), ["ALEX_ONLY"]);
+  assert.ok(!JSON.stringify(result?.documents).includes("OTHER_EMPLOYEE"));
+});
+
+test("shadow hydration matrix preserves authorized role/record scope without cross-user payloads", async () => {
+  const manager = await hydrateHcmShadow("uid-manager",
+    shadowScope("uid-manager", "Sales Manager", "Active", ["uid-alex"]));
+  assert.deepEqual((manager?.documents as { marker: string }[]).map((item) => item.marker), ["ALEX_ONLY"]);
+  assert.deepEqual(manager?.compensation, [], "manager must not hydrate a report's compensation");
+
+  const marketing = await hydrateHcmShadow("uid-marketing", shadowScope("uid-marketing", "Marketing"));
+  assert.deepEqual(marketing?.documents, []);
+  const onboarding = await hydrateHcmShadow("uid-onboarding",
+    shadowScope("uid-onboarding", "Sales Representative", "Onboarding"));
+  assert.deepEqual(onboarding?.documents, []);
+
+  const admin = await hydrateHcmShadow("uid-admin",
+    shadowScope("uid-admin", "Administrator", "Active", ["uid-alex", "uid-jordan"]));
+  assert.deepEqual(new Set((admin?.documents as { marker: string }[]).map((item) => item.marker)),
+    new Set(["OTHER_EMPLOYEE", "ALEX_ONLY", "OWNER_ONLY"]));
+
+  assert.equal(await hydrateHcmShadow("uid-separated",
+    shadowScope("uid-separated", "Sales Representative", "Separated")), null);
+  assert.equal(await hydrateHcmShadow("uid-customer",
+    shadowScope("uid-customer", "Customer")), null);
+});
+
+test("legacy-only employee history is LOST to shadow client until backfill, so cutover must block", async () => {
+  const oldRead = await assertSucceeds(getDoc(
+    doc(contextDb(current, "uid-alex"), "domains/hcm/fields/leaveRequests")));
+  assert.equal(oldRead.data()?.items?.some((item: { marker: string }) =>
+    item.marker === "LEGACY_ONLY"), true);
+  const newHydration = await hydrateHcmShadow("uid-alex",
+    shadowScope("uid-alex", "Sales Representative"));
+  assert.deepEqual(newHydration?.leaveRequests, []);
+  // This negative acceptance proof is intentional: emulator success and
+  // readable own shards alone do NOT establish complete historical hydration.
 });
