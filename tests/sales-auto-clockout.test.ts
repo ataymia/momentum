@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {CRM_AUTO_CLOCKOUT_MS,hasSalesTimedOut,lastSalesActivityAt} from "../functions/src/sales-inactivity-core";
+import {createRequire} from "node:module";
+const require=createRequire(import.meta.url);
+const {CRM_AUTO_CLOCKOUT_MS,hasSalesTimedOut,lastSalesActivityAt}=require("../functions/src/sales-inactivity-core.ts") as typeof import("../functions/src/sales-inactivity-core");
 
 const start=Date.parse("2026-11-04T15:00:00.000Z");
 const at=(mins:number)=>new Date(start+mins*60_000).toISOString();
