@@ -9,7 +9,7 @@ A settled paycheck can be disputed without deleting or overwriting the historica
 ## Administrator workflow
 1. Open Payroll > Retro corrections.
 2. Select an original Released run with a Settled employee payment matching that employee's recorded net pay.
-3. Enter verified corrected gross, detailed reason and source-evidence reference.
+3. Enter a verified corrected gross, or use the historical hourly-workweek calculator: select one originally paid timecard, enter verified corrected total weekly hours, verify the displayed historical rate and overtime threshold, and apply only if the original hours/rate recreate the already-settled wage line. Document a detailed reason and source-evidence reference.
 4. The system computes gross difference = corrected gross - original gross, to USD cents.
 5. Create Draft case; second open case for same original run and employee is rejected, including when submitted with a different evidence reference.
 6. Review source and evidence, mark Reviewed, then explicitly Approve.
@@ -29,7 +29,7 @@ A settled paycheck can be disputed without deleting or overwriting the historica
 - The UI, case mutations and supplemental drafting remain local-demo only. Connected payroll records are read-only for this feature.
 
 ## Remaining gaps
-1. The corrected gross currently requires approved source evidence entered by a human. Historical automatic timecard/hourly rate/overtime reconstruction is a separate pending calculator.
+1. The weekly hourly calculator reconstructs gross using original approved timecard evidence, the recorded historical hourly rate and the configured overtime threshold (1.5x overtime). The Administrator must confirm the historical policy and corrected worked hours. Missing or inconsistent original evidence blocks this calculation. Salary, multiple corrected weeks, ambiguous historical policies and processor-specific adjustments still require a manually verified corrected gross.
 2. Production needs a server-authoritative retro case transaction, strong role controls, durable audit/idempotency and staged release; this local UI is not a live payroll solution.
 3. External provider recalculation and genuine government filings remain out of scope. A recorded handoff is documentary, not proof of processor acceptance.
 4. Retention, scaling and future sharding of the Administrator-only payroll root case history require review to avoid data loss.
@@ -37,6 +37,7 @@ A settled paycheck can be disputed without deleting or overwriting the historica
 
 ## QA scenarios
 - Underpayment: Original settled gross $100, verified corrected gross $150, resulting $50 linked supplemental Draft with preserved source.
+- Hourly original payroll: original approved week and wage evidence exactly reproduces paid hours and dollars; enter a verified corrected weekly total, recalculate regular versus overtime, preserve the rate and hour breakdown in the case and CSV. If historical source no longer reconciles, refuse automation.
 - Overpayment: $100 settled gross and corrected $75: review/closure without changing any settled transaction or making a deduction.
 - No change: $100 versus $100 closes with no money movement.
 - Block unpaid/voided source, duplicate case ID, second active source case (even with distinct evidence), invalid cents, stale original gross, missing payroll setup, and second supplemental draft.
