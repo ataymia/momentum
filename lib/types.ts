@@ -420,6 +420,11 @@ export type TimeEntryCorrection = {
   reason: string;
   before: {
     clockIn: string;
+    /** Original web punch instants, preserved when manually changing displayed time. */
+    clockInAt?: string;
+    clockOutAt?: string;
+    source?: TimeEntrySource;
+    note?: string;
     mealStart?: string;
     mealEnd?: string;
     clockOut?: string;
@@ -442,6 +447,9 @@ export type TimeEntry = {
   source: TimeEntrySource;
   note?: string;
   corrections?: TimeEntryCorrection[];
+  createdBy?: string;
+  createdAt?: string;
+  creationReason?: string;
 };
 
 export type TimecardStatus = "Open" | "Submitted" | "Manager approved" | "Returned" | "Payroll ready";
