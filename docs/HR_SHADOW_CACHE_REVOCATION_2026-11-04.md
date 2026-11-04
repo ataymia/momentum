@@ -1,6 +1,6 @@
 # HR shadow-cache revocation and session transition (review only)
 
-**Date:** November 4, 2026, Phoenix. **Queue:** 01. **Status:** BUILT-UNVERIFIED pending exact-SHA CI. **No runtime wiring, rules deployment, migration, or production access.**
+**Date:** November 4, 2026, Phoenix. **Queue:** 01. **Status:** BUILT and AUTOMATED-VERIFIED at code SHA `0a475ad47f2a3ca6042e3552bec1fd1a0d836cf7`, full PR CI PASS https://github.com/ataymia/momentum/actions/runs/41820178255. Visual/staging QA needed; not user accepted or released. This documentation-only evidence commit requires separate exact-SHA CI. **No runtime wiring, rules deployment, migration, or production access.**
 
 ## Source-backed risk
 The current Firestore backend in `lib/persistence.ts` retains `this.docs` across `updateScope()`, and only fetches newly readable paths. Its `refreshKeys()` and `poll()` also consider previously cached paths. `assembleState()` includes whatever HCM documents remain in the map, not just the current role's authorized set. Therefore a downgrade, reassignment, denied refresh, or user/session transition requires explicit cache and assembled-state invalidation. The existing `attachFirestorePersistence()` generation check protects late backend installation but does not, by itself, establish per-request authorization after a scope change.
