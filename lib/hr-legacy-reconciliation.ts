@@ -39,6 +39,12 @@ const validUid = (uid: unknown): uid is string =>
   typeof uid === "string" && uid.length > 0 && uid.length <= 128 &&
   /^[A-Za-z0-9_-]+$/.test(uid);
 const unique = <T>(values: T[]) => [...new Set(values)];
+const canonical = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (object(value)) return `{${Object.keys(value).sort()
+    .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
+  return JSON.stringify(value) ?? "null";
+};
 const resultIssues = (issues: HrReconciliationIssue[]) => unique(issues);
 const statusFor = (issues: HrReconciliationIssue[]) =>
   issues.length ? "blocked" as const : "ready-for-human-review" as const;
@@ -101,7 +107,7 @@ export function assessHrLegacyBatchDryRun(input: {
         seenIndexes.has(candidate.sourceIndex) ||
         !sourceOwners.has(candidate.ownerUid) ||
         candidate.destinationPath !== userDocPath(candidate.ownerUid, "hcm", plan.field) ||
-        candidate.record !== (Array.isArray(sourceItems) ? sourceItems[candidate.sourceIndex] : undefined))
+        canonical(candidate.record) !== canonical(Array.isArray(sourceItems) ? sourceItems[candidate.sourceIndex] : undefined))
       issues.push("candidate-mismatch");
     seenIndexes.add(candidate.sourceIndex);
   }
@@ -201,7 +207,7 @@ export function inspectChunkedAuditInventory(input: {
   const shards = data?.shards;
   if (!manifest || manifest.version === null || !object(data) ||
       data.shardManifestVersion !== USER_SHARD_MANIFEST_VERSION ||
-      !Array.isArray(shards) || !Number.isSafeInteger(data.itemCount) ||
+      !Array.isArray(shards) || typeof data.itemCount !== "number" || !Number.isSafeInteger(data.itemCount) ||
       (data.itemCount as number) < 0 || "items" in data)
     issues.push("invalid-chunk-manifest");
   const names = Array.isArray(shards) ? shards : [];
