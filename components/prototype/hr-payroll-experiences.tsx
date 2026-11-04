@@ -37,19 +37,24 @@ export function PeopleExperience(){
   const leave=hcm.leaveRequests.filter(r=>admin||r.userId===currentUser.id);
   const training=hcm.training.filter(r=>admin||r.userId===currentUser.id);
   const requests=hcm.tasks.filter(r=>(admin||r.ownerId===currentUser.id)&&r.status==="Open");
+  // Scope self-service summaries to the signed-in employee, not the whole workspace.
+  const visibleTimecards=scope.timecards.filter(r=>admin||r.userId===currentUser.id);
+  const pendingTimecards=visibleTimecards.filter(r=>r.status==="Submitted");
   return <div className="prototype-domain prototype-domain--people">
     {title(admin?"Human Resources":"My Employee Workspace",admin?"Personnel records, requests, attendance and learning.":"Authorized self-service information and tasks.")}
     <div className="prototype-domain-statbar">
       <article><Users size={18}/><small>Visible employees</small><strong>{people.length}</strong></article>
       <article><CalendarDays size={18}/><small>Leave awaiting review</small><strong>{leave.filter(r=>r.status==="Submitted").length}</strong></article>
       <article><GraduationCap size={18}/><small>Incomplete learning</small><strong>{training.filter(r=>r.status!=="Complete").length}</strong></article>
-      <article><ClipboardList size={18}/><small>Pending timecards</small><strong>{scope.timecards.filter(r=>r.status==="Submitted").length}</strong></article>
+      <article><ClipboardList size={18}/><small>Pending timecards</small><strong>{pendingTimecards.length}</strong></article>
     </div>
     <div className="prototype-domain-cards">
       <NavTile label="Employee Directory" path="/people/directory" detail="Identity and reporting lines"/>
       {admin&&<NavTile label="Employee Profiles" path="/admin/employee-profiles" detail="Authorized personnel records"/>}
       {admin&&<NavTile label="Onboarding Queue" path="/people/onboarding" detail="New-hire requirements"/>}
       <NavTile label="Training" path="/people/training" detail="Assignments and resources"/>
+      <NavTile label="Attendance & timecards" path="/people/time" detail="Recorded attendance and submitted time"/>
+      <NavTile label="Time off" path="/people/leave" detail="Leave requests and review status"/>
     </div>
     <Pane label={admin?"Employee register":"My employee profile"}>
       <div className="prototype-controls">
@@ -64,6 +69,25 @@ export function PeopleExperience(){
         <div><strong>{user.name}</strong><span>{employment?.jobTitle??user.title}</span><small>{user.team} · {employment?.status??"Not configured"}</small></div>
       </article>)}</div>
       {!people.length&&<div className="prototype-empty">No matching employee records.</div>}
+    </Pane>
+    <div className="prototype-domain-cards">
+      <Pane label={admin?"Time-off review":"My time-off requests"}>
+        <p className="prototype-note">Submitted requests are awaiting a decision. This preview does not approve leave.</p>
+        {leave.length?leave.slice(0,6).map(request=><div className="prototype-work-list" key={request.id}>
+          <strong>{request.status}</strong><span>{request.startDate} to {request.endDate}</span>
+        </div>):<p className="prototype-note">No visible leave requests.</p>}
+        <button type="button" onClick={()=>navigateToRoute("/people/leave")}>Open time off</button>
+      </Pane>
+      <Pane label={admin?"Learning assignments":"My training"}>
+        {training.length?training.slice(0,6).map(item=><div className="prototype-work-list" key={item.id}>
+          <strong>{item.title}</strong><span>{item.status}</span>
+        </div>):<p className="prototype-note">No visible learning assignments.</p>}
+        <button type="button" onClick={()=>navigateToRoute("/people/training")}>Open training</button>
+      </Pane>
+    </div>
+    <Pane label={admin?"Timecard review queue":"My submitted timecards"}>
+      <p className="prototype-note">{pendingTimecards.length} submitted timecard{pendingTimecards.length===1?"":"s"} visible to this account. Timecard approval and payroll remain in their existing controlled workflows.</p>
+      <button type="button" onClick={()=>navigateToRoute("/people/time")}>Open timecards</button>
     </Pane>
     <Pane label="Requests and next actions">
       {requests.length?requests.slice(0,8).map(task=><div className="prototype-work-list" key={task.id}>
