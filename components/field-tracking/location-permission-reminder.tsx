@@ -61,7 +61,7 @@ export function LocationPermissionReminder(){
     <Button disabled={busy} onClick={check}>{busy?"Checking device…":"Check location access"}</Button>
    </>}>
    <div className="form-callout"><MapPin size={18}/>
-    <p>Location is requested only on your own device. Select Check location access to let the browser ask for permission if allowed. If you previously blocked the site, change Location to Allow in the browser's site settings and ensure your device's Location Services are on. Your time punch is not blocked.</p>
+    <p>Location is requested only on your own device. Select Check location access to let the browser ask for permission if allowed. If you previously blocked the site, change Location to Allow in the browser&apos;s site settings and ensure your device&apos;s Location Services are on. Your time punch is not blocked.</p>
    </div>
    {error&&<p className="form-error" role="alert">{error}</p>}
   </Modal>
