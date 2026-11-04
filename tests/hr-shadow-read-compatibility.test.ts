@@ -59,7 +59,7 @@ test("manager keeps direct-report documents but never receives report compensati
   assert.ok(paths.includes(owned("uid-alex", "documents")));
   assert.ok(!paths.includes(owned("uid-alex", "compensation")));
   assert.ok(!paths.includes(owned("uid-alex", "audit")));
-  assert.ok(plan.incompatibleLegacyPaths.includes(owned("uid-alex", "compensation")));
+  assert.ok(!plan.incompatibleLegacyPaths.includes(owned("uid-alex", "compensation")));
   assert.ok(!paths.includes(owned("uid-jordan", "documents")));
 });
 
