@@ -54,6 +54,7 @@ export function PeopleExperience(){
       {admin&&<NavTile label="Onboarding Queue" path="/people/onboarding" detail="New-hire requirements"/>}
       {admin&&<NavTile label="Training administration" path="/people/training" detail="Manage training and resources"/>}
       <NavTile label="Attendance & timecards" path="/people/timekeeping" detail="Recorded attendance and submitted time"/>
+      <NavTile label="Time off & leave" path="/people/leave" detail="Submit requests and review balances"/>
     </div>
     <Pane label={admin?"Employee register":"My employee profile"}>
       <div className="prototype-controls">
