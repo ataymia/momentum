@@ -52,9 +52,8 @@ export function PeopleExperience(){
       <NavTile label="Employee Directory" path="/people/directory" detail="Identity and reporting lines"/>
       {admin&&<NavTile label="Employee Profiles" path="/admin/employee-profiles" detail="Authorized personnel records"/>}
       {admin&&<NavTile label="Onboarding Queue" path="/people/onboarding" detail="New-hire requirements"/>}
-      <NavTile label="Training" path="/people/training" detail="Assignments and resources"/>
-      <NavTile label="Attendance & timecards" path="/people/time" detail="Recorded attendance and submitted time"/>
-      <NavTile label="Time off" path="/people/leave" detail="Leave requests and review status"/>
+      {admin&&<NavTile label="Training administration" path="/people/training" detail="Manage training and resources"/>}
+      <NavTile label="Attendance & timecards" path="/people/timekeeping" detail="Recorded attendance and submitted time"/>
     </div>
     <Pane label={admin?"Employee register":"My employee profile"}>
       <div className="prototype-controls">
@@ -76,18 +75,17 @@ export function PeopleExperience(){
         {leave.length?leave.slice(0,6).map(request=><div className="prototype-work-list" key={request.id}>
           <strong>{request.status}</strong><span>{request.startDate} to {request.endDate}</span>
         </div>):<p className="prototype-note">No visible leave requests.</p>}
-        <button type="button" onClick={()=>navigateToRoute("/people/leave")}>Open time off</button>
       </Pane>
       <Pane label={admin?"Learning assignments":"My training"}>
         {training.length?training.slice(0,6).map(item=><div className="prototype-work-list" key={item.id}>
           <strong>{hcm.courses.find(course=>course.id===item.courseId)?.title??"Training assignment"}</strong><span>{item.status}</span>
         </div>):<p className="prototype-note">No visible learning assignments.</p>}
-        <button type="button" onClick={()=>navigateToRoute("/people/training")}>Open training</button>
+        {admin&&<button type="button" onClick={()=>navigateToRoute("/people/training")}>Manage training</button>}
       </Pane>
     </div>
     <Pane label={admin?"Timecard review queue":"My submitted timecards"}>
       <p className="prototype-note">{pendingTimecards.length} submitted timecard{pendingTimecards.length===1?"":"s"} visible to this account. Timecard approval and payroll remain in their existing controlled workflows.</p>
-      <button type="button" onClick={()=>navigateToRoute("/people/time")}>Open timecards</button>
+      <button type="button" onClick={()=>navigateToRoute("/people/timekeeping")}>Open timecards</button>
     </Pane>
     <Pane label="Requests and next actions">
       {requests.length?requests.slice(0,8).map(task=><div className="prototype-work-list" key={task.id}>
