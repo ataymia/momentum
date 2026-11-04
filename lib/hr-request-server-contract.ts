@@ -45,7 +45,7 @@ export type HrServerDecisionResult =
   | { ok: true; state: HCMState; receipt: HrDecisionReceipt; nextRevision: number }
   | { ok: false; reason: string };
 const deny = (reason: string): HrServerDecisionResult => ({ ok: false, reason });
-const safeId = (value: string) => /^[a-zA-Z0-9_-]{1,100}$/.test(value);
+const safeId = (value: unknown): value is string => typeof value === "string" && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
 const iso = (value: string) => /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value)
   && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 
