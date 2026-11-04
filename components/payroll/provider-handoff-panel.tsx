@@ -14,6 +14,7 @@ import {Button,Field,Section,StatusPill,formatMoney} from "../ui";
 
 const today=()=>arizonaDateKey();
 const num=(s:string)=>s.trim()===""?NaN:Number(s);
+const createFilingId=()=>`filing-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;
 const filingExportColumns=["runId","formCode","agency","periodStart","periodEnd","dueDate","status","providerName","submissionReference","acknowledgmentReference","filedDate","rejectionReason"] as const;
 
 export function PayrollProviderPanel(){
@@ -76,7 +77,7 @@ export function PayrollProviderPanel(){
  };
  const createFiling=()=>{
    if(!run)return;
-   const id="filing-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,7);
+   const id=createFilingId();
    const input:Pick<PayrollFilingCase,"id"|"formCode"|"agency"|"periodStart"|"periodEnd"|"dueDate">={
      id,formCode,agency,periodStart,periodEnd,dueDate};
    const result=addFilingCase(run.id,input,amendmentOf||undefined);
