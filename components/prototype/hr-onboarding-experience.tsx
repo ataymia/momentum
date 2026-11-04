@@ -7,9 +7,12 @@ import {useHcm} from "../../lib/hcm-context";
 import {appendAudit,type LifecycleCase} from "../../lib/hcm-engine";
 import {downloadCsv} from "../../lib/browser-export";
 import {navigateToRoute} from "../../lib/navigation-store";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {momentumStorage} from "../../lib/persistence";
 
 export function HrOnboardingExperience(){
   const {data,currentUser}=useWorkspace();
+  const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
   const {hcm,setHcm}=useHcm();
   const [query,setQuery]=useState("");
   const [filter,setFilter]=useState<"all"|"Open"|"Complete"|"Cancelled">("Open");
@@ -34,7 +37,7 @@ export function HrOnboardingExperience(){
     c.tasks.map(t=>({caseId:c.id,employee:employeeName(c),effectiveDate:c.effectiveDate,caseStatus:c.status,task:t.title,taskStatus:t.status,owner:data.users.find(u=>u.id===t.ownerId)?.name??"",dueDate:t.dueDate??"",completedAt:t.completedAt??"",evidence:t.evidence??""})):
     [{caseId:c.id,employee:employeeName(c),effectiveDate:c.effectiveDate,caseStatus:c.status,task:"",taskStatus:"",owner:"",dueDate:"",completedAt:"",evidence:""}]),["caseId","employee","effectiveDate","caseStatus","task","taskStatus","owner","dueDate","completedAt","evidence"]);
   const confirmTask=(caseId:string,taskId:string)=>{
-    if(!currentUser||!admin)return;
+    if(!currentUser||!admin||!writeEnabled){setError("Read-only prototype: onboarding task completion requires isolated local demo mode.");return;}
     const evidence=(taskEvidence[taskId]??"").trim();
     if(evidence.length<8){setError("Document where the completed step was verified. At least 8 characters of specific evidence are required.");return;}
     const c=hcm.lifecycleCases.find(item=>item.id===caseId),task=c?.tasks.find(item=>item.id===taskId);
@@ -60,8 +63,8 @@ export function HrOnboardingExperience(){
       <article><UserRoundPlus size={18}/><small>Candidates in hiring pipeline</small><strong>{hcm.candidates.filter(c=>!["Hired","Rejected","Withdrawn"].includes(c.stage)).length}</strong></article>
     </div>
     <div className="prototype-controls">
-      <button type="button" onClick={()=>navigateToRoute("/people/new-hire")}>Start new-hire provisioning</button>
-      <button type="button" onClick={()=>navigateToRoute("/people/onboarding/workflow")}>Open full onboarding controls</button>
+      <button type="button" disabled={!writeEnabled} onClick={()=>navigateToRoute("/people/new-hire")}>Start new-hire provisioning</button>
+      <button type="button" disabled={!writeEnabled} onClick={()=>navigateToRoute("/people/onboarding/workflow")}>Open full onboarding controls</button>
       <button type="button" onClick={exportRegister} disabled={!cases.length}><Download size={14}/> Export visible checklists</button>
     </div>
     <div className="prototype-columns">
@@ -81,7 +84,7 @@ export function HrOnboardingExperience(){
               {task.evidence&&<p className="prototype-note">Evidence: {task.evidence}</p>}
               {task.status!=="Complete"&&selected.status==="Open"&&<>
                 <label>Verification record <input aria-label={"Evidence for "+task.title} value={taskEvidence[task.id]??""} onChange={event=>setTaskEvidence(v=>({...v,[task.id]:event.target.value}))} placeholder="Secure file reference or verified completion note"/></label>
-                <button type="button" onClick={()=>confirmTask(selected.id,task.id)}>Record verified completion</button>
+                <button type="button" disabled={!writeEnabled} onClick={()=>confirmTask(selected.id,task.id)}>Record verified completion</button>
               </>}
             </div>
           </article>)}
