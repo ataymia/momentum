@@ -49,7 +49,7 @@ export class HrShadowRuntimeAdapter {
     const plan = planHrShadowCacheTransition({
       previousScope: this.scope,
       nextScope,
-      cachedPaths: this.documents.keys().toArray(),
+      cachedPaths: [...this.documents.keys()],
       pendingStorageKeys,
     });
     this.generation += 1;
