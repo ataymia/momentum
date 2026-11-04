@@ -23,7 +23,8 @@ import { useFirebaseSessionOptional } from "./firebase-session-context";
 import { normalizeUsername } from "./username";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { normalizeWorkspaceData } from "./workspace-normalization";
-import {normalizePayrollState,PAYROLL_STORAGE_KEY} from "./payroll-engine";
+import {PAYROLL_STORAGE_KEY} from "./payroll-engine";
+import {verifyTimecardCorrectionEnvironment} from "./timecard-correction-environment";
 import {amendTimeEntry,insertMissedPunch,insertMissingTimecard,type CorrectedPunch} from "./timecard-admin-corrections";
 import { preserveExplicitCustomerHierarchy } from "./customer-hierarchy-preservation";
 import {applyAccountAssociation,type AccountAssociationResult,type AccountAssociationRequest} from "./account-association-engine";
@@ -509,18 +510,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser]);
 
 
-  const payrollForCorrection=()=>{
-    try{return normalizePayrollState(JSON.parse(momentumStorage.getItem(PAYROLL_STORAGE_KEY)??"null"));}
-    catch{return normalizePayrollState(null);}
-  };
+  const correctionGuard=()=>verifyTimecardCorrectionEnvironment({
+    runtimeMode:currentRuntimeMode(),storageMode:momentumStorage.mode(),
+    connectedSession:production,payrollSnapshot:momentumStorage.getItem(PAYROLL_STORAGE_KEY),
+  });
   const adminAmendTimeEntry=useCallback((entryId:string,values:CorrectedPunch,reason:string)=>{
     if(currentUser?.role!=="Administrator")return{ok:false,error:"Administrator access is required."};
     const at=nowStamp(),actorId=currentUser.id;
-    const payroll=payrollForCorrection();
-    const preview=amendTimeEntry(data,payroll,{actorId,entryId,punch:values,reason,at});
+    const guard=correctionGuard();
+    if(!guard.ok)return{ok:false,error:guard.error};
+    const preview=amendTimeEntry(data,guard.payroll,{actorId,entryId,punch:values,reason,at});
     if(!preview.ok)return{ok:false,error:preview.error};
     setData(current=>{
-      const next=amendTimeEntry(current,payrollForCorrection(),{actorId,entryId,punch:values,reason,at});
+      const latest=correctionGuard();if(!latest.ok)return current;
+      const next=amendTimeEntry(current,latest.payroll,{actorId,entryId,punch:values,reason,at});
       return next.ok?next.data:current;
     });
     return{ok:true};
@@ -529,10 +532,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if(currentUser?.role!=="Administrator")return{ok:false,error:"Administrator access is required."};
     const at=nowStamp(),actorId=currentUser.id,entryId="te-admin-"+Date.now()+"-"+Math.random().toString(36).slice(2,7);
     const payload={actorId,userId,cardId,date,punch:values,reason,at,entryId};
-    const preview=insertMissedPunch(data,payrollForCorrection(),payload);
+    const guard=correctionGuard();
+    if(!guard.ok)return{ok:false,error:guard.error};
+    const preview=insertMissedPunch(data,guard.payroll,payload);
     if(!preview.ok)return{ok:false,error:preview.error};
     setData(current=>{
-      const next=insertMissedPunch(current,payrollForCorrection(),payload);
+      const latest=correctionGuard();if(!latest.ok)return current;
+      const next=insertMissedPunch(current,latest.payroll,payload);
       return next.ok?next.data:current;
     });
     return{ok:true};
@@ -541,10 +547,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const adminCreateMissingTimecard=useCallback((userId:string,weekDate:string,reason:string)=>{
     if(currentUser?.role!=="Administrator")return{ok:false,error:"Administrator access is required."};
     const payload={actorId:currentUser.id,userId,weekDate,reason,at:nowStamp(),cardId:"tc-admin-"+Date.now()+"-"+Math.random().toString(36).slice(2,7)};
-    const preview=insertMissingTimecard(data,payrollForCorrection(),payload);
+    const guard=correctionGuard();
+    if(!guard.ok)return{ok:false,error:guard.error};
+    const preview=insertMissingTimecard(data,guard.payroll,payload);
     if(!preview.ok)return{ok:false,error:preview.error};
     setData(current=>{
-      const next=insertMissingTimecard(current,payrollForCorrection(),payload);
+      const latest=correctionGuard();if(!latest.ok)return current;
+      const next=insertMissingTimecard(current,latest.payroll,payload);
       return next.ok?next.data:current;
     });
     return{ok:true,id:payload.cardId};
