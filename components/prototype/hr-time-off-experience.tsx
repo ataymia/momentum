@@ -6,9 +6,12 @@ import {useHcm} from "../../lib/hcm-context";
 import {activePtoAssignment,appendAudit,ptoBalance,type LeaveRequest} from "../../lib/hcm-engine";
 import {downloadCsv} from "../../lib/browser-export";
 import {navigateToRoute} from "../../lib/navigation-store";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {momentumStorage} from "../../lib/persistence";
 
 export function HrTimeOffExperience(){
  const {currentUser,data}=useWorkspace();const {hcm,setHcm}=useHcm();
+ const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
  const [start,setStart]=useState("");const [end,setEnd]=useState("");
  const [hours,setHours]=useState("");const [reason,setReason]=useState("");
  const [notice,setNotice]=useState("");const [error,setError]=useState("");
@@ -19,6 +22,7 @@ export function HrTimeOffExperience(){
  const rows=currentUser.role==="Administrator"?hcm.leaveRequests:myRequests;
  const submit=(event:FormEvent)=>{
   event.preventDefault();setError("");setNotice("");
+  if(!writeEnabled){setError("Read-only prototype: submitting leave requires isolated local demo mode.");return;}
   const requestedHours=Number(hours);
   if(!start||!end||end<start||!Number.isFinite(requestedHours)||requestedHours<=0||!reason.trim()){setError("Enter valid dates, hours and a reason.");return;}
   const id=["leave",Date.now(),Math.random().toString(36).slice(2,7)].join("-");
@@ -40,7 +44,8 @@ export function HrTimeOffExperience(){
   <label>End <input type="date" required value={end} onChange={e=>setEnd(e.target.value)}/></label>
   <label>Hours <input type="number" min="0.25" step="0.25" required value={hours} onChange={e=>setHours(e.target.value)}/></label>
   <label>Reason <textarea required rows={2} value={reason} onChange={e=>setReason(e.target.value)}/></label>
-  <button type="submit">Submit request</button></form></section>
+  <button type="submit" disabled={!writeEnabled}>Submit request</button></form>
+  {!writeEnabled&&<p className="prototype-note">Connected environments are read-only in this redesign prototype.</p>}</section>
   <section className="prototype-panel"><h2>My request history</h2>{myRequests.map(r=><div className="prototype-work-list" key={r.id}><strong>{r.startDate} to {r.endDate}</strong><span>{r.requestedHours} hours · {r.status}</span></div>)}{!myRequests.length&&<p>No requests recorded.</p>}</section>
  </div>
  <section className="prototype-panel"><h2>Records & controls</h2><button type="button" disabled={!rows.length} onClick={exportHistory}><Download size={15}/> Export authorized leave history</button>
