@@ -13,15 +13,17 @@ import type {WorkspaceData} from "./types";
  */
 export type RetroCaseStatus=
   "Draft"|"Reviewed"|"Approved"|"Supplemental drafted"|"Recovery review"|"Closed";
+export type RetroWeekEvidence={sourceTimecardId:string;originalWeekHours:number;correctedWeekHours:number;
+ historicalHourlyRate:number;overtimeThresholdHours:number;originalWeeklyGross:number;correctedWeeklyGross:number};
 export type RetroCorrectionCase={
  id:string;sourceRunId:string;employeeId:string;
  originalGross:number;correctedGross:number;deltaGross:number;
- reason:string;evidenceReference:string;
+ reason:string;evidenceReference:string;weekEvidence?:RetroWeekEvidence;
  status:RetroCaseStatus;createdAt:string;createdBy:string;
  reviewedAt?:string;reviewedBy?:string;approvedAt?:string;approvedBy?:string;
  supplementalRunId?:string;resolutionReference?:string;resolvedAt?:string;resolvedBy?:string;
 };
-export type RetroInput={sourceRunId:string;employeeId:string;correctedGross:number;reason:string;evidenceReference:string};
+export type RetroInput={sourceRunId:string;employeeId:string;correctedGross:number;reason:string;evidenceReference:string;weekEvidence?:RetroWeekEvidence};
 export type RetroClock={id:string;actorId:string;at:string};
 export type RetroResult={ok:true;state:PayrollState;case:RetroCorrectionCase;runId?:string}|{ok:false;error:string};
 
@@ -79,12 +81,21 @@ export function proposeRetroCorrection(state:PayrollState,input:RetroInput,clock
  const originalGross=source.line.grossPay;
  const delta=retroDelta(originalGross,input.correctedGross);
  if(delta===null)return fail("Original payroll amount is not valid.");
+ if(input.weekEvidence){
+   const w=input.weekEvidence;
+   if(!source.line.sourceTimecardIds.includes(w.sourceTimecardId)||
+     ![w.originalWeekHours,w.correctedWeekHours,w.historicalHourlyRate,
+       w.overtimeThresholdHours,w.originalWeeklyGross,w.correctedWeeklyGross].every(n=>Number.isFinite(n)&&n>=0)||
+     Math.abs(money(originalGross+w.correctedWeeklyGross-w.originalWeeklyGross)-input.correctedGross)>0.005)
+     return fail("Hourly wage calculation evidence does not reconcile to the proposed corrected gross.");
+ }
  if(state.retroCases.some(c=>c.sourceRunId===input.sourceRunId&&c.employeeId===input.employeeId&&c.status!=="Closed"))
    return fail("An unresolved correction already exists for this employee and original paycheck. Reconcile that case before starting another.");
  const item:RetroCorrectionCase={
    id:clock.id,sourceRunId:input.sourceRunId,employeeId:input.employeeId,
    originalGross,correctedGross:money(input.correctedGross),deltaGross:delta,
    reason:input.reason.trim(),evidenceReference:input.evidenceReference.trim(),
+   weekEvidence:input.weekEvidence?{...input.weekEvidence}:undefined,
    status:"Draft",createdAt:clock.at,createdBy:clock.actorId,
  };
  return{ok:true,state:{...state,retroCases:[item,...state.retroCases]},case:item};
