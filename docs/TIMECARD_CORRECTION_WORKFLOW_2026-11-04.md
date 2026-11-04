@@ -36,6 +36,14 @@ An Administrator must be able to repair employee punch errors, missing breaks, m
 - **Original mobile GPS route data:** This correction workflow must never fabricate or alter GPS tracking records. It preserves existing punch evidence rather than claiming corrected hours were physically tracked.
 - **Sensitive access:** Role-based UX is not sufficient. Firestore rules, HR confidentiality/read model and payroll repository permissions require independent staging verification.
 
+## Safe correction execution and remaining server dependency (updated 2026-11-04)
+- The independent correction engine is functional and tested using isolated demo payroll/workspace records.
+- UI and workspace handlers for Administrator-driven punch changes, missed shifts, and missing weeks now reject connected data sessions. They require localhost/isolated demo runtime, local storage, and a present structurally valid payroll snapshot.
+- A missing, malformed, or partially unrecognized payroll snapshot blocks corrections, rather than being interpreted as an empty payroll with no consumed timecards.
+- **Not released to live employees:** Administrator correction in production still needs one server-authoritative transaction that checks current timecard/approval/payroll states, records before-images, resets employee attestation, updates the correct owner-sharded document, and records durable audit and notification evidence.
+- An end-to-end production path must additionally be verified across separate Administrator and employee accounts. It must never depend on merely filtering client state or trusting a local cached payroll snapshot.
+- Runtime guard tests are in `tests/timecard-admin-corrections.test.ts`.
+
 ## QA
 - `tests/timecard-admin-corrections.test.ts` covers Administrator permission, preservation of original timestamps, correction history, approval reset, notification targeting, missing-week creation, future dates, overlapping shifts, duplicate card/source prevention, payroll consumption and normalization.
 - Final fixed-commit CI and browser tests must pass before merge.
