@@ -5,7 +5,7 @@ import type { TimeEntry, WorkspaceData } from "./types";
 import type {PayrollRunExtension} from "./payroll-provider-lifecycle";
 
 export const PAYROLL_STORAGE_KEY = "momentum-payroll-v5";
-export type PayrollRunKind = "Regular" | "Monthly bonus";
+export type PayrollRunKind = "Regular" | "Monthly bonus" | "Off-cycle" | "Final pay";
 export type PayFrequency = "Weekly" | "Biweekly" | "Semimonthly" | "Monthly";
 export type PayGroup = { id: string; name: string; frequency: PayFrequency; overtimeThresholdHours: number; active: boolean };
 export type PayrollEmployee = { userId: string; payGroupId: string; paymentMethod: "ACH" | "Check" | "Manual"; paymentTokenLabel: string; active: boolean };
@@ -39,7 +39,12 @@ export type PayLine = {
 export type PayRunStatus = "Draft" | "Approved" | "Released" | "Voided";
 /** Old payroll records predate currency rounding; retain their math on recalculation. */
 export type PayrollCalculationVersion = 1 | 2;
-export type PayRun = PayrollRunExtension & { id: string; kind: PayrollRunKind; createdAt: string; periodStart: string; periodEnd: string; payDate: string; status: PayRunStatus; lines: PayLine[]; approvedAt?: string; approvedBy?: string; releasedAt?: string; releasedBy?: string; voidedAt?: string; voidedBy?: string; voidReason?: string; reissueOf?: string; calculationVersion?: PayrollCalculationVersion };
+/** Source metadata for manually-authorized taxable supplemental/final earnings. */
+export type SpecialPayrollSource={
+  id:string; employeeId:string; amount:number; reason:string; evidenceReference:string;
+  approvedBy:string; approvedAt:string; separationDate?:string;
+};
+export type PayRun = PayrollRunExtension & { special?:SpecialPayrollSource; id: string; kind: PayrollRunKind; createdAt: string; periodStart: string; periodEnd: string; payDate: string; status: PayRunStatus; lines: PayLine[]; approvedAt?: string; approvedBy?: string; releasedAt?: string; releasedBy?: string; voidedAt?: string; voidedBy?: string; voidReason?: string; reissueOf?: string; calculationVersion?: PayrollCalculationVersion };
 export type TaxLiabilityType = "Federal employee" | "State employee" | "Local employee" | "Employer";
 export type TaxLiabilityStatus = "Accrued" | "Scheduled" | "Paid" | "Reversed";
 export type TaxLiability = { id: string; payRunId: string; type: TaxLiabilityType; amount: number; status: TaxLiabilityStatus; createdAt: string; dueDate?: string };
@@ -59,7 +64,7 @@ const validInstant = (value?: string) => Boolean(value && !Number.isNaN(new Date
 const validTime = (value?: string) => Boolean(value && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value));
 const payFrequencies = new Set<PayFrequency>(["Weekly", "Biweekly", "Semimonthly", "Monthly"]);
 const paymentMethods = new Set<PayrollEmployee["paymentMethod"]>(["ACH", "Check", "Manual"]);
-const runKinds = new Set<PayrollRunKind>(["Regular", "Monthly bonus"]);
+const runKinds = new Set<PayrollRunKind>(["Regular", "Monthly bonus", "Off-cycle", "Final pay"]);
 const runStatuses = new Set<PayRunStatus>(["Draft", "Approved", "Released", "Voided"]);
 const liabilityTypes = new Set<TaxLiabilityType>(["Federal employee", "State employee", "Local employee", "Employer"]);
 const liabilityStatuses = new Set<TaxLiabilityStatus>(["Accrued", "Scheduled", "Paid", "Reversed"]);
@@ -87,7 +92,17 @@ export function normalizePayrollState(input: unknown): PayrollState {
   const withholdingProfiles = uniqueBy((Array.isArray(state.withholdingProfiles) ? state.withholdingProfiles : []).filter((profile): profile is WithholdingProfile => withholdingProfileValid(profile)), (profile) => `${profile.userId}:${profile.effectiveDate}`);
   const employerTaxRules = uniqueBy((Array.isArray(state.employerTaxRules) ? state.employerTaxRules : []).filter((rule): rule is EmployerTaxRule => Boolean(rule?.id && rule.name?.trim() && percentValid(rule.percent) && isValidCalendarDateKey(rule.effectiveDate) && typeof rule.active === "boolean")), (rule) => rule.id);
   const benefitTaxRules = uniqueBy((Array.isArray(state.benefitTaxRules) ? state.benefitTaxRules : []).filter((rule): rule is BenefitTaxRule => Boolean(rule?.id && rule.planId && rule.tierId && benefitTreatments.has(rule.treatment) && isValidCalendarDateKey(rule.effectiveDate) && typeof rule.active === "boolean")), (rule) => rule.id);
-  const runs = uniqueBy((Array.isArray(state.runs) ? state.runs : []).filter((run): run is PayRun => Boolean(run?.id && runKinds.has(run.kind) && runStatuses.has(run.status) && validInstant(run.createdAt) && isValidCalendarDateKey(run.periodStart) && isValidCalendarDateKey(run.periodEnd) && run.periodEnd >= run.periodStart && isValidCalendarDateKey(run.payDate) && Array.isArray(run.lines) && run.lines.length > 0 && run.lines.every(payLineValid) && new Set(run.lines.map((line) => line.employeeId)).size === run.lines.length && (!run.approvedAt || validInstant(run.approvedAt)) && (!run.releasedAt || validInstant(run.releasedAt)) && (!run.voidedAt || validInstant(run.voidedAt)) && (run.status !== "Approved" || Boolean(run.approvedAt && run.approvedBy)) && (run.status !== "Released" || Boolean(run.approvedAt && run.approvedBy && run.releasedAt && run.releasedBy)) && (run.status !== "Voided" || Boolean(run.voidedAt && run.voidedBy && run.voidReason?.trim())))), (run) => run.id);
+  const runs = uniqueBy((Array.isArray(state.runs) ? state.runs : []).filter((run): run is PayRun => Boolean(run?.id && runKinds.has(run.kind) &&
+    (run.kind==="Off-cycle"||run.kind==="Final pay"?
+      Boolean(run.special&&run.special.id&&run.special.employeeId&&run.special.employeeId===run.lines?.[0]?.employeeId&&
+        typeof run.special.reason==="string"&&run.special.reason.trim()&&
+        typeof run.special.evidenceReference==="string"&&run.special.evidenceReference.trim()&&
+        run.special.approvedBy&&validInstant(run.special.approvedAt)&&
+        Number.isFinite(run.special.amount)&&run.special.amount>=0&&
+        (run.kind!=="Off-cycle"||run.special.amount>0)&&
+        (run.kind!=="Final pay"||run.special.separationDate&&isValidCalendarDateKey(run.special.separationDate))&&
+        run.lines?.length===1):!run.special) &&
+    runStatuses.has(run.status) && validInstant(run.createdAt) && isValidCalendarDateKey(run.periodStart) && isValidCalendarDateKey(run.periodEnd) && run.periodEnd >= run.periodStart && isValidCalendarDateKey(run.payDate) && Array.isArray(run.lines) && run.lines.length > 0 && run.lines.every(payLineValid) && new Set(run.lines.map((line) => line.employeeId)).size === run.lines.length && (!run.approvedAt || validInstant(run.approvedAt)) && (!run.releasedAt || validInstant(run.releasedAt)) && (!run.voidedAt || validInstant(run.voidedAt)) && (run.status !== "Approved" || Boolean(run.approvedAt && run.approvedBy)) && (run.status !== "Released" || Boolean(run.approvedAt && run.approvedBy && run.releasedAt && run.releasedBy)) && (run.status !== "Voided" || Boolean(run.voidedAt && run.voidedBy && run.voidReason?.trim())))), (run) => run.id);
   const runIds = new Set(runs.map((run) => run.id));
   const liabilities = uniqueBy((Array.isArray(state.liabilities) ? state.liabilities : []).filter((liability): liability is TaxLiability => Boolean(liability?.id && runIds.has(liability.payRunId) && liabilityTypes.has(liability.type) && liabilityStatuses.has(liability.status) && Number.isFinite(liability.amount) && liability.amount > 0 && validInstant(liability.createdAt) && (!liability.dueDate || isValidCalendarDateKey(liability.dueDate)))), (liability) => liability.id);
   const disbursements = uniqueBy((Array.isArray(state.disbursements) ? state.disbursements : []).filter((entry): entry is Disbursement => Boolean(entry?.id && runIds.has(entry.payRunId) && entry.userId && finiteNonNegative(entry.amount) && paymentMethods.has(entry.method) && typeof entry.tokenLabel === "string" && disbursementStatuses.has(entry.status) && validInstant(entry.createdAt) && (!entry.settledAt || isValidCalendarDateKey(entry.settledAt)))), (entry) => entry.id);
@@ -202,7 +217,8 @@ export function payrollHourBreakdown(data: WorkspaceData, employeeId: string, so
 }
 
 export function invalidTimecardSourcesForRun(run: PayRun, data: WorkspaceData) {
-  if (run.kind !== "Regular") return [] as string[];
+  if (run.kind !== "Regular" && run.kind !== "Final pay") return [] as string[];
+  if(run.kind==="Final pay" && run.lines.every(line=>line.sourceTimecardIds.length===0))return [];
   const invalid = new Set<string>();
   for (const line of run.lines) {
     const source = regularPayrollSource(data, line.employeeId, run.periodStart, run.periodEnd, line.sourceTimecardIds);
@@ -273,7 +289,7 @@ export function hourlyWagesForApprovedTimecards(data:WorkspaceData,hcm:HCMState,
   return {regularHours,overtimeHours,regularPay,overtimePay};
 }
 
-export function calculateRegularLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[], calculationVersion:PayrollCalculationVersion=2): PayLine | null {
+export function calculateRegularLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[], calculationVersion:PayrollCalculationVersion=2, supplementalTaxablePay=0): PayLine | null {
   if (!isValidCalendarDateKey(periodStart) || !isValidCalendarDateKey(periodEnd) || periodEnd < periodStart || !activeEmployerTaxConfigurationValid(state, periodEnd)) return null;
   const employee = activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, periodEnd);
@@ -293,7 +309,8 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
   const regularHours = hourly?.regularHours ?? totalHours;
   const regularPay = hourly?.regularPay ?? compensation.rate;
   const overtimePay = hourly?.overtimePay ?? 0;
-  return calculateNet(state, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, 0, source.timecardIds, [], withholding!, benefits,calculationVersion);
+  if(!finiteNonNegative(supplementalTaxablePay))return null;
+  return calculateNet(state, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, supplementalTaxablePay, source.timecardIds, [], withholding!, benefits,calculationVersion);
 }
 
 export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeId: string, payDate: string, bonusAmount: number, bonusIds: string[], calculationVersion:PayrollCalculationVersion=2): PayLine | null {
@@ -305,6 +322,47 @@ export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeI
   const employerTaxRules = activeEmployerTaxes(state, payDate);
   if (employerTaxRules.some((rule) => !percentValid(rule.percent))) return null;
   return calculateNet(state, employeeId, payDate, 0, 0, 0, 0, bonusAmount, [], bonusIds, withholding!, zeroBenefits(),calculationVersion);
+}
+
+/**
+ * Taxable supplemental earnings, without repeating ordinary pay-period benefit
+ * or additional withholding deductions. The processor supplies verified tax.
+ * Reimbursements/non-taxable items are intentionally not modeled as wages.
+ */
+export function calculateSupplementalLine(
+ state:PayrollState,hcm:HCMState,employeeId:string,payDate:string,amount:number,
+ calculationVersion:PayrollCalculationVersion=2,
+):PayLine|null{
+ void hcm;
+ if(!isValidCalendarDateKey(payDate)||!finiteNonNegative(amount)||amount<=0)return null;
+ const employee=activePayrollEmployee(state,employeeId);
+ const withholding=activeWithholding(state,employeeId,payDate);
+ if(!employee||!withholdingProfileValid(withholding)||!activeEmployerTaxConfigurationValid(state,payDate))return null;
+ return calculateNet(state,employeeId,payDate,0,0,0,0,amount,[],[],
+  {...withholding!,additionalWithholding:0,postTaxDeduction:0},zeroBenefits(),calculationVersion);
+}
+
+export function calculateFinalLine(
+ state:PayrollState,data:WorkspaceData,hcm:HCMState,employeeId:string,
+ periodStart:string,periodEnd:string,separationDate:string,payDate:string,
+ timecardIds:string[],additionalTaxable:number,calculationVersion:PayrollCalculationVersion=2,
+):PayLine|null{
+ const employee=hcm.employees.find(e=>e.userId===employeeId);
+ if(!employee||employee.status!=="Separated"||employee.separationDate!==separationDate||
+   !isValidCalendarDateKey(separationDate)||!isValidCalendarDateKey(payDate)||
+   separationDate<periodStart||separationDate>periodEnd||
+   !finiteNonNegative(additionalTaxable))return null;
+ if(timecardIds.length){
+   // Prevent full salary-per-period payment for a partial final week.
+   const compensation=compensationForPayrollDate(hcm,employeeId,periodEnd);
+   if(compensation?.basis!=="Hourly")return null;
+   const source=regularPayrollSource(data,employeeId,periodStart,periodEnd,timecardIds);
+   if(!source||source.entries.some(entry=>entry.date>separationDate))return null;
+   return calculateRegularLine(state,data,hcm,employeeId,periodStart,periodEnd,
+      timecardIds,calculationVersion,additionalTaxable);
+ }
+ // A documented final taxable adjustment without additional approved timecards.
+ return additionalTaxable>0?calculateSupplementalLine(state,hcm,employeeId,payDate,additionalTaxable,calculationVersion):null;
 }
 
 function calculateNet(state: PayrollState, employeeId: string, asOf: string, regularHours: number, overtimeHours: number, regularPay: number, overtimePay: number, bonusPay: number, sourceTimecardIds: string[], sourceBonusIds: string[], withholding: WithholdingProfile, benefits: PayrollBenefitDeductions, version:PayrollCalculationVersion=2): PayLine | null {
