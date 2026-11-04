@@ -80,7 +80,7 @@ export function PeopleExperience(){
       </Pane>
       <Pane label={admin?"Learning assignments":"My training"}>
         {training.length?training.slice(0,6).map(item=><div className="prototype-work-list" key={item.id}>
-          <strong>{item.title}</strong><span>{item.status}</span>
+          <strong>{hcm.courses.find(course=>course.id===item.courseId)?.title??"Training assignment"}</strong><span>{item.status}</span>
         </div>):<p className="prototype-note">No visible learning assignments.</p>}
         <button type="button" onClick={()=>navigateToRoute("/people/training")}>Open training</button>
       </Pane>
