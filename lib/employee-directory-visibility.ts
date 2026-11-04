@@ -11,7 +11,7 @@ export function visibleActiveEmployees(
  return users.filter(user=>{
   if(user.role==="Customer")return false;
   const status=firebaseStates?.[user.id]?.accountState;
-  if(status==="Separated")return false;
+  if(status==="Separated"||status==="Suspended")return false; // Firebase access revocation overrides stale local HR status.
   if(status==="Active")return true; // Authoritative active access overrides stale HR status.
   return user.employmentStatus!=="Separated";
  });

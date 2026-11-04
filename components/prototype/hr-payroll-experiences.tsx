@@ -6,6 +6,7 @@ import { useWorkspace } from "../../lib/workspace-context";
 import { useHcm } from "../../lib/hcm-context";
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { hrWorkspaceOverview } from "../../lib/hr-workspace-overview";
+import { hrEmployeeDetail, hrOnboardingCaseDetail, hrOnboardingQueue } from "../../lib/hr-employee-detail";
 import { usePayroll } from "../../lib/payroll-context";
 import { navigateToRoute } from "../../lib/navigation-store";
 import { formatMoney } from "../ui";
@@ -51,8 +52,10 @@ export function PeopleExperience(){
     </div>
     <div className="prototype-domain-cards">
       <NavTile label="Employee Directory" path="/people/directory" detail={admin?"Active staff and reporting lines":"Authorized directory access"}/>
+      <NavTile label="My Employee Profile" path="/people/me" detail="My onboarding, training, time, requests and documents"/>
       {admin&&<NavTile label="Employee Profiles" path="/admin/employee-profiles" detail="Restricted personnel files and reviews"/>}
-      {admin&&<NavTile label="Onboarding Queue" path="/people/onboarding" detail="Open cases and new-hire requirements"/>}
+      {admin&&<NavTile label="Onboarding Queue" path="/people/onboarding" detail="Existing onboarding administration"/>}
+      {admin&&<NavTile label="Checklist Review" path="/people/onboarding/review" detail="Read-only open cases and task status"/>}
       {admin&&<NavTile label="Training Administration" path="/people/training" detail="Course and assignment controls"/>}
       {!admin&&<NavTile label="My Time & Leave" path="/people/timekeeping" detail="Timecards, requests and self-service"/>}
     </div>
@@ -75,7 +78,7 @@ export function PeopleExperience(){
       </div>
       <div className="prototype-people-grid">{people.map(({user,employment})=><article key={user.id} className="prototype-employee-card">
         <div className="prototype-employee-avatar" aria-hidden="true">{user.initials}</div>
-        <div><strong>{user.name}</strong><span>{employment?.jobTitle??user.title}</span><small>{user.team} · {employment?.status==="Separated"?"HR status requires review":employment?.status??"Not configured"}</small></div>
+        <div><strong>{user.name}</strong><span>{employment?.jobTitle??user.title}</span><small>{user.team} · {employment?.status==="Separated"?"HR status requires review":employment?.status??"Not configured"}</small><button type="button" className="prototype-link" onClick={()=>navigateToRoute(admin?"/people/employees/"+encodeURIComponent(user.id):"/people/me")}>Open profile ›</button></div>
       </article>)}</div>
       {!people.length&&<div className="prototype-empty">No matching active employee records.</div>}
     </Pane>
@@ -85,6 +88,117 @@ export function PeopleExperience(){
       </div>):<p className="prototype-note">No open HR tasks assigned to you.</p>}
     </Pane>
     <p className="prototype-note"><ShieldCheck size={14}/> Review-only overview. Missing forms do not suspend employment. Compensation, private documents and changes remain governed by existing server authorization; this view does not execute them.</p>
+  </div>;
+}
+
+
+/** Detail views deliberately expose only sanitized metadata, never HCM raw objects. */
+export function PeopleEmployeeDetail({employeeId}:{employeeId:string}){
+  const {data,scope,currentUser}=useWorkspace();
+  const {hcm}=useHcm();
+  const firebase=useFirebaseSessionOptional();
+  const detail=hrEmployeeDetail({
+    employeeId,viewer:currentUser,users:data.users,hcm,timecards:scope.timecards,
+    accessRecords:firebase?.accessRecords,
+  });
+  if(!detail)return <div className="prototype-empty">Employee profile unavailable or not authorized.</div>;
+  const {employee,employment}=detail;
+  return <div className="prototype-domain prototype-domain--people">
+    <button type="button" className="prototype-back" onClick={()=>navigateToRoute("/people")}>← Back to Human Resources</button>
+    {title(employee.name+" · Employee profile","Read-only HR record sections. Only the Administrator can review another employee's profile.")}
+    <div className="prototype-columns">
+      <Pane label="Employment record"><dl className="prototype-facts">
+        <div><dt>Work email</dt><dd>{employee.email}</dd></div>
+        <div><dt>Role / department</dt><dd>{employment?.jobTitle??employee.title} · {employment?.department??employee.team}</dd></div>
+        <div><dt>Employee number</dt><dd>{employment?.employeeNumber??"Not configured"}</dd></div>
+        <div><dt>HR record status</dt><dd>{employment?.status??"Not configured"}</dd></div>
+        <div><dt>Location</dt><dd>{employment?.location??"Not configured"}</dd></div>
+        <div><dt>Worker classification</dt><dd>{employment?.classification??"Not configured"}</dd></div>
+        <div><dt>Hire date</dt><dd>{employment?.hireDate??"Not recorded"}</dd></div>
+      </dl></Pane>
+      <Pane label="Onboarding checklists">
+        {detail.onboarding.map(item=><div className="prototype-work-list" key={item.id}>
+          <strong>{item.effectiveDate} · {item.status}</strong>
+          {item.tasks.map(task=><span key={task.id}>{task.title} · {task.status}{task.dueDate?" · Due "+task.dueDate:""}</span>)}
+          {!item.tasks.length&&<span>No recorded checklist tasks.</span>}
+        </div>)}
+        {!detail.onboarding.length&&<p className="prototype-note">No onboarding case recorded for this employee. This does not establish compliance.</p>}
+      </Pane>
+    </div>
+    <div className="prototype-columns">
+      <Pane label="Attendance & timecards">
+        {detail.timecards.map(card=><div className="prototype-work-list" key={card.id}><strong>{card.weekStart} to {card.weekEnd}</strong><span>{card.status}</span></div>)}
+        {!detail.timecards.length&&<p className="prototype-note">No recorded timecards.</p>}
+      </Pane>
+      <Pane label="Leave & requests">
+        {detail.leave.map(item=><div className="prototype-work-list" key={item.id}><strong>{item.startDate} to {item.endDate}</strong><span>{item.requestedHours} hours · {item.status}</span></div>)}
+        {detail.requests.map(item=><div className="prototype-work-list" key={item.id}><strong>{item.title}</strong><span>{item.status}</span></div>)}
+        {!detail.leave.length&&!detail.requests.length&&<p className="prototype-note">No recorded leave or workflow requests.</p>}
+      </Pane>
+      <Pane label="Training">
+        {detail.training.map(item=><div className="prototype-work-list" key={item.id}><strong>{item.title}</strong><span>{item.status}{item.dueDate?" · Due "+item.dueDate:""}</span></div>)}
+        {!detail.training.length&&<p className="prototype-note">No recorded training assignments.</p>}
+      </Pane>
+      <Pane label="Document status">
+        {detail.documents.map(item=><div className="prototype-work-list" key={item.id}><strong>{item.title}</strong><span>{item.category} · Version {item.version} · {item.status}</span></div>)}
+        {!detail.documents.length&&<p className="prototype-note">No document metadata recorded.</p>}
+      </Pane>
+      <Pane label="Performance review status">
+        {detail.reviews.map(item=><div className="prototype-work-list" key={item.id}><strong>Review</strong><span>{item.status}</span></div>)}
+        {!detail.reviews.length&&<p className="prototype-note">No review cycle assigned.</p>}
+      </Pane>
+    </div>
+    <p className="prototype-note"><ShieldCheck size={14}/> Read-only prototype. Document statuses are not proof of completed I-9, tax forms or signatures. No compensation, private contacts, review narratives, evidence text or files are exposed here.</p>
+  </div>;
+}
+
+export function PeopleOnboardingReview(){
+  const {data,scope,currentUser}=useWorkspace();
+  const {hcm}=useHcm();
+  const firebase=useFirebaseSessionOptional();
+  const cases=hrOnboardingQueue({
+    viewer:currentUser,users:data.users,hcm,timecards:scope.timecards,
+    accessRecords:firebase?.accessRecords,
+  });
+  if(currentUser?.role!=="Administrator")return <div className="prototype-empty">Not authorized.</div>;
+  return <div className="prototype-domain prototype-domain--people">
+    <button type="button" className="prototype-back" onClick={()=>navigateToRoute("/people")}>← Back to Human Resources</button>
+    {title("Onboarding checklist review","Open recorded onboarding cases. Candidate details and restricted evidence remain in existing administrative controls.")}
+    <Pane label="Open cases">
+      <div className="prototype-table-scroll"><table className="prototype-table">
+        <thead><tr><th>Effective date</th><th>Case</th><th>Tasks</th><th>Status</th></tr></thead>
+        <tbody>{cases.map(item=><tr key={item.id}>
+          <td>{item.effectiveDate}</td>
+          <td><button type="button" className="prototype-link" onClick={()=>navigateToRoute("/people/onboarding/cases/"+encodeURIComponent(item.id))}>Open checklist ›</button></td>
+          <td>{item.tasks.filter(task=>task.status==="Complete").length} of {item.tasks.length} recorded complete</td>
+          <td>{item.status}</td>
+        </tr>)}</tbody>
+      </table></div>
+      {!cases.length&&<p className="prototype-note">No accessible open onboarding cases.</p>}
+    </Pane>
+    <p className="prototype-note">Task completion is not a legal verification, signature or authorization to activate or deactivate a user.</p>
+  </div>;
+}
+
+export function PeopleOnboardingCase({caseId}:{caseId:string}){
+  const {data,scope,currentUser}=useWorkspace();
+  const {hcm}=useHcm();
+  const firebase=useFirebaseSessionOptional();
+  const item=hrOnboardingCaseDetail({
+    caseId,viewer:currentUser,users:data.users,hcm,timecards:scope.timecards,
+    accessRecords:firebase?.accessRecords,
+  });
+  if(!item)return <div className="prototype-empty">Onboarding case unavailable or not authorized.</div>;
+  return <div className="prototype-domain prototype-domain--people">
+    <button type="button" className="prototype-back" onClick={()=>navigateToRoute("/people/onboarding/review")}>← Back to onboarding review</button>
+    {title("Onboarding checklist","Recorded tasks and due dates, without confidential evidence or applicant details.")}
+    <Pane label={"Effective "+item.effectiveDate+" · "+item.status}>
+      {item.tasks.map(task=><div className="prototype-work-list" key={task.id}>
+        <strong>{task.title}</strong><span>{task.status}{task.dueDate?" · Due "+task.dueDate:""}</span>
+      </div>)}
+      {!item.tasks.length&&<p className="prototype-note">No checklist tasks recorded.</p>}
+    </Pane>
+    <p className="prototype-note">Read-only. Existing administrative onboarding workflows remain the authority for task changes. No employee access state is modified.</p>
   </div>;
 }
 
