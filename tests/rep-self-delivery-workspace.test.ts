@@ -73,6 +73,8 @@ test("dedicated rep screen delegates to existing atomic server workflow with rea
   assert.match(api,/firebaseFunctionUrl\("repSelfDelivery"\)/);
   assert.match(api,/value\.orderId!==orderId\|\|value\.cloudConfirmed!==true/);
   assert.match(backend,/db\.runTransaction\(/);
+  assert.match(backend,/status==="Delivered"\|\|status==="Paid"/);
+  assert.match(backend,/if\(!signed\|\|!correctInventory\)return \{\.\.\.response\(\),cloudConfirmed:false\}/);
   assert.match(backend,/access\?\.role/);
   assert.match(backend,/txt\(order\.ownerId\)!==actor/);
   assert.match(backend,/effectiveOwner!==actor/);
