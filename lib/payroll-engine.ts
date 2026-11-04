@@ -37,7 +37,9 @@ export type PayLine = {
   sourceBonusIds: string[];
 };
 export type PayRunStatus = "Draft" | "Approved" | "Released" | "Voided";
-export type PayRun = PayrollRunExtension & { id: string; kind: PayrollRunKind; createdAt: string; periodStart: string; periodEnd: string; payDate: string; status: PayRunStatus; lines: PayLine[]; approvedAt?: string; approvedBy?: string; releasedAt?: string; releasedBy?: string; voidedAt?: string; voidedBy?: string; voidReason?: string; reissueOf?: string };
+/** Old payroll records predate currency rounding; retain their math on recalculation. */
+export type PayrollCalculationVersion = 1 | 2;
+export type PayRun = PayrollRunExtension & { id: string; kind: PayrollRunKind; createdAt: string; periodStart: string; periodEnd: string; payDate: string; status: PayRunStatus; lines: PayLine[]; approvedAt?: string; approvedBy?: string; releasedAt?: string; releasedBy?: string; voidedAt?: string; voidedBy?: string; voidReason?: string; reissueOf?: string; calculationVersion?: PayrollCalculationVersion };
 export type TaxLiabilityType = "Federal employee" | "State employee" | "Local employee" | "Employer";
 export type TaxLiabilityStatus = "Accrued" | "Scheduled" | "Paid" | "Reversed";
 export type TaxLiability = { id: string; payRunId: string; type: TaxLiabilityType; amount: number; status: TaxLiabilityStatus; createdAt: string; dueDate?: string };
@@ -271,7 +273,7 @@ export function hourlyWagesForApprovedTimecards(data:WorkspaceData,hcm:HCMState,
   return {regularHours,overtimeHours,regularPay,overtimePay};
 }
 
-export function calculateRegularLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[]): PayLine | null {
+export function calculateRegularLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[], calculationVersion:PayrollCalculationVersion=2): PayLine | null {
   if (!isValidCalendarDateKey(periodStart) || !isValidCalendarDateKey(periodEnd) || periodEnd < periodStart || !activeEmployerTaxConfigurationValid(state, periodEnd)) return null;
   const employee = activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, periodEnd);
@@ -291,10 +293,10 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
   const regularHours = hourly?.regularHours ?? totalHours;
   const regularPay = hourly?.regularPay ?? compensation.rate;
   const overtimePay = hourly?.overtimePay ?? 0;
-  return calculateNet(state, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, 0, source.timecardIds, [], withholding!, benefits);
+  return calculateNet(state, employeeId, periodEnd, regularHours, overtimeHours, regularPay, overtimePay, 0, source.timecardIds, [], withholding!, benefits,calculationVersion);
 }
 
-export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeId: string, payDate: string, bonusAmount: number, bonusIds: string[]): PayLine | null {
+export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeId: string, payDate: string, bonusAmount: number, bonusIds: string[], calculationVersion:PayrollCalculationVersion=2): PayLine | null {
   void hcm;
   if (!isValidCalendarDateKey(payDate) || !bonusIds.length || new Set(bonusIds).size !== bonusIds.length || !activeEmployerTaxConfigurationValid(state, payDate)) return null;
   const employee = activePayrollEmployee(state, employeeId);
@@ -302,38 +304,41 @@ export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeI
   if (!employee || !withholdingProfileValid(withholding) || !finiteNonNegative(bonusAmount) || bonusAmount <= 0) return null;
   const employerTaxRules = activeEmployerTaxes(state, payDate);
   if (employerTaxRules.some((rule) => !percentValid(rule.percent))) return null;
-  return calculateNet(state, employeeId, payDate, 0, 0, 0, 0, bonusAmount, [], bonusIds, withholding!, zeroBenefits());
+  return calculateNet(state, employeeId, payDate, 0, 0, 0, 0, bonusAmount, [], bonusIds, withholding!, zeroBenefits(),calculationVersion);
 }
 
-function calculateNet(state: PayrollState, employeeId: string, asOf: string, regularHours: number, overtimeHours: number, regularPay: number, overtimePay: number, bonusPay: number, sourceTimecardIds: string[], sourceBonusIds: string[], withholding: WithholdingProfile, benefits: PayrollBenefitDeductions): PayLine | null {
+function calculateNet(state: PayrollState, employeeId: string, asOf: string, regularHours: number, overtimeHours: number, regularPay: number, overtimePay: number, bonusPay: number, sourceTimecardIds: string[], sourceBonusIds: string[], withholding: WithholdingProfile, benefits: PayrollBenefitDeductions, version:PayrollCalculationVersion=2): PayLine | null {
   if (!isValidCalendarDateKey(asOf) || !activeEmployerTaxConfigurationValid(state, asOf) ||
     ![regularHours,overtimeHours,regularPay,overtimePay,bonusPay].every(finiteNonNegative) ||
     !withholdingProfileValid(withholding)) return null;
-  // Currency is stored to cents at the employee-line boundary. This is an internal
-  // estimate using configured percentages, NOT W-4/IRS tables or certified FICA.
-  const cents=(n:number)=>Math.round((n+Number.EPSILON)*100)/100;
-  regularPay=cents(regularPay);overtimePay=cents(overtimePay);bonusPay=cents(bonusPay);
-  const preTax=cents(benefits.preTax),postTax=cents(benefits.postTax);
-  const extraTax=cents(withholding.additionalWithholding),postTaxDeduction=cents(withholding.postTaxDeduction);
-  const grossPay=cents(regularPay+overtimePay+bonusPay);
+  // Explicit math version retains older approved runs byte-for-byte when source
+  // validation recalculates them; newly calculated drafts round each currency
+  // component to cents. Tax percentages remain internal estimates.
+  const money=(n:number)=>version===1?n:Math.round((n+Number.EPSILON)*100)/100;
+  regularPay=money(regularPay);overtimePay=money(overtimePay);bonusPay=money(bonusPay);
+  const preTax=money(benefits.preTax),postTax=money(benefits.postTax);
+  const extraTax=money(withholding.additionalWithholding),postTaxDeduction=money(withholding.postTaxDeduction);
+  const grossPay=money(regularPay+overtimePay+bonusPay);
   if (![grossPay,preTax,postTax,extraTax,postTaxDeduction].every(finiteNonNegative)) return null;
-  const taxableWages=cents(grossPay-preTax);
-  if (taxableWages<0) return null;
-  const federalTax=cents(taxableWages*withholding.federalPercent/100);
-  const stateTax=cents(taxableWages*withholding.statePercent/100);
-  const localTax=cents(taxableWages*withholding.localPercent/100);
-  const employeeTaxes=cents(federalTax+stateTax+localTax+extraTax);
-  const employerTaxes=cents(activeEmployerTaxes(state,asOf).reduce((total,rule)=>
-    total+cents(taxableWages*rule.percent/100),0));
+  const rawTaxableWages=grossPay-preTax;
+  if (!Number.isFinite(rawTaxableWages)||rawTaxableWages < -0.005) return null;
+  const taxableWages=money(Math.max(0,rawTaxableWages));
+  const federalTax=money(taxableWages*withholding.federalPercent/100);
+  const stateTax=money(taxableWages*withholding.statePercent/100);
+  const localTax=money(taxableWages*withholding.localPercent/100);
+  const employeeTaxes=money(federalTax+stateTax+localTax+extraTax);
+  const employerTaxes=money(activeEmployerTaxes(state,asOf).reduce((total,rule)=>
+    total+money(taxableWages*rule.percent/100),0));
   if (![federalTax,stateTax,localTax,employeeTaxes,employerTaxes].every(finiteNonNegative)) return null;
-  const netPay=cents(grossPay-preTax-postTax-employeeTaxes-postTaxDeduction);
-  if (netPay<0) return null;
-  const benefitDeduction=cents(preTax+postTax);
+  const rawNetPay=grossPay-preTax-postTax-employeeTaxes-postTaxDeduction;
+  if (!Number.isFinite(rawNetPay)||rawNetPay< -0.005) return null;
+  const netPay=money(Math.max(0,rawNetPay));
+  const benefitDeduction=money(preTax+postTax);
   const line:PayLine={
     employeeId,regularHours,overtimeHours,regularPay,overtimePay,bonusPay,grossPay,
     benefitDeduction,preTaxBenefitDeduction:preTax,postTaxBenefitDeduction:postTax,
     taxableWages,federalTax,stateTax,localTax,additionalWithholding:extraTax,
     postTaxDeduction,employeeTaxes,employerTaxes,netPay,sourceTimecardIds,sourceBonusIds,
   };
-  return payLineValid(line) ? line : null;
+  return payLineValid(line)?line:null;
 }
