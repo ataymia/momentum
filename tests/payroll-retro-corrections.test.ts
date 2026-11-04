@@ -160,16 +160,17 @@ test("historical single-week hourly calculator reproduces settled payroll before
      originalWeekHours:result.originalWeekHours,correctedWeekHours:result.correctedWeekHours,
      historicalHourlyRate:result.historicalHourlyRate,overtimeThresholdHours:result.overtimeThresholdHours,
      originalWeeklyGross:result.originalWeeklyGross,correctedWeeklyGross:result.correctedWeeklyGross},
- },clock("case-hours"));
+ },clock("case-hours"),{data:d,hcm:h});
  assert(proposal.ok);
  if(!proposal.ok)return;
  assert.equal(normalizePayrollState(proposal.state).retroCases[0].weekEvidence?.correctedWeekHours,11.5);
+ assert.equal(proposeRetroCorrection(p,{...input(230),sourceRunId:"regular-wages",weekEvidence:proposal.case.weekEvidence},clock("case-unverified")).ok,false);
  assert.equal(proposeRetroCorrection(p,{
   sourceRunId:"regular-wages",employeeId:"worker-1",correctedGross:300,
   reason:"Wrong wage total not supported by source",
   evidenceReference:"approved-timecard-case-4",
   weekEvidence:proposal.case.weekEvidence,
- },clock("case-wrong")).ok,false);
+ },clock("case-wrong"),{data:d,hcm:h}).ok,false);
  assert.equal(calculateRetroWeekGross(p,d,h,"regular-wages","worker-1","wrong-card",11.5).ok,false);
  p.runs.find(r=>r.id==="regular-wages")!.lines[0].regularPay=180;
  assert.equal(calculateRetroWeekGross(p,d,h,"regular-wages","worker-1","tc-week-1",11.5).ok,false);
