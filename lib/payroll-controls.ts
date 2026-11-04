@@ -2,7 +2,9 @@ import { evaluateSalesRepAccountBonuses } from "./bonus-engine";
 import type { HCMState } from "./hcm-engine";
 import {
   calculateBonusLine,
+  calculateFinalLine,
   calculateRegularLine,
+  calculateSupplementalLine,
   invalidBonusSourcesForRun,
   invalidTimecardSourcesForRun,
   type PayLine,
@@ -58,7 +60,17 @@ function expectedLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, r
   if (run.kind === "Regular") {
     return calculateRegularLine(state, data, hcm, line.employeeId, run.periodStart, run.periodEnd, line.sourceTimecardIds,run.calculationVersion??1);
   }
-
+  if(run.kind==="Off-cycle"){
+    return run.special&&run.special.employeeId===line.employeeId&&
+      line.sourceTimecardIds.length===0&&line.sourceBonusIds.length===0?
+      calculateSupplementalLine(state,hcm,line.employeeId,run.payDate,run.special.amount,run.calculationVersion??2):null;
+  }
+  if(run.kind==="Final pay"){
+    return run.special&&run.special.employeeId===line.employeeId&&line.sourceBonusIds.length===0?
+      calculateFinalLine(state,data,hcm,line.employeeId,run.periodStart,run.periodEnd,
+        run.special.separationDate??"",run.payDate,line.sourceTimecardIds,run.special.amount,run.calculationVersion??2):null;
+  }
+  if(run.kind!=="Monthly bonus")return null;
   const ids = [...new Set(line.sourceBonusIds)];
   if (!ids.length || ids.length !== line.sourceBonusIds.length) return null;
   const earned = new Map(
@@ -84,6 +96,8 @@ export function payrollRunDrift(state: PayrollState, data: WorkspaceData, hcm: H
 
 export function payrollRunControlIssues(state: PayrollState, data: WorkspaceData, hcm: HCMState, run: PayRun): PayrollRunControlIssue[] {
   const issues: PayrollRunControlIssue[] = [];
+  if((run.kind==="Off-cycle"||run.kind==="Final pay")&&(!run.special?.evidenceReference.trim()||!run.special?.reason.trim()))
+    issues.push({code:"invalid-source",detail:"Special payroll is missing an approved source reference or reason."});
   for (const source of invalidTimecardSourcesForRun(run, data)) issues.push({ code: "invalid-source", detail: `Timecard source ${source} is no longer payroll-ready.` });
   for (const source of invalidBonusSourcesForRun(run, data)) issues.push({ code: "invalid-source", detail: `Bonus source ${source} is no longer earned.` });
   for (const employeeId of payrollRunDrift(state, data, hcm, run)) issues.push({ code: "stale-calculation", employeeId, detail: `Payroll math for ${employeeId} no longer matches current approved source records and configuration.` });
@@ -93,6 +107,10 @@ export function payrollRunControlIssues(state: PayrollState, data: WorkspaceData
 export function payrollCorrectionBlockers(state: PayrollState, run: PayRun) {
   const blockers: string[] = [];
   if (run.status === "Voided") blockers.push("Payroll run is already voided.");
+  if(run.providerHandoff&&run.providerHandoff.status!=="Prepared")
+    blockers.push("Provider already received or reviewed this payroll. Confirm formal recall/adjustment before correction.");
+  if(run.filingCases?.some(f=>f.status==="Sent to provider"||f.status==="Filed"))
+    blockers.push("External filing already submitted or filed. Use an amended filing workflow.");
   if (run.status === "Released") {
     if (state.disbursements.some((item) => item.payRunId === run.id && item.status === "Settled")) blockers.push("A payroll disbursement has already settled.");
     if (state.liabilities.some((item) => item.payRunId === run.id && item.status === "Paid")) blockers.push("A payroll tax liability has already been paid.");
