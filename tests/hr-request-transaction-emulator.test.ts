@@ -38,6 +38,20 @@ before(async () => {
     firestore: { rules: candidateRules, host: "127.0.0.1", port: 8080 },
   });
   await privileged(async (db) => {
+    const identities = [
+      ["admin", "Administrator", "Active"],
+      ["manager", "Sales Manager", "Active"],
+      ["rep", "Sales Representative", "Active"],
+      ["other", "Sales Representative", "Active"],
+      ["customer", "Customer", "Active"],
+      ["separated", "Sales Representative", "Separated"],
+    ] as const;
+    for (const [uid, role, accountState] of identities) {
+      await setDoc(doc(db, "userAccess", uid), {
+        role, accountState, team: role === "Customer" ? "Customer" : "Sales",
+        email: uid + "@example.test", managedTeams: [], updatedAt: "2026-11-04",
+      });
+    }
     await setDoc(doc(db, requestPath), {
       status: "Submitted", ownerUid: "rep", revision: 3,
     });
