@@ -47,7 +47,7 @@ function resetApproval(data:WorkspaceData,card:Timecard,actorId:string,at:string
  return {
   timecards:data.timecards.map(c=>c.id===card.id?{...c,
     status:"Returned" as const,attested:false,approvedAt:undefined,approverId:undefined,
-    returnedAt:at,returnedBy:actorId,returnReason:"Administrator correction: "+reason}:c),
+    returnedAt:at,returnedBy:actorId,returnReason:"Administrator correction: "+reason,resubmissionNote:undefined}:c),
   approvals:data.approvals.map(a=>a.type==="Timecard"&&a.recordId===card.id&&a.status==="Pending"?
      {...a,status:"Returned" as const}:a),
   notifications:[{id:"time-adjust-"+card.id+"-"+at,title:"Timecard corrected by Administrator",
