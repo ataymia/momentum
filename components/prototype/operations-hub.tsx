@@ -8,6 +8,8 @@ import { navigateToRoute, useNavigationRoute } from "../../lib/navigation-store"
 import { GOLDEN_EAGLE_SKUS, skuForProductName } from "../../lib/product-catalog";
 import { orderFirstSettlementDate } from "../../lib/bonus-engine";
 import { useWorkspace } from "../../lib/workspace-context";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {momentumStorage} from "../../lib/persistence";
 import { TerritoryPanel } from "../crm/territory-panel";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
@@ -17,6 +19,8 @@ import {HrOnboardingExperience} from "./hr-onboarding-experience";
 import {HrPersonnelDirectory,HrPersonnelRecord} from "./hr-personnel-experience";
 import {HrTimeOffExperience} from "./hr-time-off-experience";
 import {HrNewHireExperience} from "./hr-new-hire-experience";
+import {NewHireProvisioning} from "../hcm/new-hire-provisioning";
+import {PayrollPage as LegacyPayrollPage} from "../pages/payroll";
 import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
@@ -283,18 +287,21 @@ function TerritoryMapPreview(){
 
 export function PrototypeOperationsHub(){
   const path=useNavigationRoute();const {currentUser}=useWorkspace();
+  const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
   if(!canVisitRoute(currentUser,path))return <Empty>You do not have permission to view this module.</Empty>;
   const segments=path.split("/").filter(Boolean);
   if(path==="/")return <WorkspaceHome/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/people/payroll")return <PayrollWorkflowExperience/>;
+  if(path==="/people/payroll/workflow")return writeEnabled?<LegacyPayrollPage/>:<Empty>Read-only redesign prototype. Payroll processing is available only in isolated local demo mode until production controls are approved.</Empty>;
+  if(path==="/people/onboarding/workflow")return writeEnabled?<NewHireProvisioning view="queue"/>:<Empty>Read-only redesign prototype. Full onboarding administration is available only in isolated local demo mode until authorized release.</Empty>;
   if(path==="/people/new-hire")return <HrNewHireExperience/>;
   if(path==="/people/onboarding")return <HrOnboardingExperience/>;
   if(path==="/people/leave")return <HrTimeOffExperience/>;
   if(path==="/admin/accounts")return <AccountConsolidationReview/>;
   if(path==="/admin/employee-profiles")return <HrPersonnelDirectory/>;
-  if(path==="/admin/employee-profiles/workflow")return <div><Heading title="Secure personnel editor" description="Existing audited editing controls retained during redesign." back="/admin/employee-profiles"/><AdminEmployeeProfiles/></div>;
+  if(path==="/admin/employee-profiles/workflow")return writeEnabled?<div><Heading title="Secure personnel editor" description="Existing audited editing controls retained during redesign." back="/admin/employee-profiles"/><AdminEmployeeProfiles/></div>:<Empty>Read-only redesign prototype. Personnel editing is disabled against connected records.</Empty>;
   if(segments[0]==="admin"&&segments[1]==="employee-profiles"&&segments[2])return <HrPersonnelRecord id={decodeURIComponent(segments[2])} section={segments[3]}/>
   if(path==="/admin/employees")return <div><Heading title="Employee Directory" description="Administrator view of active staff."/><EmployeeDirectory/></div>;
   if(path==="/crm/territory-map")return <TerritoryMapPreview/>;
