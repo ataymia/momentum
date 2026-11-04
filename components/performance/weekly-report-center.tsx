@@ -56,7 +56,7 @@ export function WeeklyReportCenter(){
   const {performance,ensureWeeklyDraft,reviewReport}=usePerformance();
   const today=arizonaDateKey();
   const currentWeek=weekRange(today);
-  const obligations=useMemo(()=>currentUser&&currentUser.role!=="Customer"?weeklyReportingObligations(performance,currentUser.id,today):[],[performance,currentUser,today]);
+  const obligations=useMemo(()=>currentUser&&currentUser.role!=="Customer"&&currentUser.role!=="Administrator"?weeklyReportingObligations(performance,currentUser.id,today):[],[performance,currentUser,today]);
   const [selectedWeek,setSelectedWeek]=useState(()=>{const target=sessionValue("momentum-weekly-report-week");return target&&obligations.some((item)=>item.weekStart===target)?target:(obligations[0]?.weekStart??currentWeek.start);});
   const [selectedReportId,setSelectedReportId]=useState<string|null>(()=>sessionValue("momentum-focus-record"));
   const [message,setMessage]=useState("");
