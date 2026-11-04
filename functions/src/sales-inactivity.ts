@@ -3,10 +3,10 @@ import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
 import {onRequest} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
+import {lastSalesActivityAt,hasSalesTimedOut} from "./sales-inactivity-core";
 
 type Data = Record<string, unknown>;
 type Notice = {entryId: string; clockOutAt: string; lastActivityAt: string; thresholdAt: string; acknowledgedAt?: string};
-const HOUR_MS = 60 * 60_000;
 const zone = "America/Phoenix";
 const obj = (value: unknown): value is Data => Boolean(value && typeof value === "object" && !Array.isArray(value));
 const txt = (value: unknown): string => typeof value === "string" ? value : "";
@@ -29,22 +29,11 @@ const weekEnd = (day: string) => {
   return parts(date).date;
 };
 const asNotice = (raw: unknown): Notice | undefined => obj(raw)&&txt(raw.entryId)&&txt(raw.clockOutAt)&&txt(raw.lastActivityAt)&&txt(raw.thresholdAt)
-  ? raw as Notice : undefined;
+  ? raw as unknown as Notice : undefined;
 const doc = (uid: string, kind: "timeEntries"|"timecards"|"status") =>
   kind === "status" ? "userDomains/"+uid+"/salesActivity/status" : "userDomains/"+uid+"/workspace/"+kind;
 const accessAllowed = (record: Data | undefined) =>
   record?.role === "Sales Representative" && record?.accountState === "Active";
-const freshBusinessEvent = (uid: string, afterMs: number, nowMs: number, ...sets: Data[][]) => {
-  let latest = afterMs;
-  for (const list of sets) {
-    for (const event of list) {
-      if (event.userId !== uid) continue;
-      const at = stamp(event.occurredAt ?? event.at);
-      if (at >= afterMs && at <= nowMs && at > latest) latest = at;
-    }
-  }
-  return latest;
-};
 const respond = (response: {status:(code:number)=>{set:(headers:Data)=>{json:(body:unknown)=>unknown}}}, status:number, body:unknown) =>
   response.status(status).set({"Cache-Control":"no-store","Content-Type":"application/json; charset=utf-8"}).json(body);
 
@@ -84,9 +73,9 @@ export const salesCRMInactivityClockOut = onSchedule({
         if (!started || started>nowMs) return; // legacy punches need human correction
         const sessionState = state.data() || {};
         const lastSignIn = stamp(sessionState.lastSignInAt);
-        const latest = freshBusinessEvent(uid, Math.max(started,lastSignIn), nowMs,
-          rows(crm.data()), rows(activities.data()));
-        if (nowMs-latest < HOUR_MS) return;
+        const latest = lastSalesActivityAt(uid,started,lastSignIn,
+          rows(crm.data()), rows(activities.data()),nowMs);
+        if (!hasSalesTimedOut(latest,nowMs)) return;
         const clockOutAt = now.toISOString(); // actual server action, never a fabricated employee punch
         const changed = existing.map((entry)=>entry.id!==active.id ? entry : {
           ...entry, clockOut:parts(now).time, clockOutAt,
@@ -150,6 +139,7 @@ export const salesCRMClockStatus = onRequest({cors:true,region:"us-central1"},as
         return {ok:true,pending:false,notice:{...notice,acknowledgedAt:new Date().toISOString()}};
       }
       if(action==="clockIn"){
+        if(!notice||Boolean(notice.acknowledgedAt))return{ok:false,message:"No pending inactivity clock-out to resume.",pending:false};
         const entries=rows(reads[1].data());
         if(entries.some(entry=>!txt(entry.clockOut)))return{ok:false,message:"A shift is already open.",pending:false};
         const now=new Date(), local=parts(now);
@@ -160,7 +150,7 @@ export const salesCRMClockStatus = onRequest({cors:true,region:"us-central1"},as
         const hasCard=cards.some(card=>card.userId===uid&&card.weekStart===start&&card.weekEnd===end);
         tx.set(timeRef,{items:[entry,...entries]});
         if(!hasCard)tx.set(cardsRef,{items:[{id:"tc-"+uid+"-"+start,userId:uid,weekStart:start,weekEnd:end,status:"Open",attested:false},...cards]});
-        tx.set(stateRef,{...state,notice:notice?{...notice,acknowledgedAt:now.toISOString()}:undefined});
+        tx.set(stateRef,{...state,notice:{...notice,acknowledgedAt:now.toISOString()}});
         return{ok:true,pending:false,clockInAt:entry.clockInAt};
       }
       return {ok:true,pending:Boolean(notice&&!notice.acknowledgedAt),notice:notice??null};
