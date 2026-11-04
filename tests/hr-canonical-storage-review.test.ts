@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { userDocPath } from "../lib/firestore-domains";
+import { DOMAIN_SPECS, userDocPath } from "../lib/firestore-domains";
 import { planHrLegacySharedField } from "../lib/hr-legacy-migration-plan";
 import type { VersionedSnapshot } from "../lib/hr-legacy-reconciliation";
 import {
@@ -148,4 +148,44 @@ test("plan with conflicting source record ownership cannot be used for a canonic
   const bad = input();
   bad.plan.copyCandidates[0].record.userId = "uid-jordan";
   assert.ok(assessHrCanonicalCopyGate(bad).issues.includes("legacy-reconciliation-blocked"));
+});
+
+
+test("canonical storage matrix covers every eligible HCM owner field, with audit excluded", () => {
+  const hcm = DOMAIN_SPECS.find((spec) => spec.id === "hcm")!;
+  const fields = Object.entries(hcm.fields).filter(([name, spec]) =>
+    Boolean(spec.userIdField) && name !== "audit" && !spec.chunkBytes);
+  assert.ok(fields.length >= 15, "unexpected HCM schema reduction");
+  for (const [field, spec] of fields) {
+    const uid = "uid-matrix";
+    const record = { id: "synthetic-" + field, [spec.userIdField!]: uid };
+    const legacy = userDocPath(uid, "hcm", field);
+    const sourcePath = "domains/hcm/fields/" + field;
+    const candidate = planHrLegacySharedField({
+      field, sharedDocument: { items: [record] },
+      knownUserIds: new Set([uid]),
+      existingUserDocuments: new Map([[legacy, null]]),
+    });
+    const snapshots: VersionedSnapshot[] = [
+      { path: sourcePath, version: "source@1", data: { items: [record] } },
+      { path: legacy, version: null, data: null },
+    ];
+    const canonicalPath = hrCanonicalReviewPath(uid, field);
+    const absent: VersionedSnapshot[] = [{ path: canonicalPath, version: null, data: null }];
+    const copied: VersionedSnapshot[] = [{
+      path: canonicalPath, version: "copy@1", data: { items: [record] },
+    }];
+    const gate = assessHrCanonicalCopyGate({
+      plan: candidate, baseline: snapshots, current: structuredClone(snapshots),
+      canonicalInventory: absent,
+    });
+    assert.equal(gate.status, "eligible-for-synthetic-review", field + ": " + gate.issues.join(","));
+    const result = assessHrCanonicalRoundTrip({
+      plan: candidate, baseline: snapshots, current: structuredClone(snapshots),
+      canonicalBefore: absent, canonicalAfter: copied, canonicalRestored: absent,
+      legacyAfter: structuredClone(snapshots),
+    });
+    assert.equal(result.status, "eligible-for-synthetic-review", field + ": " + result.issues.join(","));
+  }
+  assert.throws(() => hrCanonicalReviewPath("uid-matrix", "audit"));
 });
