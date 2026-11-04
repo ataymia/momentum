@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  planTrustedTimecardCorrection,
-  type CorrectionIntent,type CorrectionSnapshot,
-} from "../functions/src/timecard-correction-policy";
+import * as trustedPolicy from "../functions/src/timecard-correction-policy";
+import type {CorrectionIntent,CorrectionSnapshot} from "../functions/src/timecard-correction-policy";
+const planTrustedTimecardCorrection=(trustedPolicy as unknown as {default?:typeof trustedPolicy}).default?.planTrustedTimecardCorrection??trustedPolicy.planTrustedTimecardCorrection;
 
 const original=():CorrectionSnapshot=>({
  actorUid:"administrator-001",actor:{role:"Administrator",accountState:"Active"},
