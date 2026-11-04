@@ -79,7 +79,7 @@ test("Administrator can open a missing historical week but cannot self-approve i
  const src=data();src.timecards=[];src.timeEntries=[];
  const payload={actorId:"admin",userId:"worker",weekDate:"2026-10-28",
    cardId:"new-week-1",reason:"Employee verified missing week",at};
- const result=insertMissingTimecard(src,payload);
+ const result=insertMissingTimecard(src,createPayrollSeed(),payload);
  assert(result.ok);
  if(!result.ok)return;
  const card=result.data.timecards[0];
@@ -90,15 +90,24 @@ test("Administrator can open a missing historical week but cannot self-approve i
  assert.equal(card.approvedAt,undefined);
  assert.equal(card.returnedBy,"admin");
  assert.equal(result.data.timeEntries.length,0);
- assert.equal(insertMissingTimecard(result.data,payload).ok,false);
+ assert.equal(insertMissingTimecard(result.data,createPayrollSeed(),payload).ok,false);
  assert.equal(normalizeWorkspaceData(result.data,src).timecards[0].status,"Returned");
 });
 test("only admins may create historical timecards and duplicate weeks are rejected",()=>{
  const src=data();
  const sample={actorId:"admin",userId:"worker",weekDate:"2026-10-28",
    cardId:"new-week",reason:"Verified missing week",at};
- assert.equal(insertMissingTimecard(src,sample).ok,false);
+ assert.equal(insertMissingTimecard(src,createPayrollSeed(),sample).ok,false);
  src.timecards=[];
- assert.equal(insertMissingTimecard(src,{...sample,actorId:"worker"}).ok,false);
- assert.equal(insertMissingTimecard(src,{...sample,weekDate:"2099-01-01"}).ok,false);
+ assert.equal(insertMissingTimecard(src,createPayrollSeed(),{...sample,actorId:"worker"}).ok,false);
+ assert.equal(insertMissingTimecard(src,createPayrollSeed(),{...sample,weekDate:"2099-01-01"}).ok,false);
+});
+
+
+test("a missing week cannot be added when paid or approved payroll overlaps that employee",()=>{
+ const src=data();src.timecards=[];src.timeEntries=[];
+ const p=processed();
+ const result=insertMissingTimecard(src,p,{actorId:"admin",userId:"worker",weekDate:"2026-10-28",
+   cardId:"new-timecard",reason:"Need a verified missing week",at});
+ assert.equal(result.ok,false);
 });
