@@ -38,7 +38,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Account Health", path: "/crm/account-health", permission: "accountHealth", state: "prototype" },
     { label: "Account Map", path: "/crm/account-map", permission: "salesMap", state: "existing" },
     { label: "Territory Map", path: "/crm/territory-map", permission: "salesMap", state: "prototype" },
-    { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "existing" },
+    { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "prototype" },
     { label: "Sales Incentives", path: "/crm/incentives", permission: "accounts", state: "prototype" },
     { label: "Territories & Routes", path: "/crm/territories", permission: "salesMap", state: "existing" },
   ] },
@@ -173,6 +173,7 @@ export function pageForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if (ROUTE_OVERRIDES[clean]) return ROUTE_OVERRIDES[clean];
   // Deep-linked records must retain their owning workspace page, not fall back to Home.
+  if(clean.startsWith("/crm/self-delivery/"))return "orders";
   if(clean.startsWith("/sales/orders/"))return "orders";
   if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
   if(clean.startsWith("/sales/returns/"))return "orders";
@@ -209,6 +210,7 @@ export function routeLabel(path: string): string {
   if (clean==="/sales/orders/workflow") return "Order operations";
   if(clean==="/sales/orders/new")return "Create sales order";
   if(clean.startsWith("/sales/orders/")&&clean.endsWith("/edit"))return "Edit sales order";
+  if (clean.startsWith("/crm/self-delivery/")) return "Self-delivery details";
   if (clean.startsWith("/sales/orders/")) return "Order details";
   if (clean.startsWith("/sales/invoices/")) return "Invoice details";
   if (clean.startsWith("/sales/payments/")) return "Payment details";
@@ -224,6 +226,7 @@ export function permissionForPath(path: string): PageKey | null {
   if (clean.startsWith("/sales/customers/")) return "accounts";
   const portal=CUSTOMER_MENU.find(item=>item.path===clean);
   if (portal) return portal.permission;
+  if (clean.startsWith("/crm/self-delivery/")) return "orders";
   if (clean.startsWith("/sales/orders/")) return "orders";
   if (clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/")) return "orderCash";
   if (clean.startsWith("/sales/returns/")) return "orders";
@@ -245,6 +248,7 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
       canAccessPage(user,permissionForPath(clean)??"home");
   }
   if (clean.startsWith("/portal/")) return false;
+  if ((clean==="/crm/self-delivery"||clean.startsWith("/crm/self-delivery/")) && user.role!=="Sales Representative")return false;
   if(clean==="/operations/deliveries" && !["Administrator","Operations","Warehouse"].includes(user.role)) return false;
   if (clean.startsWith("/admin/") && user.role!=="Administrator") return false;
   const permission=permissionForPath(clean);
@@ -268,7 +272,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
-  if (clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
+  if (clean.startsWith("/crm/self-delivery/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
 }
