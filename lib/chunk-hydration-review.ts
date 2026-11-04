@@ -26,7 +26,7 @@ export function reviewChunkHydration(
     ? resolveUserPhysicalField(spec, parsed.field) : null;
   if (!parsed?.uid || !field || field.isChunk || !field.fieldSpec.chunkBytes ||
     !manifest || manifest.shardManifestVersion !== 1 ||
-    !Array.isArray(manifest.shards) || !Number.isSafeInteger(manifest.itemCount) ||
+    !Array.isArray(manifest.shards) || typeof manifest.itemCount !== "number" || !Number.isSafeInteger(manifest.itemCount) ||
     (manifest.itemCount as number) < 0) return fail("invalid-manifest");
   const paths = chunkManifestShardPaths(spec, manifestPath, manifest);
   if (paths.length !== manifest.shards.length ||
