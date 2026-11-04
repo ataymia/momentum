@@ -10,7 +10,7 @@ import {Activity,ArrowRight,Boxes,CalendarDays,ClipboardCheck,PackageCheck,Shopp
 import {buildActionNotices,type ActionNotice} from "../../lib/action-center-policy-v2";
 import {canAccessPage} from "../../lib/access";
 import {addCalendarDays,arizonaDateKey} from "../../lib/date-time";
-import {warehouseAvailable} from "../../lib/inventory-ledger";
+import {eligibleHomeOrders,orderedCasesByChannel,orderedCasesByProduct,warehouseCasesByProduct,visibleReceiptMovements,recordedBusinessDay} from "../../lib/workspace-home-metrics";
 import {useAccounting} from "../../lib/accounting-context";
 import {useDelivery} from "../../lib/delivery-context";
 import {useFinance} from "../../lib/finance-context";
@@ -18,19 +18,17 @@ import {useHcm} from "../../lib/hcm-context";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {useMarketing} from "../../lib/marketing-context";
 import {usePerformance} from "../../lib/performance-context";
-import {orderLinesFor} from "../../lib/order-lines";
 import {skuForProductName} from "../../lib/product-catalog";
 import {canVisitRoute} from "../../lib/navigation-route-registry";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useWorkspace} from "../../lib/workspace-context";
-import type {Order,WorkspaceUser} from "../../lib/types";
+import type {WorkspaceUser} from "../../lib/types";
 
 type HomeTab="overview"|"getting-started"|"updates";
 type Period="month"|"30d";
 const num=(n:number)=>new Intl.NumberFormat("en-US").format(n);
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n);
-const safeDay=(value?:string)=>value&&/^\d{4}-\d{2}-\d{2}/.test(value)?value.slice(0,10):undefined;
-const isEligibleOrder=(order:Order)=>!order.testOnly&&!["Cancelled","Draft"].includes(order.status);
+const safeDay=recordedBusinessDay;
 const limit=(str:string,max=70)=>str.length>max?str.slice(0,max-1)+"…":str;
 
 function Nav({to,children,subtle=false}:{to:string;children:React.ReactNode;subtle?:boolean}){
@@ -94,35 +92,18 @@ export function WorkspaceHome(){
   const orderAccess=canAccessPage(currentUser,"orders");
   const inventoryAccess=canAccessPage(currentUser,"inventory");
   const accountAccess=canAccessPage(currentUser,"accounts");
-  const orders=orderAccess?scope.orders.filter(o=>isEligibleOrder(o)&&safeDay(o.placedAt)!==undefined&&o.placedAt.slice(0,10)>=start&&o.placedAt.slice(0,10)<=today):[];
+  const orders=orderAccess?eligibleHomeOrders(scope.orders,start,today):[];
   const accounts=new Map(scope.accounts.map(a=>[a.id,a]));
   const actions=buildActionNotices({data,scope,currentUser,hcm,performance,finance,marketing,accounting,accountingEvents:events,ledger,delivery});
   const actionable=actions.filter(a=>a.page).slice(0,7);
   const activityRows=[...scope.activities].filter(a=>safeDay(a.at)).sort((a,b)=>b.at.localeCompare(a.at)).slice(0,7);
-  const itemTotals=new Map<string,number>();
-  const channelTotals=new Map<string,number>();
-  for(const order of orders){
-    for(const line of orderLinesFor(order)){
-      const cases=Number.isFinite(line.cases)&&line.cases>0?line.cases:0;
-      itemTotals.set(line.product,(itemTotals.get(line.product)??0)+cases);
-    }
-    const channel=accounts.get(order.accountId)?.channel??"Unclassified";
-    channelTotals.set(channel,(channelTotals.get(channel)??0)+Math.max(0,order.cases));
-  }
-  const items=[...itemTotals].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,5);
-  const channels=[...channelTotals].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,6);
+  const items=orderedCasesByProduct(orders).slice(0,5);
+  const channels=orderedCasesByChannel(orders,scope.accounts).slice(0,6);
   const maxChannel=Math.max(0,...channels.map(x=>x[1]));
-  const productStock=new Map<string,number>();
-  if(inventoryAccess)for(const lot of scope.inventory){
-    const available=lot.status==="Quality hold"?0:warehouseAvailable(ledger,lot.id);
-    productStock.set(lot.product,(productStock.get(lot.product)??0)+available);
-  }
-  const stocks=[...productStock].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,5);
-  const stockTotal=[...productStock.values()].reduce((sum,qty)=>sum+qty,0);
-  const permittedLots=new Set(scope.inventory.map(l=>l.id));
-  const receipts=inventoryAccess?ledger.movements.filter(m=>m.type==="Receipt"&&permittedLots.has(m.lotId))
-    .filter(m=>safeDay(m.at)&&m.at.slice(0,10)>=start&&m.at.slice(0,10)<=today)
-    .sort((a,b)=>b.at.localeCompare(a.at)).slice(0,6):[];
+  const allStocks=inventoryAccess?warehouseCasesByProduct(ledger,scope.inventory):[];
+  const stocks=allStocks.slice(0,5);
+  const stockTotal=allStocks.reduce((sum,[,casesCount])=>sum+casesCount,0);
+  const receipts=inventoryAccess?visibleReceiptMovements(ledger,scope.inventory,start,today).slice(0,6):[];
   const statusCounts=new Map<string,number>();
   for(const order of orders)statusCounts.set(order.status,(statusCounts.get(order.status)??0)+1);
   const statuses=[...statusCounts].sort((a,b)=>b[1]-a[1]);
