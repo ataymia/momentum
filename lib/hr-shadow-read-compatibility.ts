@@ -36,8 +36,8 @@ export function planHrShadowReadPaths(scope: PersistenceScope): {
     const sharedPrivateField = !parsed.uid && Boolean(field?.userIdField);
     // The actor shard can contain other people's before/after values.
     const actorAudit = Boolean(parsed.uid && parsed.field === "audit");
-    // Existing Firestore rules deny manager reads of report compensation even
-    // though the generic client path planner currently requests that shard.
+    // Defense in depth: current domainDocuments already suppresses manager
+    // compensation reads, but future spec drift must not reintroduce them.
     const managerCompensation = Boolean(
       parsed.uid && parsed.uid !== scope.uid &&
       parsed.field === "compensation" && scope.role === "Sales Manager",
