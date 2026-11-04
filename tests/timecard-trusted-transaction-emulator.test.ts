@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import test,{before,after,beforeEach} from "node:test";
 import {initializeTestEnvironment,assertFails,type RulesTestEnvironment} from "@firebase/rules-unit-testing";
-import {doc,getDoc,runTransaction,setDoc,type Firestore} from "firebase/firestore";
+import {doc,getDoc,runTransaction,setDoc} from "firebase/firestore";
 import {
   planTrustedTimecardCorrection,type CorrectionIntent,type CorrectionSnapshot,type Row,
 } from "../functions/src/timecard-correction-policy";
@@ -39,7 +39,8 @@ const intent=(id="request-0001",clockOut="18:00"):CorrectionIntent=>({
   expectedBefore:{clockIn:"08:00",clockOut:"17:00",breakMinutes:30},
   punch:{clockIn:"08:00",clockOut,breakMinutes:30},
 });
-const privileged=async <T>(cb:(db:Firestore)=>Promise<T>):Promise<T>=>{
+type TestFirestore=ReturnType<ReturnType<RulesTestEnvironment["unauthenticatedContext"]>["firestore"]>;
+const privileged=async <T>(cb:(db:TestFirestore)=>Promise<T>):Promise<T>=>{
   let result!:T;
   await env.withSecurityRulesDisabled(async ctx=>{result=await cb(ctx.firestore());});
   return result;
