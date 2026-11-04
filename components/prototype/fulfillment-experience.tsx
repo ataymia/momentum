@@ -16,6 +16,7 @@ import {
 } from "../../lib/inventory-ledger";
 import {deliveryStatusForOrder,processedForDelivery,type DeliveryTask} from "../../lib/delivery-engine";
 import {navigateToRoute} from "../../lib/navigation-store";
+import {ShipmentWorkflowControls} from "./fulfillment-controls";
 import type {Order} from "../../lib/types";
 
 const showDate=(s?:string)=>s?s.slice(0,10):"Not recorded";
@@ -103,11 +104,11 @@ export function PackagesDirectory(){
         <option value="all">All preparation states</option>{[...new Set([...states,"Stock reserved, not packed","Loaded","Requires preparation review"])].sort().map(x=><option key={x}>{x}</option>)}
       </select></label></div>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
-        {col("order","Order")}{col("customer","Customer")}{col("placedAt","Placed")}{col("cases","Cases")}{col("reserved","Reserved")}{col("outbound","Outbound")}{col("state","Preparation status")}
+        {col("order","Order")}{col("customer","Customer")}{col("placedAt","Placed")}{col("cases","Cases")}{col("reserved","Reserved")}{col("outbound","Outbound")}{col("state","Preparation status")}<th>Workflow</th>
       </tr></thead><tbody>{records.map(x=><tr key={x.order.id}>
         <td><RecordLink path={"/sales/orders/"+encodeURIComponent(x.order.id)}>{x.order.number}</RecordLink></td>
         <td>{accounts.get(x.order.accountId)?.name??"Restricted"}</td><td>{showDate(x.order.placedAt)}</td><td>{x.order.cases}</td>
-        <td>{x.reserved}</td><td>{x.outbound}</td><td>{x.state}</td></tr>)}</tbody></table></div>
+        <td>{x.reserved}</td><td>{x.outbound}</td><td>{x.state}</td><td><RecordLink path={"/inventory/shipments/"+encodeURIComponent(x.order.id)}>Review preparation</RecordLink></td></tr>)}</tbody></table></div>
       {!records.length&&<p className="prototype-empty">No orders match the preparation filters.</p>}
       <Note/>
       <p className="prototype-note">Actual pack/allocate and inventory-custody actions remain in the established operations workflow until the new transaction-safe controls are validated.</p>
@@ -153,7 +154,9 @@ export function ShipmentDetail({orderId}:{orderId:string}){
   const {tasks,orders,accounts,users,ledger,state,currentUser}=useOperationalRecords();
   const order=orders.find(o=>o.id===orderId);
   const task=tasks.find(t=>t.orderId===orderId&&t.status!=="Cancelled")??tasks.find(t=>t.orderId===orderId);
-  if(!order||!task)return <p className="prototype-empty">Shipment not found or access is restricted.</p>;
+  if(!order)return <p className="prototype-empty">Shipment order not found or access is restricted.</p>;
+  if(!task)return <div><Title heading={"Prepare shipment for "+order.number} subtitle="No delivery task is currently assigned to this approved order." back="/inventory/shipments"/>
+    <ShipmentWorkflowControls order={order}/><Note/></div>;
   const deliveredCases=orderDeliveryQuantity(ledger,order.id);
   const movements=ledger.movements.filter(m=>m.relatedOrderId===order.id);
   const verifiedSignature=Boolean(task.signature?.signedAt&&task.signature.strokes.length&&task.history.some(event=>event.type==="Delivered"&&event.actorId===task.signature?.capturedBy));
@@ -189,6 +192,7 @@ export function ShipmentDetail({orderId}:{orderId:string}){
       <div className="prototype-page-actionbar"><RecordLink path={"/sales/orders/"+encodeURIComponent(order.id)}>View sales order</RecordLink></div>
       <Note/>
     </section>
+    <ShipmentWorkflowControls order={order} task={task}/>
   </div>;
 }
 export function DeliveryOperationsDirectory(){
@@ -213,9 +217,9 @@ export function DeliveryOperationsDirectory(){
       {rows.map(x=><tr key={x.order.id}><td><RecordLink path={"/sales/orders/"+encodeURIComponent(x.order.id)}>{x.order.number}</RecordLink></td>
         <td>{accounts.get(x.order.accountId)?.name??"Restricted"}</td><td>{x.order.cases}</td>
         <td>{x.task?users.get(x.task.driverId)??"Historical driver":"Unassigned"}</td><td>{x.status}</td>
-        <td>{x.delivered}</td><td>{x.task?<RecordLink path={"/inventory/shipments/"+encodeURIComponent(x.order.id)}>Review shipment</RecordLink>:"No task"}</td></tr>)}</tbody></table></div>
+        <td>{x.delivered}</td><td><RecordLink path={"/inventory/shipments/"+encodeURIComponent(x.order.id)}>{x.task?"Manage shipment":"Assign / review"}</RecordLink></td></tr>)}</tbody></table></div>
       {!rows.length&&<p className="prototype-empty">No matching delivery orders.</p>}
       <Note/>
-      <p className="prototype-note">Driver assignment, customer signature, custody transfers and administrator exceptions are protected by existing delivery controls; no new mutation is issued here.</p>
+      <p className="prototype-note">Management assignment, preparation and custody transitions are available only in a disconnected local demonstration. Customer signature, payment reconciliation and administrator overrides remain in existing authorized workflows.</p>
     </section></div>;
 }
