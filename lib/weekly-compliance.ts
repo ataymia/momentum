@@ -17,5 +17,5 @@ export function weeklyPhysicalVisits(crm:CrmState,userId:string,start:string,end
 }
 
 export function weeklyReporterEligible(user:WorkspaceUser,hrStatus?:string){
- return user.employmentStatus!=="Separated" && hrStatus!=="Prehire" && canAccessPage(user,"reportingCenter");
+ return user.role!=="Administrator" && user.employmentStatus!=="Separated" && hrStatus!=="Prehire" && canAccessPage(user,"reportingCenter");
 }
