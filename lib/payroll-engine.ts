@@ -3,6 +3,7 @@ import { arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import { activeBenefitEnrollments, activeCompensation, type HCMState } from "./hcm-engine";
 import type { TimeEntry, WorkspaceData } from "./types";
 import type {PayrollRunExtension} from "./payroll-provider-lifecycle";
+import type {RetroCorrectionCase} from "./payroll-retro-corrections";
 
 export const PAYROLL_STORAGE_KEY = "momentum-payroll-v5";
 export type PayrollRunKind = "Regular" | "Monthly bonus" | "Off-cycle" | "Final pay";
@@ -43,6 +44,7 @@ export type PayrollCalculationVersion = 1 | 2;
 export type SpecialPayrollSource={
   id:string; employeeId:string; amount:number; reason:string; evidenceReference:string;
   enteredBy:string; enteredAt:string; separationDate?:string;
+  retroCaseId?:string; originalRunId?:string;
 };
 export type PayRun = PayrollRunExtension & { special?:SpecialPayrollSource; id: string; kind: PayrollRunKind; createdAt: string; periodStart: string; periodEnd: string; payDate: string; status: PayRunStatus; lines: PayLine[]; approvedAt?: string; approvedBy?: string; releasedAt?: string; releasedBy?: string; voidedAt?: string; voidedBy?: string; voidReason?: string; reissueOf?: string; calculationVersion?: PayrollCalculationVersion };
 export type TaxLiabilityType = "Federal employee" | "State employee" | "Local employee" | "Employer";
@@ -50,7 +52,7 @@ export type TaxLiabilityStatus = "Accrued" | "Scheduled" | "Paid" | "Reversed";
 export type TaxLiability = { id: string; payRunId: string; type: TaxLiabilityType; amount: number; status: TaxLiabilityStatus; createdAt: string; dueDate?: string };
 export type DisbursementStatus = "Released" | "Settled" | "Failed" | "Voided";
 export type Disbursement = { id: string; payRunId: string; userId: string; amount: number; method: PayrollEmployee["paymentMethod"]; tokenLabel: string; status: DisbursementStatus; createdAt: string; settledAt?: string };
-export type PayrollState = { version: 5; payGroups: PayGroup[]; employees: PayrollEmployee[]; withholdingProfiles: WithholdingProfile[]; employerTaxRules: EmployerTaxRule[]; benefitTaxRules: BenefitTaxRule[]; runs: PayRun[]; liabilities: TaxLiability[]; disbursements: Disbursement[] };
+export type PayrollState = { version: 5; payGroups: PayGroup[]; employees: PayrollEmployee[]; withholdingProfiles: WithholdingProfile[]; employerTaxRules: EmployerTaxRule[]; benefitTaxRules: BenefitTaxRule[]; runs: PayRun[]; liabilities: TaxLiability[]; disbursements: Disbursement[]; retroCases: RetroCorrectionCase[] };
 export type RegularPayrollSource = { timecardIds: string[]; entries: TimeEntry[] };
 export type PayrollHourBreakdown = { totalHours: number; regularHours: number; overtimeHours: number };
 export type PayrollBenefitDeductions = { preTax: number; postTax: number; total: number; unconfigured: { enrollmentId: string; planId: string; tierId: string }[] };
@@ -79,7 +81,7 @@ export function withholdingProfileValid(profile: WithholdingProfile | undefined)
 }
 
 export function createPayrollSeed(): PayrollState {
-  return { version: 5, payGroups: [], employees: [], withholdingProfiles: [], employerTaxRules: [], benefitTaxRules: [], runs: [], liabilities: [], disbursements: [] };
+  return { version: 5, payGroups: [], employees: [], withholdingProfiles: [], employerTaxRules: [], benefitTaxRules: [], runs: [], liabilities: [], disbursements: [], retroCases: [] };
 }
 
 export function normalizePayrollState(input: unknown): PayrollState {
@@ -106,7 +108,19 @@ export function normalizePayrollState(input: unknown): PayrollState {
   const runIds = new Set(runs.map((run) => run.id));
   const liabilities = uniqueBy((Array.isArray(state.liabilities) ? state.liabilities : []).filter((liability): liability is TaxLiability => Boolean(liability?.id && runIds.has(liability.payRunId) && liabilityTypes.has(liability.type) && liabilityStatuses.has(liability.status) && Number.isFinite(liability.amount) && liability.amount > 0 && validInstant(liability.createdAt) && (!liability.dueDate || isValidCalendarDateKey(liability.dueDate)))), (liability) => liability.id);
   const disbursements = uniqueBy((Array.isArray(state.disbursements) ? state.disbursements : []).filter((entry): entry is Disbursement => Boolean(entry?.id && runIds.has(entry.payRunId) && entry.userId && finiteNonNegative(entry.amount) && paymentMethods.has(entry.method) && typeof entry.tokenLabel === "string" && disbursementStatuses.has(entry.status) && validInstant(entry.createdAt) && (!entry.settledAt || isValidCalendarDateKey(entry.settledAt)))), (entry) => entry.id);
-  return { version: 5, payGroups, employees, withholdingProfiles, employerTaxRules, benefitTaxRules, runs, liabilities, disbursements };
+  // Historical corrections remain separate from paid lines and timecard sources.
+  // Never silently mutate or recalculate an already settled original run.
+  const retroCases = Array.isArray(state.retroCases) ?
+    uniqueBy(state.retroCases.filter((item):item is RetroCorrectionCase=>Boolean(
+      item&&typeof item.id==="string"&&item.id&&typeof item.sourceRunId==="string"&&
+      typeof item.employeeId==="string"&&typeof item.reason==="string"&&
+      typeof item.evidenceReference==="string"&&Number.isFinite(item.originalGross)&&
+      Number.isFinite(item.correctedGross)&&Number.isFinite(item.deltaGross)&&
+      Math.abs(item.correctedGross-item.originalGross-item.deltaGross)<0.005&&
+      ["Draft","Reviewed","Approved","Supplemental drafted","Recovery review","Closed"].includes(item.status)&&
+      typeof item.createdBy==="string"&&validInstant(item.createdAt)
+    )),item=>item.id):[];
+  return { version: 5, payGroups, employees, withholdingProfiles, employerTaxRules, benefitTaxRules, runs, liabilities, disbursements, retroCases };
 }
 
 export function timeEntryHours(entry: TimeEntry) {
