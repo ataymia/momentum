@@ -144,3 +144,36 @@ User confirmed the redesign covers the **whole business**, not just employee CRM
 - These are **read-only review screens**, not replacements for existing authorized delivery mutations; package numbers, carrier tracking and driver ETAs remain unspecified.
 - Sales-rep self-delivery remains a separate planned interface and must not reuse the general Sales Orders screen as its final design.
 - Release gate: approved role scoping, functional test of all four routes, and final CI; do not merge into main.
+
+## Sprint checkpoint: Commerce, Home and fulfillment
+**Date:** November 3, 2026. **Workstream owner:** Momentum platform prototype and operational QA.
+
+### Verified prototype implementations
+- Order create/edit, order approval and return-reason UI retain the original order engine. Mutation is disabled on connected business data. Existing live workflows are preserved.
+- Standalone Sales Returns and Credit Notes modules with record links and separate roles. Physical return movements are sourced from the inventory custody ledger; invoice credits and refunds remain financially distinct. **No external refunds, credit posting, or payment handling occurs from these new screens.**
+- Packages, Shipments, warehouse custody and company-level Delivery Operations have separate URLs and source-linked views. A disconnected-local-demo-only manager panel supports driver assignment, complete-order reservations, physical loading confirmation, departure and assignment release. Original delivery signature and payment workflows are preserved.
+- A responsive, role-aware Momentum Home is modeled on the structural characteristics of Flo's reference screenshot (not proprietary source or assets). Tabs and cards link to real modules. Source definitions: non-test, non-draft, non-cancelled recorded orders in the chosen AZ date window; ordered cases, not sell-through; product/channel breakdown from order lines; available warehouse stock from ledger minus active reservations and excluding held lots; returns and receipts from recorded movements; active work from the existing action policy. These are **operational records**, not approved financial KPIs.
+- Exceptions and Reviewed Work now project the existing action policy, held stock, reviewed approvals and source-backed delivery evidence into separate pages. Returned approvals are explicitly marked as correction requests, not completed customer transactions.
+
+### Validation evidence
+- Full fulfillment controls snapshot succeeded in GitHub Actions run 41747640132.
+- Full Home and source-metric snapshot succeeded in run 41748406061.
+- Full Sales Returns / Credit Notes snapshot succeeded in run 41748805461.
+- Work Exceptions / Reviewed Work snapshot validation is separate and must not be marked passing until the result is checked.
+- All of these changes remain on the isolated review branch. **No merge, production release, customer payment, external message, or money movement has been authorized.**
+
+### Outstanding decisions and integration dependencies
+- Define the first live operational transaction in scope for the redesigned Commerce interface, including responsible approver, reason and failure/retry controls. Until approved, the demo actions stay disabled on connected data.
+- The promised payment integration deadline requires a separate prioritization decision; the current code does not represent a completed ACH/card/recurring billing architecture.
+- Design and validate a mobile-first sales-representative self-delivery interface separate from the old Orders page. Preserve verified stock custody, receipt proof and exceptions without assuming that a rep's sales ownership authorizes delivery.
+- Rebuild Human Resources and Marketing as distinct role-relevant operational experiences. The current versions are not approved visual deliverables.
+- Complete customer portal invoices/payments, employee permissions, data-source QA, role-specific navigation and browser-based visual acceptance, including responsive layout.
+- Verify entities, authorization, distribution rights, product/pricing economics and legal readiness before any commercial workflow goes live.
+
+### MASTER handoff
+- **Verified facts:** The build and test statuses listed above apply to the specific fixed snapshots, not any untested later commits. User provided a general Home screen layout reference and requested continued functional redesign without external vendor names in the implementation.
+- **Working assumption:** Prototype changes remain review-only and use existing data contexts; no migration or production mutation is authorized.
+- **Actions:** Platform owner to clear remaining CI failures and finish role-based visual parity; Mia to approve the intended Home layout and decide when regulated payment/HR operation should enter staging. Target dates are **not confirmed**.
+- **Outcomes affected:** Inventory custody reliability, approval processing, administrative visibility, order-through-invoice traceability and eventual cash reconciliation. No revenue growth or KPI improvement is claimed from UI commits.
+- **Blockers/escalation:** Production identity/legal readiness, external payment provider selection, owner approval and full staging data validation.
+- **Next decision:** Is the current Home layout suitable as the prototype direction once rendered, and which transaction workflow is first authorized for staged end-to-end testing?
