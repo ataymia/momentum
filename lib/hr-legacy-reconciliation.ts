@@ -18,7 +18,8 @@ export type HrReconciliationIssue =
   | "invalid-plan" | "incomplete-inventory" | "invalid-snapshot"
   | "stale-snapshot" | "unresolved-records" | "candidate-mismatch"
   | "invalid-chunk-manifest" | "missing-chunk" | "chunk-count-mismatch"
-  | "chunk-owner-mismatch" | "backup-unverified" | "source-changed";
+  | "chunk-owner-mismatch" | "backup-unverified" | "source-changed"
+  | "post-snapshot-mismatch";
 
 export type HrDryRunResult = {
   status: "ready-for-human-review" | "blocked";
@@ -191,6 +192,8 @@ export function assessHrLegacyRestoreReadiness(input: {
   dryRun: HrDryRunResult;
   baseline: readonly VersionedSnapshot[];
   current: readonly VersionedSnapshot[];
+  /** Independently approved expected post-operation versions for ALL paths. */
+  postVersions: readonly { path: string; version: string | null }[];
   backups: readonly {
     path: string; originalVersion: string | null;
     verified: boolean; restoreTested: boolean;
@@ -201,6 +204,13 @@ export function assessHrLegacyRestoreReadiness(input: {
   const before = inventory(input.baseline);
   const now = inventory(input.current);
   if (!before.valid || !now.valid) issues.push("invalid-snapshot");
+  const postVersions = new Map<string, string | null>();
+  for (const entry of input.postVersions) {
+    if (postVersions.has(entry.path) ||
+        (entry.version !== null && !validVersion(entry.version)))
+      issues.push("post-snapshot-mismatch");
+    postVersions.set(entry.path, entry.version);
+  }
   const backups = new Map<string, (typeof input.backups)[number]>();
   for (const receipt of input.backups) {
     if (backups.has(receipt.path)) issues.push("backup-unverified");
@@ -214,10 +224,14 @@ export function assessHrLegacyRestoreReadiness(input: {
       issues.push("incomplete-inventory");
     if (!backup || backup.originalVersion !== expectedVersion ||
         !backup.verified || !backup.restoreTested) issues.push("backup-unverified");
+    if (!postVersions.has(path) || observed?.version !== postVersions.get(path))
+      issues.push("post-snapshot-mismatch");
     if (path.startsWith("domains/hcm/fields/") &&
         observed?.version !== expectedVersion) issues.push("source-changed");
   }
   if (backups.size !== input.dryRun.preconditions.length) issues.push("backup-unverified");
+  if (postVersions.size !== input.dryRun.preconditions.length)
+    issues.push("post-snapshot-mismatch");
   const distinct = resultIssues(issues);
   return { status: statusFor(distinct), issues: distinct,
     checkedDocuments: input.dryRun.preconditions.length };
