@@ -92,7 +92,7 @@ test("existing target conflicts never overwrite history", () => {
   const result = plan("documents", [source], existing);
   assert.equal(result.copyCandidates.length, 0);
   assert.deepEqual(result.quarantine, [{ sourceIndex: 0, reason: "target-conflict" }]);
-  assert.equal(existing.get(path("uid-alex", "documents"))?.items?.[0]?.status, "Available");
+  assert.deepEqual(existing.get(path("uid-alex", "documents"))?.items, [{ ...source, status: "Available" }]);
 });
 
 test("malformed destination or cross-owner contamination fails closed", () => {
