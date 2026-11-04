@@ -177,6 +177,7 @@ test("midflight suspension and manager reassignment reject the previously author
     afterCanonical: () => mutate("userAccess/manager", { accountState: "Suspended", updatedAt: "v2" }),
   }), true);
   assert.deepEqual(revoked, { ok: false, reason: "authority-changed" });
+  await mutate("userAccess/manager", { accountState: "Active", updatedAt: at });
 
   const reassigned = await executeHrCanonicalReadReview(command(), transport("manager", {
     afterCanonical: async () => {
