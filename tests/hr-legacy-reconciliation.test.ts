@@ -102,19 +102,22 @@ test("unsafe or unresolved migration plan never becomes an executable batch", ()
 test("restore evidence requires exact backup versions and tested restoration for every path", () => {
   const before = baseline();
   const dryRun = check(before, structuredClone(before));
+  const postVersions = dryRun.preconditions.map(({ path, expectedVersion }) => ({
+    path, version: expectedVersion,
+  }));
   const receipts = dryRun.preconditions.map(({ path, expectedVersion }) => ({
     path, originalVersion: expectedVersion, verified: true, restoreTested: true,
   }));
   const ready = assessHrLegacyRestoreReadiness({
-    dryRun, baseline: before, current: structuredClone(before), backups: receipts,
+    dryRun, baseline: before, current: structuredClone(before), postVersions, backups: receipts,
   });
   assert.equal(ready.status, "ready-for-human-review");
   const missing = assessHrLegacyRestoreReadiness({
-    dryRun, baseline: before, current: before, backups: receipts.slice(1),
+    dryRun, baseline: before, current: before, postVersions, backups: receipts.slice(1),
   });
   assert.ok(missing.issues.includes("backup-unverified"));
   const untested = assessHrLegacyRestoreReadiness({
-    dryRun, baseline: before, current: before,
+    dryRun, baseline: before, current: before, postVersions,
     backups: receipts.map((receipt, index) =>
       index === 1 ? { ...receipt, restoreTested: false } : receipt),
   });
@@ -122,9 +125,17 @@ test("restore evidence requires exact backup versions and tested restoration for
   const changed = structuredClone(before);
   changed[0].version = "source@2";
   const unsafe = assessHrLegacyRestoreReadiness({
-    dryRun, baseline: before, current: changed, backups: receipts,
+    dryRun, baseline: before, current: changed, postVersions, backups: receipts,
   });
   assert.ok(unsafe.issues.includes("source-changed"));
+  assert.ok(unsafe.issues.includes("post-snapshot-mismatch"));
+  const forgedPost = assessHrLegacyRestoreReadiness({
+    dryRun, baseline: before, current: before,
+    postVersions: postVersions.map((entry, index) =>
+      index === 1 ? { ...entry, version: "unverified-write@1" } : entry),
+    backups: receipts,
+  });
+  assert.ok(forgedPost.issues.includes("post-snapshot-mismatch"));
   assert.equal((unsafe as unknown as Record<string, unknown>).restore, undefined);
 });
 
