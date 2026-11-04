@@ -123,3 +123,17 @@ test("authoritative Firebase active access retains an employee even with stale l
  assert.deepEqual(withAccess.visibleEmployees.map(x=>x.id),["admin","matt"]);
  assert.equal(users.length,2,"HR projection does not erase historical identity records");
 });
+
+test("HR projection fails closed for unknown, mismatched or separated viewer",()=>{
+ const admin={...user("admin"),role:"Administrator"} as WorkspaceUser;
+ const rep=user("rep");
+ const separated=user("former","Separated");
+ const users=[admin,rep,separated];
+ const hcm=createHcmSeed({users} as WorkspaceData);
+ const view=(viewer:WorkspaceUser,accessRecords?:{[key:string]:{accountState:"Active"|"Separated"}})=>hrWorkspaceOverview({viewer,users,hcm,timecards:[],accessRecords});
+ assert.deepEqual(view({...user("outsider"),role:"Administrator"} as WorkspaceUser).visibleEmployees,[]);
+ assert.deepEqual(view({...rep,role:"Administrator"} as WorkspaceUser).visibleEmployees,[]);
+ assert.deepEqual(view(separated,{former:{accountState:"Separated"}}).visibleEmployees,[]);
+ assert.equal(view(separated,{former:{accountState:"Separated"}}).assignedTasks.length,0);
+ assert.deepEqual(view(admin).visibleEmployees.map(x=>x.id),["admin","rep"]);
+});
