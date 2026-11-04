@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {amendTimeEntry,insertMissedPunch} from "../lib/timecard-admin-corrections";
+import {amendTimeEntry,insertMissedPunch,insertMissingTimecard} from "../lib/timecard-admin-corrections";
 import {createPayrollSeed,type PayRun} from "../lib/payroll-engine";
 import {normalizeWorkspaceData} from "../lib/workspace-normalization";
 import type {WorkspaceData} from "../lib/types";
@@ -72,4 +72,33 @@ test("overlaps, overnight punches, and invalid breaks are rejected",()=>{
  assert.equal(insertMissedPunch(src,p,sameDay).ok,false);
  assert.equal(insertMissedPunch(src,p,{...sameDay,date:"2026-10-28",punch:{clockIn:"22:00",clockOut:"05:00",breakMinutes:0}}).ok,false);
  assert.equal(amendTimeEntry(src,p,{actorId:"admin",entryId:"entry-1",punch:{clockIn:"08:00",clockOut:"17:00",breakMinutes:600},reason:"Fix break",at}).ok,false);
+});
+
+
+test("Administrator can open a missing historical week but cannot self-approve it",()=>{
+ const src=data();src.timecards=[];src.timeEntries=[];
+ const payload={actorId:"admin",userId:"worker",weekDate:"2026-10-28",
+   cardId:"new-week-1",reason:"Employee verified missing week",at};
+ const result=insertMissingTimecard(src,payload);
+ assert(result.ok);
+ if(!result.ok)return;
+ const card=result.data.timecards[0];
+ assert.equal(card.weekStart,"2026-10-26");
+ assert.equal(card.weekEnd,"2026-11-01");
+ assert.equal(card.status,"Returned");
+ assert.equal(card.attested,false);
+ assert.equal(card.approvedAt,undefined);
+ assert.equal(card.returnedBy,"admin");
+ assert.equal(result.data.timeEntries.length,0);
+ assert.equal(insertMissingTimecard(result.data,payload).ok,false);
+ assert.equal(normalizeWorkspaceData(result.data,src).timecards[0].status,"Returned");
+});
+test("only admins may create historical timecards and duplicate weeks are rejected",()=>{
+ const src=data();
+ const sample={actorId:"admin",userId:"worker",weekDate:"2026-10-28",
+   cardId:"new-week",reason:"Verified missing week",at};
+ assert.equal(insertMissingTimecard(src,sample).ok,false);
+ src.timecards=[];
+ assert.equal(insertMissingTimecard(src,{...sample,actorId:"worker"}).ok,false);
+ assert.equal(insertMissingTimecard(src,{...sample,weekDate:"2099-01-01"}).ok,false);
 });
