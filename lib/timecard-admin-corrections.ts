@@ -1,4 +1,4 @@
-import {isValidCalendarDateKey} from "./date-time";
+import {addCalendarDays,isValidCalendarDateKey,startOfLocalWeek,arizonaDateKey} from "./date-time";
 import {consumedTimecards,type PayrollState} from "./payroll-engine";
 import type {TimeEntry,Timecard,WorkspaceData} from "./types";
 
@@ -97,4 +97,27 @@ export function insertMissedPunch(data:WorkspaceData,payroll:PayrollState,input:
   timeEntries:[{id:input.entryId,userId:input.userId,date:input.date,
    ...input.punch,source:"Manual correction",note:input.reason.trim(),
    createdBy:input.actorId,createdAt:input.at,creationReason:input.reason.trim()},...data.timeEntries]}};
+}
+
+
+export type MissingTimecardInput={actorId:string;userId:string;weekDate:string;cardId:string;reason:string;at:string};
+/** Create a weekly correction case with zero payable hours, never an auto-approved timecard. */
+export function insertMissingTimecard(data:WorkspaceData,input:MissingTimecardInput):TimeCorrectionResult{
+ if(!hasAdmin(data,input.actorId))return reject("Administrator access required.");
+ if(!validInstant(input.at)||input.reason.trim().length<8)return reject("Provide a documented reason for adding a missing week.");
+ if(!isValidCalendarDateKey(input.weekDate)||input.weekDate>arizonaDateKey())
+  return reject("Select a valid current or historical week.");
+ if(!data.users.some(u=>u.id===input.userId&&u.role!=="Customer"))
+  return reject("Employee not found.");
+ const start=startOfLocalWeek(input.weekDate),end=addCalendarDays(start,6);
+ if(data.timecards.some(c=>c.id===input.cardId))return reject("Duplicate timecard identifier.");
+ if(data.timecards.some(c=>c.userId===input.userId&&start<=c.weekEnd&&end>=c.weekStart))
+  return reject("This employee already has an overlapping weekly timecard.");
+ const card:Timecard={id:input.cardId,userId:input.userId,weekStart:start,weekEnd:end,
+  status:"Returned",attested:false,returnedAt:input.at,returnedBy:input.actorId,
+  returnReason:"Administrator created missing week: "+input.reason.trim()};
+ return{ok:true,data:{...data,timecards:[card,...data.timecards],
+  notifications:[{id:"missing-card-"+input.cardId,title:"Missing timecard created",
+   detail:"An Administrator added a missing timecard. Review its shifts and submit your attestation.",
+   at:input.at,readBy:[input.actorId],tone:"warning",audienceUserIds:[input.userId]},...data.notifications]}};
 }
