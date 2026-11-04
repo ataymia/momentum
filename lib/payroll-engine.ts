@@ -42,7 +42,7 @@ export type PayrollCalculationVersion = 1 | 2;
 /** Source metadata for manually-authorized taxable supplemental/final earnings. */
 export type SpecialPayrollSource={
   id:string; employeeId:string; amount:number; reason:string; evidenceReference:string;
-  approvedBy:string; approvedAt:string; separationDate?:string;
+  enteredBy:string; enteredAt:string; separationDate?:string;
 };
 export type PayRun = PayrollRunExtension & { special?:SpecialPayrollSource; id: string; kind: PayrollRunKind; createdAt: string; periodStart: string; periodEnd: string; payDate: string; status: PayRunStatus; lines: PayLine[]; approvedAt?: string; approvedBy?: string; releasedAt?: string; releasedBy?: string; voidedAt?: string; voidedBy?: string; voidReason?: string; reissueOf?: string; calculationVersion?: PayrollCalculationVersion };
 export type TaxLiabilityType = "Federal employee" | "State employee" | "Local employee" | "Employer";
@@ -97,7 +97,7 @@ export function normalizePayrollState(input: unknown): PayrollState {
       Boolean(run.special&&run.special.id&&run.special.employeeId&&run.special.employeeId===run.lines?.[0]?.employeeId&&
         typeof run.special.reason==="string"&&run.special.reason.trim()&&
         typeof run.special.evidenceReference==="string"&&run.special.evidenceReference.trim()&&
-        run.special.approvedBy&&validInstant(run.special.approvedAt)&&
+        run.special.enteredBy&&validInstant(run.special.enteredAt)&&
         Number.isFinite(run.special.amount)&&run.special.amount>=0&&
         (run.kind!=="Off-cycle"||run.special.amount>0)&&
         (run.kind!=="Final pay"||run.special.separationDate&&isValidCalendarDateKey(run.special.separationDate))&&
