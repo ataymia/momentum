@@ -43,10 +43,14 @@ export function hrWorkspaceOverview(input: {
 }): HrWorkspaceOverview {
   const { viewer, users, hcm, timecards, accessRecords } = input;
   if (!viewer || viewer.role === "Customer") return empty();
+  // A stale or mismatched identity must not turn an untrusted role into HR access.
+  const knownViewer = users.find((user) => user.id === viewer.id);
+  if (!knownViewer || knownViewer.role !== viewer.role) return empty();
 
   const isAdmin = viewer.role === "Administrator";
   const visibleEmployees = visibleActiveEmployees(users, accessRecords)
     .filter((employee) => isAdmin || employee.id === viewer.id);
+  if (!visibleEmployees.some((employee) => employee.id === viewer.id)) return empty();
   const ids = new Set(visibleEmployees.map((employee) => employee.id));
   const forVisibleEmployee = (record: { userId: string }) => ids.has(record.userId);
 
