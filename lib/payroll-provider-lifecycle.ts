@@ -166,10 +166,13 @@ export function providerExportRows(run:PayRun){
     federalTax:l.federalTax,stateTax:l.stateTax,localTax:l.localTax,additionalWithholding:l.additionalWithholding,
     employerTaxEstimate:l.employerTaxes,sourceTimecardIds:l.sourceTimecardIds.join("|"),
     sourceBonusIds:l.sourceBonusIds.join("|"),
+    retroCaseId:run.special?.retroCaseId??"",retroOriginalRunId:run.special?.originalRunId??"",
+    retroEvidenceReference:run.special?.retroCaseId?run.special.evidenceReference:"",
   }));
 }
 export const PROVIDER_EXPORT_COLUMNS=[
   "runId","kind","runStatus","calculationVersion","withholdingBasis","periodStart","periodEnd","payDate","employeeId","regularHours","overtimeHours",
   "gross","net","benefitDeduction","taxableWages","federalTax","stateTax","localTax",
   "additionalWithholding","employerTaxEstimate","sourceTimecardIds","sourceBonusIds",
+  "retroCaseId","retroOriginalRunId","retroEvidenceReference",
 ] as const;
