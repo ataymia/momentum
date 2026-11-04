@@ -106,3 +106,12 @@ test("suspended or customer scope cannot hydrate old employee records", () => {
     assert.equal(adapter.accept(batch(adapter, "employee-a", own("employee-a"), doc("employee-a", "old"))), false);
   }
 });
+
+test("a second transition cannot clear an unresolved quarantined HR journal", () => {
+  const adapter = new HrShadowRuntimeAdapter(scope("employee-a", "Administrator"));
+  adapter.transition(scope("employee-a"), ["momentum-hcm-v4"]);
+  adapter.transition(scope("employee-a"));
+  assert.equal(adapter.isQuarantined, true);
+  assert.deepEqual(adapter.journalKeysRequiringReview, ["momentum-hcm-v4"]);
+  assert.equal(adapter.accept(batch(adapter, "employee-a", own("employee-a"), doc("employee-a", "unsafe"))), false);
+});
