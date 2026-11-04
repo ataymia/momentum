@@ -160,7 +160,7 @@ export function decideFilingCase(state:PayrollState,runId:string,filingId:string
 }
 /** Draft-derived CSV rows. Never include bank account numbers, DOB, SSNs or unverified payout status. */
 export function providerExportRows(run:PayRun){
-  return run.lines.map(l=>({runId:run.id,kind:run.kind,periodStart:run.periodStart,periodEnd:run.periodEnd,
+  return run.lines.map(l=>({runId:run.id,kind:run.kind,runStatus:run.status,calculationVersion:run.calculationVersion??1,withholdingBasis:"INTERNAL ESTIMATE - PROCESSOR MUST VALIDATE",periodStart:run.periodStart,periodEnd:run.periodEnd,
     payDate:run.payDate,employeeId:l.employeeId,regularHours:l.regularHours,overtimeHours:l.overtimeHours,
     gross:l.grossPay,net:l.netPay,benefitDeduction:l.benefitDeduction,taxableWages:l.taxableWages,
     federalTax:l.federalTax,stateTax:l.stateTax,localTax:l.localTax,additionalWithholding:l.additionalWithholding,
@@ -169,7 +169,7 @@ export function providerExportRows(run:PayRun){
   }));
 }
 export const PROVIDER_EXPORT_COLUMNS=[
-  "runId","kind","periodStart","periodEnd","payDate","employeeId","regularHours","overtimeHours",
+  "runId","kind","runStatus","calculationVersion","withholdingBasis","periodStart","periodEnd","payDate","employeeId","regularHours","overtimeHours",
   "gross","net","benefitDeduction","taxableWages","federalTax","stateTax","localTax",
   "additionalWithholding","employerTaxEstimate","sourceTimecardIds","sourceBonusIds",
 ] as const;
