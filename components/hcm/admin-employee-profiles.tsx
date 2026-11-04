@@ -20,7 +20,7 @@ import { useAudit } from "../../lib/audit-context";
 import { useCrm } from "../../lib/crm-context";
 import { addCalendarDays, arizonaDateKey } from "../../lib/date-time";
 import { useDelivery } from "../../lib/delivery-context";
-import { selectableReportingManagerCandidates, validSelectableAdditionalManagerIds } from "../../lib/employee-reporting";
+import { activeReportingManagerIds, selectableReportingManagerCandidates, validSelectableAdditionalManagerIds } from "../../lib/employee-reporting";
 import {
   applyCompensationCorrection,
   employeeOriginatedAccounts,
@@ -77,7 +77,7 @@ function ReportingManagersForm({employeeId,employment,data}:{employeeId:string;e
   const {currentUser}=useWorkspace();
   const {setHcm}=useHcm();
   const firebase=useFirebaseSessionOptional();
-  const activeManagerIds=new Set(visibleActiveEmployees(data.users,firebase?.accessRecords).map((user)=>user.id));
+  const activeManagerIds=activeReportingManagerIds(data,firebase?.accessRecords);
   const [selected,setSelected]=useState<string[]>(employment?.additionalManagerIds??[]);
   const [notice,setNotice]=useState("");
   const primary=employment?.managerId??data.users.find((user)=>user.id===employeeId)?.managerId;
