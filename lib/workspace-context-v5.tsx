@@ -24,7 +24,7 @@ import { normalizeUsername } from "./username";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { normalizeWorkspaceData } from "./workspace-normalization";
 import {normalizePayrollState,PAYROLL_STORAGE_KEY} from "./payroll-engine";
-import {amendTimeEntry,insertMissedPunch,type CorrectedPunch} from "./timecard-admin-corrections";
+import {amendTimeEntry,insertMissedPunch,insertMissingTimecard,type CorrectedPunch} from "./timecard-admin-corrections";
 import { preserveExplicitCustomerHierarchy } from "./customer-hierarchy-preservation";
 import {applyAccountAssociation,type AccountAssociationResult,type AccountAssociationRequest} from "./account-association-engine";
 import {currentRuntimeMode} from "./runtime-mode-store";
@@ -150,6 +150,7 @@ type WorkspaceContextValue = {
   correctTimeEntry: (id: string, values: TimeEntryCorrectionInput, reason: string) => boolean;
   adminAmendTimeEntry: (id:string,values:CorrectedPunch,reason:string)=>{ok:boolean;error?:string};
   adminInsertMissedPunch: (userId:string,cardId:string,date:string,values:CorrectedPunch,reason:string)=>{ok:boolean;error?:string};
+  adminCreateMissingTimecard: (userId:string,weekDate:string,reason:string)=>{ok:boolean;error?:string;id?:string};
   submitTimecard: (id: string) => void;
   decideTimecard: (id: string, decision: "Manager approved" | "Returned") => void;
   createBulletin: (bulletin: NewBulletin) => boolean;
@@ -537,6 +538,18 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return{ok:true};
   },[currentUser,data]);
 
+  const adminCreateMissingTimecard=useCallback((userId:string,weekDate:string,reason:string)=>{
+    if(currentUser?.role!=="Administrator")return{ok:false,error:"Administrator access is required."};
+    const payload={actorId:currentUser.id,userId,weekDate,reason,at:nowStamp(),cardId:"tc-admin-"+Date.now()+"-"+Math.random().toString(36).slice(2,7)};
+    const preview=insertMissingTimecard(data,payload);
+    if(!preview.ok)return{ok:false,error:preview.error};
+    setData(current=>{
+      const next=insertMissingTimecard(current,payload);
+      return next.ok?next.data:current;
+    });
+    return{ok:true,id:payload.cardId};
+  },[currentUser,data]);
+
   const submitTimecard = useCallback((id: string) => {
     if (!currentUser) return;
     setData((current) => {
@@ -568,7 +581,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const markNotificationsRead = useCallback(() => { if (!currentUser) return; const ids = new Set(scope.notifications.map((item) => item.id)); setData((current) => ({ ...current, notifications: current.notifications.map((item) => ids.has(item.id) && !item.readBy.includes(currentUser.id) ? { ...item, readBy: [...item.readBy, currentUser.id] } : item) })); }, [currentUser, scope.notifications]);
   const resetDemo = useCallback(() => { if (production || currentUser?.role !== "Administrator") return; setData(createNormalizedDemoData()); setNavigationPage("home"); }, [currentUser, production]);
 
-  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, associateCustomerLocations, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, adminAmendTimeEntry, adminInsertMissedPunch, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, associateCustomerLocations, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, adminAmendTimeEntry, adminInsertMissedPunch, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
+  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, associateCustomerLocations, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, adminAmendTimeEntry, adminInsertMissedPunch, adminCreateMissingTimecard, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, associateCustomerLocations, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, adminAmendTimeEntry, adminInsertMissedPunch, adminCreateMissingTimecard, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 
