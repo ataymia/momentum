@@ -68,6 +68,9 @@ test("dedicated rep screen delegates to existing atomic server workflow with rea
   assert.match(hub,/<RepSelfDeliveryWorkspace/);
   assert.match(ui,/DeliverySignaturePad strokes=\{strokes\} onChange=\{setStrokes\}/);
   assert.match(ui,/const fresh=await getState\(idToken\)/);
+  assert.match(ui,/checkedToken!==idToken/);
+  assert.match(ui,/serverState\?\.token===idToken/);
+  assert.match(ui,/setServerState\(\{token:idToken,receipt:fresh\}\)/);
   assert.match(ui,/fresh\.taskStatus!==ack\.taskStatus/);
   assert.match(ui,/momentumStorage\.refreshKeys\(\[COMMERCIAL_KEY\]\)/);
   assert.match(api,/firebaseFunctionUrl\("repSelfDelivery"\)/);
