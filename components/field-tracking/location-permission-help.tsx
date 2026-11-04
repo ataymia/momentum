@@ -16,7 +16,7 @@ export function LocationPermissionHelp({compact=false}:{compact?:boolean}){
   {status==="Denied"?<ShieldAlert size={18}/>:<MapPin size={18}/>}
   <div>
    <strong>{status==="Denied"?"Location access is blocked on this device":"Device location is unavailable"}</strong>
-   <p>Momentum cannot reset browser permissions remotely. On this device, open the site's permissions from the address-bar settings and change Location to Allow. On iPhone, also check Settings → Privacy &amp; Security → Location Services and the browser's location access. Return to Momentum and select Check location. Keep location permission enabled while using work-route tracking.</p>
+   <p>Momentum cannot reset browser permissions remotely. On this device, open the site&apos;s permissions from the address-bar settings and change Location to Allow. On iPhone, also check Settings → Privacy &amp; Security → Location Services and the browser&apos;s location access. Return to Momentum and select Check location. Keep location permission enabled while using work-route tracking.</p>
    <p>Your clock-in time is recorded separately. Missing GPS is shown as a gap, not a fabricated position.</p>
    {!compact&&<Button size="sm" variant="secondary" onClick={()=>{void tracking.requestLocationPermission()}}>Check location again</Button>}
   </div>
