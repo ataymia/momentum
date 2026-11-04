@@ -7,6 +7,7 @@ const epoch=(value:unknown):number=>{
   const time=Date.parse(value);
   return Number.isFinite(time)?time:0;
 };
+/** Return the latest valid saved CRM event or fresh sign-in after shift start. */
 export function lastSalesActivityAt(userId:string,clockInMs:number,signInMs:number,
   crmEvents:SavedCRMEvent[],workEvents:SavedCRMEvent[],nowMs:number):number{
   let latest=clockInMs;
