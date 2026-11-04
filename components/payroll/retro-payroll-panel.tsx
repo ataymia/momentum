@@ -21,6 +21,7 @@ export function RetroPayrollPanel(){
  const [correctedGross,setCorrectedGross]=useState("");
  const [timecardId,setTimecardId]=useState("");
  const [correctedWeekHours,setCorrectedWeekHours]=useState("");
+ const [historicalPolicyConfirmed,setHistoricalPolicyConfirmed]=useState(false);
  const [weekEvidence,setWeekEvidence]=useState<RetroWeekEvidence|undefined>();
  const [evidence,setEvidence]=useState("");
  const [reason,setReason]=useState("");
@@ -83,7 +84,7 @@ export function RetroPayrollPanel(){
     <div className="company-grid company-grid--two">
       <div className="form-grid">
         <Field label="Original released and settled payroll"><select value={runId}
-          onChange={e=>{setRunId(e.target.value);setEmployeeId("");setCorrectedGross("");setTimecardId("");setCorrectedWeekHours("");setWeekEvidence(undefined);}}>
+          onChange={e=>{setRunId(e.target.value);setEmployeeId("");setCorrectedGross("");setTimecardId("");setCorrectedWeekHours("");setWeekEvidence(undefined);setHistoricalPolicyConfirmed(false);setHistoricalPolicyConfirmed(false);}}>
           <option value="">Choose verified paid run</option>
           {runs.map(r=><option value={r.id} key={r.id}>{r.id} | {r.payDate} | {r.kind}</option>)}
         </select></Field>
@@ -104,7 +105,7 @@ export function RetroPayrollPanel(){
           </select></Field>
           <Field label="Verified corrected total hours for that week"><input type="number" min="0"
             max="168" step="0.01" value={correctedWeekHours} onChange={e=>{
-              setCorrectedWeekHours(e.target.value);setWeekEvidence(undefined);
+              setCorrectedWeekHours(e.target.value);setWeekEvidence(undefined);setHistoricalPolicyConfirmed(false);
             }}/></Field>
           {weekly&&weekly.ok&&<p className="form-hint">
             Original week {weekly.originalWeekHours} hours;
@@ -115,7 +116,12 @@ export function RetroPayrollPanel(){
             Difference: {formatMoney(Math.abs(weekly.deltaGross))}.
           </p>}
           {weekly&&!weekly.ok&&<p className="form-hint">{weekly.error}</p>}
-          <Button variant="secondary" size="sm" disabled={!demo||!weekly?.ok}
+          {weekly?.ok&&<label className="field--full">
+            <input type="checkbox" checked={historicalPolicyConfirmed}
+              onChange={e=>setHistoricalPolicyConfirmed(e.target.checked)}/>
+            I checked that the displayed overtime threshold and historical hourly rate were applicable to this original workweek.
+          </label>}
+          <Button variant="secondary" size="sm" disabled={!demo||!weekly?.ok||!historicalPolicyConfirmed}
             onClick={applyHourlyCalculation}>Use verified historical calculation</Button>
           {weekEvidence&&<p className="form-hint">Historical calculation evidence attached to this case. Manually editing the total gross will remove that link.</p>}
         </div>}
