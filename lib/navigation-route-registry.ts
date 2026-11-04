@@ -20,7 +20,7 @@ export type MenuGroup = {
 
 export const MENU_GROUPS: MenuGroup[] = [
   { label: "Workspace", entries: [
-    { label: "Home", path: "/", permission: "home", state: "existing" },
+    { label: "Home", path: "/", permission: "home", state: "prototype" },
     { label: "Approvals", path: "/work/approvals", permission: "work", state: "prototype" },
     { label: "Action Center", path: "/work/actions", permission: "actions", state: "prototype" },
     { label: "Exceptions", path: "/work/exceptions", permission: "work", state: "prototype" },
@@ -102,7 +102,7 @@ export const MENU_GROUPS: MenuGroup[] = [
 
 /** Customer-facing navigation is intentionally independent of employee modules. */
 export const CUSTOMER_MENU: MenuEntry[] = [
-  { label: "Home", path: "/", permission: "home", state: "existing" },
+  { label: "Home", path: "/", permission: "home", state: "prototype" },
   { label: "Products", path: "/portal/products", permission: "home", state: "prototype" },
   { label: "My Orders", path: "/portal/orders", permission: "orders", state: "existing" },
   { label: "Invoices", path: "/portal/invoices", permission: "orders", state: "prototype" },
