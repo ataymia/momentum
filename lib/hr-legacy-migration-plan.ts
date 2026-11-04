@@ -51,7 +51,7 @@ function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (object(value)) return `{${Object.keys(value).sort()
     .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? "null";
 }
 
 function recordId(field: string, record: RecordValue): string | null {
@@ -81,7 +81,7 @@ export function planHrLegacySharedField(input: {
   const copyCandidates: HrLegacyCopyCandidate[] = [];
   const seen = new Map<string, { index: number; uid: string; payload: string }>();
   const conflicted = new Set<number>();
-  let alreadyPresent = 0;
+  const alreadyPresentIndices = new Set<number>();
   let identicalSourceDuplicates = 0;
 
   const targetCache = new Map<string, Map<string, string> | null>();
@@ -156,7 +156,7 @@ export function planHrLegacySharedField(input: {
       continue;
     }
     if (target.has(id)) {
-      if (target.get(id) === payload) alreadyPresent++;
+      if (target.get(id) === payload) alreadyPresentIndices.add(index);
       else quarantine.push({ sourceIndex: index, reason: "target-conflict" });
       continue;
     }
@@ -172,11 +172,6 @@ export function planHrLegacySharedField(input: {
   }
   const accepted = copyCandidates.filter((entry) => !conflicted.has(entry.sourceIndex));
   const quarantinedIndices = new Set(quarantine.map((entry) => entry.sourceIndex));
-  const adjustedAlreadyPresent = [...seen.values()].filter((entry) =>
-    !conflicted.has(entry.index) &&
-    !quarantinedIndices.has(entry.index) &&
-    targetCache.get(entry.uid)?.get([...seen].find(([, value]) => value === entry)?.[0] ?? "") === entry.payload
-  ).length;
   return {
     version: HR_LEGACY_PLAN_VERSION,
     field: input.field,
@@ -184,7 +179,7 @@ export function planHrLegacySharedField(input: {
     sourceCount: source.length,
     copyCandidates: accepted.sort((a, b) =>
       a.destinationPath.localeCompare(b.destinationPath) || a.recordId.localeCompare(b.recordId)),
-    alreadyPresent: adjustedAlreadyPresent,
+    alreadyPresent: [...alreadyPresentIndices].filter((index) => !conflicted.has(index)).length,
     identicalSourceDuplicates,
     quarantine: quarantine.sort((a, b) => a.sourceIndex - b.sourceIndex),
     needsHumanReconciliation: quarantine.length > 0 || identicalSourceDuplicates > 0,
