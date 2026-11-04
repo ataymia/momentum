@@ -1,7 +1,7 @@
 "use client";
 
 import { BadgeDollarSign, Calculator, Check, FileText, Landmark, LockKeyhole, Play, RefreshCcw, ShieldCheck, WalletCards, X } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
 import { evaluateSalesRepAccountBonuses } from "../../lib/bonus-engine";
 import { useCommerce } from "../../lib/commerce-context";
@@ -30,6 +30,12 @@ export function PayrollPage() {
   const { payroll, savePayGroup, savePayrollEmployee, saveWithholding, saveEmployerTaxRule, buildRegularRun, buildBonusRun, setRunStatus, voidAndReissue, settleDisbursement, failDisbursement, retryDisbursement, updateLiability, resetPayroll } = usePayroll();
   const admin = currentUser?.role === "Administrator";
   const [tab, setTab] = useState<"self" | "earnings" | "processing" | "tax" | "provider" | "retro" | "setup">("self");
+  useEffect(()=>{
+    if(typeof window!=="undefined"&&window.sessionStorage.getItem("momentum-payroll-open-tab")==="retro"){
+      window.sessionStorage.removeItem("momentum-payroll-open-tab");
+      setTab("retro");
+    }
+  },[]);
   const [notice, setNotice] = useState("");
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
