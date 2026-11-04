@@ -21,6 +21,7 @@ import {ActionCenterExperience} from "./action-center-experience";
 import {WorkspaceHome} from "./workspace-home";
 import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
 import {WorkExceptionsExperience,CompletedWorkExperience} from "./work-review-experience";
+import {RepSelfDeliveryWorkspace} from "./rep-self-delivery-workspace";
 import type { Order } from "../../lib/types";
 
 function Empty({ children }: { children: ReactNode }) {
@@ -290,6 +291,7 @@ export function PrototypeOperationsHub(){
   if(path==="/crm/territory-map")return <TerritoryMapPreview/>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
+  if(segments[0]==="crm"&&segments[1]==="self-delivery")return <RepSelfDeliveryWorkspace orderId={segments[2]?decodeURIComponent(segments[2]):undefined}/>;
   if(path==="/work/approvals")return <OrderApprovalDirectory/>;
   if(path==="/work/actions")return <ActionCenterExperience/>;
   if(path==="/work/exceptions")return <WorkExceptionsExperience/>;
