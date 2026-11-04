@@ -5,6 +5,8 @@ import { useState } from "react";
 import { useHcm } from "../../lib/hcm-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import {usePayroll} from "../../lib/payroll-context";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {momentumStorage} from "../../lib/persistence";
 import {consumedTimecards} from "../../lib/payroll-engine";
 import type { TimeEntry } from "../../lib/types";
 import { RecordHistory } from "../audit/record-history";
@@ -18,6 +20,7 @@ const minutes=(value:string)=>{const[hour,minute]=value.split(":").map(Number);r
 export function TimecardRecord({timecardId,history=true}:{timecardId:string;history?:boolean}){
   const {data,currentUser,correctTimeEntry,adminAmendTimeEntry,adminInsertMissedPunch}=useWorkspace();
   const {payroll}=usePayroll();
+  const runtime=useRuntimeMode();const adminDemo=runtime.isDemo&&momentumStorage.mode()==="local";
   const {hcm}=useHcm();
   const [editingId,setEditingId]=useState<string|null>(null);
   const [adding,setAdding]=useState(false);
@@ -42,7 +45,7 @@ export function TimecardRecord({timecardId,history=true}:{timecardId:string;hist
   const consumed=consumedTimecards(payroll).has(card.id);
   const admin=currentUser?.role==="Administrator";
   const canCorrect=Boolean(!consumed&&currentUser&&
-    (admin||(currentUser.id===card.userId&&(card.status==="Returned"||card.status==="Open"))));
+    ((admin&&adminDemo)||(currentUser.id===card.userId&&(card.status==="Returned"||card.status==="Open"))));
   const editing=entries.find((entry)=>entry.id===editingId);
   const openCorrection=(entry:TimeEntry)=>{setAdding(false);setEditingId(entry.id);setError("");setForm({clockIn:entry.clockIn,mealStart:entry.mealStart??"",mealEnd:entry.mealEnd??"",clockOut:entry.clockOut??"",breakMinutes:String(entry.breakMinutes),reason:""});};
   const openMissing=()=>{setEditingId(null);setAdding(true);setNewDate(card.weekStart);setError("");setForm(blank);};
@@ -80,7 +83,8 @@ export function TimecardRecord({timecardId,history=true}:{timecardId:string;hist
     {lastResubmission?.reason&&card.status!=="Returned"&&<div className="timecard-resubmit-note"><CheckCircle2 size={17}/><div><strong>Employee resubmission note</strong><p>{lastResubmission.reason}</p><small>{formatDate(lastResubmission.at,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})}</small></div></div>}
     <div className="timecard-record__checks"><div><CheckCircle2 size={16}/><span>Employee attestation</span><strong>{card.status==="Returned"?"Required again":card.attested?"Complete":"Required"}</strong></div><div><Clock3 size={16}/><span>Open or incomplete punches</span><strong>{incomplete.length}</strong></div><div><FileCheck2 size={16}/><span>Manual corrections</span><strong>{corrected.length}</strong></div></div>
     {consumed&&<div className="timecard-return-banner"><AlertTriangle size={18}/><div><strong>Payroll processing lock</strong><p>This timecard is already included in a payroll run. Do not change the original punch; create an approved payroll adjustment instead.</p></div></div>}
-    {admin&&!consumed&&<div className="request-actions"><Button size="sm" icon={<Pencil size={14}/>} onClick={openMissing}>Add missed shift / punch</Button><span>Edits return the timecard for employee review and approval again.</span></div>}
+    {admin&&!adminDemo&&<p className="form-hint">Connected-timecard corrections are read-only until the server-side payroll lock and transaction are verified.</p>}
+    {admin&&adminDemo&&!consumed&&<div className="request-actions"><Button size="sm" icon={<Pencil size={14}/>} onClick={openMissing}>Add missed shift / punch</Button><span>Edits return the timecard for employee review and approval again.</span></div>}
     <div className="record-review__table-wrap"><table className="record-review__table timecard-record__table"><thead><tr><th>Date</th><th>Clock in</th><th>Meal</th><th>Clock out</th><th>Hours</th><th>Source</th><th>Note</th>{canCorrect&&<th/>}</tr></thead><tbody>{entries.map((entry)=><tr key={entry.id}><td>{formatDate(entry.date,{weekday:"short",month:"short",day:"numeric"})}</td><td>{entry.clockIn}</td><td>{entry.mealStart&&entry.mealEnd?`${entry.mealStart}–${entry.mealEnd}`:`${entry.breakMinutes} min`}</td><td>{entry.clockOut??"Missing"}</td><td>{hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes).toFixed(2)}</td><td>{entry.source}</td><td>{entry.note??(entry.corrections?.length?`${entry.corrections.length} correction${entry.corrections.length===1?"":"s"}`:"—")}</td>{canCorrect&&<td><Button size="sm" variant="ghost" icon={<Pencil size={13}/>} onClick={()=>openCorrection(entry)}>Correct</Button></td>}</tr>)}</tbody></table></div>
     {correctionRows.length>0&&<div className="timecard-correction-history"><h4>Correction history</h4>{correctionRows.map(({entry,correction,index})=><article key={`${entry.id}-${correction.at}-${index}`}><div><strong>{formatDate(entry.date,{weekday:"short",month:"short",day:"numeric"})}</strong><p>{correction.reason}</p></div><small>Before: {correction.before.clockIn} · {correction.before.mealStart&&correction.before.mealEnd?`${correction.before.mealStart}–${correction.before.mealEnd}`:`${correction.before.breakMinutes} min break`} · {correction.before.clockOut??"missing clock-out"}<br/>{formatDate(correction.at,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})} · {data.users.find((user)=>user.id===correction.by)?.name??"Employee"}</small></article>)}</div>}
     <div className="timecard-record__decision"><div><small>Submitted</small><strong>{card.submittedAt?formatDate(card.submittedAt,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}):"Not submitted"}</strong></div><div><small>Manager decision</small><strong>{card.status==="Manager approved"||card.status==="Payroll ready"?`${approver?.name??"Manager"} approved`:card.status==="Returned"?"Returned for correction":"Pending"}</strong></div></div>
