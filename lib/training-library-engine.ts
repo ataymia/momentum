@@ -62,9 +62,9 @@ export function normalizeTrainingLibraryState(input: unknown, courseIds: Set<str
   if (raw.version !== 1) return createTrainingLibrarySeed();
   const seen = new Set<string>();
   const materials = (Array.isArray(raw.materials) ? raw.materials : []).filter((item): item is TrainingMaterial => {
-    if (!item || typeof item !== "object" || !item.id || seen.has(item.id) || !courseIds.has(item.courseId) || !item.title?.trim() || !validKinds.has(item.kind) || !hasResolvableSource(item) || typeof item.active !== "boolean" || !instant(item.createdAt) || !instant(item.updatedAt)) return false;
+    if (!item || typeof item !== "object" || !item.id || seen.has(item.id) || !courseIds.has(item.courseId) || typeof item.title !== "string" || !item.title.trim() || !validKinds.has(item.kind) || !hasResolvableSource(item) || typeof item.active !== "boolean" || !instant(item.createdAt) || !instant(item.updatedAt)) return false;
     seen.add(item.id); return true;
-  }).map((item) => ({ ...item, title: item.title.trim(), url: validUrl(item.url) ? item.url!.trim() : undefined, storagePath: item.storagePath && isTrainingStoragePath(item.storagePath) ? item.storagePath : undefined, description: item.description?.trim() || undefined }));
+  }).map((item) => ({ ...item, title: item.title.trim(), url: validUrl(item.url) ? item.url!.trim() : undefined, storagePath: item.storagePath && isTrainingStoragePath(item.storagePath) ? item.storagePath : undefined, description: typeof item.description === "string" ? item.description.trim() || undefined : undefined }));
   const audienceSeen = new Set<string>();
   const audiences = (Array.isArray(raw.audiences) ? raw.audiences : []).filter((item): item is TrainingCourseAudience => Boolean(item && courseIds.has(item.courseId) && !audienceSeen.has(item.courseId) && Array.isArray(item.roles) && item.roles.every((role) => validRoles.has(role)) && audienceSeen.add(item.courseId))).map((item) => ({ courseId: item.courseId, roles: [...new Set(item.roles)] }));
   return { version: 1, materials, audiences };
