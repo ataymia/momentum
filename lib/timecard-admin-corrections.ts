@@ -102,7 +102,7 @@ export function insertMissedPunch(data:WorkspaceData,payroll:PayrollState,input:
 
 export type MissingTimecardInput={actorId:string;userId:string;weekDate:string;cardId:string;reason:string;at:string};
 /** Create a weekly correction case with zero payable hours, never an auto-approved timecard. */
-export function insertMissingTimecard(data:WorkspaceData,input:MissingTimecardInput):TimeCorrectionResult{
+export function insertMissingTimecard(data:WorkspaceData,payroll:PayrollState,input:MissingTimecardInput):TimeCorrectionResult{
  if(!hasAdmin(data,input.actorId))return reject("Administrator access required.");
  if(!validInstant(input.at)||input.reason.trim().length<8)return reject("Provide a documented reason for adding a missing week.");
  if(!isValidCalendarDateKey(input.weekDate)||input.weekDate>arizonaDateKey())
@@ -110,6 +110,9 @@ export function insertMissingTimecard(data:WorkspaceData,input:MissingTimecardIn
  if(!data.users.some(u=>u.id===input.userId&&u.role!=="Customer"))
   return reject("Employee not found.");
  const start=startOfLocalWeek(input.weekDate),end=addCalendarDays(start,6);
+ if(payroll.runs.some(run=>run.status!=="Voided"&&["Regular","Final pay"].includes(run.kind)&&
+   run.periodStart<=end&&run.periodEnd>=start&&run.lines.some(line=>line.employeeId===input.userId)))
+    return reject("Existing regular/final payroll overlaps this employee and week. Review a payroll adjustment rather than creating another payable source.");
  if(data.timecards.some(c=>c.id===input.cardId))return reject("Duplicate timecard identifier.");
  if(data.timecards.some(c=>c.userId===input.userId&&start<=c.weekEnd&&end>=c.weekStart))
   return reject("This employee already has an overlapping weekly timecard.");
