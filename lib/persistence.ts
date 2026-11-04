@@ -3,6 +3,8 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PLATFORM_META_DOCUMENT, type PersistenceScope } from "./firebase-access";
 import {recordPerformanceSample} from "./performance-diagnostics";
+import { HrShadowRuntimeAdapter } from "./hr-shadow-runtime-adapter";
+import { planHrShadowReadPaths } from "./hr-shadow-read-compatibility";
 import {isTransientFirestoreFailure,mayDiscardJournal,nextFlushableKey,shouldScheduleSooner} from "./sync-queue-policy";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite } from "./firebase-firestore-rest";
 import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, resolveUserPhysicalField, shardState, type DomainSpec } from "./firestore-domains";
@@ -83,7 +85,7 @@ export function useRemoteStorageSync(key:string,onChange:()=>void){
 // ---------------------------------------------------------------------------
 
 type DocState={data:Record<string,unknown>|null;updateTime?:string};
-type BackendOptions={scope:PersistenceScope;onDirectoryChange:()=>void;pollIntervalMs?:number};
+type BackendOptions={scope:PersistenceScope;onDirectoryChange:()=>void;pollIntervalMs?:number;/** Internal, never enabled by production callers. Read-only HCM shadow review. */hrShadowReview?:boolean};
 
 type PendingJournalV2={journalVersion:2;base:string|null;value:string};
 type DecodedJournal={base:string|null;value:string;legacy:boolean};
@@ -252,16 +254,21 @@ class FirestoreBackend{
   scope:PersistenceScope;
   private readonly onDirectoryChange:()=>void;
   private readonly pollIntervalMs:number;
+  private readonly hrShadow:HrShadowRuntimeAdapter|null;
 
   constructor(options:BackendOptions){
     this.scope=options.scope;
     this.onDirectoryChange=options.onDirectoryChange;
     this.pollIntervalMs=options.pollIntervalMs??5_000;
+    this.hrShadow=options.hrShadowReview?new HrShadowRuntimeAdapter(options.scope):null;
   }
 
   private readablePaths(){
     const paths=new Map<string,DomainSpec>();
-    for(const spec of DOMAIN_SPECS)for(const doc of domainDocuments(spec,this.scope))paths.set(doc.path,spec);
+    for(const spec of DOMAIN_SPECS){
+      const documents=this.hrShadow&&spec.id==="hcm"?planHrShadowReadPaths(this.scope).readable:domainDocuments(spec,this.scope);
+      for(const doc of documents)paths.set(doc.path,spec);
+    }
     return paths;
   }
 
@@ -296,7 +303,7 @@ class FirestoreBackend{
   }
 
   private assemble(spec:DomainSpec,overrides?:Map<string,Record<string,unknown>|null>){
-    const assembled=assembleState(spec,this.docsFor(spec,overrides));
+    const assembled=this.hrShadow&&spec.id==="hcm"?this.hrShadow.snapshot():assembleState(spec,this.docsFor(spec,overrides));
     return assembled?JSON.stringify(assembled):null;
   }
 
@@ -309,12 +316,26 @@ class FirestoreBackend{
       this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
     }
     await this.hydrateChunkShards();
+    if(this.hrShadow){
+      const paths=[...this.readablePaths()].filter(([,spec])=>spec.id==="hcm").map(([path])=>path);
+      const denied=paths.filter((path)=>this.denied.has(path));
+      if(denied.length)this.hrShadow.deny();
+      else if(paths.length)this.hrShadow.accept({epoch:this.hrShadow.epoch,requestUid:this.scope.uid,requestedPaths:paths,
+        documents:new Map([...this.docs].filter(([path])=>paths.includes(path)).map(([path,state])=>[path,state.data]))});
+    }
     for(const spec of DOMAIN_SPECS)this.cache.set(spec.key,this.assemble(spec));
     // Recover locally journaled changes without letting an old browser snapshot roll shared records backward.
     for(const spec of DOMAIN_SPECS){
       const key=pendingJournalKey(this.scope.uid,spec.key);
       const pending=local()?.getItem(key);
       if(typeof pending!=="string")continue;
+      // Shadow review never merges or flushes a preexisting HR journal into a new authority scope.
+      if(this.hrShadow&&spec.id==="hcm"){
+        this.hrShadow.transition(this.scope,[spec.key]);
+        this.cache.set(spec.key,null);
+        this.blockedKeys.set(spec.key,"HR changes require an authorized reconciliation before shadow review.");
+        continue;
+      }
       const remote=this.cache.get(spec.key)??null;
       const journal=decodePendingJournal(pending);
       const merged=mergeStoredState(spec,journal.base,journal.value,remote);
@@ -346,10 +367,30 @@ class FirestoreBackend{
 
   /** Directory changed (new hire, role change): fetch any newly readable shards and republish affected engines. */
   async updateScope(scope:PersistenceScope){
+    if(this.disposed)return;
+    // A different Firebase UID requires a fresh backend. Never carry non-HR cache across identities.
+    if(this.hrShadow&&scope.uid!==this.scope.uid){
+      this.hrShadow.transition(scope,[]);
+      this.docs.clear();this.cache.clear();this.scope=scope;
+      this.dispose();
+      for(const key of DOMAIN_BY_KEY.keys())emitKey(key);
+      setStatus({lastError:"Account changed. Reattach cloud storage before reading or saving."});
+      return;
+    }
+    const epochBefore=this.hrShadow?.epoch;
+    if(this.hrShadow){
+      const hcm=DOMAIN_SPECS.find((spec)=>spec.id==="hcm")!;
+      const journal=local()?.getItem(pendingJournalKey(this.scope.uid,hcm.key));
+      this.hrShadow.transition(scope,this.dirty.has(hcm.key)||journal!==null&&journal!==undefined?[hcm.key]:[]);
+      for(const path of [...this.docs.keys()])if(parseDocPath(path)?.domainId==="hcm")this.docs.delete(path);
+      this.cache.set(hcm.key,null);emitKey(hcm.key);
+      if(this.dirty.has(hcm.key))this.blockedKeys.set(hcm.key,"HR changes are quarantined for authorized reconciliation.");
+    }
     this.scope=scope;
     const missing=[...this.readablePaths().keys()].filter((path)=>!this.docs.has(path)&&!this.denied.has(path));
     if(missing.length===0)return;
     const snapshots=await getFirestoreSnapshots(missing);
+    if(this.hrShadow&&this.hrShadow.epoch!==epochBefore!+1)return;
     const touched=new Set<string>();
     for(const snapshot of snapshots){
       if((snapshot as {denied?:boolean}).denied){this.denied.add(snapshot.path);continue;}
@@ -359,6 +400,15 @@ class FirestoreBackend{
       if(spec&&snapshot.data)touched.add(spec.key);
     }
     for(const key of await this.hydrateChunkShards())touched.add(key);
+    if(this.hrShadow&&this.hrShadow.epoch!==epochBefore!+1)return;
+    if(this.hrShadow){
+      const paths=missing.filter((path)=>parseDocPath(path)?.domainId==="hcm");
+      const denied=paths.filter((path)=>this.denied.has(path));
+      if(denied.length)this.hrShadow.deny();
+      else if(paths.length)this.hrShadow.accept({epoch:this.hrShadow.epoch,requestUid:scope.uid,requestedPaths:paths,
+        documents:new Map([...this.docs].filter(([path])=>paths.includes(path)).map(([path,state])=>[path,state.data]))});
+      touched.add("momentum-hcm-v4");
+    }
     for(const key of touched){
       if(this.dirty.has(key))continue;
       const next=this.assemble(DOMAIN_BY_KEY.get(key)!);
@@ -366,13 +416,21 @@ class FirestoreBackend{
     }
   }
 
-  getItem(key:string){return this.cache.get(key)??null;}
+  getItem(key:string){
+    if(this.disposed)return null;
+    if(this.hrShadow&&key==="momentum-hcm-v4"){
+      const snapshot=this.hrShadow.snapshot();return snapshot?JSON.stringify(snapshot):null;
+    }
+    return this.cache.get(key)??null;
+  }
 
   async refreshKeys(requested:readonly string[]):Promise<{ok:boolean;message?:string}>{
+    const shadowEpoch=this.hrShadow?.epoch;
     if(this.disposed)return{ok:false,message:"Sign in again to refresh cloud records."};
     if(this.flushing)return{ok:false,message:"Changes are still saving. Retry after cloud sync."};
     const keys=[...new Set(requested)].filter((key)=>DOMAIN_BY_KEY.has(key));
     if(!keys.length)return{ok:true};
+    if(this.hrShadow&&keys.includes("momentum-hcm-v4"))return{ok:false,message:"HR shadow review refresh is disabled until staging authority and journal validation."};
     const pending=()=>keys.some((key)=>this.dirty.has(key)||this.activeFlushKeys.has(key)||
       this.blockedKeys.has(key)||Boolean(local()?.getItem(pendingJournalKey(this.scope.uid,key))));
     if(pending())return{ok:false,message:"Unsaved cloud changes exist. Resolve the sync warning before refreshing."};
@@ -387,6 +445,7 @@ class FirestoreBackend{
         if(spec&&target.has(spec.key))paths.set(path,spec);
       }
       const snapshots=await getFirestoreSnapshots([...paths.keys()]);
+      if(this.disposed||(this.hrShadow&&this.hrShadow.epoch!==shadowEpoch))return{ok:false,message:"Cloud access changed during refresh."};
       if(snapshots.some((snapshot)=>(snapshot as {denied?:boolean}).denied)){
         for(const snapshot of snapshots)if((snapshot as {denied?:boolean}).denied)this.denied.add(snapshot.path);
         setStatus({deniedDocuments:[...this.denied]});
@@ -396,6 +455,7 @@ class FirestoreBackend{
       if(pending())return{ok:false,message:"New unsaved edits arrived during refresh. Save them and sync again."};
       for(const snapshot of snapshots)this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
       await this.hydrateChunkShards();
+      if(this.disposed||(this.hrShadow&&this.hrShadow.epoch!==shadowEpoch))return{ok:false,message:"Cloud access changed during refresh."};
       if(pending())return{ok:false,message:"New unsaved edits arrived during refresh. Save them and sync again."};
       for(const key of keys){
         const next=this.assemble(DOMAIN_BY_KEY.get(key)!);
@@ -424,6 +484,10 @@ class FirestoreBackend{
   }
 
   setItem(key:string,value:string){
+    if(this.disposed){setStatus({lastError:"Cloud session ended. No change was saved."});return;}
+    if(this.hrShadow&&key==="momentum-hcm-v4"){
+      setStatus({lastError:"HR shadow review is read-only. No HR edit was saved or submitted."});return;
+    }
     const journalStarted=performance.now();
     const previous=this.cache.get(key)??null;
     if(previous===value)return;
@@ -499,6 +563,8 @@ class FirestoreBackend{
     if(this.flushing&&!allowConcurrent)return;
     const requested=onlyKeys?.length?[...new Set(onlyKeys)].filter((key)=>this.dirty.has(key)):[...this.dirty];
     const keys=requested.filter((key)=>!this.activeFlushKeys.has(key));
+    // Preserve concurrent per-domain flush behavior; only the opt-in shadow HR domain is read-only.
+    if(this.hrShadow){const index=keys.indexOf("momentum-hcm-v4");if(index>=0)keys.splice(index,1);}
     if(keys.length===0)return;
     const capturedRevisions=new Map(keys.map((key)=>[key,this.revisions.get(key)??0]));
     const unchangedSinceStart=(key:string)=>mayDiscardJournal(capturedRevisions.get(key)??0,this.revisions.get(key)??0);
@@ -694,11 +760,14 @@ class FirestoreBackend{
 
   async poll(){
     if(this.disposed||this.flushing||this.polling)return;
+    const shadowEpoch=this.hrShadow?.epoch;
+    let expectedShadowEpoch=shadowEpoch;
     this.polling=true;
     const pollStarted=performance.now();
     let changedCount=0;
     try{
       const meta=await getFirestoreSnapshot(PLATFORM_META_DOCUMENT);
+      if(this.hrShadow&&shadowEpoch!==this.hrShadow.epoch)return;
       const versions=this.versionsFrom(meta.data);
       const changed=Object.entries(versions).filter(([key,value])=>this.metaVersions[key]!==value).map(([key])=>key);
       changedCount=changed.length;
@@ -709,9 +778,17 @@ class FirestoreBackend{
       const readable=this.readablePaths();
       const byMeta=new Map<string,string>();for(const path of readable.keys())byMeta.set(metaVersionKey(path),path);
       for(const path of this.docs.keys())if(parseDocPath(path))byMeta.set(metaVersionKey(path),path);
-      const paths=changed.map((key)=>byMeta.get(key)).filter((path):path is string=>Boolean(path)&&!this.denied.has(path!));
+      let paths=changed.map((key)=>byMeta.get(key)).filter((path):path is string=>Boolean(path)&&!this.denied.has(path!));
+      if(this.hrShadow&&paths.some((path)=>parseDocPath(path)?.domainId==="hcm")){
+        this.hrShadow.deny();
+        expectedShadowEpoch=this.hrShadow.epoch;
+        for(const path of [...this.docs.keys()])if(parseDocPath(path)?.domainId==="hcm")this.docs.delete(path);
+        this.cache.set("momentum-hcm-v4",null);emitKey("momentum-hcm-v4");
+        paths=paths.filter((path)=>parseDocPath(path)?.domainId!=="hcm");
+      }
       if(paths.length===0){for(const key of changed)this.metaVersions[key]=versions[key];return;}
       const snapshots=await getFirestoreSnapshots(paths);
+      if(this.hrShadow&&expectedShadowEpoch!==this.hrShadow.epoch)return;
       const touched=new Map<string,Map<string,Record<string,unknown>|null>>();
       for(const snapshot of snapshots){
         const parsedPath=parseDocPath(snapshot.path);
@@ -729,6 +806,7 @@ class FirestoreBackend{
         map.set(snapshot.path,override);touched.set(spec.key,map);
       }
       for(const key of await this.hydrateChunkShards())if(!touched.has(key))touched.set(key,new Map());
+      if(this.disposed||(this.hrShadow&&expectedShadowEpoch!==this.hrShadow.epoch))return;
       for(const [key,map] of touched){
         const spec=DOMAIN_BY_KEY.get(key)!;
         const next=this.assemble(spec,map);
