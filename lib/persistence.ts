@@ -6,7 +6,7 @@ import {recordPerformanceSample} from "./performance-diagnostics";
 import { HrShadowRuntimeAdapter } from "./hr-shadow-runtime-adapter";
 import { planHrShadowReadPaths } from "./hr-shadow-read-compatibility";
 import {isTransientFirestoreFailure,mayDiscardJournal,nextFlushableKey,shouldScheduleSooner} from "./sync-queue-policy";
-import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite } from "./firebase-firestore-rest";
+import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite, type FirestoreSnapshot } from "./firebase-firestore-rest";
 import { DOMAIN_BY_KEY, DOMAIN_SPECS, EMPLOYEE_DIRECTORY_META_KEY, ROOT_FIELD, assembleState, chunkManifestShardPaths, documentReplacesOnWrite, documentWritable, domainDocuments, emptyDocumentForPath, isChunkManifestPath, isDomainStorageKey, metaVersionKey, parseDocPath, recordIdentity, resolveUserPhysicalField, shardState, type DomainSpec } from "./firestore-domains";
 
 /**
@@ -85,7 +85,13 @@ export function useRemoteStorageSync(key:string,onChange:()=>void){
 // ---------------------------------------------------------------------------
 
 type DocState={data:Record<string,unknown>|null;updateTime?:string};
-type BackendOptions={scope:PersistenceScope;onDirectoryChange:()=>void;pollIntervalMs?:number;/** Internal, never enabled by production callers. Read-only HCM shadow review. */hrShadowReview?:boolean};
+type ShadowTestReadTransport={
+  getSnapshots:(paths:string[])=>Promise<FirestoreSnapshot[]>;
+  getSnapshot:(path:string)=>Promise<FirestoreSnapshot>;
+};
+type BackendOptions={scope:PersistenceScope;onDirectoryChange:()=>void;pollIntervalMs?:number;/** Internal, never enabled by production callers. Read-only HCM shadow review. */hrShadowReview?:boolean;
+  /** Synthetic read seam restricted to the disabled-by-default HR review mode. Never pass live credentials. */
+  testOnlyReadTransport?:ShadowTestReadTransport;};
 
 type PendingJournalV2={journalVersion:2;base:string|null;value:string};
 type DecodedJournal={base:string|null;value:string;legacy:boolean};
@@ -233,7 +239,7 @@ const isBoundedUserChunkPath=(spec:DomainSpec,path:string)=>{
   return resolveUserPhysicalField(spec,parsed.field)?.isChunk===true;
 };
 
-class FirestoreBackend{
+export class FirestoreBackend{
   private cache=new Map<string,string|null>();
   private docs=new Map<string,DocState>();
   private dirty=new Set<string>();
@@ -255,8 +261,13 @@ class FirestoreBackend{
   private readonly onDirectoryChange:()=>void;
   private readonly pollIntervalMs:number;
   private readonly hrShadow:HrShadowRuntimeAdapter|null;
+  private readonly readSnapshots:ShadowTestReadTransport["getSnapshots"];
+  private readonly readSnapshot:ShadowTestReadTransport["getSnapshot"];
 
   constructor(options:BackendOptions){
+    if(options.testOnlyReadTransport&&!options.hrShadowReview)throw new Error("Synthetic reads require HR shadow review.");
+    this.readSnapshots=options.testOnlyReadTransport?.getSnapshots??((paths)=>getFirestoreSnapshots(paths));
+    this.readSnapshot=options.testOnlyReadTransport?.getSnapshot??((path)=>getFirestoreSnapshot(path));
     this.scope=options.scope;
     this.onDirectoryChange=options.onDirectoryChange;
     this.pollIntervalMs=options.pollIntervalMs??5_000;
@@ -291,7 +302,7 @@ class FirestoreBackend{
       }
     }
     if(requested.size===0)return new Set<string>();
-    const snapshots=await getFirestoreSnapshots([...requested.keys()]);
+    const snapshots=await this.readSnapshots([...requested.keys()]);
     const touched=new Set<string>();
     for(const snapshot of snapshots){
       const spec=requested.get(snapshot.path);if(!spec)continue;
@@ -309,7 +320,7 @@ class FirestoreBackend{
 
   async prime(){
     const paths=[...this.readablePaths().keys(),PLATFORM_META_DOCUMENT];
-    const snapshots=await getFirestoreSnapshots(paths);
+    const snapshots=await this.readSnapshots(paths);
     for(const snapshot of snapshots){
       if((snapshot as {denied?:boolean}).denied){this.denied.add(snapshot.path);console.warn(`[momentum] Security Rules denied ${snapshot.path}; firestore.rules and lib/firestore-domains.ts disagree.`);continue;}
       if(snapshot.path===PLATFORM_META_DOCUMENT){this.metaVersions=this.versionsFrom(snapshot.data);continue;}
@@ -389,7 +400,7 @@ class FirestoreBackend{
     this.scope=scope;
     const missing=[...this.readablePaths().keys()].filter((path)=>!this.docs.has(path)&&!this.denied.has(path));
     if(missing.length===0)return;
-    const snapshots=await getFirestoreSnapshots(missing);
+    const snapshots=await this.readSnapshots(missing);
     if(this.hrShadow&&this.hrShadow.epoch!==epochBefore!+1)return;
     const touched=new Set<string>();
     for(const snapshot of snapshots){
@@ -444,7 +455,7 @@ class FirestoreBackend{
         const spec=parsed?DOMAIN_SPECS.find((entry)=>entry.id===parsed.domainId):undefined;
         if(spec&&target.has(spec.key))paths.set(path,spec);
       }
-      const snapshots=await getFirestoreSnapshots([...paths.keys()]);
+      const snapshots=await this.readSnapshots([...paths.keys()]);
       if(this.disposed||(this.hrShadow&&this.hrShadow.epoch!==shadowEpoch))return{ok:false,message:"Cloud access changed during refresh."};
       if(snapshots.some((snapshot)=>(snapshot as {denied?:boolean}).denied)){
         for(const snapshot of snapshots)if((snapshot as {denied?:boolean}).denied)this.denied.add(snapshot.path);
@@ -732,7 +743,7 @@ class FirestoreBackend{
 
   /** Re-read conflicting documents, three-way merge with the pending local shard, and republish the merged state. */
   private async reconcile(paths:string[],pathKey:Map<string,string>,nextDocs:Map<string,Record<string,unknown>>,capturedRevisions:Map<string,number>){
-    const snapshots=await getFirestoreSnapshots(paths);
+    const snapshots=await this.readSnapshots(paths);
     const overrides=new Map<string,Map<string,Record<string,unknown>|null>>();
     for(const snapshot of snapshots){
       const base=this.docs.get(snapshot.path);
@@ -766,7 +777,7 @@ class FirestoreBackend{
     const pollStarted=performance.now();
     let changedCount=0;
     try{
-      const meta=await getFirestoreSnapshot(PLATFORM_META_DOCUMENT);
+      const meta=await this.readSnapshot(PLATFORM_META_DOCUMENT);
       if(this.hrShadow&&shadowEpoch!==this.hrShadow.epoch)return;
       const versions=this.versionsFrom(meta.data);
       const changed=Object.entries(versions).filter(([key,value])=>this.metaVersions[key]!==value).map(([key])=>key);
@@ -787,7 +798,7 @@ class FirestoreBackend{
         paths=paths.filter((path)=>parseDocPath(path)?.domainId!=="hcm");
       }
       if(paths.length===0){for(const key of changed)this.metaVersions[key]=versions[key];return;}
-      const snapshots=await getFirestoreSnapshots(paths);
+      const snapshots=await this.readSnapshots(paths);
       if(this.hrShadow&&expectedShadowEpoch!==this.hrShadow.epoch)return;
       const touched=new Map<string,Map<string,Record<string,unknown>|null>>();
       for(const snapshot of snapshots){

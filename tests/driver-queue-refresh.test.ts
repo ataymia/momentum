@@ -9,7 +9,8 @@ test("sync control forces cloud read of delivery, order and inventory without lo
  assert.ok(page.includes("momentumStorage.flushAndConfirm(key)"));
  assert.ok(page.includes("disabled={refreshingQueue}"));
  assert.ok(storage.includes("async refreshKeys("));
- assert.ok(storage.includes("getFirestoreSnapshots([...paths.keys()])"));
+ assert.ok(storage.includes("this.readSnapshots([...paths.keys()])"));
+ assert.ok(storage.includes("this.readSnapshots=options.testOnlyReadTransport?.getSnapshots??((paths)=>getFirestoreSnapshots(paths))"));
  assert.ok(storage.includes("pendingJournalKey(this.scope.uid,key)"));
  assert.ok(storage.includes("emitKey(key)"));
 });

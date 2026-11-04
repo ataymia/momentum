@@ -187,7 +187,8 @@ test("Firestore polling is single-flight and retries a failed version without di
   assert.match(poll,/if\(this\.disposed\|\|this\.flushing\|\|this\.polling\)return/);
   assert.match(poll,/this\.polling=true/);
   assert.match(poll,/finally\{\s*recordPerformanceSample\([^;]*\);\s*this\.polling=false/);
-  const fetched=poll.indexOf("const snapshots=await getFirestoreSnapshots(paths)");
+  const fetched=poll.indexOf("const snapshots=await this.readSnapshots(paths)");
+  assert.ok(source.includes("this.readSnapshots=options.testOnlyReadTransport?.getSnapshots??((paths)=>getFirestoreSnapshots(paths))"),"Default production reads must still use the real Firestore REST transport");
   const acknowledged=poll.indexOf("for(const key of changed)this.metaVersions[key]=versions[key];\n      setStatus");
   assert.ok(fetched>=0&&acknowledged>fetched,"Acknowledge changed versions only after records load");
   assert.match(poll,/if\(base\?\.updateTime&&base\.updateTime===snapshot\.updateTime\)continue/);
