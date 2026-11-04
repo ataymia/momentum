@@ -22,24 +22,25 @@ const fail=(status:number,message:string):never=>{throw new TrustedTimecardError
 export async function commitTrustedTimecardCorrection(actorUid:string,raw:unknown){
  if(process.env.MOMENTUM_ENABLE_TIMECARD_CORRECTIONS!=="true")
    fail(503,"Connected timecard corrections have not been released.");
- if(!object(raw))fail(400,"Invalid timecard correction request.");
+ if(!object(raw)){throw new TrustedTimecardError(400,"Invalid timecard correction request.");}
+ const input:Row=raw;
  const intent:CorrectionIntent={
-   requestId:text(raw.requestId),targetUid:text(raw.targetUid),
-   action:text(raw.action) as CorrectionIntent["action"],
-   reason:text(raw.reason),
-   cardId:text(raw.cardId)||undefined,entryId:text(raw.entryId)||undefined,
-   date:text(raw.date)||undefined,weekDate:text(raw.weekDate)||undefined,
-   punch:object(raw.punch)?{
-     clockIn:text(raw.punch.clockIn),clockOut:text(raw.punch.clockOut),
-     mealStart:text(raw.punch.mealStart)||undefined,mealEnd:text(raw.punch.mealEnd)||undefined,
-     breakMinutes:typeof raw.punch.breakMinutes==="number"?raw.punch.breakMinutes:Number.NaN,
+   requestId:text(input.requestId),targetUid:text(input.targetUid),
+   action:text(input.action) as CorrectionIntent["action"],
+   reason:text(input.reason),
+   cardId:text(input.cardId)||undefined,entryId:text(input.entryId)||undefined,
+   date:text(input.date)||undefined,weekDate:text(input.weekDate)||undefined,
+   punch:object(input.punch)?{
+     clockIn:text(input.punch.clockIn),clockOut:text(input.punch.clockOut),
+     mealStart:text(input.punch.mealStart)||undefined,mealEnd:text(input.punch.mealEnd)||undefined,
+     breakMinutes:typeof input.punch.breakMinutes==="number"?input.punch.breakMinutes:Number.NaN,
    }:undefined,
-   expectedBefore:object(raw.expectedBefore)?{
-     clockIn:text(raw.expectedBefore.clockIn),clockOut:text(raw.expectedBefore.clockOut)||undefined,
-     mealStart:text(raw.expectedBefore.mealStart)||undefined,
-     mealEnd:text(raw.expectedBefore.mealEnd)||undefined,
-     breakMinutes:typeof raw.expectedBefore.breakMinutes==="number"?
-       raw.expectedBefore.breakMinutes:Number.NaN,
+   expectedBefore:object(input.expectedBefore)?{
+     clockIn:text(input.expectedBefore.clockIn),clockOut:text(input.expectedBefore.clockOut)||undefined,
+     mealStart:text(input.expectedBefore.mealStart)||undefined,
+     mealEnd:text(input.expectedBefore.mealEnd)||undefined,
+     breakMinutes:typeof input.expectedBefore.breakMinutes==="number"?
+       input.expectedBefore.breakMinutes:Number.NaN,
    }:undefined,
  };
  if(!validId(intent.targetUid)||!validId(intent.requestId))
@@ -97,7 +98,7 @@ export async function commitTrustedTimecardCorrection(actorUid:string,raw:unknow
      notifications:jsonRows(notifications,"Notification records",true),
      receipt:receipt.exists?receipt.data()??null:null,
    });
-   if(!decision.ok)fail(decision.status,decision.message);
+   if(!decision.ok){throw new TrustedTimecardError(decision.status,decision.message);}
    if(decision.plan.replayed){
      return{requestId:intent.requestId,cardId:text(decision.plan.receipt.cardId),
        status:"Recorded",replayed:true,serverRecordedAt:text(decision.plan.receipt.at)};
