@@ -150,7 +150,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
       cloudConfirmed:true,...(stamp?{deliveredAt:stamp}:{}),...(replayed?{replayed:true}:{}),
     });
     if(action==="status"){
-      if(status==="Delivered"&&taskStatus==="Delivered"){
+      if((status==="Delivered"||status==="Paid")&&taskStatus==="Delivered"){
         const signed=obj(task?.signature)&&typeof task.signature.strokesJson==="string"&&
           task.signature.strokesJson.length>5&&
           txt(task.signature.capturedBy)===actor&&
