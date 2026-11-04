@@ -57,7 +57,7 @@ export class HrShadowRuntimeAdapter {
     const retain = new Set(plan.retainPaths);
     for (const path of this.documents.keys()) if (!retain.has(path)) this.documents.delete(path);
     for (const key of plan.quarantinePendingKeys) this.quarantinedJournals.add(key);
-    this.state = plan.blockedByPendingOrDenied ? "quarantined" : "unprimed";
+    this.state = plan.blockedByPendingOrDenied || this.quarantinedJournals.size > 0 ? "quarantined" : "unprimed";
     return { epoch: this.generation, plan };
   }
 
