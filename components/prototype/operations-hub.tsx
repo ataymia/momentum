@@ -19,6 +19,7 @@ import {PackagesDirectory,ShipmentsDirectory,ShipmentDetail,DeliveryOperationsDi
 import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
 import {ActionCenterExperience} from "./action-center-experience";
 import {WorkspaceHome} from "./workspace-home";
+import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
 import type { Order } from "../../lib/types";
 
 function Empty({ children }: { children: ReactNode }) {
@@ -303,6 +304,10 @@ export function PrototypeOperationsHub(){
   if(path==="/inventory")return <InventoryDirectory/>;
   if(path==="/inventory/ledger")return <InventoryLedgerDirectory/>;
   if(path==="/inventory/adjustments")return <InventoryAdjustmentDirectory/>;
+  if(segments[0]==="sales"&&segments[1]==="returns"&&segments[2])return <SalesReturnDetail id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="sales"&&segments[1]==="credit-notes"&&segments[2])return <CreditNoteDetail id={decodeURIComponent(segments[2])}/>;
+  if(path==="/sales/returns")return <SalesReturnsDirectory/>;
+  if(path==="/sales/credit-notes")return <CreditNotesDirectory/>;
   if(path==="/sales/orders")return <OrdersDirectory/>;
   if(path==="/sales/invoices")return <InvoiceDirectory/>;
   if(path==="/sales/payments")return <PaymentsDirectory/>;
