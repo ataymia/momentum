@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Role, WorkspaceUser } from "../lib/types";
 import {
-  MENU_GROUPS, canShowModuleInMenu, pageForPath, permissionForPath,
+  MENU_GROUPS, canShowModuleInMenu, canVisitRoute, pageForPath, permissionForPath,
   requiresPrototypePage, routeForPage,
 } from "../lib/navigation-route-registry";
 
@@ -83,4 +83,16 @@ test("new module routes retain a meaningful active page and unknown paths stay u
     ["/portal/account","accounts"],
   ] as const)assert.equal(pageForPath(path),expected,path);
   assert.equal(pageForPath("/this-module-does-not-exist"),null);
+});
+
+test("redesigned HR record routes preserve Administrator access and block other employees",()=>{
+  const admin=makeUser("Administrator"),rep=makeUser("Sales Representative");
+  assert.equal(canVisitRoute(admin,"/admin/employee-profiles/employee-opaque-id/compensation"),true);
+  assert.equal(canVisitRoute(rep,"/admin/employee-profiles/employee-opaque-id/compensation"),false);
+  assert.equal(permissionForPath("/admin/employee-profiles/employee-opaque-id/time"),"settings");
+  assert.equal(pageForPath("/admin/employee-profiles/employee-opaque-id"),"settings");
+  assert.equal(requiresPrototypePage("/admin/employee-profiles/employee-opaque-id/documents"),true);
+  assert.equal(requiresPrototypePage("/people/payroll/workflow"),true);
+  assert.equal(requiresPrototypePage("/people/onboarding/workflow"),true);
+  assert.equal(canVisitRoute(admin,"/people/leave"),true);
 });
