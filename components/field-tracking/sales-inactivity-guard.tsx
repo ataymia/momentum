@@ -17,16 +17,17 @@ const readableTime=(value?:string)=>value?new Date(value).toLocaleTimeString("en
 export function SalesInactivityGuard({children}:{children:ReactNode}){
   const firebase=useFirebaseSessionOptional();
   const {currentUser}=useWorkspace();
-  const active=Boolean(firebase?.session&&currentUser?.role==="Sales Representative"&&firebase.access?.accountState==="Active");
+  const session=firebase?.session;
+  const active=Boolean(session&&currentUser?.role==="Sales Representative"&&firebase?.access?.accountState==="Active");
   const [phase,setPhase]=useState<Phase>("checking");
   const [notice,setNotice]=useState<InactivityNotice|null>(null);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
 
   const refresh=useCallback(async()=>{
-    if(!active||!firebase?.session)return;
+    if(!active||!session)return;
     try{
-      const result=await salesInactivityRequest(firebase.session,"read");
+      const result=await salesInactivityRequest(session,"read");
       setNotice(result.pending?result.notice??null:null);
       setError("");
       setPhase("ready");
@@ -34,15 +35,15 @@ export function SalesInactivityGuard({children}:{children:ReactNode}){
       setError(e instanceof Error?e.message:"Unable to check shift status.");
       setPhase("unavailable");
     }
-  },[active,firebase?.session]);
+  },[active,session]);
   useEffect(()=>{
     if(!active)return;
-    void refresh();
+    const initial=window.setTimeout(()=>void refresh(),0);
     const interval=window.setInterval(()=>void refresh(),20_000);
     const onReturn=()=>{if(!document.hidden)void refresh();};
     document.addEventListener("visibilitychange",onReturn);
     window.addEventListener("focus",onReturn);
-    return()=>{window.clearInterval(interval);document.removeEventListener("visibilitychange",onReturn);window.removeEventListener("focus",onReturn);};
+    return()=>{window.clearTimeout(initial);window.clearInterval(interval);document.removeEventListener("visibilitychange",onReturn);window.removeEventListener("focus",onReturn);};
   },[active,refresh]);
   const act=async(action:"acknowledge"|"clockIn")=>{
     if(!firebase?.session||busy)return;
