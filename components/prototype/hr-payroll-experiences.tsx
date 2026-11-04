@@ -51,6 +51,7 @@ export function PeopleExperience(){
     <div className="prototype-domain-cards">
       <NavTile label="Employee Directory" path="/people/directory" detail="Identity and reporting lines"/>
       {admin&&<NavTile label="Employee Profiles" path="/admin/employee-profiles" detail="Authorized personnel records"/>}
+      {admin&&<NavTile label="New Hire" path="/people/new-hire" detail="Provision a new employee securely"/>}
       {admin&&<NavTile label="Onboarding Queue" path="/people/onboarding" detail="New-hire requirements"/>}
       {admin&&<NavTile label="Training administration" path="/people/training" detail="Manage training and resources"/>}
       <NavTile label="Attendance & timecards" path="/people/timekeeping" detail="Recorded attendance and submitted time"/>
