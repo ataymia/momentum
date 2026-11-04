@@ -77,7 +77,7 @@ function normalizeCorrection(value: unknown, userIds: Set<string>) {
   if (!object(value) || !validInstant(value.at) || !userIds.has(text(value.by)) || !text(value.reason) || !object(value.before)) return undefined;
   const before = value.before;
   if (!validTime(before.clockIn) || !optionalTime(before.mealStart) || !optionalTime(before.mealEnd) || !optionalTime(before.clockOut) || !nonnegative(before.breakMinutes) || !optionalValidInstant(before.clockInAt) || !optionalValidInstant(before.clockOutAt)) return undefined;
-  return { at: text(value.at), by: text(value.by), reason: text(value.reason), before: { clockIn: text(before.clockIn), clockInAt: optionalText(before.clockInAt), clockOutAt: optionalText(before.clockOutAt), source: timeSources.has(text(before.source)) ? text(before.source) as TimeEntrySource : undefined, note: optionalText(before.note), mealStart: optionalText(before.mealStart), mealEnd: optionalText(before.mealEnd), clockOut: optionalText(before.clockOut), breakMinutes: Number(before.breakMinutes) } };
+  return { at: text(value.at), by: text(value.by), reason: text(value.reason), before: { clockIn: text(before.clockIn), clockInAt: optionalText(before.clockInAt), clockOutAt: optionalText(before.clockOutAt), source: timeSources.has(text(before.source)) ? text(before.source) as TimeEntry["source"] : undefined, note: optionalText(before.note), mealStart: optionalText(before.mealStart), mealEnd: optionalText(before.mealEnd), clockOut: optionalText(before.clockOut), breakMinutes: Number(before.breakMinutes) } };
 }
 
 export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData): WorkspaceData {
