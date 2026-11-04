@@ -13,6 +13,7 @@ import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience } from "./hr-payroll-experiences";
 import {PayrollWorkflowExperience} from "./payroll-workflow-experience";
+import {HrOnboardingExperience} from "./hr-onboarding-experience";
 import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
@@ -285,6 +286,7 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/people/payroll")return <PayrollWorkflowExperience/>;
+  if(path==="/people/onboarding")return <HrOnboardingExperience/>;
   if(path==="/admin/accounts")return <AccountConsolidationReview/>;
   if(path==="/admin/employee-profiles")return <div><Heading title="Employee Profiles" description="Preserved administrator-only employee record controls."/><AdminEmployeeProfiles/></div>;
   if(path==="/admin/employees")return <div><Heading title="Employee Directory" description="Administrator view of active staff."/><EmployeeDirectory/></div>;
