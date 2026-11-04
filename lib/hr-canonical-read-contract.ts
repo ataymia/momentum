@@ -187,9 +187,10 @@ export async function executeHrCanonicalReadReview(
     const before = await transport.readAuthority();
     const authorized = authorizeHrCanonicalRead(command, before);
     if (!authorized.ok) return deny(authorized.reason);
+    const beforeFingerprint = authorityFingerprint(before);
     const document = await transport.readCanonical(authorized.path);
     const after = await transport.readAuthority();
-    if (authorityFingerprint(before) !== authorityFingerprint(after))
+    if (beforeFingerprint !== authorityFingerprint(after))
       return deny("authority-changed");
     return evaluateHrCanonicalRead(command, after, document);
   } catch {
