@@ -1,3 +1,4 @@
+/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,space-before-blocks,keyword-spacing,curly,brace-style,semi-spacing,arrow-parens,one-var,indent,operator-linebreak,space-before-function-paren */
 /** Authoritative CRM inactivity calculation. GPS, page views, and device access are never inputs. */
 export const CRM_AUTO_CLOCKOUT_MS=60*60_000;
 export type SavedCRMEvent={userId?:unknown;occurredAt?:unknown;at?:unknown};
