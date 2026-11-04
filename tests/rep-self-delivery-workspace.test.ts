@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import test from "node:test";
 import {canVisitRoute,pageForPath,requiresPrototypePage,routeLabel} from "../lib/navigation-route-registry";
-import {repDeliveryCandidate,repDeliveryNextStep,repDeliveryProofRecorded,repDeliverySteps} from "../lib/rep-delivery-workspace-policy";
+import {canExecuteRepDeliveryReviewMutation,repDeliveryCandidate,repDeliveryNextStep,repDeliveryProofRecorded,repDeliverySteps} from "../lib/rep-delivery-workspace-policy";
 import type {Order,Role,WorkspaceUser} from "../lib/types";
 
 const order=(status:Order["status"],extra:Partial<Order>={}):Order=>({
@@ -86,4 +86,18 @@ test("dedicated rep screen delegates to existing atomic server workflow with rea
   assert.doesNotMatch(ui,/\bpostMovement\(/);
   assert.doesNotMatch(ui,/\bmarkDelivered\(/);
   assert.doesNotMatch(ui,/\brecordPayment\(/);
+});
+
+test("new rep delivery mutations default to read-only and require an exact isolated staging project",()=>{
+  const input={enabled:false,currentProjectId:"demo-staging-123",approvedStagingProjectId:"demo-staging-123",persistenceMode:"firestore" as const};
+  assert(!canExecuteRepDeliveryReviewMutation(input));
+  assert(!canExecuteRepDeliveryReviewMutation({...input,enabled:true,approvedStagingProjectId:undefined}));
+  assert(!canExecuteRepDeliveryReviewMutation({...input,enabled:true,approvedStagingProjectId:"wrong-project"}));
+  assert(!canExecuteRepDeliveryReviewMutation({...input,enabled:true,persistenceMode:"local"}));
+  assert(canExecuteRepDeliveryReviewMutation({...input,enabled:true}));
+  const ui=readFileSync("components/prototype/rep-self-delivery-workspace.tsx","utf8");
+  assert.match(ui,/NEXT_PUBLIC_REP_DELIVERY_REVIEW_MUTATIONS==="true"/);
+  assert.match(ui,/NEXT_PUBLIC_REP_DELIVERY_STAGING_PROJECT_ID/);
+  assert.match(ui,/reviewMutationsEnabled&&step&&accepted/);
+  assert.match(ui,/if\(!reviewMutationsEnabled\|\|!ready/);
 });
