@@ -14,7 +14,8 @@ type Document = { items?: unknown };
 type RecordValue = Record<string, unknown>;
 export type HrLegacyQuarantineReason =
   | "malformed-record" | "missing-owner" | "invalid-owner" | "unknown-owner"
-  | "missing-record-id" | "duplicate-conflict" | "target-conflict" | "malformed-target";
+  | "missing-record-id" | "duplicate-conflict" | "target-conflict" | "malformed-target"
+  | "target-not-inventoried";
 
 export type HrLegacyCopyCandidate = {
   sourceIndex: number;
@@ -66,7 +67,7 @@ export function planHrLegacySharedField(input: {
   sharedDocument: Document;
   knownUserIds: ReadonlySet<string>;
   /** Only explicitly inventoried, per-user destination documents, not live reads. */
-  existingUserDocuments: ReadonlyMap<string, Document>;
+  existingUserDocuments: ReadonlyMap<string, Document | null>;
 }): HrLegacyMigrationPlan {
   const fieldSpec = HCM.fields[input.field];
   if (!fieldSpec?.userIdField)
@@ -84,12 +85,16 @@ export function planHrLegacySharedField(input: {
   const alreadyPresentIndices = new Set<number>();
   let identicalSourceDuplicates = 0;
 
-  const targetCache = new Map<string, Map<string, string> | null>();
-  const targetFor = (uid: string): Map<string, string> | null => {
-    if (targetCache.has(uid)) return targetCache.get(uid)!;
+  const targetCache = new Map<string, Map<string, string> | null | undefined>();
+  const targetFor = (uid: string): Map<string, string> | null | undefined => {
+    if (targetCache.has(uid)) return targetCache.get(uid);
     const path = userDocPath(uid, HCM.id, input.field);
+    if (!input.existingUserDocuments.has(path)) {
+      targetCache.set(uid, undefined);
+      return undefined;
+    }
     const document = input.existingUserDocuments.get(path);
-    if (!document) {
+    if (document === null) {
       const empty = new Map<string, string>();
       targetCache.set(uid, empty);
       return empty;
@@ -151,7 +156,11 @@ export function planHrLegacySharedField(input: {
     }
     seen.set(id, { index, uid: owner, payload });
     const target = targetFor(owner);
-    if (!target) {
+    if (target === undefined) {
+      quarantine.push({ sourceIndex: index, reason: "target-not-inventoried" });
+      continue;
+    }
+    if (target === null) {
       quarantine.push({ sourceIndex: index, reason: "malformed-target" });
       continue;
     }
@@ -171,7 +180,6 @@ export function planHrLegacySharedField(input: {
     quarantine.push({ sourceIndex: index, reason: "duplicate-conflict" });
   }
   const accepted = copyCandidates.filter((entry) => !conflicted.has(entry.sourceIndex));
-  const quarantinedIndices = new Set(quarantine.map((entry) => entry.sourceIndex));
   return {
     version: HR_LEGACY_PLAN_VERSION,
     field: input.field,
