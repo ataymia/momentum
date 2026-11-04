@@ -20,7 +20,7 @@ import { useAudit } from "../../lib/audit-context";
 import { useCrm } from "../../lib/crm-context";
 import { addCalendarDays, arizonaDateKey } from "../../lib/date-time";
 import { useDelivery } from "../../lib/delivery-context";
-import { reportingManagerCandidates, validAdditionalManagerIds } from "../../lib/employee-reporting";
+import { selectableReportingManagerCandidates, validSelectableAdditionalManagerIds } from "../../lib/employee-reporting";
 import {
   applyCompensationCorrection,
   employeeOriginatedAccounts,
@@ -76,14 +76,16 @@ function employeeStatus(employmentStatus: string | undefined, open?: TimeEntry) 
 function ReportingManagersForm({employeeId,employment,data}:{employeeId:string;employment?:EmploymentRecord;data:WorkspaceData}){
   const {currentUser}=useWorkspace();
   const {setHcm}=useHcm();
+  const firebase=useFirebaseSessionOptional();
+  const activeManagerIds=new Set(visibleActiveEmployees(data.users,firebase?.accessRecords).map((user)=>user.id));
   const [selected,setSelected]=useState<string[]>(employment?.additionalManagerIds??[]);
   const [notice,setNotice]=useState("");
   const primary=employment?.managerId??data.users.find((user)=>user.id===employeeId)?.managerId;
-  const candidates=reportingManagerCandidates(data,employeeId);
+  const candidates=selectableReportingManagerCandidates(data,employeeId,activeManagerIds);
   const save=(event:FormEvent)=>{
     event.preventDefault();
     if(currentUser?.role!=="Administrator"||!employment){setNotice("Administrator access and an employment record are required.");return;}
-    const normalized=validAdditionalManagerIds(selected,data,employeeId,primary);
+    const normalized=validSelectableAdditionalManagerIds(selected,data,employeeId,primary,activeManagerIds);
     setHcm((current)=>{
       const previous=current.employees.find((item)=>item.userId===employeeId);
       if(!previous)return current;
