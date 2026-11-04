@@ -400,6 +400,7 @@ class FirestoreBackend{
       if(spec&&snapshot.data)touched.add(spec.key);
     }
     for(const key of await this.hydrateChunkShards())touched.add(key);
+    if(this.hrShadow&&this.hrShadow.epoch!==epochBefore!+1)return;
     if(this.hrShadow){
       const paths=missing.filter((path)=>parseDocPath(path)?.domainId==="hcm");
       const denied=paths.filter((path)=>this.denied.has(path));
@@ -424,6 +425,7 @@ class FirestoreBackend{
   }
 
   async refreshKeys(requested:readonly string[]):Promise<{ok:boolean;message?:string}>{
+    const shadowEpoch=this.hrShadow?.epoch;
     if(this.disposed)return{ok:false,message:"Sign in again to refresh cloud records."};
     if(this.flushing)return{ok:false,message:"Changes are still saving. Retry after cloud sync."};
     const keys=[...new Set(requested)].filter((key)=>DOMAIN_BY_KEY.has(key));
@@ -443,6 +445,7 @@ class FirestoreBackend{
         if(spec&&target.has(spec.key))paths.set(path,spec);
       }
       const snapshots=await getFirestoreSnapshots([...paths.keys()]);
+      if(this.disposed||(this.hrShadow&&this.hrShadow.epoch!==shadowEpoch))return{ok:false,message:"Cloud access changed during refresh."};
       if(snapshots.some((snapshot)=>(snapshot as {denied?:boolean}).denied)){
         for(const snapshot of snapshots)if((snapshot as {denied?:boolean}).denied)this.denied.add(snapshot.path);
         setStatus({deniedDocuments:[...this.denied]});
@@ -452,6 +455,7 @@ class FirestoreBackend{
       if(pending())return{ok:false,message:"New unsaved edits arrived during refresh. Save them and sync again."};
       for(const snapshot of snapshots)this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
       await this.hydrateChunkShards();
+      if(this.disposed||(this.hrShadow&&this.hrShadow.epoch!==shadowEpoch))return{ok:false,message:"Cloud access changed during refresh."};
       if(pending())return{ok:false,message:"New unsaved edits arrived during refresh. Save them and sync again."};
       for(const key of keys){
         const next=this.assemble(DOMAIN_BY_KEY.get(key)!);
@@ -800,6 +804,7 @@ class FirestoreBackend{
         map.set(snapshot.path,override);touched.set(spec.key,map);
       }
       for(const key of await this.hydrateChunkShards())if(!touched.has(key))touched.set(key,new Map());
+      if(this.disposed||(this.hrShadow&&expectedShadowEpoch!==this.hrShadow.epoch))return;
       for(const [key,map] of touched){
         const spec=DOMAIN_BY_KEY.get(key)!;
         const next=this.assemble(spec,map);
