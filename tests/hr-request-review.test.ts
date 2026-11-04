@@ -93,7 +93,7 @@ test("return instructions are mandatory and workflows do not execute underlying 
 });
 
 test("no manager, employee, customer or mismatched role can approve", () => {
-  for (const actor of [manager, rep, other, customer, former, { ...rep, role: "Administrator" }]) {
+  for (const actor of [manager, rep, other, customer, former, { ...rep, role: "Administrator" } as WorkspaceUser]) {
     assert.equal(decide(actor).ok, false, actor.id + " must be denied");
   }
   assert.equal(decide(admin, fixture(), "leave", "leave-former").ok, false);
