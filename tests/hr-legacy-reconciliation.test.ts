@@ -83,6 +83,16 @@ test("unsafe or unresolved migration plan never becomes an executable batch", ()
   bad.copyCandidates[0].destinationPath = jordanPath;
   assert.ok(assessHrLegacyBatchDryRun({ plan: bad, baseline: baseline(), current: baseline() })
     .issues.includes("candidate-mismatch"));
+  const missingCandidate = makePlan();
+  missingCandidate.copyCandidates.pop();
+  assert.ok(assessHrLegacyBatchDryRun({
+    plan: missingCandidate, baseline: baseline(), current: baseline(),
+  }).issues.includes("invalid-plan"));
+  const wrongId = makePlan();
+  wrongId.copyCandidates[0].recordId = "forged";
+  assert.ok(assessHrLegacyBatchDryRun({
+    plan: wrongId, baseline: baseline(), current: baseline(),
+  }).issues.includes("candidate-mismatch"));
   const limit = assessHrLegacyBatchDryRun({
     plan: makePlan(), baseline: baseline(), current: baseline(), maxBatchRecords: 401,
   });
