@@ -9,6 +9,7 @@ import {useCommerce} from "../../lib/commerce-context";
 import type {InventoryMovement} from "../../lib/inventory-ledger";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {navigateToRoute} from "../../lib/navigation-store";
+import {accessibleCreditNotes,accessibleReturnMovements} from "../../lib/returns-credits-scope";
 import {useWorkspace} from "../../lib/workspace-context";
 import type {Order} from "../../lib/types";
 
@@ -38,13 +39,8 @@ function useReturnRecords(){
   const {scope,currentUser}=useWorkspace();
   const {ledger}=useInventoryLedger();
   const orders=new Map(scope.orders.filter(o=>!o.testOnly).map(o=>[o.id,o]));
-  const visibleLots=new Set(scope.inventory.map(l=>l.id));
   const inventoryAllowed=canAccessPage(currentUser,"inventory");
-  const returns=ledger.movements.filter(m=>{
-    if(m.type!=="Return")return false;
-    if(m.relatedOrderId)return orders.has(m.relatedOrderId);
-    return inventoryAllowed&&visibleLots.has(m.lotId);
-  });
+  const returns=accessibleReturnMovements(ledger.movements,scope.orders,scope.inventory,inventoryAllowed);
   return {returns,orders,scope,ledger,inventoryAllowed};
 }
 export function SalesReturnsDirectory(){
@@ -116,7 +112,7 @@ function useCreditRecords(){
   const {commerce}=useCommerce();
   const visibleAccounts=new Set(scope.accounts.map(a=>a.id));
   const invoices=new Map(commerce.invoices.filter(i=>visibleAccounts.has(i.accountId)).map(i=>[i.id,i]));
-  const credits=commerce.credits.filter(c=>invoices.has(c.invoiceId));
+  const credits=accessibleCreditNotes(commerce.credits,commerce.invoices,scope.accounts);
   return {scope,commerce,invoices,credits};
 }
 export function CreditNotesDirectory(){
