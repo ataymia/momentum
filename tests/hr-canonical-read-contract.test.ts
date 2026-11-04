@@ -214,6 +214,18 @@ test("in-flight session revocation, role downgrade, manager reassignment and tar
   assert.deepEqual(managerResult, { ok: false, reason: "authority-changed" });
 });
 
+test("same-reference authority mutation during IO cannot bypass pinned pre-read fingerprint", async () => {
+  const shared = authority();
+  const result = await executeHrCanonicalReadReview(cmd(), {
+    readAuthority: async () => shared,
+    readCanonical: async () => {
+      shared.session!.epoch = 8;
+      return doc("leaveRequests", [leave]);
+    },
+  }, true);
+  assert.deepEqual(result, { ok: false, reason: "authority-changed" });
+});
+
 test("transport fails closed on denied/missing read and on exceptions without echoing payloads", async () => {
   const base = authority();
   const denied = await executeHrCanonicalReadReview(cmd(), {
