@@ -34,9 +34,10 @@ export function punchProblem(p:CorrectedPunch){
  return null;
 }
 function overlaps(data:WorkspaceData,userId:string,date:string,p:CorrectedPunch,excludeId?:string){
- if(!p.clockOut)return false;
+ const end=p.clockOut;
+ if(!end)return false;
  return data.timeEntries.some(e=>e.userId===userId&&e.date===date&&e.id!==excludeId&&
-   (!e.clockOut||clockMinutes(e.clockIn)<clockMinutes(p.clockOut)&&
+   (!e.clockOut||clockMinutes(e.clockIn)<clockMinutes(end)&&
      clockMinutes(p.clockIn)<clockMinutes(e.clockOut)));
 }
 function cardProcessed(payroll:PayrollState,card:Timecard){
