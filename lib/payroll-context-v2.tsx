@@ -64,7 +64,7 @@ export function PayrollProvider({children}:{children:ReactNode}){
     return{ok:true,id:preview.runId??preview.case.id};
   };
   const createRetroCase=(input:RetroInput)=>retroFeedback((state,clock)=>
-    proposeRetroCorrection(state,input,clock),"retro-case");
+    proposeRetroCorrection(state,input,clock,{data,hcm}),"retro-case");
   const reviewRetroCase=(id:string)=>retroFeedback((state,clock)=>reviewRetroCorrection(state,id,clock),"retro-review");
   const approveRetroCase=(id:string)=>retroFeedback((state,clock)=>approveRetroCorrection(state,id,clock),"retro-approval");
   const closeRetroRecovery=(id:string,reference:string)=>retroFeedback((state,clock)=>
