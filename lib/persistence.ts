@@ -4,6 +4,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { PLATFORM_META_DOCUMENT, type PersistenceScope } from "./firebase-access";
 import {recordPerformanceSample} from "./performance-diagnostics";
 import { HrShadowRuntimeAdapter } from "./hr-shadow-runtime-adapter";
+import { reviewChunkHydration } from "./chunk-hydration-review";
 import { planHrShadowReadPaths } from "./hr-shadow-read-compatibility";
 import {isTransientFirestoreFailure,mayDiscardJournal,nextFlushableKey,shouldScheduleSooner} from "./sync-queue-policy";
 import { FirestoreRequestError, commitFirestoreWrites, getFirestoreSnapshot, getFirestoreSnapshots, isFirestoreConflict, isFirestorePermissionDenied, type FirestoreWrite, type FirestoreSnapshot } from "./firebase-firestore-rest";
@@ -246,6 +247,8 @@ export class FirestoreBackend{
   // A write finishing after a newer local edit must never erase its recovery journal.
   private revisions=new Map<string,number>();
   private denied=new Set<string>();
+  /** Review-only fail-closed chunk domains; never publish partial manifest history. */
+  private chunkReviewBlocked=new Set<string>();
   private blockedKeys=new Map<string,string>();
   private metaVersions:Record<string,string>={};
   private timer:number|undefined;
@@ -292,20 +295,47 @@ export class FirestoreBackend{
 
   /** Fetch bounded user-shard documents named by chunk manifests. Direct document reads keep rules simple. */
   private async hydrateChunkShards(){
+    const expectedEpoch=this.hrShadow?.epoch;
+    const readable=this.hrShadow?new Set(this.readablePaths().keys()):null;
     const requested=new Map<string,DomainSpec>();
+    const manifests:{path:string;spec:DomainSpec;data:Record<string,unknown>;paths:string[]}[]=[];
     for(const [manifestPath,state] of this.docs){
       if(!state.data)continue;
       const parsed=parseDocPath(manifestPath);if(!parsed?.uid)continue;
+      // A previous role's manifest must not initiate a new privileged chunk fetch.
+      if(readable&&!readable.has(manifestPath))continue;
       const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)continue;
-      for(const shardPath of chunkManifestShardPaths(spec,manifestPath,state.data)){
+      if(!isChunkManifestPath(spec,manifestPath))continue;
+      const paths=chunkManifestShardPaths(spec,manifestPath,state.data);
+      if(this.hrShadow&&state.data.shardManifestVersion===1)
+        manifests.push({path:manifestPath,spec,data:state.data,paths});
+      for(const shardPath of paths){
         if(!this.docs.has(shardPath)&&!this.denied.has(shardPath))requested.set(shardPath,spec);
       }
     }
-    if(requested.size===0)return new Set<string>();
-    const snapshots=await this.readSnapshots([...requested.keys()]);
+    if(requested.size===0&&manifests.length===0)return new Set<string>();
+    const snapshots=requested.size?await this.readSnapshots([...requested.keys()]):[];
+    if(this.disposed||(this.hrShadow&&this.hrShadow.epoch!==expectedEpoch))return new Set<string>();
     const touched=new Set<string>();
+    if(this.hrShadow){
+      // Validate the WHOLE manifest, including already-cached chunks, before exposing any.
+      const all=new Map([...this.docs].map(([path,state])=>[path,{
+        path,exists:state.data!==null,data:state.data,updateTime:state.updateTime,
+      }]));
+      for(const snapshot of snapshots)all.set(snapshot.path,snapshot);
+      for(const manifest of manifests){
+        const checked=reviewChunkHydration(manifest.spec,manifest.path,manifest.data,
+          manifest.paths.map((path)=>all.get(path)).filter((item):item is FirestoreSnapshot=>Boolean(item)));
+        if(checked.ok)continue;
+        this.chunkReviewBlocked.add(manifest.spec.key);
+        this.denied.add(manifest.path);
+        this.cache.set(manifest.spec.key,null);emitKey(manifest.spec.key);
+        if(manifest.spec.id==="hcm")this.hrShadow.deny();
+      }
+    }
     for(const snapshot of snapshots){
       const spec=requested.get(snapshot.path);if(!spec)continue;
+      if(this.chunkReviewBlocked.has(spec.key))continue;
       if((snapshot as {denied?:boolean}).denied){this.denied.add(snapshot.path);continue;}
       this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
       touched.add(spec.key);
@@ -314,19 +344,23 @@ export class FirestoreBackend{
   }
 
   private assemble(spec:DomainSpec,overrides?:Map<string,Record<string,unknown>|null>){
+    if(this.hrShadow&&this.chunkReviewBlocked.has(spec.key))return null;
     const assembled=this.hrShadow&&spec.id==="hcm"?this.hrShadow.snapshot():assembleState(spec,this.docsFor(spec,overrides));
     return assembled?JSON.stringify(assembled):null;
   }
 
   async prime(){
+    const expectedShadowEpoch=this.hrShadow?.epoch;
     const paths=[...this.readablePaths().keys(),PLATFORM_META_DOCUMENT];
     const snapshots=await this.readSnapshots(paths);
+    if(this.disposed||(this.hrShadow&&this.hrShadow.epoch!==expectedShadowEpoch))return;
     for(const snapshot of snapshots){
       if((snapshot as {denied?:boolean}).denied){this.denied.add(snapshot.path);console.warn(`[momentum] Security Rules denied ${snapshot.path}; firestore.rules and lib/firestore-domains.ts disagree.`);continue;}
       if(snapshot.path===PLATFORM_META_DOCUMENT){this.metaVersions=this.versionsFrom(snapshot.data);continue;}
       this.docs.set(snapshot.path,{data:snapshot.data,updateTime:snapshot.updateTime});
     }
     await this.hydrateChunkShards();
+    if(this.disposed||(this.hrShadow&&this.hrShadow.epoch!==expectedShadowEpoch))return;
     if(this.hrShadow){
       const paths=[...this.readablePaths()].filter(([,spec])=>spec.id==="hcm").map(([path])=>path);
       const denied=paths.filter((path)=>this.denied.has(path));
