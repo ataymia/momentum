@@ -319,7 +319,7 @@ export class FirestoreBackend{
     const touched=new Set<string>();
     if(this.hrShadow){
       // Validate the WHOLE manifest, including already-cached chunks, before exposing any.
-      const all=new Map([...this.docs].map(([path,state])=>[path,{
+      const all=new Map<string,FirestoreSnapshot>([...this.docs].map(([path,state]):[string,FirestoreSnapshot]=>[path,{
         path,exists:state.data!==null,data:state.data,updateTime:state.updateTime,
       }]));
       for(const snapshot of snapshots)all.set(snapshot.path,snapshot);
