@@ -7,7 +7,7 @@ export function downloadCsv(filename:string, rows:ReadonlyArray<Record<string,un
   const cell=(value:unknown):string=>{
     if(value===undefined||value===null)return '""';
     let text=String(value);
-    if(/^\\s*[=+@\\-\\t\\r]/.test(text))text="'"+text;
+    if(/^[=+@-]/.test(text.trimStart()))text="'"+text;
     return '"'+text.replaceAll('"','""')+'"';
   };
   const csv="\uFEFF"+[columns.map(cell).join(","),...rows.map(row=>columns.map(key=>cell(row[key])).join(","))].join("\r\n");
