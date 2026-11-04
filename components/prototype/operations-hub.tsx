@@ -289,6 +289,7 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/people/payroll")return <PayrollWorkflowExperience/>;
+  if(path==="/people/new-hire")return <HrNewHireExperience/>;
   if(path==="/people/onboarding")return <HrOnboardingExperience/>;
   if(path==="/people/leave")return <HrTimeOffExperience/>;
   if(path==="/admin/accounts")return <AccountConsolidationReview/>;
