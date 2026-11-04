@@ -6,6 +6,7 @@ import {AlertTriangle,ArrowRight,CalendarCheck2,ClipboardCheck,Search,ShieldAler
 import {canAccessPage} from "../../lib/access";
 import {buildActionNotices,type ActionNotice} from "../../lib/action-center-policy-v2";
 import {orderDeliveryQuantity} from "../../lib/inventory-ledger";
+import {hasRecordedDeliveryPostingGap,hasRecordedRecipientAndInventoryEvidence} from "../../lib/work-review-policy";
 import {useAccounting} from "../../lib/accounting-context";
 import {useDelivery} from "../../lib/delivery-context";
 import {useFinance} from "../../lib/finance-context";
@@ -38,7 +39,7 @@ function LinkRow({item,user}:{item:WorkRow;user:WorkspaceUser}){
     <td>{item.category}</td><td>{item.state}</td><td>{date(item.date)}</td>
     <td>{allowed?<button type="button" className="prototype-link" onClick={open}>Open source<ArrowRight size={13}/></button>:"Not linked"}</td></tr>;
 }
-function NoticeTarget({notice,accountIds,orderIds}:{notice:ActionNotice;accountIds:Set<string>;orderIds:Set<string>}){
+function noticeTarget({notice,accountIds,orderIds}:{notice:ActionNotice;accountIds:Set<string>;orderIds:Set<string>}){
   if(!notice.page)return null;
   if(notice.category==="Approvals")return "/work/approvals";
   if(notice.page==="orders"&&notice.focus&&orderIds.has(notice.focus))return "/sales/orders/"+encodeURIComponent(notice.focus);
@@ -65,7 +66,7 @@ export function WorkExceptionsExperience(){
   const rows:WorkRow[]=actions.map(a=>({
     id:a.id,title:a.title,detail:a.detail,category:a.category,
     state:a.urgency==="Blocking"?"Blocking":"Due",date:a.occurredAt,
-    target:NoticeTarget({notice:a,accountIds,orderIds})??undefined,focus:a.focus,peopleTab:a.peopleTab,
+    target:noticeTarget({notice:a,accountIds,orderIds})??undefined,focus:a.focus,peopleTab:a.peopleTab,
   }));
   if(canAccessPage(currentUser,"inventory"))for(const lot of scope.inventory.filter(l=>l.status==="Quality hold"))
     rows.push({id:"quality-hold:"+lot.id,title:"Quality hold: "+lot.lotCode,
@@ -75,8 +76,8 @@ export function WorkExceptionsExperience(){
     for(const task of delivery.tasks.filter(t=>t.status==="Delivered")){
       const order=scope.orders.find(o=>o.id===task.orderId);
       if(!order)continue;
+      if(!hasRecordedDeliveryPostingGap(task,order,ledger))continue;
       const posted=orderDeliveryQuantity(ledger,order.id);
-      if(posted>=order.cases)continue;
       rows.push({id:"delivery-posting:"+task.id,title:"Delivery posting mismatch: "+order.number,
         detail:posted+" of "+order.cases+" ordered cases have recorded delivery postings",
         category:"Delivery",state:"Blocking",date:task.deliveredAt,
@@ -123,9 +124,7 @@ export function CompletedWorkExperience(){
     for(const task of delivery.tasks.filter(t=>t.status==="Delivered"&&Boolean(t.signature))){
       const order=orders.get(task.orderId);
       if(!order)continue;
-      const recipientEvidence=Boolean(task.signature?.strokes.length&&task.signature?.signedAt&&task.history.some(e=>e.type==="Delivered"&&e.actorId===task.signature?.capturedBy));
-      const posted=orderDeliveryQuantity(ledger,order.id);
-      if(!recipientEvidence||posted<order.cases)continue;
+      if(!hasRecordedRecipientAndInventoryEvidence(task,order,ledger))continue;
       rows.push({id:"delivery:"+task.id,title:"Delivery evidence: "+order.number,
         detail:order.cases+" cases posted and recipient signature recorded",
         category:"Delivery",state:"Evidence recorded",date:task.deliveredAt,
