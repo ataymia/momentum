@@ -14,7 +14,7 @@ const data=()=>({
 }) as unknown as WorkspaceData;
 const prepared=()=>{
  const d=data(),h=createHcmSeed(d),p=createPayrollSeed();
- h.compensation=[{id:"rate-1",userId:"employee-1",basis:"Hourly",rate:20,effectiveDate:"2026-10-01",status:"Active"}];
+ h.compensation=[{id:"rate-1",userId:"employee-1",basis:"Hourly",rate:20,effectiveDate:"2026-10-01",status:"Active",reason:"Test-only approved wage",approvedBy:"admin-1",createdAt:"2026-10-01T12:00:00.000Z"}];
  p.payGroups=[{id:"weekly",name:"Weekly",frequency:"Weekly",overtimeThresholdHours:40,active:true}];
  p.employees=[{userId:"employee-1",payGroupId:"weekly",paymentMethod:"ACH",paymentTokenLabel:"****1234",active:true}];
  p.withholdingProfiles=[{userId:"employee-1",federalPercent:10,statePercent:5,localPercent:0,
