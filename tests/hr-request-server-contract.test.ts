@@ -124,6 +124,8 @@ test("workflow approval is a review flag, not an employment, payroll or complian
 test("invalid commands, missing return instructions and ambiguous request identifiers fail closed", () => {
   for (const change of [
     { commandId: "../unsafe" }, { requestId: "../unsafe" }, { decidedAt: "invalid" },
+    { commandId: null as unknown as string }, { commandId: undefined as unknown as string },
+    { requestId: null as unknown as string }, { requestId: undefined as unknown as string },
     { note: "x".repeat(2001) }, { expectedRevision: -1 },
     { decision: "Paid" as HrDecisionCommand["decision"] },
     { kind: "payroll" as HrDecisionCommand["kind"] },
