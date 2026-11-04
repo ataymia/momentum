@@ -91,6 +91,14 @@ test("authoritative active account overrides stale local separation without expo
   assert.equal(hrEmployeeDetail({ ...base, viewer: former, employeeId: "former", accessRecords: { former: { accountState: "Separated" } } }), null);
 });
 
+test("explicit Firebase suspension overrides stale active directory and blocks HR drilldowns", () => {
+  const base = setup();
+  assert.equal(hrEmployeeDetail({ ...base, viewer: rep, employeeId: "rep", accessRecords: { rep: { accountState: "Suspended" } } }), null);
+  assert.equal(hrEmployeeDetail({ ...base, viewer: admin, employeeId: "rep", accessRecords: { rep: { accountState: "Suspended" } } }), null);
+  assert.deepEqual(hrOnboardingQueue({ ...base, viewer: admin, accessRecords: { admin: { accountState: "Suspended" } } }), []);
+  assert.equal(hrOnboardingCaseDetail({ ...base, viewer: admin, caseId: "case-rep", accessRecords: { admin: { accountState: "Suspended" } } }), null);
+});
+
 test("HR deep links map to protected prototype routes; legacy onboarding route remains", () => {
   assert.equal(pageForPath("/people/me"), "people");
   assert.equal(pageForPath("/people/employees/opaque-id"), "people");
