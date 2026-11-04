@@ -18,6 +18,7 @@ import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, Inven
 import {PackagesDirectory,ShipmentsDirectory,ShipmentDetail,DeliveryOperationsDirectory} from "./fulfillment-experience";
 import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
 import {ActionCenterExperience} from "./action-center-experience";
+import {WorkspaceHome} from "./workspace-home";
 import type { Order } from "../../lib/types";
 
 function Empty({ children }: { children: ReactNode }) {
@@ -277,6 +278,7 @@ export function PrototypeOperationsHub(){
   const path=useNavigationRoute();const {currentUser}=useWorkspace();
   if(!canVisitRoute(currentUser,path))return <Empty>You do not have permission to view this module.</Empty>;
   const segments=path.split("/").filter(Boolean);
+  if(path==="/")return <WorkspaceHome/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/people/payroll")return <PayrollExperience/>;
