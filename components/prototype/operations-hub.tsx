@@ -11,7 +11,8 @@ import { useWorkspace } from "../../lib/workspace-context";
 import { TerritoryPanel } from "../crm/territory-panel";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
-import { PeopleExperience, PayrollExperience } from "./hr-payroll-experiences";
+import { PeopleExperience } from "./hr-payroll-experiences";
+import {PayrollWorkflowExperience} from "./payroll-workflow-experience";
 import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
@@ -283,7 +284,7 @@ export function PrototypeOperationsHub(){
   if(path==="/")return <WorkspaceHome/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   if(path==="/people")return <PeopleExperience/>;
-  if(path==="/people/payroll")return <PayrollExperience/>;
+  if(path==="/people/payroll")return <PayrollWorkflowExperience/>;
   if(path==="/admin/accounts")return <AccountConsolidationReview/>;
   if(path==="/admin/employee-profiles")return <div><Heading title="Employee Profiles" description="Preserved administrator-only employee record controls."/><AdminEmployeeProfiles/></div>;
   if(path==="/admin/employees")return <div><Heading title="Employee Directory" description="Administrator view of active staff."/><EmployeeDirectory/></div>;
