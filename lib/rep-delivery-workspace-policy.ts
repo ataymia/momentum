@@ -31,3 +31,18 @@ export function repDeliveryProofRecorded(record:RepDeliveryReceipt|null,orderId:
     record.orderId===orderId&&record.taskStatus==="Delivered"&&
     ["Delivered","Paid"].includes(record.orderStatus??""));
 }
+
+/** Prototype actions are disabled by default, even for signed-in production users.
+ * An isolated Firebase staging project must be explicitly selected before QA.
+ * This is a UI guard, not a substitute for the server's existing authorization.
+ */
+export function canExecuteRepDeliveryReviewMutation(input:{
+  enabled:boolean;
+  currentProjectId?:string;
+  approvedStagingProjectId?:string;
+  persistenceMode:"local"|"firestore";
+}):boolean{
+  return input.enabled===true&&input.persistenceMode==="firestore"&&
+    Boolean(input.approvedStagingProjectId?.trim())&&
+    input.currentProjectId===input.approvedStagingProjectId;
+}
