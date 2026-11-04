@@ -9,6 +9,8 @@
 import {useMemo,useState} from "react";
 import {ArrowLeft,ArrowUpDown,ExternalLink,Search} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
+import {InvoicePrintCenter} from "../finance/invoice-print-center";
+import {downloadCsv} from "../../lib/browser-export";
 import {useCommerce} from "../../lib/commerce-context";
 import {
   arAgingBucket,computedInvoiceStatus,invoiceBalance,invoicePaidAmount,
@@ -164,6 +166,7 @@ export function OrderDetail({id}:{id:string}){
 export function InvoiceDirectory(){
   const {scope}=useWorkspace();const {commerce}=useCommerce();
   const [query,setQuery]=useState(""),[status,setStatus]=useState("all"),[from,setFrom]=useState(""),[to,setTo]=useState("");
+  const [showPrint,setShowPrint]=useState(false);
   const sort=useSort("issuedAt");
   const allowedAccounts=new Set(scope.accounts.map(a=>a.id));
   const accountById=new Map(scope.accounts.map(a=>[a.id,a]));
@@ -184,6 +187,7 @@ export function InvoiceDirectory(){
   return <div><Title title="Invoices" detail="Individual customer receivables, invoice documents and payment allocations. Source records remain unchanged."/>
     <CatalogSummary data={[{label:"Visible invoice records",value:rows.length},{label:"Total recorded invoice amount",value:money(rows.filter(x=>x.status!=="Void").reduce((n,x)=>n+x.invoice.total,0))},{label:"Calculated unpaid balance",value:money(rows.filter(x=>x.status!=="Void").reduce((n,x)=>n+x.balance,0))}]}/>
     <section className="prototype-panel"><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statusOptions={options} from={from} setFrom={setFrom} to={to} setTo={setTo} searchLabel="Search invoice, order or customer"/>
+      <div className="prototype-controls-right"><button type="button" onClick={()=>setShowPrint(value=>!value)}>{showPrint?"Close print center":"Print / Save PDF (single or bulk)"}</button><button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-invoices-visible.csv",rows.map(x=>({invoice:x.invoice.number,customer:x.customer,order:x.order?.number??"",recordedDate:x.invoice.issuedAt,dueDate:x.invoice.dueDate??"",total:x.invoice.total,unpaid:x.balance,status:x.status,terms:x.invoice.terms})),["invoice","customer","order","recordedDate","dueDate","total","unpaid","status","terms"])}>Export visible CSV ({rows.length})</button></div>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
       {([["number","Invoice"],["customer","Customer"],["order","Order"],["issuedAt","Recorded date"],["dueDate","Due date"],["total","Amount"],["balance","Unpaid"],["status","Status"]] as const).map(([key,label])=><Header key={key} name={label} selected={sort.field===key} direction={sort.direction} onClick={()=>sort.select(key)}/>)}
       </tr></thead><tbody>{rows.map(x=><tr key={x.invoice.id}>
@@ -194,6 +198,7 @@ export function InvoiceDirectory(){
       {!rows.length&&<Empty text="No invoices match your filters."/>}
       <p className="prototype-note">Some legacy commerce records were generated from order state; a recorded invoice alone does not prove delivery, issuance, or that a customer received an invoice. These are existing records, not new invoices created by this screen.</p>
     </section>
+    {showPrint&&<section className="prototype-panel"><InvoicePrintCenter allowedInvoiceIds={rows.map(x=>x.invoice.id)} title="Print filtered invoices" description="Select individual invoices or print every active invoice in your filtered list. Use browser Save as PDF to download printable copies."/></section>}
   </div>;
 }
 
@@ -237,6 +242,7 @@ export function InvoiceDetail({id}:{id:string}){
       {credits.length>0&&<><h3>Credit records</h3>{credits.map(c=><div key={c.id} className="prototype-work-list"><span>{c.reason} • {c.status}</span><strong>{money(c.amount)}</strong></div>)}</>}
       <p className="prototype-note">Hosted payment links are not active. This preview does not charge customers, record funds, or send emails.</p>
     </section>
+    <section className="prototype-panel"><InvoicePrintCenter allowedInvoiceIds={[invoice.id]} title="Print or save this invoice" description="Uses the original authorized invoice layout and source records. Browser printing supports Save as PDF."/></section>
   </div>;
 }
 
