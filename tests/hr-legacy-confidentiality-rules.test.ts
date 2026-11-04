@@ -25,8 +25,14 @@ const privateFields = [
 ];
 const pattern = /(match \/hcm\/fields\/\{field\} \{\s*allow get, list: if )([^\n]+)(;)/;
 assert.match(sourceRules, pattern, "generated HCM shared-field rule must be present");
-const shadowRules = sourceRules.replace(pattern, (_match, prefix: string, predicate: string, end: string) =>
-  `${prefix}(${predicate}) && (!(field in [${privateFields.map((field) => `'${field}'`).join(", ")}]) || isAdmin())${end}`);
+const guard = (predicate: string) =>
+  "(" + predicate + ") && (!(field in [" + privateFields.map((field) => "'" + field + "'").join(", ") + "]) || isAdmin())";
+const shadowReadRules = sourceRules.replace(pattern,
+  (_match, prefix: string, predicate: string, end: string) => prefix + guard(predicate) + end);
+const writePattern = /(match \/hcm\/fields\/\{field\} \{\s*allow get, list: if [^\n]+;\s*allow write: if )([^\n]+)(;)/;
+assert.match(shadowReadRules, writePattern, "generated HCM shared write rule must be present");
+const shadowRules = shadowReadRules.replace(writePattern,
+  (_match, prefix: string, predicate: string, end: string) => prefix + guard(predicate) + end);
 assert.notEqual(shadowRules, sourceRules, "shadow policy must actually differ from current rules");
 
 type Environment = RulesTestEnvironment;
@@ -136,7 +142,11 @@ test("SHADOW leaves manager access to a verified direct report's shard unchanged
   await assertFails(getDoc(doc(contextDb(shadow, "uid-manager"), "userDomains/uid-jordan/hcm/documents")));
 });
 
-test("SHADOW does not grant non-admin writes to sensitive shared fields", async () => {
+test("CURRENT manager can write shared private HCM fields in emulator ONLY", async () => {
+  await assertSucceeds(setDoc(doc(contextDb(current, "uid-manager"), "domains/hcm/fields/compensationChanges"), { items: [] }));
+});
+
+test("SHADOW blocks non-admin writes to sensitive shared fields", async () => {
   const target = "domains/hcm/fields/documents";
   for (const uid of ["uid-alex", "uid-manager", "uid-marketing", "uid-separated"]) {
     await assertFails(setDoc(doc(contextDb(shadow, uid), target), { items: [] }));
