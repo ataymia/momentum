@@ -70,7 +70,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   { label: "Human Resources", entries: [
     { label: "HR Overview", path: "/people", permission: "people", state: "prototype" },
     { label: "Employee Directory", path: "/people/directory", permission: "employees", state: "prototype" },
-    { label: "New Hire", path: "/people/new-hire", permission: "newHire", state: "existing" },
+    { label: "New Hire", path: "/people/new-hire", permission: "newHire", state: "prototype" },
     { label: "Onboarding", path: "/people/onboarding", permission: "onboarding", state: "prototype" },
     { label: "Onboarding Workflow", path: "/people/onboarding/workflow", permission: "onboarding", state: "existing" },
     { label: "Payroll", path: "/people/payroll", permission: "payroll", state: "prototype" },
