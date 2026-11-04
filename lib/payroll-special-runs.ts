@@ -32,6 +32,7 @@ export function createSpecialPayDraft(
 ):SpecialDraftResult{
  if(!clock.id?.trim()||!clock.actorId?.trim()||Number.isNaN(Date.parse(clock.at)))
    return{ok:false,reason:"Authenticated actor, draft identifier and timestamp required."};
+ if(state.runs.some(run=>run.id===clock.id))return{ok:false,reason:"This pay-run identifier is already in use."};
  if(!validPeriod(input))return{ok:false,reason:"Payroll period and payday are invalid."};
  if(!data.users.some(u=>u.id===input.employeeId&&u.role!=="Customer"))
    return{ok:false,reason:"Employee identity is not found."};
@@ -45,8 +46,8 @@ export function createSpecialPayDraft(
    return{ok:false,reason:"Off-cycle earnings require an active or on-leave employee. Use Final pay for separation."};
  if(input.kind==="Final pay"&&
    (employment.status!=="Separated"||!isValidCalendarDateKey(input.separationDate??"")||
-    employment.separationDate!==input.separationDate||input.separationDate!<input.periodStart||
-    input.separationDate!>input.periodEnd))
+    employment.separationDate!==input.separationDate||(input.separationDate??"")<input.periodStart||
+    (input.separationDate??"")>input.periodEnd))
    return{ok:false,reason:"Final pay must match HR's verified separation date within the payroll period."};
  const sourceTimecardIds=[...new Set(input.sourceTimecardIds??[])];
  if((input.sourceTimecardIds??[]).length!==sourceTimecardIds.length)
