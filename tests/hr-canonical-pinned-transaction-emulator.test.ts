@@ -228,6 +228,9 @@ test("post-transaction manager reassignment and suspension deny without retry", 
   assert.deepEqual(await executeHrCanonicalPinnedReadReview(command(), reassigned.result, true),
     { ok: false, reason: "authority-changed" });
   assert.equal(reassigned.attempts(), 1);
+  // The second scenario must begin with an authorized manager relationship.
+  await patch("userAccess/rep", { managerId: "manager", updatedAt: at });
+  await patch(directoryPath("rep"), { managerId: "manager" });
   const suspended = transport("manager", {
     afterTransaction: () => patch("userAccess/manager",
       { accountState: "Suspended", updatedAt: "v3" }),
