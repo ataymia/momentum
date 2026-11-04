@@ -1,7 +1,7 @@
 "use client";
 
 import {useState} from "react";
-import {Download,FileCheck2,Landmark,ShieldAlert} from "lucide-react";
+import {Download,Landmark,ShieldAlert} from "lucide-react";
 import {usePayroll} from "../../lib/payroll-context";
 import {useWorkspace} from "../../lib/workspace-context";
 import {arizonaDateKey} from "../../lib/date-time";
