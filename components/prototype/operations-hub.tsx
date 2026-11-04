@@ -15,6 +15,7 @@ import { PeopleExperience } from "./hr-payroll-experiences";
 import {PayrollWorkflowExperience} from "./payroll-workflow-experience";
 import {HrOnboardingExperience} from "./hr-onboarding-experience";
 import {HrPersonnelDirectory,HrPersonnelRecord} from "./hr-personnel-experience";
+import {HrTimeOffExperience} from "./hr-time-off-experience";
 import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
@@ -288,6 +289,7 @@ export function PrototypeOperationsHub(){
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/people/payroll")return <PayrollWorkflowExperience/>;
   if(path==="/people/onboarding")return <HrOnboardingExperience/>;
+  if(path==="/people/leave")return <HrTimeOffExperience/>;
   if(path==="/admin/accounts")return <AccountConsolidationReview/>;
   if(path==="/admin/employee-profiles")return <HrPersonnelDirectory/>;
   if(path==="/admin/employee-profiles/workflow")return <div><Heading title="Secure personnel editor" description="Existing audited editing controls retained during redesign." back="/admin/employee-profiles"/><AdminEmployeeProfiles/></div>;
