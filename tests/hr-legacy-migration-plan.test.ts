@@ -117,6 +117,17 @@ test("private profiles without record IDs retain exactly one stable owner key", 
   assert.equal(result.copyCandidates[0]?.recordId, "profile:uid-alex");
 });
 
+test("private profiles with conflicting legacy IDs never create two profiles", () => {
+  const result = plan("privateProfiles", [
+    { id: "legacy-a", userId: "uid-alex", updatedAt: "2026-11-03" },
+    { id: "legacy-b", userId: "uid-alex", updatedAt: "2026-11-04" },
+  ]);
+  assert.equal(result.copyCandidates.length, 0);
+  assert.deepEqual(result.quarantine.map((entry) => entry.reason), [
+    "duplicate-conflict", "duplicate-conflict",
+  ]);
+});
+
 test("compensation records remain review-only even when owner is valid", () => {
   const result = plan("compensation", [{ id: "rate-1", userId: "uid-alex", rate: 0 }]);
   assert.equal(result.copyCandidates.length, 1);
