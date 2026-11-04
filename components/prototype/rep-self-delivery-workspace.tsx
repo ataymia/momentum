@@ -63,7 +63,7 @@ function RepDirectory(){
       </div>
       {!rows.length&&<p className="rep-delivery-empty">No orders match these filters. Only approved or later-stage orders owned by you appear here. Reassignment or server authorization may still restrict an order.</p>}
     </section>
-    <p className="rep-delivery-footnote"><ShieldCheck size={15}/> No order, inventory or delivery ledger writes occur when browsing. Each action requires independent authorization and confirmation from Momentum's server.</p>
+    <p className="rep-delivery-footnote"><ShieldCheck size={15}/> No order, inventory or delivery ledger writes occur when browsing. Each action requires independent authorization and confirmation from Momentum&apos;s server.</p>
   </div>;
 }
 
@@ -185,7 +185,7 @@ function RepDetail({order}:{order:Order}){
     {completed&&<section className="rep-delivery-panel rep-delivery-complete">
       <CheckCircle2 size={28}/><div><h2>Delivery recorded and verified</h2><p>The server confirms the signed task and recorded inventory posting. Invoice delivery and payment settlement are separate workflows.</p></div>
     </section>}
-    {!completed&&!step&&!checking&&!error&&<section className="rep-delivery-panel"><p className="rep-delivery-empty">No authorized next step is available from the server's current order and delivery states. Refresh or ask Operations to review the record. Do not move stock based on a local status.</p></section>}
+    {!completed&&!step&&!checking&&!error&&<section className="rep-delivery-panel"><p className="rep-delivery-empty">No authorized next step is available from the server&apos;s current order and delivery states. Refresh or ask Operations to review the record. Do not move stock based on a local status.</p></section>}
     <section className="rep-delivery-panel rep-delivery-support">
       <h2>Delivery exception or reconciliation needed?</h2>
       <p>Pause the delivery transition if cases, custody, customer confirmation or the cloud record do not match. Capture the issue and contact Operations. This page does not override a lock, record a cash payment, or manufacture delivery proof.</p>
