@@ -7,6 +7,7 @@ import { useWorkspace } from "../../lib/workspace-context";
 import {usePayroll} from "../../lib/payroll-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {momentumStorage} from "../../lib/persistence";
+import {connectedTimecardCorrectionEnabled,newTimecardCorrectionId,submitTrustedTimecardCorrection,type TrustedTimecardRequest} from "../../lib/timecard-trusted-client";
 import {consumedTimecards} from "../../lib/payroll-engine";
 import type { TimeEntry } from "../../lib/types";
 import { RecordHistory } from "../audit/record-history";
@@ -21,12 +22,17 @@ export function TimecardRecord({timecardId,history=true}:{timecardId:string;hist
   const {data,currentUser,correctTimeEntry,adminAmendTimeEntry,adminInsertMissedPunch}=useWorkspace();
   const {payroll}=usePayroll();
   const runtime=useRuntimeMode();const adminDemo=runtime.isDemo&&momentumStorage.mode()==="local";
+  const connectedAdmin=!runtime.isDemo&&connectedTimecardCorrectionEnabled&&momentumStorage.mode()==="firestore";
   const {hcm}=useHcm();
   const [editingId,setEditingId]=useState<string|null>(null);
   const [adding,setAdding]=useState(false);
   const [newDate,setNewDate]=useState("");
   const [form,setForm]=useState<CorrectionForm>(blank);
   const [error,setError]=useState("");
+  const [notice,setNotice]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [correctionRequestId,setCorrectionRequestId]=useState("");
+  const [expectedBefore,setExpectedBefore]=useState<TrustedTimecardRequest["expectedBefore"]>();
   const card=data.timecards.find((item)=>item.id===timecardId);
   if(!card)return <div className="review-empty"><AlertTriangle size={24}/><h3>Timecard not found</h3><p>The source record is no longer available in this workspace.</p></div>;
   const employee=data.users.find((user)=>user.id===card.userId);
@@ -45,11 +51,11 @@ export function TimecardRecord({timecardId,history=true}:{timecardId:string;hist
   const consumed=consumedTimecards(payroll).has(card.id);
   const admin=currentUser?.role==="Administrator";
   const canCorrect=Boolean(!consumed&&currentUser&&
-    ((admin&&adminDemo)||(currentUser.id===card.userId&&(card.status==="Returned"||card.status==="Open"))));
+    ((admin&&(adminDemo||connectedAdmin))||(currentUser.id===card.userId&&(card.status==="Returned"||card.status==="Open"))));
   const editing=entries.find((entry)=>entry.id===editingId);
-  const openCorrection=(entry:TimeEntry)=>{setAdding(false);setEditingId(entry.id);setError("");setForm({clockIn:entry.clockIn,mealStart:entry.mealStart??"",mealEnd:entry.mealEnd??"",clockOut:entry.clockOut??"",breakMinutes:String(entry.breakMinutes),reason:""});};
-  const openMissing=()=>{setEditingId(null);setAdding(true);setNewDate(card.weekStart);setError("");setForm(blank);};
-  const saveCorrection=()=>{
+  const openCorrection=(entry:TimeEntry)=>{setAdding(false);setEditingId(entry.id);setError("");setNotice("");setCorrectionRequestId(newTimecardCorrectionId());setExpectedBefore({clockIn:entry.clockIn,clockOut:entry.clockOut,mealStart:entry.mealStart,mealEnd:entry.mealEnd,breakMinutes:entry.breakMinutes});setForm({clockIn:entry.clockIn,mealStart:entry.mealStart??"",mealEnd:entry.mealEnd??"",clockOut:entry.clockOut??"",breakMinutes:String(entry.breakMinutes),reason:""});};
+  const openMissing=()=>{setEditingId(null);setAdding(true);setNewDate(card.weekStart);setError("");setNotice("");setCorrectionRequestId(newTimecardCorrectionId());setExpectedBefore(undefined);setForm(blank);};
+  const saveCorrection=async()=>{
     if(!editing&&!adding)return;
     if(!form.reason.trim()){setError("Explain why this punch is being corrected.");return;}
     if(!form.clockIn){setError("Clock-in time is required.");return;}
@@ -62,14 +68,35 @@ export function TimecardRecord({timecardId,history=true}:{timecardId:string;hist
     if(same){setError("Change at least one time or break value before saving.");return;}
     const values={clockIn:form.clockIn,mealStart:form.mealStart||undefined,
       mealEnd:form.mealEnd||undefined,clockOut:form.clockOut||undefined,breakMinutes};
-    if(admin){
+    if(admin&&connectedAdmin){
+      if(!form.clockOut){setError("Connected corrections require a verified clock-out.");return;}
+      if(saving)return;
+      const request:TrustedTimecardRequest={
+        requestId:correctionRequestId||newTimecardCorrectionId(),
+        action:adding?"add_shift":"amend",targetUid:card.userId,cardId:card.id,
+        entryId:editing?.id,date:adding?newDate:editing?.date,
+        reason:form.reason.trim(),expectedBefore:adding?undefined:expectedBefore,
+        punch:{clockIn:form.clockIn,clockOut:form.clockOut,breakMinutes,
+          mealStart:form.mealStart||undefined,mealEnd:form.mealEnd||undefined},
+      };
+      setSaving(true);
+      try{
+        const confirmed=await submitTrustedTimecardCorrection(request);
+        setNotice(confirmed.refreshed?"Correction saved on the server. Employee re-attestation required.":
+          confirmed.refreshWarning??"Server confirmed the correction. Refresh your workspace.");
+      }catch(problem){
+        setError(problem instanceof Error?problem.message:"Server correction failed.");
+        return;
+      }finally{setSaving(false);}
+    }else if(admin){
       const result=adding?adminInsertMissedPunch(card.userId,card.id,newDate,values,form.reason.trim()):
         adminAmendTimeEntry(editing!.id,values,form.reason.trim());
       if(!result.ok){setError(result.error??"Correction could not be saved.");return;}
+      setNotice("Demo timecard corrected. Ask the employee to re-attest the updated week.");
     }else if(editing){
       correctTimeEntry(editing.id,values,form.reason.trim());
     }
-    setEditingId(null);setAdding(false);setForm(blank);setError("");
+    setEditingId(null);setAdding(false);setForm(blank);setError("");setCorrectionRequestId("");
   };
   return <div className="timecard-record">
     <section className="timecard-record__summary">
@@ -83,12 +110,13 @@ export function TimecardRecord({timecardId,history=true}:{timecardId:string;hist
     {lastResubmission?.reason&&card.status!=="Returned"&&<div className="timecard-resubmit-note"><CheckCircle2 size={17}/><div><strong>Employee resubmission note</strong><p>{lastResubmission.reason}</p><small>{formatDate(lastResubmission.at,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})}</small></div></div>}
     <div className="timecard-record__checks"><div><CheckCircle2 size={16}/><span>Employee attestation</span><strong>{card.status==="Returned"?"Required again":card.attested?"Complete":"Required"}</strong></div><div><Clock3 size={16}/><span>Open or incomplete punches</span><strong>{incomplete.length}</strong></div><div><FileCheck2 size={16}/><span>Manual corrections</span><strong>{corrected.length}</strong></div></div>
     {consumed&&<div className="timecard-return-banner"><AlertTriangle size={18}/><div><strong>Payroll processing lock</strong><p>This timecard is already included in a payroll run. Do not change the original punch; create an approved payroll adjustment instead.</p></div></div>}
-    {admin&&!adminDemo&&<p className="form-hint">Connected-timecard corrections are read-only until the server-side payroll lock and transaction are verified.</p>}
-    {admin&&adminDemo&&!consumed&&<div className="request-actions"><Button size="sm" icon={<Pencil size={14}/>} onClick={openMissing}>Add missed shift / punch</Button><span>Edits return the timecard for employee review and approval again.</span></div>}
+    {admin&&!adminDemo&&!connectedAdmin&&<p className="form-hint">Connected-timecard corrections remain read-only until both the server and client release gates are approved.</p>}
+    {notice&&<p role="status" className="form-notice">{notice}</p>}
+    {admin&&(adminDemo||connectedAdmin)&&!consumed&&<div className="request-actions"><Button size="sm" icon={<Pencil size={14}/>} onClick={openMissing}>Add missed shift / punch</Button><span>Edits return the timecard for employee review and approval again.</span></div>}
     <div className="record-review__table-wrap"><table className="record-review__table timecard-record__table"><thead><tr><th>Date</th><th>Clock in</th><th>Meal</th><th>Clock out</th><th>Hours</th><th>Source</th><th>Note</th>{canCorrect&&<th/>}</tr></thead><tbody>{entries.map((entry)=><tr key={entry.id}><td>{formatDate(entry.date,{weekday:"short",month:"short",day:"numeric"})}</td><td>{entry.clockIn}</td><td>{entry.mealStart&&entry.mealEnd?`${entry.mealStart}–${entry.mealEnd}`:`${entry.breakMinutes} min`}</td><td>{entry.clockOut??"Missing"}</td><td>{hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes).toFixed(2)}</td><td>{entry.source}</td><td>{entry.note??(entry.corrections?.length?`${entry.corrections.length} correction${entry.corrections.length===1?"":"s"}`:"—")}</td>{canCorrect&&<td><Button size="sm" variant="ghost" icon={<Pencil size={13}/>} onClick={()=>openCorrection(entry)}>Correct</Button></td>}</tr>)}</tbody></table></div>
     {correctionRows.length>0&&<div className="timecard-correction-history"><h4>Correction history</h4>{correctionRows.map(({entry,correction,index})=><article key={`${entry.id}-${correction.at}-${index}`}><div><strong>{formatDate(entry.date,{weekday:"short",month:"short",day:"numeric"})}</strong><p>{correction.reason}</p></div><small>Before: {correction.before.clockIn} · {correction.before.mealStart&&correction.before.mealEnd?`${correction.before.mealStart}–${correction.before.mealEnd}`:`${correction.before.breakMinutes} min break`} · {correction.before.clockOut??"missing clock-out"}<br/>{formatDate(correction.at,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})} · {data.users.find((user)=>user.id===correction.by)?.name??"Employee"}</small></article>)}</div>}
     <div className="timecard-record__decision"><div><small>Submitted</small><strong>{card.submittedAt?formatDate(card.submittedAt,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}):"Not submitted"}</strong></div><div><small>Manager decision</small><strong>{card.status==="Manager approved"||card.status==="Payroll ready"?`${approver?.name??"Manager"} approved`:card.status==="Returned"?"Returned for correction":"Pending"}</strong></div></div>
     {history&&<RecordHistory entityType="Workspace.timecards" entityId={card.id} limit={10}/>} 
-    <Modal open={Boolean(editing)||adding} title={adding?"Add a verified missed shift":editing?`Correct ${formatDate(editing.date,{weekday:"long",month:"short",day:"numeric"})}`:"Correct time entry"} description="Corrections are preserved with the prior values, employee, timestamp, and reason." onClose={()=>{setEditingId(null);setAdding(false);setError("")}} footer={<><Button variant="ghost" onClick={()=>{setEditingId(null);setAdding(false);setError("")}}>Cancel</Button><Button onClick={saveCorrection}>Save correction</Button></>}><div className="form-grid">{adding&&<Field label="Shift date"><input type="date" min={card.weekStart} max={card.weekEnd} value={newDate} onChange={event=>setNewDate(event.target.value)}/></Field>}<Field label="Clock in"><input type="time" value={form.clockIn} onChange={(event)=>setForm({...form,clockIn:event.target.value})}/></Field><Field label="Clock out"><input type="time" value={form.clockOut} onChange={(event)=>setForm({...form,clockOut:event.target.value})}/></Field><Field label="Meal start"><input type="time" value={form.mealStart} onChange={(event)=>setForm({...form,mealStart:event.target.value})}/></Field><Field label="Meal end"><input type="time" value={form.mealEnd} onChange={(event)=>setForm({...form,mealEnd:event.target.value})}/></Field><Field label="Break minutes"><input type="number" min="0" step="1" value={form.breakMinutes} onChange={(event)=>setForm({...form,breakMinutes:event.target.value})}/></Field><Field label="Reason for correction" className="field--full"><textarea rows={3} value={form.reason} onChange={(event)=>setForm({...form,reason:event.target.value})} placeholder="What was wrong and what was corrected?"/></Field>{error&&<div className="form-callout field--full"><AlertTriangle size={16}/><p>{error}</p></div>}</div></Modal>
+    <Modal open={Boolean(editing)||adding} title={adding?"Add a verified missed shift":editing?`Correct ${formatDate(editing.date,{weekday:"long",month:"short",day:"numeric"})}`:"Correct time entry"} description="Corrections are preserved with the prior values, employee, timestamp, and reason." onClose={()=>{setEditingId(null);setAdding(false);setError("")}} footer={<><Button variant="ghost" onClick={()=>{setEditingId(null);setAdding(false);setError("")}}>Cancel</Button><Button disabled={saving} onClick={saveCorrection}>{saving?"Saving to secure server…":"Save correction"}</Button></>}><div className="form-grid">{adding&&<Field label="Shift date"><input type="date" min={card.weekStart} max={card.weekEnd} value={newDate} onChange={event=>setNewDate(event.target.value)}/></Field>}<Field label="Clock in"><input type="time" value={form.clockIn} onChange={(event)=>setForm({...form,clockIn:event.target.value})}/></Field><Field label="Clock out"><input type="time" value={form.clockOut} onChange={(event)=>setForm({...form,clockOut:event.target.value})}/></Field><Field label="Meal start"><input type="time" value={form.mealStart} onChange={(event)=>setForm({...form,mealStart:event.target.value})}/></Field><Field label="Meal end"><input type="time" value={form.mealEnd} onChange={(event)=>setForm({...form,mealEnd:event.target.value})}/></Field><Field label="Break minutes"><input type="number" min="0" step="1" value={form.breakMinutes} onChange={(event)=>setForm({...form,breakMinutes:event.target.value})}/></Field><Field label="Reason for correction" className="field--full"><textarea rows={3} value={form.reason} onChange={(event)=>setForm({...form,reason:event.target.value})} placeholder="What was wrong and what was corrected?"/></Field>{error&&<div className="form-callout field--full"><AlertTriangle size={16}/><p>{error}</p></div>}</div></Modal>
   </div>;
 }
