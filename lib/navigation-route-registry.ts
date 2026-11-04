@@ -281,7 +281,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
-  if(clean==="/people/me"||clean==="/people/onboarding/review"||clean.startsWith("/people/employees/")||clean.startsWith("/people/onboarding/cases/"))return true;
+  if(clean==="/people/me"||clean==="/people/requests"||clean.startsWith("/people/requests/")||clean==="/people/onboarding/review"||clean.startsWith("/people/employees/")||clean.startsWith("/people/onboarding/cases/"))return true;
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
   if (clean.startsWith("/crm/self-delivery/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
   const entry = routeEntry(clean);
