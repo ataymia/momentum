@@ -14,7 +14,7 @@ const data=()=>({
  timecards:[{id:"card-1",userId:"worker",weekStart:"2026-10-26",weekEnd:"2026-11-01",status:"Manager approved",submittedAt:"2026-11-02T10:00:00.000Z",approvedAt:"2026-11-03T10:00:00.000Z",approverId:"admin",attested:true}],
  timeEntries:[{id:"entry-1",userId:"worker",date:"2026-10-27",clockIn:"08:00",clockInAt:"2026-10-27T15:00:00.000Z",clockOut:"17:00",clockOutAt:"2026-10-28T00:00:00.000Z",breakMinutes:30,source:"Web clock"}],
  approvals:[{id:"approval-1",type:"Timecard",recordId:"card-1",status:"Pending",requestedBy:"Worker User",requesterId:"worker",title:"Review time",detail:"week",team:"Sales",submittedAt:at,dueAt:at,priority:"Normal"}],
- notifications:[],accounts:[],orders:[],inventory:[],
+ notifications:[],accounts:[],customers:[],activities:[],appointments:[],placements:[],orders:[],inventory:[],bulletins:[],territories:[],
 }) as unknown as WorkspaceData;
 const punch={clockIn:"08:00",clockOut:"18:00",breakMinutes:30};
 const processed=()=>{
