@@ -1,4 +1,6 @@
 import type { WorkspaceData, WorkspaceUser } from "./types";
+import { visibleActiveEmployees } from "./employee-directory-visibility";
+import type { AccountAccessState } from "./identity-provisioning";
 const managerRoles=new Set<WorkspaceUser["role"]>(["Administrator","Sales Manager","Operations"]);
 
 /** Reporting contacts are informational, not role grants or compensation recipients. */
@@ -21,4 +23,11 @@ export function selectableReportingManagerCandidates(data:WorkspaceData,employee
 export function validSelectableAdditionalManagerIds(input:unknown,data:WorkspaceData,employeeId:string,primaryId:string|undefined,activeIds:ReadonlySet<string>):string[]{
   const selectable=new Set(selectableReportingManagerCandidates(data,employeeId,activeIds).map((user)=>user.id));
   return validAdditionalManagerIds(input,data,employeeId,primaryId).filter((id)=>selectable.has(id));
+}
+
+/** Suspended and pending-access staff are not eligible for new reporting assignments. */
+export function activeReportingManagerIds(data:WorkspaceData,access?:Readonly<Record<string,{accountState:AccountAccessState}>>):ReadonlySet<string>{
+  return new Set(visibleActiveEmployees(data.users,access)
+    .filter((user)=>!access?.[user.id]||access[user.id].accountState==="Active")
+    .map((user)=>user.id));
 }
