@@ -8,6 +8,8 @@ import {useHcm} from "../../lib/hcm-context";
 import {payrollRunControlIssues} from "../../lib/payroll-controls";
 import {downloadCsv} from "../../lib/browser-export";
 import {navigateToRoute} from "../../lib/navigation-store";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {momentumStorage} from "../../lib/persistence";
 
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
 const sum=(values:number[])=>values.reduce((a,b)=>a+b,0);
@@ -15,6 +17,7 @@ const fields=["runId","employee","periodStart","periodEnd","payDate","status","r
 
 export function PayrollWorkflowExperience(){
   const {data,currentUser}=useWorkspace();
+  const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
   const {hcm}=useHcm();
   const {payroll,buildRegularRun,setRunStatus}=usePayroll();
   const admin=currentUser?.role==="Administrator";
@@ -53,12 +56,14 @@ export function PayrollWorkflowExperience(){
   };
   const createDraft=()=>{
     setNotice("");setError("");
+    if(!writeEnabled){setError("Read-only prototype: payroll draft creation requires isolated local demo mode.");return;}
     if(!periodStart||!periodEnd||!payDate||periodStart>periodEnd){setError("Select a valid start date, end date and payday.");return;}
     const id=buildRegularRun(periodStart,periodEnd,payDate);
     if(!id){setError("No draft was created. Check approved, unused timecards; effective compensation; withholding configuration; payroll locks and dates in the existing payroll controls.");return;}
     setSelectedId(id);setNotice("Regular payroll draft calculated from approved source records. Review every line and exception before approval.");
   };
   const approve=()=>{
+    if(!writeEnabled){setError("Read-only prototype: payroll approval requires isolated local demo mode.");return;}
     if(!selected||selected.status!=="Draft"||issues.length)return;
     if(!window.confirm("Approve this payroll draft after reviewing hours, employee setup, taxes and deductions? This approval is recorded but does not pay employees."))return;
     setNotice("");setError("");
@@ -82,10 +87,11 @@ export function PayrollWorkflowExperience(){
         <label>Period begins <input type="date" value={periodStart} onChange={event=>setPeriodStart(event.target.value)}/></label>
         <label>Period ends <input type="date" value={periodEnd} onChange={event=>setPeriodEnd(event.target.value)}/></label>
         <label>Payday <input type="date" value={payDate} onChange={event=>setPayDate(event.target.value)}/></label>
-        <button type="button" onClick={createDraft}>Calculate draft</button>
+        <button type="button" disabled={!writeEnabled} onClick={createDraft}>Calculate draft</button>
       </div>
       <p className="prototype-note">Bonus payroll, pay-group setup, withholding, controlled release, payment evidence, liabilities, and corrections remain operational in the existing engine.</p>
-      <button type="button" onClick={()=>navigateToRoute("/people/payroll/workflow")}>Open full payroll processing &amp; settings</button>
+      <button type="button" disabled={!writeEnabled} onClick={()=>navigateToRoute("/people/payroll/workflow")}>Open full payroll processing &amp; settings</button>
+      {!writeEnabled&&<p className="prototype-note">Connected environments are read-only in this redesign prototype. Use isolated local demo mode for payroll write testing.</p>}
     </section>}
     <section className="prototype-panel">
       <h2>{admin?"2. Pay-run register":"Pay history"}</h2>
@@ -115,11 +121,11 @@ export function PayrollWorkflowExperience(){
       </tbody></table></div>
       <div className="prototype-controls">
         <button type="button" onClick={()=>exportRun([selected.id])}><Download size={14}/> Download pay-run CSV</button>
-        {admin&&selected.status==="Draft"&&<button type="button" disabled={issues.length>0} onClick={approve}>Approve reviewed draft</button>}
+        {admin&&selected.status==="Draft"&&<button type="button" disabled={issues.length>0||!writeEnabled} onClick={approve}>Approve reviewed draft</button>}
       </div>
       <p className="prototype-note">Amounts follow the configured internal calculation rules, which are not a substitute for verified US payroll tax tables, filings or external disbursement confirmation. An approved/released run is not a settled payment.</p>
     </section>}
-    {admin&&<section className="prototype-panel"><h2>4. Settlement &amp; liabilities</h2><p>Recorded disbursement states: {payroll.disbursements.filter(row=>row.status==="Released").length} released, {payroll.disbursements.filter(row=>row.status==="Settled").length} settled, {payroll.disbursements.filter(row=>row.status==="Failed").length} failed. Open the controlled payroll workflow to reconcile payment references, record failures and review tax liabilities.</p><button type="button" onClick={()=>navigateToRoute("/people/payroll/workflow")}>Review settlement records</button></section>}
+    {admin&&<section className="prototype-panel"><h2>4. Settlement &amp; liabilities</h2><p>Recorded disbursement states: {payroll.disbursements.filter(row=>row.status==="Released").length} released, {payroll.disbursements.filter(row=>row.status==="Settled").length} settled, {payroll.disbursements.filter(row=>row.status==="Failed").length} failed. Open the controlled payroll workflow to reconcile payment references, record failures and review tax liabilities.</p><button type="button" disabled={!writeEnabled} onClick={()=>navigateToRoute("/people/payroll/workflow")}>Review settlement records</button></section>}
     {notice&&<p className="prototype-note" role="status">{notice}</p>}
     {error&&<p role="alert" className="prototype-note">{error}</p>}
   </div>;
