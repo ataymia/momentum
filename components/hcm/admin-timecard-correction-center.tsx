@@ -10,11 +10,17 @@ import {TimecardRecord} from "./timecard-record";
 import {Button,Field,Section,StatusPill,hoursBetween} from "../ui";
 
 export function AdminTimecardCorrectionCenter(){
- const {data,currentUser}=useWorkspace();
+ const {data,currentUser,adminCreateMissingTimecard}=useWorkspace();
  const {payroll}=usePayroll();
  const [search,setSearch]=useState("");
  const [status,setStatus]=useState("all");
  const [selectedId,setSelectedId]=useState("");
+ const [newEmployeeId,setNewEmployeeId]=useState("");
+ const [newWeekDate,setNewWeekDate]=useState("");
+ const [creationReason,setCreationReason]=useState("");
+ const [creationError,setCreationError]=useState("");
+ const [creationMessage,setCreationMessage]=useState("");
+
  const admin=currentUser?.role==="Administrator";
  const consumed=consumedTimecards(payroll);
  const records=useMemo(()=>admin?data.timecards.filter(card=>{
@@ -25,6 +31,14 @@ export function AdminTimecardCorrectionCenter(){
  }).sort((a,b)=>b.weekEnd.localeCompare(a.weekEnd)):[],
  [admin,data.users,data.timecards,status,search,consumed]);
  const selected=records.find(c=>c.id===selectedId);
+ const createMissingWeek=()=>{
+   setCreationError("");setCreationMessage("");
+   const result=adminCreateMissingTimecard(newEmployeeId,newWeekDate,creationReason);
+   if(!result.ok){setCreationError(result.error??"Missing timecard could not be created.");return;}
+   setSearch("");setStatus("all");setSelectedId(result.id??"");
+   setCreationMessage("Missing timecard created for employee review. Open it below and add verified shifts, then request employee attestation.");
+   setCreationReason("");setNewWeekDate("");
+ };
  const exportRows=records.map(card=>{
    const entries=data.timeEntries.filter(e=>e.userId===card.userId&&e.date>=card.weekStart&&e.date<=card.weekEnd);
    return {employee:data.users.find(u=>u.id===card.userId)?.name??"Employee unavailable",
@@ -38,6 +52,19 @@ export function AdminTimecardCorrectionCenter(){
  if(!admin)return null;
  return <Section title="Administrator timecard corrections"
   description="Find any employee's timecard, correct punches or breaks, and record verified missed shifts. Unpaid edits return the card for employee re-attestation and another approval.">
+  <div className="form-grid">
+    <Field label="Employee missing an entire week"><select value={newEmployeeId} onChange={e=>setNewEmployeeId(e.target.value)}>
+      <option value="">Select an employee</option>
+      {data.users.filter(u=>u.role!=="Customer").sort((a,b)=>a.name.localeCompare(b.name)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+    </select></Field>
+    <Field label="Date during missing week"><input type="date" value={newWeekDate} onChange={e=>setNewWeekDate(e.target.value)}/></Field>
+    <Field label="Reason and source of verification"><input value={creationReason} onChange={e=>setCreationReason(e.target.value)}
+      placeholder="Employee verified the missed week"/></Field>
+    <Button variant="secondary" disabled={!newEmployeeId||!newWeekDate||creationReason.trim().length<8}
+      onClick={createMissingWeek}>Create missing timecard</Button>
+  </div>
+  {creationError&&<p role="alert" className="form-error">{creationError}</p>}
+  {creationMessage&&<p role="status" className="form-notice">{creationMessage}</p>}
   <div className="form-grid">
    <Field label="Search employees, weeks or IDs"><div className="search-field"><Search size={15}/><input
      value={search} onChange={e=>setSearch(e.target.value)} placeholder="Employee or week starting date"/></div></Field>
@@ -70,7 +97,7 @@ export function AdminTimecardCorrectionCenter(){
          {selectedId===card.id?"Close":"Open / correct"}</Button>
       </article>;
     })}
-    {!records.length&&<div className="review-empty"><p>No timecards match these filters. New missed shifts can be entered only against an existing weekly timecard.</p></div>}
+    {!records.length&&<div className="review-empty"><p>No timecards match these filters. If an entire week is missing, use Create missing timecard above, then add the verified shifts.</p></div>}
     {records.length>100&&<p className="form-hint">Showing the first 100 results. Refine your search to find older records.</p>}
   </div>
   {selected&&<div className="timecard-admin-detail">
