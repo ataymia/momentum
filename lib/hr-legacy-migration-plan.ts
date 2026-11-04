@@ -56,8 +56,8 @@ function canonical(value: unknown): string {
 }
 
 function recordId(field: string, record: RecordValue): string | null {
-  // The original HCM private profile has no id; it is exactly one profile per uid.
-  if (field === "privateProfiles" && !("id" in record))
+  // The private profile is one record per uid, even if a legacy copy adds an id.
+  if (field === "privateProfiles")
     return validUid(record.userId) ? `profile:${record.userId}` : null;
   return validId(record.id) ? record.id : null;
 }
