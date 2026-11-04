@@ -12,6 +12,7 @@ import { TerritoryPanel } from "../crm/territory-panel";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience, PeopleEmployeeDetail, PeopleOnboardingReview, PeopleOnboardingCase, PayrollExperience } from "./hr-payroll-experiences";
+import { PeopleRequestQueue, PeopleRequestDetail } from "./hr-request-review";
 import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
@@ -287,6 +288,8 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/people/me")return <PeopleEmployeeDetail employeeId={currentUser?.id??""}/>;
+  if(path==="/people/requests")return <PeopleRequestQueue/>;
+  if(segments[0]==="people"&&segments[1]==="requests"&&segments.length===4&&["leave","workflow"].includes(segments[2]))return <PeopleRequestDetail kind={segments[2] as "leave"|"workflow"} requestId={decodeRecordId(segments[3])}/>;
   if(segments[0]==="people"&&segments[1]==="employees"&&segments.length===3)return <PeopleEmployeeDetail employeeId={decodeRecordId(segments[2])}/>;
   if(path==="/people/onboarding/review")return <PeopleOnboardingReview/>;
   if(segments[0]==="people"&&segments[1]==="onboarding"&&segments[2]==="cases"&&segments.length===4)return <PeopleOnboardingCase caseId={decodeRecordId(segments[3])}/>;
