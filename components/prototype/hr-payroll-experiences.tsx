@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { ArrowDownUp, CalendarDays, ClipboardList, GraduationCap, Search, ShieldCheck, Users } from "lucide-react";
 import { useWorkspace } from "../../lib/workspace-context";
 import { useHcm } from "../../lib/hcm-context";
+import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
+import { hrWorkspaceOverview } from "../../lib/hr-workspace-overview";
 import { usePayroll } from "../../lib/payroll-context";
 import { navigateToRoute } from "../../lib/navigation-store";
 import { formatMoney } from "../ui";
@@ -21,12 +23,17 @@ function NavTile({label,path,detail}:{label:string;path:string;detail:string}){
 export function PeopleExperience(){
   const {data,scope,currentUser}=useWorkspace();
   const {hcm}=useHcm();
+  const firebase=useFirebaseSessionOptional();
   const [query,setQuery]=useState("");
   const [sort,setSort]=useState<"name"|"department"|"status">("name");
   const [descending,setDescending]=useState(false);
+  const overview=hrWorkspaceOverview({
+    viewer:currentUser,users:data.users,hcm,timecards:scope.timecards,
+    accessRecords:firebase?.accessRecords,
+  });
   if(!currentUser||currentUser.role==="Customer")return <div className="prototype-empty">Not authorized.</div>;
   const admin=currentUser.role==="Administrator";
-  const people=(admin?data.users.filter(u=>u.role!=="Customer"):data.users.filter(u=>u.id===currentUser.id))
+  const people=overview.visibleEmployees
     .map(user=>({user,employment:hcm.employees.find(e=>e.userId===user.id)}))
     .filter(row=>[row.user.name,row.user.title,row.user.team,row.employment?.status].join(" ").toLowerCase().includes(query.toLowerCase()))
     .sort((a,b)=>{
@@ -34,24 +41,31 @@ export function PeopleExperience(){
       const vb=sort==="name"?b.user.name:sort==="department"?b.user.team:(b.employment?.status??"");
       return va.localeCompare(vb)*(descending?-1:1);
     });
-  const leave=hcm.leaveRequests.filter(r=>admin||r.userId===currentUser.id);
-  const training=hcm.training.filter(r=>admin||r.userId===currentUser.id);
-  const requests=hcm.tasks.filter(r=>(admin||r.ownerId===currentUser.id)&&r.status==="Open");
   return <div className="prototype-domain prototype-domain--people">
-    {title(admin?"Human Resources":"My Employee Workspace",admin?"Personnel records, requests, attendance and learning.":"Authorized self-service information and tasks.")}
+    {title(admin?"Human Resources":"My Employee Workspace",admin?"Personnel directory, onboarding, requests and review queues.":"Only your own employee records and assigned actions.")}
     <div className="prototype-domain-statbar">
-      <article><Users size={18}/><small>Visible employees</small><strong>{people.length}</strong></article>
-      <article><CalendarDays size={18}/><small>Leave awaiting review</small><strong>{leave.filter(r=>r.status==="Submitted").length}</strong></article>
-      <article><GraduationCap size={18}/><small>Incomplete learning</small><strong>{training.filter(r=>r.status!=="Complete").length}</strong></article>
-      <article><ClipboardList size={18}/><small>Pending timecards</small><strong>{scope.timecards.filter(r=>r.status==="Submitted").length}</strong></article>
+      <article><Users size={18}/><small>{admin?"Active directory":"My profile"}</small><strong>{overview.visibleEmployees.length}</strong></article>
+      <article><CalendarDays size={18}/><small>Submitted leave</small><strong>{overview.submittedLeave}</strong></article>
+      <article><GraduationCap size={18}/><small>Incomplete training</small><strong>{overview.incompleteTraining}</strong></article>
+      <article><ClipboardList size={18}/><small>Submitted timecards</small><strong>{overview.submittedTimecards}</strong></article>
     </div>
     <div className="prototype-domain-cards">
-      <NavTile label="Employee Directory" path="/people/directory" detail="Identity and reporting lines"/>
-      {admin&&<NavTile label="Employee Profiles" path="/admin/employee-profiles" detail="Authorized personnel records"/>}
-      {admin&&<NavTile label="Onboarding Queue" path="/people/onboarding" detail="New-hire requirements"/>}
-      <NavTile label="Training" path="/people/training" detail="Assignments and resources"/>
+      <NavTile label="Employee Directory" path="/people/directory" detail={admin?"Active staff and reporting lines":"Authorized directory access"}/>
+      {admin&&<NavTile label="Employee Profiles" path="/admin/employee-profiles" detail="Restricted personnel files and reviews"/>}
+      {admin&&<NavTile label="Onboarding Queue" path="/people/onboarding" detail="Open cases and new-hire requirements"/>}
+      {admin&&<NavTile label="Training Administration" path="/people/training" detail="Course and assignment controls"/>}
+      {!admin&&<NavTile label="My Time & Leave" path="/people/timekeeping" detail="Timecards, requests and self-service"/>}
     </div>
-    <Pane label={admin?"Employee register":"My employee profile"}>
+    {admin&&<Pane label="HR action queues">
+      <div className="prototype-domain-cards">
+        <NavTile label={`Open onboarding cases · ${overview.openOnboarding}`} path="/people/onboarding" detail="Existing onboarding case records"/>
+        <NavTile label={`Profile changes · ${overview.pendingProfileChanges}`} path="/admin/employee-profiles" detail="Submitted employee change requests"/>
+        <NavTile label={`Workflow requests · ${overview.pendingWorkflows}`} path="/admin/employee-profiles" detail="Submitted personnel workflows"/>
+        <NavTile label={`Performance reviews · ${overview.performanceForReview}`} path="/admin/employee-profiles" detail="Employee-submitted reviews"/>
+        <NavTile label={`Document attention · ${overview.documentsNeedingAttention}`} path="/admin/employee-profiles" detail="Missing or acknowledgment-required records, not verified compliance"/>
+      </div>
+    </Pane>}
+    <Pane label={admin?"Active employee register":"My employee profile"}>
       <div className="prototype-controls">
         <label className="prototype-search"><Search size={16}/><input aria-label="Search employees" placeholder="Find employee or department" value={query} onChange={e=>setQuery(e.target.value)}/></label>
         <div className="prototype-controls-right">
@@ -61,16 +75,16 @@ export function PeopleExperience(){
       </div>
       <div className="prototype-people-grid">{people.map(({user,employment})=><article key={user.id} className="prototype-employee-card">
         <div className="prototype-employee-avatar" aria-hidden="true">{user.initials}</div>
-        <div><strong>{user.name}</strong><span>{employment?.jobTitle??user.title}</span><small>{user.team} · {employment?.status??"Not configured"}</small></div>
+        <div><strong>{user.name}</strong><span>{employment?.jobTitle??user.title}</span><small>{user.team} · {employment?.status==="Separated"?"HR status requires review":employment?.status??"Not configured"}</small></div>
       </article>)}</div>
-      {!people.length&&<div className="prototype-empty">No matching employee records.</div>}
+      {!people.length&&<div className="prototype-empty">No matching active employee records.</div>}
     </Pane>
-    <Pane label="Requests and next actions">
-      {requests.length?requests.slice(0,8).map(task=><div className="prototype-work-list" key={task.id}>
+    <Pane label="My assigned HR actions">
+      {overview.assignedTasks.length?overview.assignedTasks.slice(0,8).map(task=><div className="prototype-work-list" key={task.id}>
         <strong>{task.title}</strong><span>{task.dueDate?"Due "+task.dueDate:"No due date"} · {task.status}</span>
-      </div>):<p className="prototype-note">No open tasks visible to your account.</p>}
+      </div>):<p className="prototype-note">No open HR tasks assigned to you.</p>}
     </Pane>
-    <p className="prototype-note"><ShieldCheck size={14}/> Preview only. Private documents, compensation and employee changes remain subject to existing authorization.</p>
+    <p className="prototype-note"><ShieldCheck size={14}/> Review-only overview. Missing forms do not suspend employment. Compensation, private documents and changes remain governed by existing server authorization; this view does not execute them.</p>
   </div>;
 }
 
