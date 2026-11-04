@@ -148,9 +148,9 @@ test("an un-inventoried target is quarantined, never assumed empty", () => {
   ]);
 });
 
-test("unsupported, shared, chunked and malformed inputs never create a plan", () => {
+test("unsupported, shared, audit and malformed inputs never create a plan", () => {
   for (const field of ["employees", "policies", "audit", "notAField"]) {
-    assert.throws(() => plan(field, []), /Only HCM user-owned|Chunked HCM/);
+    assert.throws(() => plan(field, []), /Only HCM user-owned|HCM audit|Chunked HCM/);
   }
   assert.throws(() => planHrLegacySharedFieldMigrationInvalid(), /Legacy source/);
 });
