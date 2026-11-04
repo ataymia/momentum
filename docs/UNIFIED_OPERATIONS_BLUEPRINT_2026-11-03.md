@@ -190,3 +190,43 @@ Comparison from common base 21c64c37f2f963c30eaade67fcc44f242c4e6dec found **two
 2. package.json: both branches updated scripts. Combine rather than overwrite the order/Home/fulfillment regressions and the new location-permission test.
 
 The other 14 changed files on the independently updated main were not modified in the prototype comparison at the time checked, but may still have runtime dependencies on shared providers and layouts. This is **not** a merge-conflict guarantee. A later reconciliation branch must validate import compatibility, role behavior, CI, and visual QA without modifying main. No merge was attempted here.
+
+
+## Isolated integration and rep self-delivery review checkpoint
+**Date:** November 3, 2026, Arizona time. **Status:** Source implementation and automated validation complete; release and browser acceptance NOT approved.
+
+### Integrated review branch, not a production merge
+- Working review branch: `integration/location-permission-prototype-2026-11-03`. It began from the unified workspace redesign and does not update main.
+- Independently updated main snapshot: `df7b85b9ba6fcd9bd63eb08a57575656278dee08`. All 14 of its changes outside the two overlapping files were copied into the integration branch and individually verified to have identical file content.
+- Shared `components/app-shell-v4.tsx` keeps the redesigned one-sidebar navigation and notification experience while mounting the existing employee location permission reminder once. Shared `package.json` runs both the redesigned workflow tests and employee permission-recovery tests.
+- The source-level reconciliation passed the full fixed-snapshot GitHub Actions audit, run **41753268819**, commit `4dd5832fa22d296904ffcda19f0a83fe8701176e`.
+- **No production deployment, merge into main, third-party contact, employee GPS request, customer transaction, inventory transfer, payment, or external commitment was made by this development work.**
+
+### Dedicated sales-representative self-delivery
+- New purpose-built mobile-first pages at `/crm/self-delivery` and `/crm/self-delivery/{orderId}`: searchable eligible order queue, customer and case context, server-verified task stage, step-specific confirmations and recipient signature UI where enabled.
+- Access is intentionally limited to the Sales Representative role and orders visible within that representative's current account scope. **Client-side ownership is only a candidate filter.** The pre-existing atomic server operation independently checks active representative access, the order owner, current account responsibility, administrative overrides, inventory, custody, locks and signature proof.
+- All status and action results use the established `repSelfDelivery` server function. After an action, the client rereads the server record and compares statuses before declaring success. No direct browser mutation of commercial, delivery or inventory Firestore arrays.
+- Paid orders remain visible in a representative's delivery history. The server's `status` read now verifies signature history and exact customer inventory posting for both Delivered and Paid orders; a mismatched proof is **not** cloud confirmed. This server-side improvement is **only in the unmerged review branch**.
+- **Default-deny review:** New interface custody/complete actions, including the recipient-signature inputs, are disabled unless an explicit build-time review mutation flag is enabled, the connected Firebase project matches an explicitly configured approved staging project ID, and persistence is connected. Those values must be configured **only for a separate non-production environment**, after authorization. Production users cannot inadvertently trigger redesigned actions with default settings.
+- Existing authorized representative self-delivery controls remain accessible in the original Orders workflow while replacement parity is evaluated. A dedicated Delivery Driver shell also remains unchanged.
+
+### Automated validation and limits
+- Final full fixed-snapshot audit for staged-gated rep self-delivery passed in GitHub Actions run **41756000353**, commit `7bc74c4d2a7985727b43d940772c49519cc6a976`. TypeScript, lint, complete logic regressions, Firestore/Storage rules, Functions and production build passed. This is a source/build validation only, **not a deployed staging transaction or visual acceptance**.
+- The final integration branch documentation may have a later commit than the passing source snapshot; the source code and tests of the passing snapshot remain the release comparison baseline.
+- Before any live release, test with isolated staging users across authorized rep, unauthorized rep, reassigned account, approved/allocated/out-for-delivery/Delivered/Paid orders, understock/quality holds, period locks, broken connectivity, retry/idempotency, customer signature, exact SKU posting and mobile browsers. Confirm security rules and transactional record consistency in that staging project. Do not infer successful e-mail or settled payment from signed delivery.
+- **Human Resources and Marketing visual/workflow redesigns remain outstanding and were not accepted by the user.** They must receive distinct role-relevant interfaces and tests, not renamed generic views.
+
+### MASTER HANDOFF
+**Workstreams:** Platform integration, Operations/Delivery, Sales Representative workflows. **Owners:** Platform implementation and QA; Mia owns operational acceptance and explicit authorizations; Flo or another authorized company decision-maker must approve any commercial or deployment commitments.
+
+**Verified decisions/facts:** Prototype-only, no merge/deployment; latest integration source audits above passed; current main snapshot is separate and unchanged by this work; rep UI stage progression is authenticated and default-read-only.
+
+**Open decisions and assumptions:** Confirm the organization-approved staging Firebase project, real rep self-delivery authorization/process, custody and recipient acceptance controls, live notification and invoice dependencies, browser visual parity and the planned production-release owner. No new economic facts or product rights were established.
+
+**Proposed next actions:** Platform owner to perform a staging role/security and UI walkthrough once approved; Mia to review Home and rep self-delivery layouts before requesting the next department build; permanent HR and Marketing workstream owners to continue their separate detailed requirements. No deadlines were confirmed in this checkpoint.
+
+**Financial/KPI relevance:** Protects inventory custody accuracy, representative accountability and customer receipt evidence; does not establish sell-through, cash collection, increased sales, payroll accuracy or KPI uplift.
+
+**Blockers and escalation:** Staging environment approval, role-level acceptance, legal/commercial readiness, vendor payment integration and final source conflicts if main changes again. Escalate any cross-account access or custody mismatch before release.
+
+**Recommended next decision:** Approve or reject the separate rep self-delivery visual direction and determine whether the next authorized staging test is delivery or another verified core workflow. Do not advance to a production merge until a complete staging acceptance checklist passes.
