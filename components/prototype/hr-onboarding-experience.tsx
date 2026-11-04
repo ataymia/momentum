@@ -52,7 +52,7 @@ export function HrOnboardingExperience(){
       })
     },{actorId:currentUser.id,action:"Onboarding task evidence recorded",entityType:"LifecycleCase",entityId:caseId,reason:task.title+" · "+evidence}));
     setTaskEvidence(prev=>({...prev,[taskId]:""}));
-    setNotice("Task completion submitted to the existing HR audit and persistence controls.");
+    setNotice("Task completion requested in local demo. Verify saved status and audit evidence before relying on it.");
   };
   if(!admin)return <div className="prototype-empty">Onboarding case administration is restricted to Administrators.</div>;
   return <div className="prototype-domain prototype-domain--people">
