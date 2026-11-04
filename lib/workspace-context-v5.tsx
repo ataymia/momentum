@@ -151,7 +151,7 @@ type WorkspaceContextValue = {
   adminAmendTimeEntry: (id:string,values:CorrectedPunch,reason:string)=>{ok:boolean;error?:string};
   adminInsertMissedPunch: (userId:string,cardId:string,date:string,values:CorrectedPunch,reason:string)=>{ok:boolean;error?:string};
   adminCreateMissingTimecard: (userId:string,weekDate:string,reason:string)=>{ok:boolean;error?:string;id?:string};
-  submitTimecard: (id: string) => void;
+  submitTimecard: (id: string, attestationNote?: string) => void;
   decideTimecard: (id: string, decision: "Manager approved" | "Returned") => void;
   createBulletin: (bulletin: NewBulletin) => boolean;
   acknowledgeBulletin: (id: string) => void;
@@ -550,14 +550,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return{ok:true,id:payload.cardId};
   },[currentUser,data]);
 
-  const submitTimecard = useCallback((id: string) => {
+  const submitTimecard = useCallback((id: string, attestationNote = "") => {
     if (!currentUser) return;
     setData((current) => {
       const card = current.timecards.find((item) => item.id === id && item.userId === currentUser.id && (item.status === "Open" || item.status === "Returned"));
       if (!card) return current;
       if (current.timeEntries.some((item) => item.userId === currentUser.id && item.date >= card.weekStart && item.date <= card.weekEnd && (!item.clockOut || Boolean(item.mealStart && !item.mealEnd) || Boolean(item.note?.includes("Automatically closed at Arizona midnight") && item.source !== "Manual correction")))) return current;
       const exists = current.approvals.some((item) => item.type === "Timecard" && item.recordId === id && item.status === "Pending");
-      return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: "Submitted", submittedAt: nowStamp(), attested: true, approvedAt: undefined, approverId: undefined } : item), approvals: exists ? current.approvals : [{ id: `apr-${Date.now()}`, type: "Timecard", title: `${currentUser.name} · weekly timecard`, detail: `${card.weekStart} through ${card.weekEnd} · employee attested`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.team, submittedAt: nowStamp(), dueAt: plusHours(24), priority: "Normal", status: "Pending" }, ...current.approvals] };
+      return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: "Submitted", submittedAt: nowStamp(), attested: true, resubmissionNote: attestationNote.trim()||undefined, approvedAt: undefined, approverId: undefined } : item), approvals: exists ? current.approvals : [{ id: `apr-${Date.now()}`, type: "Timecard", title: `${currentUser.name} · weekly timecard`, detail: `${card.weekStart} through ${card.weekEnd} · employee attested`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.team, submittedAt: nowStamp(), dueAt: plusHours(24), priority: "Normal", status: "Pending" }, ...current.approvals] };
     });
   }, [currentUser]);
 
