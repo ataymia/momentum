@@ -289,9 +289,9 @@ export function hourlyWagesForApprovedTimecards(data:WorkspaceData,hcm:HCMState,
   return {regularHours,overtimeHours,regularPay,overtimePay};
 }
 
-export function calculateRegularLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[], calculationVersion:PayrollCalculationVersion=2, supplementalTaxablePay=0): PayLine | null {
+export function calculateRegularLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[], calculationVersion:PayrollCalculationVersion=2, supplementalTaxablePay=0, allowInactiveFinal=false): PayLine | null {
   if (!isValidCalendarDateKey(periodStart) || !isValidCalendarDateKey(periodEnd) || periodEnd < periodStart || !activeEmployerTaxConfigurationValid(state, periodEnd)) return null;
-  const employee = activePayrollEmployee(state, employeeId);
+  const employee = allowInactiveFinal?state.employees.find(e=>e.userId===employeeId):activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, periodEnd);
   const compensation = compensationForPayrollDate(hcm, employeeId, periodEnd);
   const group = employee ? state.payGroups.find((item) => item.id === employee.payGroupId && item.active) : undefined;
@@ -331,11 +331,11 @@ export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeI
  */
 export function calculateSupplementalLine(
  state:PayrollState,hcm:HCMState,employeeId:string,payDate:string,amount:number,
- calculationVersion:PayrollCalculationVersion=2,
+ calculationVersion:PayrollCalculationVersion=2,allowInactiveFinal=false,
 ):PayLine|null{
  void hcm;
  if(!isValidCalendarDateKey(payDate)||!finiteNonNegative(amount)||amount<=0)return null;
- const employee=activePayrollEmployee(state,employeeId);
+ const employee=allowInactiveFinal?state.employees.find(e=>e.userId===employeeId):activePayrollEmployee(state,employeeId);
  const withholding=activeWithholding(state,employeeId,payDate);
  if(!employee||!withholdingProfileValid(withholding)||!activeEmployerTaxConfigurationValid(state,payDate))return null;
  return calculateNet(state,employeeId,payDate,0,0,0,0,amount,[],[],
@@ -359,10 +359,10 @@ export function calculateFinalLine(
    const source=regularPayrollSource(data,employeeId,periodStart,periodEnd,timecardIds);
    if(!source||source.entries.some(entry=>entry.date>separationDate))return null;
    return calculateRegularLine(state,data,hcm,employeeId,periodStart,periodEnd,
-      timecardIds,calculationVersion,additionalTaxable);
+      timecardIds,calculationVersion,additionalTaxable,true);
  }
  // A documented final taxable adjustment without additional approved timecards.
- return additionalTaxable>0?calculateSupplementalLine(state,hcm,employeeId,payDate,additionalTaxable,calculationVersion):null;
+ return additionalTaxable>0?calculateSupplementalLine(state,hcm,employeeId,payDate,additionalTaxable,calculationVersion,true):null;
 }
 
 function calculateNet(state: PayrollState, employeeId: string, asOf: string, regularHours: number, overtimeHours: number, regularPay: number, overtimePay: number, bonusPay: number, sourceTimecardIds: string[], sourceBonusIds: string[], withholding: WithholdingProfile, benefits: PayrollBenefitDeductions, version:PayrollCalculationVersion=2): PayLine | null {
