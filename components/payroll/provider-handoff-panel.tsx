@@ -3,6 +3,8 @@
 import {useState} from "react";
 import {Download,Landmark,ShieldAlert} from "lucide-react";
 import {usePayroll} from "../../lib/payroll-context";
+import {useHcm} from "../../lib/hcm-context";
+import {payrollRunControlIssues} from "../../lib/payroll-controls";
 import {useWorkspace} from "../../lib/workspace-context";
 import {arizonaDateKey} from "../../lib/date-time";
 import {PAYROLL_STORAGE_KEY} from "../../lib/payroll-engine";
@@ -18,7 +20,8 @@ const createFilingId=()=>`filing-${Date.now().toString(36)}-${Math.random().toSt
 const filingExportColumns=["runId","formCode","agency","periodStart","periodEnd","dueDate","status","providerName","submissionReference","acknowledgmentReference","filedDate","rejectionReason"] as const;
 
 export function PayrollProviderPanel(){
- const {currentUser}=useWorkspace();
+ const {currentUser,data}=useWorkspace();
+ const {hcm}=useHcm();
  const {payroll,prepareProviderPacket,submitProviderPacket,reviewProviderPacket,reconcileProviderPay,
    addFilingCase,submitFilingCase,decideFilingCase}=usePayroll();
  const [selectedId,setSelectedId]=useState("");
@@ -44,6 +47,7 @@ export function PayrollProviderPanel(){
  const allFilings=payroll.runs.flatMap(r=>(r as ExtendedPayRun).filingCases?.map(f=>({runId:r.id,...f}))??[]);
  const selectedFiling=run?.filingCases?.find(f=>f.id===filingId)??run?.filingCases?.[0];
  const expected=run?totalsForRun(run):undefined;
+ const sourceIssues=run?payrollRunControlIssues(payroll,data,hcm,run):[];
  const statusTone=(s:string)=>["Filed","Pay reconciled","Accepted by provider"].includes(s)?"success" as const:
      ["Rejected","Returned for correction"].includes(s)?"danger" as const:"warning" as const;
 
@@ -52,7 +56,7 @@ export function PayrollProviderPanel(){
    setError("");setNotice(action+" recorded in the local payroll state. Verify remote sync before treating this as final.");
  };
  const exportRun=()=>{
-   if(!run||!["Approved","Released"].includes(run.status)){setError("Only approved or released runs may be exported for provider handoff.");return;}
+   if(!run||!["Approved","Released"].includes(run.status)||sourceIssues.length){setError("Only approved/released payroll with verified current source controls can be exported for provider handoff.");return;}
    downloadPayrollCsv("momentum-provider-"+run.id+".csv",providerExportRows(run),PROVIDER_EXPORT_COLUMNS);
  };
  const exportFilings=()=>{
@@ -106,16 +110,17 @@ export function PayrollProviderPanel(){
        </div>}
      </div>
      {run?<div className="request-actions">
-       <Button variant="secondary" icon={<Download size={15}/>} disabled={run.status==="Draft"} onClick={exportRun}>Download approved-run CSV</Button>
+       <Button variant="secondary" icon={<Download size={15}/>} disabled={run.status==="Draft"||sourceIssues.length>0} onClick={exportRun}>Download approved-run CSV</Button>
        <StatusPill tone={statusTone(handoff?.status??"Prepared")}>{handoff?.status??"No handoff"}</StatusPill>
      </div>:<p>No payroll runs exist. Create and approve a run in Payroll Processing first.</p>}
+     {sourceIssues.length>0&&<p role="alert" className="form-error">Payroll source controls report {sourceIssues.length} issue(s). Correct the run before sending it to the processor.</p>}
      <p className="form-hint">The CSV carries internal calculations, source identifiers and no bank routing or Social Security numbers. The processor must use its securely maintained employee identity/payment mapping. A downloaded CSV is not evidence of transmission.</p>
    </Section>
    {run&&<div className="company-grid company-grid--two">
      <Section title="1. Prepare and submit" description="Name your provider, prepare a locked snapshot and record the external transmission reference.">
        <div className="form-grid">
          <Field label="Processor name"><input value={provider} onChange={e=>setProvider(e.target.value)} placeholder="Name of actual payroll company"/></Field>
-         <Button onClick={()=>show(prepareProviderPacket(run.id,provider),"Handoff preparation")} disabled={Boolean(handoff)||run.status!=="Approved"&&run.status!=="Released"}>Prepare provider packet</Button>
+         <Button onClick={()=>show(prepareProviderPacket(run.id,provider),"Handoff preparation")} disabled={Boolean(handoff)||sourceIssues.length>0||run.status!=="Approved"&&run.status!=="Released"}>Prepare provider packet</Button>
          <Field label="External submission reference"><input value={submissionRef} onChange={e=>setSubmissionRef(e.target.value)} placeholder="Upload / delivery acknowledgment ID"/></Field>
          <Button variant="secondary" disabled={handoff?.status!=="Prepared"} onClick={()=>show(submitProviderPacket(run.id,submissionRef),"Provider submission")}>Record submission</Button>
        </div>
