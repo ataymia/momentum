@@ -72,6 +72,10 @@ export function planHrLegacySharedField(input: {
   const fieldSpec = HCM.fields[input.field];
   if (!fieldSpec?.userIdField)
     throw new Error("Only HCM user-owned legacy fields can be planned");
+  // An audit actorId is NOT proof of the employee whose private record is described.
+  // Do not re-home audit events by actor or expose cross-employee before/after data.
+  if (input.field === "audit")
+    throw new Error("HCM audit requires subject-level authorization review");
   if (fieldSpec.chunkBytes)
     throw new Error("Chunked HCM fields require a separate manifest-aware migration");
   if (!object(input.sharedDocument) || !Array.isArray(input.sharedDocument.items))
