@@ -22,7 +22,7 @@ function useDeliveryDemoAccess(){
   const session=useFirebaseSessionOptional();
   return canMutatePrototypeFulfillment({
     isDemo:mode.isDemo,persistenceMode:momentumStorage.mode(),
-    hasFirebaseSession:Boolean(session),role:currentUser?.role,
+    hasFirebaseSession:Boolean(session?.session?.uid),role:currentUser?.role,
   });
 }
 
