@@ -16,7 +16,7 @@ import {useWorkspace} from "../../lib/workspace-context";
 import {canMutatePrototypeFulfillment,nextShipmentStep,shipmentStepDescription} from "../../lib/fulfillment-prototype-policy";
 import type {Order} from "../../lib/types";
 
-function DeliveryDemoAccess(){
+function useDeliveryDemoAccess(){
   const {currentUser}=useWorkspace();
   const mode=useRuntimeMode();
   const session=useFirebaseSessionOptional();
@@ -37,7 +37,7 @@ function DemoAccessNote({available}:{available:boolean}){
 export function ShipmentWorkflowControls({order,task}:{order:Order;task?:DeliveryTask}){
   const {data,currentUser}=useWorkspace();
   const {assignDelivery,cancelDelivery,prepareDelivery,markLoaded,startDelivery,addDeliveryNote}=useDelivery();
-  const available=DeliveryDemoAccess();
+  const available=useDeliveryDemoAccess();
   const [driverId,setDriverId]=useState("");
   const [confirmation,setConfirmation]=useState(false);
   const [reason,setReason]=useState("");
