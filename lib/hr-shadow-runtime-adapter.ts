@@ -8,6 +8,12 @@ import {
 import { parseDocPath } from "./firestore-domains";
 
 type HcmDocument = Record<string, unknown> | null;
+const copyScope = (scope: PersistenceScope): PersistenceScope => ({
+  ...scope,
+  readableUserIds: new Set(scope.readableUserIds),
+  managedUserIds: new Set(scope.managedUserIds),
+  supervisedBrandAmbassadorIds: new Set(scope.supervisedBrandAmbassadorIds),
+});
 type FetchBatch = {
   epoch: number;
   requestUid: string;
@@ -29,7 +35,7 @@ export class HrShadowRuntimeAdapter {
   private quarantinedJournals = new Set<string>();
 
   constructor(scope: PersistenceScope) {
-    this.scope = scope;
+    this.scope = copyScope(scope);
   }
 
   get epoch() { return this.generation; }
@@ -53,7 +59,7 @@ export class HrShadowRuntimeAdapter {
       pendingStorageKeys,
     });
     this.generation += 1;
-    this.scope = nextScope;
+    this.scope = copyScope(nextScope);
     const retain = new Set(plan.retainPaths);
     for (const path of this.documents.keys()) if (!retain.has(path)) this.documents.delete(path);
     for (const key of plan.quarantinePendingKeys) this.quarantinedJournals.add(key);
