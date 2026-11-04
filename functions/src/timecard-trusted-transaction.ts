@@ -34,6 +34,13 @@ export async function commitTrustedTimecardCorrection(actorUid:string,raw:unknow
      mealStart:text(raw.punch.mealStart)||undefined,mealEnd:text(raw.punch.mealEnd)||undefined,
      breakMinutes:typeof raw.punch.breakMinutes==="number"?raw.punch.breakMinutes:Number.NaN,
    }:undefined,
+   expectedBefore:object(raw.expectedBefore)?{
+     clockIn:text(raw.expectedBefore.clockIn),clockOut:text(raw.expectedBefore.clockOut)||undefined,
+     mealStart:text(raw.expectedBefore.mealStart)||undefined,
+     mealEnd:text(raw.expectedBefore.mealEnd)||undefined,
+     breakMinutes:typeof raw.expectedBefore.breakMinutes==="number"?
+       raw.expectedBefore.breakMinutes:Number.NaN,
+   }:undefined,
  };
  if(!validId(intent.targetUid)||!validId(intent.requestId))
    fail(400,"Invalid employee or correction request identifier.");
@@ -52,9 +59,11 @@ export async function commitTrustedTimecardCorrection(actorUid:string,raw:unknow
  const auditRef=db.doc("timecardCorrectionAudit/"+intent.requestId);
  const metaRef=db.doc("platform/meta");
  const now=new Date().toISOString();
- const todayArizona=new Intl.DateTimeFormat("en-CA",{
+ const dateParts=new Intl.DateTimeFormat("en-US",{
    timeZone:"America/Phoenix",year:"numeric",month:"2-digit",day:"2-digit",
- }).format(new Date());
+ }).formatToParts(new Date());
+ const part=(type:string)=>dateParts.find(x=>x.type===type)?.value??"";
+ const todayArizona=part("year")+"-"+part("month")+"-"+part("day");
  const jsonRows=(snap:{exists:boolean;data:()=>Row|undefined},name:string,missingOk:boolean):Row[]=>{
    if(!snap.exists){if(missingOk)return[];fail(409,name+" is unavailable; source correction is blocked.");}
    const value=snap.data()?.items;
