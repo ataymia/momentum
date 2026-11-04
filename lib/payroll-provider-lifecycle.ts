@@ -43,7 +43,7 @@ const event=(runId:string,c:Clock,action:string,reference?:string,detail?:string
 });
 const actorValid=(c:Clock)=>Boolean(clean(c.actorId)&&clean(c.id)&&validInstant(c.at));
 const cents=(n:number)=>Math.round(n*100);
-const sum=(run:PayRun,key:"grossPay"|"netPay"|"employeeTaxes"|"employerTaxes")=>run.lines.reduce((n,l)=>n+l[key],0);
+const sum=(run:PayRun,key:"grossPay"|"netPay"|"employeeTaxes"|"employerTaxes")=>Math.round(run.lines.reduce((n,l)=>n+l[key],0)*100)/100;
 export function totalsForRun(run:PayRun):ProviderTotals{
   return {gross:sum(run,"grossPay"),net:sum(run,"netPay"),employeeTaxes:sum(run,"employeeTaxes"),
     employerTaxes:sum(run,"employerTaxes"),employeeCount:run.lines.length};
@@ -103,8 +103,11 @@ export function reconcileProviderPay(state:PayrollState,runId:string,clock:Clock
   if(!run||run.status!=="Released"||run.providerHandoff?.status!=="Accepted by provider")return fail(state,"Only released provider-accepted runs can be reconciled.");
   if(!actorValid(clock))return fail(state,"Authenticated reviewer and timestamp required.");
   const payments=state.disbursements.filter(d=>d.payRunId===runId);
-  if(payments.length!==run.lines.filter(l=>l.netPay>0).length||payments.some(d=>d.status!=="Settled"))
-    return fail(state,"Every positive employee pay line must have one settled disbursement. Check failures and retries.");
+  const settled=payments.filter(d=>d.status==="Settled");
+  const owed=run.lines.filter(l=>l.netPay>0);
+  if(settled.length!==owed.length||payments.some(d=>d.status==="Released"||(d.status==="Failed"&&!("replacedBy" in d)))||
+      owed.some(line=>settled.filter(d=>d.userId===line.employeeId&&cents(d.amount)===cents(line.netPay)).length!==1))
+    return fail(state,"Each employee needs one matching settled payment with no unreconciled attempts.");
   if(payments.some(d=>d.amount<=0))return fail(state,"Invalid disbursement.");
   // A paid tax liability and a filed form are different evidence events, tracked separately.
   return{ok:true,state:changeRun(state,runId,r=>append({...r,providerHandoff:{
