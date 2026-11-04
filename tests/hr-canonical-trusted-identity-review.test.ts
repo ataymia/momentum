@@ -68,7 +68,7 @@ function harness(actor: WorkspaceUser = rep, hooks: Hooks = {}) {
         readAuthority: async () => clone(snapshot.authority),
         readCanonical: async (path) => {
           canonicalReads += 1;
-          assert.equal(path, document.path, "only server-computed path allowed");
+          assert.equal(path, snapshot.document.path, "only server-computed path allowed");
           hooks.afterRead?.(state);
           return clone(snapshot.document);
         },
