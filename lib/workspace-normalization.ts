@@ -76,8 +76,8 @@ function normalizeCustomers(raw: unknown[], fallback: CustomerAccount[]) {
 function normalizeCorrection(value: unknown, userIds: Set<string>) {
   if (!object(value) || !validInstant(value.at) || !userIds.has(text(value.by)) || !text(value.reason) || !object(value.before)) return undefined;
   const before = value.before;
-  if (!validTime(before.clockIn) || !optionalTime(before.mealStart) || !optionalTime(before.mealEnd) || !optionalTime(before.clockOut) || !nonnegative(before.breakMinutes)) return undefined;
-  return { at: text(value.at), by: text(value.by), reason: text(value.reason), before: { clockIn: text(before.clockIn), mealStart: optionalText(before.mealStart), mealEnd: optionalText(before.mealEnd), clockOut: optionalText(before.clockOut), breakMinutes: Number(before.breakMinutes) } };
+  if (!validTime(before.clockIn) || !optionalTime(before.mealStart) || !optionalTime(before.mealEnd) || !optionalTime(before.clockOut) || !nonnegative(before.breakMinutes) || !optionalValidInstant(before.clockInAt) || !optionalValidInstant(before.clockOutAt)) return undefined;
+  return { at: text(value.at), by: text(value.by), reason: text(value.reason), before: { clockIn: text(before.clockIn), clockInAt: optionalText(before.clockInAt), clockOutAt: optionalText(before.clockOutAt), source: timeSources.has(text(before.source)) ? text(before.source) as TimeEntrySource : undefined, note: optionalText(before.note), mealStart: optionalText(before.mealStart), mealEnd: optionalText(before.mealEnd), clockOut: optionalText(before.clockOut), breakMinutes: Number(before.breakMinutes) } };
 }
 
 export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData): WorkspaceData {
@@ -157,7 +157,7 @@ export function normalizeWorkspaceData(input: unknown, fallback: WorkspaceData):
     if (!id || !internalUserIds.has(userId) || !validDate(value.date) || !validTime(value.clockIn) || !optionalValidInstant(value.clockInAt) || !optionalTime(value.clockOut) || !optionalValidInstant(value.clockOutAt) || !optionalTime(value.mealStart) || !optionalTime(value.mealEnd) || !nonnegative(value.breakMinutes) || !timeSources.has(source)) return [];
     if ((value.mealStart && !value.mealEnd && value.clockOut) || (!value.mealStart && value.mealEnd)) return [];
     const corrections = Array.isArray(value.corrections) ? value.corrections.map((item) => normalizeCorrection(item, internalUserIds)).filter((item): item is NonNullable<typeof item> => Boolean(item)) : undefined;
-    return [{ id, userId, date: text(value.date), clockIn: text(value.clockIn), clockInAt: optionalText(value.clockInAt), clockOut: optionalText(value.clockOut), clockOutAt: optionalText(value.clockOutAt), mealStart: optionalText(value.mealStart), mealEnd: optionalText(value.mealEnd), breakMinutes: Number(value.breakMinutes), source: source as TimeEntry["source"], note: optionalText(value.note), corrections }];
+    return [{ id, userId, date: text(value.date), clockIn: text(value.clockIn), clockInAt: optionalText(value.clockInAt), clockOut: optionalText(value.clockOut), clockOutAt: optionalText(value.clockOutAt), mealStart: optionalText(value.mealStart), mealEnd: optionalText(value.mealEnd), breakMinutes: Number(value.breakMinutes), source: source as TimeEntry["source"], note: optionalText(value.note), corrections, createdBy: internalUserIds.has(text(value.createdBy))?text(value.createdBy):undefined, createdAt: optionalValidInstant(value.createdAt)?optionalText(value.createdAt):undefined, creationReason: optionalText(value.creationReason) }];
   }));
 
   const timecards = uniqueById(list(root, "timecards", fallback.timecards).flatMap((value): Timecard[] => {
