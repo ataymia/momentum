@@ -9,7 +9,13 @@ const text=(x:unknown)=>typeof x==="string"?x.trim():"";
 const object=(x:unknown):x is Row=>Boolean(x&&typeof x==="object"&&!Array.isArray(x));
 const validId=(x:string)=>/^[A-Za-z0-9_-]{8,120}$/.test(x);
 
+/** A safe HTTP response for a rejected trusted timecard operation. */
 export class TrustedTimecardError extends Error{
+  /**
+   * Create a client-safe denial.
+   * @param {number} status HTTP status code.
+   * @param {string} message Explanation safe to show to an Administrator.
+   */
   constructor(public readonly status:number,message:string){super(message);}
 }
 const fail=(status:number,message:string):never=>{throw new TrustedTimecardError(status,message);};
@@ -18,6 +24,9 @@ const fail=(status:number,message:string):never=>{throw new TrustedTimecardError
  * Disabled by default. Setting MOMENTUM_ENABLE_TIMECARD_CORRECTIONS=true must
  * require an explicit staged release after privacy/security acceptance.
  * The browser has no authority to supply timecard, payroll or lock snapshots.
+ * @param {string} actorUid Firebase UID verified with token revocation check.
+ * @param {unknown} raw Untrusted correction command.
+ * @return {Promise<object>} A durable server receipt after transaction commit.
  */
 export async function commitTrustedTimecardCorrection(actorUid:string,raw:unknown){
  if(process.env.MOMENTUM_ENABLE_TIMECARD_CORRECTIONS!=="true")
