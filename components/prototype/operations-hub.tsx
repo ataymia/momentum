@@ -395,7 +395,7 @@ export function PrototypeOperationsHub(){
   if(path==="/work/completed")return <CompletedWorkExperience/>;
   if(path==="/sales/orders/new")return <OrderEditor/>;
   if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2]&&segments[3]==="edit")return <OrderEditor orderId={decodeURIComponent(segments[2])}/>;
-  if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2])return <OrderDetail id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2])return currentUser?.role==="Customer"?<CustomerOrderRecord id={decodeURIComponent(segments[2])} section="orders"/>:<OrderDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="sales"&&segments[1]==="invoices"&&segments[2])return <InvoiceDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="sales"&&segments[1]==="payments"&&segments[2])return <PaymentDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="inventory"&&segments[1]==="lots"&&segments[2])return <InventoryLotDetail id={decodeURIComponent(segments[2])}/>;
