@@ -17,7 +17,7 @@ import { assessHrAuditBatchRecoveryReview } from
 
 const projectId = "momentum-hr-admin-sdk-review";
 assert.match(process.env.FIRESTORE_EMULATOR_HOST ?? "",
-  /^(?:127\\.0\\.0\\.1|localhost):8080$/, "Local Firestore emulator required");
+  /^(?:127\.0\.0\.1|localhost):8080$/, "Local Firestore emulator required");
 assert.equal(process.env.GCLOUD_PROJECT, projectId,
   "Dedicated synthetic project required before Admin SDK initialization");
 
@@ -49,7 +49,7 @@ const candidateRules = sourceRules.replace(marker, [
   "      allow get, list, create, update, delete: if false;",
   "    }",
   marker,
-].join("\\n"));
+].join("\n"));
 
 let app;
 let db;
