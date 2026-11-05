@@ -18,7 +18,7 @@ import {PayrollWorkflowExperience} from "./payroll-workflow-experience";
 import {HrOnboardingExperience} from "./hr-onboarding-experience";
 import {InvoicePrintCenter} from "../finance/invoice-print-center";
 import {downloadCsv} from "../../lib/browser-export";
-import {accountExportColumns,accountExportRows,contactExportColumns,contactExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryColumns,customerDeliveryExportRows} from "../../lib/saturday-scoped-workflows";
+import {accountExportColumns,accountExportRows,contactExportColumns,contactExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryColumns,customerDeliveryExportRows,filterCustomerDeliveries} from "../../lib/saturday-scoped-workflows";
 import {invoiceBalance,computedInvoiceStatus} from "../../lib/commerce-engine";
 import {useCommerce} from "../../lib/commerce-context";
 import {MarketingWorkspaceExperience} from "./marketing-workspace-experience";
@@ -253,6 +253,8 @@ function ContactsDirectory(){
 function CustomerPortalContent({section}:{section:string}){
   const {scope,currentUser}=useWorkspace();const {commerce}=useCommerce();const runtime=useRuntimeMode();
   const [deliveryQuery,setDeliveryQuery]=useState("");const [deliveryStatus,setDeliveryStatus]=useState("all");
+  const [deliveryAccount,setDeliveryAccount]=useState("all");const [deliveryFrom,setDeliveryFrom]=useState("");
+  const [deliveryThrough,setDeliveryThrough]=useState("");const [deliverySort,setDeliverySort]=useState<"newest"|"oldest"|"order"|"cases">("newest");
   if(currentUser?.role!=="Customer") return <Empty>Customer access only.</Empty>;
   const current=scope.accounts[0];
   const accountIds=new Set(scope.accounts.map(a=>a.id));
@@ -305,14 +307,18 @@ function CustomerPortalContent({section}:{section:string}){
       <p className="prototype-note">Any future self-service edits must verify account ownership and protect tax, payment terms and legal identity fields.</p></section></div>;
   }
   if(section==="deliveries"){
-    const filtered=orders.filter(o=>(deliveryStatus==="all"||o.status===deliveryStatus)&&
-      [o.number,o.status,o.placedAt].join(" ").toLowerCase().includes(deliveryQuery.toLowerCase()));
+    const filtered=filterCustomerDeliveries(orders,{query:deliveryQuery,status:deliveryStatus,accountId:deliveryAccount,fromDate:deliveryFrom,throughDate:deliveryThrough,sort:deliverySort});
     const statuses=[...new Set(orders.map(o=>o.status))].sort();
     return <div><Heading title="My Deliveries" description="Account-scoped fulfillment history, with downloadable registers and individual order details."/>
       <section className="prototype-panel">
         <div className="prototype-controls">
           <label className="prototype-search"><Search size={16}/><input aria-label="Search my deliveries" value={deliveryQuery} onChange={e=>setDeliveryQuery(e.target.value)} placeholder="Order number or status"/></label>
           <label>Fulfillment <select aria-label="Filter my delivery status" value={deliveryStatus} onChange={e=>setDeliveryStatus(e.target.value)}><option value="all">All statuses</option>{statuses.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+          <label>Location <select aria-label="Filter my delivery location" value={deliveryAccount} onChange={e=>setDeliveryAccount(e.target.value)}><option value="all">All my locations</option>{scope.accounts.map(a=><option key={a.id} value={a.id}>{a.name} · {a.location}</option>)}</select></label>
+          <label>From <input aria-label="Deliveries from date" type="date" value={deliveryFrom} max={deliveryThrough||undefined} onChange={e=>setDeliveryFrom(e.target.value)}/></label>
+          <label>Through <input aria-label="Deliveries through date" type="date" value={deliveryThrough} min={deliveryFrom||undefined} onChange={e=>setDeliveryThrough(e.target.value)}/></label>
+          <label>Sort <select aria-label="Sort my deliveries" value={deliverySort} onChange={e=>setDeliverySort(e.target.value as "newest"|"oldest"|"order"|"cases")}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="order">Order number</option><option value="cases">Most cases</option></select></label>
+          <button type="button" onClick={()=>{setDeliveryQuery("");setDeliveryStatus("all");setDeliveryAccount("all");setDeliveryFrom("");setDeliveryThrough("");setDeliverySort("newest");}}>Clear filters</button>
           <button type="button" disabled={!filtered.length} onClick={()=>downloadCsv("momentum-my-deliveries.csv",customerDeliveryExportRows(filtered),customerDeliveryColumns)}>Download filtered deliveries CSV</button>
         </div>
         <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Fulfillment</th><th>Cases</th><th>Payment state</th></tr></thead><tbody>{filtered.map(o=>
