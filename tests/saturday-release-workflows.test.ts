@@ -63,6 +63,7 @@ test("Customer invoice portal uses authorized fulfilled order and matching accou
  const portal=readFileSync("components/prototype/operations-hub.tsx","utf8");
  const center=readFileSync("components/finance/invoice-print-center.tsx","utf8");
  assert.match(portal,/if\(section==="invoices"\)/);
+ assert.match(portal,/if\(section==="invoices"&&\(!runtime\.isDemo\|\|momentumStorage\.mode\(\)!=="local"\)\)/);
  assert.match(portal,/accountIds\.has\(o\.accountId\)/);
  assert.match(portal,/order\.accountId===invoice\.accountId/);
  assert.match(portal,/allowedInvoiceIds=\{ids\}/);
