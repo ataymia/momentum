@@ -119,7 +119,8 @@ test("missing claim fails closed", () => {
 });
 test("duplicate mapping fails closed", () => {
   const input = fixture();
-  (input.claims as Array<(typeof input.claims)[number]>)[1] =\n    {...input.claims[0]};
+  (input.claims as Array<(typeof input.claims)[number]>)[1] =
+    {...input.claims[0]};
   assert.equal(assessHrAuditEventProvenanceReview(input).reason,
     "duplicate-event");
 });
@@ -134,14 +135,16 @@ test("claim cannot substitute another reviewer or evidence reference", () => {
     {reviewerUid: "someoneElse"}, {evidenceRef: "review:other"},
   ]) {
     const input = fixture();
-    input.claims[0] = {...input.claims[0], ...change};
+    (input.claims as Array<(typeof input.claims)[number]>)[0] =
+      {...input.claims[0], ...change};
     assert.equal(assessHrAuditEventProvenanceReview(input).reason,
       "invalid-claim");
   }
 });
 test("missing source shard quarantines before digest matching", () => {
   const input = fixture();
-  (input.chunk.shardSnapshots as Array<\n    (typeof input.chunk.shardSnapshots)[number]>).pop();
+  (input.chunk.shardSnapshots as Array<
+    (typeof input.chunk.shardSnapshots)[number]>).pop();
   assert.equal(assessHrAuditEventProvenanceReview(input).reason,
     "source-or-receipt-quarantined");
 });
