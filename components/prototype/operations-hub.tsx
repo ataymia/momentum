@@ -306,10 +306,21 @@ function CustomerPortalContent({section}:{section:string}){
       <p className="prototype-note">Any future self-service edits must verify account ownership and protect tax, payment terms and legal identity fields.</p></section></div>;
   }
   if(section==="deliveries"){
-    return <div><Heading title="My Deliveries" description="Order progress from your account's approved records."/>
-      <section className="prototype-panel"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Status</th><th>Cases</th></tr></thead><tbody>{orders.map(o=>
-      <tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{o.placedAt}</td><td>{o.status}</td><td>{o.cases}</td></tr>)}</tbody></table>
-      {!orders.length&&<Empty>No recorded orders.</Empty>}<p className="prototype-note">Live driver ETA and shipment tracking are not connected yet. This displays existing order statuses only.</p></section></div>;
+    const filtered=orders.filter(o=>(deliveryStatus==="all"||o.status===deliveryStatus)&&
+      [o.number,o.status,o.placedAt].join(" ").toLowerCase().includes(deliveryQuery.toLowerCase()));
+    const statuses=[...new Set(orders.map(o=>o.status))].sort();
+    return <div><Heading title="My Deliveries" description="Account-scoped fulfillment history, with downloadable registers and individual order details."/>
+      <section className="prototype-panel">
+        <div className="prototype-controls">
+          <label className="prototype-search"><Search size={16}/><input aria-label="Search my deliveries" value={deliveryQuery} onChange={e=>setDeliveryQuery(e.target.value)} placeholder="Order number or status"/></label>
+          <label>Fulfillment <select aria-label="Filter my delivery status" value={deliveryStatus} onChange={e=>setDeliveryStatus(e.target.value)}><option value="all">All statuses</option>{statuses.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+          <button type="button" disabled={!filtered.length} onClick={()=>downloadCsv("momentum-my-deliveries.csv",customerDeliveryExportRows(filtered),customerDeliveryColumns)}>Download filtered deliveries CSV</button>
+        </div>
+        <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Fulfillment</th><th>Cases</th><th>Payment state</th></tr></thead><tbody>{filtered.map(o=>
+          <tr key={o.id}><td><OpenLink to={"/portal/deliveries/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{o.placedAt.slice(0,10)}</td><td>{o.status}</td><td>{o.cases}</td><td>{o.paymentStatus}</td></tr>)}</tbody></table></div>
+        {!filtered.length&&<Empty>No matching deliveries for your authorized accounts.</Empty>}
+        <p className="prototype-note">These are recorded order states, not verified driver GPS, ETA, proof of delivery, or cleared funds. Downloads contain only accessible account orders.</p>
+      </section></div>;
   }
   const descriptions:Record<string,{title:string,body:string}>={
     invoices:{title:"My Invoices",body:"Invoice balances and PDFs will be sourced from issued, delivery-verified invoices. The review prototype does not invent financial balances."},
@@ -321,6 +332,31 @@ function CustomerPortalContent({section}:{section:string}){
   if(!v)return <Empty>Customer portal page not found.</Empty>;
   return <div><Heading title={v.title} description="Customer self-service • prototype"/><section className="prototype-panel"><h2>{v.title}</h2><Empty>{v.body}</Empty></section></div>;
 }
+
+/** Customer-only detail: no staff approvals, audit history or private rep fields. */
+function CustomerOrderRecord({id,section}:{id:string;section:"orders"|"deliveries"}){
+  const {scope,currentUser}=useWorkspace();
+  if(currentUser?.role!=="Customer")return <Empty>Customer access only.</Empty>;
+  const accountIds=new Set(scope.accounts.map(a=>a.id));
+  const order=authorizedCustomerOrder(scope.orders,accountIds,id);
+  if(!order)return <Empty>Order not found or not authorized for your business account.</Empty>;
+  const account=scope.accounts.find(a=>a.id===order.accountId);
+  const lines=order.lines??(order.product?[{id:order.id,product:order.product,cases:order.cases}]:[]);
+  return <div><Heading title={"Order "+order.number} description="My account order and delivery status" back={section==="orders"?"/portal/orders":"/portal/deliveries"}/>
+    <div className="prototype-metrics"><div><small>Fulfillment</small><strong>{order.status}</strong></div><div><small>Cases</small><strong>{order.cases}</strong></div><div><small>Payment state</small><strong>{order.paymentStatus}</strong></div></div>
+    <section className="prototype-panel"><h2>Order information</h2><dl className="prototype-facts">
+      <div><dt>Business location</dt><dd>{account?.name??"Authorized account"} · {account?.location??""}</dd></div>
+      <div><dt>Placed</dt><dd>{order.placedAt.slice(0,10)}</dd></div>
+      <div><dt>Current order status</dt><dd>{order.status}</dd></div>
+      <div><dt>Payment state</dt><dd>{order.paymentStatus}</dd></div>
+    </dl>
+    <button type="button" onClick={()=>downloadCsv("momentum-my-delivery-"+order.number+".csv",customerDeliveryExportRows([order]),customerDeliveryColumns)}>Download this order status (CSV)</button>
+    <p className="prototype-note">Recorded order status is not live GPS, an estimated arrival, a signed proof of delivery, or payment settlement evidence.</p></section>
+    <section className="prototype-panel"><h2>Ordered products</h2><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Product</th><th>Cases</th></tr></thead><tbody>{lines.map(line=><tr key={line.id}><td>{line.product}</td><td>{line.cases}</td></tr>)}</tbody></table></div>
+    {!lines.length&&<Empty>No verified product breakdown is available for this order.</Empty>}</section>
+  </div>;
+}
+
 function TerritoryMapPreview(){
   return <div><Heading title="Territories & Map" description="Existing ZIP assignments and geographic controls retained."/>
     <section className="prototype-panel"><h2>Territory management</h2><TerritoryPanel/>
