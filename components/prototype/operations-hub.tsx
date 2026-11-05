@@ -17,6 +17,8 @@ import { PeopleExperience } from "./hr-payroll-experiences";
 import {PayrollWorkflowExperience} from "./payroll-workflow-experience";
 import {HrOnboardingExperience} from "./hr-onboarding-experience";
 import {InvoicePrintCenter} from "../finance/invoice-print-center";
+import {downloadCsv} from "../../lib/browser-export";
+import {invoiceBalance,computedInvoiceStatus} from "../../lib/commerce-engine";
 import {useCommerce} from "../../lib/commerce-context";
 import {MarketingWorkspaceExperience} from "./marketing-workspace-experience";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
@@ -264,9 +266,20 @@ function CustomerPortalContent({section}:{section:string}){
       return invoice.status!=="Void"&&Boolean(order&&order.accountId===invoice.accountId&&
         accountIds.has(invoice.accountId));
     }).map(invoice=>invoice.id);
+    const register=commerce.invoices.filter(invoice=>ids.includes(invoice.id)).map(invoice=>({
+      invoiceNumber:invoice.number,orderNumber:fulfilled.get(invoice.orderId)?.number??"",
+      recordedAt:invoice.issuedAt,dueDate:invoice.dueDate,terms:invoice.terms,
+      total:invoice.total,balance:invoiceBalance(commerce,invoice),
+      status:computedInvoiceStatus(commerce,invoice),
+    }));
     return <div><Heading title="My Invoices" description="Recorded documents for delivered orders linked to your authorized business account."/>
       <section className="prototype-panel">
        <p className="prototype-note">Only invoices tied to your authorized customer locations and orders recorded Delivered or Paid are shown. A recorded invoice is not proof of a separately emailed invoice or settled payment.</p>
+       <button type="button" disabled={!register.length} onClick={()=>
+         downloadCsv("momentum-my-invoices.csv",register,
+          ["invoiceNumber","orderNumber","recordedAt","dueDate","terms","total","balance","status"])}>
+          Download my invoice register (CSV)
+       </button>
        <InvoicePrintCenter allowedInvoiceIds={ids} allowedOrderIds={[...fulfilled.keys()]}
          title="My printable invoices" description="Open an invoice or print one or all authorized documents. Your browser also supports Save as PDF."/>
        {!ids.length&&<Empty>No customer invoices currently meet the delivery and account verification criteria.</Empty>}
