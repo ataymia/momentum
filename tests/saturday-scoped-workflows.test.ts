@@ -3,7 +3,7 @@ import {readFileSync} from "node:fs";
 import test from "node:test";
 import type {Account,Order,WorkspaceUser} from "../lib/types";
 import {canVisitRoute,pageForPath,requiresPrototypePage} from "../lib/navigation-route-registry";
-import {accountExportRows,contactExportRows,inventoryExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryExportRows} from "../lib/saturday-scoped-workflows";
+import {accountExportRows,contactExportRows,inventoryExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryExportRows,filterCustomerDeliveries} from "../lib/saturday-scoped-workflows";
 
 const account=(id:string,overrides:Partial<Account>={}):Account=>({
   id,name:"Business "+id,location:"Phoenix",channel:"Retail",stage:"Qualified",
@@ -89,4 +89,30 @@ test("visible workflow wiring preserves scoped selection, explicit downloads and
   assert.match(hub,/portal\/deliveries\/"/);
   assert.match(inventory,/Download filtered lot register CSV/);
   assert.match(inventory,/inventoryExportRows\(rows\)/);
+});
+
+test("customer delivery view filters account, date, status and search without mutating authorized source",()=>{
+  const all=[
+    order("a","account-a",{status:"Delivered",placedAt:"2026-11-05T10:00:00Z",cases:4}),
+    order("b","account-b",{status:"Delivered",placedAt:"2026-11-06T10:00:00Z",cases:8}),
+    order("c","account-a",{status:"Approved",placedAt:"2026-11-07T10:00:00Z",cases:2}),
+    order("d","account-a",{status:"Delivered",placedAt:"2026-11-03T10:00:00Z",cases:1}),
+  ];
+  const authorized=authorizedCustomerOrders(all,new Set(["account-a"]));
+  assert.deepEqual(filterCustomerDeliveries(authorized,{accountId:"account-a",status:"Delivered",fromDate:"2026-11-04",throughDate:"2026-11-06",query:"GE-a"}).map(o=>o.id),["a"]);
+  assert.deepEqual(filterCustomerDeliveries(authorized,{accountId:"account-b"}),[]);
+  assert.deepEqual(filterCustomerDeliveries(authorized,{sort:"oldest"}).map(o=>o.id),["d","a","c"]);
+  assert.deepEqual(filterCustomerDeliveries(authorized,{sort:"cases"}).map(o=>o.id),["a","c","d"]);
+  assert.deepEqual(filterCustomerDeliveries(authorized,{sort:"order"}).map(o=>o.id),["a","c","d"]);
+  assert.equal(authorized.length,3);
+  assert.equal(all[0].id,"a");
+});
+test("customer delivery UI filters are wired before scoped export",()=>{
+  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+  assert.match(hub,/filterCustomerDeliveries\(orders,/);
+  assert.match(hub,/Filter my delivery location/);
+  assert.match(hub,/Deliveries from date/);
+  assert.match(hub,/Deliveries through date/);
+  assert.match(hub,/Sort my deliveries/);
+  assert.match(hub,/customerDeliveryExportRows\(filtered\)/);
 });

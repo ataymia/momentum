@@ -49,3 +49,28 @@ export function authorizedCustomerOrder(orders:readonly Order[],authorizedAccoun
 export function customerDeliveryExportRows(orders:readonly Order[]){
   return orders.map(o=>({order:o.number,placed:o.placedAt.slice(0,10),status:o.status,cases:o.cases,payment:o.paymentStatus}));
 }
+
+export type CustomerDeliverySort="newest"|"oldest"|"order"|"cases";
+export type CustomerDeliveryFilters={
+  query?:string;status?:string;accountId?:string;fromDate?:string;throughDate?:string;sort?:CustomerDeliverySort;
+};
+/** Apply view filters ONLY after authorizedCustomerOrders. Never use this as a security boundary. */
+export function filterCustomerDeliveries(authorizedOrders:readonly Order[],filters:CustomerDeliveryFilters):Order[]{
+  const q=(filters.query??"").trim().toLocaleLowerCase();
+  const rows=authorizedOrders.filter(o=>
+    (!filters.accountId||filters.accountId==="all"||o.accountId===filters.accountId)&&
+    (!filters.status||filters.status==="all"||o.status===filters.status)&&
+    (!filters.fromDate||o.placedAt.slice(0,10)>=filters.fromDate)&&
+    (!filters.throughDate||o.placedAt.slice(0,10)<=filters.throughDate)&&
+    (!q||[o.number,o.status,o.paymentStatus].some(value=>String(value??"").toLocaleLowerCase().includes(q)))
+  );
+  const sort=filters.sort??"newest";
+  return rows.sort((a,b)=>{
+    let result=0;
+    if(sort==="newest")result=b.placedAt.localeCompare(a.placedAt);
+    if(sort==="oldest")result=a.placedAt.localeCompare(b.placedAt);
+    if(sort==="order")result=a.number.localeCompare(b.number,undefined,{numeric:true});
+    if(sort==="cases")result=b.cases-a.cases;
+    return result||a.id.localeCompare(b.id);
+  });
+}

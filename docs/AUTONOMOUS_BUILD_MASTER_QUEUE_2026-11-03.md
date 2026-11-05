@@ -515,3 +515,10 @@ For every run record: local date/time; main and review-branch SHAs; item number;
 - **Verification:** pending exact final SHA CI and role/browser download QA. Existing customer UI projection filters do NOT replace backend record authorization.
 - **Release gates:** no main changes, production data access, payments, live emails, payroll, employee status or deployment. Mia approval remains required.
 - **Next unblocked action:** connect customer portal payment/statement read-only records to authenticated customer-linked, reconciled ledger data with cross-account server authorization tests.
+
+### Sprint continuity entry: November 5, 2026, 13:20 Phoenix — customer delivery usability
+- **Parent:** PR #150 review branch fixed SHA `6599b717adb4c1b138f00ad7d6ac3107173c74fc`. New isolated child `review/rc-customer-delivery-filters-2026-11-05-1320`; main/prototype/integration/payroll/security review chains unchanged.
+- **Tracker IDs:** D17 (customer deliveries), C12 (search/date filters), A08/A11 (department UX). PARTIAL: delivery history now offers customer-authorized location selection, inclusive placed-date range, fulfillment status, search, four deterministic sort modes, reset and CSV of exactly displayed rows. No claim of complete portal, backend account-link authorization, visual QA or accepted features.
+- **Code:** `lib/saturday-scoped-workflows.ts`, `components/prototype/operations-hub.tsx`, `tests/saturday-scoped-workflows.test.ts`. Filter helper must be called only after authorized customer account selection; UI filtering is not backend authorization. Synthetic tests cover foreign account exclusion, date/status/search, sort and CSV wiring.
+- **Verification:** new tests added to already-registered mandatory logic suite; exact-final-SHA GitHub Actions audit PENDING. Not Automated-Verified or browser/staging-verified. No live changes, payment actions, customer messaging or production access.
+- **Next unblocked action:** run complete fixed-SHA audit and repair any failure; then validate customer delivery filtering and exports in approved role-scoped browser environment.
