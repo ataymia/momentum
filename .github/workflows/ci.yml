@@ -55,6 +55,9 @@ jobs:
       - name: Firestore security rules regression tests
         run: npm run test:rules
 
+      - name: HR Firebase Admin SDK isolated emulator regression
+        run: npm run test:hr-admin-emulator
+
       - name: Storage access regression tests
         run: npm run test:storage
 
