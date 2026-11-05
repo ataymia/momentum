@@ -54,7 +54,14 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
   const { commerce } = useCommerce();
   const { state: deliveryState, taskForOrder } = useDelivery();
   const orderIds = useMemo(() => {const scoped=new Set(scope.orders.map((order)=>order.id));return new Set(allowedOrderIds?allowedOrderIds.filter((id)=>scoped.has(id)):[...scoped]);}, [scope.orders,allowedOrderIds]);
-  const invoices = useMemo(() => commerce.invoices.filter((invoice) => orderIds.has(invoice.orderId)&&(!allowedInvoiceIds||allowedInvoiceIds.includes(invoice.id))).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt)), [commerce.invoices, orderIds,allowedInvoiceIds]);
+  const orderAccounts=useMemo(()=>new Map(scope.orders.map(o=>[o.id,o.accountId])),[scope.orders]);
+  const accountIds=useMemo(()=>new Set(scope.accounts.map(a=>a.id)),[scope.accounts]);
+  const invoices = useMemo(() => commerce.invoices.filter(invoice=>
+    orderIds.has(invoice.orderId)&&accountIds.has(invoice.accountId)&&
+    orderAccounts.get(invoice.orderId)===invoice.accountId&&
+    (!allowedInvoiceIds||allowedInvoiceIds.includes(invoice.id)))
+    .sort((a,b)=>b.issuedAt.localeCompare(a.issuedAt)),
+    [commerce.invoices,orderIds,accountIds,orderAccounts,allowedInvoiceIds]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [copies, setCopies] = useState<Copies>(1);
