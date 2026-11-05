@@ -139,7 +139,7 @@ test("rejects project mismatch, production-shaped IDs and malformed target field
   h.db.projectId = "different-project";
   assert.equal(h.factory(), null);
   h.db.projectId = projectId;
-  const invalid = { ...command(), field: "../compensation" } as HrCanonicalReadCommand;
+  const invalid = { ...command(), field: "../compensation" } as unknown as HrCanonicalReadCommand;
   assert.equal(h.factory(invalid), null);
   assert.equal(h.factory({ ...command(), expectedSessionEpoch: -1 }), null);
   assert.deepEqual(h.counts(), { reads: 0, transactions: 0, verifierCalls: 0 });
