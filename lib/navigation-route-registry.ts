@@ -79,7 +79,8 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Time Off & Leave", path: "/people/leave", permission: "people", state: "prototype" },
   ] },
   { label: "Marketing", entries: [
-    { label: "Marketing Overview", path: "/marketing", permission: "marketing", state: "existing" },
+    { label: "Marketing Overview", path: "/marketing", permission: "marketing", state: "prototype" },
+    { label: "Marketing Administration", path: "/marketing/workflow", permission: "settings", state: "prototype" },
     { label: "Campaigns", path: "/marketing/campaigns", permission: "marketing", state: "planned" },
     { label: "Brand Ambassadors", path: "/marketing/ambassadors", permission: "brandAmbassadors", state: "existing" },
   ] },
