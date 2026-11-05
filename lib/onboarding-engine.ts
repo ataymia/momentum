@@ -175,7 +175,14 @@ export function onboardingReadiness(state: HCMState, record: IdentityProvisionin
   employeeChecks.push(lifecycleExists);
   if (!lifecycleExists) blockers.push("HR has not prepared the onboarding case yet.");
 
-  const documentsComplete = requiredTitles.size > 0 && documents.length === requiredTitles.size && documents.every((item) => item.status === "Available");
+  // Duplicate/retained versions of a form must not prevent activation when the newest
+  // required version is verified. An older Available copy must never mask a newer Missing one.
+  const documentsComplete = requiredTitles.size > 0 && [...requiredTitles].every((title) => {
+    const latest = documents
+      .filter((item) => item.title.toLowerCase() === title)
+      .sort((left, right) => right.version - left.version || right.uploadedAt.localeCompare(left.uploadedAt))[0];
+    return latest?.status === "Available";
+  });
   if (!documentsComplete) activationBlockers.push("Administrator must verify every required employment and tax document before activation.");
 
   const readyForEmployeeSubmission = passwordComplete && employmentConfigured && profileComplete && compensationConfigured && trainingComplete && lifecycleExists;

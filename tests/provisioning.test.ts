@@ -149,6 +149,38 @@ describe("onboarding package", () => {
     assert.equal(prepareOnboardingPackage(seed, dataWithHire, unlinked, HIRE_ID, ADMIN_ID), seed);
   });
 
+  test("activation uses the newest required document, not a count of retained versions", () => {
+    const prepared = prepareOnboardingPackage(createHcmSeed(dataWithHire), dataWithHire, draft, HIRE_ID, ADMIN_ID);
+    const ready = {
+      ...prepared,
+      privateProfiles: prepared.privateProfiles.map((profile) => profile.userId === HIRE_ID
+        ? { ...profile, phone: "602-555-0100", address: "Phoenix, AZ", emergencyContact: "Emergency Contact" }
+        : profile),
+      training: prepared.training.map((assignment) => assignment.userId === HIRE_ID
+        ? { ...assignment, status: "Complete" as const }
+        : assignment),
+      documents: prepared.documents.map((document) => document.userId === HIRE_ID
+        ? { ...document, status: "Available" as const }
+        : document),
+    };
+    const record: IdentityProvisioningRecord = {
+      id: `access-${HIRE_ID}`, userId: HIRE_ID, state: "Pending approval", source: "Direct hire",
+      provisionedBy: ADMIN_ID, provisionedAt: "2026-09-14T00:00:00.000Z",
+      passwordChangedAt: "2026-10-24T00:00:00.000Z",
+    };
+    assert.equal(onboardingReadiness(ready, record, HIRE_ID).readyForActivation, true, "verified package is ready");
+    const verifiedI9 = ready.documents.find((item) => item.userId === HIRE_ID && item.title === "Form I-9");
+    assert.ok(verifiedI9);
+    const olderMissing = { ...verifiedI9, id: "old-i9", status: "Missing" as const, uploadedAt: "2020-01-01T00:00:00.000Z" };
+    assert.equal(onboardingReadiness({ ...ready, documents: [...ready.documents, olderMissing] }, record, HIRE_ID).readyForActivation, true,
+      "a retained older missing copy cannot block a verified newer form");
+    const newerMissing = { ...verifiedI9, id: "new-i9", version: verifiedI9.version + 1, status: "Missing" as const };
+    assert.equal(onboardingReadiness({ ...ready, documents: [...ready.documents, newerMissing] }, record, HIRE_ID).readyForActivation, false,
+      "an older verified form cannot satisfy a newer missing required version");
+    assert.equal(onboardingReadiness({ ...ready, documents: ready.documents.filter((item) => item.title !== "Form W-4") }, record, HIRE_ID).readyForActivation, false,
+      "a completely missing required form must still block activation");
+  });
+
   test("a hire cannot be activated before the onboarding package is complete", () => {
     const seed = createHcmSeed(dataWithHire);
     const prepared = prepareOnboardingPackage(seed, dataWithHire, draft, HIRE_ID, ADMIN_ID);
