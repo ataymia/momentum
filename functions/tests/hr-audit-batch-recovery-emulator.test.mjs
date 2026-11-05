@@ -14,6 +14,8 @@ import { fingerprintHrAuditEvent } from
   "../../lib/hr-actor-audit-reconciliation-review.ts";
 import { assessHrAuditBatchRecoveryReview } from
   "../../lib/hr-audit-batch-recovery-review.ts";
+import { assessHrAuditChunkInventoryReview } from
+  "../../lib/hr-audit-chunk-inventory-review.ts";
 
 const projectId = "momentum-hr-admin-sdk-review";
 assert.match(process.env.FIRESTORE_EMULATOR_HOST ?? "",
@@ -261,4 +263,75 @@ test("classification never includes confidential values, subjects or evidence", 
     "PRIVATE", "actor", "reviewer", "subjectA", "subjectB",
     "audit-1", "audit-2", evidenceRef,
   ]) assert.equal(serialized.includes(secret), false);
+});
+
+/**
+ * Separate chunked audit/events domain (NOT the legacy HCM actor-audit field).
+ * All manifest/shard snapshots are read in one actual Admin Firestore
+ * read-only transaction. A consistent source does not authorize replay.
+ */
+const chunkSourcePath = "userDomains/actor/audit/events";
+const chunkNames = ["events__chunk_000000", "events__chunk_000001"];
+const chunkPaths = chunkNames.map((name) => `userDomains/actor/audit/${name}`);
+async function seedChunkSource() {
+  const batch = db.batch();
+  batch.set(db.doc(chunkSourcePath), {
+    shardManifestVersion: 1, shards: chunkNames, itemCount: 2,
+  });
+  items().forEach((item, i) => batch.set(db.doc(chunkPaths[i]), {
+    items: [item],
+  }));
+  await batch.commit();
+}
+async function inspectChunkSource(loadedPaths = chunkPaths) {
+  return db.runTransaction(async (tx) => {
+    const m = await tx.get(db.doc(chunkSourcePath));
+    const s = await Promise.all(loadedPaths.map((path) => tx.get(db.doc(path))));
+    return assessHrAuditChunkInventoryReview({
+      inventory: {
+        actorUid, sourcePath: chunkSourcePath, sourceVersion: version(m),
+        inventoryVersion: "synthetic:emulator:1", reviewerUid,
+        reviewedAt, evidenceRef, independentlyVerified: true,
+        expectedEventIds: ["audit-1", "audit-2"], expectedCount: 2,
+      },
+      manifestSnapshot: {
+        path: chunkSourcePath, exists: m.exists, version: version(m),
+        data: m.exists ? m.data() : null,
+      },
+      shardSnapshots: s.map((snap) => ({
+        path: snap.ref.path, exists: snap.exists, version: version(snap),
+        data: snap.exists ? snap.data() : null,
+      })),
+    });
+  }, { readOnly: true, maxAttempts: 1 });
+}
+test("chunked audit source: complete read-only Firestore transaction is source-only", async () => {
+  await seedChunkSource();
+  const beforeState = await Promise.all(
+    [chunkSourcePath, ...chunkPaths].map(async (path) => {
+      const snap = await db.doc(path).get();
+      return { path, version: version(snap), data: snap.data() };
+    }));
+  assert.deepEqual(await inspectChunkSource(), {
+    status: "consistent-source-only", reason: "none",
+    safeToAppend: false, safeToReplayWithoutWrite: false,
+  });
+  const afterState = await Promise.all(
+    [chunkSourcePath, ...chunkPaths].map(async (path) => {
+      const snap = await db.doc(path).get();
+      return { path, version: version(snap), data: snap.data() };
+    }));
+  assert.deepEqual(afterState, beforeState);
+});
+test("chunked audit source: incomplete loaded page cannot pass", async () => {
+  await seedChunkSource();
+  assert.equal((await inspectChunkSource(chunkPaths.slice(0, 1))).status,
+    "quarantined");
+  assert.equal((await db.doc(chunkPaths[1]).get()).exists, true);
+});
+test("chunked audit source: missing shard quarantines without repair", async () => {
+  await seedChunkSource();
+  await db.doc(chunkPaths[1]).delete(); // synthetic fault injection
+  assert.equal((await inspectChunkSource()).status, "quarantined");
+  assert.equal((await db.doc(chunkPaths[1]).get()).exists, false);
 });
