@@ -249,10 +249,11 @@ function ContactsDirectory(){
 
 /** A separate customer-facing surface with account-scoped records, not staff-wide ledgers. */
 function CustomerPortalContent({section}:{section:string}){
-  const {scope,currentUser}=useWorkspace();const {commerce}=useCommerce();
+  const {scope,currentUser}=useWorkspace();const {commerce}=useCommerce();const runtime=useRuntimeMode();
   if(currentUser?.role!=="Customer") return <Empty>Customer access only.</Empty>;
   const current=scope.accounts[0];
   const orders=scope.orders.filter(o=>!o.testOnly).sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
+  if(section==="invoices"&&(!runtime.isDemo||momentumStorage.mode()!=="local"))return <div><Heading title="My Invoices" description="Account-specific invoice access requires verification."/><section className="prototype-panel"><p>This customer invoice screen is enabled in the isolated demo only. Connected invoices need an account-scoped server read before release.</p></section></div>;
   if(section==="invoices"){
     // Only source-matched, fulfilled customer orders may expose printable
     // invoice documents. Scope comes from the authenticated customer's
