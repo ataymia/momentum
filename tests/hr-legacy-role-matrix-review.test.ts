@@ -94,7 +94,11 @@ test("coverage guard includes every employee-owned HCM field, not just four exam
   const employeeFields = Object.entries(spec.fields)
     .filter(([, field]) => Boolean(field.userIdField))
     .map(([field]) => field).sort();
-  assert.deepEqual([...HR_SHARED_EMPLOYEE_FIELDS_REVIEW].sort(), employeeFields);
+  // Actor-sharded audit is handled by a separate Administrator-only guard.
+  // It is already Administrator-only in the shared HCM field rules.
+  assert.equal(spec.fields.audit.userIdField, "actorId");
+  assert.deepEqual([...HR_SHARED_EMPLOYEE_FIELDS_REVIEW].sort(),
+    employeeFields.filter((field) => field !== "audit"));
   for (const field of HR_MANAGER_PRIVATE_FIELDS_REVIEW) {
     assert.ok(employeeFields.includes(field), "Unknown manager-private field " + field);
   }
