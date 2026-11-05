@@ -9,6 +9,8 @@ import {navigateToRoute} from "../../lib/navigation-store";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {momentumStorage} from "../../lib/persistence";
 
+const newLeaveRequestId=()=>`leave-${crypto.randomUUID()}`;
+
 export function HrTimeOffExperience(){
  const {currentUser,data}=useWorkspace();const {hcm,setHcm}=useHcm();
  const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
@@ -25,7 +27,7 @@ export function HrTimeOffExperience(){
   if(!writeEnabled){setError("Read-only prototype: submitting leave requires isolated local demo mode.");return;}
   const requestedHours=Number(hours);
   if(!start||!end||end<start||!Number.isFinite(requestedHours)||requestedHours<=0||!reason.trim()){setError("Enter valid dates, hours and a reason.");return;}
-  const id=["leave",Date.now(),Math.random().toString(36).slice(2,7)].join("-");
+  const id=newLeaveRequestId();
   const record:LeaveRequest={id,userId:currentUser.id,policyId:assignment?.policyId,startDate:start,endDate:end,requestedHours,reason:reason.trim(),submittedAt:new Date().toISOString(),status:"Submitted"};
   setHcm(s=>appendAudit({...s,leaveRequests:[record,...s.leaveRequests]},{actorId:currentUser.id,action:"Time-off request submitted",entityType:"LeaveRequest",entityId:id,reason:reason.trim()}));
   setStart("");setEnd("");setHours("");setReason("");
