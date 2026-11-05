@@ -16,6 +16,8 @@ import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience } from "./hr-payroll-experiences";
 import {PayrollWorkflowExperience} from "./payroll-workflow-experience";
 import {HrOnboardingExperience} from "./hr-onboarding-experience";
+import {InvoicePrintCenter} from "../finance/invoice-print-center";
+import {useCommerce} from "../../lib/commerce-context";
 import {MarketingWorkspaceExperience} from "./marketing-workspace-experience";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
 import {HrPersonnelDirectory,HrPersonnelRecord} from "./hr-personnel-experience";
@@ -245,10 +247,31 @@ function ContactsDirectory(){
 
 /** A separate customer-facing surface with account-scoped records, not staff-wide ledgers. */
 function CustomerPortalContent({section}:{section:string}){
-  const {scope,currentUser}=useWorkspace();
+  const {scope,currentUser}=useWorkspace();const {commerce}=useCommerce();
   if(currentUser?.role!=="Customer") return <Empty>Customer access only.</Empty>;
   const current=scope.accounts[0];
   const orders=scope.orders.filter(o=>!o.testOnly).sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
+  if(section==="invoices"){
+    // Only source-matched, fulfilled customer orders may expose printable
+    // invoice documents. Scope comes from the authenticated customer's
+    // account IDs, not untrusted URL or request parameters.
+    const accountIds=new Set(scope.accounts.map(a=>a.id));
+    const fulfilled=new Map(orders.filter(o=>
+      accountIds.has(o.accountId)&&["Delivered","Paid"].includes(o.status))
+      .map(o=>[o.id,o]));
+    const ids=commerce.invoices.filter(invoice=>{
+      const order=fulfilled.get(invoice.orderId);
+      return invoice.status!=="Void"&&Boolean(order&&order.accountId===invoice.accountId&&
+        accountIds.has(invoice.accountId));
+    }).map(invoice=>invoice.id);
+    return <div><Heading title="My Invoices" description="Recorded documents for delivered orders linked to your authorized business account."/>
+      <section className="prototype-panel">
+       <p className="prototype-note">Only invoices tied to your authorized customer locations and orders recorded Delivered or Paid are shown. A recorded invoice is not proof of a separately emailed invoice or settled payment.</p>
+       <InvoicePrintCenter allowedInvoiceIds={ids} allowedOrderIds={[...fulfilled.keys()]}
+         title="My printable invoices" description="Open an invoice or print one or all authorized documents. Your browser also supports Save as PDF."/>
+       {!ids.length&&<Empty>No customer invoices currently meet the delivery and account verification criteria.</Empty>}
+      </section></div>;
+  }
   if(section==="products"){
     return <div><Heading title="Products" description="Browse the Golden Eagle wholesale catalog."/>
       <section className="prototype-panel"><div className="prototype-product-grid">{GOLDEN_EAGLE_SKUS.filter(s=>s.active).map(item=>
