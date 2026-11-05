@@ -68,6 +68,8 @@ const version = (value: unknown): value is string =>
 const utc = (value: unknown): value is string =>
   typeof value === "string" && !Number.isNaN(Date.parse(value)) &&
   new Date(value).toISOString() === value;
+const exactKeys = (value: JsonRecord, keys: readonly string[]) =>
+  Object.keys(value).sort().join(",") === [...keys].sort().join(",");
 const canonical = (value: unknown): string => {
   if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
   if (record(value)) return "{" + Object.keys(value).sort()
@@ -196,8 +198,10 @@ export function assessHrActorAuditReconciliation(input: {
         // An existing immutable receipt may be replayed, never overwritten.
         const data = target.data;
         if (!version(target.version) || !record(data) ||
+            !exactKeys(data, ["event", "provenance"]) ||
             canonical(data.event) !== canonical(value) ||
             !record(data.provenance) ||
+            !exactKeys(data.provenance, ["sourcePath", "sourceVersion", "eventDigest", "subjectUid", "reviewerUid", "reviewedAt", "evidenceRef"]) ||
             data.provenance.sourcePath !== path ||
             data.provenance.sourceVersion !== source.version ||
             data.provenance.eventDigest !== digest ||
@@ -223,6 +227,7 @@ export function assessHrActorAuditReconciliation(input: {
     if (!sourcePaths.has(decision.sourcePath) ||
         !seenIds.has(decision.eventId) ||
         !before.map.get(decision.sourcePath)?.data ||
+        !Array.isArray(before.map.get(decision.sourcePath)!.data!.items) ||
         !(before.map.get(decision.sourcePath)!.data!.items as unknown[]).some(
           (event) => record(event) && event.id === decision.eventId,
         )) issues.add("invalid-decision");
