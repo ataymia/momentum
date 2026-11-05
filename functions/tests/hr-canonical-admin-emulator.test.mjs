@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { initializeApp, deleteApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 import { initializeTestEnvironment, assertFails } from "@firebase/rules-unit-testing";
 import { doc, getDoc } from "firebase/firestore";
 import { createHrCanonicalServerTransportReview } from
@@ -18,6 +19,8 @@ import { hrCanonicalReviewPath } from "../../lib/hr-canonical-storage-review.ts"
 
 const projectId = "momentum-hr-admin-sdk-review";
 const host = process.env.FIRESTORE_EMULATOR_HOST;
+const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+const syntheticPassword = "synthetic-emulator-only-password";
 const now = Date.parse("2026-11-04T22:00:00Z") / 1000;
 const token = "synthetic.header.signature";
 const path = (uid, field) => hrCanonicalReviewPath(uid, field);
@@ -29,6 +32,8 @@ const command = (field = "leaveRequests") =>
 // Fail BEFORE initializing Firebase Admin if run outside the dedicated emulator.
 // The CLI project must match; never let the SDK infer a production project.
 assert.match(host ?? "", /^(?:127\.0\.0\.1|localhost):8080$/);
+assert.match(authHost ?? "", /^(?:127\.0\.0\.1|localhost):9099$/,
+  "Dedicated local Auth emulator is required before Admin SDK initialization");
 assert.equal(process.env.GCLOUD_PROJECT, projectId,
   "Dedicated Firebase CLI emulator project is required");
 const rules = readFileSync("firestore.rules", "utf8");
@@ -44,7 +49,9 @@ const candidateRules = rules.replace(marker, [
 
 let app;
 let db;
+let auth;
 let env;
+const realTokens = new Map();
 let transactionCount = 0;
 const roles = {
   rep: "Sales Representative",
@@ -63,6 +70,25 @@ before(async () => {
   assert.equal(app.options.projectId, projectId);
   db = getFirestore(app);
   assert.equal(db.projectId, projectId, "Admin SDK must bind to synthetic project");
+  auth = getAuth(app);
+  assert.equal(auth.app.options.projectId, projectId);
+  // Create synthetic users and sign in through the REAL local Auth emulator.
+  // These tokens are emulator-issued/unsigned and MUST NEVER be used as
+  // production signature-verification evidence.
+  for (const uid of Object.keys(roles)) {
+    const email = uid + "@synthetic.invalid";
+    await auth.createUser({ uid, email, password: syntheticPassword });
+    const response = await fetch(
+      "http://" + authHost +
+      "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=synthetic-key",
+      { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: syntheticPassword, returnSecureToken: true }) },
+    );
+    assert.equal(response.ok, true, "Auth emulator sign-in failed for " + uid);
+    const payload = await response.json();
+    assert.equal(typeof payload.idToken, "string");
+    realTokens.set(uid, payload.idToken);
+  }
 });
 
 beforeEach(async () => {
@@ -215,4 +241,99 @@ test("default-off, mismatched project and nonlocal host fail closed before IO", 
     ...options, command: { ...command(), field: "../compensation" },
   }, true), null);
   assert.equal(transactionCount, 0);
+});
+
+
+async function runWithRealAuth(uid, c = command(), onTransactionDone, enabled = true) {
+  let verified = 0;
+  const initialTransactions = transactionCount;
+  const result = await executeHrCanonicalTrustedIdentityReview(
+    c, realTokens.get(uid), {
+      projectId,
+      verifyIdToken: async (idToken, checkRevoked) => {
+        assert.equal(checkRevoked, true);
+        verified += 1;
+        return auth.verifyIdToken(idToken, true);
+      },
+      createPinnedTransport: factory(c, onTransactionDone),
+    }, enabled,
+  );
+  return { result, verified, transactions: transactionCount - initialTransactions };
+}
+
+test("actual Auth emulator tokens bind to scoped Admin Firestore reads", async () => {
+  for (const uid of ["rep", "manager", "admin"]) {
+    const { result, verified, transactions } = await runWithRealAuth(uid);
+    assert.equal(result.ok, true, uid + ": " + JSON.stringify(result));
+    assert.equal(verified, 2, "Admin Auth revocation must be checked twice");
+    assert.equal(transactions, 1);
+    assert.equal(result.records[0].status, "Submitted");
+    assert.ok(!JSON.stringify(result).includes("SECRET-SYNTHETIC"));
+  }
+});
+
+test("actual Auth identity cannot elevate Marketing, customer or manager compensation", async () => {
+  for (const [uid, field] of [
+    ["marketing", "leaveRequests"], ["customer", "leaveRequests"],
+    ["manager", "compensation"], ["rep", "compensation"],
+  ]) {
+    const { result, verified } = await runWithRealAuth(uid, command(field));
+    assert.equal(result.ok, false, uid + ": " + field);
+    assert.equal(verified, 1, "Denied access must not need a second token check");
+    assert.ok(!JSON.stringify(result).includes("SECRET-SYNTHETIC"));
+  }
+});
+
+test("disabled Auth emulator account is rejected before confidential Firestore read", async () => {
+  await auth.updateUser("rep", { disabled: true });
+  try {
+    const { result, verified, transactions } = await runWithRealAuth("rep");
+    assert.equal(result.ok, false);
+    assert.ok(["session-revoked", "unavailable"].includes(result.reason));
+    assert.equal(verified, 1);
+    assert.equal(transactions, 0);
+    assert.ok(!JSON.stringify(result).includes("SECRET-SYNTHETIC"));
+  } finally {
+    await auth.updateUser("rep", { disabled: false });
+  }
+});
+
+test("real Admin Auth recheck blocks account disabled after Firestore transaction", async () => {
+  try {
+    const { result, verified, transactions } = await runWithRealAuth(
+      "rep", command(), () => auth.updateUser("rep", { disabled: true }),
+    );
+    assert.equal(result.ok, false);
+    assert.ok(["session-revoked", "unavailable"].includes(result.reason));
+    assert.equal(verified, 2, "Post-transaction Auth recheck must run");
+    assert.equal(transactions, 1);
+    assert.ok(!JSON.stringify(result).includes("SECRET-SYNTHETIC"));
+  } finally {
+    await auth.updateUser("rep", { disabled: false });
+  }
+});
+
+test("real Admin Auth invalid token and default-off path perform no HR transaction", async () => {
+  let verifierCalls = 0;
+  const c = command();
+  const deps = {
+    projectId,
+    verifyIdToken: async (idToken, checkRevoked) => {
+      verifierCalls += 1;
+      return auth.verifyIdToken(idToken, checkRevoked);
+    },
+    createPinnedTransport: factory(c),
+  };
+  const beforeTransactions = transactionCount;
+  assert.deepEqual(
+    await executeHrCanonicalTrustedIdentityReview(c, realTokens.get("rep"), deps),
+    { ok: false, reason: "disabled" },
+  );
+  assert.equal(verifierCalls, 0);
+  const malformed = await executeHrCanonicalTrustedIdentityReview(
+    c, "forged.header.signature", deps, true,
+  );
+  assert.equal(malformed.ok, false);
+  assert.ok(["session-revoked", "unavailable"].includes(malformed.reason));
+  assert.equal(transactionCount, beforeTransactions);
 });
