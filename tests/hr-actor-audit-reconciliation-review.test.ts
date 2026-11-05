@@ -226,3 +226,30 @@ test("two independently reviewed employees retain original actor and separate de
     [targetPath, secondTarget]);
   assert.equal(report.sourceCount, 2);
 });
+
+
+test("malformed source with an associated decision fails closed instead of throwing", () => {
+  const broken: HrAuditSnapshot = { path: sourcePath, version: "source@1", data: { items: null } };
+  const report = check({ baseline: [broken, target()], current: [broken, target()] });
+  assert.equal(report.status, "blocked");
+  assert.ok(report.issues.includes("malformed-source"));
+  assert.ok(report.issues.includes("invalid-decision"));
+  assert.deepEqual(report.candidates, []);
+});
+
+test("replay with additional unreviewed metadata is not accepted as an immutable receipt", () => {
+  const receipt = {
+    event: event(), extraPrivateValue: "PRIVATE hidden",
+    provenance: {
+      sourcePath, sourceVersion: "source@1",
+      eventDigest: fingerprintHrAuditEvent(event()),
+      subjectUid: subject, reviewerUid: reviewer,
+      reviewedAt: decision().reviewedAt, evidenceRef: decision().evidenceRef,
+    },
+  };
+  const baseline = [source(), target(receipt, "receipt@1")];
+  const result = check({ baseline, current: structuredClone(baseline) });
+  assert.ok(result.issues.includes("target-conflict"));
+  assert.deepEqual(result.candidates, []);
+  assert.ok(!JSON.stringify(result).includes("PRIVATE hidden"));
+});
