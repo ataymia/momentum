@@ -20,7 +20,7 @@
     "deploy": "next build && firebase deploy --only hosting",
     "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage",
     "deploy:worker": "next build && wrangler deploy",
-    "test:hr-admin-emulator": "npx --yes firebase-tools@15.30.1 emulators:exec --only firestore,auth --project momentum-hr-admin-sdk-review \"node --import tsx --test --test-concurrency=1 functions/tests/hr-canonical-admin-emulator.test.mjs functions/tests/hr-actor-audit-receipt-emulator.test.mjs functions/tests/hr-actor-audit-reviewer-emulator.test.mjs functions/tests/hr-actor-audit-bound-transaction-emulator.test.mjs functions/tests/hr-audit-batch-recovery-emulator.test.mjs\"",
+    "test:hr-admin-emulator": "npx --yes firebase-tools@15.30.1 emulators:exec --only firestore,auth --project momentum-hr-admin-sdk-review \"node --import tsx --test --test-concurrency=1 functions/tests/hr-canonical-admin-emulator.test.mjs functions/tests/hr-actor-audit-receipt-emulator.test.mjs functions/tests/hr-actor-audit-reviewer-emulator.test.mjs functions/tests/hr-actor-audit-bound-transaction-emulator.test.mjs functions/tests/hr-audit-batch-recovery-emulator.test.mjs functions/tests/hr-audit-cross-domain-snapshot-emulator.test.mjs\"",
     "test:storage": "npx --yes firebase-tools@15.30.1 emulators:exec --only firestore,storage --project momentum-rules-test \"node --import tsx --test tests/storage-rules.test.ts\""
   },
   "dependencies": {
