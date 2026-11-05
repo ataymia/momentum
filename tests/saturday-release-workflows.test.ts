@@ -66,6 +66,8 @@ test("Customer invoice portal uses authorized fulfilled order and matching accou
  assert.match(portal,/accountIds\.has\(o\.accountId\)/);
  assert.match(portal,/order\.accountId===invoice\.accountId/);
  assert.match(portal,/allowedInvoiceIds=\{ids\}/);
+ assert.match(portal,/downloadCsv\("momentum-my-invoices.csv",register/);
+ assert.match(portal,/invoiceBalance\(commerce,invoice\)/);
  assert.match(portal,/allowedOrderIds=\{\[\.\.\.fulfilled\.keys\(\)\]\}/);
  assert.match(center,/accountIds\.has\(invoice\.accountId\)/);
  assert.match(center,/orderAccounts\.get\(invoice\.orderId\)===invoice\.accountId/);
