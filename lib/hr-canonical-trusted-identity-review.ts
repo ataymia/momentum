@@ -115,8 +115,11 @@ export async function executeHrCanonicalTrustedIdentityReview(
     return denied("unavailable");
   }
   // Reject malformed input before invoking even the trusted verifier.
+  // Auth emulator ID tokens have an empty JWT signature segment. Syntax is
+  // NOT authentication: only the injected Admin SDK verifier may accept a
+  // token, and a real Admin SDK must reject unsigned tokens outside emulator.
   if (typeof rawIdToken !== "string" || rawIdToken.length > 8192 ||
-      !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(rawIdToken)) {
+      !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/.test(rawIdToken)) {
     return denied("session-revoked");
   }
   try {

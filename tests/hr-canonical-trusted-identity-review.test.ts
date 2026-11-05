@@ -163,6 +163,15 @@ test("malformed token strings reject before verifier or transport construction",
   }
 });
 
+test("unsigned emulator-shaped JWT cannot bypass the trusted verifier", async () => {
+  const h = harness(rep, { verify: () => { throw Error("unsigned token rejected"); } });
+  const result = await executeHrCanonicalTrustedIdentityReview(
+    command(), "emulator.payload.", h.deps, true);
+  assert.deepEqual(result, { ok: false, reason: "unavailable" });
+  assert.equal(h.counts().verifications, 1, "Verifier, not JWT syntax, decides validity");
+  assert.equal(h.counts().factories, 0, "Rejected token must not construct HR transport");
+});
+
 test("malformed, cross-project, expired and forged decoded claims all fail closed", async () => {
   const invalid: unknown[] = [
     null, [], {}, { ...claims(), uid: "../other" },
