@@ -93,7 +93,8 @@ export function assessHrAuditChunkInventoryReview(input: {
   const seenPaths = new Set<string>();
   const seenIds = new Set<string>();
   for (const shard of shardSnapshots) {
-    if (!row(shard) || !paths.has(shard.path) ||
+    if (!row(shard) || typeof shard.path !== "string" ||
+        !paths.has(shard.path) ||
         seenPaths.has(shard.path) || shard.denied ||
         !shard.exists || !version(shard.version) ||
         !row(shard.data) || !Array.isArray(shard.data.items))
