@@ -505,3 +505,13 @@ For every run record: local date/time; main and review-branch SHAs; item number;
 - **Next unblocked action:** run and repair exact-final-SHA CI, then test customer delivery deep-link/CSV and inventory/CRM exports in an explicitly approved safe browser environment.
 
 - **Exact-SHA full audit follow-up (November 5, 11:31 Phoenix):** complete GitHub Actions push audit **SUCCESS** at implementation/test/docs/queue SHA `0925c118b6ed6a84e068747f2e381f34777235ee`: https://github.com/ataymia/momentum/actions/runs/42084412392 . TypeScript, ESLint, full logic including customer-scope and export regressions, Firestore/Storage emulators, Functions build/lint, Next production build and clean-tree integrity passed. Three user-visible review workflows are **BUILT + AUTOMATED-VERIFIED at that exact SHA only**. Customer account-linking backend validation, safe-browser visual QA, approved staging and explicit owner acceptance remain outstanding; NOT RELEASED. This evidence-only queue commit changes HEAD and must receive its own exact-SHA audit before it is labeled verified.
+
+
+### Continuity entry: November 5, 2026, 12:24 Phoenix — release candidate export integrity
+- **Source:** isolated review child of draft PR #149 fixed SHA `b7776e3fec4a6b1f7b39cb8e53c57766234f5d7b`; main and prototype untouched.
+- **Scope:** shared browser CSV export used by CRM accounts/leads/contacts, inventory lot registers and customer delivery downloads. Hardened formula injection against leading whitespace/control characters, made CSV generation testable and maintained explicit allowlisted columns. Added regression tests and mandatory logic-suite registration.
+- **Files:** `lib/browser-export.ts`, `tests/browser-export-security.test.ts`, `package.json`, this queue.
+- **Tracker:** A10/G10 and C12/D17/E03 security/regression increment only; no whole feature marked complete. This is a shared export hardening slice, not a full page redesign.
+- **Verification:** pending exact final SHA CI and role/browser download QA. Existing customer UI projection filters do NOT replace backend record authorization.
+- **Release gates:** no main changes, production data access, payments, live emails, payroll, employee status or deployment. Mia approval remains required.
+- **Next unblocked action:** connect customer portal payment/statement read-only records to authenticated customer-linked, reconciled ledger data with cross-account server authorization tests.
