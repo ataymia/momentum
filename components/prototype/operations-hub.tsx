@@ -262,7 +262,6 @@ function CustomerPortalContent({section}:{section:string}){
     // Only source-matched, fulfilled customer orders may expose printable
     // invoice documents. Scope comes from the authenticated customer's
     // account IDs, not untrusted URL or request parameters.
-    const accountIds=new Set(scope.accounts.map(a=>a.id));
     const fulfilled=new Map(orders.filter(o=>
       accountIds.has(o.accountId)&&["Delivered","Paid"].includes(o.status))
       .map(o=>[o.id,o]));
