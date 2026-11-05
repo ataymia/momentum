@@ -159,8 +159,8 @@ async function appendSyntheticReceipt(review) {
     };
     if (target.exists || receipt.exists) {
       if (!target.exists || !receipt.exists ||
-          JSON.stringify(target.data()) !== JSON.stringify(audit) ||
-          JSON.stringify(receipt.data()) !== JSON.stringify(metadata)) {
+          fingerprintHrAuditEvent(target.data()) !== fingerprintHrAuditEvent(audit) ||
+          fingerprintHrAuditEvent(receipt.data()) !== fingerprintHrAuditEvent(metadata)) {
         throw new Error("immutable-conflict");
       }
       return "already-present";
