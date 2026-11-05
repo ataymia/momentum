@@ -113,13 +113,13 @@ test("a forged legacy digest cannot authorize equivalence", () => {
 });
 test("missing claim fails closed", () => {
   const input = fixture();
-  input.claims.pop();
+  (input.claims as Array<(typeof input.claims)[number]>).pop();
   assert.equal(assessHrAuditEventProvenanceReview(input).reason,
     "incomplete-mapping");
 });
 test("duplicate mapping fails closed", () => {
   const input = fixture();
-  input.claims[1] = {...input.claims[0]};
+  (input.claims as Array<(typeof input.claims)[number]>)[1] =\n    {...input.claims[0]};
   assert.equal(assessHrAuditEventProvenanceReview(input).reason,
     "duplicate-event");
 });
@@ -141,7 +141,7 @@ test("claim cannot substitute another reviewer or evidence reference", () => {
 });
 test("missing source shard quarantines before digest matching", () => {
   const input = fixture();
-  input.chunk.shardSnapshots.pop();
+  (input.chunk.shardSnapshots as Array<\n    (typeof input.chunk.shardSnapshots)[number]>).pop();
   assert.equal(assessHrAuditEventProvenanceReview(input).reason,
     "source-or-receipt-quarantined");
 });
