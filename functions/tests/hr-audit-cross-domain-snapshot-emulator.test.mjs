@@ -205,9 +205,9 @@ test("unchanged independent reads still cannot claim one historical snapshot", a
   noAuthority(result);
 });
 
-test("manifest updated between independent reads quarantines even if contents are equal", async () => {
+test("manifest metadata-only update between reads quarantines unchanged event contents", async () => {
   const first = await readCrossDomain();
-  await db.doc(chunkPath).update({ itemCount: ids.length });
+  await db.doc(chunkPath).update({ syntheticReviewMarker: "touched" });
   const second = await readCrossDomain();
   assert.notEqual(first[chunkPath].version, second[chunkPath].version);
   const result = classifyIndependentReads(first, second);
@@ -231,7 +231,7 @@ test("changed chunk event between independent reads cannot pass fingerprint comp
 
 test("legacy actor source changed between independent reads is quarantined", async () => {
   const first = await readCrossDomain();
-  await db.doc(legacyPath).update({ items: ids.map(event) });
+  await db.doc(legacyPath).update({ syntheticReviewMarker: "touched" });
   const second = await readCrossDomain();
   assert.notEqual(first[legacyPath].version, second[legacyPath].version);
   assert.equal(classify(second).reason, "source-or-receipt-quarantined");
