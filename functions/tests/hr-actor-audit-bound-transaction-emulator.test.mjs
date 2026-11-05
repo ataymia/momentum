@@ -192,6 +192,10 @@ async function appendBoundReceipt({
     }
     if (target.exists || receipt.exists) throw new Error("immutable-conflict");
     await afterReads?.();
+    // Authentication is outside Firestore's commit. Check again immediately
+    // before queuing writes, but do not claim atomic Auth/Firestore revocation.
+    const latest = await verify(rawToken, true);
+    if (latest.uid !== requested.reviewerUid) throw new Error("reviewer-revoked-during-transaction");
     const metadata = {
       sourcePath, destinationPath: targetPath,
       sourceVersion: expectedSourceVersion, eventDigest: requested.eventDigest,
@@ -258,18 +262,20 @@ test("revoked session between preflight and write transaction denies without wri
   await assertNoWrites();
 });
 
-test("mid-transaction session revocation conflicts and retries fail closed", async () => {
+test("Auth revocation after transaction reads fails before writes", async () => {
   let raced = false;
-  await assert.rejects(() => appendBoundReceipt({
-    afterReads: async () => {
-      if (!raced) {
+  try {
+    await assert.rejects(() => appendBoundReceipt({
+      afterReads: async () => {
         raced = true;
-        await db.doc(sessionPath).update({ active: false, epoch: 8 });
-      }
-    },
-  }), /transaction-authority-denied|ABORTED|aborted|conflict/i);
-  assert.equal(raced, true);
-  await assertNoWrites();
+        await auth.updateUser(reviewerUid, { disabled: true });
+      },
+    }), /auth\/user-disabled|reviewer-revoked-during-transaction/i);
+    assert.equal(raced, true);
+    await assertNoWrites();
+  } finally {
+    await auth.updateUser(reviewerUid, { disabled: false });
+  }
 });
 
 test("reviewer role and evidence revocation fail within transaction", async () => {
