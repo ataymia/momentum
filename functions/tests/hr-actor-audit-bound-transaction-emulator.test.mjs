@@ -194,7 +194,12 @@ async function appendBoundReceipt({
     await afterReads?.();
     // Authentication is outside Firestore's commit. Check again immediately
     // before queuing writes, but do not claim atomic Auth/Firestore revocation.
-    const latest = await verify(rawToken, true);
+    let latest;
+    try {
+      latest = await verify(rawToken, true);
+    } catch {
+      throw new Error("reviewer-revoked-during-transaction");
+    }
     if (latest.uid !== requested.reviewerUid) throw new Error("reviewer-revoked-during-transaction");
     const metadata = {
       sourcePath, destinationPath: targetPath,
