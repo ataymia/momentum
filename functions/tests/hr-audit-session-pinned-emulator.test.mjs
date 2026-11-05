@@ -30,7 +30,6 @@ const accessPath = `userAccess/${reviewer}`;
 const authorityPath = `hrAuditReviewerAuthorityReview/${reviewer}`;
 const sessionPath = `hrAuditReviewerSessionReview/${reviewer}`;
 const auditPaths = [manifestPath, legacyPath, shardPath, eventPath, receiptPath];
-const allPaths = [...auditPaths, accessPath, authorityPath, sessionPath];
 const event = { id: eventId, actorId: actor, action: "synthetic" };
 const password = "Synthetic-Only-Review-Not-Real-Password-91";
 const rules = `rules_version = '2';
