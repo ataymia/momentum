@@ -10,6 +10,8 @@ import {
   type InventoryMovement,type InventoryCount,
 } from "../../lib/inventory-ledger";
 import {navigateToRoute} from "../../lib/navigation-store";
+import {downloadCsv} from "../../lib/browser-export";
+import {inventoryExportColumns,inventoryExportRows} from "../../lib/saturday-scoped-workflows";
 
 type Direction="asc"|"desc";
 const fmt=(num:number)=>new Intl.NumberFormat("en-US",{maximumFractionDigits:2}).format(num);
@@ -86,6 +88,7 @@ export function InventoryDirectory(){
         <label>Availability<select aria-label="Filter inventory status" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">All statuses</option>{[...new Set(scope.inventory.map(l=>l.status))].sort().map(s=><option key={s}>{s}</option>)}</select></label>
         <label>Best-by from<input type="date" aria-label="Best-by from" value={bestByFrom} onChange={e=>setBestByFrom(e.target.value)}/></label>
         <label>Through<input type="date" aria-label="Best-by through" value={bestByThrough} onChange={e=>setBestByThrough(e.target.value)}/></label>
+        <button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-visible-inventory-lots.csv",inventoryExportRows(rows),inventoryExportColumns)}>Download filtered lot register CSV</button>
       </div>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
         {([["lotCode","Lot"],["product","Product"],["location","Storage label"],["bestBy","Best by"],["onHand","Warehouse on hand"],["reserved","Reserved"],["sellable","Available"],["status","Status"]] as const).map(([key,label])=>hdr(key,label))}

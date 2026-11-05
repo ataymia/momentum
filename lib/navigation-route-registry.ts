@@ -179,6 +179,7 @@ export function pageForPath(path: string): PageKey | null {
   if (ROUTE_OVERRIDES[clean]) return ROUTE_OVERRIDES[clean];
   // Deep-linked records must retain their owning workspace page, not fall back to Home.
   if(clean.startsWith("/admin/employee-profiles/"))return "settings";
+  if(/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean))return "orders";
   if(clean.startsWith("/sales/orders/"))return "orders";
   if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
   if(clean.startsWith("/sales/returns/"))return "orders";
@@ -227,6 +228,7 @@ export function routeLabel(path: string): string {
 export function permissionForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if(clean.startsWith("/admin/employee-profiles/"))return "settings";
+  if(/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean))return "orders";
   if (clean.startsWith("/items/")) return "products";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if (clean.startsWith("/sales/customers/")) return "accounts";
@@ -249,7 +251,8 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
       !clean.endsWith("/edit");
     const legacyCustomer = clean==="/sales/orders" || clean==="/sales/customers" ||
       customerOrderDetail || clean.startsWith("/sales/customers/");
-    return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer) &&
+    const customerPortalDetail=/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean);
+    return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer || customerPortalDetail) &&
       canAccessPage(user,permissionForPath(clean)??"home");
   }
   if (clean.startsWith("/portal/")) return false;
@@ -276,6 +279,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
+  if(/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean))return true;
   // Sensitive legacy HR and payroll tools are wrapped by a prototype demo-only gate.
   if(clean==="/people/payroll/workflow"||clean==="/people/onboarding/workflow"||clean==="/admin/employee-profiles/workflow")return true;
   if (clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;

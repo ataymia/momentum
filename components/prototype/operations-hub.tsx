@@ -18,6 +18,7 @@ import {PayrollWorkflowExperience} from "./payroll-workflow-experience";
 import {HrOnboardingExperience} from "./hr-onboarding-experience";
 import {InvoicePrintCenter} from "../finance/invoice-print-center";
 import {downloadCsv} from "../../lib/browser-export";
+import {accountExportColumns,accountExportRows,contactExportColumns,contactExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryColumns,customerDeliveryExportRows} from "../../lib/saturday-scoped-workflows";
 import {invoiceBalance,computedInvoiceStatus} from "../../lib/commerce-engine";
 import {useCommerce} from "../../lib/commerce-context";
 import {MarketingWorkspaceExperience} from "./marketing-workspace-experience";
@@ -94,6 +95,7 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
         <option value="all">All stages</option>{stages.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
       <label>Next action from <input type="date" aria-label="Next action from date" value={fromDate} onChange={e=>setFromDate(e.target.value)}/></label>
       <label>Through <input type="date" aria-label="Next action through date" value={throughDate} onChange={e=>setThroughDate(e.target.value)}/></label>
+      <button type="button" disabled={!records.length} onClick={()=>downloadCsv(leadMode?"momentum-visible-leads.csv":"momentum-visible-accounts.csv",accountExportRows(records,names),accountExportColumns)}>Download filtered {leadMode?"leads":"accounts"} CSV</button>
     </div>
     <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
       <th>{header("name","Business")}</th><th>{header("location","Location")}</th><th>{header("contactName","Contact")}</th><th>{header("stage","Stage")}</th><th>{header("postalCode","ZIP")}</th><th>{header("ownerId","Assigned rep")}</th><th>{header("nextActionDate","Next action")}</th>
@@ -237,7 +239,7 @@ function ContactsDirectory(){
   const header=(key:ContactSortField,label:string)=><button type="button" aria-label={"Sort by "+label} onClick={()=>{if(sort===key)setAscending(v=>!v);else{setSort(key);setAscending(true);}}}>{label}<ArrowUpDown size={14}/></button>;
   return <div><Heading title="Contacts" description="All recorded decision-makers linked to your accessible customer locations."/>
     <section className="prototype-panel">
-      <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search contacts" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Contact, business, email, phone, role"/></label></div>
+      <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search contacts" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Contact, business, email, phone, role"/></label><button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-visible-contacts.csv",contactExportRows(rows),contactExportColumns)}>Download filtered contacts CSV</button></div>
       <div className="prototype-table-scroll"><table className="prototype-table">
         <thead><tr><th>{header("contactName","Contact")}</th><th>{header("name","Business")}</th><th>{header("contactRole","Role")}</th><th>{header("email","Email")}</th><th>{header("phone","Phone")}</th><th>{header("location","Location")}</th><th>{header("stage","Stage")}</th></tr></thead>
         <tbody>{rows.map(a=><tr key={a.id}><td>{a.contactName}</td><td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.contactRole||"Not recorded"}</td><td>{a.email||"Not recorded"}</td><td>{a.phone||"Not recorded"}</td><td>{a.location}</td><td>{a.stage}</td></tr>)}</tbody>
@@ -250,15 +252,16 @@ function ContactsDirectory(){
 /** A separate customer-facing surface with account-scoped records, not staff-wide ledgers. */
 function CustomerPortalContent({section}:{section:string}){
   const {scope,currentUser}=useWorkspace();const {commerce}=useCommerce();const runtime=useRuntimeMode();
+  const [deliveryQuery,setDeliveryQuery]=useState("");const [deliveryStatus,setDeliveryStatus]=useState("all");
   if(currentUser?.role!=="Customer") return <Empty>Customer access only.</Empty>;
   const current=scope.accounts[0];
-  const orders=scope.orders.filter(o=>!o.testOnly).sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
+  const accountIds=new Set(scope.accounts.map(a=>a.id));
+  const orders=authorizedCustomerOrders(scope.orders,accountIds);
   if(section==="invoices"&&(!runtime.isDemo||momentumStorage.mode()!=="local"))return <div><Heading title="My Invoices" description="Account-specific invoice access requires verification."/><section className="prototype-panel"><p>This customer invoice screen is enabled in the isolated demo only. Connected invoices need an account-scoped server read before release.</p></section></div>;
   if(section==="invoices"){
     // Only source-matched, fulfilled customer orders may expose printable
     // invoice documents. Scope comes from the authenticated customer's
     // account IDs, not untrusted URL or request parameters.
-    const accountIds=new Set(scope.accounts.map(a=>a.id));
     const fulfilled=new Map(orders.filter(o=>
       accountIds.has(o.accountId)&&["Delivered","Paid"].includes(o.status))
       .map(o=>[o.id,o]));
@@ -302,10 +305,21 @@ function CustomerPortalContent({section}:{section:string}){
       <p className="prototype-note">Any future self-service edits must verify account ownership and protect tax, payment terms and legal identity fields.</p></section></div>;
   }
   if(section==="deliveries"){
-    return <div><Heading title="My Deliveries" description="Order progress from your account's approved records."/>
-      <section className="prototype-panel"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Status</th><th>Cases</th></tr></thead><tbody>{orders.map(o=>
-      <tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{o.placedAt}</td><td>{o.status}</td><td>{o.cases}</td></tr>)}</tbody></table>
-      {!orders.length&&<Empty>No recorded orders.</Empty>}<p className="prototype-note">Live driver ETA and shipment tracking are not connected yet. This displays existing order statuses only.</p></section></div>;
+    const filtered=orders.filter(o=>(deliveryStatus==="all"||o.status===deliveryStatus)&&
+      [o.number,o.status,o.placedAt].join(" ").toLowerCase().includes(deliveryQuery.toLowerCase()));
+    const statuses=[...new Set(orders.map(o=>o.status))].sort();
+    return <div><Heading title="My Deliveries" description="Account-scoped fulfillment history, with downloadable registers and individual order details."/>
+      <section className="prototype-panel">
+        <div className="prototype-controls">
+          <label className="prototype-search"><Search size={16}/><input aria-label="Search my deliveries" value={deliveryQuery} onChange={e=>setDeliveryQuery(e.target.value)} placeholder="Order number or status"/></label>
+          <label>Fulfillment <select aria-label="Filter my delivery status" value={deliveryStatus} onChange={e=>setDeliveryStatus(e.target.value)}><option value="all">All statuses</option>{statuses.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+          <button type="button" disabled={!filtered.length} onClick={()=>downloadCsv("momentum-my-deliveries.csv",customerDeliveryExportRows(filtered),customerDeliveryColumns)}>Download filtered deliveries CSV</button>
+        </div>
+        <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Fulfillment</th><th>Cases</th><th>Payment state</th></tr></thead><tbody>{filtered.map(o=>
+          <tr key={o.id}><td><OpenLink to={"/portal/deliveries/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{o.placedAt.slice(0,10)}</td><td>{o.status}</td><td>{o.cases}</td><td>{o.paymentStatus}</td></tr>)}</tbody></table></div>
+        {!filtered.length&&<Empty>No matching deliveries for your authorized accounts.</Empty>}
+        <p className="prototype-note">These are recorded order states, not verified driver GPS, ETA, proof of delivery, or cleared funds. Downloads contain only accessible account orders.</p>
+      </section></div>;
   }
   const descriptions:Record<string,{title:string,body:string}>={
     invoices:{title:"My Invoices",body:"Invoice balances and PDFs will be sourced from issued, delivery-verified invoices. The review prototype does not invent financial balances."},
@@ -317,6 +331,31 @@ function CustomerPortalContent({section}:{section:string}){
   if(!v)return <Empty>Customer portal page not found.</Empty>;
   return <div><Heading title={v.title} description="Customer self-service • prototype"/><section className="prototype-panel"><h2>{v.title}</h2><Empty>{v.body}</Empty></section></div>;
 }
+
+/** Customer-only detail: no staff approvals, audit history or private rep fields. */
+function CustomerOrderRecord({id,section}:{id:string;section:"orders"|"deliveries"}){
+  const {scope,currentUser}=useWorkspace();
+  if(currentUser?.role!=="Customer")return <Empty>Customer access only.</Empty>;
+  const accountIds=new Set(scope.accounts.map(a=>a.id));
+  const order=authorizedCustomerOrder(scope.orders,accountIds,id);
+  if(!order)return <Empty>Order not found or not authorized for your business account.</Empty>;
+  const account=scope.accounts.find(a=>a.id===order.accountId);
+  const lines=order.lines??(order.product?[{id:order.id,product:order.product,cases:order.cases}]:[]);
+  return <div><Heading title={"Order "+order.number} description="My account order and delivery status" back={section==="orders"?"/portal/orders":"/portal/deliveries"}/>
+    <div className="prototype-metrics"><div><small>Fulfillment</small><strong>{order.status}</strong></div><div><small>Cases</small><strong>{order.cases}</strong></div><div><small>Payment state</small><strong>{order.paymentStatus}</strong></div></div>
+    <section className="prototype-panel"><h2>Order information</h2><dl className="prototype-facts">
+      <div><dt>Business location</dt><dd>{account?.name??"Authorized account"} · {account?.location??""}</dd></div>
+      <div><dt>Placed</dt><dd>{order.placedAt.slice(0,10)}</dd></div>
+      <div><dt>Current order status</dt><dd>{order.status}</dd></div>
+      <div><dt>Payment state</dt><dd>{order.paymentStatus}</dd></div>
+    </dl>
+    <button type="button" onClick={()=>downloadCsv("momentum-my-delivery-"+order.number+".csv",customerDeliveryExportRows([order]),customerDeliveryColumns)}>Download this order status (CSV)</button>
+    <p className="prototype-note">Recorded order status is not live GPS, an estimated arrival, a signed proof of delivery, or payment settlement evidence.</p></section>
+    <section className="prototype-panel"><h2>Ordered products</h2><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Product</th><th>Cases</th></tr></thead><tbody>{lines.map(line=><tr key={line.id}><td>{line.product}</td><td>{line.cases}</td></tr>)}</tbody></table></div>
+    {!lines.length&&<Empty>No verified product breakdown is available for this order.</Empty>}</section>
+  </div>;
+}
+
 function TerritoryMapPreview(){
   return <div><Heading title="Territories & Map" description="Existing ZIP assignments and geographic controls retained."/>
     <section className="prototype-panel"><h2>Territory management</h2><TerritoryPanel/>
@@ -330,6 +369,7 @@ export function PrototypeOperationsHub(){
   if(!canVisitRoute(currentUser,path))return <Empty>You do not have permission to view this module.</Empty>;
   const segments=path.split("/").filter(Boolean);
   if(path==="/")return <WorkspaceHome/>;
+  if(segments[0]==="portal"&&["orders","deliveries"].includes(segments[1])&&segments.length===3)return <CustomerOrderRecord id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/marketing")return <MarketingWorkspaceExperience/>;
@@ -354,7 +394,7 @@ export function PrototypeOperationsHub(){
   if(path==="/work/completed")return <CompletedWorkExperience/>;
   if(path==="/sales/orders/new")return <OrderEditor/>;
   if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2]&&segments[3]==="edit")return <OrderEditor orderId={decodeURIComponent(segments[2])}/>;
-  if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2])return <OrderDetail id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2])return currentUser?.role==="Customer"?<CustomerOrderRecord id={decodeURIComponent(segments[2])} section="orders"/>:<OrderDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="sales"&&segments[1]==="invoices"&&segments[2])return <InvoiceDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="sales"&&segments[1]==="payments"&&segments[2])return <PaymentDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="inventory"&&segments[1]==="lots"&&segments[2])return <InventoryLotDetail id={decodeURIComponent(segments[2])}/>;
