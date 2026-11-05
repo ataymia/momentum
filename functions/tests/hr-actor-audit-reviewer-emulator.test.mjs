@@ -65,7 +65,14 @@ before(async () => {
   assert.equal(auth.app.options.projectId, projectId);
   for (const uid of Object.keys(roles)) {
     const email = uid + "-audit@synthetic.invalid";
-    await auth.createUser({ uid, email, password });
+    // Other emulator suites may already have synthetic manager/marketing UIDs.
+    // Reuse only emulator users; no production Auth project is reachable here.
+    try {
+      await auth.createUser({ uid, email, password });
+    } catch (error) {
+      if (error?.code !== "auth/uid-already-exists") throw error;
+      await auth.updateUser(uid, { email, password, disabled: false });
+    }
     const response = await fetch(
       "http://" + authHost +
       "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=synthetic-key",
