@@ -358,7 +358,9 @@ test("trusted identity composition denies post-transaction and post-token revoca
   assert.equal(revokedSession.counts().verifications, 1);
   assert.equal(revokedSession.t.canonicalReads(), 1);
   assert.equal(revokedSession.t.attempts(), 1);
+});
 
+test("trusted identity composition rejects revocation at final token verification", async () => {
   const revokedToken = trusted("rep", {
     onVerify: (count) => {
       if (count === 2) throw Error("auth/id-token-revoked");
