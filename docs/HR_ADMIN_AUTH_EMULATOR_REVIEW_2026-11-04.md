@@ -10,6 +10,10 @@ Actual Firebase Admin Auth `createUser` provisions five synthetic identities in 
 
 New regression scenarios check employee/direct manager/Administrator access, Marketing/customer and compensation denials, an Auth-disabled user rejected before HR transactions, a user disabled after the Firestore transaction rejected on the second Auth verification, invalid tokens, and disabled-mode zero-I/O. Existing Firestore browser-deny, session-revocation, reassignment and project-mismatch tests remain mandatory.
 
+## CI diagnosis and repair
+
+The first full audit at review SHA `0fb8195def5ef226118aa27b2b68d7b234e5baaf` failed the new Auth emulator suite (run [41960732707](https://github.com/ataymia/momentum/actions/runs/41960732707)): emulator-issued JWTs have an **empty signature segment**, so the earlier syntax prefilter rejected them before calling Admin Auth. This is an emulator-token-format mismatch, not a verified production authorization failure. The boundary now permits the syntactic empty signature segment but **does not trust it**; the injected Admin SDK `verifyIdToken(token, true)` is still mandatory before any HR transport exists. A new logic regression asserts that an unsigned JWT rejected by the trusted verifier performs zero HR reads. This does not permit emulator tokens in production: the real Admin SDK rejects unsigned tokens when the Auth emulator environment is absent. Full CI must be rerun on the repaired exact SHA.
+
 ## Non-negotiable security limits
 
 - **Firebase Auth emulator ID tokens are unsigned.** The Admin SDK is configured to accept them only for the local emulator. Passing these tests is **not evidence of cryptographic production ID-token signature verification**. Never set `FIREBASE_AUTH_EMULATOR_HOST` in production, reuse emulator credentials, or accept emulator-issued tokens in any live service.
