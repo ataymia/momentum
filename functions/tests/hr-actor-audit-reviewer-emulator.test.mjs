@@ -101,6 +101,11 @@ beforeEach(async () => {
   await batch.commit();
 });
 after(async () => {
+  // Auth emulator state persists across test files. Restore isolation so the
+  // existing canonical Admin Auth suite can create its own synthetic users.
+  if (auth) {
+    for (const uid of Object.keys(roles)) await auth.deleteUser(uid);
+  }
   await env?.cleanup();
   if (db) await db.terminate();
   if (app) await deleteApp(app);
