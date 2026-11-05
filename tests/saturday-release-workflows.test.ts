@@ -76,3 +76,11 @@ test("Customer invoice portal uses authorized fulfilled order and matching accou
  assert(canVisitRoute(user("Customer"),"/portal/invoices"));
  assert(!canVisitRoute(user("Customer"),"/sales/invoices/cross-account-id"));
 });
+
+
+test("local-demo leave creation uses event-generated IDs, with no render-time random source",()=>{
+ const src=readFileSync("components/prototype/hr-time-off-experience.tsx","utf8");
+ assert.match(src,/newLeaveRequestId\(\)/);
+ assert.doesNotMatch(src,/Date\.now\(\)|Math\.random\(\)/);
+ assert.match(src,/writeEnabled=runtime\.isDemo&&momentumStorage\.mode\(\)==="local"/);
+});
