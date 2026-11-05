@@ -13,6 +13,8 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import {
   assessHrActorAuditReconciliation, fingerprintHrAuditEvent,
 } from "../../lib/hr-actor-audit-reconciliation-review.ts";
+import { assessHrAuditReceiptRecoveryReview } from
+  "../../lib/hr-audit-recovery-quarantine-review.ts";
 
 const projectId = "momentum-hr-admin-sdk-review";
 assert.match(process.env.FIRESTORE_EMULATOR_HOST ?? "",
@@ -274,4 +276,71 @@ test("unresolved subject never starts privileged transaction", async () => {
   assert.equal(blocked.status, "blocked");
   await assert.rejects(() => appendSyntheticReceipt(blocked), /blocked-review/);
   assert.equal((await db.doc(targetPath).get()).exists, false);
+});
+
+/**
+ * Recovery classification is a read-only, metadata-only gate. A missing
+ * receipt must not trigger an automatic privileged repair.
+ */
+async function inspectRecoveryPair() {
+  const [source, target, receipt] = await Promise.all([
+    db.doc(sourcePath).get(), db.doc(targetPath).get(), db.doc(receiptPath).get(),
+  ]);
+  const reviewed = decision();
+  const snap = (item) => ({
+    exists: item.exists,
+    version: item.exists ? version(item) : null,
+    data: item.exists ? item.data() : null,
+  });
+  return assessHrAuditReceiptRecoveryReview({
+    expected: {
+      actorUid: "actor", subjectUid: "subject", reviewerUid: "reviewer",
+      eventId: "audit-1", sourcePath, sourceVersion: version(source),
+      eventDigest: reviewed.eventDigest,
+      reviewedAt: reviewed.reviewedAt, evidenceRef: reviewed.evidenceRef,
+    },
+    subjectEvent: snap(target), metadataReceipt: snap(receipt),
+  });
+}
+
+test("recovery gate quarantines a missing receipt without changing immutable event", async () => {
+  const review = await plan();
+  assert.equal(await appendSyntheticReceipt(review), "created");
+  const original = await db.doc(targetPath).get();
+  await db.doc(receiptPath).delete(); // Test-only Admin fault injection.
+  const report = await inspectRecoveryPair();
+  assert.deepEqual(report, {
+    status: "quarantined", reason: "missing-receipt",
+    safeToAppend: false, safeToReplayWithoutWrite: false,
+  });
+  await assert.rejects(() => appendSyntheticReceipt(review), /immutable-conflict/);
+  assert.equal(version(await db.doc(targetPath).get()), version(original));
+  assert.equal((await db.doc(receiptPath).get()).exists, false);
+});
+
+test("recovery gate quarantines an orphan receipt without recreating the event", async () => {
+  const review = await plan();
+  assert.equal(await appendSyntheticReceipt(review), "created");
+  const original = await db.doc(receiptPath).get();
+  await db.doc(targetPath).delete(); // Test-only Admin fault injection.
+  const report = await inspectRecoveryPair();
+  assert.equal(report.status, "quarantined");
+  assert.equal(report.reason, "orphan-receipt");
+  assert.equal(report.safeToAppend, false);
+  await assert.rejects(() => appendSyntheticReceipt(review), /immutable-conflict/);
+  assert.equal(version(await db.doc(receiptPath).get()), version(original));
+  assert.equal((await db.doc(targetPath).get()).exists, false);
+});
+
+test("recovery gate detects metadata tampering and never overwrites a receipt", async () => {
+  const review = await plan();
+  assert.equal(await appendSyntheticReceipt(review), "created");
+  await db.doc(receiptPath).update({ eventDigest: "f".repeat(64) });
+  const tampered = await db.doc(receiptPath).get();
+  const report = await inspectRecoveryPair();
+  assert.equal(report.reason, "receipt-conflict");
+  assert.equal(report.safeToReplayWithoutWrite, false);
+  await assert.rejects(() => appendSyntheticReceipt(review), /immutable-conflict/);
+  assert.equal(version(await db.doc(receiptPath).get()), version(tampered));
+  assert.equal((await db.doc(targetPath).get()).exists, true);
 });
