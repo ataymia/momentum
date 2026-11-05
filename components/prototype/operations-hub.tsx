@@ -20,6 +20,7 @@ import {InvoicePrintCenter} from "../finance/invoice-print-center";
 import {downloadCsv} from "../../lib/browser-export";
 import {accountExportColumns,accountExportRows,contactExportColumns,contactExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryColumns,customerDeliveryExportRows,filterCustomerDeliveries} from "../../lib/saturday-scoped-workflows";
 import {invoiceBalance,computedInvoiceStatus} from "../../lib/commerce-engine";
+import {projectCustomerFinance,customerPaymentColumns,customerStatementColumns} from "../../lib/customer-finance-registers";
 import {useCommerce} from "../../lib/commerce-context";
 import {MarketingWorkspaceExperience} from "./marketing-workspace-experience";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
@@ -326,6 +327,24 @@ function CustomerPortalContent({section}:{section:string}){
         {!filtered.length&&<Empty>No matching deliveries for your authorized accounts.</Empty>}
         <p className="prototype-note">These are recorded order states, not verified driver GPS, ETA, proof of delivery, or cleared funds. Downloads contain only accessible account orders.</p>
       </section></div>;
+  }
+  if(section==="payments"||section==="statements"){
+    if(!runtime.isDemo||momentumStorage.mode()!=="local")return <div><Heading title={section==="payments"?"My Payments":"Account Statements"}/><section className="prototype-panel"><Empty>Authenticated server-scoped financial records are not available yet. No payment or balance information is shown.</Empty></section></div>;
+    const locationNames=new Map(scope.accounts.map(a=>[a.id,a.name]));
+    const finance=projectCustomerFinance(commerce,orders,accountIds,locationNames);
+    if(section==="payments")return <div><Heading title="My Payments"/><section className="prototype-panel">
+      <div className="prototype-controls"><button type="button" disabled={!finance.payments.length} onClick={()=>downloadCsv("momentum-my-payments.csv",finance.payments,customerPaymentColumns)}>Download payments CSV</button></div>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Date</th><th>Location</th><th>Reference</th><th>Method</th><th>Status</th><th>Amount</th></tr></thead><tbody>{finance.payments.map((p,i)=><tr key={p.reference+"-"+i}><td>{p.date}</td><td>{p.location}</td><td>{p.reference}</td><td>{p.method}</td><td>{p.status}</td><td>{p.amount.toFixed(2)}</td></tr>)}</tbody></table></div>
+      {!finance.payments.length&&<Empty>No cleared, allocated payments for your delivered orders.</Empty>}
+      <p className="prototype-note">Local demonstration only. Payment requests and checkout remain disabled.</p>
+    </section></div>;
+    return <div><Heading title="Account Statements"/><section className="prototype-panel">
+      <div className="prototype-controls"><button type="button" disabled={!finance.statement.length} onClick={()=>downloadCsv("momentum-my-statement.csv",finance.statement,customerStatementColumns)}>Download statement CSV</button></div>
+      <div className="prototype-metrics"><div><small>Recorded open invoice balance</small><strong>{finance.openBalance.toFixed(2)}</strong></div></div>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Date</th><th>Location</th><th>Reference</th><th>Type</th><th>Status</th><th>Debit</th><th>Credit</th></tr></thead><tbody>{finance.statement.map((row,i)=><tr key={row.reference+"-"+row.type+"-"+i}><td>{row.date}</td><td>{row.location}</td><td>{row.reference}</td><td>{row.type}</td><td>{row.status}</td><td>{row.debit.toFixed(2)}</td><td>{row.credit.toFixed(2)}</td></tr>)}</tbody></table></div>
+      {!finance.statement.length&&<Empty>No qualifying issued invoices or reconciled activity for your delivered orders.</Empty>}
+      <p className="prototype-note">Local demonstration only. This register is not a bank statement or verified production settlement.</p>
+    </section></div>;
   }
   const descriptions:Record<string,{title:string,body:string}>={
     invoices:{title:"My Invoices",body:"Invoice balances and PDFs will be sourced from issued, delivery-verified invoices. The review prototype does not invent financial balances."},
