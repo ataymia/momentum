@@ -57,3 +57,19 @@ test("Marketing and HR workstreams remain separate yet preserve controlled opera
  assert(!canVisitRoute(user("Marketing"),"/people/payroll/workflow"));
  assert(requiresPrototypePage("/people/payroll/workflow"));
 });
+
+
+test("Customer invoice portal uses authorized fulfilled order and matching account before print",()=>{
+ const portal=readFileSync("components/prototype/operations-hub.tsx","utf8");
+ const center=readFileSync("components/finance/invoice-print-center.tsx","utf8");
+ assert.match(portal,/if\(section==="invoices"\)/);
+ assert.match(portal,/accountIds\.has\(o\.accountId\)/);
+ assert.match(portal,/order\.accountId===invoice\.accountId/);
+ assert.match(portal,/allowedInvoiceIds=\{ids\}/);
+ assert.match(portal,/allowedOrderIds=\{\[\.\.\.fulfilled\.keys\(\)\]\}/);
+ assert.match(center,/accountIds\.has\(invoice\.accountId\)/);
+ assert.match(center,/orderAccounts\.get\(invoice\.orderId\)===invoice\.accountId/);
+ assert.match(center,/window\.print\(\)/);
+ assert(canVisitRoute(user("Customer"),"/portal/invoices"));
+ assert(!canVisitRoute(user("Customer"),"/sales/invoices/cross-account-id"));
+});
