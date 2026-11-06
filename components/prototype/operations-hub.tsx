@@ -161,8 +161,22 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
 }
 
 function LeadRecord({id}:{id:string}){
-  const {scope,data}=useWorkspace();
+  const {scope,data,currentUser,transferAccountResponsibility}=useWorkspace();
+  const {isDemo}=useRuntimeMode();
   const account=scope.accounts.find(a=>a.id===id&&["Prospect","Qualified","Sampled"].includes(a.stage));
+  const [newOwner,setNewOwner]=useState("");
+  const [handoffReason,setHandoffReason]=useState("");
+  const [handoffFeedback,setHandoffFeedback]=useState("");
+  const canHandoff=isDemo&&!!currentUser&&["Administrator","Sales Manager"].includes(currentUser.role);
+  const eligibleReps=data.users.filter(u=>u.role==="Sales Representative"&&u.id!==account?.ownerId);
+  const handoff=(event:React.FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(!canHandoff||!account||!eligibleReps.some(u=>u.id===newOwner)||handoffReason.trim().length<3){setHandoffFeedback("Choose an eligible representative and provide a reason of at least three characters.");return;}
+    const accepted=transferAccountResponsibility(account.id,newOwner,handoffReason.trim());
+    if(!accepted){setHandoffFeedback("Assignment rejected. Verify your role, representative eligibility, territory and account access.");return;}
+    setHandoffFeedback("Responsibility updated in this demonstration workspace. Historical order credit is unchanged.");
+    setNewOwner("");setHandoffReason("");
+  };
   const [activityQuery,setActivityQuery]=useState("");
   const [orderQuery,setOrderQuery]=useState("");
   if(!account)return <div><Heading title="Lead unavailable" back="/crm/leads"/><Empty>Lead not found, no longer in the lead pipeline, or outside your authorized workspace.</Empty></div>;
@@ -176,7 +190,17 @@ function LeadRecord({id}:{id:string}){
     <div className="prototype-columns"><section className="prototype-panel"><h2>Business and contact</h2>
       <dl className="prototype-facts"><div><dt>Location</dt><dd>{account.location}</dd></div><div><dt>ZIP</dt><dd>{account.postalCode||"Not recorded"}</dd></div><div><dt>Contact</dt><dd>{account.contactName||"Not recorded"}</dd></div><div><dt>Email</dt><dd>{account.email||"Not recorded"}</dd></div><div><dt>Phone</dt><dd>{account.phone||"Not recorded"}</dd></div></dl>
       <div className="prototype-controls"><OpenLink to={"/sales/customers/"+encodeURIComponent(id)}>Customer account</OpenLink>{account.contactName&&<OpenLink to={"/crm/contacts/"+encodeURIComponent(id)}>Contact detail</OpenLink>}</div>
-      <p className="prototype-note">Lead stage and ownership are sourced from the existing account record. Editing remains disabled until audited server authorization is available.</p>
+      <p className="prototype-note">Lead stage is sourced from the existing account record. Stage editing remains disabled pending audited server authorization.</p>
+      {canHandoff&&<form className="prototype-panel" aria-label="Transfer lead responsibility" onSubmit={handoff}>
+        <h3>Reassign lead</h3>
+        <label>New representative <select required aria-label="New lead representative" value={newOwner} onChange={e=>{setNewOwner(e.target.value);setHandoffFeedback("");}}>
+          <option value="">Select a representative</option>{eligibleReps.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+        </select></label>
+        <label>Reason for reassignment <textarea required minLength={3} maxLength={500} value={handoffReason} onChange={e=>setHandoffReason(e.target.value)} /></label>
+        <button type="submit" disabled={!newOwner||handoffReason.trim().length<3}>Transfer responsibility</button>
+        {handoffFeedback&&<p role="status">{handoffFeedback}</p>}
+        <p className="prototype-note">Manager-only demonstration action. The existing authority engine validates eligibility and records the handoff in account activity. This does not alter historical sales credit.</p>
+      </form>}
     </section><section className="prototype-panel"><h2>Next visit</h2><p>Schedule a visit using the existing territory, role and calendar conflict checks.</p><LeadFollowupScheduler accountId={id} defaultDate={account.nextActionDate}/></section></div>
     <section className="prototype-panel"><h2>Activity history</h2><label className="prototype-search">Search activities <input aria-label="Search lead activity" value={activityQuery} onChange={e=>setActivityQuery(e.target.value)}/></label>
       {activities.map(a=><div className="prototype-activity" key={a.id}><strong>{a.title}</strong><span>{a.at.slice(0,10)} · {a.detail}</span></div>)}
