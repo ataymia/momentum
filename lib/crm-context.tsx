@@ -133,10 +133,11 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     if(!name||name.length>160||!role||role.length>100||!decisionRoles.has(patch.decisionRole??existing.decisionRole)){
       return {ok:false,message:"Enter a valid contact name, title and decision role."};
     }
-    const email=patch.email?.trim()||undefined;
+    const email=patch.email===undefined?existing.email:(patch.email.trim()||undefined);
     if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return {ok:false,message:"Invalid contact email."};
-    if(patch.phone&&patch.phone.length>60)return {ok:false,message:"Contact phone is too long."};
-    const updated={...existing,...patch,name,role,email,phone:patch.phone?.trim()||undefined};
+    const phone=patch.phone===undefined?existing.phone:(patch.phone.trim()||undefined);
+    if(phone&&phone.length>60)return {ok:false,message:"Contact phone is too long."};
+    const updated={...existing,...patch,name,role,email,phone};
     setCrm(current=>({...current,contacts:current.contacts.map(contact=>contact.id===id?updated:contact)}));
     return {ok:true};
   };
