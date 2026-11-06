@@ -16,7 +16,7 @@ const blank:LeadCreateDraft={
 };
 
 export function CrmLeadCreator(){
-  const {data,currentUser,createAccount,scope}=useWorkspace();
+  const {data,currentUser,createAccount}=useWorkspace();
   const runtime=useRuntimeMode();
   const [open,setOpen]=useState(false);
   const [form,setForm]=useState<LeadCreateDraft>({...blank});
@@ -37,11 +37,7 @@ export function CrmLeadCreator(){
       setMessage("Creation rejected. Check role, territory exception reason, and duplicate-account controls.");
       return;
     }
-    // The canonical account creation records originator, responsible representative, customer identity and audit activity.
-    if(!scope.accounts.some(a=>a.id===id)){
-      // The refreshed workspace scope may arrive on the next render; navigate using the committed ID.
-    }
-    setForm({...blank});setMessage("");setOpen(false);
+    // Canonical creation records original owner, billing identity and audit activity.\n    setForm({...blank});setMessage("");setOpen(false);
     navigateToRoute("/crm/leads/"+encodeURIComponent(id));
   };
   return <div className="prototype-panel">
