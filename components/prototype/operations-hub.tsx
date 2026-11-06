@@ -274,7 +274,13 @@ function LeadFollowupScheduler({accountId,defaultDate}:{accountId:string;default
 }
 
 function CustomerRecord({id,section}:{id:string;section:string}){
-  const {scope,data}=useWorkspace();
+  const {scope,data,currentUser}=useWorkspace();
+  const {commerce}=useCommerce();
+  const runtime=useRuntimeMode();
+  const [statementSearch,setStatementSearch]=useState("");
+  const [statementFrom,setStatementFrom]=useState("");
+  const [statementThrough,setStatementThrough]=useState("");
+  const [statementAscending,setStatementAscending]=useState(false);
   const loc=scope.accounts.find(a=>a.id===id);
   if(!loc)return <Empty>Customer not found or not accessible to your account.</Empty>;
   // Only group by explicitly stored parent ID; never use name matching as evidence of shared ownership.
@@ -285,7 +291,16 @@ function CustomerRecord({id,section}:{id:string;section:string}){
   const activities=scope.activities.filter(a=>a.accountId&&ids.has(a.accountId)).sort((a,b)=>b.at.localeCompare(a.at));
   const path="/sales/customers/"+encodeURIComponent(id),tab=safeTab(section,CUSTOMER_TABS);
   const label=parent?.name??loc.name;
-  return <div><Heading title={label} description="Linked customer profile • read-only architecture prototype" back="/sales/customers"/>
+  // Only local demo can project the full browser Commerce register.
+  // Connected employee/customer sessions must receive server-scoped finance data.
+  const finance=runtime.isDemo&&momentumStorage.mode()==="local"&&currentUser?.role!=="Customer"
+    ?projectCustomerFinance(commerce,orders,ids,new Map(locations.map(a=>[a.id,a.locationName??a.name])))
+    :null;
+  const statementRows=(finance?.statement??[])
+    .filter(row=>(!statementFrom||row.date>=statementFrom)&&(!statementThrough||row.date<=statementThrough))
+    .filter(row=>[row.location,row.reference,row.type,row.status].join(" ").toLowerCase().includes(statementSearch.trim().toLowerCase()))
+    .sort((a,b)=>(statementAscending?1:-1)*(a.date.localeCompare(b.date)||a.reference.localeCompare(b.reference)||a.type.localeCompare(b.type)));
+  return <div><Heading title={label} description="Linked customer locations, activity and source-backed records" back="/sales/customers"/>
     <Tabs base={path} items={CUSTOMER_TABS} current={tab}/>
     {tab==="overview"&&<div className="prototype-columns"><section className="prototype-panel"><h2>Contact & billing details</h2>
       <dl className="prototype-facts"><div><dt>Primary contact</dt><dd>{loc.contactName||"Not recorded"}</dd></div><div><dt>Email</dt><dd>{loc.email||"Not recorded"}</dd></div><div><dt>Phone</dt><dd>{loc.phone||"Not recorded"}</dd></div>
@@ -299,7 +314,23 @@ function CustomerRecord({id,section}:{id:string;section:string}){
       {locations.map(a=><div key={a.id} className="prototype-activity"><strong>{a.locationName??a.name}</strong><span>{a.notes||"No recorded notes"}</span></div>)}</section>}
     {tab==="transactions"&&<section className="prototype-panel"><h2>Sales transactions</h2><table className="prototype-table"><thead><tr><th>Order</th><th>Location</th><th>Date</th><th>Cases</th><th>State</th><th>Payment</th></tr></thead><tbody>{orders.map(o=><tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{locations.find(a=>a.id===o.accountId)?.locationName??locations.find(a=>a.id===o.accountId)?.location??"Unknown"}</td><td>{o.placedAt}</td><td>{o.cases}</td><td>{o.status}</td><td>{o.paymentStatus}</td></tr>)}</tbody></table>{!orders.length&&<Empty>No recorded sales orders.</Empty>}</section>}
     {tab==="mails"&&<section className="prototype-panel"><h2>Customer mail history</h2><Empty>No verified customer-linked outbound or inbound email history is available in this prototype. Gmail remains the company inbox, and the event-mail system requires approved server integration before it can populate this tab.</Empty></section>}
-    {tab==="statements"&&<section className="prototype-panel"><h2>Account statements</h2><Empty>Statements must be generated from reconciled invoices, payment allocations, credits, and opening balances in the accounting source. Order totals alone are not a valid customer statement, so no balance is estimated here.</Empty></section>}
+    {tab==="statements"&&<section className="prototype-panel"><h2>Customer statement</h2>
+      {!finance?<Empty>Statements require server-authorized invoice and payment access in connected mode. No amount is estimated from order totals.</Empty>:<>
+        <p className="prototype-note">Demo financial projection from this customer's accessible delivered orders, registered invoices, cleared allocated payments, applied credits and settled refunds. Opening balances and unreconciled adjustments are not included. Not an approved financial statement.</p>
+        <div className="prototype-metrics"><div><small>Invoices with verified order links</small><strong>{finance.invoices.length}</strong></div><div><small>Registered invoice balance</small><strong>{finance.openBalance.toLocaleString("en-US",{style:"currency",currency:"USD"})}</strong></div></div>
+        <div className="prototype-controls">
+          <label>Search statement <input type="search" aria-label="Search customer statement" value={statementSearch} onChange={e=>setStatementSearch(e.target.value)}/></label>
+          <label>From <input type="date" aria-label="Statement from date" value={statementFrom} onChange={e=>setStatementFrom(e.target.value)}/></label>
+          <label>To <input type="date" aria-label="Statement through date" value={statementThrough} onChange={e=>setStatementThrough(e.target.value)}/></label>
+          <button type="button" onClick={()=>setStatementAscending(v=>!v)}>Date {statementAscending?"ascending":"descending"}</button>
+          <button type="button" disabled={!statementRows.length} onClick={()=>downloadCsv("momentum-customer-statement-"+loc.id+".csv",statementRows,customerStatementColumns)}>Save filtered statement CSV</button>
+        </div>
+        <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Date</th><th>Location</th><th>Reference</th><th>Transaction</th><th>Status</th><th>Debit</th><th>Credit</th></tr></thead>
+          <tbody>{statementRows.map((row,i)=><tr key={row.reference+"-"+row.date+"-"+row.type+"-"+i}><td>{row.date}</td><td>{row.location}</td><td>{row.reference}</td><td>{row.type}</td><td>{row.status}</td><td>{row.debit?row.debit.toFixed(2):"—"}</td><td>{row.credit?row.credit.toFixed(2):"—"}</td></tr>)}</tbody>
+        </table></div>
+        {!statementRows.length&&<Empty>No verified financial events match this statement filter.</Empty>}
+      </>}
+    </section>}
     {tab==="locations"&&<section className="prototype-panel"><h2>Related locations</h2><p className="prototype-note">Only explicitly linked customer IDs are grouped. Same-name records are not merged automatically.</p>
       <table className="prototype-table"><thead><tr><th>Location</th><th>ZIP</th><th>Assigned representative</th><th>Account ID</th></tr></thead><tbody>{locations.map(a=><tr key={a.id}><td>{a.locationName??a.name}</td><td>{a.postalCode??"Unknown"}</td><td>{data.users.find(u=>u.id===a.ownerId)?.name??"Unassigned"}</td><td className="prototype-small">{a.id}</td></tr>)}</tbody></table></section>}
   </div>;
