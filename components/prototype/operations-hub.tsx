@@ -110,7 +110,7 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
       {(["Prospect","Qualified","Sampled"] as const).map(stage=><section className="prototype-panel" key={stage}>
         <h2>{stage} <small>({records.filter(a=>a.stage===stage).length})</small></h2>
         {records.filter(a=>a.stage===stage).map(a=><div className="prototype-activity" key={a.id}>
-          <strong><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></strong>
+          <strong><OpenLink to={"/crm/leads/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></strong>
           <span>{a.location} · {names.get(a.ownerId)??"Unassigned"}</span>
           <span>{a.contactName?<OpenLink to={"/crm/contacts/"+encodeURIComponent(a.id)}>{a.contactName}</OpenLink>:"Contact not recorded"}</span>
           <span>Next action: {a.nextActionDate||"Not scheduled"}</span>
@@ -138,10 +138,10 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
         const bucket=!a.nextActionDate?"unscheduled":a.nextActionDate<followupAsOf?"overdue":a.nextActionDate===followupAsOf?"today":"upcoming";
         return followupBucket==="all"||bucket===followupBucket;
       }).sort((a,b)=>(a.nextActionDate||"9999").localeCompare(b.nextActionDate||"9999")||a.name.localeCompare(b.name)||a.id.localeCompare(b.id)).map(a=><tr key={a.id}>
-        <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.stage}</td>
+        <td><OpenLink to={"/crm/leads/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.stage}</td>
         <td>{a.contactName?<OpenLink to={"/crm/contacts/"+encodeURIComponent(a.id)}>{a.contactName}</OpenLink>:"Not recorded"}</td>
         <td>{names.get(a.ownerId)??"Unassigned"}</td><td>{a.nextActionDate||"Not scheduled"}</td>
-        <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>Open record</OpenLink><LeadFollowupScheduler accountId={a.id} defaultDate={a.nextActionDate}/></td>
+        <td><OpenLink to={"/crm/leads/"+encodeURIComponent(a.id)}>Open lead</OpenLink><LeadFollowupScheduler accountId={a.id} defaultDate={a.nextActionDate}/></td>
       </tr>)}</tbody></table></div>
       {!records.length&&<Empty>No accessible leads match the current search and date filters.</Empty>}
       {records.length>0&&!records.some(a=>{
@@ -153,11 +153,39 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
     <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
       <th>{header("name","Business")}</th><th>{header("location","Location")}</th><th>{header("contactName","Contact")}</th><th>{header("stage","Stage")}</th><th>{header("postalCode","ZIP")}</th><th>{header("ownerId","Assigned rep")}</th><th>{header("nextActionDate","Next action")}</th>
     </tr></thead><tbody>{records.map(a=><tr key={a.id}>
-      <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.location}</td><td>{a.contactName||"Unrecorded"}</td><td>{a.stage}</td><td>{a.postalCode||"Unrecorded"}</td><td>{names.get(a.ownerId)??"Unassigned"}</td><td>{a.nextActionDate||"None"}</td>
+      <td><OpenLink to={(leadMode?"/crm/leads/":"/sales/customers/")+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.location}</td><td>{a.contactName||"Unrecorded"}</td><td>{a.stage}</td><td>{a.postalCode||"Unrecorded"}</td><td>{names.get(a.ownerId)??"Unassigned"}</td><td>{a.nextActionDate||"None"}</td>
     </tr>)}</tbody></table></div>{!records.length&&<Empty>No matching business records.</Empty>}
     </>}
     <p className="prototype-note">{records.length} matching records. Sorting and filters affect your view only, not account ownership or history.</p>
   </section></div>;
+}
+
+function LeadRecord({id}:{id:string}){
+  const {scope,data}=useWorkspace();
+  const account=scope.accounts.find(a=>a.id===id&&["Prospect","Qualified","Sampled"].includes(a.stage));
+  const [activityQuery,setActivityQuery]=useState("");
+  const [orderQuery,setOrderQuery]=useState("");
+  if(!account)return <div><Heading title="Lead unavailable" back="/crm/leads"/><Empty>Lead not found, no longer in the lead pipeline, or outside your authorized workspace.</Empty></div>;
+  const rep=data.users.find(u=>u.id===account.ownerId);
+  const activities=scope.activities.filter(a=>a.accountId===id&&[a.title,a.detail].join(" ").toLowerCase().includes(activityQuery.trim().toLowerCase()))
+    .sort((a,b)=>b.at.localeCompare(a.at)||a.id.localeCompare(b.id));
+  const orders=scope.orders.filter(o=>o.accountId===id&&!o.testOnly&&[o.number,o.status].join(" ").toLowerCase().includes(orderQuery.trim().toLowerCase()))
+    .sort((a,b)=>b.placedAt.localeCompare(a.placedAt)||a.id.localeCompare(b.id));
+  return <div><Heading title={account.name} description="Lead qualification and follow-up record" back="/crm/leads"/>
+    <div className="prototype-metrics"><div><small>Pipeline stage</small><strong>{account.stage}</strong></div><div><small>Next action</small><strong>{account.nextActionDate||"Not scheduled"}</strong></div><div><small>Assigned representative</small><strong>{rep?.name||"Unassigned"}</strong></div></div>
+    <div className="prototype-columns"><section className="prototype-panel"><h2>Business and contact</h2>
+      <dl className="prototype-facts"><div><dt>Location</dt><dd>{account.location}</dd></div><div><dt>ZIP</dt><dd>{account.postalCode||"Not recorded"}</dd></div><div><dt>Contact</dt><dd>{account.contactName||"Not recorded"}</dd></div><div><dt>Email</dt><dd>{account.email||"Not recorded"}</dd></div><div><dt>Phone</dt><dd>{account.phone||"Not recorded"}</dd></div></dl>
+      <div className="prototype-controls"><OpenLink to={"/sales/customers/"+encodeURIComponent(id)}>Customer account</OpenLink>{account.contactName&&<OpenLink to={"/crm/contacts/"+encodeURIComponent(id)}>Contact detail</OpenLink>}</div>
+      <p className="prototype-note">Lead stage and ownership are sourced from the existing account record. Editing remains disabled until audited server authorization is available.</p>
+    </section><section className="prototype-panel"><h2>Next visit</h2><p>Schedule a visit using the existing territory, role and calendar conflict checks.</p><LeadFollowupScheduler accountId={id} defaultDate={account.nextActionDate}/></section></div>
+    <section className="prototype-panel"><h2>Activity history</h2><label className="prototype-search">Search activities <input aria-label="Search lead activity" value={activityQuery} onChange={e=>setActivityQuery(e.target.value)}/></label>
+      {activities.map(a=><div className="prototype-activity" key={a.id}><strong>{a.title}</strong><span>{a.at.slice(0,10)} · {a.detail}</span></div>)}
+      {!activities.length&&<Empty>No matching recorded activity.</Empty>}</section>
+    <section className="prototype-panel"><h2>Related orders</h2><label className="prototype-search">Search orders <input aria-label="Search lead orders" value={orderQuery} onChange={e=>setOrderQuery(e.target.value)}/></label>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Status</th><th>Cases</th></tr></thead><tbody>
+      {orders.map(o=><tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{o.placedAt.slice(0,10)}</td><td>{o.status}</td><td>{o.cases}</td></tr>)}
+      </tbody></table></div>{!orders.length&&<Empty>No matching recorded orders.</Empty>}</section>
+  </div>;
 }
 
 function LeadFollowupScheduler({accountId,defaultDate}:{accountId:string;defaultDate:string}){
@@ -630,6 +658,7 @@ export function PrototypeOperationsHub(){
   if(path==="/sales/payments")return <PaymentsDirectory/>;
   if(path==="/items")return <ProductDirectory/>;
   if(path==="/sales/customers")return <AccountsDirectory/>;
+  if(segments[0]==="crm"&&segments[1]==="leads"&&segments[2])return <LeadRecord id={decodeURIComponent(segments[2])}/>;
   if(path==="/crm/leads")return <AccountsDirectory leadMode/>;
   if(segments[0]==="crm"&&segments[1]==="contacts"&&segments[2])return <ContactRecord id={decodeURIComponent(segments[2])}/>;
   if(path==="/crm/contacts")return <ContactsDirectory/>;
