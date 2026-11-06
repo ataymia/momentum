@@ -36,6 +36,7 @@ import {PackagesDirectory,ShipmentsDirectory,ShipmentDetail,DeliveryOperationsDi
 import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
 import {ActionCenterExperience} from "./action-center-experience";
 import {WorkspaceHome} from "./workspace-home";
+import {SharedCalendarExperience,MeetingWorkspaceExperience} from "./workspace-meetings-experience";
 import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
 import {WorkExceptionsExperience,CompletedWorkExperience} from "./work-review-experience";
 import {DealsDirectory,DealEditor} from "./crm-deals-experience";
@@ -332,14 +333,6 @@ function ProductRecord({skuId,section}:{skuId:string;section:string}){
     {tab==="history"&&<section className="prototype-panel"><h2>Item activity</h2><p className="prototype-note">This prototype shows order and lot links, not a full audit history. The existing audit ledger should provide authoritative changes and actors in the completed experience.</p>
       {matched.slice(0,30).map(({order})=><p className="prototype-activity" key={order.id}><strong>{order.placedAt} • {order.number}</strong><span>{order.status} • {scope.accounts.find(a=>a.id===order.accountId)?.name??"Restricted location"}</span></p>)}
       {!matched.length&&<Empty>No linked order activity.</Empty>}</section>}
-  </div>;
-}
-function CalendarPreview({meetingsOnly}:{meetingsOnly:boolean}){
-  const {scope,data}=useWorkspace();
-  const upcoming=scope.appointments.filter(a=>a.date>=new Date().toISOString().slice(0,10)).sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
-  return <div><Heading title={meetingsOnly?"Meetings":"Shared calendar"} description="Field appointments currently recorded by Momentum; staff meeting invitations are a separate planned workflow."/>
-    <section className="prototype-panel"><h2>Upcoming authorized field appointments</h2><table className="prototype-table"><thead><tr><th>Date</th><th>Time</th><th>Type</th><th>Assigned to</th><th>Business</th></tr></thead><tbody>{upcoming.map(a=><tr key={a.id}><td>{a.date}</td><td>{a.startTime}</td><td>{a.type}</td><td>{data.users.find(u=>u.id===a.ownerId)?.name??"Unassigned"}</td><td>{scope.accounts.find(ac=>ac.id===a.accountId)?.name??"Restricted"}</td></tr>)}</tbody></table>{!upcoming.length&&<Empty>No upcoming field appointments visible to your role.</Empty>}</section>
-    <section className="prototype-panel"><h2>Staff meetings: next phase</h2><p>Authorized organizers will schedule a meeting, select attendees, check conflicts, send invitations, add it to each attendee calendar, and display a reminder on Home. This is not an active scheduler yet.</p></section>
   </div>;
 }
 type IncentiveSortField="name"|"locations"|"cases"|"rep";
@@ -724,7 +717,15 @@ export function PrototypeOperationsHub(){
     return <ContactRoute id={id}/>;
   }
   if(path==="/crm/contacts")return <CrmContactsDirectory/>;
-  if(path==="/calendar"||path==="/calendar/meetings")return <CalendarPreview meetingsOnly={path.endsWith("/meetings")}/>;
+  if(path==="/calendar")return <SharedCalendarExperience/>;
+  if(path==="/calendar/agenda")return <MeetingWorkspaceExperience view="agenda"/>;
+  if(path==="/calendar/invitations")return <MeetingWorkspaceExperience view="invitations"/>;
+  if(path==="/calendar/meetings/new")return <MeetingWorkspaceExperience view="new"/>;
+  if(segments[0]==="calendar"&&segments[1]==="meetings"&&segments[2]&&segments[3]==="edit")
+    return <MeetingWorkspaceExperience view="edit" id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="calendar"&&segments[1]==="meetings"&&segments[2])
+    return <MeetingWorkspaceExperience view="record" id={decodeURIComponent(segments[2])}/>;
+  if(path==="/calendar/meetings")return <MeetingWorkspaceExperience view="meetings"/>;
   if(path==="/crm/incentives")return <IncentivePreview/>;
   const item=routeEntry(path);
   return <div><Heading title={routeLabel(path)} description="Planned module • navigation prototype only"/><section className="prototype-panel">

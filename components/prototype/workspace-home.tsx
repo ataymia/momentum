@@ -22,6 +22,7 @@ import {skuForProductName} from "../../lib/product-catalog";
 import {canVisitRoute} from "../../lib/navigation-route-registry";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useWorkspace} from "../../lib/workspace-context";
+import {MeetingHomePanel} from "./workspace-meetings-experience";
 import type {WorkspaceUser} from "../../lib/types";
 
 type HomeTab="overview"|"getting-started"|"updates";
@@ -107,7 +108,7 @@ export function WorkspaceHome(){
   const statusCounts=new Map<string,number>();
   for(const order of orders)statusCounts.set(order.status,(statusCounts.get(order.status)??0)+1);
   const statuses=[...statusCounts].sort((a,b)=>b[1]-a[1]);
-  const portalLinks:[string,string][]=[["Action Center","/work/actions"],["Calendar","/calendar"]];
+  const portalLinks:[string,string][]=[["Action Center","/work/actions"],["Calendar","/calendar"],["Meeting invitations","/calendar/invitations"]];
   if(orderAccess)portalLinks.unshift(["Sales Orders","/sales/orders"]);
   if(accountAccess)portalLinks.push(["Customers","/sales/customers"]);
   if(inventoryAccess)portalLinks.push(["Inventory","/inventory"]);
@@ -154,6 +155,7 @@ export function WorkspaceHome(){
         {inventoryAccess&&<div><Boxes size={17}/><small>Warehouse cases available</small><strong>{num(stockTotal)}</strong></div>}
       </div>
       <div className="momentum-home-grid">
+        <MeetingHomePanel/>
         {orderAccess&&<Panel title="Most ordered items" description="Case quantities on non-cancelled, non-draft orders placed within the selected period. Not consumer sell-through." className="momentum-home-panel--sales" to="/items" icon={ShoppingCart}>
           {items.map(([product,cases])=><MiniRow key={product} name={product} value={num(cases)+" cases"}
             to={skuForProductName(product)?"/items/"+encodeURIComponent(skuForProductName(product)!.id):undefined}/>)}
