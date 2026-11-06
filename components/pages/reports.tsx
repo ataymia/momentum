@@ -30,6 +30,18 @@ export function ReportsPage() {
   const today = arizonaDateKey();
 
   const visibleOrderIds = new Set(records.orders.map((order) => order.id));
+  const cashRoles = ["Administrator","Sales Manager","Sales Representative","Operations"];
+  const showCommercial = cashRoles.includes(currentUser?.role ?? "");
+  const showKpiCenter = ["Administrator","Sales Manager","Sales Representative"].includes(currentUser?.role ?? "");
+  const showOperations = ["Administrator","Operations","Warehouse","Delivery Driver"].includes(currentUser?.role ?? "");
+  // A source summary must count only the same records the signed-in user may inspect.
+  const visibleInvoiceIds = new Set(commerce.invoices.filter(invoice=>visibleOrderIds.has(invoice.orderId)).map(invoice=>invoice.id));
+  const visiblePaymentIds = new Set(commerce.allocations.filter(allocation=>visibleInvoiceIds.has(allocation.invoiceId)).map(allocation=>allocation.paymentId));
+  const visibleClearedPayments = commerce.payments.filter(payment=>payment.status==="Cleared"&&visiblePaymentIds.has(payment.id)).length;
+  const visibleAccountIds=new Set(records.accounts.map(account=>account.id));
+  const visibleVisits=crm.interactions.filter(interaction=>interaction.type==="Visit"&&interaction.physicalVisit&&visibleAccountIds.has(interaction.accountId)).length;
+  const teamIds=new Set((currentUser?.role==="Administrator"?data.users:currentUser?.role==="Sales Manager"?records.users:currentUser?[currentUser]:[]).map(user=>user.id));
+  const visibleFieldPings=tracking.state.samples.filter(sample=>teamIds.has(sample.userId)).length;
   const paidFacts = resolvedPaidOrderFacts(data, commerce).filter((fact) => visibleOrderIds.has(fact.orderId));
   const paid = collectedCashFacts(data, commerce).filter((fact) => visibleOrderIds.has(fact.orderId)).reduce((sum, fact) => sum + fact.amount, 0);
   const delivered = records.orders.filter((order) => !order.testOnly && (["Delivered", "Paid"].includes(order.status) || taskForOrder(order.id)?.status === "Delivered")).reduce((sum, order) => sum + order.cases, 0);
@@ -47,8 +59,12 @@ export function ReportsPage() {
     openReviews: hcm.reviews.filter((review) => visibleEmployeeIds.has(review.userId) && review.status !== "Acknowledged").length,
     openRecruiting: hcm.requisitions.filter((requisition) => requisition.status === "Open" && (currentUser?.role === "Administrator" || requisition.hiringManagerId === currentUser?.id)).length,
   };
-  const reportScopes: ReportScope[] = currentUser?.role === "Administrator" ? ["commercial", "operations", "people"] : ["commercial", "people"];
-  const effectiveScope = reportScopes.includes(reportScope) ? reportScope : "commercial";
+  const reportScopes: ReportScope[] = [
+    ...(showCommercial?["commercial" as const]:[]),
+    ...(showOperations?["operations" as const]:[]),
+    "people",
+  ];
+  const effectiveScope = reportScopes.includes(reportScope) ? reportScope : reportScopes[0];
 
   const metrics = effectiveScope === "commercial"
     ? [
@@ -76,9 +92,12 @@ export function ReportsPage() {
   return <div className="page page--reports">
     <PageHeader eyebrow="Operational reporting" title="Reports"/>
 
-    <ManagementKpiDashboard/>
+    {showKpiCenter&&<ManagementKpiDashboard/>}
 
-    <div className="report-integrity-banner"><Database size={20}/><div><strong>KPI sources are connected to Momentum records.</strong><p>Current calculations read order/payment, CRM visit, appointment, inventory, employee and field-location records. Source volume in your scope: {records.orders.length} orders · {commerce.payments.filter((payment)=>payment.status==="Cleared").length} cleared payments · {crm.interactions.filter((interaction)=>interaction.type==="Visit"&&interaction.physicalVisit).length} physical visits · {records.appointments.length} appointments · {tracking.state.samples.length} saved field pings.</p></div></div>
+    <div className="report-integrity-banner"><Database size={20}/><div><strong>{showCommercial?"KPI sources are connected to Momentum records.":"Role-scoped operational reporting"}</strong>
+      {showCommercial?<p>Evidence in your authorized scope: {records.orders.length} orders · {visibleClearedPayments} cleared payments with visible invoice allocations · {visibleVisits} physical visits · {records.appointments.length} appointments · {visibleFieldPings} scoped field pings. Payments allocated to multiple invoices require separate reconciliation.</p>:
+      <p>Commercial cash, customer revenue and sales KPIs are excluded from this role. Operational and personal HR summaries remain subject to source permissions; this view does not expose company-wide financial events.</p>}
+    </div></div>
 
     <div className="report-scope-tabs">{reportScopes.map((item) => <button key={item} className={effectiveScope === item ? "is-active" : ""} onClick={() => setReportScope(item)}>{item}</button>)}</div>
     <div className="report-metric-grid">{metrics.map(([label, value, detail]) => <article key={label}><div><span>{label}</span></div><strong>{value}</strong><p>{detail}</p></article>)}</div>

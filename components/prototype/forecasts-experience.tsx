@@ -43,7 +43,7 @@ export function ForecastsExperience(){
    transactionId:f.id,orderId:f.orderId,account:accounts.get(f.accountId)??"Restricted",date:f.settledAt,
    category:f.kind,netAmount:f.amount
  })),["transactionId","orderId","account","date","category","netAmount"]);
- if(!currentUser)return <div className="prototype-empty">Sign in to view forecasts.</div>;
+ if(!currentUser||!["Administrator","Sales Manager","Sales Representative","Operations"].includes(currentUser.role))return <div className="prototype-empty">Financial forecasts require an authorized commercial or operations role.</div>;
  return <div className="prototype-domain">
   <header className="prototype-heading"><h1>Forecasts & scenarios</h1><p>Historical collections, documented assumptions, and drill-down to the actual order evidence visible to your role.</p></header>
   <section className="prototype-panel">

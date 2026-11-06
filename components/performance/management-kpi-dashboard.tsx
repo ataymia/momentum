@@ -88,7 +88,13 @@ export function ManagementKpiDashboard() {
 
   const isManagement = currentUser?.role === "Administrator" || currentUser?.role === "Sales Manager";
   const period = useMemo(() => kpiPresetPeriod(preset), [preset]);
-  const permittedIds = useMemo(() => currentUser?.role === "Administrator" ? undefined : new Set(scope.users.map((user) => user.id)), [currentUser?.role, scope.users]);
+  // Individual contributors must not inherit their manager's revenue simply because the
+  // coworker directory lists that manager. Management sees only the managed team.
+  const permittedIds = useMemo(() =>
+    currentUser?.role === "Administrator" ? undefined :
+    new Set(currentUser?.role === "Sales Manager" ? scope.users.map(user=>user.id) :
+      currentUser ? [currentUser.id] : []),
+  [currentUser, scope.users]);
   const people = useMemo(() => commercialContributors(data.users, permittedIds), [data.users, permittedIds]);
   const scopeUserIds = useMemo(() => currentUser?.role === "Administrator" ? undefined : people.map((user) => user.id), [currentUser?.role, people]);
   const selectedDefinition = managementKpiDefinition(metricKey);

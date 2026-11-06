@@ -94,3 +94,19 @@ test("F07: Campaigns navigation must match Administrator-only campaign actions",
  assert(!canShowModuleInMenu(marketing,"/marketing/campaigns"));
  assert(canVisitRoute(marketing,"/marketing"));
 });
+
+test("F08 F13: warehouse, driver, and ambassador cannot open commercial cash forecasts",()=>{
+ for(const role of ["Warehouse","Delivery Driver","Brand Ambassador"] as const)
+   assert(!canVisitRoute(person(role),"/reports/forecasts"),role);
+ for(const role of ["Administrator","Sales Manager","Sales Representative","Operations"] as const)
+   assert(canVisitRoute(person(role),"/reports/forecasts"),role);
+});
+test("F08 F13: reporting summaries and manager KPI scopes do not leak global cash counts",async()=>{
+ const fs=await import("node:fs");
+ const report=fs.readFileSync("components/pages/reports.tsx","utf8");
+ const dashboard=fs.readFileSync("components/performance/management-kpi-dashboard.tsx","utf8");
+ assert(report.includes("visibleClearedPayments"));
+ assert(report.includes("showCommercial?"));
+ assert(report.includes("showKpiCenter&&<ManagementKpiDashboard/>"));
+ assert(dashboard.includes("currentUser ? [currentUser.id] : []"));
+});
