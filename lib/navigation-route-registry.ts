@@ -3,7 +3,7 @@ import { canAccessPage } from "./access";
 import { recordRouteMatch } from "./navigation-route-contract";
 
 /**
- * Prototype route contract for the inventory and fulfillment platform-inspired navigation.
+ * Momentum's unified navigation route contract. All department paths are local design.
  * Paths are stable, shareable addresses; record IDs are opaque IDs, not names.
  * This file controls presentation only. Firestore and server authorization remain authoritative.
  */
