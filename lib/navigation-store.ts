@@ -12,6 +12,7 @@ import { normalizeRoutePath, pageForPath, routeForPage } from "./navigation-rout
 let currentPage: PageKey = "home";
 let currentRoute = "/";
 let initialized = false;
+let clients = 0;
 const listeners = new Set<() => void>();
 const pageSnapshot = () => currentPage;
 const routeSnapshot = () => currentRoute;
@@ -42,12 +43,19 @@ function onPopState(): void {
 /** Install after hydration; returns a cleanup for client rendering/tests. */
 export function startRouteNavigation(): () => void {
   if (typeof window === "undefined") return () => {};
+  clients += 1;
   if (!initialized) {
     initialized = true;
     window.addEventListener("popstate", onPopState);
   }
   adopt(browserPath());
-  return () => {};
+  return () => {
+    clients = Math.max(0, clients - 1);
+    if (clients === 0 && initialized) {
+      window.removeEventListener("popstate", onPopState);
+      initialized = false;
+    }
+  };
 }
 
 export function navigateToRoute(nextPath: string, options?: {replace?: boolean}): void {
