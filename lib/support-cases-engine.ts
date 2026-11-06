@@ -25,7 +25,14 @@ export function caseAssignableStaff(data:WorkspaceData,actor:WorkspaceUser|null|
  });
 }
 export const supportRole=(u:WorkspaceUser|null|undefined)=>Boolean(u&&["Administrator","Operations","Sales Manager","Sales Representative"].includes(u.role));
-export const visibleCase=(u:WorkspaceUser|null|undefined,accounts:ReadonlySet<string>,c:SupportCase)=>Boolean(supportRole(u)&&u&&(u.role==="Administrator"||(c.accountId?accounts.has(c.accountId):c.createdBy===u.id||c.ownerId===u.id)));
+/** Sales reps may read cases they own or opened, never every case on a shared unassigned prospect.
+ * Manager and operations personnel remain confined to account visibility; administrators see all. */
+export function visibleCase(u:WorkspaceUser|null|undefined,accounts:ReadonlySet<string>,c:SupportCase):boolean{
+ if(!u||!supportRole(u))return false;
+ if(u.role==="Administrator")return true;
+ if(u.role==="Sales Representative")return c.createdBy===u.id||c.ownerId===u.id;
+ return c.accountId?accounts.has(c.accountId):c.createdBy===u.id||c.ownerId===u.id;
+}
 export const managerCase=(u:WorkspaceUser|null|undefined,accounts:ReadonlySet<string>,c:SupportCase)=>Boolean(u&&visibleCase(u,accounts,c)&&(["Administrator","Operations"].includes(u.role)||(u.role==="Sales Manager"&&c.ownerId===u.id)));
 export const validCaseDraft=(d:CaseDraft,accounts:ReadonlySet<string>,orders:ReadonlyMap<string,string>)=>
  d.title.trim().length>=4&&d.description.trim().length>=12&&["Low","Normal","High","Critical"].includes(d.priority)&&["Delivery","Billing","Product","Account","Other"].includes(d.category)&&

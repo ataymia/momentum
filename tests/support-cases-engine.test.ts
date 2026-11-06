@@ -52,3 +52,10 @@ test("F09: corrupt demo history and malformed text cannot crash a detail record"
  assert.deepEqual(restoreDemoCases([{...c,description:null}],new Set(["r1"])),[]);
  assert.deepEqual(restoreDemoCases([c,{...c,id:"clone",history:[c.history[0],c.history[0]]}],new Set(["r1"])),[c]);
 });
+
+test("F09 F13: unassigned prospect visibility does not expose another rep's service history",()=>{
+ const caseRecord=createCase(draft,rep,allowed,orders,"shared",t);assert(caseRecord);
+ assert.equal(visibleCase(other,allowed,caseRecord),false,"Both reps can view the account, but only the creator/owner can view this case");
+ assert.equal(visibleCase(rep,allowed,caseRecord),true);
+ assert.equal(visibleCase(admin,new Set(),caseRecord),true);
+});
