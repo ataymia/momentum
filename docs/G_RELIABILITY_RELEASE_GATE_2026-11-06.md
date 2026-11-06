@@ -6,6 +6,8 @@ Baseline: `prototype/unified-workspace-redesign-2026-11-03`
 
 **Not an acceptance or deployment authorization.** Do not merge the redesign or deploy without Mia's explicit approval. Consolidate carefully with A–F workstreams on a single reviewed integration branch. Each checked item below needs evidence at the exact integrated commit.
 
+Known temporary legacy route fallback without new dedicated sidebar entries: Dispatch, Timekeeping, Finance, Reporting Center. The A navigation integration owner must assign independent visible destinations, or explicitly retire the legacy pages with all work preserved. The current G test verifies routeability, not completion of that UI conversion.
+
 ## Implementation / remaining proof
 
 | ID | Current code work | Required proof before Accepted |
@@ -16,7 +18,7 @@ Baseline: `prototype/unified-workspace-redesign-2026-11-03`
 | G04 | Passive snapshot differences never receive a fabricated signed-in actor; record updates need changed source provenance. | Import/hydrate, refresh, switch account, merge, and check zero phantom user-action records. |
 | G05 | Account normalizer only preserves validated persisted `createdAt`; never invents a current time. Tests added. | Replay legacy accounts missing creator/time and explicit creator/time through browser, sync, and reload. |
 | G06 | Changes solely to sync/hydration/actor metadata are filtered; mutable CRM activity refresh cannot replay original action. | Concurrent edit and Firestore hydration with truly changed vs housekeeping fields. |
-| G07 | Verified source actor and event time required for passive-diff audit; manually recorded current-user events retain explicit actor. | Validate actor authority and timestamp from authenticated server-side writes across roles. A client-stated actor ID alone is not cryptographic proof. |
+| G07 | Verified source actor and event time required for passive-diff audit; cache disappearance is never treated as a user deletion. Manually recorded current-user events retain explicit actor. | Validate actor authority and timestamp from authenticated server-side writes across roles. Implement immutable deletion events/tombstones so real deletes remain auditable. A client-stated actor ID alone is not cryptographic proof. |
 | G08 | Legacy unverified system events retained in raw audit state with provenance flag, hidden from attributed activity views; distinct real same-time changes preserved. | Before any migration take an authorized, immutable archive. Recover and reconcile historical records with official source of truth. Previously deleted events cannot be recreated without backups. **Administrator-only read-only JSON recovery export is now available in Audit Center for normalized unverified records.** This is not a backup of previously deleted events and is not proof of historical actor attribution. |
 | G09 | Removed dormant header section-tab registry from shared shell; sidebar/breadcrumbs retained. | A workstream must remove/replace remaining legacy page layouts, then full responsive visual review. Not complete. |
 | G10 | Focused tests registered in `test:logic`; PR workflow provides full audit at exact SHA. | Full app/Functions lint and typecheck, logic suite, Firestore/Storage rules emulators, build, real role tests, route/direct-link and browser/mobile staging acceptance, consolidation test, Mia signoff. |
