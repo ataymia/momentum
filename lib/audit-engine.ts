@@ -418,6 +418,11 @@ export function diffAuditableRecords(
     if (!snapshot) continue;
 
     const action: AuditEvent["action"] = !before ? "Created" : !after ? "Deleted" : "Updated";
+    // Disappearance from a cached collection can be a permission/scope change,
+    // page filtering, or remote hydration. The last editor/time on the OLD
+    // record is never proof of who deleted it. Require an explicit deletion
+    // audit event or authenticated tombstone instead of inventing attribution.
+    if(action==="Deleted")continue;
     const changes = changeList(before?.payload, after?.payload);
     // Cache refresh and attribution metadata alone are not business mutations.
     if(action==="Updated" && changes.length===0)continue;
