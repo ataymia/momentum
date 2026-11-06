@@ -39,7 +39,7 @@ export function CrmAccountSetup(){
       accountsPayableContactName:String(dataForm.get("accountsPayableContactName")||"").trim(),
       accountsPayableEmail:String(dataForm.get("accountsPayableEmail")||"").trim(),
       accountsPayablePhone:String(dataForm.get("accountsPayablePhone")||"").trim(),
-      onboardingPackageStatus:String(dataForm.get("onboardingPackageStatus")||"Not started") as "Not started"|"Prepared",
+      // Keep any previously reviewed external package state. This form can only submit unverified preparation states.\n      ...( ["Not started","Prepared"].includes(String(dataForm.get("onboardingPackageStatus")||""))\n        ?{onboardingPackageStatus:String(dataForm.get("onboardingPackageStatus")) as "Not started"|"Prepared"}:{}),
       ...(isManager?{creditStatus:String(dataForm.get("creditStatus")||"COD") as "COD"|"Credit Requested"|"Credit Under Review"|"Net 30 Approved"|"Credit Declined"|"Personal Guaranty Required"}:
         String(dataForm.get("requestCredit")||"no")==="yes"?{creditStatus:"Credit Requested" as const}:{}),
     };
@@ -68,7 +68,7 @@ export function CrmAccountSetup(){
             <label>Accounts payable contact <input name="accountsPayableContactName" disabled={!canEdit} defaultValue={customer.accountsPayableContactName??""}/></label>
             <label>A/P email <input type="email" name="accountsPayableEmail" disabled={!canEdit} defaultValue={customer.accountsPayableEmail??""}/></label>
             <label>A/P phone <input name="accountsPayablePhone" disabled={!canEdit} defaultValue={customer.accountsPayablePhone??""}/></label>
-            <label>Onboarding package <select name="onboardingPackageStatus" disabled={!canEdit} defaultValue={customer.onboardingPackageStatus==="Prepared"?"Prepared":"Not started"}><option>Not started</option><option>Prepared</option></select></label>
+            <label>Onboarding package <select name="onboardingPackageStatus" disabled={!canEdit} defaultValue={customer.onboardingPackageStatus??"Not started"}><option>Not started</option><option>Prepared</option>{customer.onboardingPackageStatus&&!["Not started","Prepared"].includes(customer.onboardingPackageStatus)&&<option value={customer.onboardingPackageStatus}>{customer.onboardingPackageStatus} (existing verification required)</option>}</select></label>
             {isManager?<label>Credit status <select name="creditStatus" disabled={!canEdit} defaultValue={customer.creditStatus??"COD"}><option>COD</option><option>Credit Requested</option><option>Credit Under Review</option><option>Net 30 Approved</option><option>Credit Declined</option><option>Personal Guaranty Required</option></select></label>
              :<label>Credit review <select name="requestCredit" disabled={!canEdit} defaultValue="no"><option value="no">No new request</option><option value="yes">Request manager review</option></select></label>}
           </div>
