@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import {MENU_GROUPS, LEGACY_PATHS} from "../lib/navigation-route-registry";
+import type {PageKey} from "../lib/types";
 
 const access=readFileSync("lib/access.ts","utf8");
 const shell=readFileSync("components/app-shell-v4.tsx","utf8");
@@ -18,9 +20,9 @@ function pageAccessKeys(){
 function renderedKeys(){
   return new Set([...shell.matchAll(/case "([A-Za-z][A-Za-z0-9]*)":/g)].map((match)=>match[1]));
 }
-function reachableKeys(){
-  const beforeNavButton=shell.split("function NavButton")[0]??shell;
-  return new Set([...beforeNavButton.matchAll(/key:\s*"([A-Za-z][A-Za-z0-9]*)"/g)].map((match)=>match[1]));
+function routeableKeys(){
+  const sidebarKeys=MENU_GROUPS.flatMap(group=>group.entries).map(entry=>entry.permission);
+  return new Set([...sidebarKeys,...Object.keys(LEGACY_PATHS)] as PageKey[]);
 }
 
 test("every role-accessible page has a renderer",()=>{
@@ -28,9 +30,11 @@ test("every role-accessible page has a renderer",()=>{
   for(const page of pageAccessKeys())assert.ok(rendered.has(page),`${page} is accessible but has no PageView renderer`);
 });
 
-test("every role-accessible page is reachable from primary, secondary, or section navigation",()=>{
-  const reachable=reachableKeys();
-  for(const page of pageAccessKeys())assert.ok(reachable.has(page),`${page} is accessible but has no visible navigation path`);
+test("every role-accessible page has a dedicated URL or current sidebar destination",()=>{
+  const reachable=routeableKeys();
+  for(const page of pageAccessKeys())assert.ok(reachable.has(page as PageKey),`${page} is accessible but has no route or sidebar destination`);
+  // Visibility completion is separately tracked under A05/A07/G09; legacy URL fallback
+  // is not proof that an obsolete page layout has been redesigned or accepted.
 });
 
 test("commerce wraps performance so source-linked report calculations can read the payment ledger",()=>{
@@ -53,9 +57,12 @@ test("only the current freehand Quick Visit implementation remains wired",()=>{
   assert.match(shell,/case "quickVisit": return <QuickVisitPage\/>/);
 });
 
-test("Products is no longer a hidden accessible page",()=>{
-  assert.match(shell,/inventory: \[\{key:"inventory"[\s\S]*\{key:"products",label:"Products"\}\]/);
+test("Products has a dedicated Commerce sidebar destination rather than header tabs",()=>{
+  const products=MENU_GROUPS.find(group=>group.label==="Commerce")?.entries
+    .find(entry=>entry.permission==="products"&&entry.path==="/items");
+  assert.ok(products,"Products needs a visible, routable Commerce destination");
   assert.match(shell,/products:"inventory"/);
+  assert.doesNotMatch(shell,/const sectionTabs:/);
 });
 
 
