@@ -8,7 +8,7 @@ import { useRuntimeMode } from "../../lib/runtime-mode";
 import { momentumStorage } from "../../lib/persistence";
 import { navigateToRoute } from "../../lib/navigation-store";
 import { downloadCsv } from "../../lib/browser-export";
-import type { Opportunity, OpportunityStage, CrmContact } from "../../lib/crm-engine";
+import type { OpportunityStage, CrmContact } from "../../lib/crm-engine";
 import { visibleDeals, visibleContacts, dealCsvColumns, dealCsvRows, contactCsvColumns, contactCsvRows } from "../../lib/crm-review-records";
 
 const stages: OpportunityStage[] = ["Prospecting", "Qualified", "Sample / evaluation", "Commercial review", "Order pending", "Won", "Lost"];
@@ -195,7 +195,7 @@ function ContactForm() {
 }
 
 export function CrmContactsExperience({ id, create = false }: { id?: string; create?: boolean }) {
-  const { scope, data, currentUser } = useWorkspace();
+  const { scope, currentUser } = useWorkspace();
   const { crm } = useCrm();
   const runtime = useRuntimeMode();
   const [search, setSearch] = useState("");
