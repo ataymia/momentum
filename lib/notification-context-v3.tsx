@@ -35,34 +35,27 @@ import {
 } from "./notification-policy-v2";
 import {usePerformance} from "./performance-context";
 import {useWorkspace} from "./workspace-context";
-import {mergeFirstSeenTimes,notificationDisplayTime,parseFirstSeenTimes} from "./notification-display-time";
+import {mergeFirstSeenRecords,mergeFirstSeenTimes,notificationDisplayTime,parseFirstSeenTimes} from "./notification-display-time";
+import {mergeReadReceipts,parseReadReceipts,recentRecordedStatus} from "./notification-receipts";
 
 const READ_KEY="momentum-derived-notification-read-v1";
 const FIRST_SEEN_KEY="momentum-notification-first-seen-v1";
 
-const readIds=(userId:string)=>{
+const readIds=(userId:string):Set<string>=>{
   if(typeof window==="undefined")return new Set<string>();
-  try{
-    const parsed=JSON.parse(
-      window.localStorage.getItem(`${READ_KEY}:${userId}`)??"[]",
-    );
-    return new Set(
-      Array.isArray(parsed)?
-        parsed.filter((item):item is string=>typeof item==="string"):
-        [],
-    );
-  }catch{
-    return new Set<string>();
-  }
+  try{return parseReadReceipts(JSON.parse(
+    window.localStorage.getItem(`${READ_KEY}:${userId}`)??"[]",
+  ));}
+  catch{return new Set<string>();}
 };
 
-const persist=(userId:string,ids:Set<string>)=>{
+const persist=(userId:string,ids:ReadonlySet<string>):Set<string>=>{
+  const merged=mergeReadReceipts(readIds(userId),ids);
   if(typeof window!=="undefined"){
-    window.localStorage.setItem(
-      `${READ_KEY}:${userId}`,
-      JSON.stringify([...ids].slice(-1000)),
-    );
+    try{window.localStorage.setItem(`${READ_KEY}:${userId}`,JSON.stringify([...merged]));}
+    catch{/* Storage can be blocked. Do not break the notification UI. */}
   }
+  return merged;
 };
 
 const readFirstSeen=(userId:string):Record<string,string>=>{
@@ -108,15 +101,21 @@ function NotificationBridge({
     return()=>window.clearInterval(timer);
   },[]);
 
-  useEffect(()=>persist(userId,readDerived),[userId,readDerived]);
   useEffect(()=>{
-    if(typeof window!=="undefined")window.localStorage.setItem(FIRST_SEEN_KEY+":"+userId,JSON.stringify(firstSeen));
+    persist(userId,readDerived);
+  },[userId,readDerived]);
+  useEffect(()=>{
+    if(typeof window==="undefined")return;
+    const merged=mergeFirstSeenRecords(readFirstSeen(userId),firstSeen);
+    try{window.localStorage.setItem(FIRST_SEEN_KEY+":"+userId,JSON.stringify(merged));}
+    catch{/* Presentation metadata must never block the application. */}
+
   },[userId,firstSeen]);
   // A second tab must not resurrect notifications that another tab already cleared.
   useEffect(()=>{
     const onStorage=(event:StorageEvent)=>{
-      if(event.key===READ_KEY+":"+userId)setReadDerived(readIds(userId));
-      if(event.key===FIRST_SEEN_KEY+":"+userId)setFirstSeen(readFirstSeen(userId));
+      if(event.key===READ_KEY+":"+userId)setReadDerived(current=>mergeReadReceipts(current,readIds(userId)));
+      if(event.key===FIRST_SEEN_KEY+":"+userId)setFirstSeen(current=>mergeFirstSeenRecords(current,readFirstSeen(userId)));
     };
     window.addEventListener("storage",onStorage);
     return()=>window.removeEventListener("storage",onStorage);
@@ -143,6 +142,8 @@ function NotificationBridge({
 
     const addIntent=(intent:NotificationIntent)=>{
       if(!notificationBellEnabled(intent.policyId))return;
+      // Do not resurrect years of historical status events as new unread mail.
+      if(intent.importance==="status"&&!recentRecordedStatus(intent.occurredAt,clock))return;
       const id=`derived-intent:${intent.id}`;
       if(intent.recipientUserId!==currentUser.id)return;
       const stamp=notificationDisplayTime(intent.occurredAt,firstSeen[id],evaluatedAt);
@@ -275,19 +276,12 @@ function NotificationBridge({
   ).length;
 
   const markRead=(id:string)=>{
-    setReadDerived((current)=>{
-      const next=new Set(current);
-      next.add(id);
-      return next;
-    });
+    setReadDerived(current=>mergeReadReceipts(current,readIds(userId),new Set([id])));
   };
 
   const markAllRead=()=>{
-    setReadDerived((current)=>{
-      const next=new Set(current);
-      for(const item of currentUserItems)next.add(item.id);
-      return next;
-    });
+    setReadDerived(current=>mergeReadReceipts(current,readIds(userId),
+      new Set(currentUserItems.map(item=>item.id))));
   };
 
   return <NotificationContext.Provider value={{

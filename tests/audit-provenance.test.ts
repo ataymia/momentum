@@ -7,6 +7,8 @@ import {
   diffAuditableRecords,
   mergeAuditSnapshots,
   normalizeAuditState,
+  recoverableUnverifiedAuditEvents,
+  visibleAuditEvents,
   type AuditEvent,
 } from "../lib/audit-engine";
 import type { WorkspaceUser } from "../lib/types";
@@ -100,7 +102,7 @@ test("approval history uses the actual decision actor and decision timestamp", (
   assert.equal(event.at, "2026-10-06T20:00:00.000Z");
 });
 
-test("legacy unverified System events are removed and duplicate facts collapse", () => {
+test("unverified system history is preserved for recovery but hidden from attributed activity", () => {
   const verified: AuditEvent = {
     id:"audit-good-1",
     at:"2026-10-06T20:00:00.000Z",
@@ -125,9 +127,14 @@ test("legacy unverified System events are removed and duplicate facts collapse",
     actorRole:"System",
   };
   const state = normalizeAuditState({ version:1, events:[legacy, verified, duplicate] });
-  assert.equal(state.events.length, 1);
-  assert.equal(state.events[0].id, "audit-good-1");
-  assert.equal(auditEventFingerprint(state.events[0]), auditEventFingerprint(verified));
+  assert.equal(state.events.length, 2);
+  assert.equal(recoverableUnverifiedAuditEvents(state).length, 1);
+  assert.equal(recoverableUnverifiedAuditEvents(state)[0].id, "audit-legacy");
+  assert.match(recoverableUnverifiedAuditEvents(state)[0].summary,/Unverified historical record/);
+  const visible=visibleAuditEvents(admin,{users:[admin],accounts:[]} as never,state.events);
+  assert.deepEqual(visible.map(event=>event.id),["audit-good-1"]);
+  assert.equal(auditEventFingerprint(visible[0]), auditEventFingerprint(verified));
+  assert.deepEqual(recoverableUnverifiedAuditEvents(normalizeAuditState(state)).map(e=>e.id),["audit-legacy"]);
 });
 
 test("normalized history sorts by the real event timestamp", () => {
@@ -237,7 +244,7 @@ test("explicit HCM audit records keep their human actor and original timestamp",
 });
 
 
-test("legacy created history is retimed from its source timestamp instead of page-detection time", () => {
+test("account assignment dates never masquerade as creation dates", () => {
   const state = normalizeAuditState({
     version:1,
     events:[{
@@ -260,7 +267,9 @@ test("legacy created history is retimed from its source timestamp instead of pag
     }],
   });
   assert.equal(state.events.length, 1);
-  assert.equal(state.events[0].at, "2026-09-18T16:22:10.000Z");
+  assert.equal(state.events[0].at, "2026-10-06T23:30:00.000Z");
+  assert.equal(state.events[0].provenanceStatus,"unverified-legacy");
+  assert.equal(recoverableUnverifiedAuditEvents(state).length,1);
 });
 
 test("a reused unrelated audit snapshot does not generate spurious changes on field activity",()=>{
@@ -309,4 +318,48 @@ test("verified changes to actual business fields remain auditable",()=>{
   assert.ok(event);
   assert.equal(event.actorId,"admin-1");
   assert.deepEqual(event.changes,[{field:"stage",before:"Prospect",after:"Qualified"}]);
+});
+
+test("reloaded CRM visits cannot credit the initial visitor with a later cache-only edit",()=>{
+  const before=collectAuditableRecords("CRM",{interactions:[{id:"visit-1",userId:"rep-1",occurredAt:"2026-10-02T18:00:00Z",summary:"Original"}]});
+  const after=collectAuditableRecords("CRM",{interactions:[{id:"visit-1",userId:"rep-1",occurredAt:"2026-10-02T18:00:00Z",summary:"Rehydrated text"}]});
+  assert.deepEqual(diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-11-06T18:00:00Z",[rep]),[]);
+});
+
+test("swapping actor metadata without changing source event time is not a new audit event",()=>{
+  const before=collectAuditableRecords("Workspace",{accounts:[{id:"account-1",name:"Market",stage:"Prospect",updatedBy:"admin-1",updatedAt:"2026-10-01T12:00:00Z"}]});
+  const after=collectAuditableRecords("Workspace",{accounts:[{id:"account-1",name:"Market",stage:"Qualified",updatedBy:"rep-1",updatedAt:"2026-10-01T12:00:00Z"}]});
+  assert.deepEqual(diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-11-06T18:00:00Z",[rep,admin]),[]);
+});
+
+test("passive account sync is not attributed to the viewer even when their identity is passed",()=>{
+  const before=collectAuditableRecords("Workspace",{accounts:[{id:"account-1",name:"Market",stage:"Prospect"}]});
+  const after=collectAuditableRecords("Workspace",{accounts:[{id:"account-1",name:"Market",stage:"Qualified"}]});
+  assert.deepEqual(diffAuditableRecords(before,after,{id:"admin-1",role:"Administrator"},"2026-11-06T18:00:00Z",[admin]),[]);
+});
+
+test("same-millisecond audit writes with different changed fields remain independently recoverable",()=>{
+  const original={
+    id:"evt-1",at:"2026-10-06T20:00:00.000Z",actorId:"admin-1",actorRole:"Administrator",
+    action:"Updated" as const,module:"Workspace",collection:"accounts",
+    entityType:"Workspace.accounts",entityId:"acct-1",label:"Market",
+    summary:"Account changed",sensitivity:"operational" as const,
+    changes:[{field:"stage",before:"Prospect",after:"Qualified"}],
+  };
+  const next={...original,id:"evt-2",changes:[{field:"health",before:"New",after:"Strong"}]};
+  const state=normalizeAuditState({version:1,events:[original,next]});
+  assert.equal(state.events.length,2);
+  assert.notEqual(auditEventFingerprint(original),auditEventFingerprint(next));
+});
+test("explicitly source-verified account records are never quarantined for truncated diffs",()=>{
+  const original={
+    id:"verified-acct",at:"2026-10-06T20:00:00.000Z",actorId:"admin-1",
+    actorRole:"Administrator",action:"Created" as const,module:"Workspace",
+    collection:"accounts",entityType:"Workspace.accounts",entityId:"acct-1",
+    label:"Market",summary:"Account created",sensitivity:"operational" as const,
+    changes:[{field:"name",after:"Market"}],provenanceStatus:"verified" as const,
+  };
+  const state=normalizeAuditState({version:1,events:[original]});
+  assert.equal(state.events[0].provenanceStatus,"verified");
+  assert.equal(recoverableUnverifiedAuditEvents(state).length,0);
 });
