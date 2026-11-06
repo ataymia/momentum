@@ -16,6 +16,7 @@ import {CrmLeadCreator} from "./crm-lead-create";
 import {CrmAccountHealth} from "./crm-account-health";
 import {CrmAccountSetup} from "./crm-account-setup";
 import {CrmAccountMap} from "./crm-account-map";
+import {CrmQuickVisit} from "./crm-quick-visit";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience } from "./hr-payroll-experiences";
@@ -723,6 +724,7 @@ export function PrototypeOperationsHub(){
   if(path==="/crm/account-health")return <CrmAccountHealth/>;
   if(path==="/crm/account-setup")return <CrmAccountSetup/>;
   if(path==="/crm/account-map")return <CrmAccountMap/>;
+  if(path==="/crm/quick-visit")return <CrmQuickVisit/>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
   if(path==="/work/approvals")return <OrderApprovalDirectory/>;
