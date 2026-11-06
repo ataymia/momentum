@@ -26,6 +26,7 @@ const date=(v?:string)=>v?v.slice(0,10):"Not recorded";
 const cents=(s:string)=>Math.round(Number(s)*100);
 const field=(fd:FormData,key:string)=>String(fd.get(key)??"").trim();
 const positive=(s:string)=>Number(s);
+const monetaryColumns=new Set(["cost","total","variance","due"]);
 const defaultDate=()=>new Date().toISOString().slice(0,10);
 const vendorName=(s:PurchasingState,id:string)=>s.vendors.find(v=>v.id===id)?.name??"Unknown vendor";
 const poName=(s:PurchasingState,id:string)=>s.orders.find(p=>p.id===id)?.id??"Unknown order";
@@ -56,7 +57,7 @@ function PurchasingForm({section,state,run,role}:{section:Section;state:Purchasi
     e.currentTarget.reset();setSelection("");
   };
   const poOptions=orders.filter(p=>section==="receipts"?receivedCases(state,p.id)<p.cases:true);
-  const purchaseOptions=section==="bills"?poOptions:poOptions;
+  const purchaseOptions=poOptions;
   return <section className="prototype-panel">
     <button type="button" className="prototype-link" onClick={()=>setOpen(v=>!v)} aria-expanded={open}>{open?"Close entry form":"Prepare "+sectionTitles[section].toLowerCase().replace(/s$/,"")}</button>
     {open&&<form className="prototype-purchasing-form" onSubmit={submit}>
@@ -74,7 +75,7 @@ function PurchasingForm({section,state,run,role}:{section:Section;state:Purchasi
         <label>Received cases<input name="cases" type="number" min={1} step={1} required/></label>
         <label>Physical lot / batch code<input name="lot" required/></label>
         <label>Best-by date<input name="bestBy" type="date" required/></label>
-        <label>Warehouse location<input name="warehouse" required value={orders.find(p=>p.id===selection)?.warehouse??""} onChange={()=>{}} readOnly/></label>
+        <label>Warehouse location<input name="warehouse" required value={orders.find(p=>p.id===selection)?.warehouse??""} readOnly/></label>
       </>}
       {section==="bills"&&<>
         <label>Approved PO<select name="order" required defaultValue=""><option value="">Select approved order</option>{purchaseOptions.map(p=><option key={p.id} value={p.id}>{p.id} · {p.cases-billedCases(state,p.id)} unbilled cases</option>)}</select></label>
@@ -110,12 +111,12 @@ const columns:Record<Section,Column[]>={
 function buildRows(s:PurchasingState,section:Section):Row[]{
   switch(section){
     case "vendors":return s.vendors.map(v=>({id:v.id,date:date(v.createdAt),status:v.active?"Active":"Inactive",values:{name:v.name,contact:v.contact||"Not provided",created:date(v.createdAt)}}));
-    case "orders":return s.orders.map(p=>({id:p.id,date:date(p.createdAt),status:poStatus(s,p),values:{vendor:vendorName(s,p.vendorId),sku:skuById(p.sku)?.shortName??p.sku,cases:p.cases,received:receivedCases(s,p.id),cost:money(p.cases*p.unitCostCents),status:poStatus(s,p)}}));
+    case "orders":return s.orders.map(p=>({id:p.id,date:date(p.createdAt),status:poStatus(s,p),values:{vendor:vendorName(s,p.vendorId),sku:skuById(p.sku)?.shortName??p.sku,cases:p.cases,received:receivedCases(s,p.id),cost:p.cases*p.unitCostCents,status:poStatus(s,p)}}));
     case "receipts":return s.receipts.map(r=>({id:r.id,date:date(r.recordedAt),status:"Not posted",values:{po:poName(s,r.poId),cases:r.cases,lot:r.lotCode,bestBy:r.bestBy,warehouse:r.warehouse,status:"Pending inventory posting"}}));
-    case "bills":return s.bills.map(b=>{const m=threeWayMatch(s,b);const st=b.approvedAt?"Approved":m.matched?"Matched · review needed":"Mismatch / awaiting receipt";return {id:b.id,date:date(b.recordedAt),status:st,values:{invoice:b.invoiceNumber,po:poName(s,b.poId),cases:b.cases,total:money(b.amountCents),variance:money(m.varianceCents),status:st,due:money(billDueCents(s,b))}};});
-    case "payments":return s.payments.map(p=>({id:p.id,date:date(p.recordedAt),status:"Unverified",values:{bill:s.bills.find(b=>b.id===p.billId)?.invoiceNumber??p.billId,reference:p.reference,total:money(p.amountCents),status:"Local note only"}}));
-    case "credits":return s.credits.map(c=>({id:c.id,date:date(c.recordedAt),status:"Recorded",values:{bill:s.bills.find(b=>b.id===c.billId)?.invoiceNumber??c.billId,reference:c.reference,reason:c.reason,total:money(c.amountCents)}}));
-    case "expenses":return s.expenses.map(e=>({id:e.id,date:date(e.recordedAt),status:e.approvedAt?"Approved":"Awaiting approval",values:{description:e.description,vendor:e.vendorId?vendorName(s,e.vendorId):"Not linked",total:money(e.amountCents),status:e.approvedAt?"Approved":"Awaiting approval"}}));
+    case "bills":return s.bills.map(b=>{const m=threeWayMatch(s,b);const st=b.approvedAt?"Approved":m.matched?"Matched · review needed":"Mismatch / awaiting receipt";return {id:b.id,date:date(b.recordedAt),status:st,values:{invoice:b.invoiceNumber,po:poName(s,b.poId),cases:b.cases,total:b.amountCents,variance:m.varianceCents,status:st,due:billDueCents(s,b)}};});
+    case "payments":return s.payments.map(p=>({id:p.id,date:date(p.recordedAt),status:"Unverified",values:{bill:s.bills.find(b=>b.id===p.billId)?.invoiceNumber??p.billId,reference:p.reference,total:p.amountCents,status:"Local note only"}}));
+    case "credits":return s.credits.map(c=>({id:c.id,date:date(c.recordedAt),status:"Recorded",values:{bill:s.bills.find(b=>b.id===c.billId)?.invoiceNumber??c.billId,reference:c.reference,reason:c.reason,total:c.amountCents}}));
+    case "expenses":return s.expenses.map(e=>({id:e.id,date:date(e.recordedAt),status:e.approvedAt?"Approved":"Awaiting approval",values:{description:e.description,vendor:e.vendorId?vendorName(s,e.vendorId):"Not linked",total:e.amountCents,status:e.approvedAt?"Approved":"Awaiting approval"}}));
   }
 }
 function RowAction({section,id,state,role,actorId,run}:{section:Section;id:string;state:PurchasingState;role:string;actorId:string;run:(a:PurchaseAction)=>void}){
@@ -161,8 +162,8 @@ export function PurchasingExperience({section,id}:{section:string;id?:string}){
   const records=useMemo(()=>buildRows(state,selected),[state,selected]);
   const statuses=[...new Set(records.map(x=>x.status))].sort();
   const filtered=records.filter(row=>(!id||row.id===id)&&(status==="all"||row.status===status)&&(!from||row.date>=from)&&(!to||row.date<=to)
-    &&[row.id,...Object.values(row.values)].join(" ").toLowerCase().includes(search.toLowerCase()))
-    .sort((a,b)=>{const va=sort==="date"?a.date:a.values[sort]??"";const vb=sort==="date"?b.date:b.values[sort]??"";const cmp=typeof va==="number"&&typeof vb==="number"?va-vb:String(va).localeCompare(String(vb),undefined,{numeric:true});return (descending?-1:1)*cmp||a.id.localeCompare(b.id);});
+    &&[row.id,...Object.entries(row.values).map(([key,value])=>monetaryColumns.has(key)?money(Number(value)):String(value))].join(" ").toLowerCase().includes(search.toLowerCase()))
+    .sort((a,b)=>{const va=sort==="date"?a.date:sort==="id"?a.id:a.values[sort]??"";const vb=sort==="date"?b.date:sort==="id"?b.id:b.values[sort]??"";const cmp=typeof va==="number"&&typeof vb==="number"?va-vb:String(va).localeCompare(String(vb),undefined,{numeric:true});return (descending?-1:1)*cmp||a.id.localeCompare(b.id);});
   if(!currentUser)return <p className="prototype-empty">Sign in to view purchasing.</p>;
   if(!demo)return <div><header className="prototype-heading"><h1>{sectionTitles[selected]}</h1><p>Purchasing is not yet connected to verified vendor, payable or warehouse receipt records.</p></header><section className="prototype-panel"><h2>Production connection blocked</h2><p>There is no approved purchasing backend or inventory-posting authorization for this new module. No vendor invoices, inventory receipts, payments or credits will be invented from retail orders.</p><p className="prototype-note">An isolated local demo is available only in demo mode with local storage. Its records never represent live company liabilities.</p></section></div>;
   return <div>
@@ -187,7 +188,7 @@ export function PurchasingExperience({section,id}:{section:string;id?:string}){
         {["orders","bills","expenses"].includes(selected)&&<th>Control</th>}
       </tr></thead><tbody>{filtered.map(row=><tr key={row.id}>
         <td>{row.date}</td><td>{selected==="orders"||selected==="bills"?<button className="prototype-link" type="button" onClick={()=>navigateToRoute("/purchases/"+selected+"/"+encodeURIComponent(row.id))}>{row.id}</button>:row.id}</td>
-        {columns[selected].map(col=><td key={col.key}>{String(row.values[col.key]??"")}</td>)}
+        {columns[selected].map(col=><td key={col.key}>{monetaryColumns.has(col.key)?money(Number(row.values[col.key]??0)):String(row.values[col.key]??"")}</td>)}
         {["orders","bills","expenses"].includes(selected)&&<td><RowAction section={selected} id={row.id} state={state} run={run} role={currentUser.role} actorId={currentUser.id}/></td>}
       </tr>)}</tbody></table></div>
       {!filtered.length&&<p className="prototype-empty">No real purchasing records in this local review. Create a demo record to test the workflow.</p>}
