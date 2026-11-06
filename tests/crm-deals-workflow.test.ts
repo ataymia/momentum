@@ -37,3 +37,16 @@ test("Deals URL routes render real directory, create and record views rather tha
   assert.match(ui,/Deal creation rejected/);
   assert.match(ui,/A specific loss reason is required/);
 });
+
+test("direct CRM record, create and lead URLs are permitted by the correct role",async()=>{
+  const {canVisitRoute,requiresPrototypePage,pageForPath}=await import("../lib/navigation-route-registry");
+  const role=(role:"Administrator"|"Sales Representative"|"Customer")=>({
+    id:role,name:role,role,team:"Sales",email:"demo@example.invalid",firstName:"Demo",initials:"DM",title:"Demo",accent:"#111",
+  }) as import("../lib/types").WorkspaceUser;
+  for(const path of ["/crm/deals/new","/crm/deals/deal-123","/crm/leads/lead-1","/crm/contacts/contact-1"]){
+    assert.equal(pageForPath(path),"accounts",path);
+    assert.equal(requiresPrototypePage(path),true,path);
+    assert.equal(canVisitRoute(role("Sales Representative"),path),true,path);
+    assert.equal(canVisitRoute(role("Customer"),path),false,path);
+  }
+});

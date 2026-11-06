@@ -179,11 +179,13 @@ export function pageForPath(path: string): PageKey | null {
   if (ROUTE_OVERRIDES[clean]) return ROUTE_OVERRIDES[clean];
   // Deep-linked records must retain their owning workspace page, not fall back to Home.
   if(clean.startsWith("/admin/employee-profiles/"))return "settings";
+  if(/^\/crm\/(leads|contacts|deals)\/[^/]+$/.test(clean))return "accounts";
   if(/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean))return "orders";
   if(clean.startsWith("/sales/orders/"))return "orders";
   if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
   if(clean.startsWith("/sales/returns/"))return "orders";
   if(clean.startsWith("/sales/customers/"))return "accounts";
+  if(/^\/crm\/(leads|contacts|deals)\/[^/]+$/.test(clean))return "accounts";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if(clean.startsWith("/items/"))return "products";
   const legacy = (Object.keys(LEGACY_PATHS) as PageKey[]).find(key => LEGACY_PATHS[key] === clean);
@@ -237,6 +239,7 @@ export function permissionForPath(path: string): PageKey | null {
   if (clean.startsWith("/sales/orders/")) return "orders";
   if (clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/")) return "orderCash";
   if (clean.startsWith("/sales/returns/")) return "orders";
+  if(/^\/crm\/(leads|contacts|deals)\/[^/]+$/.test(clean))return "accounts";
   if (routeEntry(clean)) return routeEntry(clean)!.permission;
   return pageForPath(clean);
 }
@@ -280,6 +283,7 @@ export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
   if(/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean))return true;
+  if(/^\/crm\/(leads|contacts|deals)\/[^/]+$/.test(clean))return true;
   // Sensitive legacy HR and payroll tools are wrapped by a prototype demo-only gate.
   if(clean==="/people/payroll/workflow"||clean==="/people/onboarding/workflow"||clean==="/admin/employee-profiles/workflow")return true;
   if (clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
