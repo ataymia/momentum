@@ -31,6 +31,7 @@ import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
 import {PackagesDirectory,ShipmentsDirectory,ShipmentDetail,DeliveryOperationsDirectory} from "./fulfillment-experience";
+import {PurchasingExperience} from "./purchasing-experience";
 import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
 import {ActionCenterExperience} from "./action-center-experience";
 import {WorkspaceHome} from "./workspace-home";
@@ -359,6 +360,7 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="sales"&&segments[1]==="payments"&&segments[2])return <PaymentDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="inventory"&&segments[1]==="lots"&&segments[2])return <InventoryLotDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="inventory"&&segments[1]==="shipments"&&segments[2])return <ShipmentDetail orderId={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="purchases"&&segments[1])return <PurchasingExperience section={segments[1]} id={segments[2]?decodeURIComponent(segments[2]):undefined}/>;
   if(path==="/inventory/packages")return <PackagesDirectory/>;
   if(path==="/inventory/shipments")return <ShipmentsDirectory/>;
   if(path==="/operations/deliveries")return <DeliveryOperationsDirectory/>;
