@@ -92,7 +92,7 @@ export function DealEditor({id}:{id?:string}){
       const result=updateOpportunity(deal.id,{name:name.trim(),stage,status,estimatedCases,expectedCloseDate:closeDate,nextAction:nextAction.trim(),nextActionDate,lossReason:stage==="Lost"?lossReason.trim():""});
       setFeedback(result.ok?"Changes saved in the isolated CRM demonstration workspace. No order or invoice was generated.":(result.message??"Update rejected by CRM validation."));
     }else{
-      const created=addOpportunity({customerId:account.customerId,locationId:account.id,name:name.trim(),stage,estimatedCases,expectedCloseDate:closeDate||undefined,nextAction:nextAction.trim(),nextActionDate,status:"Open"});
+      const created=addOpportunity({customerId:account.customerId,locationId:account.id,ownerId:account.ownerId,name:name.trim(),stage,estimatedCases,expectedCloseDate:closeDate||undefined,nextAction:nextAction.trim(),nextActionDate,status:"Open"});
       if(!created){setFeedback("Deal creation rejected. Check the account relationship, current representative and CRM permissions.");return;}
       navigateToRoute(url(created));
     }
