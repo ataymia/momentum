@@ -335,7 +335,7 @@ export function PrototypeOperationsHub(){
   if(path==="/")return <WorkspaceHome/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   if(path==="/people")return <PeopleExperience/>;
-  if(path==="/marketing")return <MarketingWorkspaceExperience key="marketing-overview"/>;
+  if(path==="/marketing")return <MarketingWorkspaceExperience/>;
   if(path==="/marketing/campaigns")return <MarketingWorkspaceExperience key="marketing-campaigns" initialTab="campaigns"/>;
   if(path==="/reports/forecasts")return <ForecastsExperience/>;
   if(path==="/documents")return <DocumentsExperience/>;
