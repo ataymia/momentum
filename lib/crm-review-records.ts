@@ -11,8 +11,11 @@ export function visibleDeals(
   user: WorkspaceUser | null | undefined,
 ): Opportunity[] {
   if (!salesRole(user)) return [];
-  const ids = new Set(accounts.map(account => account.id));
-  return opportunities.filter(deal => ids.has(deal.locationId));
+  const byId = new Map(accounts.map(account => [account.id, account]));
+  return opportunities.filter(deal => {
+    const location = byId.get(deal.locationId);
+    return Boolean(location && (!location.customerId || location.customerId === deal.customerId));
+  });
 }
 
 export function visibleContacts(
@@ -21,10 +24,10 @@ export function visibleContacts(
   user: WorkspaceUser | null | undefined,
 ): CrmContact[] {
   if (!salesRole(user)) return [];
-  const locationIds = new Set(accounts.map(account => account.id));
+  const byId = new Map(accounts.map(account => [account.id, account]));
   const parentIds = new Set(accounts.map(account => account.customerId).filter(Boolean));
   return contacts.filter(contact => contact.locationId
-    ? locationIds.has(contact.locationId)
+    ? Boolean(byId.get(contact.locationId) && (!byId.get(contact.locationId)?.customerId || byId.get(contact.locationId)?.customerId === contact.customerId))
     : parentIds.has(contact.customerId));
 }
 
