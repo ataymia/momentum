@@ -43,8 +43,8 @@ export function CrmAccountMap(){
         <label>Rep <select aria-label="Filter account map by rep" value={owner} onChange={e=>setOwner(e.target.value)}><option value="all">All accessible reps</option>{options.map(id=><option key={id} value={id}>{names.get(id)??id}</option>)}</select></label>
         <button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-account-map.csv",rows.map(a=>({account:a.name,city:a.location,postalCode:a.postalCode??"",stage:a.stage,representative:names.get(a.ownerId)??"Unassigned",latitude:a.latitude??"",longitude:a.longitude??""})),fields)}>Export scoped account locations</button>
       </div>
-      <div className="prototype-metrics"><div><small>Accessible results</small><strong>{rows.length}</strong></div><div><small>Verified coordinates on record</small><strong>{plot.length}</strong></div><div><small>Without coordinates</small><strong>{missing.length}</strong></div></div>
-      <p className="prototype-note" role="status">Relative coordinate plot, not a street map. Map tiles and business lookup remain {provider.mapTiles==="pending-provider"?"unconfigured":"configured"}; no real-time device location, street routing or map provider calls are made. Only explicitly stored coordinates are plotted.</p>
+      <div className="prototype-metrics"><div><small>Accessible results</small><strong>{rows.length}</strong></div><div><small>Saved coordinates on record</small><strong>{plot.length}</strong></div><div><small>Without coordinates</small><strong>{missing.length}</strong></div></div>
+      <p className="prototype-note" role="status">Relative coordinate plot, not a street map. Map tiles and business lookup remain {provider.mapTiles==="pending-provider"?"unconfigured":"configured"}; no real-time device location, street routing or map provider calls are made. Only stored coordinates are plotted; coordinate accuracy and source verification have not been established.</p>
       <div role="group" aria-label="Relative account coordinate plot" style={{height:360,position:"relative",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
         {plot.map(point=>{
           const account=byId.get(point.accountId)!;
@@ -55,7 +55,7 @@ export function CrmAccountMap(){
             onClick={()=>setSelected(account.id)}
             style={{position:"absolute",left:(point.x/10)+"%",top:(point.y/6.2)+"%",transform:"translate(-50%,-50%)",border:"2px solid currentColor",borderRadius:40,width:20,height:20,background:selected===account.id?"currentColor":"transparent",cursor:"pointer"}}/>;
         })}
-        {!plot.length&&<div className="prototype-empty">No verified coordinate pairs match these filters. Use the directory below to open an account.</div>}
+        {!plot.length&&<div className="prototype-empty">No saved coordinate pairs match these filters. Use the directory below to open an account.</div>}
       </div>
       {focus&&<div className="prototype-panel" aria-live="polite">
         <h2>{focus.name}</h2><p>{focus.streetAddress??"Address unrecorded"} · {focus.location} · {focus.postalCode??"ZIP not recorded"}</p>
