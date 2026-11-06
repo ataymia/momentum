@@ -49,7 +49,7 @@ export function normalizeNotificationState(input: unknown, users: WorkspaceUser[
   });
   const seen = new Set<string>();
   const deliveries = (Array.isArray(state.deliveries) ? state.deliveries : []).filter((delivery): delivery is NotificationDelivery => {
-    if (!delivery?.id || seen.has(delivery.id) || !delivery.sourceEventId || !userById.has(delivery.recipientUserId) || !channels.has(delivery.channel) || !tones.has(delivery.tone) || !statuses.has(delivery.status) || !delivery.title?.trim() || !delivery.detail?.trim() || !validInstant(delivery.createdAt) || (delivery.readAt && !validInstant(delivery.readAt)) || (delivery.escalatedAt && !validInstant(delivery.escalatedAt))) return false;
+    if (!delivery?.id || seen.has(delivery.id) || !delivery.sourceEventId || !userById.has(delivery.recipientUserId) || !channels.has(delivery.channel) || !tones.has(delivery.tone) || !statuses.has(delivery.status) || (typeof delivery.title !== "string" || !delivery.title.trim()) || (typeof delivery.detail !== "string" || !delivery.detail.trim()) || !validInstant(delivery.createdAt) || (delivery.readAt && !validInstant(delivery.readAt)) || (delivery.escalatedAt && !validInstant(delivery.escalatedAt))) return false;
     if (delivery.channel === "In app" && !["Unread", "Read"].includes(delivery.status)) return false;
     if (delivery.channel !== "In app" && !["Awaiting integration", "Sent", "Failed"].includes(delivery.status)) return false;
     if (delivery.status === "Read" && !delivery.readAt) return false;
