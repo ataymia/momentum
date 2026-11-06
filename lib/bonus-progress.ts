@@ -39,7 +39,7 @@ export function accountBonusProgress(
   const byAccount = new Map<string, { opening?: BonusMilestone; sustained?: BonusMilestone }>();
   for (const milestone of milestones) {
     if (!milestone.accountId || !milestone.repId) continue;
-    const group = byAccount.get(milestone.accountId) ?? {};
+    const group: { opening?: BonusMilestone; sustained?: BonusMilestone } = byAccount.get(milestone.accountId) ?? {};
     if (milestone.milestone === "Opening order" && !group.opening) group.opening = milestone;
     if (milestone.milestone === "Sustained account" && !group.sustained) group.sustained = milestone;
     byAccount.set(milestone.accountId, group);
