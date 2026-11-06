@@ -22,16 +22,26 @@ export function orderFirstSettlementDate(data:WorkspaceData,order:Order){
     .filter((activity)=>activity.accountId===order.accountId&&activity.title==="Payment cleared"&&activity.detail.includes(order.number))
     .sort((a,b)=>a.at.localeCompare(b.at))[0];
   if(auditSettlement)return auditSettlement.at.slice(0,10);
-  if(order.paymentStatus==="Paid")return order.placedAt;
+  // Never invent a cash settlement timestamp from a Paid display flag or order date.
+  // Historical orders without trusted settlement evidence stay pending review.
   return undefined;
 }
 
 export function evaluateSalesRepAccountBonuses(data:WorkspaceData,asOf=new Date()):BonusMilestone[]{
   const rule=SALES_REP_ACCOUNT_BONUS_RULE;const repIds=new Set(data.users.filter((user)=>user.role==="Sales Representative").map((user)=>user.id));const asOfKey=dateKey(asOf);const signals:BonusMilestone[]=[];
   for(const account of data.accounts){
-    const allOrders=data.orders.filter((order)=>order.accountId===account.id).sort((a,b)=>a.placedAt.localeCompare(b.placedAt)||a.id.localeCompare(b.id));
+    // Cancelled and synthetic QA orders cannot establish a bonus-earning opening
+    // or inflate the 40-case paid-sales milestone.
+    const allOrders=data.orders.filter((order)=>order.accountId===account.id&&order.status!=="Cancelled"&&order.testOnly!==true).sort((a,b)=>a.placedAt.localeCompare(b.placedAt)||a.id.localeCompare(b.id));
     const firstOrder=allOrders[0];
-    const historicalRepId=firstOrder&&repIds.has(firstOrder.ownerId)?firstOrder.ownerId:account.originatorId&&repIds.has(account.originatorId)?account.originatorId:!firstOrder&&repIds.has(account.ownerId)?account.ownerId:undefined;
+    // Explicit order attribution always wins. If the credited UID is missing from
+    // the directory, hold rather than reassigning historical earnings to today's owner.
+    const creditedRepId=firstOrder?.creditedRepId;
+    const historicalRepId=creditedRepId
+      ? (repIds.has(creditedRepId)?creditedRepId:undefined)
+      : firstOrder&&repIds.has(firstOrder.ownerId)?firstOrder.ownerId
+      : account.originatorId&&repIds.has(account.originatorId)?account.originatorId
+      : !firstOrder&&repIds.has(account.ownerId)?account.ownerId:undefined;
     if(!historicalRepId)continue;
     if(!firstOrder){signals.push({id:`bonus-${account.id}-opening`,accountId:account.id,repId:historicalRepId,milestone:"Opening order",amount:rule.openingBonusAmount,thresholdCases:rule.openingOrderCases,observedCases:0,status:"Not started",evidenceOrderIds:[],ruleNote:`The first order must be at least ${rule.openingOrderCases} cases and its payment must settle before the opening bonus is earned.`});signals.push({id:`bonus-${account.id}-sustained`,accountId:account.id,repId:historicalRepId,milestone:"Sustained account",amount:rule.sustainedBonusAmount,thresholdCases:rule.sustainedAccountCases,observedCases:0,status:"Not started",evidenceOrderIds:[],ruleNote:`A qualifying opening order starts the ${rule.windowDays}-day window. The account must reach ${rule.sustainedAccountCases} total settled cases in that window, including the opening order.`});continue;}
     const windowStart=firstOrder.placedAt;const windowEnd=addDays(windowStart,rule.windowDays);const openingQualified=firstOrder.cases>=rule.openingOrderCases;const openingSettlement=orderFirstSettlementDate(data,firstOrder);const expired=asOfKey>windowEnd;
