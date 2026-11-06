@@ -20,7 +20,7 @@ function useContactWritePermission(){
 }
 
 export function CrmContactsDirectory(){
-  const {scope,data}=useWorkspace(),{crm}=useCrm(),canWrite=useContactWritePermission();
+  const {scope}=useWorkspace(),{crm}=useCrm(),canWrite=useContactWritePermission();
   const allowedLocations=useMemo(()=>new Set(scope.accounts.map(a=>a.id)),[scope.accounts]);
   const allowedCustomers=useMemo(()=>new Set(scope.accounts.map(a=>a.customerId).filter((id):id is string=>Boolean(id))),[scope.accounts]);
   const businessNames=useMemo(()=>new Map(scope.accounts.map(a=>[a.id,a.name])),[scope.accounts]);
