@@ -28,6 +28,20 @@ test("blocked invoice printing reports the reason inside the open preview dialog
   assert.match(invoiceSource, /catch \{[\s\S]*reportPrintBlock/);
 });
 
+test("existing invoice printing is never gated by missing customer identity or historical void status", () => {
+  const handler = invoiceSource.slice(invoiceSource.indexOf("const startPrint ="), invoiceSource.indexOf("const invoiceSheet ="));
+  assert.ok(handler.includes("const incomplete = unique.filter"));
+  assert.ok(handler.includes("flushSync(() => setPrintJob"));
+  assert.ok(handler.includes("window.print()"));
+  assert.doesNotMatch(handler, /if\s*\(\s*incomplete\.length\s*\)\s*\{[^}]*return\s*;/);
+  assert.doesNotMatch(handler, /if\s*\(\s*archived\.length\s*\)/);
+  assert.ok(invoiceSource.includes('Legal billing name not recorded'));
+  assert.ok(invoiceSource.includes('Customer legal name missing. Verify billing details before sending.'));
+  assert.ok(invoiceSource.includes('VOID / SUPERSEDED'));
+  assert.match(invoiceCss, /\.invoice-sheet__identity-warning/);
+  assert.match(invoiceCss, /\.invoice-sheet__void-warning/);
+});
+
 test("the primary Invoices & payments workspace exposes single and bulk invoice printing", () => {
   assert.match(billingSource, /InvoicePrintCenter/);
   assert.match(invoiceSource, /Print selected/);
