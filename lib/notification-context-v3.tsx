@@ -49,9 +49,6 @@ const readIds=(userId:string):Set<string>=>{
   catch{return new Set<string>();}
 };
 
-const sameIds=(left:ReadonlySet<string>,right:ReadonlySet<string>)=>
-  left.size===right.size&&[...left].every(id=>right.has(id));
-
 const persist=(userId:string,ids:ReadonlySet<string>):Set<string>=>{
   const merged=mergeReadReceipts(readIds(userId),ids);
   if(typeof window!=="undefined"){
@@ -105,15 +102,14 @@ function NotificationBridge({
   },[]);
 
   useEffect(()=>{
-    const merged=persist(userId,readDerived);
-    if(!sameIds(merged,readDerived))setReadDerived(merged);
+    persist(userId,readDerived);
   },[userId,readDerived]);
   useEffect(()=>{
     if(typeof window==="undefined")return;
     const merged=mergeFirstSeenRecords(readFirstSeen(userId),firstSeen);
     try{window.localStorage.setItem(FIRST_SEEN_KEY+":"+userId,JSON.stringify(merged));}
     catch{/* Presentation metadata must never block the application. */}
-    if(JSON.stringify(merged)!==JSON.stringify(firstSeen))setFirstSeen(merged);
+
   },[userId,firstSeen]);
   // A second tab must not resurrect notifications that another tab already cleared.
   useEffect(()=>{
