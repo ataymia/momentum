@@ -124,7 +124,7 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
     try {
       window.print();
     } catch {
-      reportPrintBlock("The browser could not open the print dialog. Retry in a full browser or use its Print menu. No invoice was printed.");
+      reportPrintBlock("The browser could not open the print dialog. Open Momentum in a full browser with printing enabled and retry. No invoice was printed.");
     }
   };
 
