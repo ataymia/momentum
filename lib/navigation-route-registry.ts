@@ -89,6 +89,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   ] },
   { label: "Insights & Support", entries: [
     { label: "Forecasts", path: "/reports/forecasts", permission: "reports", state: "prototype" },
+    { label: "Insights Explorer", path: "/reports/explorer", permission: "reports", state: "prototype" },
     { label: "Reports", path: "/reports", permission: "reports", state: "existing" },
     { label: "Dashboards", path: "/reports/performance", permission: "performance", state: "existing" },
     { label: "Cases", path: "/support/cases", permission: "work", state: "prototype" },
