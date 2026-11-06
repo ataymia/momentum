@@ -93,6 +93,9 @@ test("URL links remain native copyable anchors with an optional build basePath",
   assert.match(links, /<a href=\{href\}/);
   assert.match(links,/event\.metaKey \|\| event\.ctrlKey \|\| event\.shiftKey \|\| event\.altKey/);
   assert.match(links,/navigateToRoute\(path\)/);
+  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+  assert.match(hub,/function OpenLink/);
+  assert.match(hub,/<SidebarRouteLink path=\{to\} active=\{false\}/);
 });
 
 test("history navigation adopts copied URLs, popstate and cleans its listener", () => {
