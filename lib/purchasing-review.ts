@@ -24,7 +24,7 @@ export function normalizePurchasingDemoState(raw:unknown):PurchasingState{
 }
 const amount=(n:number)=>Number.isSafeInteger(n)&&n>0;
 const label=(s:string)=>s.trim().length>0&&s.trim().length<=160;
-const dateKey=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&!Number.isNaN(Date.parse(s+"T12:00:00Z"));
+const dateKey=(s:string)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;const d=new Date(s+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===s;};
 const newId=(state:PurchasingState,prefix:string)=>prefix+"-"+String(state.audit.length+1).padStart(5,"0");
 export const receivedCases=(s:PurchasingState,poId:string)=>s.receipts.filter(r=>r.poId===poId).reduce((n,r)=>n+r.cases,0);
 export const billedCases=(s:PurchasingState,poId:string)=>s.bills.filter(b=>b.poId===poId).reduce((n,b)=>n+b.cases,0);
@@ -67,7 +67,7 @@ const isAdmin=(actor:PurchaseActor)=>actor.role==="Administrator";
 export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor,action:PurchaseAction,at:string):PurchaseResult{
   const reject=(message:string):PurchaseResult=>({ok:false,state:original,message});
   if(!actor.id||!Number.isFinite(Date.parse(at)))return reject("An identified actor and valid event time are required.");
-  const s:PurchasingState={...original,vendors:[...original.vendors],orders:[...original.orders],receipts:[...original.receipts],bills:[...original.bills],payments:[...original.payments],credits:[...original.credits],expenses:[...original.expenses],audit:[...original.audit]};
+  const s:PurchasingState={...original,vendors:original.vendors.map(v=>({...v})),orders:original.orders.map(p=>({...p})),receipts:[...original.receipts],bills:original.bills.map(b=>({...b})),payments:[...original.payments],credits:[...original.credits],expenses:original.expenses.map(e=>({...e})),audit:[...original.audit]};
   let recordId="";let detail="";
   switch(action.kind){
     case "vendor.add":{
@@ -78,7 +78,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
     case "po.create":{
       if(!canProcure(actor))return reject("Only purchasing staff may prepare purchase orders.");
       if(!s.vendors.some(v=>v.id===action.vendorId&&v.active))return reject("Select a registered active vendor.");
-      if(!label(action.sku)||!amount(action.cases)||!amount(action.unitCostCents)||!label(action.warehouse)||!dateKey(action.expectedDate))return reject("Enter a SKU, whole case quantity, cost, location and valid expected date.");
+      if(!label(action.sku)||!amount(action.cases)||!amount(action.unitCostCents)||!Number.isSafeInteger(action.cases*action.unitCostCents)||!label(action.warehouse)||!dateKey(action.expectedDate))return reject("Enter a SKU, whole case quantity, cost, location and valid expected date.");
       recordId=newId(s,"po");s.orders.push({id:recordId,vendorId:action.vendorId,sku:action.sku,cases:action.cases,unitCostCents:action.unitCostCents,warehouse:action.warehouse.trim(),expectedDate:action.expectedDate,createdAt:at,createdBy:actor.id});break;
     }
     case "po.submit":{
