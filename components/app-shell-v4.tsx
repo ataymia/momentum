@@ -9,7 +9,7 @@ import { useNotifications } from "../lib/notification-context";
 import { useRuntimeMode } from "../lib/runtime-mode";
 import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
-import {navigateToRoute, startRouteNavigation, useNavigationPage, useNavigationRoute} from "../lib/navigation-store";
+import {startRouteNavigation, useNavigationPage, useNavigationRoute} from "../lib/navigation-store";
 import {MENU_GROUPS, CUSTOMER_MENU, canVisitRoute, canShowModuleInMenu, requiresPrototypePage, routeLabel} from "../lib/navigation-route-registry";
 import {PrototypeOperationsHub} from "./prototype/operations-hub";
 import {activeMenuPath} from "../lib/navigation-route-contract";
@@ -119,10 +119,6 @@ function NavigationGroups(){
   const visiblePaths=MENU_GROUPS.flatMap(group=>group.entries).filter(entry=>canShowModuleInMenu(currentUser,entry.path)).map(entry=>entry.path);
   const activePath=activeMenuPath(path,visiblePaths);
   const matching=MENU_GROUPS.find(group=>group.entries.some(entry=>entry.path===activePath));
-  useEffect(()=>{
-    if(!matching)return;
-    setExpanded(current=>current[matching.label]===true?current:{...current,[matching.label]:true});
-  },[matching?.label]);
   if(!currentUser)return null;
   if(currentUser.role==="Customer") return <nav className="sidebar__nav prototype-sidebar-nav" aria-label="Customer portal navigation">
     <div className="prototype-nav-group"><div className="prototype-nav-group-title">Customer Portal</div>
@@ -135,7 +131,7 @@ function NavigationGroups(){
     {MENU_GROUPS.map(group=>{
       const visible=group.entries.filter(entry=>canShowModuleInMenu(currentUser,entry.path));
       if(!visible.length)return null;
-      const open=expanded[group.label] ?? matching?.label===group.label;
+      const open=matching?.label===group.label || expanded[group.label]===true;
       return <div className="prototype-nav-group" key={group.label}>
         <button type="button" className="prototype-nav-group-title" aria-expanded={open}
           onClick={()=>setExpanded(current=>({...current,[group.label]:!current[group.label]}))}>
