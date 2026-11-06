@@ -111,3 +111,14 @@ test("B04-B08 URL routes, Home, Action Center and demo-only mutations are connec
  assert.match(store,/existing\.organizerId!==currentUser\?\.id/);
  assert.match(store,/meetingVisibleTo\(m,currentUser\)/);
 });
+
+test("B08 meeting bell notifications are revision-scoped and open the correct meeting record",()=>{
+ const source=readFileSync("lib/notification-context-v3.tsx","utf8");
+ const shell=readFileSync("components/app-shell-v4.tsx","utf8");
+ assert.match(source,/meeting-demo:.*:revision:/);
+ assert.match(source,/meetingNotices\(meetings,currentUser\)/);
+ assert.match(source,/notificationDisplayTime\(meeting.updatedAt/);
+ assert.match(shell,/notification.id.startsWith\("meeting-demo:"\)/);
+ assert.match(shell,/navigateToRoute\(path\)/);
+ assert.match(shell,/canVisitRoute\(currentUser,path\)/);
+});

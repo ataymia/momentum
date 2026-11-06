@@ -31,3 +31,8 @@ Date: 2026-11-06 • Workstream owner: B chat • Baseline: original 98-item che
 
 ### Proposed next decision
 Choose secure meeting storage/transport after the business owner confirms whether all employee roles can schedule or only managers, and whether email delivery is required at launch. Demo currently allows administrators, sales managers, operations and marketing as organizers.
+
+### In-app bell integration: Nov 6
+- Added revision-keyed, source-time-backed meeting invitation/update/cancellation notices to the existing notification bell for local demonstration only. Clearing the bell does not mark an RSVP or meeting action complete; newer revisions produce new notices.
+- Notification click verifies allowed route and goes directly to that meeting rather than mistakenly navigating to Approvals.
+- Production email, SMS, push, provider delivery receipts and server-side meeting data authorization still not implemented. B08 remains partial, B09 production blocked.
