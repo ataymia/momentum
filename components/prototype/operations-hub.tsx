@@ -243,11 +243,42 @@ function ContactsDirectory(){
       <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search contacts" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Contact, business, email, phone, role"/></label><button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-visible-contacts.csv",contactExportRows(rows),contactExportColumns)}>Download filtered contacts CSV</button></div>
       <div className="prototype-table-scroll"><table className="prototype-table">
         <thead><tr><th>{header("contactName","Contact")}</th><th>{header("name","Business")}</th><th>{header("contactRole","Role")}</th><th>{header("email","Email")}</th><th>{header("phone","Phone")}</th><th>{header("location","Location")}</th><th>{header("stage","Stage")}</th></tr></thead>
-        <tbody>{rows.map(a=><tr key={a.id}><td>{a.contactName}</td><td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.contactRole||"Not recorded"}</td><td>{a.email||"Not recorded"}</td><td>{a.phone||"Not recorded"}</td><td>{a.location}</td><td>{a.stage}</td></tr>)}</tbody>
+        <tbody>{rows.map(a=><tr key={a.id}><td><OpenLink to={"/crm/contacts/"+encodeURIComponent(a.id)}>{a.contactName}</OpenLink></td><td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.contactRole||"Not recorded"}</td><td>{a.email||"Not recorded"}</td><td>{a.phone||"Not recorded"}</td><td>{a.location}</td><td>{a.stage}</td></tr>)}</tbody>
       </table></div>
       {!rows.length&&<Empty>No matching contacts.</Empty>}
       <p className="prototype-note">{rows.length} contact-location associations. Distinct standalone contact IDs and deduplication are planned.</p>
     </section></div>;
+}
+
+/** Contact records currently inherit the canonical location ID. Never invent an
+ * independent person ID or infer that matching names are the same person. */
+function ContactRecord({id}:{id:string}){
+  const {scope,data}=useWorkspace();
+  const account=scope.accounts.find(a=>a.id===id);
+  if(!account||!account.contactName)return <div><Heading title="Contact unavailable" description="This contact is missing or outside your authorized workspace." back="/crm/contacts"/><Empty>No accessible contact record.</Empty></div>;
+  const assigned=data.users.find(u=>u.id===account.ownerId);
+  const orders=scope.orders.filter(o=>!o.testOnly&&o.accountId===account.id)
+    .sort((a,b)=>b.placedAt.localeCompare(a.placedAt)||a.id.localeCompare(b.id));
+  return <div><Heading title={account.contactName} description="Contact and linked business location" back="/crm/contacts"/>
+    <section className="prototype-panel"><h2>Contact information</h2>
+      <dl className="prototype-facts">
+        <div><dt>Role</dt><dd>{account.contactRole||"Not recorded"}</dd></div>
+        <div><dt>Email</dt><dd>{account.email||"Not recorded"}</dd></div>
+        <div><dt>Phone</dt><dd>{account.phone||"Not recorded"}</dd></div>
+        <div><dt>Business</dt><dd><OpenLink to={"/sales/customers/"+encodeURIComponent(account.id)}>{account.name}</OpenLink></dd></div>
+        <div><dt>Location</dt><dd>{account.location}</dd></div>
+        <div><dt>Assigned representative</dt><dd>{assigned?.name||"Unassigned"}</dd></div>
+        <div><dt>Stage</dt><dd>{account.stage}</dd></div>
+        <div><dt>Next action</dt><dd>{account.nextActionDate||"Not scheduled"}</dd></div>
+      </dl>
+      <p className="prototype-note">This is the contact associated with location record {account.id}. A separate contact identity and editing workflow have not yet been approved.</p>
+    </section>
+    <section className="prototype-panel"><h2>Related sales orders</h2>
+      {orders.length?<div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Status</th><th>Cases</th></tr></thead><tbody>
+        {orders.map(order=><tr key={order.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(order.id)}>{order.number}</OpenLink></td><td>{order.placedAt.slice(0,10)}</td><td>{order.status}</td><td>{order.cases}</td></tr>)}
+      </tbody></table></div>:<Empty>No related orders visible for this location.</Empty>}
+    </section>
+  </div>;
 }
 
 /** A separate customer-facing surface with account-scoped records, not staff-wide ledgers. */
@@ -488,6 +519,7 @@ export function PrototypeOperationsHub(){
   if(path==="/items")return <ProductDirectory/>;
   if(path==="/sales/customers")return <AccountsDirectory/>;
   if(path==="/crm/leads")return <AccountsDirectory leadMode/>;
+  if(segments[0]==="crm"&&segments[1]==="contacts"&&segments[2])return <ContactRecord id={decodeURIComponent(segments[2])}/>;
   if(path==="/crm/contacts")return <ContactsDirectory/>;
   if(path==="/calendar"||path==="/calendar/meetings")return <CalendarPreview meetingsOnly={path.endsWith("/meetings")}/>;
   if(path==="/crm/incentives")return <IncentivePreview/>;
