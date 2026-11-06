@@ -289,7 +289,11 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
   if (!user || !canVisitRoute(user,path)) return false;
   if (user.role==="Customer") return false;
   const group = MENU_GROUPS.find(g=>g.entries.some(e=>e.path===normalizeRoutePath(path)))?.label;
-  if (group==="Human Resources" && user.role!=="Administrator") return false;
+  if (group==="Human Resources" && user.role!=="Administrator"){
+    // Staff self-service belongs in HR navigation even though HR administration remains private.
+    const selfService=["/people/leave","/people/attendance","/people/performance"];
+    return selfService.includes(normalizeRoutePath(path));
+  }
   if (group==="Marketing" && !["Administrator","Marketing","Brand Ambassador"].includes(user.role)) return false;
   return true;
 }

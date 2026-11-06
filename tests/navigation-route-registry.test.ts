@@ -110,3 +110,11 @@ test("F07: copying a Campaigns URL cannot bypass the Marketing department access
  assert.equal(canVisitRoute(marketer,"/marketing/campaigns"),false);
  assert.equal(canVisitRoute(admin,"/marketing/campaigns"),true);
 });
+
+test("F01: Marketing has HR self-service access without HR administration access",()=>{
+ const marketer=makeUser("Marketing");
+ assert.equal(canShowModuleInMenu(marketer,"/people/leave"),true);
+ assert.equal(canShowModuleInMenu(marketer,"/people/attendance"),true);
+ assert.equal(canShowModuleInMenu(marketer,"/people"),false);
+ assert.equal(canShowModuleInMenu(marketer,"/people/new-hire"),false);
+});

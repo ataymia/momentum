@@ -110,3 +110,14 @@ test("F08 F13: reporting summaries and manager KPI scopes do not leak global cas
  assert(report.includes("showKpiCenter&&<ManagementKpiDashboard/>"));
  assert(dashboard.includes("currentUser ? [currentUser.id] : []"));
 });
+
+test("F01 F03: staff see only HR self-service pages, not personnel or payroll administration",()=>{
+ for(const role of ["Sales Representative","Sales Manager","Marketing","Operations","Warehouse"] as const){
+  const personRecord=person(role);
+  assert(canShowModuleInMenu(personRecord,"/people/leave"),role+" leave");
+  assert(canShowModuleInMenu(personRecord,"/people/attendance"),role+" attendance");
+  assert(canShowModuleInMenu(personRecord,"/people/performance"),role+" performance");
+  assert(!canShowModuleInMenu(personRecord,"/people/onboarding"),role+" onboarding");
+  assert(!canShowModuleInMenu(personRecord,"/people/payroll"),role+" payroll");
+ }
+});

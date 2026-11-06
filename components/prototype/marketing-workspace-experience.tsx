@@ -126,7 +126,7 @@ export function MarketingWorkspaceExperience({initialTab="requests"}:{initialTab
    tab==="spend"?spend.length:tab==="outcomes"?attributions.length:tab==="materials"?materials.length:partners.length;
  return <div className="prototype-domain prototype-domain--marketing">
    <header className="prototype-heading"><h1>Marketing Operations</h1>
-     <p>Retail demand, campaign approvals, budget control, collateral, partnerships and commercial attribution. All numbers come from recorded source data.</p>
+     <p>{admin?"Retail demand, campaign approvals, budget control, collateral, partnerships and commercial attribution. All numbers come from recorded source data.":"Submit and track requests for collateral, events, creative work and partnerships. Campaign approvals, budgets and attribution are managed by authorized administrators."}</p>
    </header>
    <div className="prototype-domain-statbar">
     <article><small>Requests waiting</small><strong>{scopedRequests.filter(r=>r.status==="Submitted").length}</strong></article>
