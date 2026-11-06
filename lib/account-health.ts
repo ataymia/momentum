@@ -35,7 +35,7 @@ export function accountHealthSnapshot(data: WorkspaceData, account: Account, asO
     .sort((a,b)=>a.placedAt.localeCompare(b.placedAt)||a.id.localeCompare(b.id));
   // "Paid" is a UI/display status, not proof of collected cash. Settlement evidence is authoritative.
   const paid = orders.map(order=>({order,settledAt:orderFirstSettlementDate(data,order)}))
-    .filter((entry):entry is {order:typeof orders[number];settledAt:string}=>Boolean(entry.settledAt))
+    .filter((entry):entry is {order:typeof orders[number];settledAt:string}=>Boolean(entry.settledAt&&entry.settledAt<=asOfKey))
     .sort((a,b)=>a.settledAt.localeCompare(b.settledAt)||a.order.id.localeCompare(b.order.id));
   const lastOrderDate=orders.at(-1)?.placedAt.slice(0,10);
   const lastPaidOrderDate=paid.at(-1)?.settledAt;
