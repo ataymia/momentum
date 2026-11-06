@@ -20,6 +20,8 @@ test("the bell excludes historical and undated statuses but never invents a time
   const now=new Date("2026-11-06T19:00:00.000Z");
   assert.equal(recentRecordedStatus(undefined,now),false);
   assert.equal(recentRecordedStatus("unknown",now),false);
+  assert.equal(recentRecordedStatus("2026-11-05",now),false);
+  assert.equal(recentRecordedStatus("2026-11-05T09:00:00",now),false);
   assert.equal(recentRecordedStatus("2026-09-01T19:00:00.000Z",now),false);
   assert.equal(recentRecordedStatus("2026-11-01T19:00:00.000Z",now),true);
   assert.equal(recentRecordedStatus("2026-12-01T19:00:00.000Z",now),false);
