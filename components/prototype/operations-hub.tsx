@@ -185,7 +185,7 @@ function LeadRecord({id}:{id:string}){
   };
   const [activityQuery,setActivityQuery]=useState("");
   const [orderQuery,setOrderQuery]=useState("");
-  if(!account)return <div><Heading title="Lead unavailable" back="/crm/leads"/><Empty>Lead not found, no longer in the lead pipeline, or outside your authorized workspace.</Empty></div>;
+  if(!account)return <div><Heading title="Lead unavailable" description="No accessible lead record matched this link." back="/crm/leads"/><Empty>Lead not found, no longer in the lead pipeline, or outside your authorized workspace.</Empty></div>;
   const rep=data.users.find(u=>u.id===account.ownerId);
   const activities=scope.activities.filter(a=>a.accountId===id&&[a.title,a.detail].join(" ").toLowerCase().includes(activityQuery.trim().toLowerCase()))
     .sort((a,b)=>b.at.localeCompare(a.at)||a.id.localeCompare(b.id));
