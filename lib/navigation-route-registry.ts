@@ -72,6 +72,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Employee Directory", path: "/people/directory", permission: "employees", state: "prototype" },
     { label: "New Hire", path: "/people/new-hire", permission: "newHire", state: "prototype" },
     { label: "Onboarding", path: "/people/onboarding", permission: "onboarding", state: "prototype" },
+    { label: "HR Compliance Gate", path: "/people/compliance", permission: "onboarding", state: "prototype" },
     { label: "Onboarding Workflow", path: "/people/onboarding/workflow", permission: "onboarding", state: "existing" },
     { label: "Payroll", path: "/people/payroll", permission: "payroll", state: "prototype" },
     { label: "Payroll Processing & Settings", path: "/people/payroll/workflow", permission: "payroll", state: "existing" },
@@ -257,7 +258,7 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
   }
   // Copying a URL must not bypass employee confidentiality when a module is hidden in navigation.
   // Until verified employee-specific payroll is integrated, these paths remain Administrator-only.
-  const privilegedHr = ["/people/new-hire","/people/onboarding","/people/training","/people/payroll"];
+  const privilegedHr = ["/people/new-hire","/people/onboarding","/people/compliance","/people/training","/people/payroll"];
   if (user.role!=="Administrator" && privilegedHr.some(prefix=>clean===prefix||clean.startsWith(prefix+"/"))) return false;
   if (clean==="/support/cases"||clean.startsWith("/support/cases/")) return
     ["Administrator","Operations","Sales Manager","Sales Representative"].includes(user.role)&&canAccessPage(user,"work");

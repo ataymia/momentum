@@ -24,6 +24,7 @@ import {MarketingWorkspaceExperience} from "./marketing-workspace-experience";
 import {ForecastsExperience} from "./forecasts-experience";
 import {DocumentsExperience} from "./documents-experience";
 import {SupportCasesExperience} from "./support-cases-experience";
+import {HrComplianceReadinessExperience} from "./hr-compliance-readiness-experience";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
 import {HrPersonnelDirectory,HrPersonnelRecord} from "./hr-personnel-experience";
 import {HrTimeOffExperience} from "./hr-time-off-experience";
@@ -346,6 +347,7 @@ export function PrototypeOperationsHub(){
   if(path==="/people/onboarding/workflow")return writeEnabled?<NewHireProvisioning view="queue"/>:<Empty>Read-only redesign prototype. Full onboarding administration is available only in isolated local demo mode until authorized release.</Empty>;
   if(path==="/people/new-hire")return <HrNewHireExperience/>;
   if(path==="/people/onboarding")return <HrOnboardingExperience/>;
+  if(path==="/people/compliance")return <HrComplianceReadinessExperience/>;
   if(path==="/people/leave")return <HrTimeOffExperience/>;
   if(path==="/admin/accounts")return <AccountConsolidationReview/>;
   if(path==="/admin/employee-profiles")return <HrPersonnelDirectory/>;
