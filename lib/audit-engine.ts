@@ -4,7 +4,7 @@ import type { WorkspaceData, WorkspaceUser } from "./types";
 export const AUDIT_STORAGE_KEY = "momentum-audit-v1";
 export type AuditSensitivity = "operational" | "manager" | "admin";
 export type AuditChange = { field: string; before?: string; after?: string };
-export type AuditEvent = { id: string; at: string; actorId: string; actorRole: string; action: "Created" | "Updated" | "Deleted"; module: string; collection: string; entityType: string; entityId: string; label: string; summary: string; sensitivity: AuditSensitivity; relatedAccountId?: string; relatedUserId?: string; changes: AuditChange[] };
+export type AuditEvent = { id: string; at: string; actorId: string; actorRole: string; action: "Created" | "Updated" | "Deleted"; module: string; collection: string; entityType: string; entityId: string; label: string; summary: string; sensitivity: AuditSensitivity; relatedAccountId?: string; relatedUserId?: string; changes: AuditChange[]; provenanceStatus?: "verified" | "unverified-legacy" };
 export type AuditState = { version: 1; events: AuditEvent[] };
 export type AuditSnapshot = { key: string; module: string; collection: string; entityType: string; entityId: string; label: string; sensitivity: AuditSensitivity; relatedAccountId?: string; relatedUserId?: string; payload: Record<string, unknown> };
 
@@ -52,8 +52,10 @@ function legacyChangeValue(changes: AuditChange[], field: string) {
   return typeof value === "string" ? value : undefined;
 }
 
-function repairLegacyProvenance(event: Pick<AuditEvent,"at"|"actorId"|"actorRole"|"action">, changes: AuditChange[]) {
+function repairLegacyProvenance(event: Pick<AuditEvent,"at"|"actorId"|"actorRole"|"action"|"collection">, changes: AuditChange[]) {
   for (const [actorField,timeField] of legacyActorTimePairs) {
+    if (event.action === "Created" && !["createdBy", "submittedBy", "provisionedBy"].includes(actorField)) continue;
+    if (event.collection === "accounts" && event.action === "Created" && timeField !== "createdAt") continue;
     const actorId = legacyChangeValue(changes, actorField);
     const at = legacyChangeValue(changes, timeField);
     if (actorId && preciseInstant(at)) return { actorId, actorRole: actorId === event.actorId ? event.actorRole : "Recorded user", at: at! };
@@ -69,6 +71,8 @@ function repairLegacyProvenance(event: Pick<AuditEvent,"at"|"actorId"|"actorRole
       legacyChangeValue(changes, "provisionedBy") ||
       event.actorId;
     for (const field of legacyCreationTimeFields) {
+      // Account ownership/assignment time is not proof the business was created.
+      if (event.collection === "accounts" && field !== "createdAt") continue;
       const at = legacyChangeValue(changes, field);
       if (preciseInstant(at)) return { actorId: explicitActor, actorRole: explicitActor === event.actorId ? event.actorRole : "Recorded user", at: at! };
     }
@@ -97,14 +101,17 @@ export function normalizeAuditState(input: unknown): AuditState {
     const event = candidate as Partial<AuditEvent>;
     if (!event.id || seenIds.has(event.id) || !validInstant(event.at) || !event.actorId || !event.actorRole || !event.action || !auditActions.has(event.action) || !event.module || !event.collection || !event.entityType || !event.entityId || !event.label || !event.summary || !Array.isArray(event.changes)) continue;
 
-    // Legacy passive-diff events used "system/System" when the application merely noticed a refresh.
-    // Those records never proved who changed the source or when it actually happened, so they are not valid history.
-    if (event.actorId === "system" && event.actorRole === "System") continue;
+    // Never destroy legacy evidence merely because its original attribution was unreliable.
+    // Keep it recoverable, explicitly flagged, and out of verified user activity views.
 
     const changes = event.changes
       .filter((change): change is AuditChange => Boolean(change && typeof change.field === "string" && change.field.trim() && (change.before === undefined || typeof change.before === "string") && (change.after === undefined || typeof change.after === "string")))
       .slice(0, 20);
-    const repaired = repairLegacyProvenance({ at:event.at!, actorId:event.actorId, actorRole:event.actorRole, action:event.action }, changes);
+    const repaired = repairLegacyProvenance({ at:event.at!, actorId:event.actorId, actorRole:event.actorRole, action:event.action, collection:event.collection }, changes);
+    const unverifiedLegacy = event.provenanceStatus === "unverified-legacy" ||
+      (event.actorId === "system" && event.actorRole === "System") ||
+      (event.collection === "accounts" && event.action === "Created" &&
+        !changes.some(change => change.field === "createdAt" && preciseInstant(change.after)));
     const normalized: AuditEvent = {
       id: event.id,
       at: repaired.at,
@@ -116,7 +123,8 @@ export function normalizeAuditState(input: unknown): AuditState {
       entityType: event.entityType,
       entityId: event.entityId,
       label: event.label,
-      summary: event.summary,
+      summary: unverifiedLegacy ? `Unverified historical record (not proof of a user action): ${event.summary}` : event.summary,
+      provenanceStatus: unverifiedLegacy ? "unverified-legacy" : "verified",
       sensitivity: sensitivityFor(event.module, event.collection),
       relatedAccountId: typeof event.relatedAccountId === "string" ? event.relatedAccountId : undefined,
       relatedUserId: typeof event.relatedUserId === "string" ? event.relatedUserId : undefined,
@@ -271,7 +279,7 @@ function pairProvenance(before: Record<string, unknown> | undefined, after: Reco
     const actorId = text(source[actorField]);
     const at = text(source[timeField]);
     if (!actorId || !validInstant(at)) continue;
-    if (action === "Updated" && sameValue(before?.[actorField], after?.[actorField]) && sameValue(before?.[timeField], after?.[timeField])) continue;
+    if (action === "Updated" && sameValue(before?.[timeField], after?.[timeField])) continue;
     return { actorId, at: at! };
   }
   return undefined;
@@ -286,7 +294,7 @@ function dynamicByAtProvenance(before: Record<string, unknown> | undefined, afte
     const actorId = text(source[actorField]);
     const at = text(source[timeField]);
     if (!actorId || !validInstant(at)) continue;
-    if (action === "Updated" && sameValue(before?.[actorField], after?.[actorField]) && sameValue(before?.[timeField], after?.[timeField])) continue;
+    if (action === "Updated" && sameValue(before?.[timeField], after?.[timeField])) continue;
     return { actorId, at: at! };
   }
   return undefined;
@@ -329,13 +337,13 @@ function specialProvenance(before: AuditSnapshot | undefined, after: AuditSnapsh
   const source = action === "Deleted" ? before?.payload : after?.payload;
   if (!snapshot || !source) return undefined;
 
-  if (snapshot.module === "Workspace" && snapshot.collection === "activities") {
+  if (action === "Created" && snapshot.module === "Workspace" && snapshot.collection === "activities") {
     const actorId = text(source.userId);
     const at = text(source.at);
     return actorId && validInstant(at) ? { actorId, at: at! } : undefined;
   }
 
-  if (snapshot.module === "CRM" && snapshot.collection === "interactions") {
+  if (action === "Created" && snapshot.module === "CRM" && snapshot.collection === "interactions") {
     const actorId = text(source.userId);
     const at = text(source.occurredAt);
     return actorId && validInstant(at) ? { actorId, at: at! } : undefined;
@@ -412,8 +420,9 @@ export function diffAuditableRecords(
 
     // Passive hydration, normalization, polling and derived-state refreshes are not business events.
     // If the source record cannot prove who performed the action and when, do not manufacture "System · right now" history.
-    const fallbackVerified = actor.id !== "system" && validInstant(at) ? { actorId: actor.id, at } : undefined;
-    const provenance = source ?? fallbackVerified;
+    // Merely observing a changed snapshot is not a trusted write. Never attribute it
+    // to the currently signed-in viewer, even if the caller supplies their identity.
+    const provenance = source;
     if (!provenance) continue;
 
     const inferredUser = users.find((user) => user.id === provenance.actorId);
@@ -424,6 +433,7 @@ export function diffAuditableRecords(
       at: provenance.at,
       actorId: provenance.actorId,
       actorRole,
+      provenanceStatus: "verified",
       action,
       module: snapshot.module,
       collection: snapshot.collection,
@@ -440,8 +450,15 @@ export function diffAuditableRecords(
   return events;
 }
 
+export function recoverableUnverifiedAuditEvents(state: AuditState): AuditEvent[] {
+  return state.events.filter(event => event.provenanceStatus === "unverified-legacy");
+}
+
 export function visibleAuditEvents(user: WorkspaceUser | null, data: WorkspaceData, events: AuditEvent[]) {
   if (!user || user.role === "Customer") return [];
+  // Historic passive-diff data stays in the stored audit state for recovery, not
+  // in the user-action timeline where it could falsely accuse an employee.
+  events = events.filter(event => event.provenanceStatus !== "unverified-legacy");
   if (user.role === "Administrator") return events;
   const managedIds = new Set(data.users.filter((candidate) => canManageUser(data, user, candidate.id, true)).map((candidate) => candidate.id));
   const accountIds = new Set(data.accounts.filter((account) => user.role === "Sales Manager" ? managedIds.has(account.ownerId) : user.role === "Sales Representative" ? account.ownerId === user.id : false).map((account) => account.id));
