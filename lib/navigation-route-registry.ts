@@ -78,6 +78,8 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Payroll Processing & Settings", path: "/people/payroll/workflow", permission: "payroll", state: "existing" },
     { label: "Training", path: "/people/training", permission: "trainingAdmin", state: "existing" },
     { label: "Time Off & Leave", path: "/people/leave", permission: "people", state: "prototype" },
+    { label: "Attendance & Timecards", path: "/people/attendance", permission: "timekeeping", state: "prototype" },
+    { label: "Performance & Development", path: "/people/performance", permission: "people", state: "prototype" },
   ] },
   { label: "Marketing", entries: [
     { label: "Marketing Overview", path: "/marketing", permission: "marketing", state: "prototype" },
@@ -181,6 +183,8 @@ export function pageForPath(path: string): PageKey | null {
   // Deep-linked records must retain their owning workspace page, not fall back to Home.
   if(clean.startsWith("/admin/employee-profiles/"))return "settings";
   if(clean.startsWith("/support/cases/"))return "work";
+  if(clean.startsWith("/people/attendance/"))return "timekeeping";
+  if(clean.startsWith("/people/performance/"))return "people";
   if(clean.startsWith("/sales/orders/"))return "orders";
   if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
   if(clean.startsWith("/sales/returns/"))return "orders";
@@ -219,6 +223,8 @@ export function routeLabel(path: string): string {
   if(clean.startsWith("/sales/orders/")&&clean.endsWith("/edit"))return "Edit sales order";
   if (clean.startsWith("/admin/employee-profiles/")) return "Employee profile";
   if (clean.startsWith("/support/cases/")) return "Case details";
+  if (clean.startsWith("/people/attendance/")) return "Attendance record";
+  if (clean.startsWith("/people/performance/")) return "Performance record";
   if (clean.startsWith("/sales/orders/")) return "Order details";
   if (clean.startsWith("/sales/invoices/")) return "Invoice details";
   if (clean.startsWith("/sales/payments/")) return "Payment details";
@@ -231,6 +237,8 @@ export function permissionForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if(clean.startsWith("/admin/employee-profiles/"))return "settings";
   if(clean.startsWith("/support/cases/"))return "work";
+  if(clean.startsWith("/people/attendance/"))return "timekeeping";
+  if(clean.startsWith("/people/performance/"))return "people";
   if (clean.startsWith("/items/")) return "products";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if (clean.startsWith("/sales/customers/")) return "accounts";
@@ -287,7 +295,7 @@ export function requiresPrototypePage(path: string): boolean {
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
   // Sensitive legacy HR and payroll tools are wrapped by a prototype demo-only gate.
   if(clean==="/people/payroll/workflow"||clean==="/people/onboarding/workflow"||clean==="/admin/employee-profiles/workflow")return true;
-  if (clean.startsWith("/support/cases/") || clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
+  if (clean.startsWith("/people/attendance/") || clean.startsWith("/people/performance/") || clean.startsWith("/support/cases/") || clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
 }

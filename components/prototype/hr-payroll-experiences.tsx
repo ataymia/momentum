@@ -54,7 +54,8 @@ export function PeopleExperience(){
       {admin&&<NavTile label="New Hire" path="/people/new-hire" detail="Provision a new employee securely"/>}
       {admin&&<NavTile label="Onboarding Queue" path="/people/onboarding" detail="New-hire requirements"/>}
       {admin&&<NavTile label="Training administration" path="/people/training" detail="Manage training and resources"/>}
-      <NavTile label="Attendance & timecards" path="/people/timekeeping" detail="Recorded attendance and submitted time"/>
+      <NavTile label="Attendance & timecards" path="/people/attendance" detail="Scoped punches, corrections and weekly timecards"/>
+      <NavTile label="Performance & development" path="/people/performance" detail="Recorded goals and review cycles"/>
       <NavTile label="Time off & leave" path="/people/leave" detail="Submit requests and review balances"/>
     </div>
     <Pane label={admin?"Employee register":"My employee profile"}>
@@ -87,7 +88,7 @@ export function PeopleExperience(){
     </div>
     <Pane label={admin?"Timecard review queue":"My submitted timecards"}>
       <p className="prototype-note">{pendingTimecards.length} submitted timecard{pendingTimecards.length===1?"":"s"} visible to this account. Timecard approval and payroll remain in their existing controlled workflows.</p>
-      <button type="button" onClick={()=>navigateToRoute("/people/timekeeping")}>Open timecards</button>
+      <button type="button" onClick={()=>navigateToRoute("/people/attendance")}>Open timecards</button>
     </Pane>
     <Pane label="Requests and next actions">
       {requests.length?requests.slice(0,8).map(task=><div className="prototype-work-list" key={task.id}>
