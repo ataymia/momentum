@@ -31,7 +31,7 @@ test("new independent contacts use authenticated CRM store, local-demo guard, an
  assert.match(ui,/addContact\(/);
  assert.match(ui,/updateContact\(/);
  assert.match(ui,/runtime\.isDemo&&momentumStorage\.mode\(\)==="local"/);
- assert.match(ctx,/const updateContact=/);
+ assert.match(ctx,/const updateContact\s*=/);
  assert.match(ctx,/existing\.createdBy==="system"/);
  assert.match(ui,/scope\.orders\.filter\(o=>!o\.testOnly&&o\.accountId===contact\.locationId\)/);
 });

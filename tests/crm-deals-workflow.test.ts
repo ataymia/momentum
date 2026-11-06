@@ -11,7 +11,7 @@ const deal=(id:string,locationId:string,other:Partial<Opportunity>={}):Opportuni
 test("deal view denies foreign locations before filtering, counting and sorting",()=>{
   const original=[deal("own","owned"),deal("foreign","other",{updatedAt:"2026-11-09T00:00:00Z"}),deal("old","owned",{name:"Older",status:"Lost",stage:"Lost",lossReason:"Not ready"})];
   const visible=visibleDeals(original,new Set(["owned"]));
-  assert.deepEqual(visible.map(item=>item.id),["old","own"],"updated timestamp ties sort by stable record ID");
+  assert.deepEqual(visible.map(item=>item.id),["own","old"],"default descending ties use stable record ID in descending order");
   assert.deepEqual(visibleDeals(original,new Set()),[]);
   assert.deepEqual(visibleDeals(original,new Set(["owned"]),{query:"foreign"}),[]);
   assert.equal(original[0].id,"own");
