@@ -39,3 +39,14 @@ export function recentRecordedStatus(occurredAt: string | undefined, now: Date):
     occurred >= current - STATUS_BELL_WINDOW_DAYS * 86_400_000 &&
     occurred <= current + 5 * 60_000;
 }
+
+/** One shared predicate for the badge and the popover. Historical status records
+ * remain available in their source modules; only live action/reminders and
+ * recently evidenced status updates belong in the notification bell.
+ */
+export function shouldSurfaceBellIntent(
+  intent:{importance:"critical"|"action"|"status"|"reminder";occurredAt?:string},
+  now:Date,
+):boolean{
+  return intent.importance!=="status"||recentRecordedStatus(intent.occurredAt,now);
+}
