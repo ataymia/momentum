@@ -71,6 +71,7 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
   const [stageFilter,setStageFilter]=useState("all");
   const [fromDate,setFromDate]=useState("");
   const [throughDate,setThroughDate]=useState("");
+  const [leadView,setLeadView]=useState<"pipeline"|"table"|"followups">("pipeline");
   const names=useMemo(()=>new Map(data.users.map(u=>[u.id,u.name])),[data.users]);
   const records=useMemo(()=>scope.accounts
     .filter(a=>!leadMode||["Prospect","Qualified","Sampled"].includes(a.stage))
@@ -98,11 +99,40 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
       <label>Through <input type="date" aria-label="Next action through date" value={throughDate} onChange={e=>setThroughDate(e.target.value)}/></label>
       <button type="button" disabled={!records.length} onClick={()=>downloadCsv(leadMode?"momentum-visible-leads.csv":"momentum-visible-accounts.csv",accountExportRows(records,names),accountExportColumns)}>Download filtered {leadMode?"leads":"accounts"} CSV</button>
     </div>
+    {leadMode&&<nav className="prototype-controls" aria-label="Lead views">
+      <button type="button" aria-pressed={leadView==="pipeline"} onClick={()=>setLeadView("pipeline")}>Pipeline</button>
+      <button type="button" aria-pressed={leadView==="table"} onClick={()=>setLeadView("table")}>All leads</button>
+      <button type="button" aria-pressed={leadView==="followups"} onClick={()=>setLeadView("followups")}>Follow-up queue</button>
+    </nav>}
+    {leadMode&&leadView==="pipeline"&&<div className="prototype-columns" aria-label="Lead pipeline">
+      {(["Prospect","Qualified","Sampled"] as const).map(stage=><section className="prototype-panel" key={stage}>
+        <h2>{stage} <small>({records.filter(a=>a.stage===stage).length})</small></h2>
+        {records.filter(a=>a.stage===stage).map(a=><div className="prototype-activity" key={a.id}>
+          <strong><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></strong>
+          <span>{a.location} · {names.get(a.ownerId)??"Unassigned"}</span>
+          <span>{a.contactName?<OpenLink to={"/crm/contacts/"+encodeURIComponent(a.id)}>{a.contactName}</OpenLink>:"Contact not recorded"}</span>
+          <span>Next action: {a.nextActionDate||"Not scheduled"}</span>
+        </div>)}
+        {!records.some(a=>a.stage===stage)&&<Empty>No visible leads at this stage.</Empty>}
+      </section>)}
+    </div>}
+    {leadMode&&leadView==="followups"&&<section className="prototype-panel">
+      <h2>Lead follow-ups</h2><p className="prototype-note">Read-only queue from recorded next-action dates. Unscheduled leads remain visible so they cannot disappear from the pipeline.</p>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Business</th><th>Stage</th><th>Contact</th><th>Assigned rep</th><th>Next action</th></tr></thead><tbody>
+      {[...records].sort((a,b)=>(a.nextActionDate||"9999").localeCompare(b.nextActionDate||"9999")||a.name.localeCompare(b.name)).map(a=><tr key={a.id}>
+        <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.stage}</td>
+        <td>{a.contactName?<OpenLink to={"/crm/contacts/"+encodeURIComponent(a.id)}>{a.contactName}</OpenLink>:"Not recorded"}</td>
+        <td>{names.get(a.ownerId)??"Unassigned"}</td><td>{a.nextActionDate||"Not scheduled"}</td>
+      </tr>)}</tbody></table></div>
+      {!records.length&&<Empty>No leads match the current filters.</Empty>}
+    </section>}
+    {(!leadMode||leadView==="table")&&<>
     <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
       <th>{header("name","Business")}</th><th>{header("location","Location")}</th><th>{header("contactName","Contact")}</th><th>{header("stage","Stage")}</th><th>{header("postalCode","ZIP")}</th><th>{header("ownerId","Assigned rep")}</th><th>{header("nextActionDate","Next action")}</th>
     </tr></thead><tbody>{records.map(a=><tr key={a.id}>
       <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.location}</td><td>{a.contactName||"Unrecorded"}</td><td>{a.stage}</td><td>{a.postalCode||"Unrecorded"}</td><td>{names.get(a.ownerId)??"Unassigned"}</td><td>{a.nextActionDate||"None"}</td>
     </tr>)}</tbody></table></div>{!records.length&&<Empty>No matching business records.</Empty>}
+    </>}
     <p className="prototype-note">{records.length} matching records. Sorting and filters affect your view only, not account ownership or history.</p>
   </section></div>;
 }
