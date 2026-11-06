@@ -38,6 +38,7 @@ import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
 import {ActionCenterExperience} from "./action-center-experience";
 import {WorkspaceHome} from "./workspace-home";
 import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
+import {PriceBooksDirectory,PriceBookDetail} from "./price-books-experience";
 import {WorkExceptionsExperience,CompletedWorkExperience} from "./work-review-experience";
 import type { Order } from "../../lib/types";
 
@@ -387,6 +388,7 @@ export function PrototypeOperationsHub(){
   if(path==="/crm/territory-map")return <TerritoryMapPreview/>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
+  if(segments[0]==="commerce"&&segments[1]==="price-books"&&segments[2])return <PriceBookDetail id={decodeURIComponent(segments[2])}/>;
   if(path==="/work/approvals")return <OrderApprovalDirectory/>;
   if(path==="/work/actions")return <ActionCenterExperience/>;
   if(path==="/work/exceptions")return <WorkExceptionsExperience/>;
@@ -412,6 +414,7 @@ export function PrototypeOperationsHub(){
   if(path==="/sales/invoices")return <InvoiceDirectory/>;
   if(path==="/sales/payments")return <PaymentsDirectory/>;
   if(path==="/items")return <ProductDirectory/>;
+  if(path==="/commerce/price-books")return <PriceBooksDirectory/>;
   if(path==="/sales/customers")return <AccountsDirectory/>;
   if(path==="/crm/leads")return <AccountsDirectory leadMode/>;
   if(path==="/crm/contacts")return <ContactsDirectory/>;

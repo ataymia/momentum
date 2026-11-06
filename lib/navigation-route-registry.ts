@@ -44,7 +44,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   ] },
   { label: "Commerce", entries: [
     { label: "Items / Products", path: "/items", permission: "products", state: "prototype" },
-    { label: "Price Books", path: "/commerce/price-books", permission: "products", state: "planned" },
+    { label: "Price Books", path: "/commerce/price-books", permission: "products", state: "prototype" },
     { label: "Sales Orders", path: "/sales/orders", permission: "orders", state: "prototype" },
     { label: "Invoices", path: "/sales/invoices", permission: "orderCash", state: "prototype" },
     { label: "Payments Received", path: "/sales/payments", permission: "orderCash", state: "prototype" },
@@ -184,7 +184,7 @@ export function pageForPath(path: string): PageKey | null {
   if(clean.startsWith("/sales/returns/"))return "orders";
   if(clean.startsWith("/sales/customers/"))return "accounts";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
-  if(clean.startsWith("/items/"))return "products";
+  if(clean.startsWith("/items/")||clean.startsWith("/commerce/price-books/"))return "products";
   const legacy = (Object.keys(LEGACY_PATHS) as PageKey[]).find(key => LEGACY_PATHS[key] === clean);
   if(legacy)return legacy;
   // Prototype-only modules still need a meaningful active page for breadcrumbs
@@ -208,6 +208,7 @@ export function routeLabel(path: string): string {
   const item = routeEntry(clean) ?? CUSTOMER_MENU.find(entry=>entry.path===clean);
   if (item) return item.label;
   if (clean.startsWith("/items/")) return "Item details";
+  if (clean.startsWith("/commerce/price-books/")) return "Price book details";
   if(clean==="/inventory/workflow")return "Inventory operations";
   if (clean.startsWith("/inventory/lots/")) return "Lot details";
   if (clean.startsWith("/inventory/shipments/")) return "Shipment details";
@@ -227,7 +228,7 @@ export function routeLabel(path: string): string {
 export function permissionForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if(clean.startsWith("/admin/employee-profiles/"))return "settings";
-  if (clean.startsWith("/items/")) return "products";
+  if (clean.startsWith("/items/")||clean.startsWith("/commerce/price-books/")) return "products";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if (clean.startsWith("/sales/customers/")) return "accounts";
   const portal=CUSTOMER_MENU.find(item=>item.path===clean);
@@ -278,7 +279,7 @@ export function requiresPrototypePage(path: string): boolean {
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
   // Sensitive legacy HR and payroll tools are wrapped by a prototype demo-only gate.
   if(clean==="/people/payroll/workflow"||clean==="/people/onboarding/workflow"||clean==="/admin/employee-profiles/workflow")return true;
-  if (clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
+  if (clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/commerce/price-books/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
 }
