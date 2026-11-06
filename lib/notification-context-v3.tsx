@@ -36,7 +36,7 @@ import {
 import {usePerformance} from "./performance-context";
 import {useWorkspace} from "./workspace-context";
 import {mergeFirstSeenRecords,mergeFirstSeenTimes,notificationDisplayTime,parseFirstSeenTimes} from "./notification-display-time";
-import {mergeReadReceipts,parseReadReceipts,recentRecordedStatus} from "./notification-receipts";
+import {mergeReadReceipts,parseReadReceipts,shouldSurfaceBellIntent} from "./notification-receipts";
 
 const READ_KEY="momentum-derived-notification-read-v1";
 const FIRST_SEEN_KEY="momentum-notification-first-seen-v1";
@@ -143,7 +143,7 @@ function NotificationBridge({
     const addIntent=(intent:NotificationIntent)=>{
       if(!notificationBellEnabled(intent.policyId))return;
       // Do not resurrect years of historical status events as new unread mail.
-      if(intent.importance==="status"&&!recentRecordedStatus(intent.occurredAt,clock))return;
+      if(!shouldSurfaceBellIntent(intent,clock))return;
       const id=`derived-intent:${intent.id}`;
       if(intent.recipientUserId!==currentUser.id)return;
       const stamp=notificationDisplayTime(intent.occurredAt,firstSeen[id],evaluatedAt);
