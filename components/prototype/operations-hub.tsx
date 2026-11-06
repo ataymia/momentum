@@ -23,6 +23,7 @@ import {useCommerce} from "../../lib/commerce-context";
 import {MarketingWorkspaceExperience} from "./marketing-workspace-experience";
 import {ForecastsExperience} from "./forecasts-experience";
 import {DocumentsExperience} from "./documents-experience";
+import {SupportCasesExperience} from "./support-cases-experience";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
 import {HrPersonnelDirectory,HrPersonnelRecord} from "./hr-personnel-experience";
 import {HrTimeOffExperience} from "./hr-time-off-experience";
@@ -338,6 +339,7 @@ export function PrototypeOperationsHub(){
   if(path==="/marketing/campaigns")return <MarketingWorkspaceExperience key="marketing-campaigns" initialTab="campaigns"/>;
   if(path==="/reports/forecasts")return <ForecastsExperience/>;
   if(path==="/documents")return <DocumentsExperience/>;
+  if(path==="/support/cases"||path.startsWith("/support/cases/"))return <SupportCasesExperience/>;
   if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<Empty>Marketing write administration is available in isolated local demo only. The redesign provides source-linked read and export access.</Empty>;
   if(path==="/people/payroll")return <PayrollWorkflowExperience/>;
   if(path==="/people/payroll/workflow")return writeEnabled?<LegacyPayrollPage/>:<Empty>Read-only redesign prototype. Payroll processing is available only in isolated local demo mode until production controls are approved.</Empty>;

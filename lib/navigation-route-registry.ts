@@ -88,7 +88,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Forecasts", path: "/reports/forecasts", permission: "reports", state: "prototype" },
     { label: "Reports", path: "/reports", permission: "reports", state: "existing" },
     { label: "Dashboards", path: "/reports/performance", permission: "performance", state: "existing" },
-    { label: "Cases", path: "/support/cases", permission: "work", state: "planned" },
+    { label: "Cases", path: "/support/cases", permission: "work", state: "prototype" },
     { label: "Documents", path: "/documents", permission: "materials", state: "prototype" },
     { label: "Help", path: "/help", permission: "help", state: "existing" },
   ] },
@@ -179,6 +179,7 @@ export function pageForPath(path: string): PageKey | null {
   if (ROUTE_OVERRIDES[clean]) return ROUTE_OVERRIDES[clean];
   // Deep-linked records must retain their owning workspace page, not fall back to Home.
   if(clean.startsWith("/admin/employee-profiles/"))return "settings";
+  if(clean.startsWith("/support/cases/"))return "work";
   if(clean.startsWith("/sales/orders/"))return "orders";
   if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
   if(clean.startsWith("/sales/returns/"))return "orders";
@@ -216,6 +217,7 @@ export function routeLabel(path: string): string {
   if(clean==="/sales/orders/new")return "Create sales order";
   if(clean.startsWith("/sales/orders/")&&clean.endsWith("/edit"))return "Edit sales order";
   if (clean.startsWith("/admin/employee-profiles/")) return "Employee profile";
+  if (clean.startsWith("/support/cases/")) return "Case details";
   if (clean.startsWith("/sales/orders/")) return "Order details";
   if (clean.startsWith("/sales/invoices/")) return "Invoice details";
   if (clean.startsWith("/sales/payments/")) return "Payment details";
@@ -227,6 +229,7 @@ export function routeLabel(path: string): string {
 export function permissionForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if(clean.startsWith("/admin/employee-profiles/"))return "settings";
+  if(clean.startsWith("/support/cases/"))return "work";
   if (clean.startsWith("/items/")) return "products";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if (clean.startsWith("/sales/customers/")) return "accounts";
@@ -256,6 +259,8 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
   // Until verified employee-specific payroll is integrated, these paths remain Administrator-only.
   const privilegedHr = ["/people/new-hire","/people/onboarding","/people/training","/people/payroll"];
   if (user.role!=="Administrator" && privilegedHr.some(prefix=>clean===prefix||clean.startsWith(prefix+"/"))) return false;
+  if (clean==="/support/cases"||clean.startsWith("/support/cases/")) return
+    ["Administrator","Operations","Sales Manager","Sales Representative"].includes(user.role)&&canAccessPage(user,"work");
   if (clean.startsWith("/portal/")) return false;
   if(clean==="/operations/deliveries" && !["Administrator","Operations","Warehouse"].includes(user.role)) return false;
   if (clean.startsWith("/admin/") && user.role!=="Administrator") return false;
@@ -282,7 +287,7 @@ export function requiresPrototypePage(path: string): boolean {
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
   // Sensitive legacy HR and payroll tools are wrapped by a prototype demo-only gate.
   if(clean==="/people/payroll/workflow"||clean==="/people/onboarding/workflow"||clean==="/admin/employee-profiles/workflow")return true;
-  if (clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
+  if (clean.startsWith("/support/cases/") || clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
 }
