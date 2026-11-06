@@ -276,12 +276,12 @@ function NotificationBridge({
   ).length;
 
   const markRead=(id:string)=>{
-    setReadDerived(current=>persist(userId,mergeReadReceipts(current,new Set([id]))));
+    setReadDerived(current=>mergeReadReceipts(current,readIds(userId),new Set([id])));
   };
 
   const markAllRead=()=>{
-    setReadDerived(current=>persist(userId,
-      mergeReadReceipts(current,new Set(currentUserItems.map(item=>item.id)))));
+    setReadDerived(current=>mergeReadReceipts(current,readIds(userId),
+      new Set(currentUserItems.map(item=>item.id))));
   };
 
   return <NotificationContext.Provider value={{
