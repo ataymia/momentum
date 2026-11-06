@@ -43,3 +43,15 @@ test("inventory and driver views use source-linked ledger without privileged act
   assert.match(shell,/<DriverRouteBoard\/>/);
   assert.doesNotMatch(stops,/navigator\.geolocation/);
 });
+
+test("E05-E07 delivery exception queue is sortable while established self-delivery and dispatch remain available",()=>{
+  const review=readFileSync("components/prototype/fulfillment-experience.tsx","utf8");
+  const routes=readFileSync("lib/navigation-route-registry.ts","utf8");
+  assert.match(review,/deliveryReconciliationIssue\(order,task,delivered,override\)/);
+  assert.match(review,/exceptionsOnly/);
+  assert.match(review,/DateFilter start=\{from\}/);
+  assert.match(review,/const sort=useTableSort\("placedAt"\)/);
+  assert.match(routes,/Rep Self-Delivery/);
+  assert.match(routes,/\/crm\/self-delivery/);
+  assert.match(routes,/\/operations\/legacy-dispatch/);
+});
