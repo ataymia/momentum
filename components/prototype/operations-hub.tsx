@@ -366,7 +366,7 @@ function CustomerOrderRecord({id,section}:{id:string;section:"orders"|"deliverie
   if(!order)return <Empty>Order not found or not authorized for your business account.</Empty>;
   const account=scope.accounts.find(a=>a.id===order.accountId);
   const lines=order.lines??(order.product?[{id:order.id,product:order.product,cases:order.cases}]:[]);
-  return <div><Heading title={"Order "+order.number} description="My account order and delivery status" back={section==="orders"?"/portal/orders":"/portal/deliveries"} description="Customer account financial records. Verified account access is required for connected data."/>
+  return <div><Heading title={"Order "+order.number} description="My account order and delivery status" back={section==="orders"?"/portal/orders":"/portal/deliveries"}/>
     <div className="prototype-metrics"><div><small>Fulfillment</small><strong>{order.status}</strong></div><div><small>Cases</small><strong>{order.cases}</strong></div><div><small>Payment state</small><strong>{order.paymentStatus}</strong></div></div>
     <section className="prototype-panel"><h2>Order information</h2><dl className="prototype-facts">
       <div><dt>Business location</dt><dd>{account?.name??"Authorized account"} · {account?.location??""}</dd></div>
