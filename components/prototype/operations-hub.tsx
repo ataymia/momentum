@@ -259,11 +259,22 @@ function ContactsDirectory(){
 function ContactRecord({id}:{id:string}){
   const {scope,data}=useWorkspace();
   const account=scope.accounts.find(a=>a.id===id);
+  const [orderQuery,setOrderQuery]=useState("");
+  const [orderStatus,setOrderStatus]=useState("all");
+  const [activityQuery,setActivityQuery]=useState("");
+  const [activityFrom,setActivityFrom]=useState("");
+  const [activityThrough,setActivityThrough]=useState("");
   if(!account||!account.contactName)return <div><Heading title="Contact unavailable" description="This contact is missing or outside your authorized workspace." back="/crm/contacts"/><Empty>No accessible contact record.</Empty></div>;
   const assigned=data.users.find(u=>u.id===account.ownerId);
-  const orders=scope.orders.filter(o=>!o.testOnly&&o.accountId===account.id)
+  const allOrders=scope.orders.filter(o=>!o.testOnly&&o.accountId===account.id);
+  const orderStatuses=[...new Set(allOrders.map(o=>o.status))].sort();
+  const orders=allOrders.filter(o=>(orderStatus==="all"||o.status===orderStatus)&&
+    [o.number,o.status].join(" ").toLowerCase().includes(orderQuery.trim().toLowerCase()))
     .sort((a,b)=>b.placedAt.localeCompare(a.placedAt)||a.id.localeCompare(b.id));
-  const activities=scope.activities.filter(a=>a.accountId===account.id).sort((a,b)=>b.at.localeCompare(a.at)||a.id.localeCompare(b.id));
+  const activities=scope.activities.filter(a=>a.accountId===account.id)
+    .filter(a=>(!activityFrom||a.at.slice(0,10)>=activityFrom)&&(!activityThrough||a.at.slice(0,10)<=activityThrough))
+    .filter(a=>[a.title,a.detail].join(" ").toLowerCase().includes(activityQuery.trim().toLowerCase()))
+    .sort((a,b)=>b.at.localeCompare(a.at)||a.id.localeCompare(b.id));
   return <div><Heading title={account.contactName} description="Contact and linked business location" back="/crm/contacts"/>
     <section className="prototype-panel"><h2>Contact information</h2>
       <dl className="prototype-facts">
@@ -279,11 +290,13 @@ function ContactRecord({id}:{id:string}){
       <p className="prototype-note">This is the contact associated with location record {account.id}. A separate contact identity and editing workflow have not yet been approved.</p>
     </section>
     <section className="prototype-panel"><h2>Related sales orders</h2>
+      <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search contact orders" value={orderQuery} onChange={e=>setOrderQuery(e.target.value)} placeholder="Order number or status"/></label><label>Order status <select aria-label="Filter contact orders by status" value={orderStatus} onChange={e=>setOrderStatus(e.target.value)}><option value="all">All statuses</option>{orderStatuses.map(status=><option key={status} value={status}>{status}</option>)}</select></label></div>
       {orders.length?<div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Status</th><th>Cases</th></tr></thead><tbody>
         {orders.map(order=><tr key={order.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(order.id)}>{order.number}</OpenLink></td><td>{order.placedAt.slice(0,10)}</td><td>{order.status}</td><td>{order.cases}</td></tr>)}
       </tbody></table></div>:<Empty>No related orders visible for this location.</Empty>}
     </section>
     <section className="prototype-panel"><h2>Recorded account activity</h2>
+      <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search contact activity" value={activityQuery} onChange={e=>setActivityQuery(e.target.value)} placeholder="Activity title or details"/></label><label>From <input type="date" aria-label="Contact activity from date" value={activityFrom} max={activityThrough||undefined} onChange={e=>setActivityFrom(e.target.value)}/></label><label>Through <input type="date" aria-label="Contact activity through date" value={activityThrough} min={activityFrom||undefined} onChange={e=>setActivityThrough(e.target.value)}/></label><button type="button" onClick={()=>{setActivityQuery("");setActivityFrom("");setActivityThrough("");}}>Clear activity filters</button></div>
       {activities.length?activities.map(activity=><div className="prototype-activity" key={activity.id}><strong>{activity.title}</strong><span>{activity.at.slice(0,10)} • {activity.detail}</span></div>):<Empty>No recorded activities for this location.</Empty>}
       <p className="prototype-note">Activities are sourced from this authorized location only. No new contact identity or activity is created.</p>
     </section>
