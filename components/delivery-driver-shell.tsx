@@ -9,6 +9,7 @@ import { DeliveryRequestsPage } from "./pages/delivery-requests";
 import { DeliveriesPage } from "./pages/deliveries";
 import { HelpPage } from "./pages/help";
 import { InventoryPage } from "./pages/inventory";
+import {DriverRouteBoard} from "./prototype/driver-route-board";
 import { PeoplePage } from "./pages/people";
 import { Avatar, BrandMark, Button } from "./ui";
 
@@ -17,7 +18,7 @@ type DriverTab = "deliveries" | "requests" | "map" | "inventory" | "time" | "dir
 const tabs: Array<{ key: DriverTab; label: string; icon: typeof Truck }> = [
   { key: "deliveries", label: "Deliveries", icon: Truck },
   { key: "requests", label: "Requests", icon: Megaphone },
-  { key: "map", label: "Route Map", icon: Truck },
+  { key: "map", label: "My Stops", icon: Truck },
   { key: "inventory", label: "Inventory", icon: Boxes },
   { key: "time", label: "Time & HR", icon: Clock3 },
   { key: "directory", label: "Directory", icon: UsersRound },
@@ -59,7 +60,7 @@ export function DeliveryDriverShell() {
     <main className="driver-shell-main">
       {tab==="deliveries"&&<DeliveriesPage/>}
       {tab==="requests"&&<DeliveryRequestsPage/>}
-      {tab==="map"&&<div className="page page--focused-tool"><h1>Delivery route map</h1><p>Route visualization and stop sequencing are planned. The existing Deliveries workspace remains the authoritative source for assigned tasks, signatures, exceptions and completion evidence.</p><Button type="button" onClick={()=>navigateToRoute("/driver/deliveries")}>Open my deliveries</Button></div>}
+      {tab==="map"&&<DriverRouteBoard/>}
       {tab==="inventory"&&<InventoryPage/>}
       {tab==="time"&&<PeoplePage/>}
       {tab==="directory"&&<div className="page page--focused-tool"><EmployeeDirectory/></div>}
