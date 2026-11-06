@@ -1,4 +1,5 @@
-import type {WorkspaceUser} from "./types";
+import type {WorkspaceData,WorkspaceUser} from "./types";
+import {accountIsVisible} from "./access";
 export const SUPPORT_CASE_KEY="momentum-support-cases-isolated-demo-v1";
 export type CaseStatus="Open"|"Investigating"|"Waiting"|"Resolved"|"Closed";
 export type CasePriority="Low"|"Normal"|"High"|"Critical";
@@ -7,6 +8,22 @@ export type CaseEvent={id:string;at:string;actorId:string;action:"Created"|"Note
 export type SupportCase={id:string;title:string;description:string;accountId?:string;orderId?:string;category:CaseCategory;priority:CasePriority;status:CaseStatus;createdBy:string;ownerId:string;createdAt:string;updatedAt:string;history:CaseEvent[]};
 export type CaseDraft=Pick<SupportCase,"title"|"description"|"category"|"priority"> & {accountId?:string;orderId?:string};
 const statuses:Record<CaseStatus,CaseStatus[]>={Open:["Investigating"],Investigating:["Waiting","Resolved"],Waiting:["Investigating"],Resolved:["Closed","Investigating"],Closed:["Investigating"]};
+/** Keep the UI state machine and server-validation candidate list in sync. */
+export const caseNextStatuses=(status:CaseStatus):readonly CaseStatus[]=>statuses[status]??[];
+export const caseStatusLabel=(status:CaseStatus)=>status==="Waiting"?"Waiting on customer":status;
+/** Demo assignment picker only. Live assignment requires equivalent server-side ownership checks. */
+export function caseAssignableStaff(data:WorkspaceData,actor:WorkspaceUser|null|undefined,item:SupportCase):WorkspaceUser[]{
+ if(!actor||!["Administrator","Operations"].includes(actor.role))return [];
+ const account=item.accountId?data.accounts.find(a=>a.id===item.accountId):undefined;
+ if(item.accountId&&!account)return [];
+ return data.users.filter(target=>{
+  if(target.employmentStatus==="Separated"||!["Administrator","Operations","Sales Manager","Sales Representative"].includes(target.role))return false;
+  if(actor.role==="Operations"&&target.role!=="Operations")return false;
+  if(!account)return ["Administrator","Operations"].includes(target.role);
+  if(target.role==="Sales Representative")return account.ownerId===target.id;
+  return accountIsVisible(data,target,account);
+ });
+}
 export const supportRole=(u:WorkspaceUser|null|undefined)=>Boolean(u&&["Administrator","Operations","Sales Manager","Sales Representative"].includes(u.role));
 export const visibleCase=(u:WorkspaceUser|null|undefined,accounts:ReadonlySet<string>,c:SupportCase)=>Boolean(supportRole(u)&&u&&(u.role==="Administrator"||(c.accountId?accounts.has(c.accountId):c.createdBy===u.id||c.ownerId===u.id)));
 export const managerCase=(u:WorkspaceUser|null|undefined,accounts:ReadonlySet<string>,c:SupportCase)=>Boolean(u&&visibleCase(u,accounts,c)&&(["Administrator","Operations"].includes(u.role)||(u.role==="Sales Manager"&&c.ownerId===u.id)));
@@ -23,7 +40,7 @@ export function changeCase(c:SupportCase,u:WorkspaceUser|null|undefined,accounts
  if(!managerCase(u,accounts,c))return null;
  if(action==="Status"){
    const next=value as CaseStatus;
-   if(!statuses[c.status].includes(next)||reason.trim().length<5)return null;
+   if(!caseNextStatuses(c.status).includes(next)||reason.trim().length<5)return null;
    return {...c,status:next,updatedAt:at,history:[...c.history,{id:eventId,at,actorId:u.id,action,detail:c.status+" to "+next+": "+reason.trim()}]};
  }
  if(action==="Owner"){
@@ -35,9 +52,25 @@ export function changeCase(c:SupportCase,u:WorkspaceUser|null|undefined,accounts
 }
 export function restoreDemoCases(input:unknown,users:ReadonlySet<string>):SupportCase[]{
  if(!Array.isArray(input))return [];
- const seen=new Set<string>();
+ const seen=new Set<string>(),statusList=Object.keys(statuses);
+ const priorities=["Low","Normal","High","Critical"],categories=["Delivery","Billing","Product","Account","Other"];
+ const actions=["Created","Note","Status","Owner"];
+ const validDate=(v:unknown)=>typeof v==="string"&&Number.isFinite(Date.parse(v));
  return input.filter((c):c is SupportCase=>{
-   if(!c||typeof c!=="object"||typeof c.id!=="string"||seen.has(c.id)||!users.has(c.createdBy)||!users.has(c.ownerId)||!["Open","Investigating","Waiting","Resolved","Closed"].includes(c.status)||!Array.isArray(c.history)||!Number.isFinite(Date.parse(c.createdAt))||!Number.isFinite(Date.parse(c.updatedAt)))return false;
+   if(!c||typeof c!=="object"||typeof c.id!=="string"||!c.id.trim()||seen.has(c.id)||
+     typeof c.title!=="string"||c.title.trim().length<4||typeof c.description!=="string"||c.description.trim().length<12||
+     !categories.includes(c.category)||!priorities.includes(c.priority)||!statusList.includes(c.status)||
+     !users.has(c.createdBy)||!users.has(c.ownerId)||!validDate(c.createdAt)||!validDate(c.updatedAt)||
+     (c.accountId!==undefined&&typeof c.accountId!=="string")||(c.orderId!==undefined&&typeof c.orderId!=="string")||
+     !Array.isArray(c.history)||!c.history.length||c.history[0]?.action!=="Created"||
+     c.history[0]?.actorId!==c.createdBy)return false;
+   const eventIds=new Set<string>();
+   for(const event of c.history){
+     if(!event||typeof event.id!=="string"||!event.id.trim()||eventIds.has(event.id)||
+       typeof event.detail!=="string"||!event.detail.trim()||!validDate(event.at)||
+       !users.has(event.actorId)||!actions.includes(event.action))return false;
+     eventIds.add(event.id);
+   }
    seen.add(c.id);return true;
  });
 }
