@@ -95,23 +95,15 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
       reportPrintBlock("Select at least one invoice to print.");
       return;
     }
-    // Never print a customer-facing invoice with an unconfirmed trading name.
-    const missing=unique.filter(id=>{
-      const invoice=invoices.find(row=>row.id===id);
-      const location=data.accounts.find(row=>row.id===invoice?.accountId);
-      const customer=location?customerForLocation(data,location):null;
+    // Issued invoice records must always remain printable. Missing customer legal
+    // identity is shown explicitly ON the printed sheet, never silently invented
+    // or used to disable the user's print action. Historical voids are marked VOID.
+    const incomplete = unique.filter((id) => {
+      const invoice = invoices.find((row) => row.id === id);
+      const location = data.accounts.find((row) => row.id === invoice?.accountId);
+      const customer = location ? customerForLocation(data, location) : undefined;
       return !legalBillingName(customer);
     });
-    if(missing.length){
-      const invoiceLabels = missing.map((id) => invoices.find((invoice) => invoice.id === id)?.number ?? id);
-      reportPrintBlock(`Cannot print ${invoiceLabels.join(", ")}: the linked customer profile is missing the licensed legal business name. Open the customer account, enter the exact legal name from its registration, and retry. No invoice was printed.`);
-      return;
-    }
-    const archived=unique.filter(id=>invoices.find(invoice=>invoice.id===id)?.status==="Void");
-    if(archived.length){
-      reportPrintBlock("Voided invoices are historical records. Print the active amended revision instead.");
-      return;
-    }
     if (typeof window.print !== "function") {
       reportPrintBlock("This browser cannot open a print dialog. Open Momentum in a full browser that supports printing and retry.");
       return;
@@ -120,7 +112,9 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
     // Keep the browser print call inside the user's click gesture and synchronously mount the print sheets.
     // The old delayed setTimeout could lose user activation and made Print appear dead on some browsers.
     flushSync(() => setPrintJob({ ids: unique, copies }));
-    setPrintNotice(`${unique.length} invoice${unique.length === 1 ? "" : "s"} prepared · ${copies} cop${copies === 1 ? "y" : "ies"} each.`);
+    setPrintNotice(incomplete.length
+      ? `${unique.length} invoice(s) prepared for print. ${incomplete.length} record(s) lack a verified legal billing name and are clearly marked on the printed document; update customer details before sending.`
+      : `${unique.length} invoice${unique.length === 1 ? "" : "s"} prepared · ${copies} cop${copies === 1 ? "y" : "ies"} each.`);
     try {
       window.print();
     } catch {
@@ -163,10 +157,11 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
 
       <section className="invoice-sheet__legacy-grid">
         <div><small>FROM</small><strong>{company.name}</strong><span>{company.street}</span><span>{company.cityStateZip}</span><span>{company.phone} · {company.attention}</span><span>{company.salesEmail}</span></div>
-        <div><small>BILL TO</small><strong>{legalBillingName(customer)??"Legal business name required"}</strong>{billToAddress && <span>{billToAddress}</span>}{apName && <span>A/P: {apName}</span>}{apPhone && <span>{apPhone}{apExtension ? ` ext. ${apExtension}` : ""}</span>}{apEmail && <span>{apEmail}</span>}{customer?.az5000Number && <span>AZ-5000: {customer.az5000Number}</span>}</div>
+        <div><small>BILL TO</small><strong>{legalBillingName(customer)??"Legal billing name not recorded"}</strong>{!legalBillingName(customer) && <span className="invoice-sheet__identity-warning">Customer legal name missing. Verify billing details before sending.</span>}{billToAddress && <span>{billToAddress}</span>}{apName && <span>A/P: {apName}</span>}{apPhone && <span>{apPhone}{apExtension ? ` ext. ${apExtension}` : ""}</span>}{apEmail && <span>{apEmail}</span>}{customer?.az5000Number && <span>AZ-5000: {customer.az5000Number}</span>}</div>
         <div><small>SHIP TO</small><strong>{location ? locationLabel(location) : "Customer location"}</strong>{shipToAddress && <span>{shipToAddress}</span>}{location?.contactName && <span>{location.contactName}{location.contactRole ? ` · ${location.contactRole}` : ""}</span>}{location?.phone && <span>{location.phone}</span>}</div>
         
       </section>
+      {invoice.status === "Void" && <div className="invoice-sheet__void-warning">VOID / SUPERSEDED — HISTORICAL COPY — NOT PAYABLE</div>}
       <section className="invoice-sheet__document-meta">
         <div><span>INVOICE #</span><strong>{invoice.number}</strong></div>
         <div><span>INVOICE DATE</span><strong>{formatDate(invoice.issuedAt, { month: "2-digit", day: "2-digit", year: "numeric" })}</strong></div>
