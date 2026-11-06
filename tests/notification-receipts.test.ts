@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  mergeReadReceipts,parseReadReceipts,recentRecordedStatus,
+  mergeReadReceipts,parseReadReceipts,recentRecordedStatus,shouldSurfaceBellIntent,
   MAX_READ_RECEIPTS,
 } from "../lib/notification-receipts";
 
@@ -25,4 +25,14 @@ test("the bell excludes historical and undated statuses but never invents a time
   assert.equal(recentRecordedStatus("2026-09-01T19:00:00.000Z",now),false);
   assert.equal(recentRecordedStatus("2026-11-01T19:00:00.000Z",now),true);
   assert.equal(recentRecordedStatus("2026-12-01T19:00:00.000Z",now),false);
+});
+
+test("G01: historical 66-item status backlog never becomes 66 unread actionable bell items",()=>{
+  const now=new Date("2026-11-06T19:00:00.000Z");
+  const legacy=Array.from({length:66},(_,i)=>({importance:"status" as const,occurredAt:"2026-08-01T12:00:00Z",id:"old-"+i}));
+  const actionable=Array.from({length:3},(_,i)=>({importance:"action" as const,id:"active-"+i}));
+  const recent=[{importance:"status" as const,occurredAt:"2026-11-06T17:00:00Z",id:"recent-status"}];
+  const shown=[...legacy,...actionable,...recent].filter(intent=>shouldSurfaceBellIntent(intent,now));
+  assert.deepEqual(shown.map(x=>x.id),["active-0","active-1","active-2","recent-status"]);
+  assert.equal(shown.length,4);
 });
