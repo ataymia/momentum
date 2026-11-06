@@ -2,6 +2,7 @@ import {readFileSync} from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  mergeFirstSeenRecords,
   mergeFirstSeenTimes,
   notificationDisplayTime,
   parseFirstSeenTimes,
@@ -35,4 +36,14 @@ test("notification popover displays cleared notices only outside its unread list
   assert.match(source,/unreadItems = generated\.currentUserItems\.filter\(item=>item\.status==="Unread"\)/);
   assert.match(source,/>Clear all<\/button>/);
   assert.match(source,/unreadItems\.slice\(0, 12\)/);
+});
+
+test("concurrent tabs preserve the earliest first-seen date and all valid IDs",()=>{
+  const merged=mergeFirstSeenRecords(
+    {"one":"2026-11-05T00:00:00Z","two":"2026-11-06T00:00:00Z"},
+    {"one":"2026-11-01T00:00:00Z","three":"2026-11-06T11:00:00Z"},
+  );
+  assert.equal(merged.one,"2026-11-01T00:00:00Z");
+  assert.deepEqual(Object.keys(merged).sort(),["one","three","two"]);
+  assert.deepEqual(mergeFirstSeenRecords(merged,{}),merged);
 });
