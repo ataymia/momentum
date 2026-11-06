@@ -19,6 +19,14 @@ test("invoice print stays inside the user activation and mounts outside the clip
   assert.doesNotMatch(invoiceSource, /setTimeout\(\(\) => window\.print/);
 });
 
+test("existing invoices print without legal-name or void-status gates", () => {
+  const handler = invoiceSource.slice(invoiceSource.indexOf("const startPrint ="), invoiceSource.indexOf("const invoiceSheet ="));
+  assert.match(handler, /flushSync\(\(\) => setPrintJob/);
+  assert.match(handler, /window\.print\(\)/);
+  assert.doesNotMatch(handler, /missing\.length|archived\.length/);
+  assert.match(invoiceSource, /legalBillingName\(customer\) \?\? customer\?\.name \?\? location\?\.name/);
+});
+
 test("the primary Invoices & payments workspace exposes single and bulk invoice printing", () => {
   assert.match(billingSource, /InvoicePrintCenter/);
   assert.match(invoiceSource, /Print selected/);
