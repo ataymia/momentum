@@ -1,7 +1,6 @@
-/* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,space-before-blocks,keyword-spacing,curly,brace-style,semi-spacing,arrow-parens,indent,operator-linebreak,space-before-function-paren,valid-jsdoc,require-jsdoc,object-curly-newline,operator-assignment,no-ternary,prefer-const */
 import {randomUUID} from "node:crypto";
 import {getAuth} from "firebase-admin/auth";
-import {getFirestore, type Firestore, type Transaction} from "firebase-admin/firestore";
+import {getFirestore, type Firestore} from "firebase-admin/firestore";
 import {onRequest} from "firebase-functions/v2/https";
 
 /** Real connected meeting records are server-owned and never exposed as shared Firestore arrays. */
@@ -18,7 +17,7 @@ const time=/^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const day=/^\d{4}-\d{2}-\d{2}$/;
 const str=(v:unknown)=>typeof v==="string"?v.trim():"";
 const obj=(v:unknown):v is Row=>Boolean(v&&typeof v==="object"&&!Array.isArray(v));
-const phoenixDay=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"America/Phoenix",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+const phoenixDay=()=>{const parts=new Intl.DateTimeFormat("en-US",{timeZone:"America/Phoenix",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());const get=(name:string)=>parts.find(p=>p.type===name)?.value??"";return get("year")+"-"+get("month")+"-"+get("day");};
 const minutes=(s:string)=>Number(s.slice(0,2))*60+Number(s.slice(3));
 const error=(status:number,message:string)=>new MeetingServerError(status,message);
 class MeetingServerError extends Error {
