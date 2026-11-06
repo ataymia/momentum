@@ -40,3 +40,18 @@ test("customer finance portal is disabled for connected data and exports only sc
  assert.match(hub,/downloadCsv\("momentum-my-payments\.csv",finance\.payments,customerPaymentColumns\)/);
  assert.match(hub,/downloadCsv\("momentum-my-statement\.csv",finance\.statement,customerStatementColumns\)/);
 });
+
+test("staff customer record statement uses only verified local demo and account-scoped finance",()=>{
+ const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+ const start=hub.indexOf("function CustomerRecord("),end=hub.indexOf("function matchingLines(");
+ assert.ok(start>0&&end>start);
+ const record=hub.slice(start,end);
+ assert.match(record,/scope\.accounts\.find\(a=>a\.id===id\)/);
+ assert.match(record,/new Set\(locations\.map\(a=>a\.id\)\)/);
+ assert.match(record,/currentUser\?\.role!=="Customer"/);
+ assert.match(record,/runtime\.isDemo&&momentumStorage\.mode\(\)==="local"/);
+ assert.match(record,/projectCustomerFinance\(commerce,orders,ids,/);
+ assert.match(record,/statementRows/);
+ assert.match(record,/downloadCsv\("momentum-customer-statement-"/);
+ assert.match(record,/No amount is estimated from order totals/);
+});
