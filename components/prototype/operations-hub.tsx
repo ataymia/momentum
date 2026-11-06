@@ -11,6 +11,8 @@ import { useWorkspace } from "../../lib/workspace-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {momentumStorage} from "../../lib/persistence";
 import { TerritoryPanel } from "../crm/territory-panel";
+import {SalesUserPicker} from "../crm/sales-user-picker";
+import {CrmLeadCreator} from "./crm-lead-create";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience } from "./hr-payroll-experiences";
@@ -93,6 +95,7 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
   const repIds=[...new Set(scope.accounts.map(a=>a.ownerId).filter(Boolean))].sort((a,b)=>(names.get(a)??"").localeCompare(names.get(b)??""));
   const stages=[...new Set(scope.accounts.map(a=>a.stage))].sort();
   return <div><Heading title={leadMode?"Leads":"Accounts & Customers"} description="Searchable, filtered and sortable business locations. Open any record for its linked customer profile."/>
+  {leadMode&&<CrmLeadCreator/>}
   <section className="prototype-panel">
     <div className="prototype-controls">
       <label className="prototype-search"><Search size={16}/><input aria-label="Search businesses" placeholder="Business, location, contact, ZIP, rep" value={query} onChange={e=>setQuery(e.target.value)}/></label>
@@ -173,8 +176,8 @@ function LeadRecord({id}:{id:string}){
   const [handoffReason,setHandoffReason]=useState("");
   const [handoffFeedback,setHandoffFeedback]=useState("");
   const canQualify=isDemo&&momentumStorage.mode()==="local"&&!!currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role);
-  const canHandoff=isDemo&&!!currentUser&&["Administrator","Sales Manager"].includes(currentUser.role);
-  const eligibleReps=data.users.filter(u=>u.role==="Sales Representative"&&u.id!==account?.ownerId);
+  const canHandoff=isDemo&&momentumStorage.mode()==="local"&&!!currentUser&&["Administrator","Sales Manager"].includes(currentUser.role);
+  const eligibleReps=data.users.filter(u=>u.role==="Sales Representative"&&u.employmentStatus!=="Separated"&&u.id!==account?.ownerId);
   const handoff=(event:React.FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
     if(!canHandoff||!account||!eligibleReps.some(u=>u.id===newOwner)||handoffReason.trim().length<3){setHandoffFeedback("Choose an eligible representative and provide a reason of at least three characters.");return;}
@@ -217,9 +220,7 @@ function LeadRecord({id}:{id:string}){
       <p className="prototype-note">Lead stage is sourced from the existing account record. Stage editing remains disabled pending audited server authorization.</p>
       {canHandoff&&<form className="prototype-panel" aria-label="Transfer lead responsibility" onSubmit={handoff}>
         <h3>Reassign lead</h3>
-        <label>New representative <select required aria-label="New lead representative" value={newOwner} onChange={e=>{setNewOwner(e.target.value);setHandoffFeedback("");}}>
-          <option value="">Select a representative</option>{eligibleReps.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-        </select></label>
+        <div className="prototype-controls"><SalesUserPicker label="New lead representative" users={eligibleReps} value={newOwner} onChange={id=>{setNewOwner(id);setHandoffFeedback("");}} allowUnassigned={false}/></div>
         <label>Reason for reassignment <textarea required minLength={3} maxLength={500} value={handoffReason} onChange={e=>setHandoffReason(e.target.value)} /></label>
         <button type="submit" disabled={!newOwner||handoffReason.trim().length<3}>Transfer responsibility</button>
         {handoffFeedback&&<p role="status">{handoffFeedback}</p>}
