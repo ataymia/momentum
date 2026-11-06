@@ -11,7 +11,7 @@ import {useWorkspace} from "../../lib/workspace-context";
 import {navigateToRoute} from "../../lib/navigation-store";
 
 type DocumentRow={id:string;source:"My HR"|"HR administration"|"Training"|"Brand assets";title:string;category:string;status:string;owner:string;version:string;recordedAt:string;url?:string;profileId?:string};
-const safeExternal=(value?:string)=>{if(!value)return undefined;try{const u=new URL(value);return ["https:","http:"].includes(u.protocol)?u.toString():undefined;}catch{return undefined;}};
+const safeExternal=(value?:string)=>{if(!value)return undefined;try{const u=new URL(value);return u.protocol==="https:"?u.toString():undefined;}catch{return undefined;}};
 
 /** A permission-filtered index of existing source records, not a second file store or signature renderer. */
 export function DocumentsExperience(){
@@ -64,12 +64,12 @@ export function DocumentsExperience(){
    <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Document / resource</th><th>Source</th><th>Category</th><th>Status</th><th>Owner / course</th><th>Recorded</th><th>Access</th></tr></thead>
      <tbody>{rows.map(r=><tr key={r.id}><td><strong>{r.title}</strong>{r.version&&<small className="prototype-description">Version {r.version}</small>}</td>
        <td>{r.source}</td><td>{r.category}</td><td>{r.status}</td><td>{r.owner}</td><td>{r.recordedAt}</td>
-       <td>{r.url?<a href={r.url} target="_blank" rel="noopener noreferrer">Open verified link</a>:r.profileId?<button type="button" className="prototype-link" onClick={()=>navigateToRoute("/admin/employee-profiles/"+encodeURIComponent(r.profileId!)+"/documents")}>Open HR register</button>:r.source==="Training"?<button type="button" className="prototype-link" onClick={()=>navigateToRoute("/people/materials")}>Training library</button>:"Metadata only"}</td>
+       <td>{r.url?<a href={r.url} target="_blank" rel="noopener noreferrer">Open external training resource</a>:r.profileId?<button type="button" className="prototype-link" onClick={()=>navigateToRoute("/admin/employee-profiles/"+encodeURIComponent(r.profileId!)+"/documents")}>Open HR register</button>:r.source==="Training"?<button type="button" className="prototype-link" onClick={()=>navigateToRoute("/people/materials")}>Training library</button>:"Metadata only"}</td>
      </tr>)}</tbody></table></div>
     {!rows.length&&<p className="prototype-note">No authorized records match these filters.</p>}
   </section>
   <section className="prototype-panel"><h2><ShieldCheck size={18}/> Document access control</h2>
-   <p className="prototype-note">HR employee records are limited to your own documents unless you are an Administrator. A stored filename or metadata entry is not proof a secure original was signed or archived. Marketing assets without a validated download location remain metadata-only.</p>
+   <p className="prototype-note">HR employee records are limited to your own documents unless you are an Administrator. A stored filename or metadata entry is not proof a secure original was signed or archived. External training links have not been independently verified. Marketing assets without a validated download location remain metadata-only.</p>
    <p className="prototype-note">This index does not copy tax identifiers, signatures, completed PDFs, or private form field values. File downloads must continue through existing authenticated Storage permissions and an approved form provider.</p>
   </section>
  </div>;

@@ -234,3 +234,25 @@
 @media(max-width:1170px){.momentum-home-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.momentum-home-panel--actions{grid-row:auto}.momentum-home-panel--sales,.momentum-home-panel--summary{grid-column:span 2}}
 @media(max-width:730px){.momentum-home-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.momentum-home-grid{grid-template-columns:minmax(0,1fr)}.momentum-home-panel--sales,.momentum-home-panel--summary{grid-column:auto}.momentum-home-hero{padding:1rem}.momentum-home-hero h1{font-size:1.3rem}.momentum-home-tabs{gap:.7rem}.momentum-home-shortcuts{gap:.3rem}}
 @media(max-width:380px){.momentum-home-metrics{grid-template-columns:minmax(0,1fr)}}
+
+/* F workstream: accessible, responsive case controls and KPI definition panels. */
+.prototype-insight-rule{
+ display:grid;grid-template-columns:minmax(0,1fr);gap:.35rem;
+ padding:.95rem 1rem;margin:.7rem 0;background:var(--surface,#fff);
+ border:1px solid var(--border,#dfe4eb);border-radius:10px;text-align:left;
+}
+.prototype-insight-rule strong{font-size:.95rem;line-height:1.35}
+.prototype-insight-rule p{margin:0;color:var(--muted,#667085);font-size:.84rem;line-height:1.45;overflow-wrap:anywhere}
+.prototype-insight-rule p:first-of-type{color:inherit}
+.prototype-domain--people .prototype-controls label,
+.prototype-domain--marketing .prototype-controls label{min-width:0}
+.prototype-domain .prototype-table-scroll{max-width:100%;overscroll-behavior-inline:contain}
+.prototype-domain .prototype-table button.prototype-link{text-align:left;min-height:34px}
+@media(max-width:680px){
+ .prototype-domain .prototype-controls{align-items:stretch;justify-content:flex-start}
+ .prototype-domain .prototype-controls .prototype-search{width:100%;max-width:none;flex:1 1 100%}
+ .prototype-domain .prototype-controls>label:not(.prototype-search){flex:1 1 145px}
+ .prototype-domain .prototype-controls>button{justify-content:center;min-height:42px}
+ .prototype-domain .prototype-table th,.prototype-domain .prototype-table td{padding:.64rem .6rem}
+ .prototype-insight-rule{padding:.85rem}
+}

@@ -85,3 +85,12 @@ test("F05 F13 F14: private HR routes are denied to non-admin roles even by direc
   const labels=MENU_GROUPS.flatMap(g=>g.entries.map(e=>e.label.toLowerCase()));
   for(const excluded of ["calls","solutions","internal instant messaging","gmail inbox"]) assert(!labels.includes(excluded));
 });
+
+test("F07: Campaigns navigation must match Administrator-only campaign actions",()=>{
+ const admin=person("Administrator"),marketing=person("Marketing");
+ assert(canVisitRoute(admin,"/marketing/campaigns"));
+ assert(canShowModuleInMenu(admin,"/marketing/campaigns"));
+ assert(!canVisitRoute(marketing,"/marketing/campaigns"));
+ assert(!canShowModuleInMenu(marketing,"/marketing/campaigns"));
+ assert(canVisitRoute(marketing,"/marketing"));
+});

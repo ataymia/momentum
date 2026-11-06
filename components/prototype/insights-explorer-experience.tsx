@@ -136,7 +136,7 @@ export function InsightsExplorerExperience(){
   </section>
   <section className="prototype-panel"><h2>Metric governance & action rules</h2>
    <p className="prototype-note">Frequency: reviewed weekly and at monthly close. Data is refreshed from the existing client source after successful synchronization; the dashboard does not certify server freshness.</p>
-   {rules.map(rule=><article key={rule[0]} className="prototype-work-list"><strong>{rule[0]}</strong><p>Definition: {rule[1]}</p><p>Source: {rule[2]} · Lag: {rule[3]} · Owner: {rule[4]}</p><p>Gaming/data risk: {rule[5]} · Action: {rule[6]}</p></article>)}
+   {rules.map(rule=><article key={rule[0]} className="prototype-insight-rule"><strong>{rule[0]}</strong><p>Definition: {rule[1]}</p><p>Source: {rule[2]} · Lag: {rule[3]} · Owner: {rule[4]}</p><p>Gaming/data risk: {rule[5]} · Action: {rule[6]}</p></article>)}
    <p className="prototype-note">Auditing method: reconcile the exported row IDs against original source records and cleared bank/provider evidence. Targets, bonuses, sell-through and container economics require separately approved definitions.</p>
   </section>
  </div>;

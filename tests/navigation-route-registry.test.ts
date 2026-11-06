@@ -104,3 +104,9 @@ test("HR administration deep links do not grant access just because a page key i
     assert.equal(canVisitRoute(admin,route),true,route);
   }
 });
+
+test("F07: copying a Campaigns URL cannot bypass the Marketing department access policy",()=>{
+ const marketer=makeUser("Marketing"),admin=makeUser("Administrator");
+ assert.equal(canVisitRoute(marketer,"/marketing/campaigns"),false);
+ assert.equal(canVisitRoute(admin,"/marketing/campaigns"),true);
+});
