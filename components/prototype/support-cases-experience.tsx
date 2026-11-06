@@ -49,7 +49,7 @@ export function SupportCasesExperience(){
  if(!supportRole(currentUser))return <div className="prototype-empty">This workspace is restricted to authorized Sales and Operations personnel.</div>;
  if(routeId&&!selected)return <div className="prototype-domain"><h1>Case not found or access denied</h1><button onClick={()=>navigateToRoute("/support/cases")}>Back to Cases</button></div>;
  return <div className="prototype-domain">
- <header className="prototype-heading"><h1><MessageSquare size={19}/> {selected?selected.title:"Customer support cases"}</h1><p>Source-linked service issues with ownership, next steps and an immutable event trail in the isolated prototype.</p></header>
+ <header className="prototype-heading"><h1><MessageSquare size={19}/> {selected?selected.title:"Customer support cases"}</h1><p>Customer issues with ownership, next steps and append-only demo activity. Browser-local history is not a tamper-resistant audit trail.</p></header>
  {!demo&&<p className="prototype-note" role="status">Connected case data is not yet authorized for production. This screen is read-only; notifications, secure attachments and customer portal access are not active.</p>}
  {selected?<div className="prototype-columns"><section className="prototype-panel"><h2>Case overview</h2>
  <dl className="prototype-facts"><div><dt>Status</dt><dd>{caseStatusLabel(selected.status)}</dd></div><div><dt>Priority</dt><dd>{selected.priority}</dd></div><div><dt>Category</dt><dd>{selected.category}</dd></div><div><dt>Account</dt><dd>{scope.accounts.find(a=>a.id===selected.accountId)?.name??"Internal issue"}</dd></div><div><dt>Order</dt><dd>{selected.orderId??"None"}</dd></div><div><dt>Owner</dt><dd>{names.get(selected.ownerId)?.name??"Unassigned"}</dd></div></dl>

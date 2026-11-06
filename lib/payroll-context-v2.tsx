@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, createContext, useContext, useEffect, useState } from "react";
+import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { addCalendarDays, isValidCalendarDateKey } from "./date-time";
 import { useHcm } from "./hcm-context";
 import { payrollCorrectionBlockers, payrollRunControlIssues, voidPayrollRunForCorrection } from "./payroll-controls";
@@ -9,6 +9,7 @@ import { usePeriodLocks } from "./period-lock-context";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { canMutatePayroll } from "./payroll-release-gate";
+import {payrollForViewer} from "./payroll-reader-scope";
 import { PAYROLL_STORAGE_KEY, BenefitTaxRule, BenefitTaxTreatment, Disbursement, EmployerTaxRule, PayGroup, PayRun, PayRunStatus, PayrollEmployee, PayrollState, TaxLiability, TaxLiabilityStatus, WithholdingProfile, calculateBonusLine, calculateRegularLine, consumedTimecards, createPayrollSeed, earnedBonusesForMonth, normalizePayrollState } from "./payroll-engine";
 import { useWorkspace } from "./workspace-context";
 
@@ -52,6 +53,7 @@ export function PayrollProvider({children}:{children:ReactNode}){
   const retryDisbursement=(id:string)=>{if(!isAdmin)return null;const item=payroll.disbursements.find((entry)=>entry.id===id);const run=payroll.runs.find((entry)=>entry.id===item?.payRunId);const employee=payroll.employees.find((entry)=>entry.userId===item?.userId&&entry.active);if(!item||!run||!employee||run.status!=="Released"||runLocked(run)||runSourcesInvalid(run)||!disbursementCanRetry(item)||!Number.isFinite(item.amount)||item.amount<=0)return null;const replacementId=uid("disbursement-retry");const replacement:DisbursementRecord={id:replacementId,payRunId:item.payRunId,userId:item.userId,amount:item.amount,method:employee.paymentMethod,tokenLabel:employee.paymentTokenLabel,status:"Released",createdAt:now(),retryOf:item.id};setPayroll((state)=>{const live=state.disbursements.find((entry)=>entry.id===id);if(!live||!disbursementCanRetry(live))return state;return{...state,disbursements:[replacement,...state.disbursements.map((entry)=>{if(entry.id!==id)return entry;const failed:DisbursementRecord={...entry,replacedBy:replacementId};return failed;})]};});return replacementId;};
   const updateLiability=(id:string,status:TaxLiabilityStatus,evidence:LiabilityEvidence={})=>{if(!isAdmin||!currentUser)return false;const liability=payroll.liabilities.find((entry)=>entry.id===id);if(!liability||!Number.isFinite(liability.amount)||liability.amount<=0)return false;if(status==="Scheduled"){const run=payroll.runs.find((entry)=>entry.id===liability.payRunId);if(!run||run.status!=="Released"||runLocked(run)||runSourcesInvalid(run)||!liabilityCanSchedule(liability))return false;const scheduledAt=now();setPayroll((state)=>({...state,liabilities:state.liabilities.map((entry)=>{if(entry.id!==id||entry.status!=="Accrued")return entry;const updated:TaxLiabilityRecord={...entry,status:"Scheduled",scheduledAt,scheduledBy:currentUser.id};return updated;})}));return true;}if(status==="Paid"){const reference=evidence.reference??"";const paidDate=evidence.date??"";if(!liabilityCanRecordPaid(liability,reference,paidDate))return false;setPayroll((state)=>({...state,liabilities:state.liabilities.map((entry)=>{if(entry.id!==id||entry.status!=="Scheduled")return entry;const updated:TaxLiabilityRecord={...entry,status:"Paid",paidAt:paidDate,paidBy:currentUser.id,paymentReference:reference.trim()};return updated;})}));return true;}return false;};
   const resetPayroll=()=>{if(runtime.isDemo&&isAdmin)setPayroll(createPayrollSeed());};
-  return <PayrollContext.Provider value={{payroll,savePayGroup,savePayrollEmployee,saveWithholding,saveEmployerTaxRule,saveBenefitTaxRule,buildRegularRun,buildBonusRun,setRunStatus,voidRunForCorrection,voidAndReissue,settleDisbursement,failDisbursement,retryDisbursement,updateLiability,resetPayroll}}>{children}</PayrollContext.Provider>;
+  const publishedPayroll=useMemo(()=>payrollForViewer(payroll,currentUser),[payroll,currentUser]);
+  return <PayrollContext.Provider value={{payroll:publishedPayroll,savePayGroup,savePayrollEmployee,saveWithholding,saveEmployerTaxRule,saveBenefitTaxRule,buildRegularRun,buildBonusRun,setRunStatus,voidRunForCorrection,voidAndReissue,settleDisbursement,failDisbursement,retryDisbursement,updateLiability,resetPayroll}}>{children}</PayrollContext.Provider>;
 }
 export function usePayroll(){const value=useContext(PayrollContext);if(!value)throw new Error("usePayroll must be used inside PayrollProvider");return value;}
