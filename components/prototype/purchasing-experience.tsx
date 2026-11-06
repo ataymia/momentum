@@ -105,7 +105,7 @@ const columns:Record<Section,Column[]>={
   receipts:[{key:"po",label:"PO"},{key:"cases",label:"Cases"},{key:"lot",label:"Lot code"},{key:"bestBy",label:"Best by"},{key:"warehouse",label:"Location"},{key:"status",label:"Ledger posting"}],
   bills:[{key:"invoice",label:"Invoice"},{key:"po",label:"PO"},{key:"cases",label:"Billed cases"},{key:"total",label:"Total"},{key:"variance",label:"Price variance"},{key:"status",label:"Match / approval"},{key:"due",label:"Unpaid"}],
   payments:[{key:"bill",label:"Bill"},{key:"reference",label:"Reference"},{key:"total",label:"Recorded"},{key:"status",label:"External settlement"}],
-  credits:[{key:"bill",label:"Bill"},{key:"reference",label:"Reference"},{key:"reason",label:"Reason"},{key:"total",label:"Credit"}],
+  credits:[{key:"bill",label:"Bill"},{key:"reference",label:"Reference"},{key:"reason",label:"Reason"},{key:"total",label:"Credit"},{key:"status",label:"Review"}],
   expenses:[{key:"description",label:"Description"},{key:"vendor",label:"Vendor"},{key:"total",label:"Amount"},{key:"status",label:"Review"}],
 };
 function buildRows(s:PurchasingState,section:Section):Row[]{
@@ -115,7 +115,7 @@ function buildRows(s:PurchasingState,section:Section):Row[]{
     case "receipts":return s.receipts.map(r=>({id:r.id,date:date(r.recordedAt),status:"Not posted",values:{po:poName(s,r.poId),cases:r.cases,lot:r.lotCode,bestBy:r.bestBy,warehouse:r.warehouse,status:"Pending inventory posting"}}));
     case "bills":return s.bills.map(b=>{const m=threeWayMatch(s,b);const st=b.approvedAt?"Approved":m.matched?"Matched · review needed":"Mismatch / awaiting receipt";return {id:b.id,date:date(b.recordedAt),status:st,values:{invoice:b.invoiceNumber,po:poName(s,b.poId),cases:b.cases,total:b.amountCents,variance:m.varianceCents,status:st,due:billDueCents(s,b)}};});
     case "payments":return s.payments.map(p=>({id:p.id,date:date(p.recordedAt),status:"Unverified",values:{bill:s.bills.find(b=>b.id===p.billId)?.invoiceNumber??p.billId,reference:p.reference,total:p.amountCents,status:"Local note only"}}));
-    case "credits":return s.credits.map(c=>({id:c.id,date:date(c.recordedAt),status:"Recorded",values:{bill:s.bills.find(b=>b.id===c.billId)?.invoiceNumber??c.billId,reference:c.reference,reason:c.reason,total:c.amountCents}}));
+    case "credits":return s.credits.map(c=>({id:c.id,date:date(c.recordedAt),status:c.approvedAt?"Reviewed":"Pending review",values:{bill:s.bills.find(b=>b.id===c.billId)?.invoiceNumber??c.billId,reference:c.reference,reason:c.reason,total:c.amountCents,status:c.approvedAt?"Reviewed":"Pending review"}}));
     case "expenses":return s.expenses.map(e=>({id:e.id,date:date(e.recordedAt),status:e.approvedAt?"Approved":"Awaiting approval",values:{description:e.description,vendor:e.vendorId?vendorName(s,e.vendorId):"Not linked",total:e.amountCents,status:e.approvedAt?"Approved":"Awaiting approval"}}));
   }
 }
@@ -129,6 +129,10 @@ function RowAction({section,id,state,role,actorId,run}:{section:Section;id:strin
   if(section==="bills"){
     const b=state.bills.find(b=>b.id===id)!;
     if(admin&&!b.approvedAt&&b.recordedBy!==actorId&&threeWayMatch(state,b).matched)return <button type="button" onClick={()=>run({kind:"bill.approve",id})}>Approve match</button>;
+  }
+  if(section==="credits"){
+    const c=state.credits.find(c=>c.id===id)!;
+    if(admin&&!c.approvedAt&&c.recordedBy!==actorId)return <button type="button" onClick={()=>run({kind:"credit.approve",id})}>Review credit</button>;
   }
   if(section==="expenses"){
     const e=state.expenses.find(e=>e.id===id)!;
@@ -169,7 +173,7 @@ export function PurchasingExperience({section,id}:{section:string;id?:string}){
   return <div>
     <header className="prototype-heading">{id&&<button type="button" className="prototype-back" onClick={()=>navigateToRoute("/purchases/"+selected)}><ArrowLeft size={15}/> Back to {sectionTitles[selected]}</button>}
       <h1>{sectionTitles[selected]}{id?" · "+id:""}</h1><p>Purchasing work queue with draft approvals, physical receipt evidence and three-way bill checks.</p></header>
-    <section className="prototype-panel"><p className="prototype-note"><ShieldCheck size={15}/> Isolated local demonstration. Purchase orders are not sent to vendors, receipts do not increase sellable stock, payments do not move money, and browser records are not a financial ledger.</p>
+    <section className="prototype-panel"><p className="prototype-note"><ShieldCheck size={15}/> Isolated local demonstration. Purchase orders are not sent to vendors, receipts do not increase sellable stock, payment references do not reduce verified payables, and browser records are not a financial ledger.</p>
     <p>Operating sequence: registered vendor → prepared PO → independent approval → physical receipt → invoice-to-PO/receipt match → independent bill approval → payment reference and vendor credit review.</p></section>
     {loaded&&<PurchasingForm key={selected} section={selected} state={state} role={currentUser.role} run={run}/>}
     {notice&&<p className="prototype-note" role="status">{notice}</p>}
@@ -185,7 +189,7 @@ export function PurchasingExperience({section,id}:{section:string;id?:string}){
         <th><button type="button" onClick={()=>{setDescending(sort==="date"?!descending:true);setSort("date");}}>Recorded <ArrowUpDown size={13}/></button></th>
         <th><button type="button" onClick={()=>{setDescending(sort==="id"?!descending:false);setSort("id");}}>ID <ArrowUpDown size={13}/></button></th>
         {columns[selected].map(col=><th key={col.key}><button type="button" onClick={()=>{setDescending(sort===col.key?!descending:false);setSort(col.key);}}>{col.label} <ArrowUpDown size={13}/></button></th>)}
-        {["orders","bills","expenses"].includes(selected)&&<th>Control</th>}
+        {["orders","bills","credits","expenses"].includes(selected)&&<th>Control</th>}
       </tr></thead><tbody>{filtered.map(row=><tr key={row.id}>
         <td>{row.date}</td><td>{selected==="orders"||selected==="bills"?<button className="prototype-link" type="button" onClick={()=>navigateToRoute("/purchases/"+selected+"/"+encodeURIComponent(row.id))}>{row.id}</button>:row.id}</td>
         {columns[selected].map(col=><td key={col.key}>{monetaryColumns.has(col.key)?money(Number(row.values[col.key]??0)):String(row.values[col.key]??"")}</td>)}
