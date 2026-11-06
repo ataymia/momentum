@@ -44,3 +44,22 @@ export function parseFirstSeenTimes(input:unknown):Record<string,string>{
     .sort((a,b)=>String(b[1]).localeCompare(String(a[1]))).slice(0,2000);
   return Object.fromEntries(pairs) as Record<string,string>;
 }
+
+/** Merge cross-tab first-seen records without moving a first-seen moment forward. */
+export function mergeFirstSeenRecords(
+  current: Record<string,string>,
+  incoming: Record<string,string>,
+): Record<string,string> {
+  const validCurrent=parseFirstSeenTimes(current);
+  const validIncoming=parseFirstSeenTimes(incoming);
+  const merged={...validCurrent};
+  for(const [id,at] of Object.entries(validIncoming)){
+    if(!merged[id]||Date.parse(at)<Date.parse(merged[id]))merged[id]=at;
+  }
+  const keys=Object.keys(merged);
+  if(keys.length>2000){
+    const retain=keys.sort((a,b)=>merged[b].localeCompare(merged[a])).slice(0,2000);
+    return Object.fromEntries(retain.map(id=>[id,merged[id]]));
+  }
+  return merged;
+}
