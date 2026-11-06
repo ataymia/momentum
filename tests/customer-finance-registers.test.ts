@@ -40,3 +40,27 @@ test("customer finance portal is disabled for connected data and exports only sc
  assert.match(hub,/downloadCsv\("momentum-my-payments\.csv",finance\.payments,customerPaymentColumns\)/);
  assert.match(hub,/downloadCsv\("momentum-my-statement\.csv",finance\.statement,customerStatementColumns\)/);
 });
+
+test("duplicate allocation identifiers do not duplicate cleared payment credits",()=>{
+ const state:CommerceState={version:1,invoices:[invoice("a","a","owned")],payments:[
+ {id:"pay-a",accountId:"owned",receivedAt:"2026-11-05",amount:20,method:"ACH",status:"Cleared",settledAt:"2026-11-05",settledBy:"reviewer",createdBy:"test",createdAt:"2026-11-05"}
+ ],allocations:[
+ {id:"same",paymentId:"pay-a",invoiceId:"a",amount:10,createdAt:"2026-11-05",createdBy:"test"},
+ {id:"same",paymentId:"pay-a",invoiceId:"a",amount:10,createdAt:"2026-11-05",createdBy:"test"}
+ ],credits:[],refunds:[],notes:[]};
+ const result=projectCustomerFinance(state,[order("a","owned")],new Set(["owned"]),new Map());
+ assert.equal(result.payments[0].amount,10);
+ assert.equal(result.statement.filter(row=>row.type==="Cleared payment").length,1);
+});
+test("settled refunds are capped by allocated cleared funds and duplicate IDs are ignored",()=>{
+ const state:CommerceState={version:1,invoices:[invoice("a","a","owned")],payments:[
+ {id:"pay-a",accountId:"owned",receivedAt:"2026-11-05",amount:20,method:"ACH",status:"Cleared",settledAt:"2026-11-05",settledBy:"reviewer",createdBy:"test",createdAt:"2026-11-05"}
+ ],allocations:[{id:"alloc",paymentId:"pay-a",invoiceId:"a",amount:10,createdAt:"2026-11-05",createdBy:"test"}],
+ credits:[],refunds:[
+ {id:"refund-one",paymentId:"pay-a",amount:6,status:"Settled",settledAt:"2026-11-05",createdAt:"2026-11-05",createdBy:"test"},
+ {id:"refund-one",paymentId:"pay-a",amount:6,status:"Settled",settledAt:"2026-11-05",createdAt:"2026-11-05",createdBy:"test"},
+ {id:"refund-over",paymentId:"pay-a",amount:8,status:"Settled",settledAt:"2026-11-05",createdAt:"2026-11-05",createdBy:"test"}
+ ],notes:[]};
+ const result=projectCustomerFinance(state,[order("a","owned")],new Set(["owned"]),new Map());
+ assert.deepEqual(result.statement.filter(row=>row.type==="Settled refund").map(row=>row.debit),[6]);
+});
