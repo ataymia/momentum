@@ -35,7 +35,7 @@ import {
 } from "./notification-policy-v2";
 import {usePerformance} from "./performance-context";
 import {useWorkspace} from "./workspace-context";
-import {mergeFirstSeenTimes,notificationDisplayTime,parseFirstSeenTimes} from "./notification-display-time";
+import {mergeFirstSeenRecords,mergeFirstSeenTimes,notificationDisplayTime,parseFirstSeenTimes} from "./notification-display-time";
 import {mergeReadReceipts,parseReadReceipts,recentRecordedStatus} from "./notification-receipts";
 
 const READ_KEY="momentum-derived-notification-read-v1";
@@ -109,13 +109,17 @@ function NotificationBridge({
     if(!sameIds(merged,readDerived))setReadDerived(merged);
   },[userId,readDerived]);
   useEffect(()=>{
-    if(typeof window!=="undefined")window.localStorage.setItem(FIRST_SEEN_KEY+":"+userId,JSON.stringify(firstSeen));
+    if(typeof window==="undefined")return;
+    const merged=mergeFirstSeenRecords(readFirstSeen(userId),firstSeen);
+    try{window.localStorage.setItem(FIRST_SEEN_KEY+":"+userId,JSON.stringify(merged));}
+    catch{/* Presentation metadata must never block the application. */}
+    if(JSON.stringify(merged)!==JSON.stringify(firstSeen))setFirstSeen(merged);
   },[userId,firstSeen]);
   // A second tab must not resurrect notifications that another tab already cleared.
   useEffect(()=>{
     const onStorage=(event:StorageEvent)=>{
       if(event.key===READ_KEY+":"+userId)setReadDerived(current=>mergeReadReceipts(current,readIds(userId)));
-      if(event.key===FIRST_SEEN_KEY+":"+userId)setFirstSeen(readFirstSeen(userId));
+      if(event.key===FIRST_SEEN_KEY+":"+userId)setFirstSeen(current=>mergeFirstSeenRecords(current,readFirstSeen(userId)));
     };
     window.addEventListener("storage",onStorage);
     return()=>window.removeEventListener("storage",onStorage);
