@@ -1,3 +1,5 @@
+import {usableNotificationTime} from "./notification-display-time";
+
 /**
  * Read receipts are scoped to one signed-in user, never shared between users.
  * They are presentation state, not proof of delivery or a business event.
@@ -30,7 +32,7 @@ export function mergeReadReceipts(...sets: ReadonlySet<string>[]): Set<string> {
  * Active review/action notices use their own lifecycle and do not expire here.
  */
 export function recentRecordedStatus(occurredAt: string | undefined, now: Date): boolean {
-  if (!occurredAt?.trim()) return false;
+  if (!usableNotificationTime(occurredAt)) return false;
   const occurred = Date.parse(occurredAt);
   const current = now.getTime();
   return Number.isFinite(occurred) && Number.isFinite(current) &&
