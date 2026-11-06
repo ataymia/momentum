@@ -29,3 +29,13 @@ test("quarterly prices use prior calendar quarter instead of rolling 90-day wind
   assert.equal(result.basis,"Prior calendar-quarter monthly average");
   assert.equal(result.averageMonthlyCases,20);assert.equal(result.pricePerCase,24);
 });
+
+test("intro requires first approved opening order with at least ten cases",()=>{
+ const short=[order("short","2026-01-01",2),order("later","2026-01-05",10)];
+ const result=assessRetailPriceBook("store",short,"2026-02-01");
+ assert.equal(result.status,"Not started");assert.equal(result.pricePerCase,null);
+ const draft=[{...order("pending","2026-01-01",10),status:"Awaiting approval"}];
+ assert.equal(assessRetailPriceBook("store",draft,"2026-02-01").status,"Not started");
+ const future=[order("future","2027-01-01",10)];
+ assert.equal(assessRetailPriceBook("store",future,"2026-12-31").status,"Not started");
+});

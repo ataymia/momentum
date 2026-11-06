@@ -33,11 +33,20 @@ export function tierForMonthlyCases(cases:number):PricingTier{
 }
 export function assessRetailPriceBook(accountId:string,records:readonly PriceOrder[],asOf:string):PriceAssessment{
   if(!isValidCalendarDateKey(asOf))throw new Error("Invalid assessment date");
-  const orders=records.filter(o=>o.accountId===accountId&&!o.testOnly&&o.status!=="Cancelled"&&
-    isValidCalendarDateKey(o.placedAt.slice(0,10))&&Number.isSafeInteger(o.cases)&&o.cases>0)
+  const orders=records.filter(o=>o.accountId===accountId&&!o.testOnly&&
+    ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(o.status)&&
+    isValidCalendarDateKey(o.placedAt.slice(0,10))&&o.placedAt.slice(0,10)<=asOf&&
+    Number.isSafeInteger(o.cases)&&o.cases>0)
     .sort((a,b)=>a.placedAt.localeCompare(b.placedAt)||a.id.localeCompare(b.id));
-  if(!orders.length)return{status:"Not started",tier:null,pricePerCase:null,paidCases:0,averageMonthlyCases:null,basis:"No opening order",periodEnd:null,nextReview:null,evidenceOrderIds:[]};
-  const launchStart=orders[0].placedAt.slice(0,10);
+  const first=orders[0];
+  // A less-than-minimum first order never creates an automatic introductory entitlement.
+  // Approved account eligibility still requires a separate owner-approved commercial record.
+  if(!first||first.cases<RETAIL_PROGRAM_POLICY.openingMinCases)return{
+    status:"Not started",tier:null,pricePerCase:null,paidCases:0,
+    averageMonthlyCases:null,basis:first?"Opening order below 10-case qualification":"No approved opening order",
+    periodEnd:null,nextReview:null,evidenceOrderIds:[],
+  };
+  const launchStart=first.placedAt.slice(0,10);
   const launchEnd=addCalendarDays(launchStart,RETAIL_PROGRAM_POLICY.introDays-1);
   const paid=orders.filter(o=>o.paymentStatus==="Paid"&&o.placedAt.slice(0,10)<=asOf);
   const launch=paid.filter(o=>o.placedAt.slice(0,10)>=launchStart&&o.placedAt.slice(0,10)<=launchEnd);
