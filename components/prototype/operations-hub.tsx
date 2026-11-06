@@ -177,7 +177,7 @@ function LeadFollowupScheduler({accountId,defaultDate}:{accountId:string;default
     if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!Number.isFinite(Date.parse(date+"T12:00:00"))||date<new Date().toLocaleDateString("en-CA")||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(time)||objective.trim().length<5){
       setFeedback("Choose a valid future date, time and objective of at least five characters.");return;
     }
-    const id=createAppointment({accountId,date,startTime:time,duration:30,type:kind,objective:objective.trim(),priority:"Normal",location:account?.streetAddress||account?.location||""});
+    const id=createAppointment({accountId,date,startTime:time,duration:30,type:kind,objective:objective.trim(),priority:"Normal"});
     if(!id){setFeedback("Scheduling was rejected. Check representative permissions, territory and calendar conflicts.");return;}
     setFeedback("Follow-up scheduled in this demonstration workspace.");
     setOpen(false);
