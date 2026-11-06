@@ -38,6 +38,7 @@ import {ActionCenterExperience} from "./action-center-experience";
 import {WorkspaceHome} from "./workspace-home";
 import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
 import {WorkExceptionsExperience,CompletedWorkExperience} from "./work-review-experience";
+import {DealsDirectory,DealEditor} from "./crm-deals-experience";
 import type { Order } from "../../lib/types";
 
 function Empty({ children }: { children: ReactNode }) {
@@ -190,6 +191,7 @@ function LeadRecord({id}:{id:string}){
     <div className="prototype-columns"><section className="prototype-panel"><h2>Business and contact</h2>
       <dl className="prototype-facts"><div><dt>Location</dt><dd>{account.location}</dd></div><div><dt>ZIP</dt><dd>{account.postalCode||"Not recorded"}</dd></div><div><dt>Contact</dt><dd>{account.contactName||"Not recorded"}</dd></div><div><dt>Email</dt><dd>{account.email||"Not recorded"}</dd></div><div><dt>Phone</dt><dd>{account.phone||"Not recorded"}</dd></div></dl>
       <div className="prototype-controls"><OpenLink to={"/sales/customers/"+encodeURIComponent(id)}>Customer account</OpenLink>{account.contactName&&<OpenLink to={"/crm/contacts/"+encodeURIComponent(id)}>Contact detail</OpenLink>}</div>
+      <div className="prototype-controls"><OpenLink to="/crm/deals">Sales opportunities</OpenLink><OpenLink to="/crm/deals/new">Create a deal</OpenLink></div>
       <p className="prototype-note">Lead stage is sourced from the existing account record. Stage editing remains disabled pending audited server authorization.</p>
       {canHandoff&&<form className="prototype-panel" aria-label="Transfer lead responsibility" onSubmit={handoff}>
         <h3>Reassign lead</h3>
@@ -684,6 +686,9 @@ export function PrototypeOperationsHub(){
   if(path==="/sales/customers")return <AccountsDirectory/>;
   if(segments[0]==="crm"&&segments[1]==="leads"&&segments[2])return <LeadRecord id={decodeURIComponent(segments[2])}/>;
   if(path==="/crm/leads")return <AccountsDirectory leadMode/>;
+  if(path==="/crm/deals/new")return <DealEditor/>;
+  if(segments[0]==="crm"&&segments[1]==="deals"&&segments[2])return <DealEditor id={decodeURIComponent(segments[2])}/>;
+  if(path==="/crm/deals")return <DealsDirectory/>;
   if(segments[0]==="crm"&&segments[1]==="contacts"&&segments[2])return <ContactRecord id={decodeURIComponent(segments[2])}/>;
   if(path==="/crm/contacts")return <ContactsDirectory/>;
   if(path==="/calendar"||path==="/calendar/meetings")return <CalendarPreview meetingsOnly={path.endsWith("/meetings")}/>;
