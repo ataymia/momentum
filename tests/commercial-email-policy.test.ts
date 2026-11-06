@@ -11,7 +11,7 @@ test("order emails require confirmed approval and prior confirmation for cancel"
  const approved={...awaiting,status:"Approved"};
  assert.deepEqual(m.transitionPolicies(
   "domains/commercial/fields/orders",awaiting,approved),
-  ["order.confirmed.customer"]);
+  ["order.confirmed.customer","order.confirmed.rep"]);
  assert.deepEqual(m.transitionPolicies(
   "domains/commercial/fields/orders",undefined,approved),[]);
  assert.deepEqual(m.transitionPolicies(
@@ -36,11 +36,11 @@ test("approval return requires real Pending to Returned transition",()=>{
  assert.deepEqual(m.transitionPolicies(
   "domains/commercial/fields/approvals",
   previous,{...previous,status:"Approved",decidedBy:"admin-uid",decidedAt:at}),
-  ["order.confirmed.customer"]);
+  ["order.confirmed.customer","order.confirmed.rep"]);
  assert.deepEqual(m.transitionPolicies(
   "domains/workspace/fields/approvals",
   previous,{...previous,status:"Approved",decidedBy:"admin-uid",decidedAt:at}),
-  ["order.confirmed.customer"]);
+  ["order.confirmed.customer","order.confirmed.rep"]);
 });
 
 test("dispatch only alerts after loaded task actually departs",()=>{
@@ -48,7 +48,7 @@ test("dispatch only alerts after loaded task actually departs",()=>{
  assert.deepEqual(m.transitionPolicies(
   "domains/delivery/fields/tasks",task,{
    ...task,status:"In transit",departedAt:at,
-  }),["delivery.out_for_delivery.customer"]);
+  }),["delivery.out_for_delivery.customer","delivery.out_for_delivery.rep"]);
  assert.deepEqual(m.transitionPolicies(
   "domains/delivery/fields/tasks",task,{
    ...task,status:"In transit",
