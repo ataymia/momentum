@@ -172,10 +172,10 @@ export function SharedCalendarExperience(){
         <button type="button" onClick={()=>setAnchor(arizonaDateKey())}>Today</button>
         <button type="button" onClick={()=>setAnchor(length==="week"?addCalendarDays(anchor,7):shiftedMonth(anchor,1))}>Next</button>
       </div>
-      <div className="prototype-columns" aria-label="Calendar days">
+      <div className={"momentum-calendar-grid "+(length==="month"?"is-month":"is-week")} role="list" aria-label="Calendar days">
         {Array.from({length:days},(_,i)=>addCalendarDays(start,i)).map(date=>{
           const own=calendar.filter(m=>m.date===date),appts=field.filter(a=>a.date===date);
-          return <section className="prototype-panel" key={date}><h2>{date}</h2>
+          return <section className="momentum-calendar-day" role="listitem" key={date}><h2><span>{new Date(date+"T12:00:00Z").toLocaleDateString("en-US",{weekday:"short",timeZone:"UTC"})}</span> {date}</h2>
             {own.map(m=><div key={m.id} className="prototype-activity"><Go to={url(m.id)}>{m.title}</Go><small>{azTimeLabel(m.startTime)} · {m.attendeeIds.includes(currentUser?.id??"")?m.rsvps[currentUser!.id]:"Organizer"}</small></div>)}
             {appts.map(a=><div key={a.id} className="prototype-activity"><strong>{a.type} · {azTimeLabel(a.startTime)}</strong><small>{scope.accounts.find(ac=>ac.id===a.accountId)?.name??"Authorized field appointment"}</small></div>)}
             {!own.length&&!appts.length&&<small>No scheduled events</small>}

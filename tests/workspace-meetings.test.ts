@@ -140,3 +140,15 @@ test("B06 demo reset deliberately clears isolated meeting records",()=>{
  const source=readFileSync("components/momentum-app.tsx","utf8");
  assert.match(source,/MEETINGS_DEMO_KEY/);
 });
+
+test("B05 calendar week/month cards adapt across desktop, tablet, and mobile",()=>{
+ const ui=readFileSync("components/prototype/workspace-meetings-experience.tsx","utf8");
+ const css=readFileSync("app/workspace-meetings.css","utf8");
+ const layout=readFileSync("app/layout.tsx","utf8");
+ assert.match(ui,/momentum-calendar-grid/);
+ assert.match(ui,/role="listitem"/);
+ assert.match(css,/grid-template-columns:repeat\(7,minmax\(0,1fr\)\)/);
+ assert.match(css,/max-width:767px/);
+ assert.match(css,/min-width:768px/);
+ assert.match(layout,/import "\.\/workspace-meetings\.css"/);
+});
