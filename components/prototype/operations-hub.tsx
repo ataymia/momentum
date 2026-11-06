@@ -253,6 +253,9 @@ function ContactsDirectory(){
 /** A separate customer-facing surface with account-scoped records, not staff-wide ledgers. */
 function CustomerPortalContent({section}:{section:string}){
   const {scope,currentUser}=useWorkspace();const {commerce}=useCommerce();const runtime=useRuntimeMode();
+  const [invoiceQuery,setInvoiceQuery]=useState("");
+  const [invoiceStatus,setInvoiceStatus]=useState("all");
+  const [invoiceSort,setInvoiceSort]=useState<"issued-desc"|"issued-asc"|"due-asc"|"balance-desc">("issued-desc");
   const [deliveryQuery,setDeliveryQuery]=useState("");const [deliveryStatus,setDeliveryStatus]=useState("all");
   const [deliveryAccount,setDeliveryAccount]=useState("all");const [deliveryFrom,setDeliveryFrom]=useState("");
   const [deliveryThrough,setDeliveryThrough]=useState("");const [deliverySort,setDeliverySort]=useState<"newest"|"oldest"|"order"|"cases">("newest");
@@ -279,18 +282,35 @@ function CustomerPortalContent({section}:{section:string}){
       total:invoice.total,balance:invoiceBalance(commerce,invoice),
       status:computedInvoiceStatus(commerce,invoice),
     }));
+    const visibleInvoices=commerce.invoices.filter(invoice=>ids.includes(invoice.id)).filter(invoice=>{
+      const query=invoiceQuery.trim().toLocaleLowerCase();
+      const status=computedInvoiceStatus(commerce,invoice);
+      return (invoiceStatus==="all"||status===invoiceStatus)&&(!query||
+        invoice.number.toLocaleLowerCase().includes(query)||
+        (fulfilled.get(invoice.orderId)?.number??"").toLocaleLowerCase().includes(query));
+    }).sort((a,b)=>{
+      if(invoiceSort==="balance-desc")return invoiceBalance(commerce,b)-invoiceBalance(commerce,a)||a.number.localeCompare(b.number);
+      const aDate=invoiceSort==="due-asc"?(a.dueDate??"9999-12-31"):a.issuedAt;
+      const bDate=invoiceSort==="due-asc"?(b.dueDate??"9999-12-31"):b.issuedAt;
+      return (invoiceSort==="issued-desc"?bDate.localeCompare(aDate):aDate.localeCompare(bDate))||a.number.localeCompare(b.number);
+    });
+    const visibleIds=visibleInvoices.map(invoice=>invoice.id);
+    const visibleRegister=register.filter(row=>visibleInvoices.some(invoice=>invoice.number===row.invoiceNumber));
+    const invoiceStatuses=[...new Set(commerce.invoices.filter(invoice=>ids.includes(invoice.id)).map(invoice=>computedInvoiceStatus(commerce,invoice)))].sort();
     return <div><Heading title="My Invoices" description="Recorded documents for delivered orders linked to your authorized business account."/>
       <section className="prototype-panel">
        <p className="prototype-note">Only invoices tied to your authorized customer locations and orders recorded Delivered or Paid are shown. A recorded invoice is not proof of a separately emailed invoice or settled payment.</p>
-       <button type="button" disabled={!register.length} onClick={()=>
-         downloadCsv("momentum-my-invoices.csv",register,
+       <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search my invoices" value={invoiceQuery} onChange={event=>setInvoiceQuery(event.target.value)} placeholder="Invoice or order number"/></label><label>Status <select aria-label="Filter invoice status" value={invoiceStatus} onChange={event=>setInvoiceStatus(event.target.value)}><option value="all">All statuses</option>{invoiceStatuses.map(status=><option key={status} value={status}>{status}</option>)}</select></label><label>Sort <select aria-label="Sort my invoices" value={invoiceSort} onChange={event=>setInvoiceSort(event.target.value)}><option value="issued-desc">Newest issued</option><option value="issued-asc">Oldest issued</option><option value="due-asc">Due date</option><option value="balance-desc">Highest balance</option></select></label></div>
+       <button type="button" disabled={!visibleRegister.length} onClick={()=>
+         downloadCsv("momentum-my-invoices.csv",visibleRegister,
           ["invoiceNumber","orderNumber","recordedAt","dueDate","terms","total","balance","status"])}>
           Download my invoice register (CSV)
        </button>
-       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Invoice</th><th>Order</th><th>Issued</th><th>Due</th><th>Status</th><th>Balance</th></tr></thead><tbody>{commerce.invoices.filter(invoice=>ids.includes(invoice.id)).map(invoice=><tr key={invoice.id}><td><OpenLink to={"/portal/invoices/"+encodeURIComponent(invoice.id)}>{invoice.number}</OpenLink></td><td><OpenLink to={"/portal/orders/"+encodeURIComponent(invoice.orderId)}>{fulfilled.get(invoice.orderId)?.number??"Order"}</OpenLink></td><td>{invoice.issuedAt.slice(0,10)}</td><td>{invoice.dueDate?.slice(0,10)??"Not recorded"}</td><td>{computedInvoiceStatus(commerce,invoice)}</td><td>{invoiceBalance(commerce,invoice).toFixed(2)}</td></tr>)}</tbody></table></div>
-       <InvoicePrintCenter allowedInvoiceIds={ids} allowedOrderIds={[...fulfilled.keys()]}
+       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Invoice</th><th>Order</th><th>Issued</th><th>Due</th><th>Status</th><th>Balance</th></tr></thead><tbody>{visibleInvoices.map(invoice=><tr key={invoice.id}><td><OpenLink to={"/portal/invoices/"+encodeURIComponent(invoice.id)}>{invoice.number}</OpenLink></td><td><OpenLink to={"/portal/orders/"+encodeURIComponent(invoice.orderId)}>{fulfilled.get(invoice.orderId)?.number??"Order"}</OpenLink></td><td>{invoice.issuedAt.slice(0,10)}</td><td>{invoice.dueDate?.slice(0,10)??"Not recorded"}</td><td>{computedInvoiceStatus(commerce,invoice)}</td><td>{invoiceBalance(commerce,invoice).toFixed(2)}</td></tr>)}</tbody></table></div>
+       <InvoicePrintCenter allowedInvoiceIds={visibleIds} allowedOrderIds={[...new Set(visibleInvoices.map(invoice=>invoice.orderId))]}
          title="My printable invoices" description="Open an invoice or print one or all authorized documents. Your browser also supports Save as PDF."/>
        {!ids.length&&<Empty>No customer invoices currently meet the delivery and account verification criteria.</Empty>}
+       {ids.length&&!visibleIds.length&&<Empty>No invoices match the selected search or status filter.</Empty>}
       </section></div>;
   }
   if(section==="products"){
@@ -400,7 +420,8 @@ function CustomerOrderRecord({id,section}:{id:string;section:"orders"|"deliverie
       <div><dt>Current order status</dt><dd>{order.status}</dd></div>
       <div><dt>Payment state</dt><dd>{order.paymentStatus}</dd></div>
     </dl>
-    <button type="button" onClick={()=>downloadCsv("momentum-my-delivery-"+order.number+".csv",customerDeliveryExportRows([order]),customerDeliveryColumns)}>Download this order status (CSV)</button>
+    <OpenLink to="/portal/invoices">View invoices for my account</OpenLink>
+        <button type="button" onClick={()=>downloadCsv("momentum-my-delivery-"+order.number+".csv",customerDeliveryExportRows([order]),customerDeliveryColumns)}>Download this order status (CSV)</button>
     <p className="prototype-note">Recorded order status is not live GPS, an estimated arrival, a signed proof of delivery, or payment settlement evidence.</p></section>
     <section className="prototype-panel"><h2>Ordered products</h2><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Product</th><th>Cases</th></tr></thead><tbody>{lines.map(line=><tr key={line.id}><td>{line.product}</td><td>{line.cases}</td></tr>)}</tbody></table></div>
     {!lines.length&&<Empty>No verified product breakdown is available for this order.</Empty>}</section>
