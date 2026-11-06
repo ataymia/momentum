@@ -23,14 +23,15 @@ const tabs:ReadonlyArray<{id:Tab;label:string}>=[
 ];
 const columns=(...items:string[])=>items;
 
-export function MarketingWorkspaceExperience(){
+export function MarketingWorkspaceExperience({initialTab="requests"}:{initialTab?:Tab}){
  const {data,currentUser}=useWorkspace();
  const {state,submitRequest,decideRequest,fulfillRequest,createCampaign,decideCampaign,setCampaignStatus,
    decideSpend,reconcileSpend,reviewAttribution}=useMarketing();
  const runtime=useRuntimeMode();
  const admin=currentUser?.role==="Administrator";
+ const campaignViewer=admin||currentUser?.role==="Marketing";
  const demo=runtime.isDemo&&momentumStorage.mode()==="local";
- const [tab,setTab]=useState<Tab>("requests");
+ const [tab,setTab]=useState<Tab>(initialTab);
  const [query,setQuery]=useState("");
  const [status,setStatus]=useState("all");
  const [showForm,setShowForm]=useState(false);
@@ -53,14 +54,14 @@ export function MarketingWorkspaceExperience(){
  const scopedRequests=admin?state.requests:state.requests.filter(r=>r.requesterId===currentUser.id);
  const requests=scopedRequests.filter(r=>(status==="all"||status===r.status)&&
    [r.title,r.detail,r.type,r.id].join(" ").toLowerCase().includes(query.toLowerCase()));
- const campaigns=admin?state.campaigns.filter(c=>(status==="all"||status===c.status)&&
+ const campaigns=campaignViewer?state.campaigns.filter(c=>(status==="all"||status===c.status)&&
    [c.name,c.objective,c.audience,c.id].join(" ").toLowerCase().includes(query.toLowerCase())):[];
  const spend=admin?state.spend.filter(s=>(status==="all"||status===s.status)&&
    [s.vendor,s.businessPurpose,s.category,s.id].join(" ").toLowerCase().includes(query.toLowerCase())):[];
- const attributions=admin?state.attributions.filter(a=>(status==="all"||status===(a.reviewed?"Reviewed":"Pending"))&&
+ const attributions=campaignViewer?state.attributions.filter(a=>(status==="all"||status===(a.reviewed?"Reviewed":"Pending"))&&
    [a.sourceId,a.note,a.relation].join(" ").toLowerCase().includes(query.toLowerCase())):[];
- const materials=admin?state.materials.filter(m=>[m.name,m.id].join(" ").toLowerCase().includes(query.toLowerCase())):[];
- const partners=admin?state.partnerships.filter(p=>(status==="all"||status===p.status)&&[p.name,p.notes,p.type].join(" ").toLowerCase().includes(query.toLowerCase())):[];
+ const materials=campaignViewer?state.materials.filter(m=>[m.name,m.id].join(" ").toLowerCase().includes(query.toLowerCase())):[];
+ const partners=campaignViewer?state.partnerships.filter(p=>(status==="all"||status===p.status)&&[p.name,p.notes,p.type].join(" ").toLowerCase().includes(query.toLowerCase())):[];
  const safeExport=()=>{
    if(tab==="requests")return downloadCsv("momentum-marketing-requests.csv",requests.map(r=>({
     id:r.id,type:r.type,title:r.title,detail:r.detail,status:r.status,
@@ -129,13 +130,13 @@ export function MarketingWorkspaceExperience(){
    </header>
    <div className="prototype-domain-statbar">
     <article><small>Requests waiting</small><strong>{scopedRequests.filter(r=>r.status==="Submitted").length}</strong></article>
-    {admin&&<article><small>Campaigns awaiting approval</small><strong>{state.campaigns.filter(c=>c.status==="Awaiting approval").length}</strong></article>}
+    {campaignViewer&&<article><small>Campaigns awaiting approval</small><strong>{state.campaigns.filter(c=>c.status==="Awaiting approval").length}</strong></article>}
     {admin&&<article><small>Approved / reconciled spend</small><strong>{money(state.spend.filter(s=>["Approved","Reconciled"].includes(s.status)).reduce((n,s)=>n+s.amount,0))}</strong></article>}
-    {admin&&<article><small>Reviewed outcome evidence</small><strong>{state.attributions.filter(a=>a.reviewed).length}</strong></article>}
+    {campaignViewer&&<article><small>Reviewed outcome evidence</small><strong>{state.attributions.filter(a=>a.reviewed).length}</strong></article>}
    </div>
    {!demo&&<p className="prototype-note">Connected records are read-only in this redesign. Record mutations require separately authorized server-side controls. Exports show only your permitted records.</p>}
    <nav aria-label="Marketing workstreams" className="prototype-tabs">
-    {tabs.filter(t=>admin||t.id==="requests").map(t=><button key={t.id} type="button"
+    {tabs.filter(t=>admin||t.id==="requests"||(campaignViewer&&t.id!=="spend")).map(t=><button key={t.id} type="button"
       className={tab===t.id?"is-active":""} aria-current={tab===t.id?"page":undefined}
       onClick={()=>{setTab(t.id);setStatus("all");setQuery("");setShowForm(false);setError("");setMessage("");}}>{t.label}</button>)}
    </nav>
@@ -186,7 +187,7 @@ export function MarketingWorkspaceExperience(){
        </article>)}
        {!requests.length&&<p>No requests match your filters.</p>}
      </div>}
-     {tab==="campaigns"&&admin&&<div className="company-request-list">
+     {tab==="campaigns"&&campaignViewer&&<div className="company-request-list">
        {campaigns.map(c=><article key={c.id}><div><small>{c.startDate} to {c.endDate} · {c.status}</small><strong>{c.name}</strong><p>{c.objective}</p>
         <p>Requested {money(c.requestedBudget)} · Approved {c.approvedBudget==null?"Not approved":money(c.approvedBudget)} · Recorded spend {money(campaignSpend(state,c.id))}</p>
         <p>Success measure: {c.successMeasure}. Reviewed outcome links: {attributionSummary(state,data,c.id).evidenceCount}.</p></div>
@@ -208,19 +209,19 @@ export function MarketingWorkspaceExperience(){
          {demo&&s.status==="Approved"&&<button type="button" onClick={()=>action("Spend reconciliation",()=>reconcileSpend(s.id))}>Reconcile</button>}
        </article>)}{!spend.length&&<p>No marketing spend records match.</p>}
      </div>}
-     {tab==="outcomes"&&admin&&<div className="company-request-list">
+     {tab==="outcomes"&&campaignViewer&&<div className="company-request-list">
        {attributions.map(a=><article key={a.id}><div><small>{a.sourceType} · {a.relation} · {a.reviewed?"Reviewed":"Not reviewed"}</small>
        <strong>{state.campaigns.find(c=>c.id===a.campaignId)?.name??"Campaign not found"}</strong>
        <p>Source {a.sourceId} · Account {data.accounts.find(x=>x.id===a.accountId)?.name??"Unknown"}</p><p>{a.note}</p></div>
        {demo&&!a.reviewed&&<button type="button" onClick={()=>action("Attribution evidence review",()=>reviewAttribution(a.id))}>Verify evidence</button>}
        </article>)}{!attributions.length&&<p>No reviewed or pending attribution evidence matching this filter. Do not equate associated orders with proven marketing credit.</p>}
      </div>}
-     {tab==="materials"&&admin&&<div className="company-request-list">
+     {tab==="materials"&&campaignViewer&&<div className="company-request-list">
        {materials.map(m=><article key={m.id}><div><small>Reorder at {m.reorderPoint} {m.unit}</small>
          <strong>{m.name}</strong><p>Recorded balance: {materialBalance(state,m.id)} {m.unit}</p></div></article>)}
        {!materials.length&&<p>No materials match your search.</p>}
      </div>}
-     {tab==="partners"&&admin&&<div className="company-request-list">
+     {tab==="partners"&&campaignViewer&&<div className="company-request-list">
        {partners.map(p=><article key={p.id}><div><small>{p.type} · {p.status}</small><strong>{p.name}</strong>
         <p>{p.notes}</p><p>{p.contact??"Contact not recorded"}</p></div></article>)}
        {!partners.length&&<p>No matching partnerships.</p>}

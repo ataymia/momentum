@@ -81,11 +81,11 @@ export const MENU_GROUPS: MenuGroup[] = [
   { label: "Marketing", entries: [
     { label: "Marketing Overview", path: "/marketing", permission: "marketing", state: "prototype" },
     { label: "Marketing Administration", path: "/marketing/workflow", permission: "settings", state: "prototype" },
-    { label: "Campaigns", path: "/marketing/campaigns", permission: "marketing", state: "planned" },
+    { label: "Campaigns", path: "/marketing/campaigns", permission: "marketing", state: "prototype" },
     { label: "Brand Ambassadors", path: "/marketing/ambassadors", permission: "brandAmbassadors", state: "existing" },
   ] },
   { label: "Insights & Support", entries: [
-    { label: "Forecasts", path: "/reports/forecasts", permission: "reports", state: "planned" },
+    { label: "Forecasts", path: "/reports/forecasts", permission: "reports", state: "prototype" },
     { label: "Reports", path: "/reports", permission: "reports", state: "existing" },
     { label: "Dashboards", path: "/reports/performance", permission: "performance", state: "existing" },
     { label: "Cases", path: "/support/cases", permission: "work", state: "planned" },
