@@ -60,7 +60,6 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
   const [copies, setCopies] = useState<Copies>(1);
   const [printJob, setPrintJob] = useState<PrintJob>(null);
   const [printNotice, setPrintNotice] = useState("");
-  const [printError, setPrintError] = useState("");
 
   // Warm the browser image cache before a synchronous user-initiated print on mobile Safari.
   useEffect(() => {
@@ -80,46 +79,22 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
   const toggleInvoice = (id: string) => setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   const toggleAll = () => setSelectedIds(allSelected ? [] : invoices.map((invoice) => invoice.id));
 
-  // The preview dialog covers the invoice toolbar. A print blocker must also render
-  // inside that dialog; otherwise the user clicks Print and sees no response.
-  const reportPrintBlock = (message: string) => {
-    setPrintJob(null);
-    setPrintError(message);
-    setPrintNotice(message);
-  };
-
   const startPrint = (ids: string[]) => {
-    setPrintError("");
     const unique = [...new Set(ids)].filter((id) => invoices.some((invoice) => invoice.id === id));
     if (!unique.length) {
-      reportPrintBlock("Select at least one invoice to print.");
+      setPrintNotice("Select at least one invoice to print.");
       return;
     }
-    // Issued invoice records must always remain printable. Missing customer legal
-    // identity is shown explicitly ON the printed sheet, never silently invented
-    // or used to disable the user's print action. Historical voids are marked VOID.
-    const incomplete = unique.filter((id) => {
-      const invoice = invoices.find((row) => row.id === id);
-      const location = data.accounts.find((row) => row.id === invoice?.accountId);
-      const customer = location ? customerForLocation(data, location) : undefined;
-      return !legalBillingName(customer);
-    });
     if (typeof window.print !== "function") {
-      reportPrintBlock("This browser cannot open a print dialog. Open Momentum in a full browser that supports printing and retry.");
+      setPrintNotice("This browser does not expose a print dialog. Open the invoice preview in a browser that supports printing.");
       return;
     }
 
     // Keep the browser print call inside the user's click gesture and synchronously mount the print sheets.
     // The old delayed setTimeout could lose user activation and made Print appear dead on some browsers.
     flushSync(() => setPrintJob({ ids: unique, copies }));
-    setPrintNotice(incomplete.length
-      ? `${unique.length} invoice(s) prepared for print. ${incomplete.length} record(s) lack a verified legal billing name and are clearly marked on the printed document; update customer details before sending.`
-      : `${unique.length} invoice${unique.length === 1 ? "" : "s"} prepared · ${copies} cop${copies === 1 ? "y" : "ies"} each.`);
-    try {
-      window.print();
-    } catch {
-      reportPrintBlock("The browser could not open the print dialog. Open Momentum in a full browser with printing enabled and retry. No invoice was printed.");
-    }
+    setPrintNotice(`${unique.length} invoice${unique.length === 1 ? "" : "s"} prepared · ${copies} cop${copies === 1 ? "y" : "ies"} each.`);
+    window.print();
   };
 
   const invoiceSheet = (invoiceId: string, copyIndex = 0) => {
@@ -157,11 +132,10 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
 
       <section className="invoice-sheet__legacy-grid">
         <div><small>FROM</small><strong>{company.name}</strong><span>{company.street}</span><span>{company.cityStateZip}</span><span>{company.phone} · {company.attention}</span><span>{company.salesEmail}</span></div>
-        <div><small>BILL TO</small><strong>{legalBillingName(customer)??"Legal billing name not recorded"}</strong>{!legalBillingName(customer) && <span className="invoice-sheet__identity-warning">Customer legal name missing. Verify billing details before sending.</span>}{billToAddress && <span>{billToAddress}</span>}{apName && <span>A/P: {apName}</span>}{apPhone && <span>{apPhone}{apExtension ? ` ext. ${apExtension}` : ""}</span>}{apEmail && <span>{apEmail}</span>}{customer?.az5000Number && <span>AZ-5000: {customer.az5000Number}</span>}</div>
+        <div><small>BILL TO</small><strong>{legalBillingName(customer) ?? customer?.name ?? location?.name ?? ""}</strong>{billToAddress && <span>{billToAddress}</span>}{apName && <span>A/P: {apName}</span>}{apPhone && <span>{apPhone}{apExtension ? ` ext. ${apExtension}` : ""}</span>}{apEmail && <span>{apEmail}</span>}{customer?.az5000Number && <span>AZ-5000: {customer.az5000Number}</span>}</div>
         <div><small>SHIP TO</small><strong>{location ? locationLabel(location) : "Customer location"}</strong>{shipToAddress && <span>{shipToAddress}</span>}{location?.contactName && <span>{location.contactName}{location.contactRole ? ` · ${location.contactRole}` : ""}</span>}{location?.phone && <span>{location.phone}</span>}</div>
         
       </section>
-      {invoice.status === "Void" && <div className="invoice-sheet__void-warning">VOID / SUPERSEDED — HISTORICAL COPY — NOT PAYABLE</div>}
       <section className="invoice-sheet__document-meta">
         <div><span>INVOICE #</span><strong>{invoice.number}</strong></div>
         <div><span>INVOICE DATE</span><strong>{formatDate(invoice.issuedAt, { month: "2-digit", day: "2-digit", year: "numeric" })}</strong></div>
@@ -233,11 +207,11 @@ export function InvoicePrintCenter({allowedOrderIds,title="Customer invoices",de
           task.orderId===invoice.orderId&&task.status==="Delivered")||
           deliveryState.overrides.some((record)=>record.orderId===invoice.orderId));
         const billingBlocked=isConfirmedDelivered&&!billingCustomer?.billingEmail?.trim();
-        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{order?invoicePlacerLabel(placedBy?.name):"Not recorded"}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill>{billingBlocked&&<small role="status">Billing email required for delivery invoice.</small>}</span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => {setPrintError("");setPreviewId(invoice.id);}}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
+        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{order?invoicePlacerLabel(placedBy?.name):"Not recorded"}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill>{billingBlocked&&<small role="status">Billing email required for delivery invoice.</small>}</span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => setPreviewId(invoice.id)}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
       })}{invoices.length === 0 && <div className="review-empty"><FileText size={24}/><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}</div>
     </Section>
 
-    <Modal open={Boolean(previewId)} title={previewId ? commerce.invoices.find((invoice) => invoice.id === previewId)?.number ?? "Invoice" : "Invoice"} description="Print-ready invoice preview" onClose={() => {setPreviewId(null);setPrintError("");}} wide footer={<><Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>Close</Button>{previewId && <Button type="button" icon={<Printer size={15}/>} onClick={() => startPrint([previewId])}>Print / Save PDF</Button>}</>}>{printError && <p className="form-notice invoice-print-notice" role="alert">{printError}</p>}<div className="invoice-preview-shell">{preview}</div></Modal>
+    <Modal open={Boolean(previewId)} title={previewId ? commerce.invoices.find((invoice) => invoice.id === previewId)?.number ?? "Invoice" : "Invoice"} description="Print-ready invoice preview" onClose={() => setPreviewId(null)} wide footer={<><Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>Close</Button>{previewId && <Button type="button" icon={<Printer size={15}/>} onClick={() => startPrint([previewId])}>Print / Save PDF</Button>}</>}><div className="invoice-preview-shell">{preview}</div></Modal>
 
     {printPortal}
   </>;
