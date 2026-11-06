@@ -4,6 +4,8 @@
 import {useState} from "react";
 import {ArrowDownUp,ArrowLeft,ExternalLink,Search} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
+import {arizonaDateKey} from "../../lib/date-time";
+import {reviewInventoryLot} from "../../lib/stock-health-review";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {
   lotBalances,nodeLotBalance,reservedQuantity,warehouseAvailable,warehouseNodeId,
@@ -40,21 +42,25 @@ function LegacyInventoryControls(){
 }
 function useInventoryRows(){
   const {scope}=useWorkspace();const {ledger}=useInventoryLedger();
-  return scope.inventory.map(lot=>({
-    lot,
-    warehouseOnHand:nodeLotBalance(ledger,warehouseNodeId,lot.id),
-    reserved:reservedQuantity(ledger,lot.id),
-    sellable:lot.status==="Quality hold"?0:warehouseAvailable(ledger,lot.id),
-    recordedLocations:lotBalances(ledger,lot.id).filter(x=>x.node.type!=="External").map(x=>x.node.name),
-  }));
+  return scope.inventory.map(lot=>{
+    const warehouseOnHand=nodeLotBalance(ledger,warehouseNodeId,lot.id);
+    const reserved=reservedQuantity(ledger,lot.id);
+    return {
+      lot,warehouseOnHand,reserved,
+      sellable:lot.status==="Quality hold"?0:warehouseAvailable(ledger,lot.id),
+      recordedLocations:lotBalances(ledger,lot.id).filter(x=>x.node.type!=="External").map(x=>x.node.name),
+      health:reviewInventoryLot({bestBy:lot.bestBy,status:lot.status,warehouseOnHand,reserved},arizonaDateKey()),
+    };
+  });
 }
 export function InventoryDirectory(){
   const {scope}=useWorkspace();const records=useInventoryRows();
-  const [query,setQuery]=useState(""),[status,setStatus]=useState("all"),[product,setProduct]=useState("all");
+  const [query,setQuery]=useState(""),[status,setStatus]=useState("all"),[product,setProduct]=useState("all"),[risk,setRisk]=useState("all");
   const [bestByFrom,setBestByFrom]=useState(""),[bestByThrough,setBestByThrough]=useState("");
   const sort=useSort("lotCode");
   const rows=records.filter(r=>status==="all"||r.lot.status===status)
     .filter(r=>product==="all"||r.lot.product===product)
+    .filter(r=>risk==="all"||risk==="review"&&r.health.reviewRequired||risk==="past"&&r.health.issues.includes("Past best-by")||risk==="near"&&r.health.issues.includes("Best-by within 30 days")||risk==="custody"&&r.health.issues.some(i=>["Negative custody","Over-reserved"].includes(i)))
     .filter(r=>(!bestByFrom||r.lot.bestBy>=bestByFrom)&&(!bestByThrough||r.lot.bestBy<=bestByThrough))
     .filter(r=>[r.lot.product,r.lot.lotCode,r.lot.location,r.lot.status,r.lot.bestBy,...r.recordedLocations].join(" ").toLowerCase().includes(query.toLowerCase()))
     .sort((a,b)=>{
@@ -67,6 +73,7 @@ export function InventoryDirectory(){
           case "onHand":return r.warehouseOnHand;
           case "reserved":return r.reserved;
           case "sellable":return r.sellable;
+          case "risk":return r.health.summary;
           default:return r.lot.lotCode;
         }
       };
@@ -84,15 +91,16 @@ export function InventoryDirectory(){
         <label className="prototype-search"><Search size={16}/><input aria-label="Search lots" value={query} onChange={e=>setQuery(e.target.value)} placeholder="SKU, lot, warehouse, location"/></label>
         <label>Product<select aria-label="Filter inventory by product" value={product} onChange={e=>setProduct(e.target.value)}><option value="all">All products</option>{[...new Set(scope.inventory.map(l=>l.product))].sort().map(p=><option key={p}>{p}</option>)}</select></label>
         <label>Availability<select aria-label="Filter inventory status" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">All statuses</option>{[...new Set(scope.inventory.map(l=>l.status))].sort().map(s=><option key={s}>{s}</option>)}</select></label>
+        <label>Risk filter<select aria-label="Filter inventory exceptions" value={risk} onChange={e=>setRisk(e.target.value)}><option value="all">All lots</option><option value="review">Requires review</option><option value="past">Past best-by</option><option value="near">Within 30 days</option><option value="custody">Custody variance</option></select></label>
         <label>Best-by from<input type="date" aria-label="Best-by from" value={bestByFrom} onChange={e=>setBestByFrom(e.target.value)}/></label>
         <label>Through<input type="date" aria-label="Best-by through" value={bestByThrough} onChange={e=>setBestByThrough(e.target.value)}/></label>
       </div>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
-        {([["lotCode","Lot"],["product","Product"],["location","Storage label"],["bestBy","Best by"],["onHand","Warehouse on hand"],["reserved","Reserved"],["sellable","Available"],["status","Status"]] as const).map(([key,label])=>hdr(key,label))}
-      </tr></thead><tbody>{rows.map(({lot,warehouseOnHand,reserved,sellable})=><tr key={lot.id}>
+        {([["lotCode","Lot"],["product","Product"],["location","Storage label"],["bestBy","Best by"],["onHand","Warehouse on hand"],["reserved","Reserved"],["sellable","Available"],["status","Status"],["risk","Stock review"]] as const).map(([key,label])=>hdr(key,label))}
+      </tr></thead><tbody>{rows.map(({lot,warehouseOnHand,reserved,sellable,health})=><tr key={lot.id}>
         <td><Go path={"/inventory/lots/"+encodeURIComponent(lot.id)}>{lot.lotCode}</Go></td><td>{lot.product}</td><td>{lot.location}</td>
         <td>{date(lot.bestBy)}</td><td>{fmt(warehouseOnHand)}</td><td>{fmt(reserved)}</td><td>{fmt(sellable)}</td>
-        <td><span className="prototype-status">{lot.status}</span></td>
+        <td><span className="prototype-status">{lot.status}</span></td><td>{health.summary}</td>
       </tr>)}</tbody></table></div>
       {!rows.length&&<div className="prototype-empty">No inventory lots match your filters.</div>}
       <p className="prototype-note">Warehouse stock and reservations are sourced from the custody ledger. Customer-delivered or disposed cases do not count as sellable warehouse stock. All edits remain in the operational workflow until migrated and tested.</p>

@@ -5634,3 +5634,26 @@ button.lot-table:hover,button.lot-table.is-selected {
 .rep-self-delivery__signature{display:grid;gap:10px}
 .rep-self-delivery__signature p{margin:0;font-size:12px;color:var(--muted)}
 .rep-self-delivery__complete{display:flex;gap:8px;align-items:center;color:var(--green-600);font-weight:700}
+
+
+/* E workstream: isolated purchasing review and driver stops, responsive and touch-friendly. */
+.prototype-purchasing-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:14px;margin-top:16px;align-items:end}
+.prototype-purchasing-form label{display:grid;gap:7px;color:var(--ink);font-size:12px;font-weight:650}
+.prototype-purchasing-form input,.prototype-purchasing-form select{min-width:0;width:100%;min-height:42px;border:1px solid var(--line-strong);border-radius:9px;padding:9px 11px;background:var(--surface);color:var(--ink)}
+.prototype-purchasing-actions{display:flex;gap:10px;flex-direction:column;align-items:flex-start}
+.prototype-purchasing-actions button,.prototype-driver-stop__actions button{border:0;border-radius:9px;background:var(--blue-600,#1f5bd7);color:white;padding:11px 14px;cursor:pointer;font-weight:700}
+.prototype-purchasing-actions small{color:var(--muted);max-width:260px;line-height:1.45}
+.prototype-driver-completed{display:flex;gap:8px;align-items:center;white-space:nowrap;font-size:12px}
+.prototype-driver-completed input{min-width:16px;min-height:16px;accent-color:var(--blue-600,#1f5bd7)}
+.prototype-driver-stops{display:grid;gap:12px;margin-top:16px}
+.prototype-driver-stop{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:14px}
+.prototype-driver-stop__number{display:grid;place-items:center;align-self:start;width:32px;height:32px;border-radius:50%;font-weight:800;color:var(--ink);background:var(--blue-100)}
+.prototype-driver-stop strong{display:block;font-size:14px;overflow-wrap:anywhere}
+.prototype-driver-stop small{display:block;color:var(--muted);margin:4px 0 9px;font-size:12px}
+.prototype-driver-stop p{display:flex;align-items:flex-start;gap:6px;margin:6px 0;font-size:12px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
+.prototype-driver-stop p[role=alert]{color:var(--red-600,#a93636);font-weight:700}
+.prototype-driver-stop p svg{flex:none}
+.prototype-driver-stop__actions{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-top:12px}
+.prototype-driver-stop__actions button{display:inline-flex;align-items:center;gap:6px}
+.prototype-driver-stop__actions a{font-size:12px;display:inline-block;padding:10px 12px;border:1px solid var(--line-strong);border-radius:9px;color:var(--blue-600,#1f5bd7);font-weight:750;text-decoration:none}
+@media(max-width:600px){.prototype-purchasing-form{grid-template-columns:minmax(0,1fr)}.prototype-driver-stop{grid-template-columns:26px minmax(0,1fr);padding:11px}.prototype-driver-stop__number{width:26px;height:26px}.prototype-driver-stop__actions>*{width:100%;text-align:center;justify-content:center}}
