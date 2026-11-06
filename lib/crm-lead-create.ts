@@ -1,7 +1,7 @@
 import {validateNewAccountContact} from "./account-creation";
 import {findAccountDuplicate} from "./duplicate-engine";
 import {normalizePostalCode} from "./territory-engine";
-import type {Account,WorkspaceData} from "./types";
+import type {Account} from "./types";
 
 /** CRM lead creation uses the existing Account/Customer source of truth, never a parallel lead table. */
 export type LeadCreateDraft={
