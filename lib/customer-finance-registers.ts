@@ -22,25 +22,34 @@ export function projectCustomerFinance(
  const paymentRows=new Map<string,CustomerPaymentRow>();
  for(const invoice of invoices)statement.push({date:invoice.issuedAt.slice(0,10),location:locations.get(invoice.accountId)??"Authorized location",reference:invoice.number,type:"Invoice",status:computedInvoiceStatus(state,invoice),debit:invoice.total,credit:0});
  const validAllocations=new Map<string,number>();
+ const seenAllocationIds=new Set<string>();
  for(const allocation of state.allocations){
    const invoice=byInvoice.get(allocation.invoiceId),payment=cleared.get(allocation.paymentId);
-   if(!invoice||!payment||invoice.accountId!==payment.accountId||!Number.isFinite(allocation.amount)||allocation.amount<=0)continue;
+   if(!invoice||!payment||invoice.accountId!==payment.accountId||!Number.isFinite(allocation.amount)||allocation.amount<=0||seenAllocationIds.has(allocation.id))continue;
    const used=validAllocations.get(payment.id)??0;
    if(used+allocation.amount>payment.amount+0.005)continue;
+   seenAllocationIds.add(allocation.id);
    validAllocations.set(payment.id,used+allocation.amount);
    statement.push({date:payment.settledAt!.slice(0,10),location:locations.get(invoice.accountId)??"Authorized location",reference:invoice.number,type:"Cleared payment",status:"Cleared",debit:0,credit:allocation.amount});
    paymentRows.set(payment.id,{date:payment.settledAt!.slice(0,10),location:locations.get(payment.accountId)??"Authorized location",reference:payment.processorReference??payment.id,method:payment.method,status:"Cleared",amount:used+allocation.amount});
  }
+ const seenCreditIds=new Set<string>();
  for(const credit of state.credits){
    const invoice=byInvoice.get(credit.invoiceId);
-   if(invoice&&credit.status==="Applied"&&Number.isFinite(credit.amount)&&credit.amount>0&&credit.appliedAt)
-     statement.push({date:credit.appliedAt.slice(0,10),location:locations.get(invoice.accountId)??"Authorized location",reference:invoice.number,type:"Applied credit",status:"Applied",debit:0,credit:credit.amount});
+   if(!invoice||credit.status!=="Applied"||!Number.isFinite(credit.amount)||credit.amount<=0||!credit.appliedAt||seenCreditIds.has(credit.id))continue;
+   seenCreditIds.add(credit.id);
+   statement.push({date:credit.appliedAt.slice(0,10),location:locations.get(invoice.accountId)??"Authorized location",reference:invoice.number,type:"Applied credit",status:"Applied",debit:0,credit:credit.amount});
  }
+ const refundedByPayment=new Map<string,number>();
+ const seenRefundIds=new Set<string>();
  for(const refund of state.refunds){
    const payment=cleared.get(refund.paymentId);
-   if(!payment||refund.status!=="Settled"||!refund.settledAt||!Number.isFinite(refund.amount)||refund.amount<=0)continue;
+   if(!payment||refund.status!=="Settled"||!refund.settledAt||!Number.isFinite(refund.amount)||refund.amount<=0||seenRefundIds.has(refund.id))continue;
    const allocated=validAllocations.get(payment.id)??0;
-   if(allocated<=0)continue;
+   const alreadyRefunded=refundedByPayment.get(payment.id)??0;
+   if(allocated<=0||alreadyRefunded+refund.amount>allocated+0.005)continue;
+   seenRefundIds.add(refund.id);
+   refundedByPayment.set(payment.id,alreadyRefunded+refund.amount);
    statement.push({date:refund.settledAt.slice(0,10),location:locations.get(payment.accountId)??"Authorized location",reference:payment.processorReference??payment.id,type:"Settled refund",status:"Settled",debit:refund.amount,credit:0});
  }
  statement.sort((a,b)=>b.date.localeCompare(a.date)||a.reference.localeCompare(b.reference)||a.type.localeCompare(b.type));
