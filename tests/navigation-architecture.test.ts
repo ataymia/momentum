@@ -18,6 +18,7 @@ test("all eight approved groups remain in one authenticated sidebar", () => {
   ]);
   const shell = readFileSync("components/app-shell-v4.tsx","utf8");
   assert.match(shell, /<NavigationGroups\/>/);
+  assert.match(shell, /const PrototypeOperationsHub=lazy\(\(\)=>import\("\.\/prototype\/operations-hub"\)/);
   assert.match(shell, /<SidebarRouteLink/);
   assert.doesNotMatch(shell, /<DeviceNavigation/);
   assert.match(shell, /if\(!canVisitRoute\(currentUser,route\)\)/);

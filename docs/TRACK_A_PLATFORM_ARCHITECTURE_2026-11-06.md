@@ -14,20 +14,23 @@ The code already has eight agreed navigation groups, Next static export, Firebas
 ## Implemented in the A review
 - Central explicit deep-link contract for businesses, contacts, deals, orders, product items, invoices, payments, return/credit records, inventory lots, shipments, employee details and customer portal records.
 - UI gate for unknown/unauthorized URLs before legacy page selection. Backend and Firestore scope/permission checks remain required.
-- One common sidebar on mobile, tablet and desktop. Native anchor links support Copy Link and Open in New Tab, with SPA click interception only for ordinary left clicks.
+- One common sidebar on mobile, tablet and desktop. Prior hidden role-accessible Dispatch, Finance, Reporting Center and employee Timekeeping destinations are retained within the eight navigation groups until approved workflow replacements exist. Native anchor links support Copy Link and Open in New Tab, with SPA click interception only for ordinary left clicks.
 - Most-specific active sidebar state, including Calendar versus Meetings.
-- Browser popstate listener cleanup and static-hosting/role/route regression tests.
+- Browser popstate listener cleanup, lazy loading for the redesigned multi-module hub, and static-hosting/role/route regression tests.
 - Accessible responsive sidebar with focus-visible states, overlay, 44px mobile menu button and reduced-motion support.
 - No business records, rates, existing departmental logic or payment flows modified.
 
-## External feature research for A09
-Official Zoho CRM documentation confirms independent module list/Kanban views and related record details. Reference: https://help.zoho.com/portal/en/kb/crm/getting-started/articles/your-first-day-as-a-crm-user
+## External enterprise workflow research for A09
 
-Official Zoho Inventory documentation describes batch-linked transaction histories. Reference: https://www.zoho.com/us/inventory/help/advanced-inventory-tracking/batch-tracking.html
+Official documentation of leading CRM, inventory and employee-management
+software was checked separately. Useful vendor-neutral patterns include
+record list and stage board views, connected activity and document history,
+item-level batch traceability, and employee self-service links for leave,
+attendance, calendar and files. The underlying data, actions and legal
+controls remain the responsibility of B–G workstreams.
 
-Official Zoho People guidance lists self-service profile, leave, calendar, attendance and files. Reference: https://www.zoho.com/people/welcome-guide.html
-
-Recommendation: implement the useful interaction conventions, not proprietary vendor branding, layout, code or artwork. The department teams are responsible for the underlying data and workflow; this A branch owns only the navigation contract.
+No external brand name, proprietary artwork, code or copied trade dress
+is added to the Momentum application or new source documentation.
 
 ## A01–A13 ledger
 A01: PARTIAL. Shareable URL client screens, but all department pages and browser/deployed proof pending.
@@ -42,7 +45,7 @@ A09: RESEARCHED, partial implementation of general navigation/list-detail conven
 A10: BUILT route permission UI defense-in-depth. Backend rule/record, old session and cross-user verification still required.
 A11: BUILT responsive sidebar styles. Real screenshots/accessibility at 375/768/1024/1440px pending.
 A12: Confirmed isolated review branch. No main or deployment authorization.
-A13: PARTIAL. New files avoid external vendor branding. Remove names from new active code and documentation only, not preserved historical research, and never delete a concurrent worker branch without approval.
+A13: PARTIAL. New A files/documentation are vendor-neutral. The older vendor-named prototype branch is DIVERGED from the unified branch (190 commits ahead, 31 behind in the audited comparison), so deletion is unsafe until its unique work is reconciled or archived with Mia approval. No worker branch was deleted.
 
 ## Required staging walkthrough
 1. Open direct business, deal, contact, order, invoice, product, inventory and personnel URLs, refresh and confirm exact record in proper authorized roles.

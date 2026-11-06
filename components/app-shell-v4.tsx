@@ -11,7 +11,7 @@ import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
 import {startRouteNavigation, useNavigationPage, useNavigationRoute} from "../lib/navigation-store";
 import {MENU_GROUPS, CUSTOMER_MENU, canVisitRoute, canShowModuleInMenu, requiresPrototypePage, routeLabel} from "../lib/navigation-route-registry";
-import {PrototypeOperationsHub} from "./prototype/operations-hub";
+
 import {activeMenuPath} from "../lib/navigation-route-contract";
 import {SidebarRouteLink} from "./navigation/sidebar-route-link";
 import { AccountsPage } from "./pages/accounts";
@@ -36,6 +36,7 @@ import { SyncStatusPill } from "./settings/firebase-access-panel";
 import { Avatar, BrandMark, Button, Modal, formatDate } from "./ui";
 
 const GlobalSearchModal=lazy(()=>import("./global-search-modal").then((module)=>({default:module.GlobalSearchModal})));
+const PrototypeOperationsHub=lazy(()=>import("./prototype/operations-hub").then(module=>({default:module.PrototypeOperationsHub})));
 
 // Load rarely used workspaces on demand; do not parse all departmental pages before Home renders.
 const BrandAmbassadorsPage=lazy(()=>import("./pages/brand-ambassadors").then((module)=>({default:module.BrandAmbassadorsPage})));

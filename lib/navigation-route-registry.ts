@@ -49,6 +49,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Sales Orders", path: "/sales/orders", permission: "orders", state: "prototype" },
     { label: "Invoices", path: "/sales/invoices", permission: "orderCash", state: "prototype" },
     { label: "Payments Received", path: "/sales/payments", permission: "orderCash", state: "prototype" },
+    { label: "Finance Overview", path: "/finance", permission: "finance", state: "existing" },
     { label: "Sales Returns", path: "/sales/returns", permission: "orders", state: "prototype" },
     { label: "Credit Notes", path: "/sales/credit-notes", permission: "orderCash", state: "prototype" },
     { label: "Customer Portal", path: "/commerce/customer-portal", permission: "orders", state: "planned" },
@@ -67,6 +68,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Payments Made", path: "/purchases/payments", permission: "accounting", state: "planned" },
     { label: "Vendor Credits", path: "/purchases/credits", permission: "accounting", state: "planned" },
     { label: "Delivery Operations", path: "/operations/deliveries", permission: "orders", state: "prototype" },
+    { label: "Legacy Dispatch (retained)", path: "/operations/legacy-dispatch", permission: "dispatch", state: "existing" },
   ] },
   { label: "Human Resources", entries: [
     { label: "HR Overview", path: "/people", permission: "people", state: "prototype" },
@@ -78,6 +80,8 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Payroll Processing & Settings", path: "/people/payroll/workflow", permission: "payroll", state: "existing" },
     { label: "Training", path: "/people/training", permission: "trainingAdmin", state: "existing" },
     { label: "Time Off & Leave", path: "/people/leave", permission: "people", state: "prototype" },
+    { label: "Clock In / Timekeeping", path: "/people/timekeeping", permission: "timekeeping", state: "existing" },
+    { label: "My Training Resources", path: "/people/materials", permission: "materials", state: "existing" },
   ] },
   { label: "Marketing", entries: [
     { label: "Marketing Overview", path: "/marketing", permission: "marketing", state: "prototype" },
@@ -89,6 +93,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Forecasts", path: "/reports/forecasts", permission: "reports", state: "planned" },
     { label: "Reports", path: "/reports", permission: "reports", state: "existing" },
     { label: "Dashboards", path: "/reports/performance", permission: "performance", state: "existing" },
+    { label: "Reporting Center", path: "/reports/center", permission: "reportingCenter", state: "existing" },
     { label: "Cases", path: "/support/cases", permission: "work", state: "planned" },
     { label: "Documents", path: "/documents", permission: "materials", state: "prototype" },
     { label: "Help", path: "/help", permission: "help", state: "existing" },
@@ -253,7 +258,10 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
   if (!user || !canVisitRoute(user,path)) return false;
   if (user.role==="Customer") return false;
   const group = MENU_GROUPS.find(g=>g.entries.some(e=>e.path===normalizeRoutePath(path)))?.label;
-  if (group==="Human Resources" && user.role!=="Administrator") return false;
+  if (group==="Human Resources" && user.role!=="Administrator") {
+    // Ordinary employees may enter existing self-service routes, never HR admin or payroll.
+    return ["/people/timekeeping", "/people/materials"].includes(normalizeRoutePath(path));
+  }
   if (group==="Marketing" && !["Administrator","Marketing","Brand Ambassador"].includes(user.role)) return false;
   return true;
 }
