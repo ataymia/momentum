@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import test from "node:test";
 import type {CollectedCashFact,PaidOrderFact} from "../lib/commercial-source";
 import {insightCashSummary} from "../lib/insights-cash-summary";
@@ -33,4 +34,10 @@ test("F08: reports explorer is a real role-protected prototype route",()=>{
  assert(requiresPrototypePage("/reports/explorer"));
  assert.equal(canVisitRoute(role("Administrator"),"/reports/explorer"),true);
  assert.equal(canVisitRoute(role("Customer"),"/reports/explorer"),false);
+});
+
+test("F08: lot quality holds never count as sellable warehouse stock",()=>{
+ const ui=readFileSync("components/prototype/insights-explorer-experience.tsx","utf8");
+ assert(ui.includes('available:lot.status==="Quality hold"?0:warehouseAvailable(ledger,lot.id)'));
+ assert(ui.includes('invalid?"Invalid period":money(summary.net)'));
 });

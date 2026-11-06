@@ -40,7 +40,7 @@ export function InsightsExplorerExperience(){
  const paid=useMemo(()=>resolvedPaidOrderFacts(data,commerce).filter(f=>visibleOrders.has(f.orderId)),[data,commerce,visibleOrders]);
  const summary=useMemo(()=>insightCashSummary(cash,paid,from,through),[cash,paid,from,through]);
  const invalid=from>through;
- const lots=scope.inventory.map(lot=>({lot,onHand:Math.max(0,nodeLotBalance(ledger,warehouseNodeId,lot.id)),available:warehouseAvailable(ledger,lot.id)}));
+ const lots=scope.inventory.map(lot=>({lot,onHand:Math.max(0,nodeLotBalance(ledger,warehouseNodeId,lot.id)),available:lot.status==="Quality hold"?0:warehouseAvailable(ledger,lot.id)}));
  const staffName=(id:string)=>data.users.find(u=>u.id===id)?.name??"Employee";
  const commercialRows:EvidenceRow[]=cash.filter(f=>!invalid&&f.settledAt>=from&&f.settledAt<=through).map(f=>({
   id:f.kind+"-"+f.id,name:accounts.get(f.accountId)??"Restricted customer",date:f.settledAt,
@@ -96,9 +96,9 @@ export function InsightsExplorerExperience(){
    </div>:<p className="prototype-note">Current source snapshot. The dates in the table are record dates, not a historical inventory or HR snapshot. Date filters apply to commercial cash only.</p>}
    {focus==="Commercial"?<>
     <div className="prototype-domain-statbar">
-     <article><small>Cleared collections</small><strong>{money(invalid?0:summary.collections)}</strong></article>
-     <article><small>Settled refunds</small><strong>{money(invalid?0:summary.refunds)}</strong></article>
-     <article><small>Net collected cash</small><strong>{money(invalid?0:summary.net)}</strong></article>
+     <article><small>Cleared collections</small><strong>{invalid?"Invalid period":money(summary.collections)}</strong></article>
+     <article><small>Settled refunds</small><strong>{invalid?"Invalid period":money(summary.refunds)}</strong></article>
+     <article><small>Net collected cash</small><strong>{invalid?"Invalid period":money(summary.net)}</strong></article>
      <article><small>Marked-paid cases</small><strong>{invalid?"Invalid period":summary.markedPaidCases}</strong></article>
      <article><small>Accounts with a reorder</small><strong>{invalid?"Invalid period":summary.reorderAccounts}</strong></article>
     </div>
