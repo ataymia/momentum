@@ -57,9 +57,9 @@ test("settled refunds are capped by allocated cleared funds and duplicate IDs ar
  {id:"pay-a",accountId:"owned",receivedAt:"2026-11-05",amount:20,method:"ACH",status:"Cleared",settledAt:"2026-11-05",settledBy:"reviewer",createdBy:"test",createdAt:"2026-11-05"}
  ],allocations:[{id:"alloc",paymentId:"pay-a",invoiceId:"a",amount:10,createdAt:"2026-11-05",createdBy:"test"}],
  credits:[],refunds:[
- {id:"refund-one",paymentId:"pay-a",amount:6,status:"Settled",settledAt:"2026-11-05",createdAt:"2026-11-05",createdBy:"test"},
- {id:"refund-one",paymentId:"pay-a",amount:6,status:"Settled",settledAt:"2026-11-05",createdAt:"2026-11-05",createdBy:"test"},
- {id:"refund-over",paymentId:"pay-a",amount:8,status:"Settled",settledAt:"2026-11-05",createdAt:"2026-11-05",createdBy:"test"}
+ {id:"refund-one",paymentId:"pay-a",amount:6,reason:"Test correction",status:"Settled",settledAt:"2026-11-05",createdAt:"2026-11-05",createdBy:"test"},
+ {id:"refund-one",paymentId:"pay-a",amount:6,reason:"Test correction",status:"Settled",settledAt:"2026-11-05",createdAt:"2026-11-05",createdBy:"test"},
+ {id:"refund-over",paymentId:"pay-a",amount:8,reason:"Test correction",status:"Settled",settledAt:"2026-11-05",createdAt:"2026-11-05",createdBy:"test"}
  ],notes:[]};
  const result=projectCustomerFinance(state,[order("a","owned")],new Set(["owned"]),new Map());
  assert.deepEqual(result.statement.filter(row=>row.type==="Settled refund").map(row=>row.debit),[6]);
