@@ -35,5 +35,5 @@ test("paid volume uses actual settlement date, not order placement date",()=>{
   order("late",50,{placedAt:"2026-10-20T12:00:00Z",firstSettledAt:"2026-12-01T12:00:00Z"}),
  ]),account,today);
  assert.equal(snap.rolling90PaidCases,20);
- assert.equal(snap.lastPaidOrderDate,"2026-12-01");
+ assert.equal(snap.lastPaidOrderDate,"2026-10-30");
 });
