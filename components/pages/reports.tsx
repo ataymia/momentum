@@ -39,7 +39,7 @@ export function ReportsPage() {
   const visiblePaymentIds = new Set(commerce.allocations.filter(allocation=>visibleInvoiceIds.has(allocation.invoiceId)).map(allocation=>allocation.paymentId));
   const visibleClearedPayments = commerce.payments.filter(payment=>payment.status==="Cleared"&&visiblePaymentIds.has(payment.id)).length;
   const visibleAccountIds=new Set(records.accounts.map(account=>account.id));
-  const visibleVisits=crm.interactions.filter(interaction=>interaction.type==="Visit"&&interaction.physicalVisit&&visibleAccountIds.has(interaction.accountId)).length;
+  const visibleVisits=crm.interactions.filter(interaction=>interaction.type==="Visit"&&interaction.physicalVisit&&visibleAccountIds.has(interaction.locationId)).length;
   const teamIds=new Set((currentUser?.role==="Administrator"?data.users:currentUser?.role==="Sales Manager"?records.users:currentUser?[currentUser]:[]).map(user=>user.id));
   const visibleFieldPings=tracking.state.samples.filter(sample=>teamIds.has(sample.userId)).length;
   const paidFacts = resolvedPaidOrderFacts(data, commerce).filter((fact) => visibleOrderIds.has(fact.orderId));
