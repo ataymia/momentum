@@ -53,7 +53,7 @@ export function validateMeeting(input:MeetingInput,actor:WorkspaceUser|null,user
   if(!isValidCalendarDateKey(input.date)||!time.test(input.startTime)||!time.test(input.endTime)||input.startTime>=input.endTime)return{ok:false,message:"Choose a valid Arizona date and an end time after the start time."};
   if(input.date<arizonaDateKey())return{ok:false,message:"Meetings cannot be created in the past."};
   const permitted=new Set(meetingEligibleUsers(users).map(u=>u.id));
-  if(input.attendeeIds.length<1||input.attendeeIds.length>100||new Set(input.attendeeIds).size!==input.attendeeIds.length||
+  if(!Array.isArray(input.attendeeIds)||input.attendeeIds.length<1||input.attendeeIds.length>100||new Set(input.attendeeIds).size!==input.attendeeIds.length||
       input.attendeeIds.some(id=>id===actor?.id||!permitted.has(id)))return{ok:false,message:"Select at least one unique active employee other than yourself."};
   return{ok:true};
 }
@@ -74,12 +74,12 @@ export function meetingConflicts(meetings:readonly TeamMeeting[],input:MeetingIn
 }
 export function meetingNotices(meetings:readonly TeamMeeting[],user:WorkspaceUser|null|undefined){
   if(!user||!member(user))return [];
-  return personalMeetings(meetings,user).filter(m=>m.status==="Scheduled").flatMap(m=>{
+  return personalMeetings(meetings,user).flatMap(m=>{
     const invited=m.attendeeIds.includes(user.id);
-    const pending=invited&&m.rsvps[user.id]==="Pending";
+    const pending=invited&&m.status==="Scheduled"&&m.rsvps[user.id]==="Pending";
     const changed=(m.seenRevision[user.id]??0)<m.revision;
     if(!pending&&!changed)return [];
-    return [{id:"meeting:"+m.id,title:pending?"Meeting invitation: "+m.title:"Meeting changed: "+m.title,
+    return [{id:"meeting:"+m.id,title:m.status==="Cancelled"?"Meeting cancelled: "+m.title:pending?"Meeting invitation: "+m.title:"Meeting changed: "+m.title,
       date:m.date,time:m.startTime,meetingId:m.id,kind:pending?"Invitation":"Update"} as const];
   }).sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
 }
@@ -91,7 +91,7 @@ const icsEscape=(s:string)=>s.replaceAll("\\","\\\\").replaceAll("\r","").replac
 const utc=(date:string,timeValue:string)=>new Date(date+"T"+timeValue+":00-07:00").toISOString().replace(/[-:]/g,"").replace(/\.\d{3}Z$/,"Z");
 export function meetingCalendarFile(m:TeamMeeting):string{
   const header=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Momentum Distribution//Personal Meeting Calendar//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH"];
-  const event=["BEGIN:VEVENT","UID:"+icsEscape(m.id)+"@momentum.local","DTSTAMP:"+utc(m.createdAt.slice(0,10),m.createdAt.slice(11,16)),"DTSTART:"+utc(m.date,m.startTime),
+  const event=["BEGIN:VEVENT","UID:"+icsEscape(m.id)+"@momentum.local","DTSTAMP:"+new Date(m.createdAt).toISOString().replace(/[-:]/g,"").replace(/\.\d{3}Z$/,"Z"),"DTSTART:"+utc(m.date,m.startTime),
     "DTEND:"+utc(m.date,m.endTime),"SUMMARY:"+icsEscape(m.title),"DESCRIPTION:"+icsEscape(m.agenda),"LOCATION:"+icsEscape(m.location),
     "STATUS:"+(m.status==="Cancelled"?"CANCELLED":"CONFIRMED"),"SEQUENCE:"+m.revision,"END:VEVENT","END:VCALENDAR"];
   return [...header,...event].join("\r\n")+"\r\n";

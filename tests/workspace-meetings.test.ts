@@ -67,7 +67,7 @@ test("B07/08 notifications and agenda are derived only from accessible invitatio
  assert.deepEqual(meetingNotices([pending],admin),[]);
  const changed=record({revision:2,seenRevision:{admin:2,rep:1},rsvps:{rep:"Accepted"}});
  assert.equal(meetingNotices([changed],rep)[0]?.kind,"Update");
- assert.deepEqual(meetingNotices([record({status:"Cancelled"})],rep),[]);
+ assert.equal(meetingNotices([record({status:"Cancelled",revision:2,seenRevision:{admin:1,rep:1}})],rep)[0]?.title,"Meeting cancelled: Weekly territory sync");
  assert.equal(upcomingMeetings([record({date:addCalendarDays(day,-5)})],rep,day).length,0);
 });
 test("B09 persistence normalization preserves timestamps and rejects malformed/duplicate entries",()=>{
@@ -80,6 +80,7 @@ test("B09 persistence normalization preserves timestamps and rejects malformed/d
 test("B06 calendar ICS uses Arizona time and does not pretend to deliver invitations",()=>{
  const contents=meetingCalendarFile({...record(),agenda:"Review risks, blockers; handoffs"});
  assert.match(contents,/BEGIN:VCALENDAR\r\n/);
+ assert.match(contents,/DTSTAMP:20261106T161000Z/);
  assert.match(contents,/DTSTART:\d{8}T160000Z/);
  assert.match(contents,/DTEND:\d{8}T170000Z/);
  assert.match(contents,/Review risks\\, blockers\\; handoffs/);
