@@ -9,6 +9,8 @@
 import {useMemo,useState} from "react";
 import {ArrowLeft,ArrowUpDown,ExternalLink,Search} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
+import {useInventoryLedger} from "../../lib/inventory-ledger-context";
+import {buildOrderCommerceEvidence} from "../../lib/order-commerce-evidence";
 import {InvoicePrintCenter} from "../finance/invoice-print-center";
 import {downloadCsv} from "../../lib/browser-export";
 import {useCommerce} from "../../lib/commerce-context";
@@ -120,12 +122,13 @@ export function OrdersDirectory(){
 }
 
 export function OrderDetail({id}:{id:string}){
-  const {scope,data,currentUser}=useWorkspace();const {commerce}=useCommerce();
+  const {scope,data,currentUser}=useWorkspace();const {commerce}=useCommerce();const {ledger}=useInventoryLedger();
   const o=scope.orders.find(item=>item.id===id&&!item.testOnly);
   if(!o)return <Empty text="Order not found or not authorized."/>;
   const account=scope.accounts.find(a=>a.id===o.accountId);
   const customerName=account?.name??"Account inaccessible";
-  const invoice=commerce.invoices.find(item=>item.orderId===o.id&&item.status!=="Void");
+  const evidence=buildOrderCommerceEvidence(o,commerce,ledger);
+  const invoice=evidence.activeInvoice;
   const approval=scope.approvals.find(a=>a.recordId===o.id&&["Order","Low stock sale"].includes(a.type));
   const lines=o.lines??(o.product?[{id:o.id,product:o.product,cases:o.cases,pricePerCase:o.pricePerCase,amount:o.amount}]:[]);
   const owner=data.users.find(u=>u.id===o.ownerId);
@@ -146,17 +149,46 @@ export function OrderDetail({id}:{id:string}){
         <Fact label="Approval" value={approval?approval.status:"Not linked"}/><Fact label="Payment" value={o.paymentStatus}/>
         <Fact label="Invoice" value={invoice&&canAccessPage(currentUser,"orderCash")?<Link url={"/sales/invoices/"+encodeURIComponent(invoice.id)}>{invoice.number}</Link>:"Not available"}/>
       </dl></section>
-      <section className="prototype-panel"><h2>Fulfillment history</h2>
-        <div className="prototype-work-list"><span>Current order state</span><strong>{o.status}</strong></div>
-        <div className="prototype-work-list"><span>Invoice and payment status</span><strong>{o.paymentStatus}</strong></div>
+      <section className="prototype-panel"><h2>Fulfillment & custody</h2>
+        <dl className="prototype-facts">
+          <Fact label="Current order state" value={o.status}/>
+          <Fact label="Warehouse reservations" value={evidence.activeReservations+" cases"}/>
+          <Fact label="Customer custody deliveries" value={evidence.deliveredToCustomerCases+" cases recorded"}/>
+          <Fact label="Returns from customer custody" value={evidence.returnedFromCustomerCases+" cases recorded"}/>
+        </dl>
         {o.cancelledAt&&<p className="prototype-note">Cancelled {showDate(o.cancelledAt)}. {o.cancellationReason??""}</p>}
-        <p className="prototype-note">Delivery signatures and warehouse custody remain with the established delivery controls until linked record migration is complete.</p>
+        {canAccessPage(currentUser,"inventory")&&<><h3>Recorded custody movements</h3>
+          {evidence.custodyEvents.map(m=><div className="prototype-work-list" key={m.id}><div><strong>{m.type} · {m.quantity} cases</strong><small className="prototype-description">{showDate(m.at)} · {m.product}</small></div><small>{m.reason||"No reason recorded"}</small></div>)}
+          {!evidence.custodyEvents.length&&<Empty text="No order-linked inventory movements have been recorded."/>}
+        </>}
+        <p className="prototype-note">These counts only reflect order-linked custody events, not a verified recipient signature or full proof of delivery. Unrecorded movements are not inferred from current status.</p>
         {currentUser?.role!=="Customer"&&<button type="button" className="prototype-link" onClick={()=>{
           if(typeof window!=="undefined")window.sessionStorage.setItem("momentum-focus-record",o.id);
           navigateToRoute("/sales/orders/workflow");
         }}>Open existing fulfillment controls<ExternalLink size={13}/></button>}
       </section>
     </div>
+    <section className="prototype-panel"><h2>Financial reconciliation</h2>
+      <div className="prototype-metrics">
+        <div><small>Order face amount</small><strong>{money(o.amount)}</strong></div>
+        <div><small>Invoice balance</small><strong>{evidence.receivableBalance===null?"Not reconciled":money(evidence.receivableBalance)}</strong></div>
+        <div><small>Cleared allocations net of refunds</small><strong>{evidence.clearedAmount===null?"Not reconciled":money(evidence.clearedAmount)}</strong></div>
+        <div><small>Invoice ledger status</small><strong>{evidence.invoiceStatus}</strong></div>
+      </div>
+      <dl className="prototype-facts">
+        <Fact label="Recorded order payment state" value={o.paymentStatus}/>
+        <Fact label="Pending invoice allocations" value={evidence.pendingAmount===null?"Not verified":money(evidence.pendingAmount)}/>
+        <Fact label="Applied credits" value={evidence.appliedCredits===null?"Not verified":money(evidence.appliedCredits)}/>
+      </dl>
+      {canAccessPage(currentUser,"orderCash")&&evidence.paymentRecords.map(({payment,allocatedAmount})=>
+        <div className="prototype-work-list" key={payment.id}>
+          <div><Link url={"/sales/payments/"+encodeURIComponent(payment.id)}>{payment.method} · {payment.status}</Link><small className="prototype-description">Recorded {showDate(payment.receivedAt)} · Settled {showDate(payment.settledAt)}</small></div>
+          <strong>{money(allocatedAmount)}</strong>
+        </div>
+      )}
+      {evidence.warnings.map((message,index)=><p key={index} role="status" className="prototype-note">{message}</p>)}
+      <p className="prototype-note">An order marked Paid or Delivered does not itself prove that a processor settled funds or the customer signed delivery. Finance must resolve discrepancies in source records; this view never posts transactions.</p>
+    </section>
     <section className="prototype-panel"><h2>Item lines</h2><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Product</th><th>Cases</th><th>Unit price</th><th>Line amount</th></tr></thead><tbody>
       {lines.map(line=><tr key={line.id}><td>{line.product}</td><td>{line.cases}</td><td>{money(line.pricePerCase)}</td><td>{money(line.amount)}</td></tr>)}
     </tbody></table></div></section>
