@@ -233,14 +233,18 @@ function ContactsDirectory(){
   const {scope}=useWorkspace();const [query,setQuery]=useState("");
   const [sort,setSort]=useState<ContactSortField>("contactName");
   const [ascending,setAscending]=useState(true);
-  const rows=useMemo(()=>scope.accounts.filter(a=>a.contactName&&[a.contactName,a.name,a.email,a.phone,a.contactRole,a.location,a.stage].join(" ").toLowerCase().includes(query.toLowerCase())).sort((a,b)=>{
+  const [stageFilter,setStageFilter]=useState("all");
+  const [roleFilter,setRoleFilter]=useState("all");
+  const stages=[...new Set(scope.accounts.filter(a=>a.contactName).map(a=>a.stage))].sort();
+  const roles=[...new Set(scope.accounts.filter(a=>a.contactName&&a.contactRole).map(a=>a.contactRole))].sort();
+  const rows=useMemo(()=>scope.accounts.filter(a=>a.contactName&&(stageFilter==="all"||a.stage===stageFilter)&&(roleFilter==="all"||a.contactRole===roleFilter)&&[a.contactName,a.name,a.email,a.phone,a.contactRole,a.location,a.stage].join(" ").toLowerCase().includes(query.toLowerCase())).sort((a,b)=>{
     const value=(a:typeof b)=>String(a[sort]??"");
     return (ascending?1:-1)*(value(a).localeCompare(value(b),undefined,{numeric:true})||a.id.localeCompare(b.id));
-  }),[scope.accounts,query,sort,ascending]);
+  }),[scope.accounts,query,sort,ascending,stageFilter,roleFilter]);
   const header=(key:ContactSortField,label:string)=><button type="button" aria-label={"Sort by "+label} onClick={()=>{if(sort===key)setAscending(v=>!v);else{setSort(key);setAscending(true);}}}>{label}<ArrowUpDown size={14}/></button>;
   return <div><Heading title="Contacts" description="All recorded decision-makers linked to your accessible customer locations."/>
     <section className="prototype-panel">
-      <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search contacts" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Contact, business, email, phone, role"/></label><button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-visible-contacts.csv",contactExportRows(rows),contactExportColumns)}>Download filtered contacts CSV</button></div>
+      <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search contacts" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Contact, business, email, phone, role"/></label><label>Stage <select aria-label="Filter contacts by stage" value={stageFilter} onChange={e=>setStageFilter(e.target.value)}><option value="all">All stages</option>{stages.map(v=><option key={v} value={v}>{v}</option>)}</select></label><label>Role <select aria-label="Filter contacts by role" value={roleFilter} onChange={e=>setRoleFilter(e.target.value)}><option value="all">All roles</option>{roles.map(v=><option key={v} value={v}>{v}</option>)}</select></label><button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-visible-contacts.csv",contactExportRows(rows),contactExportColumns)}>Download filtered contacts CSV</button></div>
       <div className="prototype-table-scroll"><table className="prototype-table">
         <thead><tr><th>{header("contactName","Contact")}</th><th>{header("name","Business")}</th><th>{header("contactRole","Role")}</th><th>{header("email","Email")}</th><th>{header("phone","Phone")}</th><th>{header("location","Location")}</th><th>{header("stage","Stage")}</th></tr></thead>
         <tbody>{rows.map(a=><tr key={a.id}><td><OpenLink to={"/crm/contacts/"+encodeURIComponent(a.id)}>{a.contactName}</OpenLink></td><td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.contactRole||"Not recorded"}</td><td>{a.email||"Not recorded"}</td><td>{a.phone||"Not recorded"}</td><td>{a.location}</td><td>{a.stage}</td></tr>)}</tbody>
@@ -259,6 +263,7 @@ function ContactRecord({id}:{id:string}){
   const assigned=data.users.find(u=>u.id===account.ownerId);
   const orders=scope.orders.filter(o=>!o.testOnly&&o.accountId===account.id)
     .sort((a,b)=>b.placedAt.localeCompare(a.placedAt)||a.id.localeCompare(b.id));
+  const activities=scope.activities.filter(a=>a.accountId===account.id).sort((a,b)=>b.at.localeCompare(a.at)||a.id.localeCompare(b.id));
   return <div><Heading title={account.contactName} description="Contact and linked business location" back="/crm/contacts"/>
     <section className="prototype-panel"><h2>Contact information</h2>
       <dl className="prototype-facts">
@@ -277,6 +282,10 @@ function ContactRecord({id}:{id:string}){
       {orders.length?<div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Status</th><th>Cases</th></tr></thead><tbody>
         {orders.map(order=><tr key={order.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(order.id)}>{order.number}</OpenLink></td><td>{order.placedAt.slice(0,10)}</td><td>{order.status}</td><td>{order.cases}</td></tr>)}
       </tbody></table></div>:<Empty>No related orders visible for this location.</Empty>}
+    </section>
+    <section className="prototype-panel"><h2>Recorded account activity</h2>
+      {activities.length?activities.map(activity=><div className="prototype-activity" key={activity.id}><strong>{activity.title}</strong><span>{activity.at.slice(0,10)} • {activity.detail}</span></div>):<Empty>No recorded activities for this location.</Empty>}
+      <p className="prototype-note">Activities are sourced from this authorized location only. No new contact identity or activity is created.</p>
     </section>
   </div>;
 }
