@@ -21,11 +21,11 @@ test("invoice print stays inside the user activation and mounts outside the clip
 
 test("blocked invoice printing reports the reason inside the open preview dialog", () => {
   // The legal-name guard must not look like an unresponsive button under a modal.
-  assert.match(invoiceSource, /const \\[printError, setPrintError\\] = useState/);
+  assert.match(invoiceSource, /const \[printError, setPrintError\] = useState/);
   assert.match(invoiceSource, /reportPrintBlock/);
-  assert.match(invoiceSource, /role="alert">\\{printError\\}/);
-  assert.match(invoiceSource, /!legalBillingName\\(customer\\)/);
-  assert.match(invoiceSource, /catch \\{[\\s\\S]*reportPrintBlock/);
+  assert.match(invoiceSource, /role="alert">\{printError\}/);
+  assert.match(invoiceSource, /!legalBillingName\(customer\)/);
+  assert.match(invoiceSource, /catch \{[\s\S]*reportPrintBlock/);
 });
 
 test("the primary Invoices & payments workspace exposes single and bulk invoice printing", () => {
