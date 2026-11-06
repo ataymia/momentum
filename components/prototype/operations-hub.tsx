@@ -72,6 +72,8 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
   const [fromDate,setFromDate]=useState("");
   const [throughDate,setThroughDate]=useState("");
   const [leadView,setLeadView]=useState<"pipeline"|"table"|"followups">("pipeline");
+  const [followupAsOf,setFollowupAsOf]=useState(()=>new Date().toLocaleDateString("en-CA"));
+  const [followupBucket,setFollowupBucket]=useState<"all"|"overdue"|"today"|"upcoming"|"unscheduled">("all");
   const names=useMemo(()=>new Map(data.users.map(u=>[u.id,u.name])),[data.users]);
   const records=useMemo(()=>scope.accounts
     .filter(a=>!leadMode||["Prospect","Qualified","Sampled"].includes(a.stage))
@@ -117,14 +119,35 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
       </section>)}
     </div>}
     {leadMode&&leadView==="followups"&&<section className="prototype-panel">
-      <h2>Lead follow-ups</h2><p className="prototype-note">Read-only queue from recorded next-action dates. Unscheduled leads remain visible so they cannot disappear from the pipeline.</p>
-      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Business</th><th>Stage</th><th>Contact</th><th>Assigned rep</th><th>Next action</th></tr></thead><tbody>
-      {[...records].sort((a,b)=>(a.nextActionDate||"9999").localeCompare(b.nextActionDate||"9999")||a.name.localeCompare(b.name)).map(a=><tr key={a.id}>
+      <h2>Follow-up work queue</h2>
+      <div className="prototype-controls">
+        <label>Review date <input type="date" aria-label="Review follow-ups as of" value={followupAsOf} onChange={e=>setFollowupAsOf(e.target.value)}/></label>
+        <label>Priority <select aria-label="Follow-up priority" value={followupBucket} onChange={e=>setFollowupBucket(e.target.value as typeof followupBucket)}>
+          <option value="all">All follow-ups</option><option value="overdue">Overdue</option><option value="today">Due on review date</option><option value="upcoming">Upcoming</option><option value="unscheduled">Needs scheduling</option>
+        </select></label>
+        <button type="button" onClick={()=>{setFollowupBucket("all");setFollowupAsOf(new Date().toLocaleDateString("en-CA"));}}>Reset follow-up view</button>
+      </div>
+      <div className="prototype-controls" aria-label="Follow-up counts">
+        {(["overdue","today","upcoming","unscheduled"] as const).map(bucket=>{
+          const count=records.filter(a=>!a.nextActionDate?bucket==="unscheduled":a.nextActionDate<followupAsOf?bucket==="overdue":a.nextActionDate===followupAsOf?bucket==="today":bucket==="upcoming").length;
+          return <button type="button" key={bucket} aria-pressed={followupBucket===bucket} onClick={()=>setFollowupBucket(bucket)}>{bucket==="today"?"Due today":bucket==="unscheduled"?"Needs scheduling":bucket==="overdue"?"Overdue":"Upcoming"} ({count})</button>;
+        })}
+      </div>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Business</th><th>Stage</th><th>Contact</th><th>Assigned rep</th><th>Next action</th><th>Account</th></tr></thead><tbody>
+      {[...records].filter(a=>{
+        const bucket=!a.nextActionDate?"unscheduled":a.nextActionDate<followupAsOf?"overdue":a.nextActionDate===followupAsOf?"today":"upcoming";
+        return followupBucket==="all"||bucket===followupBucket;
+      }).sort((a,b)=>(a.nextActionDate||"9999").localeCompare(b.nextActionDate||"9999")||a.name.localeCompare(b.name)||a.id.localeCompare(b.id)).map(a=><tr key={a.id}>
         <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.stage}</td>
         <td>{a.contactName?<OpenLink to={"/crm/contacts/"+encodeURIComponent(a.id)}>{a.contactName}</OpenLink>:"Not recorded"}</td>
         <td>{names.get(a.ownerId)??"Unassigned"}</td><td>{a.nextActionDate||"Not scheduled"}</td>
+        <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>Open record</OpenLink></td>
       </tr>)}</tbody></table></div>
-      {!records.length&&<Empty>No leads match the current filters.</Empty>}
+      {!records.length&&<Empty>No accessible leads match the current search and date filters.</Empty>}
+      {records.length>0&&!records.some(a=>{
+        const bucket=!a.nextActionDate?"unscheduled":a.nextActionDate<followupAsOf?"overdue":a.nextActionDate===followupAsOf?"today":"upcoming";
+        return followupBucket==="all"||bucket===followupBucket;
+      })&&<Empty>No follow-ups in this priority group. Try another priority or reset the date filters.</Empty>}
     </section>}
     {(!leadMode||leadView==="table")&&<>
     <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
