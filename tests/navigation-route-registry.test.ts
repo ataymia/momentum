@@ -96,3 +96,11 @@ test("redesigned HR record routes preserve Administrator access and block other 
   assert.equal(requiresPrototypePage("/people/onboarding/workflow"),true);
   assert.equal(canVisitRoute(admin,"/people/leave"),true);
 });
+
+test("HR administration deep links do not grant access just because a page key is broadly readable",()=>{
+  const rep=makeUser("Sales Representative"),admin=makeUser("Administrator");
+  for(const route of ["/people/onboarding","/people/new-hire","/people/payroll","/people/training"]){
+    assert.equal(canVisitRoute(rep,route),false,route);
+    assert.equal(canVisitRoute(admin,route),true,route);
+  }
+});

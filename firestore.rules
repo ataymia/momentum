@@ -396,8 +396,8 @@ service cloud.firestore {
     match /domains {
     // momentum-demo-workspace-v5
     match /workspace/fields/{field} {
-      allow get, list: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && (field in ['accounts', 'inventory', 'orders'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : field in ['timeEntries', 'timecards'] ? (hasAccess()) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
-      allow write: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && (field in ['orders'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : field in ['timeEntries', 'timecards'] ? (activeEmployee()) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
+      allow get, list: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && (field in ['accounts', 'inventory', 'orders'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : field in ['timeEntries', 'timecards'] ? (hasAccess()) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse'])) && (!(field in ['timeEntries', 'timecards']) || isAdmin());
+      allow write: if field in ['_root', 'accounts', 'activities', 'appointments', 'approvals', 'bulletins', 'customers', 'inventory', 'notifications', 'orders', 'placements', 'territories', 'timeEntries', 'timecards'] && (field in ['orders'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : field in ['timeEntries', 'timecards'] ? (activeEmployee()) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse'])) && (!(field in ['timeEntries', 'timecards']) || isAdmin());
     }
 
     // momentum-commercial-controls-v1
@@ -414,26 +414,26 @@ service cloud.firestore {
 
     // momentum-territory-v2
     match /territory/fields/{field} {
-      allow get, list: if field in ['_root', 'assignments', 'exceptions', 'history', 'territories'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
-      allow write: if field in ['_root', 'assignments', 'exceptions', 'history', 'territories'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
+      allow get, list: if field in ['_root', 'assignments', 'exceptions', 'history', 'territories'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse'])) && (!(field in ['exceptions']) || isAdmin());
+      allow write: if field in ['_root', 'assignments', 'exceptions', 'history', 'territories'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager'])) && (!(field in ['exceptions']) || isAdmin());
     }
 
     // momentum-hcm-v4
     match /hcm/fields/{field} {
-      allow get, list: if field in ['_root', 'acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'benefitPlans', 'candidates', 'compensation', 'compensationChanges', 'courses', 'dependents', 'documents', 'employees', 'employmentChanges', 'goals', 'interviews', 'leaveRequests', 'lifecycleCases', 'offers', 'policies', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'ptoPolicies', 'requisitions', 'reviewCycles', 'reviews', 'shiftRequests', 'shifts', 'tasks', 'training', 'workflows'] && (field in ['candidates', 'interviews', 'lifecycleCases', 'offers', 'requisitions'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager']) : field in ['audit'] ? (isActiveRole('Administrator')) : (hasAccess()));
-      allow write: if field in ['_root', 'acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'benefitPlans', 'candidates', 'compensation', 'compensationChanges', 'courses', 'dependents', 'documents', 'employees', 'employmentChanges', 'goals', 'interviews', 'leaveRequests', 'lifecycleCases', 'offers', 'policies', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'ptoPolicies', 'requisitions', 'reviewCycles', 'reviews', 'shiftRequests', 'shifts', 'tasks', 'training', 'workflows'] && (field in ['audit', 'candidates', 'interviews', 'lifecycleCases', 'offers', 'requisitions'] ? (isActiveRole('Administrator')) : (activeEmployee() && role() in ['Administrator', 'Sales Manager']));
+      allow get, list: if field in ['_root', 'acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'benefitPlans', 'candidates', 'compensation', 'compensationChanges', 'courses', 'dependents', 'documents', 'employees', 'employmentChanges', 'goals', 'interviews', 'leaveRequests', 'lifecycleCases', 'offers', 'policies', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'ptoPolicies', 'requisitions', 'reviewCycles', 'reviews', 'shiftRequests', 'shifts', 'tasks', 'training', 'workflows'] && (field in ['candidates', 'interviews', 'lifecycleCases', 'offers', 'requisitions'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager']) : field in ['audit'] ? (isActiveRole('Administrator')) : (hasAccess())) && (!(field in ['acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'compensation', 'compensationChanges', 'dependents', 'documents', 'employmentChanges', 'goals', 'leaveRequests', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'reviews', 'shiftRequests', 'tasks', 'training', 'workflows']) || isAdmin());
+      allow write: if field in ['_root', 'acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'benefitPlans', 'candidates', 'compensation', 'compensationChanges', 'courses', 'dependents', 'documents', 'employees', 'employmentChanges', 'goals', 'interviews', 'leaveRequests', 'lifecycleCases', 'offers', 'policies', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'ptoPolicies', 'requisitions', 'reviewCycles', 'reviews', 'shiftRequests', 'shifts', 'tasks', 'training', 'workflows'] && (field in ['audit', 'candidates', 'interviews', 'lifecycleCases', 'offers', 'requisitions'] ? (isActiveRole('Administrator')) : (activeEmployee() && role() in ['Administrator', 'Sales Manager'])) && (!(field in ['acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'compensation', 'compensationChanges', 'dependents', 'documents', 'employmentChanges', 'goals', 'leaveRequests', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'reviews', 'shiftRequests', 'tasks', 'training', 'workflows']) || isAdmin());
     }
 
     // momentum-identity-provisioning-v1
     match /identity/fields/{field} {
-      allow get, list: if field in ['_root', 'drafts', 'records'] && ((isActiveRole('Administrator')));
-      allow write: if field in ['_root', 'drafts', 'records'] && ((isActiveRole('Administrator')));
+      allow get, list: if field in ['_root', 'drafts', 'records'] && ((isActiveRole('Administrator'))) && (!(field in ['records']) || isAdmin());
+      allow write: if field in ['_root', 'drafts', 'records'] && ((isActiveRole('Administrator'))) && (!(field in ['records']) || isAdmin());
     }
 
     // momentum-brand-ambassador-v1
     match /brandAmbassador/fields/{field} {
-      allow get, list: if field in ['_root', 'assignments'] && (field in ['assignments'] ? (isActiveRole('Administrator')) : (hasAccess()));
-      allow write: if field in ['_root', 'assignments'] && ((isActiveRole('Administrator')));
+      allow get, list: if field in ['_root', 'assignments'] && (field in ['assignments'] ? (isActiveRole('Administrator')) : (hasAccess())) && (!(field in ['assignments']) || isAdmin());
+      allow write: if field in ['_root', 'assignments'] && ((isActiveRole('Administrator'))) && (!(field in ['assignments']) || isAdmin());
     }
 
     // momentum-training-library-v1
@@ -444,14 +444,14 @@ service cloud.firestore {
 
     // momentum-document-templates-v1
     match /documentTemplates/fields/{field} {
-      allow get, list: if field in ['_root', 'packets', 'templates'] && ((hasAccess()));
-      allow write: if field in ['_root', 'packets', 'templates'] && ((isActiveRole('Administrator')));
+      allow get, list: if field in ['_root', 'packets', 'templates'] && ((hasAccess())) && (!(field in ['packets']) || isAdmin());
+      allow write: if field in ['_root', 'packets', 'templates'] && ((isActiveRole('Administrator'))) && (!(field in ['packets']) || isAdmin());
     }
 
     // momentum-performance-v1
     match /performance/fields/{field} {
-      allow get, list: if field in ['_root', 'goals', 'notes', 'reports', 'weeklyDrafts'] && ((activeEmployee()));
-      allow write: if field in ['_root', 'goals', 'notes', 'reports', 'weeklyDrafts'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
+      allow get, list: if field in ['_root', 'goals', 'notes', 'reports', 'weeklyDrafts'] && ((activeEmployee())) && (!(field in ['goals', 'notes', 'reports', 'weeklyDrafts']) || isAdmin());
+      allow write: if field in ['_root', 'goals', 'notes', 'reports', 'weeklyDrafts'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager'])) && (!(field in ['goals', 'notes', 'reports', 'weeklyDrafts']) || isAdmin());
     }
 
     // momentum-commerce-v1
@@ -474,8 +474,8 @@ service cloud.firestore {
 
     // momentum-finance-v3
     match /finance/fields/{field} {
-      allow get, list: if field in ['_root', 'expenses'] && ((isActiveRole('Administrator')));
-      allow write: if field in ['_root', 'expenses'] && ((isActiveRole('Administrator')));
+      allow get, list: if field in ['_root', 'expenses'] && ((isActiveRole('Administrator'))) && (!(field in ['expenses']) || isAdmin());
+      allow write: if field in ['_root', 'expenses'] && ((isActiveRole('Administrator'))) && (!(field in ['expenses']) || isAdmin());
     }
 
     // momentum-accounting-v1
@@ -486,32 +486,32 @@ service cloud.firestore {
 
     // momentum-marketing-v3
     match /marketing/fields/{field} {
-      allow get, list: if field in ['_root', 'assets', 'attributions', 'campaigns', 'deliveryNotices', 'materialMovements', 'materials', 'partnerships', 'requests', 'spend', 'touches'] && (field in ['deliveryNotices'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
-      allow write: if field in ['_root', 'assets', 'attributions', 'campaigns', 'deliveryNotices', 'materialMovements', 'materials', 'partnerships', 'requests', 'spend', 'touches'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
+      allow get, list: if field in ['_root', 'assets', 'attributions', 'campaigns', 'deliveryNotices', 'materialMovements', 'materials', 'partnerships', 'requests', 'spend', 'touches'] && (field in ['deliveryNotices'] ? (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse', 'Delivery Driver']) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse'])) && (!(field in ['requests']) || isAdmin());
+      allow write: if field in ['_root', 'assets', 'attributions', 'campaigns', 'deliveryNotices', 'materialMovements', 'materials', 'partnerships', 'requests', 'spend', 'touches'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager'])) && (!(field in ['requests']) || isAdmin());
     }
 
     // momentum-payroll-v5
     match /payroll/fields/{field} {
-      allow get, list: if field in ['_root', 'benefitTaxRules', 'disbursements', 'employees', 'employerTaxRules', 'liabilities', 'payGroups', 'runs', 'withholdingProfiles'] && ((isActiveRole('Administrator')));
-      allow write: if field in ['_root', 'benefitTaxRules', 'disbursements', 'employees', 'employerTaxRules', 'liabilities', 'payGroups', 'runs', 'withholdingProfiles'] && ((isActiveRole('Administrator')));
+      allow get, list: if field in ['_root', 'benefitTaxRules', 'disbursements', 'employees', 'employerTaxRules', 'liabilities', 'payGroups', 'runs', 'withholdingProfiles'] && ((isActiveRole('Administrator'))) && (!(field in ['disbursements', 'employees', 'withholdingProfiles']) || isAdmin());
+      allow write: if field in ['_root', 'benefitTaxRules', 'disbursements', 'employees', 'employerTaxRules', 'liabilities', 'payGroups', 'runs', 'withholdingProfiles'] && ((isActiveRole('Administrator'))) && (!(field in ['disbursements', 'employees', 'withholdingProfiles']) || isAdmin());
     }
 
     // momentum-field-tracking-v1
     match /fieldTracking/fields/{field} {
-      allow get, list: if field in ['_root', 'appointmentEvents', 'departureAlerts', 'exceptions', 'geofences', 'samples', 'sessions'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse']));
-      allow write: if field in ['_root', 'appointmentEvents', 'departureAlerts', 'exceptions', 'geofences', 'samples', 'sessions'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager']));
+      allow get, list: if field in ['_root', 'appointmentEvents', 'departureAlerts', 'exceptions', 'geofences', 'samples', 'sessions'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative', 'Operations', 'Warehouse'])) && (!(field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']) || isAdmin());
+      allow write: if field in ['_root', 'appointmentEvents', 'departureAlerts', 'exceptions', 'geofences', 'samples', 'sessions'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager'])) && (!(field in ['appointmentEvents', 'departureAlerts', 'exceptions', 'samples', 'sessions']) || isAdmin());
     }
 
     // momentum-audit-v1
     match /audit/fields/{field} {
-      allow get, list: if field in ['_root', 'events'] && ((isActiveRole('Administrator')));
-      allow write: if field in ['_root', 'events'] && ((isActiveRole('Administrator')));
+      allow get, list: if field in ['_root', 'events'] && ((isActiveRole('Administrator'))) && (!(field in ['events']) || isAdmin());
+      allow write: if field in ['_root', 'events'] && ((isActiveRole('Administrator'))) && (!(field in ['events']) || isAdmin());
     }
 
     // momentum-notification-rules-v1
     match /notificationRules/fields/{field} {
-      allow get, list: if field in ['_root', 'deliveries', 'preferences'] && ((activeEmployee()));
-      allow write: if field in ['_root', 'deliveries', 'preferences'] && (field in ['deliveries'] ? (activeEmployee()) : (isActiveRole('Administrator')));
+      allow get, list: if field in ['_root', 'deliveries', 'preferences'] && ((activeEmployee())) && (!(field in ['deliveries', 'preferences']) || isAdmin());
+      allow write: if field in ['_root', 'deliveries', 'preferences'] && (field in ['deliveries'] ? (activeEmployee()) : (isActiveRole('Administrator'))) && (!(field in ['deliveries', 'preferences']) || isAdmin());
     }
 
     // momentum-period-locks-v1

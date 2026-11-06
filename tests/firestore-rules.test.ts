@@ -671,6 +671,20 @@ describe("cross-employee isolation", () => {
     await assertFails(getDoc(doc(db, `userDomains/${MANAGER}/finance/expenses`)));
   });
 
+  test("F05: legacy shared employee-owned HR arrays cannot expose unrelated personnel records", async () => {
+    const paths = ["privateProfiles", "compensation", "documents", "leaveRequests", "ptoLedger", "training"];
+    for (const uid of [REP, MANAGER, OPS, ONBOARDING]) {
+      const db = dbFor(uid);
+      for (const field of paths) {
+        await assertFails(getDoc(doc(db, "domains/hcm/fields/" + field)));
+        await assertFails(setDoc(doc(db, "domains/hcm/fields/" + field), { items: [] }));
+      }
+    }
+    const administrator = dbFor(ADMIN);
+    await assertSucceeds(getDoc(doc(administrator, "domains/hcm/fields/privateProfiles")));
+    await assertSucceeds(getDoc(doc(administrator, "domains/hcm/fields/compensation")));
+  });
+
   test("a manager cannot read a report's compensation or HR audit trail", async () => {
     const db = dbFor(MANAGER);
     await assertSucceeds(getDoc(doc(db, `userDomains/${REP}/hcm/leaveRequests`)));

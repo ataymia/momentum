@@ -53,10 +53,14 @@ function fieldSwitch(spec: DomainSpec, pick: "read" | "write"): string {
 
 function sharedBlock(spec: DomainSpec): string {
   const fields = [ROOT_FIELD, ...Object.keys(spec.fields)].sort();
+  // Legacy shared arrays may contain different employees' data. Only Administrators may read or write them.
+  const ownerFields = Object.entries(spec.fields).filter(([, field]) => Boolean(field.userIdField))
+    .map(([name]) => name).sort();
+  const gate = ownerFields.length ? ` && (!(field in ${list(ownerFields)}) || isAdmin())` : "";
   return `    // ${spec.key}
     match /${spec.id}/fields/{field} {
-      allow get, list: if field in ${list(fields)} && (${fieldSwitch(spec, "read")});
-      allow write: if field in ${list(fields)} && (${fieldSwitch(spec, "write")});
+      allow get, list: if field in ${list(fields)} && (${fieldSwitch(spec, "read")})${gate};
+      allow write: if field in ${list(fields)} && (${fieldSwitch(spec, "write")})${gate};
     }`;
 }
 

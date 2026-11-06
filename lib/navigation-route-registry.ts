@@ -252,6 +252,10 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
     return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer) &&
       canAccessPage(user,permissionForPath(clean)??"home");
   }
+  // Copying a URL must not bypass employee confidentiality when a module is hidden in navigation.
+  // Until verified employee-specific payroll is integrated, these paths remain Administrator-only.
+  const privilegedHr = ["/people/new-hire","/people/onboarding","/people/training","/people/payroll"];
+  if (user.role!=="Administrator" && privilegedHr.some(prefix=>clean===prefix||clean.startsWith(prefix+"/"))) return false;
   if (clean.startsWith("/portal/")) return false;
   if(clean==="/operations/deliveries" && !["Administrator","Operations","Warehouse"].includes(user.role)) return false;
   if (clean.startsWith("/admin/") && user.role!=="Administrator") return false;

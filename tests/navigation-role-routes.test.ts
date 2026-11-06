@@ -71,3 +71,17 @@ test("planned modules are identified without authorizing hidden or unknown paths
   assert(canVisitRoute(person("Administrator"),"/admin/access"));
   assert(!canVisitRoute(person("Administrator"),"/not-real"));
 });
+
+test("F05 F13 F14: private HR routes are denied to non-admin roles even by direct link",()=>{
+  const admin=person("Administrator"),rep=person("Sales Representative"),marketer=person("Marketing");
+  for(const path of ["/people/new-hire","/people/onboarding","/people/onboarding/workflow","/people/payroll","/people/payroll/workflow","/people/training"]){
+    assert(canVisitRoute(admin,path),path);
+    assert(!canVisitRoute(rep,path),path);
+    assert(!canVisitRoute(marketer,path),path);
+  }
+  assert(canVisitRoute(rep,"/people/leave"));
+  assert(canVisitRoute(rep,"/people/timekeeping"));
+  assert(canVisitRoute(marketer,"/marketing"));
+  const labels=MENU_GROUPS.flatMap(g=>g.entries.map(e=>e.label.toLowerCase()));
+  for(const excluded of ["calls","solutions","internal instant messaging","gmail inbox"]) assert(!labels.includes(excluded));
+});
