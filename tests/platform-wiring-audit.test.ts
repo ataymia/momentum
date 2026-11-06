@@ -22,7 +22,7 @@ function renderedKeys(){
 function reachableKeys(){
   // All approved navigation now lives in the eight sidebar groups, plus
   // the separately scoped customer menu. Legacy header tabs are retired.
-  return new Set([...MENU_GROUPS.flatMap(group=>group.entries),...CUSTOMER_MENU].map(entry=>entry.permission));
+  return new Set<string>([...MENU_GROUPS.flatMap(group=>group.entries),...CUSTOMER_MENU].map(entry=>entry.permission));
 }
 
 test("every role-accessible page has a renderer",()=>{
