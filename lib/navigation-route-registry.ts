@@ -260,8 +260,7 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
   // Until verified employee-specific payroll is integrated, these paths remain Administrator-only.
   const privilegedHr = ["/people/new-hire","/people/onboarding","/people/compliance","/people/training","/people/payroll"];
   if (user.role!=="Administrator" && privilegedHr.some(prefix=>clean===prefix||clean.startsWith(prefix+"/"))) return false;
-  if (clean==="/support/cases"||clean.startsWith("/support/cases/")) return
-    ["Administrator","Operations","Sales Manager","Sales Representative"].includes(user.role)&&canAccessPage(user,"work");
+  if (clean==="/support/cases"||clean.startsWith("/support/cases/")) return ["Administrator","Operations","Sales Manager","Sales Representative"].includes(user.role)&&canAccessPage(user,"work");
   if (clean.startsWith("/portal/")) return false;
   if(clean==="/operations/deliveries" && !["Administrator","Operations","Warehouse"].includes(user.role)) return false;
   if (clean.startsWith("/admin/") && user.role!=="Administrator") return false;
