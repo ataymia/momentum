@@ -27,8 +27,9 @@ function sensitivityFor(module: string, collection: string): AuditSensitivity {
   return "operational";
 }
 
-export function auditEventFingerprint(event: Pick<AuditEvent, "module" | "collection" | "entityId" | "action" | "actorId" | "at">) {
-  return [event.module, event.collection, event.entityId, event.action, event.actorId, event.at].join("|");
+export function auditEventFingerprint(event: Pick<AuditEvent, "module" | "collection" | "entityId" | "action" | "actorId" | "at"> & Partial<Pick<AuditEvent,"changes">>) {
+  // Two independent updates in the same millisecond can carry different field changes.
+  return [event.module, event.collection, event.entityId, event.action, event.actorId, event.at, JSON.stringify(event.changes??[])].join("|");
 }
 
 const preciseInstant = (value: string | undefined) => Boolean(value && value.includes("T") && validInstant(value));
@@ -109,9 +110,10 @@ export function normalizeAuditState(input: unknown): AuditState {
       .slice(0, 20);
     const repaired = repairLegacyProvenance({ at:event.at!, actorId:event.actorId, actorRole:event.actorRole, action:event.action, collection:event.collection }, changes);
     const unverifiedLegacy = event.provenanceStatus === "unverified-legacy" ||
-      (event.actorId === "system" && event.actorRole === "System") ||
-      (event.collection === "accounts" && event.action === "Created" &&
-        !changes.some(change => change.field === "createdAt" && preciseInstant(change.after)));
+      (event.provenanceStatus !== "verified" && (
+        (event.actorId === "system" && event.actorRole === "System") ||
+        (event.collection === "accounts" && event.action === "Created" &&
+          !changes.some(change => change.field === "createdAt" && preciseInstant(change.after)))));
     const normalized: AuditEvent = {
       id: event.id,
       at: repaired.at,
