@@ -8,6 +8,7 @@ import { disbursementCanRecordFailure, disbursementCanRecordSettlement, disburse
 import { usePeriodLocks } from "./period-lock-context";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
+import { canMutatePayroll } from "./payroll-release-gate";
 import { PAYROLL_STORAGE_KEY, BenefitTaxRule, BenefitTaxTreatment, Disbursement, EmployerTaxRule, PayGroup, PayRun, PayRunStatus, PayrollEmployee, PayrollState, TaxLiability, TaxLiabilityStatus, WithholdingProfile, calculateBonusLine, calculateRegularLine, consumedTimecards, createPayrollSeed, earnedBonusesForMonth, normalizePayrollState } from "./payroll-engine";
 import { useWorkspace } from "./workspace-context";
 
@@ -25,9 +26,15 @@ const PayrollContext=createContext<PayrollContextValue|null>(null);
 export function PayrollProvider({children}:{children:ReactNode}){
   const{data,currentUser}=useWorkspace();const{hcm}=useHcm();const locks=usePeriodLocks();const runtime=useRuntimeMode();
   const read=()=>{if(typeof window==="undefined")return createPayrollSeed();try{return normalizePayrollState(JSON.parse(momentumStorage.getItem(PAYROLL_STORAGE_KEY)??"null"));}catch{return createPayrollSeed();}};
-  const[payroll,setPayroll]=useState<PayrollState>(()=>read());useEffect(()=>{if(typeof window!=="undefined")momentumStorage.setItem(PAYROLL_STORAGE_KEY,JSON.stringify(payroll));},[payroll]);
+  const[payroll,setPayroll]=useState<PayrollState>(()=>read());useEffect(()=>{
+     // Payroll is not production-certified. Never hydrate a connected Firestore payroll ledger
+     // from client-side draft calculations or silently persist new compensation records.
+     if(typeof window==="undefined"||!runtime.isDemo||momentumStorage.mode()!=="local")return;
+     momentumStorage.setItem(PAYROLL_STORAGE_KEY,JSON.stringify(payroll));
+   },[payroll,runtime.isDemo]);
   useRemoteStorageSync(PAYROLL_STORAGE_KEY,()=>setPayroll(read()));
-  const isAdmin=currentUser?.role==="Administrator";
+  // This is a write-authority gate, not a visibility check. Every mutator below uses it.
+   const isAdmin=canMutatePayroll(currentUser?.role,runtime.isDemo,momentumStorage.mode());
   const savePayGroup=(input:Omit<PayGroup,"id">)=>{if(!isAdmin||!input.name.trim()||!frequencies.has(input.frequency)||!Number.isFinite(input.overtimeThresholdHours)||input.overtimeThresholdHours<0||typeof input.active!=="boolean")return"";const id=uid("pay-group");setPayroll((state)=>({...state,payGroups:[{...input,name:input.name.trim(),id},...state.payGroups]}));return id;};
   const savePayrollEmployee=(input:PayrollEmployee)=>{if(!isAdmin||!data.users.some((user)=>user.id===input.userId&&user.role!=="Customer")||!payroll.payGroups.some((group)=>group.id===input.payGroupId&&group.active)||!paymentMethods.has(input.paymentMethod)||typeof input.paymentTokenLabel!=="string")return;setPayroll((state)=>({...state,employees:[input,...state.employees.filter((item)=>item.userId!==input.userId)]}));};
   const saveWithholding=(input:WithholdingProfile)=>{if(!isAdmin||!data.users.some((user)=>user.id===input.userId&&user.role!=="Customer")||!validDateKey(input.effectiveDate)||![input.federalPercent,input.statePercent,input.localPercent].every(percentValid)||![input.additionalWithholding,input.postTaxDeduction].every((value)=>Number.isFinite(value)&&value>=0))return;setPayroll((state)=>({...state,withholdingProfiles:[input,...state.withholdingProfiles.filter((item)=>!(item.userId===input.userId&&item.effectiveDate===input.effectiveDate))]}));};
