@@ -12,6 +12,7 @@ import {useWorkspace} from "../../lib/workspace-context";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {buildOrderCommerceEvidence} from "../../lib/order-commerce-evidence";
 import {PaymentRequestPreview} from "./payment-request-preview";
+import {CreditCreatePanel} from "./credit-workflow-preview";
 import {InvoicePrintCenter} from "../finance/invoice-print-center";
 import {downloadCsv} from "../../lib/browser-export";
 import {useCommerce} from "../../lib/commerce-context";
@@ -275,6 +276,7 @@ export function InvoiceDetail({id}:{id:string}){
       {credits.length>0&&<><h3>Credit records</h3>{credits.map(c=><div key={c.id} className="prototype-work-list"><span>{c.reason} • {c.status}</span><strong>{money(c.amount)}</strong></div>)}</>}
       <p className="prototype-note">Hosted payment links are not active. This preview does not charge customers, record funds, or send emails.</p>
     </section>
+    <CreditCreatePanel invoiceId={invoice.id}/>
     <PaymentRequestPreview invoiceId={invoice.id}/>
     <section className="prototype-panel"><InvoicePrintCenter allowedInvoiceIds={[invoice.id]} title="Print or save this invoice" description="Uses the original authorized invoice layout and source records. Browser printing supports Save as PDF."/></section>
   </div>;

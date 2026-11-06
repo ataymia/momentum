@@ -11,6 +11,7 @@ import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {accessibleCreditNotes,accessibleReturnMovements} from "../../lib/returns-credits-scope";
 import {useWorkspace} from "../../lib/workspace-context";
+import {CreditDecisionPanel} from "./credit-workflow-preview";
 import type {Order} from "../../lib/types";
 
 type Direction="asc"|"desc";
@@ -174,5 +175,6 @@ export function CreditNoteDetail({id}:{id:string}){
       ]}/>
       <p className="prototype-note">Only authorized finance controls may approve and apply credits. Cash refunds require their own approval, payment reference and settlement evidence.</p></section>
     </div>
+    <CreditDecisionPanel creditId={credit.id}/>
   </div>;
 }
