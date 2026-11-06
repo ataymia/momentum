@@ -141,24 +141,29 @@ function RowAction({section,id,state,role,actorId,run}:{section:Section;id:strin
   return <span>Review only</span>;
 }
 export function PurchasingExperience({section,id}:{section:string;id?:string}){
-  const selected=sections.has(section)?section as Section:"vendors";
-  const {currentUser}=useWorkspace();const runtime=useRuntimeMode();
+  const runtime=useRuntimeMode();const {currentUser}=useWorkspace();
   const demo=runtime.isDemo&&momentumStorage.mode()==="local";
-  const [state,setState]=useState<PurchasingState>(emptyPurchasingState);
-  const [loaded,setLoaded]=useState(false);const [notice,setNotice]=useState("");
+  const selected=sections.has(section)?section as Section:"vendors";
+  if(!currentUser)return <p className="prototype-empty">Sign in to view purchasing.</p>;
+  if(!demo)return <div><header className="prototype-heading"><h1>{sectionTitles[selected]}</h1><p>Purchasing is not yet connected to verified vendor, payable or warehouse receipt records.</p></header><section className="prototype-panel"><h2>Production connection blocked</h2><p>There is no approved purchasing backend or inventory-posting authorization for this new module. No vendor invoices, inventory receipts, payments or credits will be invented from retail orders.</p><p className="prototype-note">An isolated local demo is available only in demo mode with local storage. Its records never represent live company liabilities.</p></section></div>;
+  return <LocalPurchasingExperience section={section} id={id}/>;
+}
+
+function LocalPurchasingExperience({section,id}:{section:string;id?:string}){
+  const selected=sections.has(section)?section as Section:"vendors";
+  const {currentUser}=useWorkspace();
+  const [state,setState]=useState<PurchasingState>(()=>{
+    try{const raw=momentumStorage.getItem(PURCHASING_DEMO_KEY);return normalizePurchasingDemoState(raw?JSON.parse(raw):null);}
+    catch{return emptyPurchasingState();}
+  });
+  const [notice,setNotice]=useState("");
   const [search,setSearch]=useState("");const [status,setStatus]=useState("all");
   const [from,setFrom]=useState("");const [to,setTo]=useState("");
   const [sort,setSort]=useState("date");const [descending,setDescending]=useState(true);
-  useEffect(()=>{
-    if(!demo){setLoaded(false);setState(emptyPurchasingState());return;}
-    try{const raw=momentumStorage.getItem(PURCHASING_DEMO_KEY);setState(normalizePurchasingDemoState(raw?JSON.parse(raw):null));}
-    catch{setState(emptyPurchasingState());}
-    setLoaded(true);
-  },[demo]);
-  useEffect(()=>{if(demo&&loaded)momentumStorage.setItem(PURCHASING_DEMO_KEY,JSON.stringify(state));},[demo,loaded,state]);
+  useEffect(()=>{momentumStorage.setItem(PURCHASING_DEMO_KEY,JSON.stringify(state));},[state]);
   const actor:PurchaseActor={id:currentUser?.id??"",role:currentUser?.role==="Administrator"||currentUser?.role==="Operations"||currentUser?.role==="Warehouse"?currentUser.role:"Other"};
   const run=(action:PurchaseAction)=>{
-    if(!demo||!loaded)return;
+    if(!currentUser)return;
     const result=applyPurchaseAction(state,actor,action,new Date().toISOString());
     setNotice(result.message);
     if(result.ok)setState(result.state);
@@ -169,13 +174,12 @@ export function PurchasingExperience({section,id}:{section:string;id?:string}){
     &&[row.id,...Object.entries(row.values).map(([key,value])=>monetaryColumns.has(key)?money(Number(value)):String(value))].join(" ").toLowerCase().includes(search.toLowerCase()))
     .sort((a,b)=>{const va=sort==="date"?a.date:sort==="id"?a.id:a.values[sort]??"";const vb=sort==="date"?b.date:sort==="id"?b.id:b.values[sort]??"";const cmp=typeof va==="number"&&typeof vb==="number"?va-vb:String(va).localeCompare(String(vb),undefined,{numeric:true});return (descending?-1:1)*cmp||a.id.localeCompare(b.id);});
   if(!currentUser)return <p className="prototype-empty">Sign in to view purchasing.</p>;
-  if(!demo)return <div><header className="prototype-heading"><h1>{sectionTitles[selected]}</h1><p>Purchasing is not yet connected to verified vendor, payable or warehouse receipt records.</p></header><section className="prototype-panel"><h2>Production connection blocked</h2><p>There is no approved purchasing backend or inventory-posting authorization for this new module. No vendor invoices, inventory receipts, payments or credits will be invented from retail orders.</p><p className="prototype-note">An isolated local demo is available only in demo mode with local storage. Its records never represent live company liabilities.</p></section></div>;
   return <div>
     <header className="prototype-heading">{id&&<button type="button" className="prototype-back" onClick={()=>navigateToRoute("/purchases/"+selected)}><ArrowLeft size={15}/> Back to {sectionTitles[selected]}</button>}
       <h1>{sectionTitles[selected]}{id?" · "+id:""}</h1><p>Purchasing work queue with draft approvals, physical receipt evidence and three-way bill checks.</p></header>
     <section className="prototype-panel"><p className="prototype-note"><ShieldCheck size={15}/> Isolated local demonstration. Purchase orders are not sent to vendors, receipts do not increase sellable stock, payment references do not reduce verified payables, and browser records are not a financial ledger.</p>
     <p>Operating sequence: registered vendor → prepared PO → independent approval → physical receipt → invoice-to-PO/receipt match → independent bill approval → payment reference and vendor credit review.</p></section>
-    {loaded&&<PurchasingForm key={selected} section={selected} state={state} role={currentUser.role} run={run}/>}
+    <PurchasingForm key={selected} section={selected} state={state} role={currentUser.role} run={run}/>
     {notice&&<p className="prototype-note" role="status">{notice}</p>}
     <div className="prototype-metrics"><div><small>Records in module</small><strong>{records.length}</strong></div><div><small>Matching filters</small><strong>{filtered.length}</strong></div><div><small>Audit events</small><strong>{state.audit.length}</strong></div></div>
     <section className="prototype-panel">
