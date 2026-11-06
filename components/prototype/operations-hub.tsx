@@ -287,6 +287,7 @@ function CustomerPortalContent({section}:{section:string}){
           ["invoiceNumber","orderNumber","recordedAt","dueDate","terms","total","balance","status"])}>
           Download my invoice register (CSV)
        </button>
+       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Invoice</th><th>Order</th><th>Issued</th><th>Due</th><th>Status</th><th>Balance</th></tr></thead><tbody>{commerce.invoices.filter(invoice=>ids.includes(invoice.id)).map(invoice=><tr key={invoice.id}><td><OpenLink to={"/portal/invoices/"+encodeURIComponent(invoice.id)}>{invoice.number}</OpenLink></td><td><OpenLink to={"/portal/orders/"+encodeURIComponent(invoice.orderId)}>{fulfilled.get(invoice.orderId)?.number??"Order"}</OpenLink></td><td>{invoice.issuedAt.slice(0,10)}</td><td>{invoice.dueDate?.slice(0,10)??"Not recorded"}</td><td>{computedInvoiceStatus(commerce,invoice)}</td><td>{invoiceBalance(commerce,invoice).toFixed(2)}</td></tr>)}</tbody></table></div>
        <InvoicePrintCenter allowedInvoiceIds={ids} allowedOrderIds={[...fulfilled.keys()]}
          title="My printable invoices" description="Open an invoice or print one or all authorized documents. Your browser also supports Save as PDF."/>
        {!ids.length&&<Empty>No customer invoices currently meet the delivery and account verification criteria.</Empty>}
@@ -357,6 +358,31 @@ function CustomerPortalContent({section}:{section:string}){
   return <div><Heading title={v.title} description="Customer self-service • prototype"/><section className="prototype-panel"><h2>{v.title}</h2><Empty>{v.body}</Empty></section></div>;
 }
 
+/** Customer invoice detail is deliberately demo-only until server-scoped invoice reads exist. */
+function CustomerInvoiceRecord({id}:{id:string}){
+  const {scope,currentUser}=useWorkspace();
+  const {commerce}=useCommerce();
+  const runtime=useRuntimeMode();
+  if(currentUser?.role!=="Customer")return <Empty>Customer access only.</Empty>;
+  if(!runtime.isDemo||momentumStorage.mode()!=="local")return <Empty>Customer invoice details require an authenticated account-scoped server read. No connected financial records are exposed.</Empty>;
+  const accountIds=new Set(scope.accounts.map(a=>a.id));
+  const orders=authorizedCustomerOrders(scope.orders,accountIds);
+  const invoice=commerce.invoices.find(i=>i.id===id&&i.status!=="Void"&&accountIds.has(i.accountId));
+  const order=invoice&&orders.find(o=>o.id===invoice.orderId&&o.accountId===invoice.accountId&&["Delivered","Paid"].includes(o.status));
+  if(!invoice||!order)return <Empty>Invoice not found or not authorized for your business account.</Empty>;
+  const balance=invoiceBalance(commerce,invoice);
+  return <div><Heading title={"Invoice "+invoice.number} description="Issued invoice for an authorized delivered order" back="/portal/invoices"/>
+    <div className="prototype-metrics"><div><small>Invoice state</small><strong>{computedInvoiceStatus(commerce,invoice)}</strong></div><div><small>Recorded total</small><strong>{invoice.total.toFixed(2)}</strong></div><div><small>Recorded balance</small><strong>{balance.toFixed(2)}</strong></div></div>
+    <section className="prototype-panel"><h2>Invoice information</h2><dl className="prototype-facts">
+      <div><dt>Issued</dt><dd>{invoice.issuedAt.slice(0,10)}</dd></div>
+      <div><dt>Due</dt><dd>{invoice.dueDate?.slice(0,10)??"Not recorded"}</dd></div>
+      <div><dt>Terms</dt><dd>{invoice.terms||"Not recorded"}</dd></div>
+      <div><dt>Order</dt><dd><OpenLink to={"/portal/orders/"+encodeURIComponent(order.id)}>{order.number}</OpenLink></dd></div>
+    </dl><InvoicePrintCenter allowedInvoiceIds={[invoice.id]} allowedOrderIds={[order.id]} title="Invoice document" description="Print or save the authorized invoice as PDF."/>
+    <p className="prototype-note">Local demonstration only. An issued invoice and its recorded balance do not prove payment settlement. Online payment is not enabled.</p></section>
+  </div>;
+}
+
 /** Customer-only detail: no staff approvals, audit history or private rep fields. */
 function CustomerOrderRecord({id,section}:{id:string;section:"orders"|"deliveries"}){
   const {scope,currentUser}=useWorkspace();
@@ -394,6 +420,7 @@ export function PrototypeOperationsHub(){
   if(!canVisitRoute(currentUser,path))return <Empty>You do not have permission to view this module.</Empty>;
   const segments=path.split("/").filter(Boolean);
   if(path==="/")return <WorkspaceHome/>;
+  if(segments[0]==="portal"&&segments[1]==="invoices"&&segments.length===3)return <CustomerInvoiceRecord id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="portal"&&["orders","deliveries"].includes(segments[1])&&segments.length===3)return <CustomerOrderRecord id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   if(path==="/people")return <PeopleExperience/>;
