@@ -37,7 +37,7 @@ export function accountHealthSnapshot(data: WorkspaceData, account: Account, asO
   const paid = orders.map(order=>({order,settledAt:orderFirstSettlementDate(data,order)}))
     .filter((entry):entry is {order:typeof orders[number];settledAt:string}=>Boolean(entry.settledAt))
     .sort((a,b)=>a.settledAt.localeCompare(b.settledAt)||a.order.id.localeCompare(b.order.id));
-  const lastOrderDate=orders.at(-1)?.placedAt;
+  const lastOrderDate=orders.at(-1)?.placedAt.slice(0,10);
   const lastPaidOrderDate=paid.at(-1)?.settledAt;
   const rollingStart=addCalendarDays(asOfKey,-90);
   const rollingPaid=paid.filter(entry=>entry.settledAt>rollingStart&&entry.settledAt<=asOfKey);
