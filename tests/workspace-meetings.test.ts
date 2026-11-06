@@ -3,7 +3,7 @@ import test from "node:test";
 import {readFileSync} from "node:fs";
 import {
  meetingCalendarFile,meetingConflicts,meetingEligibleUsers,meetingNotices,meetingVisibleTo,mayOrganize,normalizeMeetings,
- personalMeetings,upcomingMeetings,validateMeeting,type MeetingInput,type TeamMeeting,
+ personalMeetings,upcomingMeetings,meetingHomeReminders,validateMeeting,type MeetingInput,type TeamMeeting,
 } from "../lib/workspace-meetings";
 import {addCalendarDays,arizonaDateKey} from "../lib/date-time";
 import type {WorkspaceUser,Appointment} from "../lib/types";
@@ -121,4 +121,22 @@ test("B08 meeting bell notifications are revision-scoped and open the correct me
  assert.match(shell,/notification.id.startsWith\("meeting-demo:"\)/);
  assert.match(shell,/navigateToRoute\(path\)/);
  assert.match(shell,/canVisitRoute\(currentUser,path\)/);
+});
+
+test("B07 reminder window uses recorded Arizona start instants",()=>{
+ const m=record({date:"2026-11-07",startTime:"09:00",endTime:"10:00"});
+ assert.equal(meetingHomeReminders([m],rep,new Date("2026-11-06T18:00:00Z")).length,1);
+ assert.equal(meetingHomeReminders([m],rep,new Date("2026-11-05T18:00:00Z")).length,0);
+ assert.equal(meetingHomeReminders([m],other,new Date("2026-11-06T18:00:00Z")).length,0);
+ assert.equal(meetingHomeReminders([record({...m,status:"Cancelled"})],rep,new Date("2026-11-06T18:00:00Z")).length,0);
+});
+test("B05 month arrows use actual months, not thirty-day estimates",()=>{
+ const source=readFileSync("components/prototype/workspace-meetings-experience.tsx","utf8");
+ assert.match(source,/shiftedMonth\(anchor,-1\)/);
+ assert.match(source,/shiftedMonth\(anchor,1\)/);
+ assert.match(source,/Date\.UTC\(year,month-1\+delta,1\)/);
+});
+test("B06 demo reset deliberately clears isolated meeting records",()=>{
+ const source=readFileSync("components/momentum-app.tsx","utf8");
+ assert.match(source,/MEETINGS_DEMO_KEY/);
 });

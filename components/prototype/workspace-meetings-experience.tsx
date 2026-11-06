@@ -6,7 +6,7 @@ import {addCalendarDays,arizonaDateKey,startOfLocalWeek} from "../../lib/date-ti
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useMeetingWorkspace} from "../../lib/workspace-meetings-store";
-import {meetingCalendarFile,meetingConflicts,meetingNotices,upcomingMeetings,type MeetingInput,type TeamMeeting,type Rsvp} from "../../lib/workspace-meetings";
+import {meetingCalendarFile,meetingConflicts,meetingNotices,meetingHomeReminders,upcomingMeetings,type MeetingInput,type TeamMeeting,type Rsvp} from "../../lib/workspace-meetings";
 
 const url=(id:string)=>"/calendar/meetings/"+encodeURIComponent(id);
 function Go({to,children}:{to:string;children:React.ReactNode}){return <button type="button" className="prototype-link" onClick={()=>navigateToRoute(to)}>{children}<ExternalLink size={13}/></button>}
@@ -14,6 +14,10 @@ function Heading({title,description}:{title:string;description:string}){return <
 function NoResults({children}:{children:React.ReactNode}){return <p className="prototype-empty">{children}</p>}
 function azTimeLabel(value:string){const hour=Number(value.slice(0,2));return (hour%12||12)+":"+value.slice(3)+" "+(hour<12?"AM":"PM");}
 function meetingLabel(m:TeamMeeting){return m.date+" · "+azTimeLabel(m.startTime)+"–"+azTimeLabel(m.endTime)+" (Arizona)";}
+function shiftedMonth(anchor:string,delta:number){
+ const [year,month]=anchor.split("-").map(Number);
+ return new Date(Date.UTC(year,month-1+delta,1)).toISOString().slice(0,10);
+}
 function downloadIcs(m:TeamMeeting){
   if(typeof window==="undefined"||!window.URL?.createObjectURL)return;
   const blob=new Blob([meetingCalendarFile(m)],{type:"text/calendar;charset=utf-8"});
@@ -164,9 +168,9 @@ export function SharedCalendarExperience(){
       {!isLocal&&<p className="prototype-note">Employee meetings require an approved production calendar service. The live calendar currently shows only authorized field appointments.</p>}
       <div className="prototype-controls"><label>View date <input type="date" aria-label="Calendar anchor date" value={anchor} onChange={e=>setAnchor(e.target.value)}/></label>
         <label>View <select aria-label="Calendar view" value={length} onChange={e=>setLength(e.target.value as "week"|"month")}><option value="week">Week</option><option value="month">Month</option></select></label>
-        <button type="button" onClick={()=>setAnchor(addCalendarDays(anchor,length==="week"?-7:-30))}>Previous</button>
+        <button type="button" onClick={()=>setAnchor(length==="week"?addCalendarDays(anchor,-7):shiftedMonth(anchor,-1))}>Previous</button>
         <button type="button" onClick={()=>setAnchor(arizonaDateKey())}>Today</button>
-        <button type="button" onClick={()=>setAnchor(addCalendarDays(anchor,length==="week"?7:30))}>Next</button>
+        <button type="button" onClick={()=>setAnchor(length==="week"?addCalendarDays(anchor,7):shiftedMonth(anchor,1))}>Next</button>
       </div>
       <div className="prototype-columns" aria-label="Calendar days">
         {Array.from({length:days},(_,i)=>addCalendarDays(start,i)).map(date=>{
@@ -197,9 +201,11 @@ export function MeetingHomePanel(){
   const {meetings,currentUser,isLocal}=useMeetingWorkspace();
   if(!isLocal||!currentUser||currentUser.role==="Customer")return null;
   const notices=meetingNotices(meetings,currentUser).slice(0,4);
+  const reminders=meetingHomeReminders(meetings,currentUser).slice(0,3);
   const soon=upcomingMeetings(meetings,currentUser).slice(0,5);
   return <section className="momentum-home-panel"><header className="momentum-home-panel-head"><div><CalendarDays size={17}/><h2>My meetings and invitations</h2></div><Go to="/calendar/invitations">Invitations</Go></header>
     {notices.map(n=><button type="button" className="momentum-home-actionrow" key={n.id} onClick={()=>navigateToRoute(url(n.meetingId))}><strong>{n.title}</strong><small>{n.date} · {azTimeLabel(n.time)}</small></button>)}
+    {reminders.map(m=><div key={"reminder:"+m.id} className="momentum-home-minirow"><span><strong>Starting within 24 hours: {m.title}</strong><small>{meetingLabel(m)}</small></span><Go to={url(m.id)}>Review</Go></div>)}
     {soon.map(m=><div key={m.id} className="momentum-home-minirow"><span><strong>{m.title}</strong><small>{meetingLabel(m)}</small></span><Go to={url(m.id)}>Open</Go></div>)}
     {!notices.length&&!soon.length&&<NoResults>No invitations or upcoming meetings assigned to you.</NoResults>}
     <p className="momentum-home-panel-context">Local-demo in-app invitations only. No emails, SMS, external calendar updates or production reminders have been sent.</p>

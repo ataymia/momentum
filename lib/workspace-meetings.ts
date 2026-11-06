@@ -1,4 +1,4 @@
-import {isValidCalendarDateKey,arizonaDateKey} from "./date-time";
+import {isValidCalendarDateKey,arizonaDateKey,arizonaTimeKey} from "./date-time";
 import type {WorkspaceUser,Appointment} from "./types";
 
 /** Local demonstration workflow. This is NOT an authenticated multi-user backend. */
@@ -51,7 +51,7 @@ export function validateMeeting(input:MeetingInput,actor:WorkspaceUser|null,user
   if(typeof input.agenda!=="string"||input.agenda.trim().length<5||input.agenda.length>4000)return{ok:false,message:"Enter a short meeting agenda (5–4,000 characters)."};
   if(typeof input.location!=="string"||!input.location.trim()||input.location.length>240)return{ok:false,message:"Enter a meeting location or video-call description."};
   if(!isValidCalendarDateKey(input.date)||!time.test(input.startTime)||!time.test(input.endTime)||input.startTime>=input.endTime)return{ok:false,message:"Choose a valid Arizona date and an end time after the start time."};
-  if(input.date<arizonaDateKey())return{ok:false,message:"Meetings cannot be created in the past."};
+  if(input.date<arizonaDateKey()||(input.date===arizonaDateKey()&&input.endTime<=arizonaTimeKey()))return{ok:false,message:"Meetings cannot be scheduled after their end time has passed."};
   const permitted=new Set(meetingEligibleUsers(users).map(u=>u.id));
   if(!Array.isArray(input.attendeeIds)||input.attendeeIds.length<1||input.attendeeIds.length>100||new Set(input.attendeeIds).size!==input.attendeeIds.length||
       input.attendeeIds.some(id=>id===actor?.id||!permitted.has(id)))return{ok:false,message:"Select at least one unique active employee other than yourself."};
@@ -84,8 +84,17 @@ export function meetingNotices(meetings:readonly TeamMeeting[],user:WorkspaceUse
   }).sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
 }
 export function upcomingMeetings(meetings:readonly TeamMeeting[],user:WorkspaceUser|null|undefined,from=arizonaDateKey()){
-  return personalMeetings(meetings,user).filter(m=>m.status==="Scheduled"&&m.date>=from)
+  return personalMeetings(meetings,user).filter(m=>m.status==="Scheduled"&&m.date>=from&&(from!==arizonaDateKey()||m.date>from||m.endTime>arizonaTimeKey()))
     .sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime)||a.id.localeCompare(b.id));
+}
+/** Source-backed 24-hour reminder. This does not send or schedule external messages. */
+export function meetingHomeReminders(meetings:readonly TeamMeeting[],user:WorkspaceUser|null|undefined,asOf=new Date()){
+ const time=asOf.getTime();
+ return personalMeetings(meetings,user).filter(m=>{
+  if(m.status!=="Scheduled")return false;
+  const start=new Date(m.date+"T"+m.startTime+":00-07:00").getTime();
+  return Number.isFinite(start)&&start>=time&&start-time<=24*60*60*1000;
+ }).sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
 }
 const icsEscape=(s:string)=>s.replaceAll("\\","\\\\").replaceAll("\r","").replaceAll("\n","\\n").replaceAll(",","\\,").replaceAll(";","\\;");
 const utc=(date:string,timeValue:string)=>new Date(date+"T"+timeValue+":00-07:00").toISOString().replace(/[-:]/g,"").replace(/\.\d{3}Z$/,"Z");
