@@ -42,6 +42,7 @@ test("purchase order requires verified vendor, positive quantities and cost",()=
   assert.equal(act(s,operations,po("missing")).ok,false);
   const withVendor=success(s,admin,vendor());
   assert.equal(act(withVendor,operations,{...po(withVendor.vendors[0].id),cases:0}).ok,false);
+  assert.equal(act(withVendor,operations,{...po(withVendor.vendors[0].id),sku:"unregistered-product"}).ok,false);
   assert.equal(act(withVendor,operations,{...po(withVendor.vendors[0].id),unitCostCents:1.5}).ok,false);
   assert.equal(act(withVendor,operations,{...po(withVendor.vendors[0].id),expectedDate:"2026-02-30"}).ok,false);
   assert.equal(act(withVendor,operations,{...po(withVendor.vendors[0].id),cases:9007199254740991}).ok,false);
