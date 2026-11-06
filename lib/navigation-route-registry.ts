@@ -183,6 +183,7 @@ export function pageForPath(path: string): PageKey | null {
   if(clean.startsWith("/sales/orders/"))return "orders";
   if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
   if(clean.startsWith("/sales/returns/"))return "orders";
+  if(clean.startsWith("/crm/deals/")||clean.startsWith("/crm/contacts/"))return "accounts";
   if(clean.startsWith("/sales/customers/"))return "accounts";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if(clean.startsWith("/items/"))return "products";
@@ -212,6 +213,8 @@ export function routeLabel(path: string): string {
   if(clean==="/inventory/workflow")return "Inventory operations";
   if (clean.startsWith("/inventory/lots/")) return "Lot details";
   if (clean.startsWith("/inventory/shipments/")) return "Shipment details";
+  if (clean.startsWith("/crm/deals/")) return "Deal details";
+  if (clean.startsWith("/crm/contacts/")) return "Contact details";
   if (clean.startsWith("/sales/customers/")) return "Customer details";
   if (clean==="/sales/orders/workflow") return "Order operations";
   if(clean==="/sales/orders/new")return "Create sales order";

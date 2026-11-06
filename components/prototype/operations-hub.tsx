@@ -18,7 +18,7 @@ import {PayrollWorkflowExperience} from "./payroll-workflow-experience";
 import {HrOnboardingExperience} from "./hr-onboarding-experience";
 import {InvoicePrintCenter} from "../finance/invoice-print-center";
 import {downloadCsv} from "../../lib/browser-export";
-import {accountExportColumns,accountExportRows,contactExportColumns,contactExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryColumns,customerDeliveryExportRows,filterCustomerDeliveries} from "../../lib/saturday-scoped-workflows";
+import {accountExportColumns,accountExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryColumns,customerDeliveryExportRows,filterCustomerDeliveries} from "../../lib/saturday-scoped-workflows";
 import {invoiceBalance,computedInvoiceStatus} from "../../lib/commerce-engine";
 import {projectCustomerFinance,customerPaymentColumns,customerStatementColumns} from "../../lib/customer-finance-registers";
 import {useCommerce} from "../../lib/commerce-context";
@@ -31,6 +31,7 @@ import {NewHireProvisioning} from "../hcm/new-hire-provisioning";
 import {PayrollPage as LegacyPayrollPage} from "../pages/payroll";
 import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
+import {CrmDealsExperience,CrmContactsExperience} from "./crm-pipeline-experience";
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
 import {PackagesDirectory,ShipmentsDirectory,ShipmentDetail,DeliveryOperationsDirectory} from "./fulfillment-experience";
 import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
@@ -228,28 +229,6 @@ function IncentivePreview(){
       {!entries.length&&<Empty>No eligible visible businesses match your filters.</Empty>}
     </section></div>;
 }
-type ContactSortField="contactName"|"name"|"contactRole"|"email"|"phone"|"location"|"stage";
-function ContactsDirectory(){
-  const {scope}=useWorkspace();const [query,setQuery]=useState("");
-  const [sort,setSort]=useState<ContactSortField>("contactName");
-  const [ascending,setAscending]=useState(true);
-  const rows=useMemo(()=>scope.accounts.filter(a=>a.contactName&&[a.contactName,a.name,a.email,a.phone,a.contactRole,a.location,a.stage].join(" ").toLowerCase().includes(query.toLowerCase())).sort((a,b)=>{
-    const value=(a:typeof b)=>String(a[sort]??"");
-    return (ascending?1:-1)*(value(a).localeCompare(value(b),undefined,{numeric:true})||a.id.localeCompare(b.id));
-  }),[scope.accounts,query,sort,ascending]);
-  const header=(key:ContactSortField,label:string)=><button type="button" aria-label={"Sort by "+label} onClick={()=>{if(sort===key)setAscending(v=>!v);else{setSort(key);setAscending(true);}}}>{label}<ArrowUpDown size={14}/></button>;
-  return <div><Heading title="Contacts" description="All recorded decision-makers linked to your accessible customer locations."/>
-    <section className="prototype-panel">
-      <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search contacts" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Contact, business, email, phone, role"/></label><button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-visible-contacts.csv",contactExportRows(rows),contactExportColumns)}>Download filtered contacts CSV</button></div>
-      <div className="prototype-table-scroll"><table className="prototype-table">
-        <thead><tr><th>{header("contactName","Contact")}</th><th>{header("name","Business")}</th><th>{header("contactRole","Role")}</th><th>{header("email","Email")}</th><th>{header("phone","Phone")}</th><th>{header("location","Location")}</th><th>{header("stage","Stage")}</th></tr></thead>
-        <tbody>{rows.map(a=><tr key={a.id}><td>{a.contactName}</td><td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.contactRole||"Not recorded"}</td><td>{a.email||"Not recorded"}</td><td>{a.phone||"Not recorded"}</td><td>{a.location}</td><td>{a.stage}</td></tr>)}</tbody>
-      </table></div>
-      {!rows.length&&<Empty>No matching contacts.</Empty>}
-      <p className="prototype-note">{rows.length} contact-location associations. Distinct standalone contact IDs and deduplication are planned.</p>
-    </section></div>;
-}
-
 /** A separate customer-facing surface with account-scoped records, not staff-wide ledgers. */
 function CustomerPortalContent({section}:{section:string}){
   const {scope,currentUser}=useWorkspace();const {commerce}=useCommerce();const runtime=useRuntimeMode();
@@ -440,7 +419,12 @@ export function PrototypeOperationsHub(){
   if(path==="/items")return <ProductDirectory/>;
   if(path==="/sales/customers")return <AccountsDirectory/>;
   if(path==="/crm/leads")return <AccountsDirectory leadMode/>;
-  if(path==="/crm/contacts")return <ContactsDirectory/>;
+  if(path==="/crm/deals/new")return <CrmDealsExperience key={path} create/>;
+  if(segments[0]==="crm"&&segments[1]==="deals"&&segments[2])return <CrmDealsExperience key={path} id={decodeURIComponent(segments[2])} edit={segments[3]==="edit"}/>;
+  if(path==="/crm/deals")return <CrmDealsExperience/>;
+  if(path==="/crm/contacts/new")return <CrmContactsExperience key={path} create/>;
+  if(segments[0]==="crm"&&segments[1]==="contacts"&&segments[2])return <CrmContactsExperience key={path} id={decodeURIComponent(segments[2])}/>;
+  if(path==="/crm/contacts")return <CrmContactsExperience/>;
   if(path==="/calendar"||path==="/calendar/meetings")return <CalendarPreview meetingsOnly={path.endsWith("/meetings")}/>;
   if(path==="/crm/incentives")return <IncentivePreview/>;
   const item=routeEntry(path);
