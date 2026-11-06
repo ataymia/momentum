@@ -25,7 +25,8 @@ test("new independent contacts use authenticated CRM store, local-demo guard, an
  const ui=readFileSync("components/prototype/crm-contacts-experience.tsx","utf8");
  const ctx=readFileSync("lib/crm-context.tsx","utf8");
  assert.match(hub,/path==="\/crm\/contacts\/new"/);
- assert.match(hub,/CrmContactEditor id=\{decodeURIComponent\(segments\[2\]\)\}/);
+ assert.match(hub,/return <ContactRoute id=\{id\}\/>/);
+ assert.match(hub,/CrmContactEditor key=\{id\} id=\{id\}/);
  assert.match(hub,/path==="\/crm\/contacts"\)return <CrmContactsDirectory\/>/);
  assert.match(ui,/addContact\(/);
  assert.match(ui,/updateContact\(/);
