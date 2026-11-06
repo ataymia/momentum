@@ -10,7 +10,7 @@ export type PurchaseOrderRecord = {id:string;vendorId:string;sku:string;cases:nu
 export type PurchaseReceiptRecord = {id:string;poId:string;cases:number;lotCode:string;bestBy:string;warehouse:string;recordedAt:string;recordedBy:string;inventoryPosted:false};
 export type VendorBillRecord = {id:string;poId:string;invoiceNumber:string;cases:number;amountCents:number;recordedAt:string;recordedBy:string;approvedAt?:string;approvedBy?:string};
 export type VendorPaymentRecord = {id:string;billId:string;reference:string;amountCents:number;recordedAt:string;recordedBy:string;externalSettlementVerified:false};
-export type VendorCreditRecord = {id:string;billId:string;reference:string;reason:string;amountCents:number;recordedAt:string;recordedBy:string};
+export type VendorCreditRecord = {id:string;billId:string;reference:string;reason:string;amountCents:number;recordedAt:string;recordedBy:string;approvedAt?:string;approvedBy?:string};
 export type PurchaseExpenseRecord = {id:string;vendorId?:string;description:string;amountCents:number;recordedAt:string;recordedBy:string;approvedAt?:string;approvedBy?:string};
 export type PurchaseAuditEvent={id:string;at:string;actorId:string;action:string;recordId:string;detail:string};
 export type PurchasingState={version:1;vendors:VendorRecord[];orders:PurchaseOrderRecord[];receipts:PurchaseReceiptRecord[];bills:VendorBillRecord[];payments:VendorPaymentRecord[];credits:VendorCreditRecord[];expenses:PurchaseExpenseRecord[];audit:PurchaseAuditEvent[]};
@@ -28,8 +28,10 @@ const dateKey=(s:string)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;const 
 const newId=(state:PurchasingState,prefix:string)=>prefix+"-"+String(state.audit.length+1).padStart(5,"0");
 export const receivedCases=(s:PurchasingState,poId:string)=>s.receipts.filter(r=>r.poId===poId).reduce((n,r)=>n+r.cases,0);
 export const billedCases=(s:PurchasingState,poId:string)=>s.bills.filter(b=>b.poId===poId).reduce((n,b)=>n+b.cases,0);
-export const paidCents=(s:PurchasingState,billId:string)=>s.payments.filter(p=>p.billId===billId).reduce((n,p)=>n+p.amountCents,0);
-export const creditedCents=(s:PurchasingState,billId:string)=>s.credits.filter(c=>c.billId===billId).reduce((n,c)=>n+c.amountCents,0);
+export const paidCents=(s:PurchasingState,billId:string)=>s.payments.filter(p=>p.billId===billId&&p.externalSettlementVerified).reduce((n,p)=>n+p.amountCents,0);
+export const pendingPaymentCents=(s:PurchasingState,billId:string)=>s.payments.filter(p=>p.billId===billId&&!p.externalSettlementVerified).reduce((n,p)=>n+p.amountCents,0);
+export const creditedCents=(s:PurchasingState,billId:string)=>s.credits.filter(c=>c.billId===billId&&c.approvedAt).reduce((n,c)=>n+c.amountCents,0);
+export const pendingCreditCents=(s:PurchasingState,billId:string)=>s.credits.filter(c=>c.billId===billId&&!c.approvedAt).reduce((n,c)=>n+c.amountCents,0);
 export const billDueCents=(s:PurchasingState,b:VendorBillRecord)=>Math.max(0,b.amountCents-paidCents(s,b.id)-creditedCents(s,b.id));
 export function poStatus(s:PurchasingState,p:PurchaseOrderRecord):string{
   if(p.cancelledAt)return "Cancelled";
@@ -57,6 +59,7 @@ export type PurchaseAction=
  |{kind:"bill.approve";id:string}
  |{kind:"payment.record";billId:string;reference:string;amountCents:number}
  |{kind:"credit.record";billId:string;reference:string;reason:string;amountCents:number}
+ |{kind:"credit.approve";id:string}
  |{kind:"expense.record";vendorId?:string;description:string;amountCents:number}
  |{kind:"expense.approve";id:string};
 export type PurchaseResult={ok:boolean;state:PurchasingState;message:string};
@@ -67,7 +70,7 @@ const isAdmin=(actor:PurchaseActor)=>actor.role==="Administrator";
 export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor,action:PurchaseAction,at:string):PurchaseResult{
   const reject=(message:string):PurchaseResult=>({ok:false,state:original,message});
   if(!actor.id||!Number.isFinite(Date.parse(at)))return reject("An identified actor and valid event time are required.");
-  const s:PurchasingState={...original,vendors:original.vendors.map(v=>({...v})),orders:original.orders.map(p=>({...p})),receipts:[...original.receipts],bills:original.bills.map(b=>({...b})),payments:[...original.payments],credits:[...original.credits],expenses:original.expenses.map(e=>({...e})),audit:[...original.audit]};
+  const s:PurchasingState={...original,vendors:original.vendors.map(v=>({...v})),orders:original.orders.map(p=>({...p})),receipts:[...original.receipts],bills:original.bills.map(b=>({...b})),payments:[...original.payments],credits:original.credits.map(c=>({...c})),expenses:original.expenses.map(e=>({...e})),audit:[...original.audit]};
   let recordId="";let detail="";
   switch(action.kind){
     case "vendor.add":{
@@ -128,7 +131,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
     case "payment.record":{
       if(!isAdmin(actor))return reject("Only an administrator may record a supplier payment.");
       const bill=s.bills.find(b=>b.id===action.billId);
-      if(!bill?.approvedAt||!label(action.reference)||!amount(action.amountCents)||action.amountCents>billDueCents(s,bill))return reject("Approved bill, distinct reference and amount within the unpaid balance are required.");
+      if(!bill?.approvedAt||!label(action.reference)||!amount(action.amountCents)||action.amountCents>billDueCents(s,bill)-pendingPaymentCents(s,bill.id)-pendingCreditCents(s,bill.id))return reject("Approved bill, distinct reference and amount within the unreconciled balance are required.");
       if(s.payments.some(p=>p.reference.toLowerCase()===action.reference.trim().toLowerCase()))return reject("Payment reference already recorded.");
       recordId=newId(s,"pay");s.payments.push({id:recordId,billId:bill.id,reference:action.reference.trim(),amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id,externalSettlementVerified:false});
       detail="Local payment note only; no money moved and no external settlement verified.";break;
@@ -136,9 +139,18 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
     case "credit.record":{
       if(!isAdmin(actor))return reject("Only an administrator may record vendor credits.");
       const bill=s.bills.find(b=>b.id===action.billId);
-      if(!bill?.approvedAt||!label(action.reference)||!label(action.reason)||!amount(action.amountCents)||action.amountCents>billDueCents(s,bill))return reject("An approved bill, reason, reference and credit within remaining payable are required.");
+      if(!bill?.approvedAt||!label(action.reference)||!label(action.reason)||!amount(action.amountCents)||action.amountCents>billDueCents(s,bill)-pendingPaymentCents(s,bill.id)-pendingCreditCents(s,bill.id))return reject("An approved bill, reason, reference and credit within remaining uncommitted payable are required.");
       if(s.credits.some(c=>c.reference.toLowerCase()===action.reference.trim().toLowerCase()))return reject("Vendor credit reference already recorded.");
-      recordId=newId(s,"credit");s.credits.push({id:recordId,billId:bill.id,reference:action.reference.trim(),reason:action.reason.trim(),amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id});break;
+      recordId=newId(s,"credit");s.credits.push({id:recordId,billId:bill.id,reference:action.reference.trim(),reason:action.reason.trim(),amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id});detail="Credit is pending independent review and does not yet change the bill balance.";break;
+    }
+    case "credit.approve":{
+      if(!isAdmin(actor))return reject("Only an administrator may approve vendor credits.");
+      const credit=s.credits.find(c=>c.id===action.id);
+      if(!credit||credit.approvedAt||credit.recordedBy===actor.id)return reject("Independent review of an unapproved vendor credit is required.");
+      const bill=s.bills.find(b=>b.id===credit.billId);
+      if(!bill?.approvedAt||credit.amountCents>billDueCents(s,bill))return reject("Approved bill and sufficient remaining payable required.");
+      recordId=credit.id;credit.approvedAt=at;credit.approvedBy=actor.id;
+      detail="Vendor credit reviewed in local demo only; external supplier credit evidence and GL posting remain unverified.";break;
     }
     case "expense.record":{
       if(!canProcure(actor))return reject("Only purchasing staff may submit expenses.");
