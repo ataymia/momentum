@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import test from "node:test";
 import {accountHealthSnapshot} from "../lib/account-health";
 import type {Account,Order,WorkspaceData} from "../lib/types";
@@ -36,4 +37,14 @@ test("paid volume uses actual settlement date, not order placement date",()=>{
  ]),account,today);
  assert.equal(snap.rolling90PaidCases,20);
  assert.equal(snap.lastPaidOrderDate,"2026-10-30");
+});
+
+test("account health is an independent routed page with actual scoped actions",()=>{
+ const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+ const page=readFileSync("components/prototype/crm-account-health.tsx","utf8");
+ assert.match(hub,/if\(path==="\/crm\/account-health"\)return <CrmAccountHealth\/>/);
+ assert.match(page,/scope\.accounts\.map\(account=>\(\{account,health:accountHealthSnapshot/);
+ assert.match(page,/currentUser\.role==="Customer"/);
+ assert.match(page,/downloadCsv\("momentum-account-health\.csv",exported,columns\)/);
+ assert.match(page,/navigateToRoute\("\/sales\/customers\/"\+encodeURIComponent\(account\.id\)\)/);
 });
