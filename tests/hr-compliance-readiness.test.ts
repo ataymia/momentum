@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {hiringReadiness,requiredForms} from "../lib/hr-compliance-readiness";
-import type {EmployeeRecord,EmployeeDocument} from "../lib/hcm-engine";
-const employment=(classification:EmployeeRecord["classification"]):EmployeeRecord=>({userId:"emp-1",employeeNumber:"E001",status:"Active",jobTitle:"Test",department:"Operations",location:"Phoenix",classification,payGroup:"Not configured",updatedAt:"2026-11-06T17:00:00.000Z",hireDate:"2026-11-09"});
+import type {EmploymentRecord,EmployeeDocument} from "../lib/hcm-engine";
+const employment=(classification:EmploymentRecord["classification"]):EmploymentRecord=>({userId:"emp-1",employeeNumber:"E001",status:"Active",jobTitle:"Test",department:"Operations",location:"Phoenix",classification,payGroup:"Not configured",updatedAt:"2026-11-06T17:00:00.000Z",hireDate:"2026-11-09"});
 test("unverified classifications never receive an assumed federal or Arizona form package",()=>{
  assert.deepEqual(requiredForms("Not configured"),[]);
  assert.deepEqual(requiredForms("Contractor"),["W-9"]);

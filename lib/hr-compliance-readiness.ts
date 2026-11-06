@@ -1,4 +1,4 @@
-import type {EmployeeRecord,EmployeeDocument} from "./hcm-engine";
+import type {EmploymentRecord,EmployeeDocument} from "./hcm-engine";
 import {validExternalVerification} from "./hr-document-controls";
 import {i9RetentionReviewDate} from "./hr-electronic-forms";
 export type DocumentKind="I-9"|"W-4"|"Arizona A-4"|"W-9";
@@ -10,14 +10,14 @@ const formPatterns:Record<DocumentKind,RegExp>={
  "Arizona A-4":/(?:arizona|az|form)\s*(?:form\s*)?a[-\s]?4\b/i,
  "W-9":/(?:^|\b)(?:form\s*)?w[-\s]?9(?:\b|$)/i,
 };
-export function requiredForms(classification:EmployeeRecord["classification"]):DocumentKind[]{
+export function requiredForms(classification:EmploymentRecord["classification"]):DocumentKind[]{
  if(classification==="Contractor")return ["W-9"];
  if(classification==="Hourly"||classification==="Salary")return ["I-9","W-4","Arizona A-4"];
  return [];
 }
 /** A local checklist is never proof of compliant completion. Server receipt, original, Section 2,
  * state reporting, retention and employer account verification still require independent evidence. */
-export function hiringReadiness(employee:EmployeeRecord,documents:EmployeeDocument[]):HiringReadiness{
+export function hiringReadiness(employee:EmploymentRecord,documents:EmployeeDocument[]):HiringReadiness{
  const blockers:string[]=[];
  if(employee.classification==="Not configured")blockers.push("Worker classification is unverified; do not assume employee or contractor status.");
  if(!employee.hireDate)blockers.push("First day of work / engagement has not been confirmed.");
