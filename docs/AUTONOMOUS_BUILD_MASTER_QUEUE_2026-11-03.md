@@ -554,3 +554,8 @@ For every run record: local date/time; main and review-branch SHAs; item number;
 - **Checklist C01/C03:** BUILT-UNVERIFIED increment. LeadRecord now provides a validated stage action with evidence reason for assigned rep or management, safe Prospect→Qualified→Sampled progression and manager-only Sampled→Qualified correction; rejects outside-scope actors and order/customer-stage regressions. Canonical account stage update is recorded in commercial account patch and audited activity. Local demonstration only; no live connected write. Existing rep reassignment and visit scheduling remain.
 - **Files:** lib/lead-qualification.ts, lib/workspace-context.tsx, components/prototype/operations-hub.tsx, tests/lead-qualification-workflow.test.ts, package.json and this queue.
 - **Remaining gates:** exact-SHA CI, end-to-end browser QA, server-authorized production persistence, stage/role emulators and owner acceptance. No item is User-Accepted or Released.
+
+### November 6, 2026: 98-item additive release-candidate acceptance index
+- Checked in docs/RELEASE_CANDIDATE_98_ACCEPTANCE_LEDGER.md with exactly A01–G10 (98 distinct product IDs) and FIX-CI-01–07 separated, automated ID/no-duplicate regression, without fabricating unavailable original descriptions or converting unknown historical statuses to Not Started.
+- **Partial CRM increments C01–C06 are NOT full checklist completions**. The acceptance stages remain blocked until owner criteria, exact-SHA build, isolated server authority and approved browser/staging QA are verified.
+- Same persistent review branch and existing PR #166; no main changes, merge, deployment or external writes.
