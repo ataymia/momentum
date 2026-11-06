@@ -329,16 +329,16 @@ function CustomerPortalContent({section}:{section:string}){
       </section></div>;
   }
   if(section==="payments"||section==="statements"){
-    if(!runtime.isDemo||momentumStorage.mode()!=="local")return <div><Heading title={section==="payments"?"My Payments":"Account Statements"}/><section className="prototype-panel"><Empty>Authenticated server-scoped financial records are not available yet. No payment or balance information is shown.</Empty></section></div>;
+    if(!runtime.isDemo||momentumStorage.mode()!=="local")return <div><Heading title={section==="payments"?"My Payments":"Account Statements"} description="Customer account financial records. Verified account access is required for connected data."/><section className="prototype-panel"><Empty>Authenticated server-scoped financial records are not available yet. No payment or balance information is shown.</Empty></section></div>;
     const locationNames=new Map(scope.accounts.map(a=>[a.id,a.name]));
     const finance=projectCustomerFinance(commerce,orders,accountIds,locationNames);
-    if(section==="payments")return <div><Heading title="My Payments"/><section className="prototype-panel">
+    if(section==="payments")return <div><Heading title="My Payments" description="Customer account financial records. Verified account access is required for connected data."/><section className="prototype-panel">
       <div className="prototype-controls"><button type="button" disabled={!finance.payments.length} onClick={()=>downloadCsv("momentum-my-payments.csv",finance.payments,customerPaymentColumns)}>Download payments CSV</button></div>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Date</th><th>Location</th><th>Reference</th><th>Method</th><th>Status</th><th>Amount</th></tr></thead><tbody>{finance.payments.map((p,i)=><tr key={p.reference+"-"+i}><td>{p.date}</td><td>{p.location}</td><td>{p.reference}</td><td>{p.method}</td><td>{p.status}</td><td>{p.amount.toFixed(2)}</td></tr>)}</tbody></table></div>
       {!finance.payments.length&&<Empty>No cleared, allocated payments for your delivered orders.</Empty>}
       <p className="prototype-note">Local demonstration only. Payment requests and checkout remain disabled.</p>
     </section></div>;
-    return <div><Heading title="Account Statements"/><section className="prototype-panel">
+    return <div><Heading title="Account Statements" description="Customer account financial records. Verified account access is required for connected data."/><section className="prototype-panel">
       <div className="prototype-controls"><button type="button" disabled={!finance.statement.length} onClick={()=>downloadCsv("momentum-my-statement.csv",finance.statement,customerStatementColumns)}>Download statement CSV</button></div>
       <div className="prototype-metrics"><div><small>Recorded open invoice balance</small><strong>{finance.openBalance.toFixed(2)}</strong></div></div>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Date</th><th>Location</th><th>Reference</th><th>Type</th><th>Status</th><th>Debit</th><th>Credit</th></tr></thead><tbody>{finance.statement.map((row,i)=><tr key={row.reference+"-"+row.type+"-"+i}><td>{row.date}</td><td>{row.location}</td><td>{row.reference}</td><td>{row.type}</td><td>{row.status}</td><td>{row.debit.toFixed(2)}</td><td>{row.credit.toFixed(2)}</td></tr>)}</tbody></table></div>
@@ -366,7 +366,7 @@ function CustomerOrderRecord({id,section}:{id:string;section:"orders"|"deliverie
   if(!order)return <Empty>Order not found or not authorized for your business account.</Empty>;
   const account=scope.accounts.find(a=>a.id===order.accountId);
   const lines=order.lines??(order.product?[{id:order.id,product:order.product,cases:order.cases}]:[]);
-  return <div><Heading title={"Order "+order.number} description="My account order and delivery status" back={section==="orders"?"/portal/orders":"/portal/deliveries"}/>
+  return <div><Heading title={"Order "+order.number} description="My account order and delivery status" back={section==="orders"?"/portal/orders":"/portal/deliveries"} description="Customer account financial records. Verified account access is required for connected data."/>
     <div className="prototype-metrics"><div><small>Fulfillment</small><strong>{order.status}</strong></div><div><small>Cases</small><strong>{order.cases}</strong></div><div><small>Payment state</small><strong>{order.paymentStatus}</strong></div></div>
     <section className="prototype-panel"><h2>Order information</h2><dl className="prototype-facts">
       <div><dt>Business location</dt><dd>{account?.name??"Authorized account"} · {account?.location??""}</dd></div>
