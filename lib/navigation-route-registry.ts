@@ -58,13 +58,13 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Packages", path: "/inventory/packages", permission: "inventory", state: "prototype" },
     { label: "Shipments", path: "/inventory/shipments", permission: "inventory", state: "prototype" },
     { label: "Inventory Ledger", path: "/inventory/ledger", permission: "inventoryLedger", state: "prototype" },
-    { label: "Vendors", path: "/purchases/vendors", permission: "accounting", state: "planned" },
-    { label: "Expenses", path: "/purchases/expenses", permission: "accounting", state: "planned" },
-    { label: "Purchase Orders", path: "/purchases/orders", permission: "accounting", state: "planned" },
-    { label: "Purchase Receipts", path: "/purchases/receipts", permission: "inventory", state: "planned" },
-    { label: "Bills", path: "/purchases/bills", permission: "accounting", state: "planned" },
-    { label: "Payments Made", path: "/purchases/payments", permission: "accounting", state: "planned" },
-    { label: "Vendor Credits", path: "/purchases/credits", permission: "accounting", state: "planned" },
+    { label: "Vendors", path: "/purchases/vendors", permission: "accounting", state: "prototype" },
+    { label: "Expenses", path: "/purchases/expenses", permission: "accounting", state: "prototype" },
+    { label: "Purchase Orders", path: "/purchases/orders", permission: "inventory", state: "prototype" },
+    { label: "Purchase Receipts", path: "/purchases/receipts", permission: "inventory", state: "prototype" },
+    { label: "Bills", path: "/purchases/bills", permission: "accounting", state: "prototype" },
+    { label: "Payments Made", path: "/purchases/payments", permission: "accounting", state: "prototype" },
+    { label: "Vendor Credits", path: "/purchases/credits", permission: "accounting", state: "prototype" },
     { label: "Delivery Operations", path: "/operations/deliveries", permission: "orders", state: "prototype" },
   ] },
   { label: "Human Resources", entries: [
@@ -219,6 +219,7 @@ export function routeLabel(path: string): string {
   if (clean.startsWith("/sales/orders/")) return "Order details";
   if (clean.startsWith("/sales/invoices/")) return "Invoice details";
   if (clean.startsWith("/sales/payments/")) return "Payment details";
+  if (clean.startsWith("/purchases/")) return "Purchasing record details";
   if (clean.startsWith("/sales/returns/")) return "Return details";
   if (clean.startsWith("/sales/credit-notes/")) return "Credit note details";
   return clean === "/" ? "Home" : "Workspace";
@@ -227,6 +228,8 @@ export function routeLabel(path: string): string {
 export function permissionForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if(clean.startsWith("/admin/employee-profiles/"))return "settings";
+  if(clean.startsWith("/purchases/orders/")||clean.startsWith("/purchases/receipts/"))return "inventory";
+  if(clean.startsWith("/purchases/"))return "accounting";
   if (clean.startsWith("/items/")) return "products";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if (clean.startsWith("/sales/customers/")) return "accounts";
@@ -253,6 +256,12 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
       canAccessPage(user,permissionForPath(clean)??"home");
   }
   if (clean.startsWith("/portal/")) return false;
+  if(clean.startsWith("/purchases/")){
+    const group=clean.split("/")[2];
+    if(group==="receipts")return ["Administrator","Operations","Warehouse"].includes(user.role);
+    if(group==="orders")return ["Administrator","Operations"].includes(user.role);
+    return ["vendors","expenses","bills","payments","credits"].includes(group)&&user.role==="Administrator";
+  }
   if(clean==="/operations/deliveries" && !["Administrator","Operations","Warehouse"].includes(user.role)) return false;
   if (clean.startsWith("/admin/") && user.role!=="Administrator") return false;
   const permission=permissionForPath(clean);
@@ -276,6 +285,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
+  if(clean.startsWith("/purchases/"))return true;
   // Sensitive legacy HR and payroll tools are wrapped by a prototype demo-only gate.
   if(clean==="/people/payroll/workflow"||clean==="/people/onboarding/workflow"||clean==="/admin/employee-profiles/workflow")return true;
   if (clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
