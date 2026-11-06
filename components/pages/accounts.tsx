@@ -9,7 +9,8 @@ import {taxIdentityMissing,validateTaxIdentity,type TaxIdentityInput,type TaxFie
 import { businessAddressLabel, deliveryAddressLabel } from "../../lib/account-address";
 import { isOpenCommercialAccount } from "../../lib/account-view-filter";
 import { ACCOUNT_PRICING_TIERS } from "../../lib/account-health";
-import { evaluateSalesRepAccountBonuses, SALES_REP_ACCOUNT_BONUS_RULE } from "../../lib/bonus-engine";
+import { evaluateSalesRepAccountBonuses, SALES_REP_ACCOUNT_BONUS_RULE, type BonusMilestoneStatus } from "../../lib/bonus-engine";
+import { accountBonusProgress, type BonusProgressSort, type BonusProgressDirection } from "../../lib/bonus-progress";
 import { useCrm } from "../../lib/crm-context";
 import { findAccountDuplicate } from "../../lib/duplicate-engine";
 import { evaluatePartnerPricing } from "../../lib/pricing-engine";
@@ -44,6 +45,9 @@ export function AccountsPage(){
   const [showAllAccountOrders,setShowAllAccountOrders]=useState(false);
   const [incentiveRep,setIncentiveRep]=useState("all");
   const [incentiveStatus,setIncentiveStatus]=useState("all");
+  const [incentiveQuery,setIncentiveQuery]=useState("");
+  const [incentiveSort,setIncentiveSort]=useState<BonusProgressSort>("remaining");
+  const [incentiveDirection,setIncentiveDirection]=useState<BonusProgressDirection>("asc");
   const [stage,setStage]=useState<(typeof stages)[number]>("All");
   const [selectedId,setSelectedId]=useState(initialId);
   const [accountPageId,setAccountPageId]=useState<string|null>(focusedAccountId);
@@ -110,9 +114,15 @@ export function AccountsPage(){
       earnedAmount:signals.filter((signal)=>signal.status==="Earned").reduce((total,signal)=>total+signal.amount,0),
       pendingAmount:signals.filter((signal)=>["Tracking","Awaiting payment"].includes(signal.status)).reduce((total,signal)=>total+signal.amount,0)};
   }).filter((row)=>row.earnedMilestones||row.pendingAmount);
-  const visibleBonusSignals=bonusSignals.filter((signal)=>
-    (incentiveRep==="all"||signal.repId===incentiveRep)&&
-    (incentiveStatus==="all"||signal.status===incentiveStatus));
+  const visibleBonusRows=accountBonusProgress(bonusSignals,{
+    repId:incentiveRep,
+    status:incentiveStatus==="all"?undefined:incentiveStatus as BonusMilestoneStatus,
+    accountSearch:incentiveQuery,
+    sort:incentiveSort,
+    direction:incentiveDirection,
+    accountNames:new Map(scope.accounts.map(account=>[account.id,account.name])),
+    repNames:new Map(data.users.map(user=>[user.id,user.name])),
+  });
 
   const paidCases=accountOrders.filter((order)=>order.paymentStatus==="Paid").reduce((sum,order)=>sum+order.cases,0);
   const openOrderValue=accountOrders.filter((order)=>order.paymentStatus!=="Paid").reduce((sum,order)=>sum+order.amount,0);
@@ -233,7 +243,28 @@ export function AccountsPage(){
         <div className="company-rule-facts"><div><span>Qualifying accounts</span><strong>{qualifyingAccounts}</strong><small>Distinct accounts with an earned milestone</small></div><div><span>Earned milestones</span><strong>{bonusSignals.filter((signal)=>signal.status==="Earned").length}</strong><small>Milestones, not payments</small></div></div>
         <Section title="Bonuses by Sales Rep" description="Distinct qualifying customer accounts and earned milestones are counted separately."><div className="company-grid company-grid--two">{repBonusSummary.map((row)=><article key={row.user.id} className="company-rule-facts"><div><strong>{row.user.name}</strong><small>{row.qualifyingAccounts} qualifying accounts · {row.earnedMilestones} earned milestones</small></div><div><span>Earned</span><strong>{formatMoney(row.earnedAmount)}</strong><small>Verify against payroll before payment</small></div><div><span>Still tracking / awaiting payment</span><strong>{formatMoney(row.pendingAmount)}</strong><small>Not yet earned</small></div></article>)}</div>{!repBonusSummary.length&&<p>No bonus-eligible rep milestones yet.</p>}</Section>
         <div className="account-toolbar"><label>Sales Rep <select value={incentiveRep} onChange={(event)=>setIncentiveRep(event.target.value)}><option value="all">All reps</option>{data.users.filter((user)=>user.role==="Sales Representative").map((user)=><option key={user.id} value={user.id}>{user.name}</option>)}</select></label><label>Milestone status <select value={incentiveStatus} onChange={(event)=>setIncentiveStatus(event.target.value)}><option value="all">All statuses</option>{["Earned","Awaiting payment","Tracking","Not started","Window expired","Not qualified"].map((value)=><option key={value} value={value}>{value}</option>)}</select></label></div>
-        <div className="company-rule-facts"><div><span>Opening threshold</span><strong>{SALES_REP_ACCOUNT_BONUS_RULE.openingOrderCases} cases</strong><small>{formatMoney(SALES_REP_ACCOUNT_BONUS_RULE.openingBonusAmount)} after payment clears</small></div><div><span>Sustained threshold</span><strong>{SALES_REP_ACCOUNT_BONUS_RULE.sustainedAccountCases} paid cases</strong><small>{formatMoney(SALES_REP_ACCOUNT_BONUS_RULE.sustainedBonusAmount)}</small></div><div><span>Window</span><strong>{SALES_REP_ACCOUNT_BONUS_RULE.windowDays} days</strong></div><div><span>Earned in scope</span><strong>{formatMoney(earnedBonus)}</strong></div></div><Section title="Account milestone ledger"><div className="bonus-ledger">{visibleBonusSignals.map((signal)=>{const account=data.accounts.find((item)=>item.id===signal.accountId);const rep=data.users.find((item)=>item.id===signal.repId);const progress=Math.min(100,Math.round((signal.observedCases/Math.max(1,signal.thresholdCases))*100));return <article key={signal.id}><div className="bonus-ledger__head"><div><small>{signal.milestone}</small><strong>{account?.name}</strong><p>{rep?.name} · {signal.observedCases}/{signal.thresholdCases} cases</p></div><StatusPill tone={bonusTone(signal.status)}>{signal.status}</StatusPill></div><div className="bonus-progress"><i style={{width:`${progress}%`}}/></div><div className="bonus-ledger__foot"><span>Amount {formatMoney(signal.amount)}</span><span>{signal.windowEnd?`Through ${formatDate(signal.windowEnd,{month:"short",day:"numeric",year:"numeric"})}`:"Not started"}</span></div></article>})}{!visibleBonusSignals.length&&<p>No milestones match these filters.</p>}</div></Section></>}
+        <div className="company-rule-facts"><div><span>Opening threshold</span><strong>{SALES_REP_ACCOUNT_BONUS_RULE.openingOrderCases} cases</strong><small>{formatMoney(SALES_REP_ACCOUNT_BONUS_RULE.openingBonusAmount)} after payment clears</small></div><div><span>Continuous case target</span><strong>{SALES_REP_ACCOUNT_BONUS_RULE.sustainedAccountCases} settled cases</strong><small>Includes opening cases · no 20-case bonus</small></div><div><span>Window</span><strong>{SALES_REP_ACCOUNT_BONUS_RULE.windowDays} days</strong></div><div><span>Earned in scope</span><strong>{formatMoney(earnedBonus)}</strong></div></div>
+        <div className="account-toolbar">
+          <label>Find account <input aria-label="Find incentive account" value={incentiveQuery} onChange={event=>setIncentiveQuery(event.target.value)} placeholder="Search account name"/></label>
+          <label>Sort <select value={incentiveSort} onChange={event=>setIncentiveSort(event.target.value as BonusProgressSort)}>
+            <option value="remaining">Cases remaining</option><option value="cases">Settled cases</option><option value="account">Account name</option><option value="representative">Sales representative</option><option value="deadline">Deadline</option>
+          </select></label>
+          <label>Direction <select value={incentiveDirection} onChange={event=>setIncentiveDirection(event.target.value as BonusProgressDirection)}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
+        </div>
+        <Section title="40-case account progress" description="One progress bar per location, based on settled cases within the qualifying window. The 10-case opening and 40-case sustained bonuses remain separate gates, not separate progress bars.">
+          <div className="bonus-ledger">{visibleBonusRows.map(row=>{
+            const account=scope.accounts.find(item=>item.id===row.accountId);
+            const rep=data.users.find(item=>item.id===row.repId);
+            return <article key={row.accountId}>
+              <div className="bonus-ledger__head"><div><small>Sales representative: {rep?.name??"Unverified"}</small><strong>{account?.name??row.accountId}</strong><p>{row.settledCases}/{row.targetCases} settled cases · {row.remainingCases} remaining</p></div><StatusPill tone={bonusTone(row.sustained.status)}>{row.sustained.status}</StatusPill></div>
+              <div className="bonus-progress" role="progressbar" aria-label={`${account?.name??row.accountId} settled case progress toward ${row.targetCases}`} aria-valuemin={0} aria-valuemax={row.targetCases} aria-valuenow={Math.min(row.targetCases,row.settledCases)}><i style={{width:`${row.percent}%`}}/></div>
+              <div className="bonus-ledger__foot"><span>Opening (10 cases): {row.opening.status} · {formatMoney(row.opening.amount)}</span><span>40-case milestone: {row.sustained.status} · {formatMoney(row.sustained.amount)}</span></div>
+              <div className="bonus-ledger__foot"><span>{row.windowEnd?`Window through ${formatDate(row.windowEnd,{month:"short",day:"numeric",year:"numeric"})}`:"Not started"}</span><span>{row.sustained.evidenceOrderIds.length} linked settlement-evidence order(s)</span></div>
+              {account&&<Button size="sm" variant="ghost" onClick={()=>{openAccountPage(account.id);setTab("accounts")}}>View account and orders</Button>}
+            </article>;
+          })}{!visibleBonusRows.length&&<p>No accounts match these incentive filters.</p>}</div>
+          <p>Progress is a tracking view, not authorization to pay. Validate qualifying collections, account attribution, approved plan terms, and prior payouts before payroll.</p>
+        </Section></>}
     </>}
 
     <Modal open={createOpen} title="Create account" onClose={()=>{setCreateOpen(false);setDuplicateWarning(null)}} footer={<><Button variant="ghost" onClick={()=>{setCreateOpen(false);setDuplicateWarning(null)}}>Cancel</Button><Button type="submit" form="new-account-form">Create account</Button></>}><form id="new-account-form" className="form-grid" noValidate onChangeCapture={()=>setCreateErrors({})} onSubmit={submit}>{duplicateWarning&&<div className="form-callout field--full"><AlertTriangle size={17}/><p>{duplicateWarning}</p></div>}
