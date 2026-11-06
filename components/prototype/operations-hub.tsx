@@ -141,7 +141,7 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
         <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.stage}</td>
         <td>{a.contactName?<OpenLink to={"/crm/contacts/"+encodeURIComponent(a.id)}>{a.contactName}</OpenLink>:"Not recorded"}</td>
         <td>{names.get(a.ownerId)??"Unassigned"}</td><td>{a.nextActionDate||"Not scheduled"}</td>
-        <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>Open record</OpenLink></td>
+        <td><OpenLink to={"/sales/customers/"+encodeURIComponent(a.id)}>Open record</OpenLink><LeadFollowupScheduler accountId={a.id} defaultDate={a.nextActionDate}/></td>
       </tr>)}</tbody></table></div>
       {!records.length&&<Empty>No accessible leads match the current search and date filters.</Empty>}
       {records.length>0&&!records.some(a=>{
@@ -159,6 +159,43 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
     <p className="prototype-note">{records.length} matching records. Sorting and filters affect your view only, not account ownership or history.</p>
   </section></div>;
 }
+
+function LeadFollowupScheduler({accountId,defaultDate}:{accountId:string;defaultDate:string}){
+  const {scope,currentUser,createAppointment}=useWorkspace();
+  const {isDemo}=useRuntimeMode();
+  const [open,setOpen]=useState(false);
+  const [date,setDate]=useState(defaultDate||"");
+  const [time,setTime]=useState("09:00");
+  const [objective,setObjective]=useState("");
+  const [kind,setKind]=useState<"First visit"|"Revisit"|"Sample drop">("Revisit");
+  const [feedback,setFeedback]=useState("");
+  const account=scope.accounts.find(a=>a.id===accountId);
+  const canSchedule=isDemo&&!!currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role)&&!!account;
+  if(!canSchedule)return <span className="prototype-small">Scheduling unavailable</span>;
+  const submit=(event:React.FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!Number.isFinite(Date.parse(date+"T12:00:00"))||date<new Date().toLocaleDateString("en-CA")||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(time)||objective.trim().length<5){
+      setFeedback("Choose a valid future date, time and objective of at least five characters.");return;
+    }
+    const id=createAppointment({accountId,date,startTime:time,duration:30,type:kind,objective:objective.trim(),priority:"Normal"});
+    if(!id){setFeedback("Scheduling was rejected. Check representative permissions, territory and calendar conflicts.");return;}
+    setFeedback("Follow-up scheduled in this demonstration workspace.");
+    setOpen(false);
+    setObjective("");
+  };
+  return <div>
+    <button type="button" aria-expanded={open} onClick={()=>{setOpen(v=>!v);setFeedback("");}}>Schedule visit</button>
+    {open&&<form onSubmit={submit} className="prototype-panel" aria-label="Schedule lead follow-up">
+      <label>Date <input required type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>
+      <label>Time <input required type="time" value={time} onChange={e=>setTime(e.target.value)}/></label>
+      <label>Visit type <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}><option>First visit</option><option>Revisit</option><option>Sample drop</option></select></label>
+      <label>Objective <input required minLength={5} maxLength={240} value={objective} onChange={e=>setObjective(e.target.value)} placeholder="Reason for visit"/></label>
+      <button type="submit">Save visit</button><button type="button" onClick={()=>setOpen(false)}>Cancel</button>
+    </form>}
+    {feedback&&<p role="status" className="prototype-note">{feedback}</p>}
+  </div>;
+}
+
 function CustomerRecord({id,section}:{id:string;section:string}){
   const {scope,data}=useWorkspace();
   const loc=scope.accounts.find(a=>a.id===id);
