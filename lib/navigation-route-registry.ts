@@ -36,7 +36,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Quick Visits", path: "/crm/quick-visit", permission: "quickVisit", state: "prototype" },
     { label: "Account Setup", path: "/crm/account-setup", permission: "accountSetup", state: "prototype" },
     { label: "Account Health", path: "/crm/account-health", permission: "accountHealth", state: "prototype" },
-    { label: "Account Map", path: "/crm/account-map", permission: "salesMap", state: "existing" },
+    { label: "Account Map", path: "/crm/account-map", permission: "salesMap", state: "prototype" },
     { label: "Territory Map", path: "/crm/territory-map", permission: "salesMap", state: "prototype" },
     { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "existing" },
     { label: "Sales Incentives", path: "/crm/incentives", permission: "accounts", state: "prototype" },
