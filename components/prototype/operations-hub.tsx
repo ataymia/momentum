@@ -39,6 +39,8 @@ import {WorkspaceHome} from "./workspace-home";
 import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
 import {WorkExceptionsExperience,CompletedWorkExperience} from "./work-review-experience";
 import {DealsDirectory,DealEditor} from "./crm-deals-experience";
+import {CrmContactsDirectory,CrmContactEditor} from "./crm-contacts-experience";
+import {useCrm} from "../../lib/crm-context";
 import type { Order } from "../../lib/types";
 
 function Empty({ children }: { children: ReactNode }) {
@@ -400,6 +402,13 @@ function ContactsDirectory(){
 
 /** Contact records currently inherit the canonical location ID. Never invent an
  * independent person ID or infer that matching names are the same person. */
+
+/** Retain old account-ID contact deep links while independent contact IDs get real records. */
+function ContactRoute({id}:{id:string}){
+  const {crm}=useCrm();
+  return crm.contacts.some(contact=>contact.id===id)?<CrmContactEditor key={id} id={id}/>:<ContactRecord id={id}/>;
+}
+
 function ContactRecord({id}:{id:string}){
   const {scope,data}=useWorkspace();
   const account=scope.accounts.find(a=>a.id===id);
@@ -689,8 +698,12 @@ export function PrototypeOperationsHub(){
   if(path==="/crm/deals/new")return <DealEditor/>;
   if(segments[0]==="crm"&&segments[1]==="deals"&&segments[2])return <DealEditor id={decodeURIComponent(segments[2])}/>;
   if(path==="/crm/deals")return <DealsDirectory/>;
-  if(segments[0]==="crm"&&segments[1]==="contacts"&&segments[2])return <ContactRecord id={decodeURIComponent(segments[2])}/>;
-  if(path==="/crm/contacts")return <ContactsDirectory/>;
+  if(path==="/crm/contacts/new")return <CrmContactEditor/>;
+  if(segments[0]==="crm"&&segments[1]==="contacts"&&segments[2]){
+    const id=decodeURIComponent(segments[2]);
+    return <ContactRoute id={id}/>;
+  }
+  if(path==="/crm/contacts")return <CrmContactsDirectory/>;
   if(path==="/calendar"||path==="/calendar/meetings")return <CalendarPreview meetingsOnly={path.endsWith("/meetings")}/>;
   if(path==="/crm/incentives")return <IncentivePreview/>;
   const item=routeEntry(path);

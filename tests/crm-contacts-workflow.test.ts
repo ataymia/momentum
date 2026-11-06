@@ -1,0 +1,36 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import type {CrmContact} from "../lib/crm-engine";
+import {visibleCrmContacts} from "../lib/crm-contacts-view";
+const contact=(id:string,locationId:string,patch:Partial<CrmContact>={}):CrmContact=>({
+ id,scope:"Location",locationId,customerId:"customer-"+locationId,name:"Contact "+id,role:"Buyer",
+ decisionRole:"Decision maker",primary:false,active:true,createdAt:"2026-11-06T00:00:00Z",createdBy:"rep",...patch,
+});
+test("contact directory excludes foreign locations before any text/status filtering or export",()=>{
+ const all=[contact("owned","loc1"),contact("foreign","loc2"),contact("inactive","loc1",{active:false})];
+ const rows=visibleCrmContacts(all,new Set(["loc1"]),new Set(["customer-loc1"]),new Map([["loc1","Owned"],["loc2","Foreign"]]),{active:"true"});
+ assert.deepEqual(rows.map(c=>c.id),["owned"]);
+ assert.deepEqual(visibleCrmContacts(all,new Set(),new Set(),new Map()),[]);
+ assert.deepEqual(visibleCrmContacts(all,new Set(["loc1"]),new Set(),new Map(),{query:"foreign"}),[]);
+ assert.equal(all.length,3);
+});
+test("customer-scope contact is accessible only to linked authorized customer",()=>{
+ const all=[contact("wide","",{scope:"Customer",customerId:"linked",locationId:undefined})];
+ assert.deepEqual(visibleCrmContacts(all,new Set(),new Set(["linked"]),new Map()).map(c=>c.id),["wide"]);
+ assert.deepEqual(visibleCrmContacts(all,new Set(),new Set(["unrelated"]),new Map()),[]);
+});
+test("new independent contacts use authenticated CRM store, local-demo guard, and correct record IDs",()=>{
+ const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+ const ui=readFileSync("components/prototype/crm-contacts-experience.tsx","utf8");
+ const ctx=readFileSync("lib/crm-context.tsx","utf8");
+ assert.match(hub,/path==="\/crm\/contacts\/new"/);
+ assert.match(hub,/CrmContactEditor id=\{decodeURIComponent\(segments\[2\]\)\}/);
+ assert.match(hub,/path==="\/crm\/contacts"\)return <CrmContactsDirectory\/>/);
+ assert.match(ui,/addContact\(/);
+ assert.match(ui,/updateContact\(/);
+ assert.match(ui,/runtime\.isDemo&&momentumStorage\.mode\(\)==="local"/);
+ assert.match(ctx,/const updateContact=/);
+ assert.match(ctx,/existing\.createdBy==="system"/);
+ assert.match(ui,/scope\.orders\.filter\(o=>!o\.testOnly&&o\.accountId===contact\.locationId\)/);
+});

@@ -541,3 +541,10 @@ For every run record: local date/time; main and review-branch SHAs; item number;
 - **Files:** components/prototype/crm-deals-experience.tsx, components/prototype/operations-hub.tsx, lib/crm-deals-view.ts, tests/crm-deals-workflow.test.ts, package.json, this queue.
 - **Verification:** Source and pure projection regression tests added to mandatory logic suite. Exact final SHA CI, Firestore/Storage emulators, Functions/build, authenticated production persistence, cross-role browser/mobile/staging QA and owner acceptance remain pending. This is NOT an accepted/released production CRM workflow.
 - **Next unblocked product slice:** Complete independent CRM contacts (creation/detail/edit) and account/lead qualification with server-authorized persistence rather than more read-only filters.
+
+### November 6, 2026: Persistent review branch — independent Contacts workstream
+- **Reuse:** Same existing review branch and draft PR #166; no new PR or branch, no main modification.
+- **Checklist C02/C03:** BUILT-UNVERIFIED increment. Actual independent contact register, scoped search/status/decision role/sort, allowlisted CSV, new record form, separate contact deep links, edit/name/title/email/phone/active status for user-created contacts, account/lead and related-order/activity navigation. Preserves historical account-ID contact URLs. Reuses existing CrmProvider and canonical customer/location relations; generated seed contacts remain read-only to avoid false edits. No connected/live data writes.
+- **Files:** components/prototype/crm-contacts-experience.tsx, lib/crm-contacts-view.ts, lib/crm-context.tsx, components/prototype/operations-hub.tsx, tests/crm-contacts-workflow.test.ts, package.json, this queue.
+- **Quality gates:** new source/projection regressions registered for mandatory logic suite; exact SHA CI, full emulator/Functions tests, role browser/mobile QA, authenticated server-side connected CRUD and owner acceptance pending. NOT user accepted or released.
+- **Next slice:** server-authorized account/lead qualification edits and unified CRM workflow QA without introducing per-run branches.
