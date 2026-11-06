@@ -14,6 +14,7 @@ import { TerritoryPanel } from "../crm/territory-panel";
 import {SalesUserPicker} from "../crm/sales-user-picker";
 import {CrmLeadCreator} from "./crm-lead-create";
 import {CrmAccountHealth} from "./crm-account-health";
+import {CrmAccountSetup} from "./crm-account-setup";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience } from "./hr-payroll-experiences";
@@ -719,6 +720,7 @@ export function PrototypeOperationsHub(){
   if(path==="/admin/employees")return <div><Heading title="Employee Directory" description="Administrator view of active staff."/><EmployeeDirectory/></div>;
   if(path==="/crm/territory-map")return <TerritoryMapPreview/>;
   if(path==="/crm/account-health")return <CrmAccountHealth/>;
+  if(path==="/crm/account-setup")return <CrmAccountSetup/>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
   if(path==="/work/approvals")return <OrderApprovalDirectory/>;
