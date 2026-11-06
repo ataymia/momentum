@@ -6,7 +6,7 @@
 export type LotReviewInput={bestBy:string;status:string;warehouseOnHand:number;reserved:number};
 export type StockIssue="Quality hold"|"Negative custody"|"Over-reserved"|"Missing best-by"|"Past best-by"|"Best-by within 30 days";
 export function daysUntilBestBy(bestBy:string,asOf:string):number|null{
-  const valid=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&new Date(s+"T12:00:00Z").toISOString().slice(0,10)===s;
+  const valid=(s:string)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;const d=new Date(s+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===s;};
   if(!valid(bestBy)||!valid(asOf))return null;
   return Math.round((Date.parse(bestBy+"T12:00:00Z")-Date.parse(asOf+"T12:00:00Z"))/86_400_000);
 }
@@ -23,7 +23,7 @@ export function reviewInventoryLot(lot:LotReviewInput,asOf:string){
 }
 /** FEFO is an advisory warehouse picking order, not a substitute for allocation permission. */
 export function compareFefo(a:{bestBy:string;lotCode:string},b:{bestBy:string;lotCode:string}){
-  const va=/^\d{4}-\d{2}-\d{2}$/.test(a.bestBy)?a.bestBy:"9999-12-31";
-  const vb=/^\d{4}-\d{2}-\d{2}$/.test(b.bestBy)?b.bestBy:"9999-12-31";
+  const va=daysUntilBestBy(a.bestBy,"2026-01-01")!==null?a.bestBy:"9999-12-31";
+  const vb=daysUntilBestBy(b.bestBy,"2026-01-01")!==null?b.bestBy:"9999-12-31";
   return va.localeCompare(vb)||a.lotCode.localeCompare(b.lotCode);
 }
