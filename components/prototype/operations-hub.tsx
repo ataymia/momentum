@@ -47,10 +47,10 @@ function Empty({ children }: { children: ReactNode }) {
 function OpenLink({ to, children }: {to: string;children: ReactNode}) {
   return <button type="button" className="prototype-link" onClick={() => navigateToRoute(to)}>{children}<ExternalLink size={13}/></button>;
 }
-function Heading({title,description,back}:{title:string;description:string;back?:string}){
+function Heading({title,description,back}:{title:string;description?:string;back?:string}){
   return <header className="prototype-heading">
     {back&&<button type="button" className="prototype-back" onClick={()=>navigateToRoute(back)}><ArrowLeft size={15}/> Back to list</button>}
-    <h1>{title}</h1><p>{description}</p>
+    <h1>{title}</h1>{description&&<p>{description}</p>}
   </header>;
 }
 function Tabs({items,current,base}:{items:{key:string;label:string}[];current:string;base:string}){
