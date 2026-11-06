@@ -36,7 +36,7 @@ test("deal and contact lists enforce visible location and parent scopes even whe
   contacts[3].customerId = "parent-2";
   assert.deepEqual(visibleDeals(deals,accounts,person("Sales Representative")).map(record => record.id),["inside"]);
   assert.deepEqual(visibleContacts(contacts,accounts,person("Sales Representative")).map(record => record.id),["inside","parent"]);
-  for (const role of ["Customer","Marketing","Warehouse","Driver"] as const) {
+  for (const role of ["Customer","Marketing","Warehouse","Delivery Driver"] as const) {
     assert.deepEqual(visibleDeals(deals,accounts,person(role)),[]);
     assert.deepEqual(visibleContacts(contacts,accounts,person(role)),[]);
   }
