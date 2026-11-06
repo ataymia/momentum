@@ -7,7 +7,7 @@
 export type NotificationTimestampSource = "recorded" | "first-seen";
 
 export function usableNotificationTime(time: unknown): time is string {
-  return typeof time === "string" && !!time.trim() && Number.isFinite(Date.parse(time));
+  return typeof time === "string" && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,3})?)?(?:Z|[+-]\\d{2}:\\d{2})$/.test(time) && Number.isFinite(Date.parse(time));
 }
 
 export function notificationDisplayTime(
