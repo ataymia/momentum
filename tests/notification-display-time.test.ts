@@ -24,6 +24,8 @@ test("undated notices retain a stable first-seen time across rerenders",()=>{
 test("missing or invalid event timestamps cannot be presented as event times",()=>{
   assert.deepEqual(notificationDisplayTime("invalid",undefined,check),{time:check,source:"first-seen"});
   assert.deepEqual(notificationDisplayTime(undefined,"not-a-time",check),{time:check,source:"first-seen"});
+  assert.deepEqual(notificationDisplayTime("2026-11-05",undefined,check),{time:check,source:"first-seen"});
+  assert.deepEqual(notificationDisplayTime("2026-11-05T11:00:00",undefined,check),{time:check,source:"first-seen"});
 });
 test("first-seen state deduplicates IDs, rejects bad persistence and stays bounded",()=>{
   const result=mergeFirstSeenTimes({},["x","x","y",""],first);
