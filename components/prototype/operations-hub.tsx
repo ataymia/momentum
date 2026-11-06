@@ -259,12 +259,12 @@ function ContactsDirectory(){
 function ContactRecord({id}:{id:string}){
   const {scope,data}=useWorkspace();
   const account=scope.accounts.find(a=>a.id===id);
-  if(!account||!account.contactName)return <div><Heading title="Contact unavailable" description="This contact is missing or outside your authorized workspace." back="/crm/contacts"/><Empty>No accessible contact record.</Empty></div>;
   const [orderQuery,setOrderQuery]=useState("");
   const [orderStatus,setOrderStatus]=useState("all");
   const [activityQuery,setActivityQuery]=useState("");
   const [activityFrom,setActivityFrom]=useState("");
   const [activityThrough,setActivityThrough]=useState("");
+  if(!account||!account.contactName)return <div><Heading title="Contact unavailable" description="This contact is missing or outside your authorized workspace." back="/crm/contacts"/><Empty>No accessible contact record.</Empty></div>;
   const assigned=data.users.find(u=>u.id===account.ownerId);
   const allOrders=scope.orders.filter(o=>!o.testOnly&&o.accountId===account.id);
   const orderStatuses=[...new Set(allOrders.map(o=>o.status))].sort();
