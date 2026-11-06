@@ -164,12 +164,15 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
 }
 
 function LeadRecord({id}:{id:string}){
-  const {scope,data,currentUser,transferAccountResponsibility}=useWorkspace();
+  const {scope,data,currentUser,transferAccountResponsibility,qualifyLead}=useWorkspace();
   const {isDemo}=useRuntimeMode();
   const account=scope.accounts.find(a=>a.id===id&&["Prospect","Qualified","Sampled"].includes(a.stage));
+  const [qualificationReason,setQualificationReason]=useState("");
+  const [qualificationFeedback,setQualificationFeedback]=useState("");
   const [newOwner,setNewOwner]=useState("");
   const [handoffReason,setHandoffReason]=useState("");
   const [handoffFeedback,setHandoffFeedback]=useState("");
+  const canQualify=isDemo&&momentumStorage.mode()==="local"&&!!currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role);
   const canHandoff=isDemo&&!!currentUser&&["Administrator","Sales Manager"].includes(currentUser.role);
   const eligibleReps=data.users.filter(u=>u.role==="Sales Representative"&&u.id!==account?.ownerId);
   const handoff=(event:React.FormEvent<HTMLFormElement>)=>{
@@ -194,6 +197,23 @@ function LeadRecord({id}:{id:string}){
       <dl className="prototype-facts"><div><dt>Location</dt><dd>{account.location}</dd></div><div><dt>ZIP</dt><dd>{account.postalCode||"Not recorded"}</dd></div><div><dt>Contact</dt><dd>{account.contactName||"Not recorded"}</dd></div><div><dt>Email</dt><dd>{account.email||"Not recorded"}</dd></div><div><dt>Phone</dt><dd>{account.phone||"Not recorded"}</dd></div></dl>
       <div className="prototype-controls"><OpenLink to={"/sales/customers/"+encodeURIComponent(id)}>Customer account</OpenLink>{account.contactName&&<OpenLink to={"/crm/contacts/"+encodeURIComponent(id)}>Contact detail</OpenLink>}</div>
       <div className="prototype-controls"><OpenLink to="/crm/deals">Sales opportunities</OpenLink><OpenLink to="/crm/deals/new">Create a deal</OpenLink></div>
+
+      {canQualify&&<form className="prototype-panel" aria-label="Update lead qualification" onSubmit={event=>{
+        event.preventDefault();
+        const target=account.stage==="Prospect"?"Qualified":account.stage==="Qualified"?"Sampled":"Qualified";
+        const result=qualifyLead(account.id,target,qualificationReason);
+        setQualificationFeedback(result.ok?"Lead stage updated in the isolated CRM demonstration workspace.":(result.message??"Qualification rejected."));
+        if(result.ok)setQualificationReason("");
+      }}>
+        <h3>Qualify lead</h3>
+        <label>Next stage <select aria-label="Next lead qualification stage" value={account.stage==="Prospect"?"Qualified":account.stage==="Qualified"?"Sampled":"Qualified"} disabled>
+          {account.stage==="Prospect"?<option value="Qualified">Qualified</option>:account.stage==="Qualified"?<option value="Sampled">Sampled</option>:<option value="Qualified">Qualified (manager correction only)</option>}
+        </select></label>
+        <label>Qualification reason <textarea required minLength={5} maxLength={500} value={qualificationReason} onChange={event=>setQualificationReason(event.target.value)} placeholder="Evidence supporting this stage change"/></label>
+        <button type="submit" disabled={qualificationReason.trim().length<5}>Save stage</button>
+        {qualificationFeedback&&<p role="status">{qualificationFeedback}</p>}
+      </form>}
+
       <p className="prototype-note">Lead stage is sourced from the existing account record. Stage editing remains disabled pending audited server authorization.</p>
       {canHandoff&&<form className="prototype-panel" aria-label="Transfer lead responsibility" onSubmit={handoff}>
         <h3>Reassign lead</h3>

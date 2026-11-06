@@ -548,3 +548,9 @@ For every run record: local date/time; main and review-branch SHAs; item number;
 - **Files:** components/prototype/crm-contacts-experience.tsx, lib/crm-contacts-view.ts, lib/crm-context.tsx, components/prototype/operations-hub.tsx, tests/crm-contacts-workflow.test.ts, package.json, this queue.
 - **Quality gates:** new source/projection regressions registered for mandatory logic suite; exact SHA CI, full emulator/Functions tests, role browser/mobile QA, authenticated server-side connected CRUD and owner acceptance pending. NOT user accepted or released.
 - **Next slice:** server-authorized account/lead qualification edits and unified CRM workflow QA without introducing per-run branches.
+
+### November 6, 2026: Persistent review branch — lead qualification action
+- **Branch/PR:** Reused PR #166 and the existing review branch, without new feature branch/PR.
+- **Checklist C01/C03:** BUILT-UNVERIFIED increment. LeadRecord now provides a validated stage action with evidence reason for assigned rep or management, safe Prospect→Qualified→Sampled progression and manager-only Sampled→Qualified correction; rejects outside-scope actors and order/customer-stage regressions. Canonical account stage update is recorded in commercial account patch and audited activity. Local demonstration only; no live connected write. Existing rep reassignment and visit scheduling remain.
+- **Files:** lib/lead-qualification.ts, lib/workspace-context.tsx, components/prototype/operations-hub.tsx, tests/lead-qualification-workflow.test.ts, package.json and this queue.
+- **Remaining gates:** exact-SHA CI, end-to-end browser QA, server-authorized production persistence, stage/role emulators and owner acceptance. No item is User-Accepted or Released.
