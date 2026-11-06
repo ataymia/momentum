@@ -39,6 +39,7 @@ import {ActionCenterExperience} from "./action-center-experience";
 import {WorkspaceHome} from "./workspace-home";
 import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
 import {PriceBooksDirectory,PriceBookDetail} from "./price-books-experience";
+import {CustomerCommerceLedgers} from "./customer-commerce-ledgers";
 import {WorkExceptionsExperience,CompletedWorkExperience} from "./work-review-experience";
 import type { Order } from "../../lib/types";
 
@@ -291,6 +292,7 @@ function ContactsDirectory(){
 function CustomerPortalContent({section}:{section:string}){
   const {scope,currentUser}=useWorkspace();const {commerce}=useCommerce();const runtime=useRuntimeMode();
   if(currentUser?.role!=="Customer") return <Empty>Customer access only.</Empty>;
+  if(section==="payments"||section==="statements")return <CustomerCommerceLedgers section={section}/>;
   const current=scope.accounts[0];
   const orders=scope.orders.filter(o=>!o.testOnly).sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
   if(section==="invoices"&&(!runtime.isDemo||momentumStorage.mode()!=="local"))return <div><Heading title="My Invoices" description="Account-specific invoice access requires verification."/><section className="prototype-panel"><p>This customer invoice screen is enabled in the isolated demo only. Connected invoices need an account-scoped server read before release.</p></section></div>;
