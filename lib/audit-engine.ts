@@ -123,7 +123,7 @@ export function normalizeAuditState(input: unknown): AuditState {
       entityType: event.entityType,
       entityId: event.entityId,
       label: event.label,
-      summary: unverifiedLegacy ? `Unverified historical record (not proof of a user action): ${event.summary}` : event.summary,
+      summary: unverifiedLegacy && !event.summary.startsWith("Unverified historical record (not proof of a user action): ") ? `Unverified historical record (not proof of a user action): ${event.summary}` : event.summary,
       provenanceStatus: unverifiedLegacy ? "unverified-legacy" : "verified",
       sensitivity: sensitivityFor(event.module, event.collection),
       relatedAccountId: typeof event.relatedAccountId === "string" ? event.relatedAccountId : undefined,
@@ -399,6 +399,9 @@ export function diffAuditableRecords(
   at = new Date().toISOString(),
   users: WorkspaceUser[] = [],
 ): AuditEvent[] {
+  // Keep the historical call signature; observation is not evidence of a write.
+  void actor;
+  void at;
   const events: AuditEvent[] = [];
   const keys = new Set([...previous.keys(), ...current.keys()]);
   let sequence = 0;
