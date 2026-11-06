@@ -363,3 +363,14 @@ test("explicitly source-verified account records are never quarantined for trunc
   assert.equal(state.events[0].provenanceStatus,"verified");
   assert.equal(recoverableUnverifiedAuditEvents(state).length,0);
 });
+
+test("G04/G07: cache eviction cannot falsely label the last account editor as deleter",()=>{
+  const before=collectAuditableRecords("Workspace",{accounts:[{
+    id:"account-vanish",name:"Market",stage:"Qualified",
+    updatedBy:"admin-1",updatedAt:"2026-10-05T12:00:00Z",
+  }]});
+  const empty=collectAuditableRecords("Workspace",{accounts:[]});
+  const events=diffAuditableRecords(before,empty,
+    {id:"system",role:"System"},"2026-11-06T18:00:00Z",[admin]);
+  assert.deepEqual(events,[]);
+});
