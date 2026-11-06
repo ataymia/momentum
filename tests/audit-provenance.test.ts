@@ -337,3 +337,29 @@ test("passive account sync is not attributed to the viewer even when their ident
   const after=collectAuditableRecords("Workspace",{accounts:[{id:"account-1",name:"Market",stage:"Qualified"}]});
   assert.deepEqual(diffAuditableRecords(before,after,{id:"admin-1",role:"Administrator"},"2026-11-06T18:00:00Z",[admin]),[]);
 });
+
+test("same-millisecond audit writes with different changed fields remain independently recoverable",()=>{
+  const original={
+    id:"evt-1",at:"2026-10-06T20:00:00.000Z",actorId:"admin-1",actorRole:"Administrator",
+    action:"Updated" as const,module:"Workspace",collection:"accounts",
+    entityType:"Workspace.accounts",entityId:"acct-1",label:"Market",
+    summary:"Account changed",sensitivity:"operational" as const,
+    changes:[{field:"stage",before:"Prospect",after:"Qualified"}],
+  };
+  const next={...original,id:"evt-2",changes:[{field:"health",before:"New",after:"Strong"}]};
+  const state=normalizeAuditState({version:1,events:[original,next]});
+  assert.equal(state.events.length,2);
+  assert.notEqual(auditEventFingerprint(original),auditEventFingerprint(next));
+});
+test("explicitly source-verified account records are never quarantined for truncated diffs",()=>{
+  const original={
+    id:"verified-acct",at:"2026-10-06T20:00:00.000Z",actorId:"admin-1",
+    actorRole:"Administrator",action:"Created" as const,module:"Workspace",
+    collection:"accounts",entityType:"Workspace.accounts",entityId:"acct-1",
+    label:"Market",summary:"Account created",sensitivity:"operational" as const,
+    changes:[{field:"name",after:"Market"}],provenanceStatus:"verified" as const,
+  };
+  const state=normalizeAuditState({version:1,events:[original]});
+  assert.equal(state.events[0].provenanceStatus,"verified");
+  assert.equal(recoverableUnverifiedAuditEvents(state).length,0);
+});
