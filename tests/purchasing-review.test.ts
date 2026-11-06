@@ -105,10 +105,14 @@ test("matched bill can be independently approved, paid and credited without tran
   assert.equal(act(s,admin,{kind:"payment.record",billId,reference:"DEMO-PAY",amountCents:17000}).ok,false);
   s=success(s,admin,{kind:"payment.record",billId,reference:"DEMO-PAY",amountCents:6000});
   assert.equal(s.payments[0].externalSettlementVerified,false);
+  assert.equal(billDueCents(s,s.bills[0]),16000,"Unverified payment notes must not lower real payable.");
   assert.equal(act(s,admin,{kind:"payment.record",billId,reference:"demo-pay",amountCents:100}).ok,false);
   assert.equal(act(s,admin,{kind:"credit.record",billId,reference:"DEMO-CREDIT",reason:"Illustrative adjustment",amountCents:11000}).ok,false);
   s=success(s,admin,{kind:"credit.record",billId,reference:"DEMO-CREDIT",reason:"Illustrative adjustment",amountCents:10000});
-  assert.equal(billDueCents(s,s.bills[0]),0);
+  assert.equal(billDueCents(s,s.bills[0]),16000,"Unreviewed vendor credits cannot lower payable.");
+  assert.equal(act(s,admin,{kind:"credit.approve",id:s.credits[0].id}).ok,false);
+  s=success(s,otherAdmin,{kind:"credit.approve",id:s.credits[0].id});
+  assert.equal(billDueCents(s,s.bills[0]),6000);
   assert.equal(act(s,admin,{kind:"payment.record",billId,reference:"LATE",amountCents:100}).ok,false);
 });
 test("expenses need independent sign-off and preserve a who/what/when audit trail",()=>{
