@@ -3,6 +3,8 @@
  * accounts payable ledger or inventory posting integration.
  * All prices are user-entered integer USD cents; no supplier facts are seeded.
  */
+import {GOLDEN_EAGLE_SKUS} from "./product-catalog";
+
 export type PurchaseRole = "Administrator"|"Operations"|"Warehouse"|"Other";
 export type PurchaseActor = {id:string;role:PurchaseRole};
 export type VendorRecord = {id:string;name:string;contact:string;active:boolean;createdAt:string;createdBy:string};
@@ -81,7 +83,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
     case "po.create":{
       if(!canProcure(actor))return reject("Only purchasing staff may prepare purchase orders.");
       if(!s.vendors.some(v=>v.id===action.vendorId&&v.active))return reject("Select a registered active vendor.");
-      if(!label(action.sku)||!amount(action.cases)||!amount(action.unitCostCents)||!Number.isSafeInteger(action.cases*action.unitCostCents)||!label(action.warehouse)||!dateKey(action.expectedDate))return reject("Enter a SKU, whole case quantity, cost, location and valid expected date.");
+      if(!GOLDEN_EAGLE_SKUS.some(sku=>sku.id===action.sku&&sku.active&&!sku.testOnly)||!amount(action.cases)||!amount(action.unitCostCents)||!Number.isSafeInteger(action.cases*action.unitCostCents)||!label(action.warehouse)||!dateKey(action.expectedDate))return reject("Enter a SKU, whole case quantity, cost, location and valid expected date.");
       recordId=newId(s,"po");s.orders.push({id:recordId,vendorId:action.vendorId,sku:action.sku,cases:action.cases,unitCostCents:action.unitCostCents,warehouse:action.warehouse.trim(),expectedDate:action.expectedDate,createdAt:at,createdBy:actor.id});break;
     }
     case "po.submit":{
