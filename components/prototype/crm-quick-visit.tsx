@@ -130,7 +130,7 @@ export function CrmQuickVisit(){
       <p className="prototype-note">{filteredVisits.length} of {visits.length} accessible physical visits. Original actor, notes and event times are preserved.</p>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>{([
         ["when","When"],["business","Business"],["score","Score"],["outcome","Outcome"],["notes","Notes"]
-      ] as const).map(([key,label])=><th key={key}><button type="button" aria-label={"Sort visits by "+label} aria-sort={historySort===key?(historyAscending?"ascending":"descending"):"none"}
+      ] as const).map(([key,label])=><th key={key} aria-sort={historySort===key?(historyAscending?"ascending":"descending"):"none"}><button type="button" aria-label={"Sort visits by "+label}
         onClick={()=>{if(historySort===key)setHistoryAscending(v=>!v);else{setHistorySort(key);setHistoryAscending(true);}}}>{label}</button></th>)}</tr></thead>
       <tbody>{filteredVisits.slice(0,historyCount).map(visit=><tr key={visit.id}><td>{visit.occurredAt.slice(0,16).replace("T"," ")}</td><td>{employeeVisitLabel(visit,data)}</td><td>{visit.prospectRating??"Not scored"}</td><td>{visit.visitUnsuccessful?"Unsuccessful":"Recorded"}</td><td>{visit.summary}</td></tr>)}</tbody></table></div>
       {!filteredVisits.length&&<p className="prototype-empty">No matching physical visits for this employee.</p>}
