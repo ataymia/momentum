@@ -26,11 +26,17 @@ export function DealsDirectory(){
   const [stage,setStage]=useState("all");
   const [status,setStatus]=useState("all");
   const [ownerId,setOwnerId]=useState("all");
+  const [from,setFrom]=useState("");
+  const [through,setThrough]=useState("");
+  const accountNames=useMemo(()=>new Map(scope.accounts.map(account=>[account.id,account.name])),[scope.accounts]);
+  const repNames=useMemo(()=>new Map(data.users.map(user=>[user.id,user.name])),[data.users]);
   const [sort,setSort]=useState<DealSort>("updated");
   const [ascending,setAscending]=useState(false);
-  const rows=useMemo(()=>visibleDeals(crm.opportunities,ids,{query,stage,status,ownerId,sort,ascending}),[crm.opportunities,ids,query,stage,status,ownerId,sort,ascending]);
+  const rows=useMemo(()=>visibleDeals(crm.opportunities,ids,{query,stage,status,ownerId,sort,ascending,accountNames,representativeNames:repNames})
+    .filter(deal=>(!from||deal.updatedAt.slice(0,10)>=from)&&(!through||deal.updatedAt.slice(0,10)<=through)),
+    [crm.opportunities,ids,query,stage,status,ownerId,sort,ascending,accountNames,repNames,from,through]);
   const owners=[...new Set(crm.opportunities.filter(deal=>ids.has(deal.locationId)).map(deal=>deal.ownerId))];
-  const header=(field:DealSort,label:string)=><button type="button" aria-label={"Sort deals by "+label} onClick={()=>{if(sort===field)setAscending(value=>!value);else{setSort(field);setAscending(field==="name");}}}>{label} <ArrowUpDown size={13}/></button>;
+  const header=(field:DealSort,label:string)=><th aria-sort={sort===field?(ascending?"ascending":"descending"):"none"}><button type="button" aria-label={"Sort deals by "+label} onClick={()=>{if(sort===field)setAscending(value=>!value);else{setSort(field);setAscending(true);}}}>{label} <ArrowUpDown size={13}/></button></th>;
   return <main className="prototype-workspace">
     <header className="prototype-heading"><h1>Deals</h1><p>Opportunity pipeline connected to authorized customer locations. CRM outcomes do not issue orders or recognize revenue.</p>
       {canWrite&&<button type="button" onClick={()=>navigateToRoute("/crm/deals/new")}>New deal</button>}</header>
@@ -40,12 +46,14 @@ export function DealsDirectory(){
         <label>Stage <select aria-label="Deal stage filter" value={stage} onChange={event=>setStage(event.target.value)}><option value="all">All stages</option>{ALL_STAGES.map(value=><option key={value}>{value}</option>)}</select></label>
         <label>Status <select aria-label="Deal status filter" value={status} onChange={event=>setStatus(event.target.value)}><option value="all">All statuses</option><option>Open</option><option>Won</option><option>Lost</option></select></label>
         <label>Representative <select aria-label="Deal representative filter" value={ownerId} onChange={event=>setOwnerId(event.target.value)}><option value="all">All accessible representatives</option>{owners.map(id=><option value={id} key={id}>{data.users.find(user=>user.id===id)?.name??id}</option>)}</select></label>
-        <button type="button" onClick={()=>{setQuery("");setStage("all");setStatus("all");setOwnerId("all");setSort("updated");setAscending(false);}}>Clear filters</button>
+        <label>Updated from <input type="date" aria-label="Deals updated from" value={from} onChange={e=>setFrom(e.target.value)}/></label>
+        <label>Updated through <input type="date" aria-label="Deals updated through" value={through} onChange={e=>setThrough(e.target.value)}/></label>
+        <button type="button" onClick={()=>{setQuery("");setStage("all");setStatus("all");setOwnerId("all");setFrom("");setThrough("");setSort("updated");setAscending(false);}}>Clear filters</button>
       </div>
       <p className="prototype-note" role="status">{rows.length} matching deal{rows.length===1?"":"s"}</p>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
-        <th>{header("name","Deal")}</th><th>Customer location</th><th>Stage</th><th>Status</th><th>Representative</th>
-        <th>{header("cases","Estimated cases")}</th><th>{header("nextAction","Next action date")}</th><th>{header("updated","Updated")}</th>
+        {header("name","Deal")}{header("location","Customer location")}{header("stage","Stage")}{header("status","Status")}{header("owner","Representative")}
+        {header("cases","Estimated cases")}{header("nextAction","Next action date")}{header("updated","Updated")}
       </tr></thead><tbody>{rows.map(deal=>{
         const account=scope.accounts.find(item=>item.id===deal.locationId);
         return <tr key={deal.id}><td>{go(url(deal.id),deal.name)}</td><td>{account?go("/sales/customers/"+encodeURIComponent(account.id),account.name):"Unavailable"}</td>
