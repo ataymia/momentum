@@ -1,10 +1,11 @@
 "use client";
-import {useMemo,useSyncExternalStore} from "react";
+import {createContext,useContext,useEffect,useMemo,useState,useSyncExternalStore} from "react";
+import type {ReactNode} from "react";
+import {staffMeetingRequest,type StaffMeetingCommand} from "./staff-meetings-client";
 import type {Appointment} from "./types";
 import {useRuntimeMode} from "./runtime-mode";
 import {useWorkspace} from "./workspace-context";
 import {momentumStorage} from "./persistence";
-import {arizonaDateKey} from "./date-time";
 import {
   MEETINGS_DEMO_KEY,EMPTY_MEETINGS,meetingEligibleUsers,meetingVisibleTo,mayOrganize,
   meetingConflicts,normalizeMeetings,validateMeeting,type MeetingInput,type TeamMeeting,type Rsvp,
@@ -22,7 +23,7 @@ const snapshot=()=>typeof window==="undefined"?null:window.localStorage.getItem(
 const serverSnapshot=()=>null;
 type ChangeResult={ok:boolean;message?:string;id?:string};
 const uid=()=> "mtg-"+Date.now()+"-"+Math.random().toString(36).slice(2,10);
-export function useMeetingWorkspace(){
+function useLocalMeetingWorkspace(){
   const {data,scope,currentUser}=useWorkspace(),runtime=useRuntimeMode();
   const raw=useSyncExternalStore(subscribe,snapshot,serverSnapshot);
   const isLocal=runtime.isDemo&&momentumStorage.mode()==="local";
@@ -95,4 +96,91 @@ export function useMeetingWorkspace(){
     return{result:{ok:true,id},meetings:all.map(item=>item.id===id?revised:item)};
   });
   return{meetings,users,allowed,isLocal,currentUser,appointments:scope.appointments as readonly Appointment[],create,revise,cancel,rsvp,seen};
+}
+
+
+type MeetingWorkspace=ReturnType<typeof useLocalMeetingWorkspace> & {
+  cloudReady:boolean;cloudError:string;
+  create:(input:MeetingInput)=>ChangeResult|Promise<ChangeResult>;
+  revise:(id:string,input:MeetingInput)=>ChangeResult|Promise<ChangeResult>;
+  cancel:(id:string)=>ChangeResult|Promise<ChangeResult>;
+  rsvp:(id:string,response:Exclude<Rsvp,"Pending">)=>ChangeResult|Promise<ChangeResult>;
+  seen:(id:string)=>ChangeResult|Promise<ChangeResult>;
+};
+type RemoteState={userId:string;ready:boolean;meetings:TeamMeeting[];error:string};
+const MeetingContext=createContext<MeetingWorkspace|null>(null);
+
+/** Single authenticated read/poll source for Home, Calendar, bell and Action Center. */
+export function MeetingProvider({children}:{children:ReactNode}){
+  const local=useLocalMeetingWorkspace(),{data}=useWorkspace();
+  const [remote,setRemote]=useState<RemoteState>({userId:"",ready:false,meetings:[],error:""});
+  const userId=local.currentUser?.id??"";
+  const cloudReady=!local.isLocal&&Boolean(userId)&&remote.userId===userId&&remote.ready;
+  const cloudVisible=useMemo(()=>cloudReady?remote.meetings.filter(m=>meetingVisibleTo(m,local.currentUser)):[],
+    [cloudReady,remote.meetings,local.currentUser]);
+  useEffect(()=>{
+    if(local.isLocal||!userId)return;
+    let cancelled=false;
+    const refresh=async()=>{
+      const result=await staffMeetingRequest({action:"list"});
+      if(cancelled)return;
+      if(!result.ok){
+        setRemote({userId,ready:false,meetings:[],error:result.message??"Meeting service unavailable."});
+      }else{
+        const meetings=normalizeMeetings({version:1,meetings:result.meetings??[]},data.users).meetings;
+        setRemote({userId,ready:true,meetings,error:""});
+      }
+    };
+    void refresh();
+    const timer=window.setInterval(()=>{void refresh();},30000);
+    const onFocus=()=>{void refresh();};
+    window.addEventListener("focus",onFocus);
+    return()=>{cancelled=true;window.clearInterval(timer);window.removeEventListener("focus",onFocus);};
+  },[local.isLocal,userId,data.users]);
+
+  const send=async(command:StaffMeetingCommand):Promise<ChangeResult>=>{
+    if(local.isLocal||!cloudReady||!userId)return{ok:false,message:"Secure meeting service is not ready for this employee."};
+    const result=await staffMeetingRequest(command);
+    if(!result.ok){
+      if(/sign-in|expired|authorization|active employee/i.test(result.message??"")){
+        setRemote({userId,ready:false,meetings:[],error:result.message??"Employee access denied."});
+      }
+      return{ok:false,message:result.message??"Meeting action was not confirmed."};
+    }
+    if(result.meeting){
+      const normalized=normalizeMeetings({version:1,meetings:[result.meeting]},data.users).meetings;
+      if(!normalized.length)return{ok:false,message:"The meeting was saved but could not be validated. Refresh before retrying."};
+      setRemote(previous=>previous.userId===userId?{
+        userId,ready:true,error:"",meetings:[normalized[0],...previous.meetings.filter(m=>m.id!==normalized[0].id)],
+      }:previous);
+    }
+    return{ok:true,id:result.meeting?.id};
+  };
+
+  const value:MeetingWorkspace=local.isLocal?{...local,cloudReady:false,cloudError:""}:{
+    ...local,
+    meetings:cloudVisible,
+    cloudReady,cloudError:remote.userId===userId?remote.error:"",
+    allowed:cloudReady&&mayOrganize(local.currentUser),
+    create:(input)=>send({action:"create",meeting:input}),
+    revise:(id,input)=>{
+      const current=cloudVisible.find(m=>m.id===id);
+      return current?send({action:"update",id,expectedRevision:current.revision,meeting:input}):
+        Promise.resolve({ok:false,message:"Meeting is not accessible or has not loaded."});
+    },
+    cancel:(id)=>{
+      const current=cloudVisible.find(m=>m.id===id);
+      return current?send({action:"cancel",id,expectedRevision:current.revision}):
+        Promise.resolve({ok:false,message:"Meeting is not accessible or has not loaded."});
+    },
+    rsvp:(id,response)=>send({action:"rsvp",id,response}),
+    seen:(id)=>send({action:"seen",id}),
+  };
+  return <MeetingContext.Provider value={value}>{children}</MeetingContext.Provider>;
+}
+
+export function useMeetingWorkspace():MeetingWorkspace{
+  const value=useContext(MeetingContext);
+  if(!value)throw new Error("Meeting workspace requires MeetingProvider.");
+  return value;
 }
