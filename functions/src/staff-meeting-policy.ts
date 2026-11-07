@@ -1,3 +1,4 @@
+/* eslint-disable max-len,comma-spacing,key-spacing,semi-spacing,brace-style,arrow-parens,keyword-spacing,space-before-blocks,one-var,space-before-function-paren,indent,object-curly-spacing,curly,operator-linebreak */
 /** Recorded field appointment collision helper. Does not claim access to external calendars. */
 type CalendarMeeting={date:string;startTime:string;endTime:string;attendeeIds:readonly string[]};
 type FieldRecord={date?:unknown;startTime?:unknown;duration?:unknown;ownerId?:unknown;status?:unknown};

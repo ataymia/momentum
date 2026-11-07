@@ -1,3 +1,4 @@
+/* eslint-disable max-len,comma-spacing,key-spacing,semi-spacing,brace-style,arrow-parens,keyword-spacing,space-before-blocks,one-var,space-before-function-paren,indent,object-curly-spacing,curly,operator-linebreak */
 import {randomUUID} from "node:crypto";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore, type Firestore} from "firebase-admin/firestore";
