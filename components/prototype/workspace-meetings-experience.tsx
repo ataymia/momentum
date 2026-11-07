@@ -163,6 +163,7 @@ export function SharedCalendarExperience(){
   const {meetings,currentUser,allowed,isLocal,cloudReady,cloudError}=useMeetingWorkspace(),{scope,data}=useWorkspace();
   const [anchor,setAnchor]=useState(arizonaDateKey());
   const [length,setLength]=useState<"week"|"month">("week");
+  if(!currentUser||currentUser.role==="Customer"||currentUser.employmentStatus==="Separated")return <NoResults>Employee calendar is not available for this account.</NoResults>;
   const start=length==="week"?startOfLocalWeek(anchor):anchor.slice(0,7)+"-01";
   const days=length==="week"?7:Number(new Date(Number(anchor.slice(0,4)),Number(anchor.slice(5,7)),0).getDate());
   const calendar=upcomingMeetings(meetings,currentUser,start).filter(m=>m.date<addCalendarDays(start,days));
