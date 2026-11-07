@@ -81,3 +81,21 @@ test("warehouse record detail reads existing movements, counts and lot identifie
   assert.match(source,/reservedQuantity\(ledger,lot\.id\)/);
   assert.doesNotMatch(source,/postMovement|reconcileCount|setItem|createReceipt/);
 });
+
+test("E06 self-delivery redesign preserves the trusted server-only workflow and recipient signature",()=>{
+  const view=readFileSync("components/orders/rep-self-delivery.tsx","utf8");
+  const routes=readFileSync("lib/navigation-route-registry.ts","utf8");
+  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+  assert.match(view,/firebaseFunctionUrl\("repSelfDelivery"\)/);
+  assert.match(view,/authorization:"Bearer "/);
+  assert.match(view,/cloudConfirmed===true/);
+  assert.match(view,/DeliverySignaturePad/);
+  assert.match(view,/getState\(selected\.id\)/);
+  assert.match(view,/prototype-heading/);
+  assert.match(view,/prototype-table/);
+  assert.doesNotMatch(view,/postMovement\(/);
+  assert.doesNotMatch(view,/createDeliveryTask\(/);
+  assert.match(hub,/if\(path==="/crm\/self-delivery"\)return <RepSelfDelivery\/>/);
+  assert.match(routes,/Rep Self-Delivery.*state: "prototype"/);
+  assert.equal(requiresPrototypePage("/crm/self-delivery"),true);
+});
