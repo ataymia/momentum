@@ -473,3 +473,18 @@ test("G08: changes used for provenance guesses never mutate original source attr
   assert.equal(result.events[0].actorId,"admin-1");
   assert.equal(auditPersistencePreservesSource(JSON.stringify(source),result),true);
 });
+
+test("G08: new audit events record every changed field, not just the first twenty",()=>{
+  const before=collectAuditableRecords("Workspace",{accounts:[{id:"account-long",name:"Account",
+    updatedBy:"admin-1",updatedAt:"2026-11-05T10:00:00.000Z",
+    ...Object.fromEntries(Array.from({length:32},(_,i)=>["field"+i,"old"+i])),
+  }]});
+  const after=collectAuditableRecords("Workspace",{accounts:[{id:"account-long",name:"Account",
+    updatedBy:"admin-1",updatedAt:"2026-11-06T10:00:00.000Z",
+    ...Object.fromEntries(Array.from({length:32},(_,i)=>["field"+i,"new"+i])),
+  }]});
+  const [event]=diffAuditableRecords(before,after,{id:"system",role:"System"});
+  assert.ok(event);
+  assert.equal(event.changes.length,32);
+  assert.equal(event.changes[31].field,"field31");
+});
