@@ -178,6 +178,10 @@ const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/work/workflow": "work",
   "/work/exceptions": "work",
   "/work/completed": "work",
+  "/self-service": "timekeeping",
+  "/self-service/leave": "timekeeping",
+  "/self-service/pay": "timekeeping",
+  "/work/approvals": "work",
   "/crm/self-delivery": "orders",
   "/admin/access": "settings",
   "/portal/orders": "orders",
@@ -329,6 +333,9 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
+  // Historical copied links and work-queue entry points retain the redesigned views
+  // after personal information moves out of the Workspace sidebar.
+  if(["/self-service","/self-service/leave","/self-service/pay","/work/approvals","/work/exceptions","/work/completed"].includes(clean))return true;
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
   if(recordRouteMatch(clean))return true;
   if(/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean))return true;
