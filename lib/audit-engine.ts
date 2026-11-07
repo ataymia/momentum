@@ -118,9 +118,9 @@ export function normalizeAuditState(input: unknown): AuditState {
       id: event.id,
       // Unverified history is evidence to preserve, not to silently rewrite.
       // An authenticated event already carrying provenance must keep its source time.
-      at: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.at : repaired.at,
-      actorId: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.actorId : repaired.actorId,
-      actorRole: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.actorRole : repaired.actorRole,
+      at: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.at! : repaired.at,
+      actorId: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.actorId! : repaired.actorId,
+      actorRole: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.actorRole! : repaired.actorRole,
       action: event.action,
       module: event.module,
       collection: event.collection,
