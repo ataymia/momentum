@@ -111,7 +111,7 @@ export function RepSelfDelivery(){
   const readyOrders=orders.filter(order=>order.status==="Approved").length;
   const deliveredOrders=orders.filter(order=>order.status==="Delivered").length;
   return <div className="prototype-self-delivery">
-    <header className="prototype-heading"><h1>My Self-Deliveries</h1><p>Pick up and deliver your own approved orders through Momentum's existing server-verified fulfillment process.</p></header>
+    <header className="prototype-heading"><h1>My Self-Deliveries</h1><p>Pick up and deliver your own approved orders through the existing Momentum server-verified fulfillment process.</p></header>
     <div className="prototype-metrics">
       <div><small>Eligible assigned orders</small><strong>{orders.length}</strong></div>
       <div><small>Approved, not yet completed</small><strong>{readyOrders}</strong></div>
