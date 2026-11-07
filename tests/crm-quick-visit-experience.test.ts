@@ -36,7 +36,7 @@ test("Quick Visit is independent, authorized, requires physical attestation and 
 test("a freehand physical stop has a stable location key without creating an account",()=>{
  const page=readFileSync("components/prototype/crm-quick-visit.tsx","utf8");
  assert.match(page,/quickVisitLocationId\(name\)/);
- assert.match(page,/No matching account selected/);
+ assert.match(page,/This visit is not yet linked to an existing account/);
  assert.doesNotMatch(page,/createAccount\(|setData\(/);
 });
 
@@ -49,4 +49,17 @@ test("physical visit history searches within the current rep, honors from/to dat
  assert.match(page,/\["when","When"\],\["business","Business"\]/);
  assert.match(page,/\["score","Score"\],\["outcome","Outcome"\],\["notes","Notes"\]/);
  assert.match(page,/filteredVisits\.slice\(0,historyCount\)/);
+});
+
+test("Quick Visit keeps physical evidence workflow while giving fields a usable sequence",()=>{
+ const page=readFileSync("components/prototype/crm-quick-visit.tsx","utf8");
+ const css=readFileSync("app/crm-field-workflows.css","utf8");
+ const layout=readFileSync("app/layout.tsx","utf8");
+ for(const section of ["Business visited","Visit outcome","Follow-up and sampling"])
+   assert.match(page,new RegExp(section));
+ assert.equal((page.match(/<fieldset className="prototype-field-step">/g)||[]).length,3);
+ assert.match(page,/prototype-field-confirmation/);
+ assert.match(page,/disabled=!\{physical\}|disabled=\{!physical\}/);
+ assert.match(css,/\.prototype-field-step-number/);
+ assert.match(layout,/import "\.\/crm-field-workflows\.css"/);
 });
