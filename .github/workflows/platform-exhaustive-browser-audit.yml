@@ -1,0 +1,46 @@
+name: Momentum Exhaustive Product and Visual Audit
+
+on:
+  push:
+    branches:
+      - integration/a-g-unified-2026-11-07
+    paths:
+      - .github/workflows/platform-exhaustive-browser-audit.yml
+      - scripts/platform-exhaustive-browser-audit.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.1"
+          cache: npm
+      - name: Install dependencies without invoking production tooling
+        run: npm ci --ignore-scripts
+      - name: Build static review app
+        run: npm run build
+      - name: Install isolated Chromium browser
+        run: |
+          npm install --no-save --ignore-scripts --package-lock=false playwright@1.55.1
+          npx playwright install --with-deps chromium
+      - name: Survey all 84 staff routes, 51 layout views, roles and interactions
+        run: npx --yes firebase-tools@15.30.1 emulators:exec --only hosting --project demo-momentum-product-review --config firebase.architecture-smoke.json 'node scripts/platform-exhaustive-browser-audit.mjs'
+      - name: Upload findings and responsive screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: momentum-exhaustive-audit
+          path: artifacts/full-platform-audit/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Ensure no application source files changed
+        if: always()
+        run: git diff --exit-code
