@@ -39,3 +39,14 @@ test("a freehand physical stop has a stable location key without creating an acc
  assert.match(page,/No matching account selected/);
  assert.doesNotMatch(page,/createAccount\(|setData\(/);
 });
+
+test("physical visit history searches within the current rep, honors from/to dates and sorts every data column",()=>{
+ const page=readFileSync("components/prototype/crm-quick-visit.tsx","utf8");
+ assert.match(page,/employeePhysicalVisits\(crm,currentUser\.id\)/);
+ assert.match(page,/historyFrom/);
+ assert.match(page,/historyThrough/);
+ assert.match(page,/historySearch/);
+ assert.match(page,/\["when","When"\],\["business","Business"\]/);
+ assert.match(page,/\["score","Score"\],\["outcome","Outcome"\],\["notes","Notes"\]/);
+ assert.match(page,/filteredVisits\.slice\(0,historyCount\)/);
+});
