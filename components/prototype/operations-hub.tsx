@@ -19,6 +19,7 @@ import {CrmAccountHealth} from "./crm-account-health";
 import {CrmAccountSetup} from "./crm-account-setup";
 import {CrmAccountMap} from "./crm-account-map";
 import {CrmQuickVisit} from "./crm-quick-visit";
+import {CrmCommissionOnlyReview} from "./crm-commission-only-review";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience } from "./hr-payroll-experiences";
@@ -772,6 +773,7 @@ export function PrototypeOperationsHub(){
   if(path==="/crm/contacts")return <CrmContactsDirectory/>;
   if(path==="/calendar"||path==="/calendar/meetings")return <CalendarPreview meetingsOnly={path.endsWith("/meetings")}/>;
   if(path==="/crm/incentives")return <IncentivePreview/>;
+  if(path==="/crm/commission-only")return <CrmCommissionOnlyReview/>;
   const item=routeEntry(path);
   return <div><Heading title={routeLabel(path)} description="Planned module • navigation prototype only"/><section className="prototype-panel">
     <h2>{item?.label??"Module"} workflow</h2>
