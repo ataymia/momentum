@@ -49,7 +49,7 @@ test("inventory and driver views use source-linked ledger without privileged act
 test("E05-E07 delivery exception queue is sortable while established self-delivery and dispatch remain available",()=>{
   const review=readFileSync("components/prototype/fulfillment-experience.tsx","utf8");
   const routes=readFileSync("lib/navigation-route-registry.ts","utf8");
-  assert.match(review,/deliveryReconciliationIssue\(order,task,delivered,override\)/);
+  assert.match(review,/reviewDeliveryCloseout/);
   assert.match(review,/exceptionsOnly/);
   assert.match(review,/DateFilter start=\{from\}/);
   assert.match(review,/const sort=useTableSort\("placedAt"\)/);
@@ -115,13 +115,13 @@ test("E07 prevents premature office Dispatch retirement before scheduling parity
 test("E05 distinguishes posted over-delivery and missing warehouse custody from legitimate completion",()=>{
   const ops=readFileSync("components/prototype/fulfillment-experience.tsx","utf8");
   const driver=readFileSync("components/prototype/driver-route-board.tsx","utf8");
-  assert.match(ops,/delivered>order\.cases\+0\.005/);
+  assert.match(ops,/reviewDeliveryCloseout/);
   assert.match(ops,/orderOutboundQuantity\(ledger,order\.id\)/);
-  assert.match(ops,/Loaded or departed without full recorded warehouse outbound/);
-  assert.match(driver,/deliveryReconciliationIssue\(order,task,delivered,override\)/);
+  assert.match(readFileSync("lib/fulfillment-closeout-review.ts","utf8"),/Loaded or departed without full recorded warehouse outbound/);
+  assert.match(driver,/reviewDeliveryCloseout/);
   assert.match(driver,/state\.overrides\.some/);
-  assert.match(driver,/const complete=\["Delivered","Paid"\]\.includes\(order\.status\)/);
-  assert.match(driver,/delivered<=order\.cases\+0\.005&&!issue/);
+  assert.match(driver,/const complete=review\.complete/);
+  assert.match(readFileSync("lib/fulfillment-closeout-review.ts","utf8"),/deliveredCases<=order\.cases\+0\.005/);
   assert.match(ops,/Overposted: reconciliation required/);
-  assert.match(ops,/\["Delivered","Paid"\]\.includes\(x\.order\.status\)/);
+  assert.match(ops,/summary\.filter\(x=>x\.complete&&x\.proof\)/);
 });
