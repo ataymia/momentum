@@ -11,6 +11,7 @@ import { isOpenCommercialAccount } from "../../lib/account-view-filter";
 import { ACCOUNT_PRICING_TIERS } from "../../lib/account-health";
 import { evaluateSalesRepAccountBonuses, SALES_REP_ACCOUNT_BONUS_RULE, type BonusMilestoneStatus } from "../../lib/bonus-engine";
 import { accountBonusProgress, type BonusProgressSort, type BonusProgressDirection } from "../../lib/bonus-progress";
+import {acquisitionBonusHeldAccountIds} from "../../lib/acquisition-bonus-consolidation";
 import { useCrm } from "../../lib/crm-context";
 import { findAccountDuplicate } from "../../lib/duplicate-engine";
 import { evaluatePartnerPricing } from "../../lib/pricing-engine";
@@ -105,8 +106,10 @@ export function AccountsPage(){
   const scopeAccountIds=useMemo(()=>new Set(scope.accounts.map((account)=>account.id)),[scope.accounts]);
   // Pricing and milestone computation scales with order history. Never run either while browsing the account list.
   const bonusSignals=useMemo(()=>tab==="incentives"?evaluateSalesRepAccountBonuses(data).filter((signal)=>scopeAccountIds.has(signal.accountId)):[],[data,scopeAccountIds,tab]);
+  const bonusHeldAccountIds=useMemo(()=>tab==="incentives"?acquisitionBonusHeldAccountIds(data):new Set<string>(),[data,tab]);
   const pricingRows=useMemo(()=>tab==="pricing"?scope.accounts.map((account)=>({account,pricing:evaluatePartnerPricing(data,account.id)})):[],[data,scope.accounts,tab]);
   const earnedBonus=bonusSignals.filter((signal)=>signal.status==="Earned").reduce((sum,signal)=>sum+signal.amount,0);
+  const heldBonusCount=bonusSignals.filter(signal=>bonusHeldAccountIds.has(signal.accountId)).length;
   const qualifyingAccounts=new Set(bonusSignals.filter((signal)=>signal.status==="Earned").map((signal)=>signal.accountId)).size;
   const repBonusSummary=data.users.filter((user)=>user.role==="Sales Representative").map((user)=>{
     const signals=bonusSignals.filter((signal)=>signal.repId===user.id);
@@ -258,12 +261,14 @@ export function AccountsPage(){
             const rep=data.users.find(item=>item.id===row.repId);
             return <article key={row.accountId}>
               <div className="bonus-ledger__head"><div><small>Sales representative: {rep?.name??"Unverified"}</small><strong>{account?.name??row.accountId}</strong><p>{row.settledCases}/{row.targetCases} settled cases · {row.remainingCases} remaining</p></div><StatusPill tone={bonusTone(row.sustained.status)}>{row.sustained.status}</StatusPill></div>
+              {bonusHeldAccountIds.has(row.accountId)&&<p role="alert">Acquisition bonus payroll hold: possible duplicate physical-location or order identity within this billing parent. Verify the account before authorizing any new milestone payout. Historical earnings are not automatically reversed.</p>}
               <div className="bonus-progress" role="progressbar" aria-label={`${account?.name??row.accountId} settled case progress toward ${row.targetCases}`} aria-valuemin={0} aria-valuemax={row.targetCases} aria-valuenow={Math.min(row.targetCases,row.settledCases)}><i style={{width:`${row.percent}%`}}/></div>
               <div className="bonus-ledger__foot"><span>Opening (10 cases): {row.opening.status} · {formatMoney(row.opening.amount)}</span><span>40-case milestone: {row.sustained.status} · {formatMoney(row.sustained.amount)}</span></div>
               <div className="bonus-ledger__foot"><span>{row.windowEnd?`Window through ${formatDate(row.windowEnd,{month:"short",day:"numeric",year:"numeric"})}`:"Not started"}</span><span>{row.sustained.evidenceOrderIds.length} linked settlement-evidence order(s)</span></div>
               {account&&<Button size="sm" variant="ghost" onClick={()=>{openAccountPage(account.id);setTab("accounts")}}>View account and orders</Button>}
             </article>;
           })}{!visibleBonusRows.length&&<p>No accounts match these incentive filters.</p>}</div>
+          {heldBonusCount>0&&<p role="status">{heldBonusCount} milestone record(s) associated with potential duplicate acquisition accounts are blocked from new automatic payroll inclusion pending administrator review.</p>}
           <p>Progress is a tracking view, not authorization to pay. Validate qualifying collections, account attribution, approved plan terms, and prior payouts before payroll.</p>
         </Section></>}
     </>}
