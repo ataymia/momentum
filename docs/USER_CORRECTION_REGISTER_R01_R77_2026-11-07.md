@@ -6,8 +6,14 @@
 **Owner:** Mia confirms acceptance; engineering updates are evidence, not final acceptance.
 
 ## Implementation notes (not accepted)
-- R01–R09: Navigation separation, employee Account components, scoped personal pay/leave/work, and integration tests added; verify full CI and browser access before checking off.
-- R11–R14: CRM sorting corrections being applied on the integration branch; verify regression suites and user sorting conventions.
+- R01–R09: Workspace now begins Home → Clock In/Timekeeping → Action Center, with meetings/calendar retained. A separate personal Account routes to signed-in-only profile, pay, leave, training and completed-work records. Compatibility URLs retained. Code committed; comprehensive current-head acceptance pending.
+- R11–R14: Typed CRM sort utility added for Lead, Account and Contact directories (natural numeric order, actual date order, workflow stage, postal codes, missing values last, deterministic ties), with regression tests. Code committed; current-head test gate pending.
+- R15–R16: Quick Visit layout rebuilt into business, outcome and follow-up steps with visible field affordances; existing CRM visit write/attribution kept. Backend connected write remains a known separate limitation.
+- R17–R18: Account Setup defaults to creating a NEW customer/location, validating duplicates/territory and transitioning to the existing billing and tax-identity form. Canonical demo writes are preserved; connected server writes and actual document collection remain open.
+- R19–R22: Customer Documents, Representatives and Activity deep-link patterns added. Documents includes invoice links from a scoped demo finance projection with connected-session fail-closed. Routes/code committed, browser and data verification pending.
+- R23: Previously recorded orders/invoices need an independent source-of-truth linkage audit; no claim of restored historical transactions yet.
+- R54: New fieldset hierarchy plus input border/focus states added to HR and CRM form surfaces. Global accessibility acceptance remains open.
+- R69–R70: Passive audit observer now deduplicates repeated observations sharing source record, actor, action and source timestamp without deleting historical audit events; regression tests added. True production actor attestation remains a separate release consideration.
 - R42: Official-source research documented in [HR form sources](HR_OFFICIAL_FORMS_WORKFLOW_2026-11-07.md). No completed PDF workflow is claimed.
 - R54: Input contrast and focus styling improved in initial pass, not yet accepted globally.
 
