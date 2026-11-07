@@ -94,6 +94,7 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
  const payments:CustomerFinanceSnapshot["payments"]=[];
  let excludedForUnbalancedFunds=false;
  for(const invoice of selected){
+  const paymentRowStart=payments.length;
   const allocations=docs.allocations.filter(a=>txt(a.invoiceId)===txt(invoice.id)&&num(a.amount)>0);
   let cleared=0,pending=0;
   for(const allocation of allocations){
@@ -113,13 +114,17 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
   const appliedCredits=docs.credits.filter(c=>txt(c.invoiceId)===txt(invoice.id)&&txt(c.status)==="Applied")
     .reduce((n,c)=>n+num(c.amount),0);
   const amount=num(invoice.total);
+  if(settledRefunds>cleared+0.005){
+    excludedForUnbalancedFunds=true;
+    payments.splice(paymentRowStart);
+    continue;
+  }
   cleared=Math.max(0,cleared-settledRefunds);
   if(cleared+appliedCredits>amount+0.005||pending>amount+0.005){
     excludedForUnbalancedFunds=true;
     // A zeroed, overpaid or overcredited balance without an exception trail
     // must not be advertised as paid to the customer.
-    payments.splice(payments.findIndex(row=>row.invoice===txt(invoice.number))<0?payments.length:
-      payments.findIndex(row=>row.invoice===txt(invoice.number)));
+    payments.splice(paymentRowStart);
     continue;
   }
   const balance=Math.max(0,amount-cleared-appliedCredits);
