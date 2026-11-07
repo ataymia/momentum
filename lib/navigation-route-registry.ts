@@ -122,7 +122,7 @@ export const CUSTOMER_MENU: MenuEntry[] = [
 export const DRIVER_MENU = [
   {label:"My Deliveries",path:"/driver/deliveries"},
   {label:"Delivery Requests",path:"/driver/requests"},
-  {label:"Route Map",path:"/driver/map"},
+  {label:"My Stops",path:"/driver/map"},
   {label:"Inventory",path:"/driver/inventory"},
   {label:"Time & HR",path:"/driver/time"},
   {label:"Employee Directory",path:"/driver/directory"},
@@ -257,14 +257,19 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
     return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer) &&
       canAccessPage(user,permissionForPath(clean)??"home");
   }
-  if(clean==="/crm/self-delivery")return user.role==="Sales Representative";
+  if(clean==="/crm/self-delivery")return user.role==="Sales Representative"&&canAccessPage(user,"orders");
   if (clean.startsWith("/portal/")) return false;
-  if(clean==="/inventory/locations"||clean.startsWith("/inventory/locations/"))return ["Administrator","Operations","Warehouse"].includes(user.role);
+  if(clean==="/inventory/locations"||clean.startsWith("/inventory/locations/"))return ["Administrator","Operations","Warehouse"].includes(user.role)&&canAccessPage(user,"inventory");
   if(clean.startsWith("/purchases/")){
-    const group=clean.split("/")[2];
-    if(group==="receipts")return ["Administrator","Operations","Warehouse"].includes(user.role);
-    if(["orders","vendors","expenses","bills","credits"].includes(group))return ["Administrator","Operations"].includes(user.role);
-    return group==="payments"&&user.role==="Administrator";
+    const parts=clean.split("/").filter(Boolean);
+    if(parts.length<2||parts.length>3)return false;
+    const group=parts[1];
+    if(group==="receipts")return ["Administrator","Operations","Warehouse"].includes(user.role)&&canAccessPage(user,"inventory");
+    if(group==="orders")return ["Administrator","Operations"].includes(user.role)&&canAccessPage(user,"inventory");
+    if(["vendors","expenses","bills","credits"].includes(group))
+      return (user.role==="Administrator"&&canAccessPage(user,"accounting"))||
+        (user.role==="Operations"&&canAccessPage(user,"finance"));
+    return group==="payments"&&user.role==="Administrator"&&canAccessPage(user,"accounting");
   }
   if(clean==="/operations/deliveries" && !["Administrator","Operations","Warehouse"].includes(user.role)) return false;
   if (clean.startsWith("/admin/") && user.role!=="Administrator") return false;
