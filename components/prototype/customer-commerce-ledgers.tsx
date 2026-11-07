@@ -14,6 +14,7 @@ import {momentumStorage} from "../../lib/persistence";
 import {downloadCsv} from "../../lib/browser-export";
 import {invoiceBalance,computedInvoiceStatus,invoicePaidAmount,invoicePendingAmount,invoiceCreditAmount,paymentSettlementDate} from "../../lib/commerce-engine";
 import {navigateToRoute} from "../../lib/navigation-store";
+import {CustomerConnectedFinance} from "./customer-connected-finance";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n);
 export function CustomerCommerceLedgers({section}:{section:"payments"|"statements"}){
@@ -26,8 +27,7 @@ export function CustomerCommerceLedgers({section}:{section:"payments"|"statement
   const verifiedInvoices=useMemo(()=>commerce.invoices.filter(i=>i.status!=="Void"&&!i.supersededByInvoiceId&&permittedAccounts.has(i.accountId)&&
     orderMap.get(i.orderId)?.accountId===i.accountId),[commerce.invoices,permittedAccounts,orderMap]);
   if(!customer)return <div className="prototype-empty">Customer access only.</div>;
-  if(!demoOnly)return <div><header className="prototype-heading"><h1>{section==="payments"?"My Payments":"My Statements"}</h1><p>Connected customer finance access requires an approved account-scoped server read, identity tests and payment reconciliation.</p></header>
-    <section className="prototype-panel"><p className="prototype-note">Payment and statement records are intentionally disabled for production sessions. Customer login alone does not prove the right to every finance record.</p></section></div>;
+  if(!demoOnly)return <CustomerConnectedFinance section={section}/>;
   const invoices=verifiedInvoices.filter(i=>locationId==="all"||i.accountId===locationId);
   const invoiceMap=new Map(invoices.map(i=>[i.id,i]));
   const payments=commerce.allocations.flatMap(a=>{

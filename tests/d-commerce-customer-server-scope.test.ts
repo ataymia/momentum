@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {readFileSync} from "node:fs";
-import {customerAccountIds,projectCustomerFinance} from "../functions/src/customer-commerce-projection";
+import * as projectionExports from "../functions/src/customer-commerce-projection";
+const projection=(projectionExports as unknown as {default?:typeof projectionExports}).default??projectionExports;
 const access={role:"Customer",accountState:"Active",email:"shop@example.com"};
 const user={role:"Customer",email:"shop@example.com",accountIds:["store-a"]};
 const data={
@@ -17,14 +18,14 @@ const data={
  refunds:[{id:"r1",paymentId:"p1",status:"Settled",amount:10}],
 };
 test("D12 verified role, state, email and account assignment are required",()=>{
- assert.deepEqual(customerAccountIds(access,user),["store-a"]);
- assert.deepEqual(customerAccountIds({...access,accountState:"Suspended"},user),[]);
- assert.deepEqual(customerAccountIds({...access,role:"Sales Representative"},user),[]);
- assert.deepEqual(customerAccountIds(access,{...user,email:"other@example.com"}),[]);
- assert.deepEqual(customerAccountIds(access,{...user,accountIds:["../../system"]}),[]);
+ assert.deepEqual(projection.customerAccountIds(access,user),["store-a"]);
+ assert.deepEqual(projection.customerAccountIds({...access,accountState:"Suspended"},user),[]);
+ assert.deepEqual(projection.customerAccountIds({...access,role:"Sales Representative"},user),[]);
+ assert.deepEqual(projection.customerAccountIds(access,{...user,email:"other@example.com"}),[]);
+ assert.deepEqual(projection.customerAccountIds(access,{...user,accountIds:["../../system"]}),[]);
 });
 test("D17 account-level server projection does not leak other orders, invoices or payments",()=>{
- const result=projectCustomerFinance(["store-a"],data);
+ const result=projection.projectCustomerFinance(["store-a"],data);
  assert.deepEqual(result.accounts.map(x=>x.id),["store-a"]);
  assert.deepEqual(result.statements.map(x=>x.id),["i1"]);
  assert.deepEqual(result.payments.map(x=>x.id),["al1"]);
@@ -33,7 +34,7 @@ test("D17 account-level server projection does not leak other orders, invoices o
  assert.equal(result.statements[0].balance,130);
 });
 test("D17 refuses duplicate invoices for the same source order instead of double billing",()=>{
- const result=projectCustomerFinance(["store-a"],{...data,invoices:[...data.invoices,{...data.invoices[0],id:"i4"}]});
+ const result=projection.projectCustomerFinance(["store-a"],{...data,invoices:[...data.invoices,{...data.invoices[0],id:"i4"}]});
  assert.equal(result.statements.length,0);assert.equal(result.truncated,true);
 });
 test("D17 endpoint enforces verified bearer identity and reads only server-owned role binding",()=>{
