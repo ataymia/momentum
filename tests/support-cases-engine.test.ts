@@ -59,3 +59,15 @@ test("F09 F13: unassigned prospect visibility does not expose another rep's serv
  assert.equal(visibleCase(rep,allowed,caseRecord),true);
  assert.equal(visibleCase(admin,new Set(),caseRecord),true);
 });
+
+// Cases stay visible only while a representative retains explicit customer access.
+test("F09: a previously responsible representative loses case visibility after account transfer",()=>{
+ const c=createCase(draft,rep,allowed,orders,"c-transfer",t);assert(c);
+ assert.equal(visibleCase(rep,new Set(),c),false);
+ assert.equal(visibleCase(rep,allowed,c),true);
+});
+test("F09: connected environments cannot display browser-local demo histories",()=>{
+ const view=readFileSync("components/prototype/support-cases-experience.tsx","utf8");
+ assert(view.includes('const permitted=demo?items.filter('));
+ assert(view.includes('momentumStorage.mode()!=="local"'));
+});

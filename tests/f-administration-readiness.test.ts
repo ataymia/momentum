@@ -21,3 +21,18 @@ test("F10: document index excludes marketing drafts and retired assets for non-a
  const source=readFileSync("components/prototype/documents-experience.tsx","utf8");
  assert(source.includes('marketing.assets.filter(m=>admin||m.status==="Approved")'));
 });
+
+// Clean initial marketing state is essential: nothing should look approved or budgeted without evidence.
+test("F07: new marketing workspaces never invent a campaign, collateral approval or inventory",async()=>{
+ const {createMarketingSeed}=await import("../lib/marketing-engine");
+ const seed=createMarketingSeed();
+ assert.equal(seed.campaigns.length,0);
+ assert.equal(seed.assets.length,0);
+ assert.equal(seed.materials.length,0);
+ assert.equal(seed.spend.length,0);
+});
+test("F07: synthetic paid orders cannot influence the displayed campaign outcome engine",()=>{
+ const source=readFileSync("lib/marketing-engine.ts","utf8");
+ assert(source.includes('!order.testOnly&&linkedAccountIds.has(order.accountId)'));
+ assert(source.includes('!order.testOnly&&orderIds.has(order.id)'));
+});

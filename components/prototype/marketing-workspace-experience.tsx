@@ -120,13 +120,13 @@ export function MarketingWorkspaceExperience({initialTab="requests"}:{initialTab
  };
  const action=(label:string,run:()=>void)=>{
    if(!admin||!demo)return;
-   run();setMessage(label+" requested. The canonical record should change to the next approved status.");
+   run();setError("");setMessage(label+" submitted in local demo. Confirm the recorded state in the register; the action may be rejected by source validation.");
  };
  const filteredCount=tab==="requests"?requests.length:tab==="campaigns"?campaigns.length:
    tab==="spend"?spend.length:tab==="outcomes"?attributions.length:tab==="materials"?materials.length:partners.length;
  return <div className="prototype-domain prototype-domain--marketing">
    <header className="prototype-heading"><h1>Marketing Operations</h1>
-     <p>{admin?"Retail demand, campaign approvals, budget control, collateral, partnerships and commercial attribution. All numbers come from recorded source data.":"Submit and track requests for collateral, events, creative work and partnerships. Campaign approvals, budgets and attribution are managed by authorized administrators."}</p>
+     <p>{admin?"Retail demand, campaign approvals, budget control, collateral, partnerships and commercial attribution. Amounts are sourced from recorded state; missing source evidence is not represented as a completed result.":"Submit and track requests for collateral, events, creative work and partnerships. Campaign approvals, budgets and attribution are managed by authorized administrators."}</p>
    </header>
    <div className="prototype-domain-statbar">
     <article><small>Requests waiting</small><strong>{scopedRequests.filter(r=>r.status==="Submitted").length}</strong></article>

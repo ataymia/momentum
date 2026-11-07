@@ -30,7 +30,7 @@ export const supportRole=(u:WorkspaceUser|null|undefined)=>Boolean(u&&["Administ
 export function visibleCase(u:WorkspaceUser|null|undefined,accounts:ReadonlySet<string>,c:SupportCase):boolean{
  if(!u||!supportRole(u))return false;
  if(u.role==="Administrator")return true;
- if(u.role==="Sales Representative")return c.createdBy===u.id||c.ownerId===u.id;
+ if(u.role==="Sales Representative")return (!c.accountId||accounts.has(c.accountId))&&(c.createdBy===u.id||c.ownerId===u.id);
  return c.accountId?accounts.has(c.accountId):c.createdBy===u.id||c.ownerId===u.id;
 }
 export const managerCase=(u:WorkspaceUser|null|undefined,accounts:ReadonlySet<string>,c:SupportCase)=>Boolean(u&&visibleCase(u,accounts,c)&&(["Administrator","Operations"].includes(u.role)||(u.role==="Sales Manager"&&c.ownerId===u.id)));

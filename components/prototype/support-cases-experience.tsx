@@ -15,7 +15,7 @@ const fresh:CaseDraft={title:"",description:"",accountId:"",orderId:"",priority:
 export function SupportCasesExperience(){
  const {data,scope,currentUser}=useWorkspace();const mode=useRuntimeMode();const path=useNavigationRoute();
  const demo=mode.isDemo&&momentumStorage.mode()==="local";
- const [items,setItems]=useState<SupportCase[]>(()=>{if(!mode.isDemo||typeof window==="undefined")return [];try{return restoreDemoCases(JSON.parse(momentumStorage.getItem(SUPPORT_CASE_KEY)??"[]"),new Set(data.users.map(u=>u.id)));}catch{return [];}});
+ const [items,setItems]=useState<SupportCase[]>(()=>{if(!mode.isDemo||momentumStorage.mode()!=="local"||typeof window==="undefined")return [];try{return restoreDemoCases(JSON.parse(momentumStorage.getItem(SUPPORT_CASE_KEY)??"[]"),new Set(data.users.map(u=>u.id)));}catch{return [];}});
  const [draft,setDraft]=useState<CaseDraft>(fresh),[newOpen,setNewOpen]=useState(false);
  const [search,setSearch]=useState(""),[status,setStatus]=useState("all"),[order,setOrder]=useState("updatedAt"),[asc,setAsc]=useState(false);
  const [note,setNote]=useState(""),[reason,setReason]=useState(""),[error,setError]=useState(""),[notice,setNotice]=useState("");
@@ -23,7 +23,8 @@ export function SupportCasesExperience(){
  const accounts=useMemo(()=>new Set(scope.accounts.map(a=>a.id)),[scope.accounts]);
  const orders=useMemo(()=>new Map(scope.orders.filter(o=>!o.testOnly).map(o=>[o.id,o.accountId])),[scope.orders]);
  const names=new Map(data.users.map(u=>[u.id,u]));
- const permitted=items.filter(c=>visibleCase(currentUser,accounts,c));
+ // Never hydrate or render browser-local demo cases in a connected workspace.
+ const permitted=demo?items.filter(c=>visibleCase(currentUser,accounts,c)):[];
  const routeId=path.startsWith("/support/cases/")?decodeURIComponent(path.slice("/support/cases/".length).split("/")[0]):undefined;
  const selected=routeId?permitted.find(c=>c.id===routeId):undefined;
  const staff=new Map((selected?caseAssignableStaff(data,currentUser,selected):[]).map(u=>[u.id,u]));
