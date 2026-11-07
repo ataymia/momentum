@@ -70,5 +70,8 @@ jobs:
       - name: Production build
         run: npm run build
 
+      - name: A04 Firebase Hosting local emulator fallback smoke
+        run: npx --yes firebase-tools@15.30.1 emulators:exec --only hosting --project demo-momentum-architecture --config firebase.architecture-smoke.json 'node scripts/check-hosting-fallback.mjs'
+
       - name: Verify audit did not mutate tracked source
         run: git diff --exit-code

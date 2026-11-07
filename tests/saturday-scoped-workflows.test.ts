@@ -80,11 +80,14 @@ test("customer detail URLs are customer-only, direct-loadable prototype paths",(
 test("visible workflow wiring preserves scoped selection, explicit downloads and no staff-only portal links",()=>{
   const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
   const inventory=readFileSync("components/prototype/inventory-experience.tsx","utf8");
+  const crm=readFileSync("components/prototype/crm-pipeline-experience.tsx","utf8");
   assert.match(hub,/authorizedCustomerOrders\(scope\.orders,accountIds\)/);
   assert.match(hub,/authorizedCustomerOrder\(scope\.orders,accountIds,id\)/);
   assert.match(hub,/Download filtered deliveries CSV/);
   assert(hub.includes('currentUser?.role==="Customer"?<CustomerOrderRecord'),"legacy order details must not expose staff-only fields to customers");
-  assert.match(hub,/Download filtered contacts CSV/);
+  assert.match(hub,/CrmContactsExperience/);
+  assert.match(crm,/contactCsvRows\(rows,scope\.accounts\)/);
+  assert.match(crm,/downloadCsv\("momentum-visible-contacts\.csv"/);
   assert.match(hub,/Download filtered \{leadMode\?"leads":"accounts"\} CSV/);
   assert.match(hub,/portal\/deliveries\/"/);
   assert.match(inventory,/Download filtered lot register CSV/);

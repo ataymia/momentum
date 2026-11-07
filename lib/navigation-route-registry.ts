@@ -1,8 +1,9 @@
 import type { PageKey, WorkspaceUser } from "./types";
 import { canAccessPage } from "./access";
+import { recordRouteMatch } from "./navigation-route-contract";
 
 /**
- * Prototype route contract for the inventory and fulfillment platform-inspired navigation.
+ * Momentum's unified navigation route contract. All department paths are local design.
  * Paths are stable, shareable addresses; record IDs are opaque IDs, not names.
  * This file controls presentation only. Firestore and server authorization remain authoritative.
  */
@@ -206,12 +207,10 @@ export function pageForPath(path: string): PageKey | null {
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if(clean.startsWith("/items/"))return "products";
   const legacy = (Object.keys(LEGACY_PATHS) as PageKey[]).find(key => LEGACY_PATHS[key] === clean);
-  if(legacy)return legacy;
-  // Prototype-only modules still need a meaningful active page for breadcrumbs
-  // and other navigation consumers, even though their content is route-driven.
-  const menu=MENU_GROUPS.flatMap(group=>group.entries).find(entry=>entry.path===clean)
-    ??CUSTOMER_MENU.find(entry=>entry.path===clean);
-  return menu?.permission??null;
+  if (legacy) return legacy;
+  const menu = MENU_GROUPS.flatMap(group => group.entries).find(entry => entry.path === clean)
+    ?? CUSTOMER_MENU.find(entry => entry.path === clean);
+  return menu?.permission ?? null;
 }
 
 export function routeForPage(page: PageKey): string {
@@ -225,7 +224,7 @@ export function routeEntry(path: string): MenuEntry | undefined {
 
 export function routeLabel(path: string): string {
   const clean = normalizeRoutePath(path);
-  const item = routeEntry(clean) ?? CUSTOMER_MENU.find(entry=>entry.path===clean);
+  const item = routeEntry(clean) ?? CUSTOMER_MENU.find(entry => entry.path === clean);
   if (item) return item.label;
   if (clean.startsWith("/items/")) return "Item details";
   if(clean==="/inventory/workflow")return "Inventory operations";
@@ -266,19 +265,33 @@ export function permissionForPath(path: string): PageKey | null {
   return pageForPath(clean);
 }
 
+/**
+ * A permission alone does not establish that a URL is a real application screen.
+ * Unregistered deep routes must be denied, not rendered as another department's
+ * legacy page. Add new record routes to navigation-route-contract.ts.
+ */
 export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean {
   if (!user) return false;
-  const clean=normalizeRoutePath(path);
-  if (user.role==="Customer") {
-    // Maintain direct links used by the existing customer dashboard and order flow.
-    const customerOrderDetail = clean.startsWith("/sales/orders/") &&
-      clean!=="/sales/orders/new" && clean!=="/sales/orders/workflow" &&
-      !clean.endsWith("/edit");
-    const legacyCustomer = clean==="/sales/orders" || clean==="/sales/customers" ||
-      customerOrderDetail || clean.startsWith("/sales/customers/");
-    const customerPortalDetail=/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean);
-    return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer || customerPortalDetail) &&
-      canAccessPage(user,permissionForPath(clean)??"home");
+  const clean = normalizeRoutePath(path);
+  const isKnown = Boolean(recordRouteMatch(clean) || routeEntry(clean)
+    || CUSTOMER_MENU.some(entry => entry.path === clean)
+    || Object.values(LEGACY_PATHS).includes(clean)
+    || Object.hasOwn(ROUTE_OVERRIDES, clean));
+  if (!isKnown) return false;
+  // Self-service is still available, but admin-only HR workflows cannot be
+  // reached by manually entering an otherwise recognized URL.
+  if (["/people/directory", "/people/new-hire", "/people/onboarding",
+    "/people/onboarding/workflow", "/people/payroll/workflow", "/people/training"].includes(clean)
+    && user.role !== "Administrator") return false;
+  if (user.role === "Customer") {
+    const customerOrderDetail = /^\/sales\/orders\/[^/]+$/.test(clean)
+      && clean !== "/sales/orders/new" && clean !== "/sales/orders/workflow";
+    const legacyCustomer = clean === "/sales/orders" || clean === "/sales/customers"
+      || customerOrderDetail || /^\/sales\/customers\/[^/]+(?:\/(?:overview|comments|transactions|mails|statements|locations))?$/.test(clean);
+    const portalDetail = /^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean);
+    return (clean === "/" || CUSTOMER_MENU.some(entry => entry.path === clean)
+      || legacyCustomer || portalDetail)
+      && canAccessPage(user, permissionForPath(clean) ?? "home");
   }
   // Copying a URL must not bypass employee confidentiality when a module is hidden in navigation.
   // Until verified employee-specific payroll is integrated, these paths remain Administrator-only.
@@ -289,12 +302,12 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
   if (clean==="/marketing/campaigns"||clean.startsWith("/marketing/campaigns/")) return user.role==="Administrator"&&canAccessPage(user,"marketing");
   if (clean==="/support/cases"||clean.startsWith("/support/cases/")) return ["Administrator","Operations","Sales Manager","Sales Representative"].includes(user.role)&&canAccessPage(user,"work");
   if (clean.startsWith("/portal/")) return false;
-  if(clean==="/operations/deliveries" && !["Administrator","Operations","Warehouse"].includes(user.role)) return false;
-  if (clean.startsWith("/admin/") && user.role!=="Administrator") return false;
-  const permission=permissionForPath(clean);
-  return permission!==null && canAccessPage(user,permission);
+  if (clean === "/operations/deliveries"
+    && !["Administrator", "Operations", "Warehouse"].includes(user.role)) return false;
+  if (clean.startsWith("/admin/") && user.role !== "Administrator") return false;
+  const permission = permissionForPath(clean);
+  return permission !== null && canAccessPage(user, permission);
 }
-
 
 /** Prototype-only department visibility. Final policy will use per-action grants.
  * Department menus should not imply the user has HR or Marketing administrative access.

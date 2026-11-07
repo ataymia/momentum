@@ -1,6 +1,7 @@
 "use client";
 import {traceNavigationPaint} from "./performance-diagnostics";
-import {getNavigationPage,setNavigationPage} from "./navigation-store";
+import {getRequestedNavigationPath,setNavigationPage,shouldResetNavigationOnIdentityChange} from "./navigation-store";
+import {canVisitRoute} from "./navigation-route-registry";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -229,10 +230,28 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [data, ready]);
 
   const currentUser = useMemo(() => data.users.find((user) => user.id === currentUserId) ?? null, [currentUserId, data.users]);
-  // A new identity must not inherit the previous employee\'s open screen.
-  useEffect(()=>{setNavigationPage("home");},[currentUserId]);
-  // A role downgrade or separation cannot retain an administrative screen.
-  useEffect(()=>{if(currentUser&&!canAccessPage(currentUser,getNavigationPage()))setNavigationPage("home");},[currentUser]);
+  // Keep a copied record URL across the FIRST authenticated login only when
+  // that role may visit the route. Switching users/logging out still resets.
+  const previousIdentityRef=useRef<string|null|undefined>(undefined);
+  useEffect(()=>{
+    const previous=previousIdentityRef.current;
+    previousIdentityRef.current=currentUserId;
+    // Do not reset a copied URL while Firebase identity is present but its
+    // employee-directory record has not hydrated yet. PageView still denies
+    // unknown/unauthorized routes after login; switching identities resets.
+    if(shouldResetNavigationOnIdentityChange(previous,currentUserId))
+      setNavigationPage("home");
+  },[currentUserId,currentUser]);
+  // Reset a now-forbidden route on a real role change. Page permission aliases
+  // are NOT equivalent to registered route grants (e.g. Account Health).
+  // On first login the PageView gate must display denied deep links safely.
+  const previousRoleRef=useRef<WorkspaceUser["role"]|null|undefined>(undefined);
+  useEffect(()=>{
+    const previous=previousRoleRef.current;
+    previousRoleRef.current=currentUser?.role??null;
+    if(!currentUser||previous===undefined||previous===null||previous===currentUser.role)return;
+    if(!canVisitRoute(currentUser,getRequestedNavigationPath()))setNavigationPage("home");
+  },[currentUser]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
   const setSidebarCollapsed = useCallback((collapsed: boolean) => { setSidebarCollapsedState(collapsed); momentumStorage.setItem(SIDEBAR_KEY, String(collapsed)); }, []);
   const navigate = useCallback((page: PageKey) => { const allowed=canAccessPage(currentUser,page)?page:"home";traceNavigationPaint(allowed);setNavigationPage(allowed); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: window.matchMedia("(max-width:1023px)").matches?"auto":"smooth" }); }, [currentUser]);
@@ -245,7 +264,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const user = data.users.find((item) => (item.username && item.username === asUsername) || item.email.toLowerCase() === typed);
     if (!user || password !== "admin") return { ok: false, message: "Use a demo username or e-mail and the password admin." };
     setDemoUserId(user.id);
-    setNavigationPage("home");
+    // Do not destroy an authorized copied URL before the authenticated shell
+    // mounts and validates its record scope. Denied paths go to Home.
+    // Authentication does not imply navigation permission. The post-login
+    // shell denies unknown and unauthorized URLs without rewriting them.
     momentumStorage.setItem(SESSION_KEY, user.id);
     return { ok: true };
   }, [data.users, firebase]);

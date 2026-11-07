@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { MENU_GROUPS, CUSTOMER_MENU } from "../lib/navigation-route-registry";
 
 const access=readFileSync("lib/access.ts","utf8");
 const shell=readFileSync("components/app-shell-v4.tsx","utf8");
@@ -19,8 +20,9 @@ function renderedKeys(){
   return new Set([...shell.matchAll(/case "([A-Za-z][A-Za-z0-9]*)":/g)].map((match)=>match[1]));
 }
 function reachableKeys(){
-  const beforeNavButton=shell.split("function NavButton")[0]??shell;
-  return new Set([...beforeNavButton.matchAll(/key:\s*"([A-Za-z][A-Za-z0-9]*)"/g)].map((match)=>match[1]));
+  // All approved navigation now lives in the eight sidebar groups, plus
+  // the separately scoped customer menu. Legacy header tabs are retired.
+  return new Set<string>([...MENU_GROUPS.flatMap(group=>group.entries),...CUSTOMER_MENU].map(entry=>entry.permission));
 }
 
 test("every role-accessible page has a renderer",()=>{
@@ -28,7 +30,7 @@ test("every role-accessible page has a renderer",()=>{
   for(const page of pageAccessKeys())assert.ok(rendered.has(page),`${page} is accessible but has no PageView renderer`);
 });
 
-test("every role-accessible page is reachable from primary, secondary, or section navigation",()=>{
+test("every role-accessible page has a sidebar or customer portal destination",()=>{
   const reachable=reachableKeys();
   for(const page of pageAccessKeys())assert.ok(reachable.has(page),`${page} is accessible but has no visible navigation path`);
 });
@@ -54,8 +56,7 @@ test("only the current freehand Quick Visit implementation remains wired",()=>{
 });
 
 test("Products is no longer a hidden accessible page",()=>{
-  assert.match(shell,/inventory: \[\{key:"inventory"[\s\S]*\{key:"products",label:"Products"\}\]/);
-  assert.match(shell,/products:"inventory"/);
+  assert(MENU_GROUPS.find(group=>group.label==="Commerce")?.entries.some(entry=>entry.path==="/items"&&entry.permission==="products"));
 });
 
 

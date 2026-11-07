@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { ArrowLeft, ArrowUpDown, ExternalLink, Search } from "lucide-react";
 import { canVisitRoute, routeEntry, routeLabel } from "../../lib/navigation-route-registry";
 import { navigateToRoute, useNavigationRoute } from "../../lib/navigation-store";
+import { SidebarRouteLink } from "../navigation/sidebar-route-link";
 import { GOLDEN_EAGLE_SKUS, skuForProductName } from "../../lib/product-catalog";
 import {evaluateSalesRepAccountBonuses,type BonusMilestoneStatus} from "../../lib/bonus-engine";
 import {accountBonusProgress,type BonusProgressSort,type BonusProgressDirection} from "../../lib/bonus-progress";
@@ -28,7 +29,7 @@ import {PayrollWorkflowExperience} from "./payroll-workflow-experience";
 import {HrOnboardingExperience} from "./hr-onboarding-experience";
 import {InvoicePrintCenter} from "../finance/invoice-print-center";
 import {downloadCsv} from "../../lib/browser-export";
-import {accountExportColumns,accountExportRows,contactExportColumns,contactExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryColumns,customerDeliveryExportRows,filterCustomerDeliveries} from "../../lib/saturday-scoped-workflows";
+import {accountExportColumns,accountExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryColumns,customerDeliveryExportRows,filterCustomerDeliveries} from "../../lib/saturday-scoped-workflows";
 import {invoiceBalance,computedInvoiceStatus} from "../../lib/commerce-engine";
 import {projectCustomerFinance,customerPaymentColumns,customerStatementColumns} from "../../lib/customer-finance-registers";
 import {useCommerce} from "../../lib/commerce-context";
@@ -48,6 +49,7 @@ import {NewHireProvisioning} from "../hcm/new-hire-provisioning";
 import {PayrollPage as LegacyPayrollPage} from "../pages/payroll";
 import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
+import {CrmDealsExperience,CrmContactsExperience} from "./crm-pipeline-experience";
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
 import {PackagesDirectory,ShipmentsDirectory,ShipmentDetail,DeliveryOperationsDirectory} from "./fulfillment-experience";
 import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
@@ -64,12 +66,12 @@ function Empty({ children }: { children: ReactNode }) {
   return <div className="prototype-empty">{children}</div>;
 }
 function OpenLink({ to, children }: {to: string;children: ReactNode}) {
-  return <button type="button" className="prototype-link" onClick={() => navigateToRoute(to)}>{children}<ExternalLink size={13}/></button>;
+  return <SidebarRouteLink path={to} active={false} className="prototype-link">{children}<ExternalLink size={13}/></SidebarRouteLink>;
 }
-function Heading({title,description,back}:{title:string;description:string;back?:string}){
+function Heading({title,description,back}:{title:string;description?:string;back?:string}){
   return <header className="prototype-heading">
     {back&&<button type="button" className="prototype-back" onClick={()=>navigateToRoute(back)}><ArrowLeft size={15}/> Back to list</button>}
-    <h1>{title}</h1><p>{description}</p>
+    <h1>{title}</h1>{description&&<p>{description}</p>}
   </header>;
 }
 function Tabs({items,current,base}:{items:{key:string;label:string}[];current:string;base:string}){
@@ -774,6 +776,9 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="portal"&&segments[1]==="invoices"&&segments.length===3)return <CustomerInvoiceRecord id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="portal"&&["orders","deliveries"].includes(segments[1])&&segments.length===3)return <CustomerOrderRecord id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
+  if(path==="/self-service")return <PeopleExperience/>;
+  if(path==="/self-service/leave")return <HrTimeOffExperience/>;
+  if(path==="/self-service/pay")return <PayrollWorkflowExperience/>;
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/marketing")return <MarketingWorkspaceExperience/>;
   if(path==="/marketing/campaigns")return <MarketingWorkspaceExperience key="marketing-campaigns" initialTab="campaigns"/>;
