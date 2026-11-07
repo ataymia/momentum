@@ -39,6 +39,7 @@ import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, Payments
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
 import {InventoryLocationsDirectory} from "./inventory-locations-experience";
 import {PackagesDirectory,ShipmentsDirectory,ShipmentDetail,DeliveryOperationsDirectory} from "./fulfillment-experience";
+import {RepSelfDelivery} from "../orders/rep-self-delivery";
 import {PurchasingExperience} from "./purchasing-experience";
 import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
 import {ActionCenterExperience} from "./action-center-experience";
@@ -363,6 +364,7 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="admin"&&segments[1]==="employee-profiles"&&segments[2])return <HrPersonnelRecord id={decodeURIComponent(segments[2])} section={segments[3]}/>
   if(path==="/admin/employees")return <div><Heading title="Employee Directory" description="Administrator view of active staff."/><EmployeeDirectory/></div>;
   if(path==="/crm/territory-map")return <TerritoryMapPreview/>;
+  if(path==="/crm/self-delivery")return <RepSelfDelivery/>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
   if(path==="/work/approvals")return <OrderApprovalDirectory/>;
