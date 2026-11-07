@@ -1085,7 +1085,7 @@ describe("G02 owner-only, immutable notification receipt shards",()=>{
     const owned=shard(REP,REP,"a");
     await assertSucceeds(setDoc(owned,{userId:REP,bucket:"a",ids:["derived-action:approval:1"]}));
     await assertSucceeds(getDoc(owned));
-    await assertSucceeds(getDocs(collection(dbFor(REP),"notificationReadReceipts",REP,"buckets")));
+    await assertFails(getDocs(collection(dbFor(REP),"notificationReadReceipts",REP,"buckets")));
     await assertSucceeds(setDoc(owned,{userId:REP,bucket:"a",ids:["derived-action:approval:1","derived-action:approval:2"]}));
     await assertFails(setDoc(owned,{userId:REP,bucket:"a",ids:["derived-action:approval:2"]}));
     await assertFails(deleteDoc(owned));
