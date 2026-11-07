@@ -78,15 +78,15 @@ function useLocalMeetingWorkspace(){
     const m=all.find(m=>m.id===id);
     if(!m||m.organizerId!==currentUser?.id||m.status==="Cancelled")return{result:{ok:false,message:"Only the organizer may cancel a scheduled meeting."}};
     const at=new Date().toISOString();
-    const update:TeamMeeting={...m,status:"Cancelled",revision:m.revision+1,updatedAt:at,history:[...m.history,{actorId:currentUser!.id,action:"Cancelled" as const,at,detail:"Meeting cancelled by organizer."}].slice(-200)};
+    const update:TeamMeeting={...m,status:"Cancelled",revision:m.revision+1,seenRevision:{...m.seenRevision,[currentUser!.id]:m.revision+1},updatedAt:at,history:[...m.history,{actorId:currentUser!.id,action:"Cancelled" as const,at,detail:"Meeting cancelled by organizer."}].slice(-200)};
     return{result:{ok:true,id},meetings:all.map(item=>item.id===id?update:item)};
   });
   const rsvp=(id:string,response:Exclude<Rsvp,"Pending">):ChangeResult=>commit(all=>{
     const m=all.find(item=>item.id===id);
     if(!m||m.status!=="Scheduled"||!m.attendeeIds.includes(currentUser!.id)||!["Accepted","Tentative","Declined"].includes(response))return{result:{ok:false,message:"You cannot respond to this meeting."}};
     const at=new Date().toISOString();
-    const updated:TeamMeeting={...m,rsvps:{...m.rsvps,[currentUser!.id]:response},revision:m.revision+1,updatedAt:at,
-      seenRevision:{...m.seenRevision,[currentUser!.id]:m.revision+1},history:[...m.history,{actorId:currentUser!.id,action:"RSVP" as const,at,detail:response}].slice(-200)};
+    const updated:TeamMeeting={...m,rsvps:{...m.rsvps,[currentUser!.id]:response},
+      seenRevision:{...m.seenRevision,[currentUser!.id]:m.revision},history:[...m.history,{actorId:currentUser!.id,action:"RSVP" as const,at,detail:response}].slice(-200)};
     return{result:{ok:true,id},meetings:all.map(item=>item.id===id?updated:item)};
   });
   const seen=(id:string):ChangeResult=>commit(all=>{

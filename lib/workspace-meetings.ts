@@ -23,27 +23,26 @@ export const mayOrganize=(user:WorkspaceUser|null|undefined)=>Boolean(user&&memb
 export const meetingVisibleTo=(meeting:TeamMeeting,user:WorkspaceUser|null|undefined)=>Boolean(user&&member(user)&&(meeting.organizerId===user.id||meeting.attendeeIds.includes(user.id)));
 export const personalMeetings=(meetings:readonly TeamMeeting[],user:WorkspaceUser|null|undefined)=>meetings.filter(m=>meetingVisibleTo(m,user));
 const validId=(value:unknown)=>typeof value==="string"&&value.length>0&&value.length<=128;
-const validMeeting=(m:unknown,ids:Set<string>):m is TeamMeeting=>{
+const validMeeting=(m:unknown):m is TeamMeeting=>{
   if(!m||typeof m!=="object")return false;
   const x=m as TeamMeeting;
   if(!validId(x.id)||!x.title?.trim()||x.title.length>160||typeof x.agenda!=="string"||x.agenda.length>4000||typeof x.location!=="string"||x.location.length>240||
      !isValidCalendarDateKey(x.date)||!time.test(x.startTime)||!time.test(x.endTime)||x.startTime>=x.endTime||
-     !ids.has(x.organizerId)||!Array.isArray(x.attendeeIds)||x.attendeeIds.length<1||x.attendeeIds.length>100||
-     !x.attendeeIds.every(id=>ids.has(id)&&id!==x.organizerId)||new Set(x.attendeeIds).size!==x.attendeeIds.length||
+     !validId(x.organizerId)||!Array.isArray(x.attendeeIds)||x.attendeeIds.length<1||x.attendeeIds.length>15||
+     !x.attendeeIds.every(id=>validId(id)&&id!==x.organizerId)||new Set(x.attendeeIds).size!==x.attendeeIds.length||
      !["Scheduled","Cancelled"].includes(x.status)||!Number.isInteger(x.revision)||x.revision<1||
      !validIso(x.createdAt)||!validIso(x.updatedAt)||typeof x.rsvps!=="object"||!x.rsvps||
      typeof x.seenRevision!=="object"||!x.seenRevision||!Array.isArray(x.history))return false;
   if(!x.attendeeIds.every(id=>rsvps.has(x.rsvps[id])))return false;
-  if(!Object.entries(x.seenRevision).every(([id,v])=>ids.has(id)&&Number.isInteger(v)&&v>=0&&v<=x.revision))return false;
-  return x.history.length<=200&&x.history.every(h=>Boolean(h&&ids.has(h.actorId)&&validIso(h.at)&&["Created","Updated","Cancelled","RSVP"].includes(h.action)&&typeof h.detail==="string"&&h.detail.length<=1000));
+  if(!Object.entries(x.seenRevision).every(([id,v])=>validId(id)&&Number.isInteger(v)&&v>=0&&v<=x.revision))return false;
+  return x.history.length<=200&&x.history.every(h=>Boolean(h&&validId(h.actorId)&&validIso(h.at)&&["Created","Updated","Cancelled","RSVP"].includes(h.action)&&typeof h.detail==="string"&&h.detail.length<=1000));
 };
-export function normalizeMeetings(input:unknown,users:readonly WorkspaceUser[]):MeetingsState{
+export function normalizeMeetings(input:unknown,_users:readonly WorkspaceUser[]):MeetingsState{
   if(!input||typeof input!=="object")return EMPTY_MEETINGS;
   const raw=input as Partial<MeetingsState>;
   if(raw.version!==1||!Array.isArray(raw.meetings))return EMPTY_MEETINGS;
-  const ids=new Set(users.map(user=>user.id));
   const seen=new Set<string>();
-  return {version:1,meetings:raw.meetings.filter(m=>validMeeting(m,ids)&&!seen.has(m.id)&&(seen.add(m.id),true)).slice(0,1500)};
+  return {version:1,meetings:raw.meetings.filter(m=>validMeeting(m)&&!seen.has(m.id)&&(seen.add(m.id),true)).slice(0,1500)};
 }
 export function validateMeeting(input:MeetingInput,actor:WorkspaceUser|null,users:readonly WorkspaceUser[]):MeetingResult{
   if(!mayOrganize(actor))return{ok:false,message:"You cannot organize staff meetings with your current role."};
@@ -51,10 +50,11 @@ export function validateMeeting(input:MeetingInput,actor:WorkspaceUser|null,user
   if(typeof input.agenda!=="string"||input.agenda.trim().length<5||input.agenda.length>4000)return{ok:false,message:"Enter a short meeting agenda (5–4,000 characters)."};
   if(typeof input.location!=="string"||!input.location.trim()||input.location.length>240)return{ok:false,message:"Enter a meeting location or video-call description."};
   if(!isValidCalendarDateKey(input.date)||!time.test(input.startTime)||!time.test(input.endTime)||input.startTime>=input.endTime)return{ok:false,message:"Choose a valid Arizona date and an end time after the start time."};
+  if((Number(input.endTime.slice(0,2))*60+Number(input.endTime.slice(3)))-(Number(input.startTime.slice(0,2))*60+Number(input.startTime.slice(3)))>180)return{ok:false,message:"Meetings may not exceed three hours."};
   if(input.date<arizonaDateKey()||(input.date===arizonaDateKey()&&input.endTime<=arizonaTimeKey()))return{ok:false,message:"Meetings cannot be scheduled after their end time has passed."};
   const permitted=new Set(meetingEligibleUsers(users).map(u=>u.id));
-  if(!Array.isArray(input.attendeeIds)||input.attendeeIds.length<1||input.attendeeIds.length>100||new Set(input.attendeeIds).size!==input.attendeeIds.length||
-      input.attendeeIds.some(id=>id===actor?.id||!permitted.has(id)))return{ok:false,message:"Select at least one unique active employee other than yourself."};
+  if(!Array.isArray(input.attendeeIds)||input.attendeeIds.length<1||input.attendeeIds.length>15||new Set(input.attendeeIds).size!==input.attendeeIds.length||
+      input.attendeeIds.some(id=>id===actor?.id||!permitted.has(id)))return{ok:false,message:"Select 1–15 unique active employees other than yourself."};
   return{ok:true};
 }
 const overlap=(a:{date:string;startTime:string;endTime:string},b:{date:string;startTime:string;endTime:string})=>a.date===b.date&&a.startTime<b.endTime&&b.startTime<a.endTime;

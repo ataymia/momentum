@@ -137,7 +137,10 @@ async function cancelSchedule(db:Firestore,actor:Actor,body:Row){
     const locks=await Promise.all(slots.map(slot=>tx.get(db.collection(slotCollection).doc(slot))));
     for(const [i,lock] of locks.entries())if(lock.data()?.meetingId===id)tx.delete(db.collection(slotCollection).doc(slots[i]));
     const at=new Date().toISOString();
-    const result={...old,status:"Cancelled",revision:Number(old.revision)+1,updatedAt:at,history:[...(Array.isArray(old.history)?old.history:[]),history(actor,"Cancelled",at,"Meeting cancelled by organizer.")].slice(-200)};
+    const nextRevision=Number(old.revision)+1;
+    const seenRevision:Row=obj(old.seenRevision)?{...old.seenRevision}:{};
+    seenRevision[actor.uid]=nextRevision;
+    const result={...old,status:"Cancelled",revision:nextRevision,seenRevision,updatedAt:at,history:[...(Array.isArray(old.history)?old.history:[]),history(actor,"Cancelled",at,"Meeting cancelled by organizer.")].slice(-200)};
     tx.set(ref,result);
     return result;
   });

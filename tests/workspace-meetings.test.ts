@@ -152,3 +152,25 @@ test("B05 calendar week/month cards adapt across desktop, tablet, and mobile",()
  assert.match(css,/min-width:768px/);
  assert.match(layout,/import "\.\/workspace-meetings\.css"/);
 });
+
+test("B08 RSVPs do not advance the common meeting revision or create unrelated schedule notices",()=>{
+ const source=readFileSync("lib/workspace-meetings-store.ts","utf8");
+ const server=readFileSync("functions/src/staff-meetings.ts","utf8");
+ assert.match(source,/rsvps:\{\.\.\.m.rsvps,\[currentUser!\.id\]:response\}/);
+ assert.doesNotMatch(source,/rsvps:\{\.\.\.m.rsvps,\[currentUser!\.id\]:response\},revision:m.revision\+1/);
+ assert.match(server,/const revision=Number\(old.revision\);/);
+});
+test("B09 historical meetings remain visible to active invitees when another attendee was separated",()=>{
+ const departed=record({attendeeIds:["rep","left"],rsvps:{rep:"Accepted",left:"Pending"},history:[
+  {actorId:"previous-admin",action:"Created",at:"2026-11-06T16:10:00.000Z",detail:"Originally scheduled."},
+ ]});
+ const normalized=normalizeMeetings({version:1,meetings:[departed]},users.filter(u=>u.id!=="left"));
+ assert.equal(normalized.meetings.length,1);
+ assert.equal(meetingVisibleTo(normalized.meetings[0],rep),true);
+ assert.equal(meetingVisibleTo(normalized.meetings[0],left),false);
+});
+test("B06 preview enforces production meeting duration and attendee limits",()=>{
+ assert.equal(validateMeeting({...input,endTime:"13:00"},admin,users).ok,false);
+ const many=Array.from({length:16},(_,i)=>user("staff"+i));
+ assert.equal(validateMeeting({...input,attendeeIds:many.map(u=>u.id)},admin,[admin,...many]).ok,false);
+});
