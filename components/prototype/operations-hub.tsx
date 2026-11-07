@@ -359,6 +359,13 @@ function CustomerRecord({id,section}:{id:string;section:string}){
   const finance=runtime.isDemo&&momentumStorage.mode()==="local"&&currentUser?.role!=="Customer"
     ?projectCustomerFinance(commerce,orders,ids,new Map(locations.map(a=>[a.id,a.locationName??a.name])))
     :null;
+  // A prior invoice without a matching canonical order is a migration exception,
+  // not a fabricated order or proof of customer payment. Only inspect the
+  // isolated demo ledger here; connected financial records require server scope.
+  const historicalUnmatched=finance
+    ?commerce.invoices.filter(invoice=>ids.has(invoice.accountId)&&invoice.status!=="Void"&&!invoice.supersededByInvoiceId
+        &&!orders.some(order=>order.id===invoice.orderId&&order.accountId===invoice.accountId))
+    :[];
   const statementRows=(finance?.statement??[])
     .filter(row=>(!statementFrom||row.date>=statementFrom)&&(!statementThrough||row.date<=statementThrough))
     .filter(row=>[row.location,row.reference,row.type,row.status].join(" ").toLowerCase().includes(statementSearch.trim().toLowerCase()))
@@ -382,13 +389,22 @@ function CustomerRecord({id,section}:{id:string;section:string}){
       {activities.length===0&&<Empty>No recorded activity.</Empty>}</section></div>}
     {tab==="comments"&&<section className="prototype-panel"><h2>Comments and notes</h2><p className="prototype-note">Existing account notes are displayed below. A dedicated audited internal comment thread requires its own write permissions.</p>
       {locations.map(a=><div key={a.id} className="prototype-activity"><strong>{a.locationName??a.name}</strong><span>{a.notes||"No recorded notes"}</span></div>)}</section>}
-    {tab==="transactions"&&<section className="prototype-panel"><h2>Sales transactions</h2>
+    {tab==="transactions"&&<section className="prototype-panel"><h2>Orders & billing transactions</h2><p className="prototype-note">Sales orders, invoiced amounts and settled payment evidence are distinct records. An order is not a paid invoice. Historical entries appear only when linked to an authorized location and a valid source.</p>
       <div className="prototype-controls">
         <label>Search orders <input type="search" aria-label="Search customer transactions" value={transactionSearch} onChange={e=>setTransactionSearch(e.target.value)}/></label>
         <label>From <input type="date" aria-label="Customer transaction from" value={transactionFrom} onChange={e=>setTransactionFrom(e.target.value)}/></label>
         <label>Through <input type="date" aria-label="Customer transaction through" value={transactionThrough} onChange={e=>setTransactionThrough(e.target.value)}/></label>
       </div>
-      <table className="prototype-table"><thead><tr>{transactionHeader("number","Order")}{transactionHeader("location","Location")}{transactionHeader("date","Date")}{transactionHeader("cases","Cases")}{transactionHeader("status","State")}{transactionHeader("payment","Payment")}</tr></thead><tbody>{visibleOrders.map(o=><tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{locations.find(a=>a.id===o.accountId)?.locationName??locations.find(a=>a.id===o.accountId)?.location??"Unknown"}</td><td>{o.placedAt}</td><td>{o.cases}</td><td>{o.status}</td><td>{o.paymentStatus}</td></tr>)}</tbody></table>{!visibleOrders.length&&<Empty>No sales orders match this customer and filter.</Empty>}</section>}
+      <table className="prototype-table"><thead><tr>{transactionHeader("number","Order")}{transactionHeader("location","Location")}{transactionHeader("date","Date")}{transactionHeader("cases","Cases")}{transactionHeader("status","State")}{transactionHeader("payment","Payment")}</tr></thead><tbody>{visibleOrders.map(o=><tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{locations.find(a=>a.id===o.accountId)?.locationName??locations.find(a=>a.id===o.accountId)?.location??"Unknown"}</td><td>{o.placedAt}</td><td>{o.cases}</td><td>{o.status}</td><td>{o.paymentStatus}</td></tr>)}</tbody></table>{!visibleOrders.length&&<Empty>No sales orders match this customer and filter.</Empty>}
+      {finance&&<>
+        <div className="prototype-metrics"><div><small>Linked invoices</small><strong>{finance.invoices.length}</strong></div><div><small>Cleared payments in source register</small><strong>{finance.payments.length}</strong></div><div><small>Historical linkage exceptions</small><strong>{historicalUnmatched.length}</strong></div></div>
+        <h3>Source-linked invoices, payments and credits</h3>
+        <p className="prototype-note">This is a local demo reconciliation of eligible delivered orders, invoice records and cleared/settled source events. Unverified collections and opening balances are excluded.</p>
+        {finance.statement.length?<div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Date</th><th>Location</th><th>Invoice reference</th><th>Event</th><th>Status</th><th>Debit</th><th>Credit</th></tr></thead><tbody>{finance.statement.map((record,index)=><tr key={record.reference+"-"+record.date+"-"+record.type+"-"+index}><td>{record.date}</td><td>{record.location}</td><td>{record.reference}</td><td>{record.type}</td><td>{record.status}</td><td>{record.debit?record.debit.toFixed(2):"—"}</td><td>{record.credit?record.credit.toFixed(2):"—"}</td></tr>)}</tbody></table></div>:<Empty>No verified invoice or payment events linked to these canonical orders.</Empty>}
+        {historicalUnmatched.length>0&&<div className="prototype-panel" role="status"><h3>Historical invoice records needing linkage review</h3><p className="prototype-note">These saved invoices reference this location but have no matching canonical order in the accessible workspace. They remain visible for investigation; they are not reconstructed as orders or counted as collected revenue.</p><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Invoice</th><th>Recorded</th><th>Location</th><th>Next action</th></tr></thead><tbody>{historicalUnmatched.map(invoice=><tr key={invoice.id}><td>{invoice.number}</td><td>{invoice.issuedAt.slice(0,10)}</td><td>{locations.find(a=>a.id===invoice.accountId)?.locationName??"Authorized location"}</td><td><OpenLink to={"/sales/invoices/"+encodeURIComponent(invoice.id)}>Review original invoice</OpenLink></td></tr>)}</tbody></table></div></div>}
+      </>}
+      {!finance&&<p className="prototype-note" role="status">Connected billing history is not joined on this client. Historical invoices and payments must be retrieved through a server-authorized account ledger before they can appear here; no missing records are being estimated.</p>}
+    </section>}
     {tab==="mails"&&<section className="prototype-panel"><h2>Customer mail history</h2><Empty>No verified customer-linked outbound or inbound email history is available in this prototype. Gmail remains the company inbox, and the event-mail system requires approved server integration before it can populate this tab.</Empty></section>}
     {tab==="statements"&&<section className="prototype-panel"><h2>Customer statement</h2>
       {!finance?<Empty>Statements require server-authorized invoice and payment access in connected mode. No amount is estimated from order totals.</Empty>:<>
