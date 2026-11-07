@@ -1,4 +1,5 @@
 import { evaluateSalesRepAccountBonuses, orderFirstSettlementDate, type BonusMilestone } from "./bonus-engine";
+import {acquisitionBonusHeldAccountIds} from "./acquisition-bonus-consolidation";
 import { arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import { activeBenefitEnrollments, activeCompensation, type HCMState } from "./hcm-engine";
 import type { TimeEntry, WorkspaceData } from "./types";
@@ -213,7 +214,8 @@ export function invalidTimecardSourcesForRun(run: PayRun, data: WorkspaceData) {
 
 export function invalidBonusSourcesForRun(run: PayRun, data: WorkspaceData) {
   if (run.kind !== "Monthly bonus") return [] as string[];
-  const currentlyEarned = new Set(evaluateSalesRepAccountBonuses(data).filter((signal) => signal.status === "Earned").map((signal) => signal.id));
+  const held=acquisitionBonusHeldAccountIds(data);
+  const currentlyEarned = new Set(evaluateSalesRepAccountBonuses(data).filter((signal) => signal.status === "Earned" && !held.has(signal.accountId)).map((signal) => signal.id));
   return [...new Set(run.lines.flatMap((line) => line.sourceBonusIds).filter((bonusId) => !currentlyEarned.has(bonusId)))];
 }
 
@@ -236,7 +238,9 @@ export function bonusEarnedDate(data: WorkspaceData, signal: BonusMilestone) {
 export function earnedBonusesForMonth(state: PayrollState, data: WorkspaceData, month: string) {
   if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)) return [];
   const used = consumedBonuses(state);
+  const held=acquisitionBonusHeldAccountIds(data);
   return evaluateSalesRepAccountBonuses(data)
+    .filter((signal)=>!held.has(signal.accountId))
     .map((signal) => ({ signal, earnedAt: bonusEarnedDate(data, signal) }))
     .filter((item) => item.earnedAt?.slice(0, 7) === month && !used.has(item.signal.id));
 }
