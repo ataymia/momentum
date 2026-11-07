@@ -132,10 +132,13 @@ export function MeetingProvider({children}:{children:ReactNode}){
       }
     };
     void refresh();
-    const timer=window.setInterval(()=>{void refresh();},30000);
-    const onFocus=()=>{void refresh();};
+    // Avoid charging the company for background-tab polling. Recheck on return,
+    // with a modest foreground cadence until push delivery is explicitly approved.
+    const onFocus=()=>{if(document.visibilityState==="visible")void refresh();};
+    const timer=window.setInterval(onFocus,120000);
     window.addEventListener("focus",onFocus);
-    return()=>{cancelled=true;window.clearInterval(timer);window.removeEventListener("focus",onFocus);};
+    document.addEventListener("visibilitychange",onFocus);
+    return()=>{cancelled=true;window.clearInterval(timer);window.removeEventListener("focus",onFocus);document.removeEventListener("visibilitychange",onFocus);};
   },[local.isLocal,userId,data.users]);
 
   const send=async(command:StaffMeetingCommand):Promise<ChangeResult>=>{
