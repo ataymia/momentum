@@ -18,7 +18,7 @@ export function CustomerConnectedFinance({section}:{section:"payments"|"statemen
  const [sort,setSort]=useState<"invoice"|"date"|"amount"|"status"|"balance">("date"),[asc,setAsc]=useState(false);
  useEffect(()=>{
    let active=true;
-   setState({status:"loading",finance:null,error:""});
+
    const load=async()=>{
      try{
        const session=await currentFirebaseSession();
@@ -66,7 +66,7 @@ export function CustomerConnectedFinance({section}:{section:"payments"|"statemen
  return <div>
    <header className="prototype-heading"><h1>{section==="payments"?"My Payments":"My Statements"}</h1><p>Read-only account-specific finance records obtained from the authenticated customer service. Payments and refunds are recorded events, not independently confirmed bank deposits.</p></header>
    <section className="prototype-panel">
-     <button type="button" onClick={()=>setReload(v=>v+1)}><RefreshCw size={14}/> Refresh records</button>
+     <button type="button" onClick={()=>{setState({status:"loading",finance:null,error:""});setReload(v=>v+1);}}><RefreshCw size={14}/> Refresh records</button>
      {state.status==="loading"&&<p role="status">Loading authorized finance records…</p>}
      {state.status==="error"&&<p role="alert">{state.error}</p>}
      {state.status==="ready"&&finance&&<>
@@ -90,7 +90,7 @@ export function CustomerConnectedFinance({section}:{section:"payments"|"statemen
          return <tr key={row.id}><td>{row.invoice}</td><td>{date(row.date)}</td><td>{currency(row.amount)}</td><td>{currency(row.cleared)}</td><td>{currency(row.pending)}</td><td>{currency(row.credits)}</td><td>{currency(row.balance)}</td><td>{row.status}</td><td>{date(row.due)}</td></tr>;
        })}</tbody></table></div>
        {filtered.length===0&&<div className="prototype-empty">No authorized records match these filters.</div>}
-       {finance.truncated&&<p role="status" className="prototype-note">Some records were excluded because of ambiguous invoices or the server's response limit. Request a reviewed statement for complete history.</p>}
+       {finance.truncated&&<p role="status" className="prototype-note">Some records were excluded because of ambiguous invoices or the server response limit. Request a reviewed statement for complete history.</p>}
        <p className="prototype-note">A source-ledger status is not proof of processor settlement. Payments, statements and CSV files in this view are informational, not customer-authorized charges or official reconciled bank statements.</p>
      </>}
    </section>
