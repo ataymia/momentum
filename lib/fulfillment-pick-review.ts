@@ -41,7 +41,7 @@ export function buildPickListReview(order:Order,lots:readonly InventoryLot[],led
       const warehouseCases=nodeLotBalance(ledger,warehouseNodeId,lot.id);
       const allActiveReservedCases=reservedQuantity(ledger,lot.id);
       const health=reviewInventoryLot({bestBy:lot.bestBy,status:lot.status,warehouseOnHand:warehouseCases,reserved:allActiveReservedCases},asOf);
-      const issues=[...health.issues];
+      const issues:string[]=[...health.issues];
       if(!Number.isSafeInteger(reservation.quantity)||reservation.quantity<=0)issues.push("Invalid reserved case quantity");
       if(!Number.isSafeInteger(warehouseCases)||warehouseCases<reservation.quantity)issues.push("Reserved cases exceed recorded warehouse custody");
       return {
