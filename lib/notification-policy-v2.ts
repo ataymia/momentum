@@ -404,6 +404,7 @@ export function expenseStatusIntents(
       importance: "status" as const,
       targetPage: "finance" as const,
       targetRecordId: expense.id,
+      occurredAt: expense.financeDecisionAt,
     }));
 }
 
