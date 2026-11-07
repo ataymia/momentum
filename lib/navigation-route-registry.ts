@@ -73,27 +73,23 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Employee Directory", path: "/people/directory", permission: "employees", state: "prototype" },
     { label: "New Hire", path: "/people/new-hire", permission: "newHire", state: "prototype" },
     { label: "Onboarding", path: "/people/onboarding", permission: "onboarding", state: "prototype" },
-    { label: "HR Compliance Gate", path: "/people/compliance", permission: "onboarding", state: "prototype" },
     { label: "Onboarding Workflow", path: "/people/onboarding/workflow", permission: "onboarding", state: "existing" },
     { label: "Payroll", path: "/people/payroll", permission: "payroll", state: "prototype" },
     { label: "Payroll Processing & Settings", path: "/people/payroll/workflow", permission: "payroll", state: "existing" },
     { label: "Training", path: "/people/training", permission: "trainingAdmin", state: "existing" },
     { label: "Time Off & Leave", path: "/people/leave", permission: "people", state: "prototype" },
-    { label: "Attendance & Timecards", path: "/people/attendance", permission: "timekeeping", state: "prototype" },
-    { label: "Performance & Development", path: "/people/performance", permission: "people", state: "prototype" },
   ] },
   { label: "Marketing", entries: [
     { label: "Marketing Overview", path: "/marketing", permission: "marketing", state: "prototype" },
     { label: "Marketing Administration", path: "/marketing/workflow", permission: "settings", state: "prototype" },
-    { label: "Campaigns", path: "/marketing/campaigns", permission: "marketing", state: "prototype" },
+    { label: "Campaigns", path: "/marketing/campaigns", permission: "marketing", state: "planned" },
     { label: "Brand Ambassadors", path: "/marketing/ambassadors", permission: "brandAmbassadors", state: "existing" },
   ] },
   { label: "Insights & Support", entries: [
-    { label: "Forecasts", path: "/reports/forecasts", permission: "reports", state: "prototype" },
-    { label: "Insights Explorer", path: "/reports/explorer", permission: "reports", state: "prototype" },
+    { label: "Forecasts", path: "/reports/forecasts", permission: "reports", state: "planned" },
     { label: "Reports", path: "/reports", permission: "reports", state: "existing" },
     { label: "Dashboards", path: "/reports/performance", permission: "performance", state: "existing" },
-    { label: "Cases", path: "/support/cases", permission: "work", state: "prototype" },
+    { label: "Cases", path: "/support/cases", permission: "work", state: "planned" },
     { label: "Documents", path: "/documents", permission: "materials", state: "prototype" },
     { label: "Help", path: "/help", permission: "help", state: "existing" },
   ] },
@@ -184,9 +180,6 @@ export function pageForPath(path: string): PageKey | null {
   if (ROUTE_OVERRIDES[clean]) return ROUTE_OVERRIDES[clean];
   // Deep-linked records must retain their owning workspace page, not fall back to Home.
   if(clean.startsWith("/admin/employee-profiles/"))return "settings";
-  if(clean.startsWith("/support/cases/"))return "work";
-  if(clean.startsWith("/people/attendance/"))return "timekeeping";
-  if(clean.startsWith("/people/performance/"))return "people";
   if(clean.startsWith("/sales/orders/"))return "orders";
   if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
   if(clean.startsWith("/sales/returns/"))return "orders";
@@ -225,9 +218,6 @@ export function routeLabel(path: string): string {
   if(clean==="/sales/orders/new")return "Create sales order";
   if(clean.startsWith("/sales/orders/")&&clean.endsWith("/edit"))return "Edit sales order";
   if (clean.startsWith("/admin/employee-profiles/")) return "Employee profile";
-  if (clean.startsWith("/support/cases/")) return "Case details";
-  if (clean.startsWith("/people/attendance/")) return "Attendance record";
-  if (clean.startsWith("/people/performance/")) return "Performance record";
   if (clean.startsWith("/sales/orders/")) return "Order details";
   if (clean.startsWith("/sales/invoices/")) return "Invoice details";
   if (clean.startsWith("/sales/payments/")) return "Payment details";
@@ -240,9 +230,8 @@ export function routeLabel(path: string): string {
 export function permissionForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if(clean.startsWith("/admin/employee-profiles/"))return "settings";
-  if(clean.startsWith("/support/cases/"))return "work";
-  if(clean.startsWith("/people/attendance/"))return "timekeeping";
-  if(clean.startsWith("/people/performance/"))return "people";
+  if(clean.startsWith("/purchases/orders/")||clean.startsWith("/purchases/receipts/"))return "inventory";
+  if(clean.startsWith("/purchases/"))return "accounting";
   if (clean.startsWith("/items/")) return "products";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if (clean.startsWith("/sales/customers/")) return "accounts";
@@ -268,14 +257,6 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
     return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer) &&
       canAccessPage(user,permissionForPath(clean)??"home");
   }
-  // Copying a URL must not bypass employee confidentiality when a module is hidden in navigation.
-  // Until verified employee-specific payroll is integrated, these paths remain Administrator-only.
-  const privilegedHr = ["/people/new-hire","/people/onboarding","/people/compliance","/people/training","/people/payroll"];
-  if (user.role!=="Administrator" && privilegedHr.some(prefix=>clean===prefix||clean.startsWith(prefix+"/"))) return false;
-  if(clean==="/reports/forecasts"||clean.startsWith("/reports/forecasts/"))
-    return ["Administrator","Sales Manager","Sales Representative","Operations"].includes(user.role)&&canAccessPage(user,"reports");
-  if (clean==="/marketing/campaigns"||clean.startsWith("/marketing/campaigns/")) return user.role==="Administrator"&&canAccessPage(user,"marketing");
-  if (clean==="/support/cases"||clean.startsWith("/support/cases/")) return ["Administrator","Operations","Sales Manager","Sales Representative"].includes(user.role)&&canAccessPage(user,"work");
   if(clean==="/crm/self-delivery")return user.role==="Sales Representative";
   if (clean.startsWith("/portal/")) return false;
   if(clean==="/inventory/locations"||clean.startsWith("/inventory/locations/"))return ["Administrator","Operations","Warehouse"].includes(user.role);
@@ -300,11 +281,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
   if (!user || !canVisitRoute(user,path)) return false;
   if (user.role==="Customer") return false;
   const group = MENU_GROUPS.find(g=>g.entries.some(e=>e.path===normalizeRoutePath(path)))?.label;
-  if (group==="Human Resources" && user.role!=="Administrator"){
-    // Staff self-service belongs in HR navigation even though HR administration remains private.
-    const selfService=["/people/leave","/people/attendance","/people/performance"];
-    return selfService.includes(normalizeRoutePath(path));
-  }
+  if (group==="Human Resources" && user.role!=="Administrator") return false;
   if (group==="Marketing" && !["Administrator","Marketing","Brand Ambassador"].includes(user.role)) return false;
   return true;
 }
@@ -312,10 +289,11 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
+  if(clean==="/crm/self-delivery")return true;
   if(clean.startsWith("/purchases/")||clean.startsWith("/inventory/locations/"))return true;
   // Sensitive legacy HR and payroll tools are wrapped by a prototype demo-only gate.
   if(clean==="/people/payroll/workflow"||clean==="/people/onboarding/workflow"||clean==="/admin/employee-profiles/workflow")return true;
-  if (clean.startsWith("/people/attendance/") || clean.startsWith("/people/performance/") || clean.startsWith("/support/cases/") || clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
+  if (clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
 }
