@@ -4,7 +4,7 @@ import {usableNotificationTime} from "./notification-display-time";
  * Read receipts are scoped to one signed-in user, never shared between users.
  * They are presentation state, not proof of delivery or a business event.
  */
-export const MAX_READ_RECEIPTS = 2000;
+export const MAX_READ_RECEIPTS = 12000;
 export const STATUS_BELL_WINDOW_DAYS = 30;
 
 export function parseReadReceipts(input: unknown): Set<string> {
