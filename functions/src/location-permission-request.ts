@@ -8,7 +8,11 @@ const COOLDOWN_MS=5*60_000;
 const EXPIRY_MS=7*24*60*60_000;
 /** Typed refusal for unauthorized or malformed location-permission requests. */
 export class LocationPermissionRequestError extends Error{
- /** @param {number} status HTTP error status. @param {string} message User-safe explanation. */
+ /**
+  * Construct a safe HTTP error.
+  * @param {number} status HTTP error status.
+  * @param {string} message User-safe explanation.
+  */
  constructor(public readonly status:number,message:string){super(message);}
 }
 const fail=(status:number,message:string):never=>{throw new LocationPermissionRequestError(status,message);};
