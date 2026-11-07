@@ -120,8 +120,9 @@ test("global record search does not subscribe the main app shell to sales and co
   assert.match(dialog,/const \{crm\}=useCrm\(\)/);
   assert.match(dialog,/const \{commerce\}=useCommerce\(\)/);
   assert.match(dialog,/if \(normalized\) \{/);
-  assert.match(dialog,/const visibleSearchResults = searchResults\.slice\(0, 24\)/);
-  assert.match(dialog,/onClick=\{\(\) => openResult\(result\.page, result\.focus\)\}/);
+  assert.match(dialog,/const visibleSearchResults = searchResults\.filter\(result=>/);
+  assert.match(dialog,/canVisitRoute\(currentUser,target\)/);
+  assert.match(dialog,/onClick=\{\(\) => openResult\(result\)\}/);
 });
 
 test("business identity requires licensed name and validates EIN and AZ TPT formats",()=>{
