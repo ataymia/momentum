@@ -288,7 +288,16 @@ function CustomerRecord({id,section}:{id:string;section:string}){
   const [statementSearch,setStatementSearch]=useState("");
   const [statementFrom,setStatementFrom]=useState("");
   const [statementThrough,setStatementThrough]=useState("");
+  const [statementSort,setStatementSort]=useState<"date"|"location"|"reference"|"type"|"status"|"debit"|"credit">("date");
   const [statementAscending,setStatementAscending]=useState(false);
+  const [transactionSearch,setTransactionSearch]=useState("");
+  const [transactionFrom,setTransactionFrom]=useState("");
+  const [transactionThrough,setTransactionThrough]=useState("");
+  const [transactionSort,setTransactionSort]=useState<"number"|"location"|"date"|"cases"|"status"|"payment">("date");
+  const [transactionAscending,setTransactionAscending]=useState(false);
+  const [locationSearch,setLocationSearch]=useState("");
+  const [locationSort,setLocationSort]=useState<"location"|"zip"|"rep"|"id">("location");
+  const [locationAscending,setLocationAscending]=useState(true);
   const loc=scope.accounts.find(a=>a.id===id);
   if(!loc)return <Empty>Customer not found or not accessible to your account.</Empty>;
   // Only group by explicitly stored parent ID; never use name matching as evidence of shared ownership.
@@ -297,6 +306,33 @@ function CustomerRecord({id,section}:{id:string;section:string}){
   const ids=new Set(locations.map(a=>a.id));
   const orders=scope.orders.filter(o=>ids.has(o.accountId)&&!o.testOnly).sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
   const activities=scope.activities.filter(a=>a.accountId&&ids.has(a.accountId)).sort((a,b)=>b.at.localeCompare(a.at));
+  const visibleOrders=orders.filter(o=>
+    (!transactionFrom||o.placedAt.slice(0,10)>=transactionFrom)&&
+    (!transactionThrough||o.placedAt.slice(0,10)<=transactionThrough)&&
+    [o.number,o.status,o.paymentStatus,locations.find(a=>a.id===o.accountId)?.name??""].join(" ").toLowerCase().includes(transactionSearch.trim().toLowerCase()))
+    .sort((a,b)=>{
+      const field=(o:typeof a):number|string=>{
+        if(transactionSort==="location")return locations.find(loc=>loc.id===o.accountId)?.locationName??o.accountId;
+        if(transactionSort==="number")return o.number;
+        if(transactionSort==="cases")return o.cases;
+        if(transactionSort==="status")return o.status;
+        if(transactionSort==="payment")return o.paymentStatus;
+        return o.placedAt;
+      };
+      const x=field(a),y=field(b),compare=typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y),undefined,{numeric:true});
+      return (transactionAscending?1:-1)*(compare||a.id.localeCompare(b.id));
+    });
+  const visibleLocations=[...locations].filter(a=>
+    [a.locationName,a.name,a.postalCode,a.id,data.users.find(u=>u.id===a.ownerId)?.name].join(" ").toLowerCase().includes(locationSearch.trim().toLowerCase()))
+    .sort((a,b)=>{
+      const value=(a:typeof b)=>{
+        if(locationSort==="zip")return a.postalCode??"";
+        if(locationSort==="rep")return data.users.find(u=>u.id===a.ownerId)?.name??"Unassigned";
+        if(locationSort==="id")return a.id;
+        return a.locationName??a.name;
+      };
+      return (locationAscending?1:-1)*(value(a).localeCompare(value(b),undefined,{numeric:true})||a.id.localeCompare(b.id));
+    });
   const path="/sales/customers/"+encodeURIComponent(id),tab=safeTab(section,CUSTOMER_TABS);
   const label=parent?.name??loc.name;
   // Only local demo can project the full browser Commerce register.
@@ -307,7 +343,14 @@ function CustomerRecord({id,section}:{id:string;section:string}){
   const statementRows=(finance?.statement??[])
     .filter(row=>(!statementFrom||row.date>=statementFrom)&&(!statementThrough||row.date<=statementThrough))
     .filter(row=>[row.location,row.reference,row.type,row.status].join(" ").toLowerCase().includes(statementSearch.trim().toLowerCase()))
-    .sort((a,b)=>(statementAscending?1:-1)*(a.date.localeCompare(b.date)||a.reference.localeCompare(b.reference)||a.type.localeCompare(b.type)));
+    .sort((a,b)=>{
+      const x=a[statementSort],y=b[statementSort];
+      const cmp=typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y),undefined,{numeric:true});
+      return (statementAscending?1:-1)*(cmp||a.reference.localeCompare(b.reference)||a.type.localeCompare(b.type));
+    });
+  const statementHeader=(key:typeof statementSort,label:string)=><th aria-sort={statementSort===key?(statementAscending?"ascending":"descending"):"none"}><button type="button" onClick={()=>{if(statementSort===key)setStatementAscending(v=>!v);else{setStatementSort(key);setStatementAscending(true);}}}>{label}</button></th>;
+  const transactionHeader=(key:typeof transactionSort,label:string)=><th aria-sort={transactionSort===key?(transactionAscending?"ascending":"descending"):"none"}><button type="button" onClick={()=>{if(transactionSort===key)setTransactionAscending(v=>!v);else{setTransactionSort(key);setTransactionAscending(true);}}}>{label}</button></th>;
+  const locationHeader=(key:typeof locationSort,label:string)=><th aria-sort={locationSort===key?(locationAscending?"ascending":"descending"):"none"}><button type="button" onClick={()=>{if(locationSort===key)setLocationAscending(v=>!v);else{setLocationSort(key);setLocationAscending(true);}}}>{label}</button></th>;
   return <div><Heading title={label} description="Linked customer locations, activity and source-backed records" back="/sales/customers"/>
     <Tabs base={path} items={CUSTOMER_TABS} current={tab}/>
     {tab==="overview"&&<div className="prototype-columns"><section className="prototype-panel"><h2>Contact & billing details</h2>
@@ -320,7 +363,13 @@ function CustomerRecord({id,section}:{id:string;section:string}){
       {activities.length===0&&<Empty>No recorded activity.</Empty>}</section></div>}
     {tab==="comments"&&<section className="prototype-panel"><h2>Comments and notes</h2><p className="prototype-note">Existing account notes are displayed below. A dedicated audited internal comment thread requires its own write permissions.</p>
       {locations.map(a=><div key={a.id} className="prototype-activity"><strong>{a.locationName??a.name}</strong><span>{a.notes||"No recorded notes"}</span></div>)}</section>}
-    {tab==="transactions"&&<section className="prototype-panel"><h2>Sales transactions</h2><table className="prototype-table"><thead><tr><th>Order</th><th>Location</th><th>Date</th><th>Cases</th><th>State</th><th>Payment</th></tr></thead><tbody>{orders.map(o=><tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{locations.find(a=>a.id===o.accountId)?.locationName??locations.find(a=>a.id===o.accountId)?.location??"Unknown"}</td><td>{o.placedAt}</td><td>{o.cases}</td><td>{o.status}</td><td>{o.paymentStatus}</td></tr>)}</tbody></table>{!orders.length&&<Empty>No recorded sales orders.</Empty>}</section>}
+    {tab==="transactions"&&<section className="prototype-panel"><h2>Sales transactions</h2>
+      <div className="prototype-controls">
+        <label>Search orders <input type="search" aria-label="Search customer transactions" value={transactionSearch} onChange={e=>setTransactionSearch(e.target.value)}/></label>
+        <label>From <input type="date" aria-label="Customer transaction from" value={transactionFrom} onChange={e=>setTransactionFrom(e.target.value)}/></label>
+        <label>Through <input type="date" aria-label="Customer transaction through" value={transactionThrough} onChange={e=>setTransactionThrough(e.target.value)}/></label>
+      </div>
+      <table className="prototype-table"><thead><tr>{transactionHeader("number","Order")}{transactionHeader("location","Location")}{transactionHeader("date","Date")}{transactionHeader("cases","Cases")}{transactionHeader("status","State")}{transactionHeader("payment","Payment")}</tr></thead><tbody>{visibleOrders.map(o=><tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{locations.find(a=>a.id===o.accountId)?.locationName??locations.find(a=>a.id===o.accountId)?.location??"Unknown"}</td><td>{o.placedAt}</td><td>{o.cases}</td><td>{o.status}</td><td>{o.paymentStatus}</td></tr>)}</tbody></table>{!visibleOrders.length&&<Empty>No sales orders match this customer and filter.</Empty>}</section>}
     {tab==="mails"&&<section className="prototype-panel"><h2>Customer mail history</h2><Empty>No verified customer-linked outbound or inbound email history is available in this prototype. Gmail remains the company inbox, and the event-mail system requires approved server integration before it can populate this tab.</Empty></section>}
     {tab==="statements"&&<section className="prototype-panel"><h2>Customer statement</h2>
       {!finance?<Empty>Statements require server-authorized invoice and payment access in connected mode. No amount is estimated from order totals.</Empty>:<>
@@ -330,17 +379,18 @@ function CustomerRecord({id,section}:{id:string;section:string}){
           <label>Search statement <input type="search" aria-label="Search customer statement" value={statementSearch} onChange={e=>setStatementSearch(e.target.value)}/></label>
           <label>From <input type="date" aria-label="Statement from date" value={statementFrom} onChange={e=>setStatementFrom(e.target.value)}/></label>
           <label>To <input type="date" aria-label="Statement through date" value={statementThrough} onChange={e=>setStatementThrough(e.target.value)}/></label>
-          <button type="button" onClick={()=>setStatementAscending(v=>!v)}>Date {statementAscending?"ascending":"descending"}</button>
-          <button type="button" disabled={!statementRows.length} onClick={()=>downloadCsv("momentum-customer-statement-"+loc.id+".csv",statementRows,customerStatementColumns)}>Save filtered statement CSV</button>
+          <button type="button" onClick={()=>setStatementAscending(v=>!v)}>Order: {statementAscending?"ascending":"descending"}</button>
+          <button type="button" disabled={!statementRows.length> onClick={()=>downloadCsv("momentum-customer-statement-"+loc.id+".csv",statementRows,customerStatementColumns)}>Save filtered statement CSV</button>
         </div>
-        <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Date</th><th>Location</th><th>Reference</th><th>Transaction</th><th>Status</th><th>Debit</th><th>Credit</th></tr></thead>
+        <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>{statementHeader("date","Date")}{statementHeader("location","Location")}{statementHeader("reference","Reference")}{statementHeader("type","Transaction")}{statementHeader("status","Status")}{statementHeader("debit","Debit")}{statementHeader("credit","Credit")}</tr></thead>
           <tbody>{statementRows.map((row,i)=><tr key={row.reference+"-"+row.date+"-"+row.type+"-"+i}><td>{row.date}</td><td>{row.location}</td><td>{row.reference}</td><td>{row.type}</td><td>{row.status}</td><td>{row.debit?row.debit.toFixed(2):"—"}</td><td>{row.credit?row.credit.toFixed(2):"—"}</td></tr>)}</tbody>
         </table></div>
         {!statementRows.length&&<Empty>No verified financial events match this statement filter.</Empty>}
       </>}
     </section>}
     {tab==="locations"&&<section className="prototype-panel"><h2>Related locations</h2><p className="prototype-note">Only explicitly linked customer IDs are grouped. Same-name records are not merged automatically.</p>
-      <table className="prototype-table"><thead><tr><th>Location</th><th>ZIP</th><th>Assigned representative</th><th>Account ID</th></tr></thead><tbody>{locations.map(a=><tr key={a.id}><td>{a.locationName??a.name}</td><td>{a.postalCode??"Unknown"}</td><td>{data.users.find(u=>u.id===a.ownerId)?.name??"Unassigned"}</td><td className="prototype-small">{a.id}</td></tr>)}</tbody></table></section>}
+      <label>Search locations <input type="search" aria-label="Search related customer locations" value={locationSearch} onChange={e=>setLocationSearch(e.target.value)}/></label>
+      <table className="prototype-table"><thead><tr>{locationHeader("location","Location")}{locationHeader("zip","ZIP")}{locationHeader("rep","Assigned representative")}{locationHeader("id","Account ID")}</tr></thead><tbody>{visibleLocations.map(a=><tr key={a.id}><td>{a.locationName??a.name}</td><td>{a.postalCode??"Unknown"}</td><td>{data.users.find(u=>u.id===a.ownerId)?.name??"Unassigned"}</td><td className="prototype-small">{a.id}</td></tr>)}</tbody></table></section>}
     {tab==="documents"&&<CrmCustomerDocuments customer={parent} locations={locations}/>}
     {tab==="representatives"&&<CrmCustomerRepresentatives locations={locations}/>}
     {tab==="activity"&&<CrmCustomerActivity locations={locations} canonicalActivities={activities}/>}
