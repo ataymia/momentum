@@ -6,6 +6,7 @@ import {useCrm} from "../../lib/crm-context";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useWorkspace} from "../../lib/workspace-context";
 import type {Account,Activity,CustomerAccount} from "../../lib/types";
+import type {Invoice} from "../../lib/commerce-engine";
 
 type TimelineSort="date"|"location"|"actor"|"type"|"summary";
 const activityColumns=["date","location","actor","type","summary"] as const;
@@ -64,8 +65,11 @@ export function CrmCustomerActivity({locations,canonicalActivities}:{
   </section>;
 }
 
-export function CrmCustomerDocuments({customer,locations}:{
+export function CrmCustomerDocuments({customer,locations,invoices,invoiceReadAuthorized,customerPath}:{
   customer?:CustomerAccount;locations:readonly Account[];
+  invoices:readonly Invoice[];
+  invoiceReadAuthorized:boolean;
+  customerPath:string;
 }){
   const {currentUser}=useWorkspace();
   const [query,setQuery]=useState("");
@@ -89,6 +93,21 @@ export function CrmCustomerDocuments({customer,locations}:{
       <tbody>{visible.map(record=><tr key={record.title}><td>{record.title}</td><td>{record.status}</td><td>{record.detail}</td></tr>)}</tbody>
     </table></div>
     <p className="prototype-note">{locations.length} authorized locations share this recorded billing parent. Uploaded files, signed-original verification and secure download permissions remain blocked pending an approved document provider.</p>
+    <h3>Invoices and transaction documents</h3>
+    <p className="prototype-note">Invoices below are linked to recorded delivered orders. Open the original invoice record to review its details or use the authorized print workflow. An invoice record is not proof of an uploaded signed document or cleared payment.</p>
+    {invoiceReadAuthorized
+      ?<><div className="prototype-table-scroll"><table className="prototype-table">
+        <thead><tr><th>Invoice</th><th>Issued</th><th>Location</th><th>Recorded status</th><th>Amount</th><th>Open</th></tr></thead>
+        <tbody>{[...invoices].sort((a,b)=>b.issuedAt.localeCompare(a.issuedAt)||a.id.localeCompare(b.id)).map(invoice=><tr key={invoice.id}>
+          <td>{invoice.number}</td><td>{invoice.issuedAt.slice(0,10)}</td>
+          <td>{locations.find(loc=>loc.id===invoice.accountId)?.locationName??locations.find(loc=>loc.id===invoice.accountId)?.name??"Authorized location"}</td>
+          <td>{invoice.status}</td><td>{new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(invoice.total)}</td>
+          <td><button type="button" className="prototype-link" onClick={()=>navigateToRoute("/sales/invoices/"+encodeURIComponent(invoice.id))}>Open invoice</button></td>
+        </tr>)}</tbody>
+      </table></div>
+      {!invoices.length&&<p className="prototype-empty">No issued invoices for eligible delivered orders are recorded in this account's linked finance register.</p>}</>
+      :<p className="prototype-empty">Connected financial documents require an authenticated, customer-scoped server read. No invoice list is inferred from raw order totals.</p>}
+    <button type="button" className="prototype-link" onClick={()=>navigateToRoute(customerPath+"/transactions")}>View customer order history</button>
   </section>;
 }
 
