@@ -4,7 +4,7 @@ import type {PricingTier} from "./types";
 
 /** Supplied retail program. Not connected to live quote or invoice issuance. */
 export const RETAIL_PRICE_BOOK=[
-  {id:"standard",tier:"C",label:"Standard Wholesale",minCases:0,maxCases:9,pricePerCase:ACCOUNT_PRICING_TIERS.C.pricePerCase},
+  {id:"standard",tier:"C",label:"Standard Wholesale",minCases:1,maxCases:9,pricePerCase:ACCOUNT_PRICING_TIERS.C.pricePerCase},
   {id:"preferred",tier:"B",label:"Preferred Retailer",minCases:10,maxCases:19,pricePerCase:ACCOUNT_PRICING_TIERS.B.pricePerCase},
   {id:"partner",tier:"A",label:"Golden Eagle Partner",minCases:20,maxCases:null,pricePerCase:ACCOUNT_PRICING_TIERS.A.pricePerCase},
 ] as const;
@@ -29,6 +29,7 @@ export function followingQuarterStart(day:string){
 export function quarterEnd(day:string){return addCalendarDays(followingQuarterStart(day),-1);}
 export function tierForMonthlyCases(cases:number):PricingTier{
   if(!Number.isFinite(cases)||cases<0)throw new Error("Invalid case quantity");
+  if(cases===0)throw new Error("Zero-case quarters have no documented default price tier.");
   return cases>=20?"A":cases>=10?"B":"C";
 }
 export function assessRetailPriceBook(accountId:string,records:readonly PriceOrder[],asOf:string):PriceAssessment{
@@ -63,7 +64,17 @@ export function assessRetailPriceBook(accountId:string,records:readonly PriceOrd
   const launchAverage=launchCases<RETAIL_PROGRAM_POLICY.launchExtensionCases&&quarterStart(day61)===currentQuarter;
   const priorEnd=addCalendarDays(currentQuarter,-1),priorStart=quarterStart(priorEnd);
   const evidence=launchAverage?launch:paid.filter(o=>o.placedAt.slice(0,10)>=priorStart&&o.placedAt.slice(0,10)<=priorEnd);
-  const paidCases=sum(evidence),averageMonthlyCases=paidCases/(launchAverage?2:3),tier=tierForMonthlyCases(averageMonthlyCases);
+  const paidCases=sum(evidence),averageMonthlyCases=paidCases/(launchAverage?2:3);
+  // Supplied retailer terms explicitly cover 1–9, 10–19 and 20+ case
+  // averages, not 0. Returning an authoritative standard price for a
+  // zero-case review would invent a commercial rule.
+  if(averageMonthlyCases===0)return{
+    status:"Quarterly",tier:null,pricePerCase:null,paidCases,averageMonthlyCases,
+    basis:"Zero-volume pricing is not defined; owner approval required",
+    periodEnd:quarterEnd(asOf),nextReview:addCalendarDays(quarterEnd(asOf),1),
+    evidenceOrderIds:evidence.map(o=>o.id),
+  };
+  const tier=tierForMonthlyCases(averageMonthlyCases);
   return{status:"Quarterly",tier,pricePerCase:ACCOUNT_PRICING_TIERS[tier].pricePerCase,
     paidCases,averageMonthlyCases,basis:launchAverage?"Launch-period monthly average":"Prior calendar-quarter monthly average",
     periodEnd:quarterEnd(asOf),nextReview:addCalendarDays(quarterEnd(asOf),1),evidenceOrderIds:evidence.map(o=>o.id)};

@@ -5,6 +5,7 @@ const order=(id:string,day:string,cases:number,status="Paid")=>({id,accountId:"s
 test("retailer tiers follow monthly cases",()=>{
   assert.equal(tierForMonthlyCases(9),"C");assert.equal(tierForMonthlyCases(10),"B");
   assert.equal(tierForMonthlyCases(19),"B");assert.equal(tierForMonthlyCases(20),"A");
+  assert.throws(()=>tierForMonthlyCases(0),/Zero-case/);
 });
 test("calendar-quarter dates roll over at year end",()=>{
   assert.equal(followingQuarterStart("2026-12-31"),"2027-01-01");
@@ -21,7 +22,7 @@ test("20 paid cases extend the launch offer through next full quarter",()=>{
   const o=[order("first","2026-01-01",10),order("second","2026-02-10",10)];
   const extended=assessRetailPriceBook("store",o,"2026-06-30");
   assert.equal(extended.status,"Launch extension");assert.equal(extended.pricePerCase,24);
-  assert.equal(assessRetailPriceBook("store",o,"2026-07-01").pricePerCase,30);
+  assert.equal(assessRetailPriceBook("store",o,"2026-07-01").pricePerCase,null);
 });
 test("quarterly prices use prior calendar quarter instead of rolling 90-day windows",()=>{
   const o=[order("first","2026-01-01",10),order("april","2026-04-07",60)];
@@ -38,4 +39,12 @@ test("intro requires first approved opening order with at least ten cases",()=>{
  assert.equal(assessRetailPriceBook("store",draft,"2026-02-01").status,"Not started");
  const future=[order("future","2027-01-01",10)];
  assert.equal(assessRetailPriceBook("store",future,"2026-12-31").status,"Not started");
+});
+
+test("zero-volume subsequent quarter is not silently priced as 1–9 cases",()=>{
+ const o=[order("opening","2026-01-01",10)];
+ const result=assessRetailPriceBook("store",o,"2026-07-01");
+ assert.equal(result.tier,null);
+ assert.equal(result.pricePerCase,null);
+ assert.match(result.basis,/Zero-volume/);
 });
