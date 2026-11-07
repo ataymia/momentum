@@ -116,16 +116,18 @@ export function normalizeAuditState(input: unknown): AuditState {
           !changes.some(change => change.field === "createdAt" && preciseInstant(change.after)))));
     const normalized: AuditEvent = {
       id: event.id,
-      at: repaired.at,
-      actorId: repaired.actorId,
-      actorRole: repaired.actorRole,
+      // Unverified history is evidence to preserve, not to silently rewrite.
+      // An authenticated event already carrying provenance must keep its source time.
+      at: unverifiedLegacy || event.provenanceStatus==="verified" ? event.at : repaired.at,
+      actorId: unverifiedLegacy || event.provenanceStatus==="verified" ? event.actorId : repaired.actorId,
+      actorRole: unverifiedLegacy || event.provenanceStatus==="verified" ? event.actorRole : repaired.actorRole,
       action: event.action,
       module: event.module,
       collection: event.collection,
       entityType: event.entityType,
       entityId: event.entityId,
       label: event.label,
-      summary: unverifiedLegacy && !event.summary.startsWith("Unverified historical record (not proof of a user action): ") ? `Unverified historical record (not proof of a user action): ${event.summary}` : event.summary,
+      summary: event.summary, // Raw legacy summary belongs in the recovery archive unchanged.
       provenanceStatus: unverifiedLegacy ? "unverified-legacy" : "verified",
       sensitivity: sensitivityFor(event.module, event.collection),
       relatedAccountId: typeof event.relatedAccountId === "string" ? event.relatedAccountId : undefined,
