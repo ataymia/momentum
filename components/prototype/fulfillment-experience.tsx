@@ -15,7 +15,7 @@ import {
   activeReservedForOrder,orderOutboundQuantity,orderDeliveryQuantity,
 } from "../../lib/inventory-ledger";
 import {deliveryStatusForOrder,processedForDelivery,type DeliveryTask} from "../../lib/delivery-engine";
-import {deliveryReconciliationIssue} from "../../lib/delivery-reconciliation";
+import {reviewDeliveryCloseout} from "../../lib/fulfillment-closeout-review";
 import {buildPickListReview} from "../../lib/fulfillment-pick-review";
 import {arizonaDateKey} from "../../lib/date-time";
 import type {InventoryLedgerState} from "../../lib/inventory-ledger";
@@ -245,13 +245,10 @@ export function DeliveryOperationsDirectory(){
   const summary=orders.map(order=>{
     const task=indexed.get(order.id);const delivered=orderDeliveryQuantity(ledger,order.id);
     const override=state.overrides.some(x=>x.orderId===order.id);
-    const matchIssue=deliveryReconciliationIssue(order,task,delivered,override);
-    const custody=orderOutboundQuantity(ledger,order.id);
-    const issue=delivered>order.cases+0.005?"Delivered inventory exceeds the ordered cases.":matchIssue??(
-      task&&["Loaded","In transit"].includes(task.status)&&custody+0.005<order.cases?
-        "Loaded or departed without full recorded warehouse outbound.":undefined);
-    const proof=Boolean(task?.signature?.signedAt&&task.signature.strokes?.some(stroke=>stroke.length>=2));
-    return {order,task,delivered,proof,issue,status:deliveryStatusForOrder(state,order)};
+    const review=reviewDeliveryCloseout({order,task,deliveredCases:delivered,
+      outboundCases:orderOutboundQuantity(ledger,order.id),administratorOverride:override});
+    return {order,task,delivered,proof:review.recipientProofRecorded,
+      complete:review.complete,issue:review.issueText,status:deliveryStatusForOrder(state,order)};
   });
   const statuses=[...new Set(summary.map(x=>x.status))].sort();
   const rows=summary.filter(x=>filter==="all"||x.status===filter)
@@ -274,7 +271,7 @@ export function DeliveryOperationsDirectory(){
     });
   const col=(key:string,label:string)=><Column key={key} keyName={key} name={label} sort={sort}/>;
   return <div><Title heading="Delivery Operations" subtitle="Traceable orders, driver assignment, proof of delivery and inventory posting exceptions from existing records."/>
-    <Summary stats={[{label:"Orders in workflow",value:summary.length},{label:"Unassigned orders",value:summary.filter(x=>!x.task).length},{label:"Reconciliation exceptions",value:summary.filter(x=>Boolean(x.issue)).length},{label:"Delivered with recorded proof",value:summary.filter(x=>["Delivered","Paid"].includes(x.order.status)&&x.task?.status==="Delivered"&&x.proof&&!x.issue&&x.delivered>=x.order.cases&&x.delivered<=x.order.cases+0.005).length}]}/>
+    <Summary stats={[{label:"Orders in workflow",value:summary.length},{label:"Unassigned orders",value:summary.filter(x=>!x.task).length},{label:"Reconciliation exceptions",value:summary.filter(x=>Boolean(x.issue)).length},{label:"Delivered with recorded proof",value:summary.filter(x=>x.complete&&x.proof).length}]}/>
     <section className="prototype-panel"><div className="prototype-commerce-filters">
       <SearchInput value={query} onChange={setQuery} placeholder="Search orders, accounts, drivers or reconciliation issues"/>
       <label>Delivery state<select aria-label="Filter delivery operations" value={filter} onChange={e=>setFilter(e.target.value)}>
