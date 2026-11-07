@@ -232,19 +232,20 @@ test("first login preserves copied URLs for fail-closed route validation; role s
   assert.match(source,/const switchUser = useCallback[\s\S]*?setNavigationPage\("home"\)/);
 });
 
-test("four still-live legacy workflows never silently render the planned-module placeholder",()=>{
-  const shell=readFileSync("components/app-shell-v4.tsx","utf8");
-  for(const [route,page] of [
-    ["/crm/quick-visit","quickVisit"],
-    ["/crm/account-setup","accountSetup"],
-    ["/crm/account-health","accountHealth"],
-    ["/people/directory","employees"],
+test("C redesigned CRM workflows and F employee directory retain distinct working surfaces",()=>{
+  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+  for(const [route,page,component] of [
+    ["/crm/quick-visit","quickVisit","CrmQuickVisit"],
+    ["/crm/account-setup","accountSetup","CrmAccountSetup"],
+    ["/crm/account-health","accounts","CrmAccountHealth"],
   ] as const){
     assert.equal(pageForPath(route),page,route);
-    assert.equal(requiresPrototypePage(route),false,route);
-    assert.match(shell,new RegExp('case "'+page+'": return <'));
+    assert.equal(requiresPrototypePage(route),true,route);
+    assert(hub.includes('<'+component+'/>'),route+" must render its redesigned workflow");
   }
   assert.equal(permissionForPath("/crm/account-health"),"accounts");
+  assert.equal(pageForPath("/people/directory"),"employees");
+  assert.equal(requiresPrototypePage("/people/directory"),true);
   assert.equal(canVisitRoute(user("Administrator"),"/people/directory"),true);
   assert.equal(canVisitRoute(user("Sales Representative"),"/people/directory"),false);
 });
@@ -265,7 +266,7 @@ test("role downgrade protects newly forbidden records without misclassifying rec
   assert.match(source,/const previousRoleRef=useRef/);
   assert.match(source,/if\(!canVisitRoute\(currentUser,getRequestedNavigationPath\(\)\)\)setNavigationPage\("home"\)/);
   assert.doesNotMatch(source,/!canAccessPage\(currentUser,getNavigationPage\(\)\)/);
-  assert.equal(pageForPath("/crm/account-health"),"accountHealth");
+  assert.equal(pageForPath("/crm/account-health"),"accounts");
   assert.equal(permissionForPath("/crm/account-health"),"accounts");
   assert.equal(canVisitRoute(user("Administrator"),"/crm/account-health"),true);
 });
