@@ -69,7 +69,7 @@ function PurchasingForm({section,state,run,role}:{section:Section;state:Purchasi
       {section==="vendors"&&<><label>Vendor name<input name="name" required maxLength={160}/></label><label>Contact / reference<input name="contact" maxLength={160}/></label></>}
       {section==="orders"&&<>
         <label>Registered vendor<select name="vendor" required defaultValue=""><option value="">Select vendor</option>{supplierOptions.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
-        <label>Verified product SKU<select name="sku" required defaultValue=""><option value="">Select SKU</option>{GOLDEN_EAGLE_SKUS.filter(x=>x.active&&!x.testOnly).map(x=><option key={x.id} value={x.id}>{x.shortName} ({x.casePack}/case)</option>)}</select></label>
+        <label>Catalog product SKU (confirm supplier approval)<select name="sku" required defaultValue=""><option value="">Select SKU</option>{GOLDEN_EAGLE_SKUS.filter(x=>x.active&&!x.testOnly).map(x=><option key={x.id} value={x.id}>{x.shortName} ({x.casePack}/case)</option>)}</select></label>
         <label>Cases<input name="cases" type="number" required min={1} step={1}/></label>
         <label>Quoted cost per case (USD)<input name="unitCost" type="number" required min="0.01" step="0.01"/></label>
         <label>Receiving warehouse<input name="warehouse" required placeholder="Enter approved physical location"/></label>
