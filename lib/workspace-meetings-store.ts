@@ -1,5 +1,5 @@
 "use client";
-import {createContext,useContext,useEffect,useMemo,useState,useSyncExternalStore} from "react";
+import {createContext,createElement,useContext,useEffect,useMemo,useState,useSyncExternalStore} from "react";
 import type {ReactNode} from "react";
 import {staffMeetingRequest,type StaffMeetingCommand} from "./staff-meetings-client";
 import type {Appointment} from "./types";
@@ -99,7 +99,7 @@ function useLocalMeetingWorkspace(){
 }
 
 
-type MeetingWorkspace=ReturnType<typeof useLocalMeetingWorkspace> & {
+type MeetingWorkspace=Omit<ReturnType<typeof useLocalMeetingWorkspace>,"create"|"revise"|"cancel"|"rsvp"|"seen"> & {
   cloudReady:boolean;cloudError:string;
   create:(input:MeetingInput)=>ChangeResult|Promise<ChangeResult>;
   revise:(id:string,input:MeetingInput)=>ChangeResult|Promise<ChangeResult>;
@@ -176,7 +176,7 @@ export function MeetingProvider({children}:{children:ReactNode}){
     rsvp:(id,response)=>send({action:"rsvp",id,response}),
     seen:(id)=>send({action:"seen",id}),
   };
-  return <MeetingContext.Provider value={value}>{children}</MeetingContext.Provider>;
+  return createElement(MeetingContext.Provider,{value},children);
 }
 
 export function useMeetingWorkspace():MeetingWorkspace{
