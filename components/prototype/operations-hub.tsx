@@ -72,6 +72,7 @@ import {WorkExceptionsExperience,CompletedWorkExperience} from "./work-review-ex
 import {DealsDirectory,DealEditor} from "./crm-deals-experience";
 import {CrmContactsDirectory,CrmContactEditor} from "./crm-contacts-experience";
 import {useCrm} from "../../lib/crm-context";
+import {sortAccountsDirectory,type AccountDirectorySort} from "../../lib/crm-directory-sort";
 import type { Order } from "../../lib/types";
 
 function Empty({ children }: { children: ReactNode }) {
@@ -95,7 +96,7 @@ const CUSTOMER_TABS=[{key:"overview",label:"Overview"},{key:"comments",label:"Co
 const ITEM_TABS=[{key:"overview",label:"Overview"},{key:"transactions",label:"Transactions"},{key:"stock",label:"Stock Locations"},{key:"history",label:"History"}];
 const safeTab=(value:string|undefined,allowed:{key:string}[])=>(allowed.some(tab=>tab.key===value)?value:"overview")??"overview";
 
-type AccountsSortField="name"|"location"|"contactName"|"stage"|"postalCode"|"ownerId"|"nextActionDate";
+type AccountsSortField=AccountDirectorySort;
 function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
   const {scope,data}=useWorkspace();
   const [query,setQuery]=useState("");
@@ -109,18 +110,15 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
   const [followupAsOf,setFollowupAsOf]=useState(()=>new Date().toLocaleDateString("en-CA"));
   const [followupBucket,setFollowupBucket]=useState<"all"|"overdue"|"today"|"upcoming"|"unscheduled">("all");
   const names=useMemo(()=>new Map(data.users.map(u=>[u.id,u.name])),[data.users]);
-  const records=useMemo(()=>scope.accounts
+  const records=useMemo(()=>sortAccountsDirectory(scope.accounts
     .filter(a=>!leadMode||["Prospect","Qualified","Sampled"].includes(a.stage))
     .filter(a=>repFilter==="all"||a.ownerId===repFilter)
     .filter(a=>stageFilter==="all"||a.stage===stageFilter)
     .filter(a=>(!fromDate||a.nextActionDate>=fromDate)&&(!throughDate||a.nextActionDate<=throughDate))
-    .filter(a=>[a.name,a.location,a.contactName,a.postalCode,a.email,names.get(a.ownerId)].join(" ").toLowerCase().includes(query.trim().toLowerCase()))
-    .sort((a,b)=>{
-      const value=(loc:typeof a)=>sort==="ownerId"?names.get(loc.ownerId)??"":String(loc[sort]??"");
-      return (ascending?1:-1)*(value(a).localeCompare(value(b),undefined,{numeric:true})||a.id.localeCompare(b.id));
-    }),[scope.accounts,leadMode,repFilter,stageFilter,fromDate,throughDate,query,sort,ascending,names]);
+    .filter(a=>[a.name,a.location,a.contactName,a.postalCode,a.email,names.get(a.ownerId)].join(" ").toLowerCase().includes(query.trim().toLowerCase())),
+    sort,ascending,names),[scope.accounts,leadMode,repFilter,stageFilter,fromDate,throughDate,query,sort,ascending,names]);
   const selectSort=(field:AccountsSortField)=>{if(sort===field)setAscending(v=>!v);else{setSort(field);setAscending(true);}};
-  const header=(field:AccountsSortField,label:string)=><button type="button" aria-label={"Sort by "+label} aria-sort={sort===field?(ascending?"ascending":"descending"):undefined} onClick={()=>selectSort(field)}>{label} <ArrowUpDown size={14}/></button>;
+  const header=(field:AccountsSortField,label:string)=><button type="button" aria-label={"Sort by "+label} aria-pressed={sort===field} onClick={()=>selectSort(field)}>{label} <ArrowUpDown size={14}/>{sort===field?<span className="prototype-sort-indicator" aria-hidden="true">{ascending?" ↑":" ↓"}</span>:null}</button>;
   const repIds=[...new Set(scope.accounts.map(a=>a.ownerId).filter(Boolean))].sort((a,b)=>(names.get(a)??"").localeCompare(names.get(b)??""));
   const stages=[...new Set(scope.accounts.map(a=>a.stage))].sort();
   return <div><Heading title={leadMode?"Leads":"Accounts & Customers"} description="Searchable, filtered and sortable business locations. Open any record for its linked customer profile."/>
@@ -186,7 +184,7 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
     </section>}
     {(!leadMode||leadView==="table")&&<>
     <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
-      <th>{header("name","Business")}</th><th>{header("location","Location")}</th><th>{header("contactName","Contact")}</th><th>{header("stage","Stage")}</th><th>{header("postalCode","ZIP")}</th><th>{header("ownerId","Assigned rep")}</th><th>{header("nextActionDate","Next action")}</th>
+      <th aria-sort={sort==="name"?(ascending?"ascending":"descending"):"none"}>{header("name","Business")}</th><th aria-sort={sort==="location"?(ascending?"ascending":"descending"):"none"}>{header("location","Location")}</th><th aria-sort={sort==="contactName"?(ascending?"ascending":"descending"):"none"}>{header("contactName","Contact")}</th><th aria-sort={sort==="stage"?(ascending?"ascending":"descending"):"none"}>{header("stage","Stage")}</th><th aria-sort={sort==="postalCode"?(ascending?"ascending":"descending"):"none"}>{header("postalCode","ZIP")}</th><th aria-sort={sort==="ownerId"?(ascending?"ascending":"descending"):"none"}>{header("ownerId","Assigned rep")}</th><th aria-sort={sort==="nextActionDate"?(ascending?"ascending":"descending"):"none"}>{header("nextActionDate","Next action")}</th>
     </tr></thead><tbody>{records.map(a=><tr key={a.id}>
       <td><OpenLink to={(leadMode?"/crm/leads/":"/sales/customers/")+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.location}</td><td>{a.contactName||"Unrecorded"}</td><td>{a.stage}</td><td>{a.postalCode||"Unrecorded"}</td><td>{names.get(a.ownerId)??"Unassigned"}</td><td>{a.nextActionDate||"None"}</td>
     </tr>)}</tbody></table></div>{!records.length&&<Empty>No matching business records.</Empty>}
