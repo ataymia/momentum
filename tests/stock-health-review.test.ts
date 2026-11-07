@@ -60,11 +60,11 @@ test("E05-E07 delivery exception queue is sortable while established self-delive
 
 test("warehouse location route supports deep links without exposing company stock to drivers, reps or customers",()=>{
   const role=(role:WorkspaceUser["role"]):WorkspaceUser=>({id:"role-"+role,name:"Test",firstName:"Test",email:"test@example.invalid",initials:"TT",title:"Test",role,team:"Operations",accent:"#333"});
-  for(const allowed of ["Administrator","Operations","Warehouse"]){
+  for(const allowed of ["Administrator","Operations","Warehouse"] as const){
     assert.equal(canVisitRoute(role(allowed),"/inventory/locations"),true);
     assert.equal(canVisitRoute(role(allowed),"/inventory/locations/node-warehouse-main"),true);
   }
-  for(const forbidden of ["Customer","Sales Representative","Sales Manager","Delivery Driver","Marketing","Brand Ambassador"]){
+  for(const forbidden of ["Customer","Sales Representative","Sales Manager","Delivery Driver","Marketing","Brand Ambassador"] as const){
     assert.equal(canVisitRoute(role(forbidden),"/inventory/locations"),false);
     assert.equal(canVisitRoute(role(forbidden),"/inventory/locations/node-warehouse-main"),false);
   }
