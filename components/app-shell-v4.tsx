@@ -73,7 +73,7 @@ const demoTourIds = new Set(["usr-flo", "usr-mia", "usr-avery", "usr-jordan", "u
 function NavigationGroups(){
   const {currentUser,setSidebarOpen}=useWorkspace();
   const path=useNavigationRoute();
-  const [expanded,setExpanded]=useState<Record<string,boolean>>({"Workspace":true,"Sales & CRM":true,"Commerce":true});
+  const [expanded,setExpanded]=useState<Record<string,boolean>>({});
   const [collapsedActivePath,setCollapsedActivePath]=useState<string|null>(null);
   const visiblePaths=MENU_GROUPS.flatMap(group=>group.entries).filter(entry=>canShowModuleInMenu(currentUser,entry.path)).map(entry=>entry.path);
   const activePath=activeMenuPath(path,visiblePaths);

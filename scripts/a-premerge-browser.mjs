@@ -125,6 +125,9 @@ try{
   await page.getByRole("button",{name:"Open menu"}).click();
   await page.locator("aside.sidebar.is-open").waitFor();
   assert(await entry("Deals").isVisible());
+  const activeDealsBox=await entry("Deals").boundingBox();
+  assert(activeDealsBox && activeDealsBox.y+activeDealsBox.height<=844,
+    "The active section should be within the initial phone viewport without scrolling past unrelated groups");
   await screenshot("phone-menu");
   await page.keyboard.press("Escape");
   await page.locator("aside.sidebar.is-open").waitFor({state:"detached"});

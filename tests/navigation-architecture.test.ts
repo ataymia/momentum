@@ -269,3 +269,10 @@ test("role downgrade protects newly forbidden records without misclassifying rec
   assert.equal(permissionForPath("/crm/account-health"),"accounts");
   assert.equal(canVisitRoute(user("Administrator"),"/crm/account-health"),true);
 });
+
+test("sidebar opens the active department first without showing three full unrelated groups",()=>{
+  const shell=readFileSync("components/app-shell-v4.tsx","utf8");
+  assert.match(shell,/const \[expanded,setExpanded\]=useState<Record<string,boolean>>\(\{\}\)/);
+  assert.match(shell,/matching\?\.label===group.label \? collapsedActivePath!==path : expanded\[group.label\]===true/);
+  assert.match(shell,/setExpanded\(current=>\(\{\.\.\.current,\[group.label\]:!current\[group.label\]\}\)\)/);
+});
