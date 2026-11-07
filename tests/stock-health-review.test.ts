@@ -95,7 +95,7 @@ test("E06 self-delivery redesign preserves the trusted server-only workflow and 
   assert.match(view,/prototype-table/);
   assert.doesNotMatch(view,/postMovement\(/);
   assert.doesNotMatch(view,/createDeliveryTask\(/);
-  assert.match(hub,/if\(path==="/crm\/self-delivery"\)return <RepSelfDelivery\/>/);
+  assert.match(hub,/if\(path==="\/crm\/self-delivery"\)return <RepSelfDelivery\/>/);
   assert.match(routes,/Rep Self-Delivery.*state: "prototype"/);
   assert.equal(requiresPrototypePage("/crm/self-delivery"),true);
 });
