@@ -24,13 +24,14 @@ Original E branch base: b6f837ce9125e77f8887ee66e806bf4d4a99afe8
 
 ## Source and data-integrity findings
 1. Purchasing mutations require demo runtime, local persistence and absence of Firebase session context. Live financial and inventory records are not changed.
-2. Purchase receipts never increase live on-hand quantity. Receipt inventoryPosted is false and the physical batch/warehouse data is a local review note, not a ledger posting.
-3. Payment references never authorize bank transfers or establish settlement. Unverified payment notes do not reduce supplier payable. Credit requests require independent local review; supplier/GL verification is still unimplemented.
-4. The local demo audit can be edited by the device owner. It is NOT a tamper-proof production audit, and client routes/role checks are NOT server authorization.
-5. Drivers receive only their own tasks in the stop manifest. The manifest makes no GPS, optimized ETA, live navigation or automatic route-sequencing claims.
-6. Existing rep self-delivery endpoint retains server-side signed steps, signature capture, cloud confirmation, and deduplication/retry controls. New UI calls the existing endpoint rather than mutating inventory from the browser.
-7. Preview decision rights are proposed, not management-approved: Administrator registers vendors and approves POs, bills, credits and expenses; Operations can prepare POs, bills, credit requests and expenses; Warehouse can record PO receipts; payment notes are Administrator-only, never bank-executed.
-8. The legacy office Dispatch creates, schedules, moves and reassigns appointments. The new delivery status queue does not replace all these capabilities, so retirement is unsafe.
+2. Purchase receipts never increase live on-hand quantity. Receipt inventoryPosted is false and the physical batch/warehouse data is a local review note, not a ledger posting. The existing inventory ledger also synthesizes opening DEMO receipts from initial lot records; these balances are not evidence of physically verified receiving. The location UI warns about this distinction.
+3. The purchasing SKU selector uses catalog IDs, NOT a claim of current supplier-approved SKU availability. User-entered quoted prices are not an approved vendor price book.
+4. Payment references never authorize bank transfers or establish settlement. Unverified payment notes do not reduce supplier payable. Credit requests require independent local review; supplier/GL verification is still unimplemented.
+5. The local demo audit can be edited by the device owner. It is NOT a tamper-proof production audit, and client routes/role checks are NOT server authorization.
+6. Drivers receive only their own tasks in the stop manifest. The manifest makes no GPS, optimized ETA, live navigation or automatic route-sequencing claims.
+7. Existing rep self-delivery endpoint retains server-side signed steps, signature capture, cloud confirmation, and deduplication/retry controls. New UI calls the existing endpoint rather than mutating inventory from the browser.
+8. Preview decision rights are proposed, not management-approved: Administrator registers vendors and approves POs, bills, credits and expenses; Operations can prepare POs, bills, credit requests and expenses; Warehouse can record PO receipts; payment notes are Administrator-only, never bank-executed.
+9. The legacy office Dispatch creates, schedules, moves and reassigns appointments. The new delivery status queue does not replace all these capabilities, so retirement is unsafe.
 
 ## Merge and integration conflicts
 The shared prototype branch advanced independently after the E branch point, including updates to HR, Insights, Marketing and administration. Exact overlaps require integration in:
