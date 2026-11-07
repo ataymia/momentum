@@ -55,6 +55,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   { label: "Operations", entries: [
     { label: "Inventory", path: "/inventory", permission: "inventory", state: "prototype" },
     { label: "Inventory Adjustments", path: "/inventory/adjustments", permission: "inventory", state: "prototype" },
+    { label: "Warehouse Locations", path: "/inventory/locations", permission: "inventory", state: "prototype" },
     { label: "Packages", path: "/inventory/packages", permission: "inventory", state: "prototype" },
     { label: "Shipments", path: "/inventory/shipments", permission: "inventory", state: "prototype" },
     { label: "Inventory Ledger", path: "/inventory/ledger", permission: "inventoryLedger", state: "prototype" },
@@ -190,7 +191,7 @@ export function pageForPath(path: string): PageKey | null {
   if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
   if(clean.startsWith("/sales/returns/"))return "orders";
   if(clean.startsWith("/sales/customers/"))return "accounts";
-  if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
+  if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/")||clean.startsWith("/inventory/locations/"))return "inventory";
   if(clean.startsWith("/items/"))return "products";
   const legacy = (Object.keys(LEGACY_PATHS) as PageKey[]).find(key => LEGACY_PATHS[key] === clean);
   if(legacy)return legacy;
@@ -218,6 +219,7 @@ export function routeLabel(path: string): string {
   if(clean==="/inventory/workflow")return "Inventory operations";
   if (clean.startsWith("/inventory/lots/")) return "Lot details";
   if (clean.startsWith("/inventory/shipments/")) return "Shipment details";
+  if (clean.startsWith("/inventory/locations/")) return "Warehouse location details";
   if (clean.startsWith("/sales/customers/")) return "Customer details";
   if (clean==="/sales/orders/workflow") return "Order operations";
   if(clean==="/sales/orders/new")return "Create sales order";
@@ -275,6 +277,7 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
   if (clean==="/marketing/campaigns"||clean.startsWith("/marketing/campaigns/")) return user.role==="Administrator"&&canAccessPage(user,"marketing");
   if (clean==="/support/cases"||clean.startsWith("/support/cases/")) return ["Administrator","Operations","Sales Manager","Sales Representative"].includes(user.role)&&canAccessPage(user,"work");
   if (clean.startsWith("/portal/")) return false;
+  if(clean==="/inventory/locations"||clean.startsWith("/inventory/locations/"))return ["Administrator","Operations","Warehouse"].includes(user.role);
   if(clean.startsWith("/purchases/")){
     const group=clean.split("/")[2];
     if(group==="receipts")return ["Administrator","Operations","Warehouse"].includes(user.role);
@@ -308,7 +311,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
-  if(clean.startsWith("/purchases/"))return true;
+  if(clean.startsWith("/purchases/")||clean.startsWith("/inventory/locations/"))return true;
   // Sensitive legacy HR and payroll tools are wrapped by a prototype demo-only gate.
   if(clean==="/people/payroll/workflow"||clean==="/people/onboarding/workflow"||clean==="/admin/employee-profiles/workflow")return true;
   if (clean.startsWith("/people/attendance/") || clean.startsWith("/people/performance/") || clean.startsWith("/support/cases/") || clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
