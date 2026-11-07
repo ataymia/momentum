@@ -11,6 +11,7 @@ import {ArrowLeft,ArrowUpDown,ExternalLink,Search} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {buildOrderCommerceEvidence} from "../../lib/order-commerce-evidence";
+import {invoiceReconciliationAlerts} from "../../lib/commerce-reconciliation-audit";
 import {PaymentRequestPreview} from "./payment-request-preview";
 import {CreditCreatePanel} from "./credit-workflow-preview";
 import {InvoicePrintCenter} from "../finance/invoice-print-center";
@@ -248,18 +249,21 @@ export function InvoiceDetail({id}:{id:string}){
   const credits=commerce.credits.filter(c=>c.invoiceId===invoice.id);
   const balance=invoiceBalance(commerce,invoice);
   const paid=invoicePaidAmount(commerce,invoice.id),credit=invoiceCreditAmount(commerce,invoice.id),pending=invoicePendingAmount(commerce,invoice.id);
+  const reconciliationAlerts=invoiceReconciliationAlerts(commerce,invoice);
+  const reconciliationPending=reconciliationAlerts.length>0;
   const status=computedInvoiceStatus(commerce,invoice);
   return <div><Title title={"Invoice "+invoice.number} detail={"Customer: "+(account?.name??"Restricted")} back="/sales/invoices"/>
-    <CatalogSummary data={[{label:"Invoice record amount",value:money(invoice.total)},{label:"Applied cleared payments",value:money(paid)},{label:"Unpaid balance",value:money(balance)}]}/>
+    <CatalogSummary data={[{label:"Invoice record amount",value:money(invoice.total)},{label:"Applied cleared payments",value:reconciliationPending?"Review required":money(paid)},{label:"Unpaid balance",value:reconciliationPending?"Review required":money(balance)}]}/>
     <div className="prototype-columns">
       <section className="prototype-panel"><h2>Invoice details</h2><dl className="prototype-facts">
-        <Fact label="Status" value={<Status value={status}/>}/><Fact label="Recorded date" value={showDate(invoice.issuedAt)}/><Fact label="Due date" value={showDate(invoice.dueDate)}/><Fact label="Terms" value={invoice.terms}/>
+        <Fact label="Status" value={reconciliationPending?"Review required":<Status value={status}/>}/><Fact label="Recorded date" value={showDate(invoice.issuedAt)}/><Fact label="Due date" value={showDate(invoice.dueDate)}/><Fact label="Terms" value={invoice.terms}/>
         <Fact label="Customer" value={account?<Link url={"/sales/customers/"+encodeURIComponent(account.id)}>{account.name}</Link>:"Restricted"}/>
         <Fact label="Sales order" value={order?<Link url={"/sales/orders/"+encodeURIComponent(order.id)}>{order.number}</Link>:"Not linked"}/>
-        <Fact label="Aging" value={arAgingBucket(invoice,balance)}/>
+        <Fact label="Aging" value={reconciliationPending?"Review required":arAgingBucket(invoice,balance)}/>
         <Fact label="Applied credits" value={money(credit)}/>
         <Fact label="Pending payments" value={money(pending)}/>
       </dl>
+      {reconciliationAlerts.map(alert=><p role="alert" className="prototype-note" key={alert}>{alert}</p>)}
       {order&&!["Delivered","Paid"].includes(order.status)&&<p className="prototype-note">Delivery not verified. This existing receivable record must not be represented as a newly issued customer invoice.</p>}
       </section>
       <section className="prototype-panel"><h2>Payment activity</h2>

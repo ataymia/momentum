@@ -2,6 +2,7 @@ import type {Order} from "./types";
 import type {CommerceState,Invoice,Payment} from "./commerce-engine";
 import {computedInvoiceStatus,invoiceBalance,invoiceCreditAmount,invoicePaidAmount,invoicePendingAmount} from "./commerce-engine";
 import type {InventoryLedgerState,InventoryMovement} from "./inventory-ledger";
+import {invoiceReconciliationAlerts} from "./commerce-reconciliation-audit";
 
 /**
  * Order-side read model. Never posts funds or converts statuses.
@@ -46,11 +47,12 @@ export function buildOrderCommerceEvidence(
     .reduce((sum,m)=>sum+m.quantity,0);
   const activeReservations=ledger.reservations.filter(r=>r.orderId===order.id&&r.status==="Active")
     .reduce((sum,r)=>sum+r.quantity,0);
-  const balance=invoice?invoiceBalance(commerce,invoice):null;
-  const paid=invoice?invoicePaidAmount(commerce,invoice.id):null;
+  const financeAlerts=invoice?invoiceReconciliationAlerts(commerce,invoice):[];
+  const balance=invoice&&!financeAlerts.length?invoiceBalance(commerce,invoice):null;
+  const paid=invoice&&!financeAlerts.length?invoicePaidAmount(commerce,invoice.id):null;
   const pending=invoice?invoicePendingAmount(commerce,invoice.id):null;
   const credits=invoice?invoiceCreditAmount(commerce,invoice.id):null;
-  const warnings:string[]=[];
+  const warnings:string[]=[...financeAlerts];
   if(active.length>1)warnings.push("Multiple active invoices require finance review before collection evidence can be summarized.");
   if(active.length===0)warnings.push("No single active invoice is linked to this order. Order status is not proof of invoice issuance.");
   if(invoice&&invoice.total!==order.amount)warnings.push("Order amount and active invoice amount differ. Review revisions and credits before reconciliation.");
@@ -64,7 +66,7 @@ export function buildOrderCommerceEvidence(
   return{
     activeInvoice:invoice,unresolvedInvoiceIds:invoiceIds,paymentRecords,
     receivableBalance:balance,clearedAmount:paid,pendingAmount:pending,appliedCredits:credits,
-    invoiceStatus:invoice?computedInvoiceStatus(commerce,invoice):"Not reconciled",
+    invoiceStatus:invoice?(financeAlerts.length?"Review required":computedInvoiceStatus(commerce,invoice)):"Not reconciled",
     activeReservations,deliveredToCustomerCases:deliveries,
     returnedFromCustomerCases:returns,custodyEvents,warnings,
   };
