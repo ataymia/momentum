@@ -22,6 +22,11 @@ export type MenuGroup = {
 export const MENU_GROUPS: MenuGroup[] = [
   { label: "Workspace", entries: [
     { label: "Home", path: "/", permission: "home", state: "prototype" },
+    { label: "My Employee Workspace", path: "/self-service", permission: "timekeeping", state: "prototype" },
+    { label: "My Time Off", path: "/self-service/leave", permission: "timekeeping", state: "prototype" },
+    { label: "My Pay History", path: "/self-service/pay", permission: "payroll", state: "prototype" },
+    { label: "Clock In / Timekeeping", path: "/people/timekeeping", permission: "timekeeping", state: "existing" },
+    { label: "My Training Resources", path: "/people/materials", permission: "materials", state: "existing" },
     { label: "Approvals", path: "/work/approvals", permission: "work", state: "prototype" },
     { label: "Action Center", path: "/work/actions", permission: "actions", state: "prototype" },
     { label: "Exceptions", path: "/work/exceptions", permission: "work", state: "prototype" },
@@ -81,8 +86,6 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Payroll Processing & Settings", path: "/people/payroll/workflow", permission: "payroll", state: "existing" },
     { label: "Training", path: "/people/training", permission: "trainingAdmin", state: "existing" },
     { label: "Time Off & Leave", path: "/people/leave", permission: "people", state: "prototype" },
-    { label: "Clock In / Timekeeping", path: "/people/timekeeping", permission: "timekeeping", state: "existing" },
-    { label: "My Training Resources", path: "/people/materials", permission: "materials", state: "existing" },
   ] },
   { label: "Marketing", entries: [
     { label: "Marketing Overview", path: "/marketing", permission: "marketing", state: "prototype" },
@@ -264,11 +267,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
   if (!user || !canVisitRoute(user,path)) return false;
   if (user.role==="Customer") return false;
   const group = MENU_GROUPS.find(g=>g.entries.some(e=>e.path===normalizeRoutePath(path)))?.label;
-  if (group==="Human Resources" && user.role!=="Administrator") {
-    // Ordinary employees may enter existing self-service routes, never HR admin or payroll.
-    return ["/people", "/people/payroll", "/people/leave",
-      "/people/timekeeping", "/people/materials"].includes(normalizeRoutePath(path));
-  }
+  if (group==="Human Resources" && user.role!=="Administrator") return false;
   if (group==="Marketing" && !["Administrator","Marketing","Brand Ambassador"].includes(user.role)) return false;
   return true;
 }

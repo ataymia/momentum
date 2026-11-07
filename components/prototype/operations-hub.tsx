@@ -376,6 +376,9 @@ export function PrototypeOperationsHub(){
   if(path==="/")return <WorkspaceHome/>;
   if(segments[0]==="portal"&&["orders","deliveries"].includes(segments[1])&&segments.length===3)return <CustomerOrderRecord id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
+  if(path==="/self-service")return <PeopleExperience/>;
+  if(path==="/self-service/leave")return <HrTimeOffExperience/>;
+  if(path==="/self-service/pay")return <PayrollWorkflowExperience/>;
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/marketing")return <MarketingWorkspaceExperience/>;
   if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<Empty>Marketing write administration is available in isolated local demo only. The redesign provides source-linked read and export access.</Empty>;

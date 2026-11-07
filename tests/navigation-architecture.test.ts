@@ -163,13 +163,20 @@ test("unsafe external and browser-normalized URL forms never become application 
   assert.equal(routeHref("/sales/orders/one","/app"),"/app/sales/orders/one");
 });
 
-test("self-service HR routes remain visible without granting new-hire or HR administration",()=>{
-  const rep=user("Sales Representative"),admin=user("Administrator");
-  const {canShowModuleInMenu} = requireNavigationMenu();
-  for(const path of ["/people","/people/leave","/people/payroll","/people/timekeeping","/people/materials"]){
+test("employee self-service is in Workspace, not an exposed HR administration module",()=>{
+  const rep=user("Sales Representative"), ambassador=user("Brand Ambassador"), admin=user("Administrator");
+  for(const path of ["/self-service","/self-service/leave","/people/timekeeping","/people/materials"]){
     assert.equal(canVisitRoute(rep,path),true,path);
     assert.equal(canShowModuleInMenu(rep,path),true,path);
+    assert.equal(canVisitRoute(ambassador,path),true,path);
+    assert.equal(canShowModuleInMenu(ambassador,path),true,path);
   }
+  assert.equal(canVisitRoute(rep,"/self-service/pay"),true);
+  assert.equal(canShowModuleInMenu(rep,"/self-service/pay"),true);
+  assert.equal(canVisitRoute(ambassador,"/self-service/pay"),false);
+  assert.equal(canShowModuleInMenu(rep,"/people"),false);
+  assert.equal(canShowModuleInMenu(user("Marketing"),"/people"),false);
+  assert.equal(canShowModuleInMenu(user("Marketing"),"/marketing"),true);
   for(const path of ["/people/directory","/people/new-hire","/people/onboarding","/people/onboarding/workflow","/people/payroll/workflow","/people/training"]){
     assert.equal(canVisitRoute(rep,path),false,path);
     assert.equal(canVisitRoute(admin,path),true,path);
@@ -178,6 +185,8 @@ test("self-service HR routes remain visible without granting new-hire or HR admi
   assert.equal(canVisitRoute(admin,"/crm/account-health"),true);
   assert.equal(canShowModuleInMenu(admin,"/crm/account-health"),true);
   assert(MENU_GROUPS.find(g=>g.label==="Commerce")?.entries.some(e=>e.path==="/finance/accounting"));
+  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+  assert.match(hub,/if\(path==="\/self-service"\)return <PeopleExperience\/>/);
 });
 
 test("navigation readiness prevents unscoped Home flashing on copied URLs",()=>{
