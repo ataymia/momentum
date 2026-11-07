@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import type { Role, WorkspaceUser } from "../lib/types";
 import { activeMenuPath, isSafeInternalRoute, recordRouteMatch, routeHref } from "../lib/navigation-route-contract";
-import { canShowModuleInMenu, canVisitRoute, MENU_GROUPS, pageForPath, requiresPrototypePage, routeLabel } from "../lib/navigation-route-registry";
+import { canShowModuleInMenu, canVisitRoute, MENU_GROUPS, pageForPath, permissionForPath, requiresPrototypePage, routeLabel } from "../lib/navigation-route-registry";
 import { getNavigationRoute, navigateToRoute, startRouteNavigation } from "../lib/navigation-store";
 
 const user = (role: Role): WorkspaceUser => ({
@@ -182,6 +182,7 @@ test("employee self-service is in Workspace, not an exposed HR administration mo
     assert.equal(canVisitRoute(admin,path),true,path);
     assert.equal(canShowModuleInMenu(rep,path),false,path);
   }
+  assert.equal(permissionForPath("/crm/account-health"),"accounts");
   assert.equal(canVisitRoute(admin,"/crm/account-health"),true);
   assert.equal(canShowModuleInMenu(admin,"/crm/account-health"),true);
   assert(MENU_GROUPS.find(g=>g.label==="Commerce")?.entries.some(e=>e.path==="/finance/accounting"));

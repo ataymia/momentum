@@ -220,6 +220,10 @@ export function permissionForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   const record = recordRouteMatch(clean);
   if (record) return record.page;
+  // Route-level permission is authoritative for a registered sidebar module;
+  // its legacy page key may differ (for example Account Health belongs to CRM).
+  const entry = routeEntry(clean) ?? CUSTOMER_MENU.find(item=>item.path===clean);
+  if (entry) return entry.permission;
   return pageForPath(clean);
 }
 
