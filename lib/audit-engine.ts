@@ -10,6 +10,19 @@ export type AuditSnapshot = { key: string; module: string; collection: string; e
 
 export const createAuditSeed = (): AuditState => ({ version: 1, events: [] });
 
+/**
+ * A passive snapshot observation is not a new source action if the record,
+ * originating actor, action and source timestamp are identical. The field
+ * delta can vary while caches hydrate or recalculate; unlike a real logged
+ * operation, that does not establish another employee edit. Keep the existing
+ * fact-level fingerprint for history/recovery, but use this stable source key
+ * to prevent repeated inferred observations in the UI timeline.
+ */
+export function observedAuditSourceKey(event:Pick<AuditEvent,"module"|"collection"|"entityId"|"action"|"actorId"|"at">):string{
+  return [event.module,event.collection,event.entityId,event.action,event.actorId,event.at].join("|");
+}
+
+
 const text = (value: unknown) => typeof value === "string" ? value : undefined;
 const validInstant = (value: unknown) => typeof value === "string" && !Number.isNaN(new Date(value).getTime());
 const auditActions = new Set<AuditEvent["action"]>(["Created", "Updated", "Deleted"]);
