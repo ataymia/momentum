@@ -35,6 +35,8 @@ try{
   await nav().waitFor({timeout:40000});
   assert.equal(path(),"/crm/deals","Login must preserve the copied route");
   assert.equal(await entry("Deals").getAttribute("aria-current"),"page");
+  // Do not capture the Suspense loading state as if it were the rendered UI.
+  await page.getByRole("heading",{name:"Deals",exact:true}).first().waitFor({timeout:20000});
   await screenshot("desktop-deals");
 
   await entry("Meetings").click();

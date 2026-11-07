@@ -254,3 +254,13 @@ test("single route registry provides breadcrumb; legacy header menu duplicates a
   assert.match(shell,/aria-label="Primary navigation"/);
   assert.match(shell,/aria-label="Breadcrumb"/);
 });
+
+test("role downgrade protects newly forbidden records without misclassifying recognized Account Health",()=>{
+  const source=readFileSync("lib/workspace-context-v5.tsx","utf8");
+  assert.match(source,/const previousRoleRef=useRef/);
+  assert.match(source,/if\(!canVisitRoute\(currentUser,getRequestedNavigationPath\(\)\)\)setNavigationPage\("home"\)/);
+  assert.doesNotMatch(source,/!canAccessPage\(currentUser,getNavigationPage\(\)\)/);
+  assert.equal(pageForPath("/crm/account-health"),"accountHealth");
+  assert.equal(permissionForPath("/crm/account-health"),"accounts");
+  assert.equal(canVisitRoute(user("Administrator"),"/crm/account-health"),true);
+});
