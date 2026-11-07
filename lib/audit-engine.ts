@@ -265,7 +265,7 @@ function changeList(before: Record<string, unknown> | undefined, after: Record<s
     const afterValue = after?.[field];
     if (!sameValue(beforeValue, afterValue)) changes.push({ field, before: display(beforeValue), after: display(afterValue) });
   }
-  return changes.slice(0, 20);
+  return changes;
 }
 
 type Provenance = { actorId: string; at: string };
