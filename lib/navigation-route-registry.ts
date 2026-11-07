@@ -22,19 +22,20 @@ export type MenuGroup = {
 export const MENU_GROUPS: MenuGroup[] = [
   { label: "Workspace", entries: [
     { label: "Home", path: "/", permission: "home", state: "prototype" },
-    { label: "My Employee Workspace", path: "/self-service", permission: "timekeeping", state: "prototype" },
-    { label: "My Time Off", path: "/self-service/leave", permission: "timekeeping", state: "prototype" },
-    { label: "My Pay History", path: "/self-service/pay", permission: "payroll", state: "prototype" },
     { label: "Clock In / Timekeeping", path: "/people/timekeeping", permission: "timekeeping", state: "existing" },
-    { label: "My Training Resources", path: "/people/materials", permission: "materials", state: "existing" },
-    { label: "Approvals", path: "/work/approvals", permission: "work", state: "prototype" },
     { label: "Action Center", path: "/work/actions", permission: "actions", state: "prototype" },
-    { label: "Exceptions", path: "/work/exceptions", permission: "work", state: "prototype" },
-    { label: "Completed Work", path: "/work/completed", permission: "work", state: "prototype" },
     { label: "Shared Calendar", path: "/calendar", permission: "work", state: "prototype" },
     { label: "Meetings", path: "/calendar/meetings", permission: "work", state: "prototype" },
     { label: "My Invitations", path: "/calendar/invitations", permission: "work", state: "prototype" },
     { label: "My Agenda", path: "/calendar/agenda", permission: "work", state: "prototype" },
+  ] },
+  { label: "Account", entries: [
+    { label: "My Account", path: "/my-account", permission: "timekeeping", state: "prototype" },
+    { label: "My Employee Profile", path: "/my-account/employee", permission: "timekeeping", state: "prototype" },
+    { label: "My Time Off", path: "/my-account/time-off", permission: "timekeeping", state: "prototype" },
+    { label: "My Pay History", path: "/my-account/pay", permission: "timekeeping", state: "prototype" },
+    { label: "My Training", path: "/my-account/training", permission: "timekeeping", state: "prototype" },
+    { label: "Completed Work", path: "/my-account/completed", permission: "work", state: "prototype" },
   ] },
   { label: "Sales & CRM", entries: [
     { label: "Leads", path: "/crm/leads", permission: "accounts", state: "prototype" },
@@ -320,11 +321,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
   if (!user || !canVisitRoute(user,path)) return false;
   if (user.role==="Customer") return false;
   const group = MENU_GROUPS.find(g=>g.entries.some(e=>e.path===normalizeRoutePath(path)))?.label;
-  if (group==="Human Resources" && user.role!=="Administrator"){
-    // Staff self-service belongs in HR navigation even though HR administration remains private.
-    const selfService=["/people/leave","/people/attendance","/people/performance"];
-    return selfService.includes(normalizeRoutePath(path));
-  }
+  if (group==="Human Resources" && user.role!=="Administrator") return false;
   if (group==="Marketing" && !["Administrator","Marketing","Brand Ambassador"].includes(user.role)) return false;
   return true;
 }
