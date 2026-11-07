@@ -28,6 +28,8 @@ export function AccountConsolidationReview(){
   const [reason,setReason]=useState("");
   const [typedConfirmation,setTypedConfirmation]=useState("");
   const [operationMessage,setOperationMessage]=useState("");
+  const [reviewSort,setReviewSort]=useState<"name"|"address"|"rep"|"parent"|"orders">("name");
+  const [reviewAscending,setReviewAscending]=useState(true);
   const candidates=useMemo(()=>consolidationCandidates(data.accounts),[data.accounts]);
   const selected=useMemo(()=>manualConsolidationCandidate(data.accounts,selectedIds),[data.accounts,selectedIds]);
   if(currentUser?.role!=="Administrator")return <div className="prototype-empty">Administrator authorization required.</div>;
@@ -42,6 +44,20 @@ export function AccountConsolidationReview(){
   const selectedAccounts=data.accounts.filter(a=>selectedSet.has(a.id));
   const linked=selected?selected.locations.reduce((n,a)=>n+data.orders.filter(o=>o.accountId===a.id&&!o.testOnly).length,0):0;
   const existingParents=(data.customers??[]).filter(c=>selected?.existingCustomerIds.includes(c.id));
+  const selectedForDisplay=[...(selected?.locations??[])].sort((a,b)=>{
+    const field=(record:typeof a):string|number=>{
+      if(reviewSort==="address")return [record.streetAddress,record.location,record.postalCode].join(" ");
+      if(reviewSort==="rep")return data.users.find(u=>u.id===record.ownerId)?.name??"Unassigned";
+      if(reviewSort==="parent")return record.customerId??"Not linked";
+      if(reviewSort==="orders")return data.orders.filter(order=>order.accountId===record.id&&!order.testOnly).length;
+      return record.name;
+    };
+    const x=field(a),y=field(b),comparison=typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y),undefined,{numeric:true});
+    return (reviewAscending?1:-1)*(comparison||a.id.localeCompare(b.id));
+  });
+  const reviewHeader=(sort:typeof reviewSort,label:string)=><th aria-sort={reviewSort===sort?(reviewAscending?"ascending":"descending"):"none"}>
+    <button type="button" aria-label={"Sort consolidation review by "+label} onClick={()=>{if(reviewSort===sort)setReviewAscending(v=>!v);else{setReviewSort(sort);setReviewAscending(true);}}}>{label}</button>
+  </th>;
   const demoAssociationEnabled=runtime.isDemo&&momentumStorage.mode()==="local"&&!firebase;
   const resetReview=()=>{setPreview(false);setVerifiedOwner(false);setReason("");setTypedConfirmation("");setOperationMessage("");};
   const defaultParent=(ids:readonly string[])=>data.accounts.find(a=>ids.includes(a.id)&&a.customerId)?.customerId??"new";
@@ -130,8 +146,8 @@ export function AccountConsolidationReview(){
         </div>
         {selected.conflicts.length>0&&<div className="prototype-review-warnings">{selected.conflicts.map(message=><p key={message}><AlertTriangle size={15}/>{message}</p>)}</div>}
         <div className="prototype-table-scroll"><table className="prototype-table">
-          <thead><tr><th>Business / location</th><th>Physical address</th><th>Assigned rep</th><th>Existing parent</th><th>Orders</th></tr></thead>
-          <tbody>{selected.locations.map(a=><tr key={a.id}>
+          <thead><tr>{reviewHeader("name","Business / location")}{reviewHeader("address","Physical address")}{reviewHeader("rep","Assigned rep")}{reviewHeader("parent","Existing parent")}{reviewHeader("orders","Orders")}</tr></thead>
+          <tbody>{selectedForDisplay.map(a=><tr key={a.id}>
             <td><button type="button" className="prototype-link" onClick={()=>navigateToRoute("/sales/customers/"+encodeURIComponent(a.id))}>{a.name}</button><small className="prototype-description">{a.id}</small></td>
             <td>{a.streetAddress||"Not recorded"} · {a.location} · {a.postalCode||"ZIP missing"}</td>
             <td>{data.users.find(u=>u.id===a.ownerId)?.name??"Unassigned"}</td>

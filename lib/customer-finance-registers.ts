@@ -1,0 +1,49 @@
+import type {Order} from "./types";
+import type {CommerceState,Invoice} from "./commerce-engine";
+import {invoiceBalance,computedInvoiceStatus} from "./commerce-engine";
+
+export const customerStatementColumns=["date","location","reference","type","status","debit","credit"] as const;
+export const customerPaymentColumns=["date","location","reference","method","status","amount"] as const;
+type CustomerStatementRow={date:string;location:string;reference:string;type:"Invoice"|"Cleared payment"|"Applied credit"|"Settled refund";status:string;debit:number;credit:number};
+type CustomerPaymentRow={date:string;location:string;reference:string;method:string;status:string;amount:number};
+
+/** A presentation projection only: the caller must first enforce authenticated
+ * customer account linkage and server record permissions. Never expose raw
+ * CommerceState to the browser on connected customer sessions. */
+export function projectCustomerFinance(
+ state:CommerceState,authorizedOrders:readonly Order[],
+ authorizedAccountIds:ReadonlySet<string>,locations:ReadonlyMap<string,string>
+):{invoices:Invoice[];payments:CustomerPaymentRow[];statement:CustomerStatementRow[];openBalance:number}{
+ const orders=new Map(authorizedOrders.filter(o=>!o.testOnly&&authorizedAccountIds.has(o.accountId)&&["Delivered","Paid"].includes(o.status)).map(o=>[o.id,o]));
+ const invoices=state.invoices.filter(i=>i.status!=="Void"&&authorizedAccountIds.has(i.accountId)&&orders.get(i.orderId)?.accountId===i.accountId);
+ const byInvoice=new Map(invoices.map(i=>[i.id,i]));
+ const cleared=new Map(state.payments.filter(p=>p.status==="Cleared"&&authorizedAccountIds.has(p.accountId)&&Boolean(p.settledAt&&p.settledBy)).map(p=>[p.id,p]));
+ const statement:CustomerStatementRow[]=[];
+ const paymentRows=new Map<string,CustomerPaymentRow>();
+ for(const invoice of invoices)statement.push({date:invoice.issuedAt.slice(0,10),location:locations.get(invoice.accountId)??"Authorized location",reference:invoice.number,type:"Invoice",status:computedInvoiceStatus(state,invoice),debit:invoice.total,credit:0});
+ const validAllocations=new Map<string,number>();
+ for(const allocation of state.allocations){
+   const invoice=byInvoice.get(allocation.invoiceId),payment=cleared.get(allocation.paymentId);
+   if(!invoice||!payment||invoice.accountId!==payment.accountId||!Number.isFinite(allocation.amount)||allocation.amount<=0)continue;
+   const used=validAllocations.get(payment.id)??0;
+   if(used+allocation.amount>payment.amount+0.005)continue;
+   validAllocations.set(payment.id,used+allocation.amount);
+   statement.push({date:payment.settledAt!.slice(0,10),location:locations.get(invoice.accountId)??"Authorized location",reference:invoice.number,type:"Cleared payment",status:"Cleared",debit:0,credit:allocation.amount});
+   paymentRows.set(payment.id,{date:payment.settledAt!.slice(0,10),location:locations.get(payment.accountId)??"Authorized location",reference:payment.processorReference??payment.id,method:payment.method,status:"Cleared",amount:used+allocation.amount});
+ }
+ for(const credit of state.credits){
+   const invoice=byInvoice.get(credit.invoiceId);
+   if(invoice&&credit.status==="Applied"&&Number.isFinite(credit.amount)&&credit.amount>0&&credit.appliedAt)
+     statement.push({date:credit.appliedAt.slice(0,10),location:locations.get(invoice.accountId)??"Authorized location",reference:invoice.number,type:"Applied credit",status:"Applied",debit:0,credit:credit.amount});
+ }
+ for(const refund of state.refunds){
+   const payment=cleared.get(refund.paymentId);
+   if(!payment||refund.status!=="Settled"||!refund.settledAt||!Number.isFinite(refund.amount)||refund.amount<=0)continue;
+   const allocated=validAllocations.get(payment.id)??0;
+   if(allocated<=0)continue;
+   statement.push({date:refund.settledAt.slice(0,10),location:locations.get(payment.accountId)??"Authorized location",reference:payment.processorReference??payment.id,type:"Settled refund",status:"Settled",debit:refund.amount,credit:0});
+ }
+ statement.sort((a,b)=>b.date.localeCompare(a.date)||a.reference.localeCompare(b.reference)||a.type.localeCompare(b.type));
+ const payments=[...paymentRows.values()].sort((a,b)=>b.date.localeCompare(a.date)||a.reference.localeCompare(b.reference));
+ return {invoices,payments,statement,openBalance:invoices.reduce((total,invoice)=>total+invoiceBalance(state,invoice),0)};
+}

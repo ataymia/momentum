@@ -1,4 +1,5 @@
 import { evaluateSalesRepAccountBonuses } from "./bonus-engine";
+import {acquisitionBonusHeldAccountIds} from "./acquisition-bonus-consolidation";
 import type { HCMState, CompensationRecord } from "./hcm-engine";
 import { consumedBonuses, consumedTimecards, payrollHourBreakdown, regularPayrollSource, timeEntryHours, type PayrollState } from "./payroll-engine";
 import { salesCommissionPolicyProblem } from "./sales-commission-policy";
@@ -56,7 +57,11 @@ export function employeeEarningsSnapshot(data:WorkspaceData,hcm:HCMState,payroll
   const unapproved=data.timeEntries.filter((entry)=>entry.userId===userId&&entry.clockOut&&!covered.some((card)=>entry.date>=card.weekStart&&entry.date<=card.weekEnd));
   const pendingApprovalHours=unapproved.reduce((sum,entry)=>sum+timeEntryHours(entry),0);
   const usedBonuses=consumedBonuses(payroll);
-  const milestones=evaluateSalesRepAccountBonuses(data).filter((item)=>item.repId===userId&&item.status==="Earned"&&!usedBonuses.has(item.id));
+  const held=acquisitionBonusHeldAccountIds(data);
+  const earned=evaluateSalesRepAccountBonuses(data).filter((item)=>item.repId===userId&&item.status==="Earned"&&!usedBonuses.has(item.id));
+  if(earned.some(item=>held.has(item.accountId)))
+    issues.add("Possible duplicated location/acquisition evidence: bonus payroll review is on hold until the billing parent and order identity are verified.");
+  const milestones=earned.filter(item=>!held.has(item.accountId));
   // Launch-to-date eligibility is approved, but the collected-sales commission
   // ledger and consumption safeguards have not been integrated with payroll.
   const employeeRole=data.users.find((user)=>user.id===userId)?.role;

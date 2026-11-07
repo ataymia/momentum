@@ -20,13 +20,19 @@ export type MenuGroup = {
 
 export const MENU_GROUPS: MenuGroup[] = [
   { label: "Workspace", entries: [
-    { label: "Home", path: "/", permission: "home", state: "prototype" },
+    { label: "My Employee Workspace", path: "/self-service", permission: "timekeeping", state: "prototype" },
+    { label: "My Time Off", path: "/self-service/leave", permission: "timekeeping", state: "prototype" },
+    { label: "My Pay History", path: "/self-service/pay", permission: "payroll", state: "prototype" },
+    { label: "Clock In / Timekeeping", path: "/people/timekeeping", permission: "timekeeping", state: "existing" },
+    { label: "My Training Resources", path: "/people/materials", permission: "materials", state: "existing" },
     { label: "Approvals", path: "/work/approvals", permission: "work", state: "prototype" },
     { label: "Action Center", path: "/work/actions", permission: "actions", state: "prototype" },
     { label: "Exceptions", path: "/work/exceptions", permission: "work", state: "prototype" },
     { label: "Completed Work", path: "/work/completed", permission: "work", state: "prototype" },
     { label: "Shared Calendar", path: "/calendar", permission: "work", state: "prototype" },
     { label: "Meetings", path: "/calendar/meetings", permission: "work", state: "prototype" },
+    { label: "My Invitations", path: "/calendar/invitations", permission: "work", state: "prototype" },
+    { label: "My Agenda", path: "/calendar/agenda", permission: "work", state: "prototype" },
   ] },
   { label: "Sales & CRM", entries: [
     { label: "Leads", path: "/crm/leads", permission: "accounts", state: "prototype" },
@@ -36,36 +42,41 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Quick Visits", path: "/crm/quick-visit", permission: "quickVisit", state: "prototype" },
     { label: "Account Setup", path: "/crm/account-setup", permission: "accountSetup", state: "prototype" },
     { label: "Account Health", path: "/crm/account-health", permission: "accountHealth", state: "prototype" },
-    { label: "Account Map", path: "/crm/account-map", permission: "salesMap", state: "existing" },
+    { label: "Account Map", path: "/crm/account-map", permission: "salesMap", state: "prototype" },
     { label: "Territory Map", path: "/crm/territory-map", permission: "salesMap", state: "prototype" },
-    { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "existing" },
+    { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "prototype" },
     { label: "Sales Incentives", path: "/crm/incentives", permission: "accounts", state: "prototype" },
+    { label: "Commission-only Readiness", path: "/crm/commission-only", permission: "audit", state: "prototype" },
     { label: "Territories & Routes", path: "/crm/territories", permission: "salesMap", state: "existing" },
   ] },
   { label: "Commerce", entries: [
     { label: "Items / Products", path: "/items", permission: "products", state: "prototype" },
-    { label: "Price Books", path: "/commerce/price-books", permission: "products", state: "planned" },
+    { label: "Price Books", path: "/commerce/price-books", permission: "products", state: "prototype" },
     { label: "Sales Orders", path: "/sales/orders", permission: "orders", state: "prototype" },
     { label: "Invoices", path: "/sales/invoices", permission: "orderCash", state: "prototype" },
     { label: "Payments Received", path: "/sales/payments", permission: "orderCash", state: "prototype" },
     { label: "Sales Returns", path: "/sales/returns", permission: "orders", state: "prototype" },
     { label: "Credit Notes", path: "/sales/credit-notes", permission: "orderCash", state: "prototype" },
     { label: "Customer Portal", path: "/commerce/customer-portal", permission: "orders", state: "planned" },
+    { label: "Finance Overview", path: "/finance", permission: "finance", state: "existing" },
+    { label: "Accounting", path: "/finance/accounting", permission: "accounting", state: "existing" },
   ] },
   { label: "Operations", entries: [
     { label: "Inventory", path: "/inventory", permission: "inventory", state: "prototype" },
     { label: "Inventory Adjustments", path: "/inventory/adjustments", permission: "inventory", state: "prototype" },
+    { label: "Warehouse Locations", path: "/inventory/locations", permission: "inventory", state: "prototype" },
     { label: "Packages", path: "/inventory/packages", permission: "inventory", state: "prototype" },
     { label: "Shipments", path: "/inventory/shipments", permission: "inventory", state: "prototype" },
     { label: "Inventory Ledger", path: "/inventory/ledger", permission: "inventoryLedger", state: "prototype" },
-    { label: "Vendors", path: "/purchases/vendors", permission: "accounting", state: "planned" },
-    { label: "Expenses", path: "/purchases/expenses", permission: "accounting", state: "planned" },
-    { label: "Purchase Orders", path: "/purchases/orders", permission: "accounting", state: "planned" },
-    { label: "Purchase Receipts", path: "/purchases/receipts", permission: "inventory", state: "planned" },
-    { label: "Bills", path: "/purchases/bills", permission: "accounting", state: "planned" },
-    { label: "Payments Made", path: "/purchases/payments", permission: "accounting", state: "planned" },
-    { label: "Vendor Credits", path: "/purchases/credits", permission: "accounting", state: "planned" },
+    { label: "Vendors", path: "/purchases/vendors", permission: "accounting", state: "prototype" },
+    { label: "Expenses", path: "/purchases/expenses", permission: "accounting", state: "prototype" },
+    { label: "Purchase Orders", path: "/purchases/orders", permission: "inventory", state: "prototype" },
+    { label: "Purchase Receipts", path: "/purchases/receipts", permission: "inventory", state: "prototype" },
+    { label: "Bills", path: "/purchases/bills", permission: "accounting", state: "prototype" },
+    { label: "Payments Made", path: "/purchases/payments", permission: "accounting", state: "prototype" },
+    { label: "Vendor Credits", path: "/purchases/credits", permission: "accounting", state: "prototype" },
     { label: "Delivery Operations", path: "/operations/deliveries", permission: "orders", state: "prototype" },
+    { label: "Legacy Dispatch (retained)", path: "/operations/legacy-dispatch", permission: "dispatch", state: "existing" },
   ] },
   { label: "Human Resources", entries: [
     { label: "HR Overview", path: "/people", permission: "people", state: "prototype" },
@@ -95,6 +106,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Cases", path: "/support/cases", permission: "work", state: "prototype" },
     { label: "Documents", path: "/documents", permission: "materials", state: "prototype" },
     { label: "Help", path: "/help", permission: "help", state: "existing" },
+    { label: "Reporting Center", path: "/reports/center", permission: "reportingCenter", state: "existing" },
   ] },
   { label: "Administration", entries: [
     { label: "Administration", path: "/admin", permission: "settings", state: "existing" },
@@ -190,6 +202,7 @@ export function pageForPath(path: string): PageKey | null {
   if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
   if(clean.startsWith("/sales/returns/"))return "orders";
   if(clean.startsWith("/sales/customers/"))return "accounts";
+  if(/^\/crm\/(leads|contacts|deals)\/[^/]+$/.test(clean))return "accounts";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if(clean.startsWith("/items/"))return "products";
   const legacy = (Object.keys(LEGACY_PATHS) as PageKey[]).find(key => LEGACY_PATHS[key] === clean);
@@ -248,6 +261,7 @@ export function permissionForPath(path: string): PageKey | null {
   if (clean.startsWith("/sales/orders/")) return "orders";
   if (clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/")) return "orderCash";
   if (clean.startsWith("/sales/returns/")) return "orders";
+  if(/^\/crm\/(leads|contacts|deals)\/[^/]+$/.test(clean))return "accounts";
   if (routeEntry(clean)) return routeEntry(clean)!.permission;
   return pageForPath(clean);
 }
@@ -262,7 +276,8 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
       !clean.endsWith("/edit");
     const legacyCustomer = clean==="/sales/orders" || clean==="/sales/customers" ||
       customerOrderDetail || clean.startsWith("/sales/customers/");
-    return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer) &&
+    const customerPortalDetail=/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean);
+    return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer || customerPortalDetail) &&
       canAccessPage(user,permissionForPath(clean)??"home");
   }
   // Copying a URL must not bypass employee confidentiality when a module is hidden in navigation.
@@ -301,6 +316,8 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
+  if(/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean))return true;
+  if(/^\/crm\/(leads|contacts|deals)\/[^/]+$/.test(clean))return true;
   // Sensitive legacy HR and payroll tools are wrapped by a prototype demo-only gate.
   if(clean==="/people/payroll/workflow"||clean==="/people/onboarding/workflow"||clean==="/admin/employee-profiles/workflow")return true;
   if (clean.startsWith("/people/attendance/") || clean.startsWith("/people/performance/") || clean.startsWith("/support/cases/") || clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;

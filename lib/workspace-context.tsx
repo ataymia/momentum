@@ -17,6 +17,7 @@ import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import { skuForProductName } from "./product-catalog";
 import { productsEquivalent } from "./order-lines";
 import { canCancelOrder, orderCancellationAccessMessage } from "./order-cancellation";
+import {reviewLeadQualification,type LeadQualificationTarget} from "./lead-qualification";
 import { reconcileApprovals, reconcileOrders } from "./order-approval-engine";
 import type { Account, Activity, Appointment, AppointmentStatus, Approval, CustomerAccount, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, SalesTerritory, WorkspaceData, WorkspaceUser } from "./types";
 import { WorkspaceProvider as BaseWorkspaceProvider, useWorkspace as useBaseWorkspace } from "./workspace-context-v5";
@@ -117,6 +118,7 @@ type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | 
   /** Geocode and territory results only. Cannot touch ownership, stage, or any attribution field. */
   patchAccountLocation: (accountId: string, patch: AccountLocationPatch) => boolean;
   transferAccountResponsibility: (accountId: string, toUserId: string, reason: string) => boolean;
+  qualifyLead: (accountId:string,nextStage:LeadQualificationTarget,reason:string)=>{ok:boolean;message?:string};
   saveTerritory:(input:TerritoryInput)=>TerritoryMutationResult;
   importInventoryLots: (lots: InventoryLot[]) => number;
   resetDemo: () => void;
@@ -479,6 +481,22 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     return{ok:true,id};
   };
 
+
+  const qualifyLead=(accountId:string,nextStage:LeadQualificationTarget,reason:string):{ok:boolean;message?:string}=>{
+    if(!demoMode||momentumStorage.mode()!=="local"||!currentUser)return{ok:false,message:"Lead editing is disabled for connected records."};
+    const account=data.accounts.find(item=>item.id===accountId);
+    if(!account||!accountIsVisible(data,currentUser,account))return{ok:false,message:"Lead outside your authorized workspace."};
+    const review=reviewLeadQualification(currentUser.role,currentUser.id,account.ownerId,account.stage,nextStage,reason);
+    if(!review.ok)return review;
+    const timestamp=now();
+    setCommercial(state=>({
+      ...state,
+      accountPatches:{...state.accountPatches,[accountId]:{...(state.accountPatches[accountId]??{}),stage:nextStage,lastActivity:"Lead qualified to "+nextStage}},
+      activities:[{id:uid("act-lead-stage"),accountId,type:"note",title:"Lead qualification updated",detail:account.stage+" → "+nextStage+". "+reason.trim(),at:timestamp,userId:currentUser.id},...state.activities],
+    }));
+    return{ok:true};
+  };
+
   const transferAccountResponsibility = (accountId: string, toUserId: string, reason: string) => {
     if (!currentUser || !["Administrator", "Sales Manager"].includes(currentUser.role) || reason.trim().length < 3) return false;
     const account = data.accounts.find((item) => item.id === accountId);
@@ -801,7 +819,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, editOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, cancelOrder, updateAccountCommercial, updateCustomerCommercial, claimUnassignedProspect, releaseProspectOwnership, patchAccountLocation, transferAccountResponsibility, saveTerritory, importInventoryLots, resetDemo };
+  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, editOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, cancelOrder, updateAccountCommercial, updateCustomerCommercial, claimUnassignedProspect, releaseProspectOwnership, patchAccountLocation, transferAccountResponsibility, qualifyLead, saveTerritory, importInventoryLots, resetDemo };
   return <EnhancedWorkspaceContext.Provider value={value}>{children}</EnhancedWorkspaceContext.Provider>;
 }
 

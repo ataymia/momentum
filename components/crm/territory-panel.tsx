@@ -7,6 +7,7 @@ import { accountTerritoryState, normalizePostalCode, territoryAccounts, territor
 import type { SalesTerritory, TerritoryStatus } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Modal, Section, StatusPill } from "../ui";
+import { SalesUserPicker } from "./sales-user-picker";
 
 const blank={name:"",ownerId:"",postalCodes:"",status:"Draft" as TerritoryStatus,notes:""};
 const tone=(status:TerritoryStatus)=>status==="Active"?"success" as const:status==="Suspended"?"warning" as const:"neutral" as const;
@@ -54,7 +55,7 @@ export function TerritoryPanel(){
       <form id="territory-form" className="form-grid" onSubmit={submit}>
         {message&&<div className="form-callout field--full"><p>{message}</p></div>}
         <Field label="Territory name"><input required value={form.name} onChange={(event)=>setForm({...form,name:event.target.value})} placeholder="Phoenix North"/></Field>
-        <Field label="Suggested sales representative"><select value={form.ownerId} onChange={(event)=>setForm({...form,ownerId:event.target.value})}><option value="">Unassigned</option>{reps.map((user)=><option key={user.id} value={user.id}>{user.name}</option>)}</select></Field>
+        <Field label="Suggested sales representative"><SalesUserPicker label="Suggested sales representative" users={reps} value={form.ownerId} onChange={ownerId=>setForm(current=>({...current,ownerId}))}/></Field>
         <Field label="Status"><select value={form.status} onChange={(event)=>setForm({...form,status:event.target.value as TerritoryStatus})}><option>Draft</option><option>Active</option><option>Suspended</option></select></Field>
         <Field label="ZIP suggestion coverage" className="field--full" hint="Separate ZIP codes with commas or spaces. ZIP+4 is normalized to the first five digits."><textarea rows={4} value={form.postalCodes} onChange={(event)=>setForm({...form,postalCodes:event.target.value})} placeholder="85016, 85018, 85028"/></Field>
         <Field label="Internal note" className="field--full"><textarea rows={3} value={form.notes} onChange={(event)=>setForm({...form,notes:event.target.value})}/></Field>
