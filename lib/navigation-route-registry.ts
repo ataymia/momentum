@@ -40,6 +40,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Territory Map", path: "/crm/territory-map", permission: "salesMap", state: "prototype" },
     { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "existing" },
     { label: "Sales Incentives", path: "/crm/incentives", permission: "accounts", state: "prototype" },
+    { label: "Commission-only Readiness", path: "/crm/commission-only", permission: "audit", state: "prototype" },
     { label: "Territories & Routes", path: "/crm/territories", permission: "salesMap", state: "existing" },
   ] },
   { label: "Commerce", entries: [
