@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import {canVisitRoute} from "../lib/navigation-route-registry";
+import type {WorkspaceUser} from "../lib/types";
 import {applyPurchaseAction,billDueCents,emptyPurchasingState,poStatus,receivedCases,threeWayMatch,type PurchaseAction,type PurchaseActor,type PurchasingState} from "../lib/purchasing-review";
 const admin:PurchaseActor={id:"admin-a",role:"Administrator"};
 const otherAdmin:PurchaseActor={id:"admin-b",role:"Administrator"};
@@ -79,9 +81,9 @@ test("receiving rejects unapproved, excess and wrong-location cases",()=>{
 });
 test("bill requires unique vendor invoice and quantities inside PO",()=>{
   const s=approvedPurchase();const id=s.orders[0].id;
-  assert.equal(act(s,operations,bill(id,5,8000)).ok,false);
+  assert.equal(act(s,warehouse,bill(id,5,8000)).ok,false);
   assert.equal(act(s,admin,bill(id,11,17600)).ok,false);
-  const next=success(s,admin,bill(id,5,8000));
+  const next=success(s,operations,bill(id,5,8000));
   assert.equal(act(next,admin,bill(id,3,4800,"demo-invoice")).ok,false);
   assert.equal(act(next,admin,bill(id,6,9600,"another")).ok,false);
 });
@@ -140,4 +142,30 @@ test("purchasing is gated to isolated demo and route-specific roles",()=>{
   assert.match(view,/inventoryPosted:false|receipts do not increase sellable stock/);
   for(const route of ["vendors","expenses","orders","receipts","bills","payments","credits"])assert.match(routes,new RegExp("/purchases/"+route));
   assert.match(routes,/if\(clean\.startsWith\("\/purchases\/"\)\)/);
+});
+
+test("purchasing role handoff lets Operations prepare bills and credits but not approve or pay",()=>{
+  let s=approvedPurchase();const id=s.orders[0].id;
+  s=success(s,warehouse,receipt(id,10));
+  s=success(s,operations,bill(id,10,16000,"ROLE-INVOICE"));
+  assert.equal(act(s,operations,{kind:"bill.approve",id:s.bills[0].id}).ok,false);
+  s=success(s,admin,{kind:"bill.approve",id:s.bills[0].id});
+  const billId=s.bills[0].id;
+  s=success(s,operations,{kind:"credit.record",billId,reference:"ROLE-CREDIT",reason:"Illustrative return request",amountCents:1000});
+  assert.equal(act(s,operations,{kind:"credit.approve",id:s.credits[0].id}).ok,false);
+  assert.equal(act(s,operations,{kind:"payment.record",billId,reference:"ROLE-PAY",amountCents:1000}).ok,false);
+  s=success(s,admin,{kind:"credit.approve",id:s.credits[0].id});
+  assert.equal(billDueCents(s,s.bills[0]),15000);
+});
+test("purchasing directory roles align with distinct preparation, receiving and payment authority",()=>{
+  const user=(role:WorkspaceUser["role"]):WorkspaceUser=>({id:"id-"+role,role,team:"Operations",name:"Test",firstName:"Test",email:"test@example.invalid",initials:"TE",title:"Test",accent:"#333"});
+  for(const path of ["/purchases/vendors","/purchases/expenses","/purchases/orders","/purchases/bills","/purchases/credits"]){
+    assert(canVisitRoute(user("Operations"),path),path);
+    assert(!canVisitRoute(user("Warehouse"),path),path);
+  }
+  assert(canVisitRoute(user("Warehouse"),"/purchases/receipts"));
+  assert(!canVisitRoute(user("Warehouse"),"/purchases/bills"));
+  assert(!canVisitRoute(user("Operations"),"/purchases/payments"));
+  assert(canVisitRoute(user("Administrator"),"/purchases/payments"));
+  assert(!canVisitRoute(user("Customer"),"/purchases/receipts"));
 });
