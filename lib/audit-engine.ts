@@ -95,7 +95,6 @@ export function normalizeAuditState(input: unknown): AuditState {
   if (!input || typeof input !== "object") return createAuditSeed();
   const state = input as Partial<AuditState>;
   const seenIds = new Set<string>();
-  const seenFacts = new Set<string>();
   const events: AuditEvent[] = [];
   for (const candidate of Array.isArray(state.events) ? state.events : []) {
     if (!candidate || typeof candidate !== "object") continue;
@@ -107,7 +106,7 @@ export function normalizeAuditState(input: unknown): AuditState {
 
     const changes = event.changes
       .filter((change): change is AuditChange => Boolean(change && typeof change.field === "string" && change.field.trim() && (change.before === undefined || typeof change.before === "string") && (change.after === undefined || typeof change.after === "string")))
-      .slice(0, 20);
+      ;
     const repaired = repairLegacyProvenance({ at:event.at!, actorId:event.actorId, actorRole:event.actorRole, action:event.action, collection:event.collection }, changes);
     const unverifiedLegacy = event.provenanceStatus === "unverified-legacy" ||
       (event.provenanceStatus !== "verified" && (
@@ -134,13 +133,13 @@ export function normalizeAuditState(input: unknown): AuditState {
       relatedUserId: typeof event.relatedUserId === "string" ? event.relatedUserId : undefined,
       changes,
     };
-    const fact = auditEventFingerprint(normalized);
-    if (seenFacts.has(fact)) continue;
+    // Preserve every uniquely identified historical event, including two events
+    // with identical fields/timestamps. An event ID is source identity; a fact
+    // fingerprint is only a hint for suppression of passive replays.
     seenIds.add(event.id);
-    seenFacts.add(fact);
     events.push(normalized);
   }
-  return { version: 1, events: events.sort((left, right) => right.at.localeCompare(left.at)).slice(0, 10000) };
+  return { version: 1, events: events.sort((left, right) => right.at.localeCompare(left.at)) };
 }
 
 function recordLabel(record: Record<string, unknown>, id: string) {
