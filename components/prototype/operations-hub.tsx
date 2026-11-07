@@ -29,6 +29,7 @@ import {CrmCustomerActivity,CrmCustomerDocuments,CrmCustomerRepresentatives} fro
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience } from "./hr-payroll-experiences";
+import {EmployeeAccountExperience} from "./employee-account-experience";
 import {PayrollWorkflowExperience} from "./payroll-workflow-experience";
 import {HrOnboardingExperience} from "./hr-onboarding-experience";
 import {InvoicePrintCenter} from "../finance/invoice-print-center";
@@ -831,9 +832,13 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="portal"&&segments[1]==="invoices"&&segments.length===3)return <CustomerInvoiceRecord id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="portal"&&["orders","deliveries"].includes(segments[1])&&segments.length===3)return <CustomerOrderRecord id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
-  if(path==="/self-service")return <PeopleExperience/>;
-  if(path==="/self-service/leave")return <HrTimeOffExperience/>;
-  if(path==="/self-service/pay")return <PayrollWorkflowExperience/>;
+  // Personal employee records live in Account; old copied links remain compatible.
+  if(path==="/my-account"||path==="/self-service")return <EmployeeAccountExperience/>;
+  if(path==="/my-account/employee")return <EmployeeAccountExperience section="employee"/>;
+  if(path==="/my-account/time-off"||path==="/self-service/leave")return <HrTimeOffExperience personalOnly/>;
+  if(path==="/my-account/pay"||path==="/self-service/pay")return <EmployeeAccountExperience section="pay"/>;
+  if(path==="/my-account/training")return <EmployeeAccountExperience section="training"/>;
+  if(path==="/my-account/completed"||path==="/work/completed")return <CompletedWorkExperience personalOnly/>;
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/people/directory")return <HrPersonnelDirectory/>;
   if(path==="/marketing")return <MarketingWorkspaceExperience/>;
@@ -875,7 +880,7 @@ export function PrototypeOperationsHub(){
   if(path==="/work/approvals")return <OrderApprovalDirectory/>;
   if(path==="/work/actions")return <ActionCenterExperience/>;
   if(path==="/work/exceptions")return <WorkExceptionsExperience/>;
-  if(path==="/work/completed")return <CompletedWorkExperience/>;
+
   if(path==="/sales/orders/new")return <OrderEditor/>;
   if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2]&&segments[3]==="edit")return <OrderEditor orderId={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="sales"&&segments[1]==="orders"&&segments[2])return currentUser?.role==="Customer"?<CustomerOrderRecord id={decodeURIComponent(segments[2])} section="orders"/>:<OrderDetail id={decodeURIComponent(segments[2])}/>;
