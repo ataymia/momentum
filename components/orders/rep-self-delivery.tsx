@@ -9,7 +9,7 @@ import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {firebaseFunctionUrl} from "../../lib/firebase-functions";
 import {momentumStorage} from "../../lib/persistence";
 import {DeliverySignaturePad} from "../delivery/signature-pad";
-import {Button,Section} from "../ui";
+import {Button} from "../ui";
 
 type Stage="Unclaimed"|"Accepted"|"Loaded"|"In transit"|"Delivered";
 type Receipt={ok?:boolean;message?:string;orderStatus?:string;taskStatus?:Stage;cloudConfirmed?:boolean;replayed?:boolean};
@@ -29,6 +29,7 @@ export function RepSelfDelivery(){
       ["Approved","Allocated","Out for delivery","Delivered"].includes(order.status)):[],
   [scope.orders,currentUser]);
   const [selectedId,setSelectedId]=useState("");
+  const [query,setQuery]=useState("");
   const [record,setRecord]=useState<Receipt|null>(null);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
@@ -106,35 +107,57 @@ export function RepSelfDelivery(){
     else if(status==="Loaded"&&orderStatus==="Allocated")step="depart";
     else if(status==="In transit"&&orderStatus==="Out for delivery")step="complete";
   }
-  return <Section title="My self-deliveries" description="Only your approved orders can be claimed. Warehouse stock, rep custody, customer signature and completed records are independently checked by the server.">
-    <div className="rep-self-delivery">
-      <label htmlFor="rep-self-order">Your approved orders</label>
-      <select id="rep-self-order" value={selectedId} disabled={busy} onChange={event=>selectOrder(event.target.value)}>
-        <option value="">Choose an order to self-deliver</option>
-        {orders.map(order=><option key={order.id} value={order.id}>{order.number} · {scope.accounts.find(a=>a.id===order.accountId)?.name||"Account"} · {order.cases} cases</option>)}
-      </select>
-      {!orders.length&&<p>No eligible orders in your account scope. Submit an order and wait for Administrator approval first.</p>}
-      {selected&&<div className="rep-self-delivery__status">
-        <strong>{selected.number}</strong>
-        <span>Order: {orderStatus??"Checking…"} · Delivery: {record?status:"Checking cloud…"}</span>
-        <Button type="button" size="sm" variant="secondary" icon={<RefreshCcw size={14}/>} disabled={busy} onClick={()=>{
-          setRecord(null);setMessage("");
-          void getState(selected.id).then(setRecord).catch(error=>setMessage(error instanceof Error?error.message:"Could not refresh."));
-        }}>Verify status</Button>
-      </div>}
-      {selected&&step==="complete"&&<div className="rep-self-delivery__signature">
-        <p>Have the customer or authorized recipient sign before you complete delivery.</p>
-        <DeliverySignaturePad strokes={strokes} onChange={setStrokes}/>
-        <label htmlFor="rep-self-recipient">Recipient printed name</label>
-        <input id="rep-self-recipient" value={recipientName} maxLength={120} onChange={event=>setRecipientName(event.target.value)} placeholder="Name of person accepting delivery"/>
-      </div>}
-      {selected&&step&&<Button type="button" disabled={busy||(!firebase?.session?.idToken)||
-        (step==="complete"&&(!recipientName.trim()||!strokes.some(stroke=>stroke.length>=2)))}
-        icon={step==="claim"?<PackageCheck size={15}/>:step==="pack"?<PackageCheck size={15}/>:step==="load"?<PackageOpen size={15}/>:step==="depart"?<Truck size={15}/>:<CheckCircle2 size={15}/>}
-        onClick={()=>void send(step)}>{busy?"Confirming cloud save…":stages[step]}</Button>}
-      {selected&&status==="Delivered"&&record?.cloudConfirmed&&
-        <p className="rep-self-delivery__complete"><CheckCircle2 size={16}/> Delivery completed with cloud-verified order and inventory posting. Email delivery is verified separately.</p>}
-      {message&&<p className="form-notice" role="status">{message}</p>}
+  const listed=orders.filter(order=>[order.number,scope.accounts.find(a=>a.id===order.accountId)?.name??"",order.status].join(" ").toLowerCase().includes(query.toLowerCase()));
+  const readyOrders=orders.filter(order=>order.status==="Approved").length;
+  const deliveredOrders=orders.filter(order=>order.status==="Delivered").length;
+  return <div className="prototype-self-delivery">
+    <header className="prototype-heading"><h1>My Self-Deliveries</h1><p>Pick up and deliver your own approved orders through Momentum's existing server-verified fulfillment process.</p></header>
+    <div className="prototype-metrics">
+      <div><small>Eligible assigned orders</small><strong>{orders.length}</strong></div>
+      <div><small>Approved, not yet completed</small><strong>{readyOrders}</strong></div>
+      <div><small>Marked delivered</small><strong>{deliveredOrders}</strong></div>
     </div>
-  </Section>;
+    <section className="prototype-panel">
+      <h2>My approved orders</h2>
+      <p className="prototype-note">Only orders credited to your employee identity are eligible. A completed order cannot be reclaimed. This list does not authorize a delivery until the server confirms each step.</p>
+      <label className="prototype-search"><input aria-label="Search my self-delivery orders" placeholder="Find order number, customer or status" value={query} onChange={event=>setQuery(event.target.value)}/></label>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Customer location</th><th>Cases</th><th>Order status</th><th>Action</th></tr></thead><tbody>
+        {listed.map(order=><tr key={order.id}>
+          <td>{order.number}</td><td>{scope.accounts.find(a=>a.id===order.accountId)?.name??"Restricted"}</td>
+          <td>{order.cases}</td><td>{order.status}</td>
+          <td><button type="button" className="prototype-link" aria-current={selectedId===order.id?"true":undefined} disabled={busy} onClick={()=>selectOrder(order.id)}>{selectedId===order.id?"Selected":"Review delivery"}</button></td>
+        </tr>)}
+      </tbody></table></div>
+      {!listed.length&&<p className="prototype-empty">No eligible orders match this search. Approved orders appear after Administrator approval.</p>}
+    </section>
+    <section className="prototype-panel">
+      <h2>Verified delivery workflow</h2>
+      <p className="prototype-note">Required sequence: claim → reserve exact SKU mix → load into your custody → depart → recipient signature → reconcile inventory and order in cloud.</p>
+      {!firebase?.session?.idToken&&<p className="prototype-note" role="alert">A signed-in Firebase session is required for real self-delivery. No offline or browser-only delivery can be completed here.</p>}
+      {!selected&&<p className="prototype-empty">Select one of your approved orders above to see its server-confirmed delivery state.</p>}
+      {selected&&<div className="rep-self-delivery">
+        <div className="rep-self-delivery__status">
+          <strong>{selected.number}</strong>
+          <span>Order: {orderStatus??"Checking…"} · Delivery: {record?status:"Checking cloud…"}</span>
+          <Button type="button" size="sm" variant="secondary" icon={<RefreshCcw size={14}/>} disabled={busy||!firebase?.session?.idToken} onClick={()=>{
+            setRecord(null);setMessage("");
+            void getState(selected.id).then(setRecord).catch(error=>setMessage(error instanceof Error?error.message:"Could not refresh."));
+          }}>Verify cloud status</Button>
+        </div>
+        {step==="complete"&&<div className="rep-self-delivery__signature">
+          <p>Have the customer or authorized recipient sign before completing this order.</p>
+          <DeliverySignaturePad strokes={strokes} onChange={setStrokes}/>
+          <label htmlFor="rep-self-recipient">Recipient printed name</label>
+          <input id="rep-self-recipient" value={recipientName} maxLength={120} onChange={event=>setRecipientName(event.target.value)} placeholder="Name of person accepting delivery"/>
+        </div>}
+        {step&&<Button type="button" disabled={busy||(!firebase?.session?.idToken)||
+          (step==="complete"&&(!recipientName.trim()||!strokes.some(stroke=>stroke.length>=2)))}
+          icon={step==="claim"?<PackageCheck size={15}/>:step==="pack"?<PackageCheck size={15}/>:step==="load"?<PackageOpen size={15}/>:step==="depart"?<Truck size={15}/>:<CheckCircle2 size={15}/>}
+          onClick={()=>void send(step)}>{busy?"Confirming cloud save…":stages[step]}</Button>}
+        {status==="Delivered"&&record?.cloudConfirmed&&
+          <p className="rep-self-delivery__complete"><CheckCircle2 size={16}/> Delivery completed with cloud-verified order and inventory posting. Email delivery is verified separately.</p>}
+      </div>}
+      {message&&<p className="form-notice" role="status">{message}</p>}
+    </section>
+  </div>;
 }
