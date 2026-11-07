@@ -27,7 +27,7 @@ export function CrmContactsDirectory(){
   const [query,setQuery]=useState(""),[decisionRole,setDecisionRole]=useState("all"),[active,setActive]=useState("true");
   const [sort,setSort]=useState<ContactSort>("name"),[ascending,setAscending]=useState(true);
   const contacts=useMemo(()=>visibleCrmContacts(crm.contacts,allowedLocations,allowedCustomers,businessNames,{query,active,decisionRole,sort,ascending}),[crm.contacts,allowedLocations,allowedCustomers,businessNames,query,active,decisionRole,sort,ascending]);
-  const heading=(field:ContactSort,label:string)=><button type="button" aria-label={"Sort contacts by "+label} onClick={()=>{if(sort===field)setAscending(value=>!value);else{setSort(field);setAscending(true);}}}>{label} <ArrowUpDown size={13}/></button>;
+  const heading=(field:ContactSort,label:string)=><th aria-sort={sort===field?(ascending?"ascending":"descending"):"none"}><button type="button" aria-label={"Sort contacts by "+label} onClick={()=>{if(sort===field)setAscending(value=>!value);else{setSort(field);setAscending(true);}}}>{label} <ArrowUpDown size={13}/></button></th>;
   const exportRows=contacts.map(c=>({contact:c.name,business:businessNames.get(c.locationId??"")??"Customer-wide",role:c.role,email:c.email??"",phone:c.phone??"",decisionRole:c.decisionRole,active:c.active?"Active":"Inactive"}));
   return <main className="prototype-workspace"><header className="prototype-heading"><h1>Contacts</h1><p>Independent contact records associated with authorized businesses and customer locations.</p>
     {canWrite&&<button type="button" onClick={()=>navigateToRoute("/crm/contacts/new")}>New contact</button>}</header>
@@ -41,7 +41,7 @@ export function CrmContactsDirectory(){
       </div>
       <p role="status" className="prototype-note">{contacts.length} matching contact{contacts.length===1?"":"s"}</p>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
-        <th>{heading("name","Contact")}</th><th>{heading("business","Business")}</th><th>{heading("role","Title")}</th><th>Decision role</th><th>Email</th><th>Phone</th><th>Active</th><th>{heading("created","Created")}</th>
+        {heading("name","Contact")}{heading("business","Business")}{heading("role","Title")}{heading("decisionRole","Decision role")}{heading("email","Email")}{heading("phone","Phone")}{heading("active","Active")}{heading("created","Created")}
       </tr></thead><tbody>{contacts.map(contact=><tr key={contact.id}>
         <td>{go(contactUrl(contact.id),contact.name)}</td><td>{contact.locationId?go("/sales/customers/"+encodeURIComponent(contact.locationId),businessNames.get(contact.locationId)??"Customer location"):"Customer-wide"}</td>
         <td>{contact.role}</td><td>{contact.decisionRole}</td><td>{contact.email??"Not recorded"}</td><td>{contact.phone??"Not recorded"}</td><td>{contact.active?"Active":"Inactive"}</td><td>{contact.createdAt.slice(0,10)}</td>
