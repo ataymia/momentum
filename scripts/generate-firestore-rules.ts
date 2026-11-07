@@ -325,8 +325,10 @@ service cloud.firestore {
     // Receipts are presentation metadata, never proof of an operational action.
     // Even Administrators cannot view or alter another employee's receipts.
     match /notificationReadReceipts/{uid}/buckets/{bucket} {
-      allow get, list: if isEmployee()
+      allow get: if isEmployee()
         && uid == request.auth.uid && bucket.matches('^[0-9a-f]$');
+      // Explicit document lookups only; collection enumeration is unnecessary.
+      allow list: if false;
       allow create: if isEmployee()
         && uid == request.auth.uid && bucket.matches('^[0-9a-f]$')
         && request.resource.data.keys().hasOnly(['userId','bucket','ids'])
