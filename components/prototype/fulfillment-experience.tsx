@@ -209,7 +209,7 @@ export function ShipmentDetail({orderId}:{orderId:string}){
         <div><dt>Departed</dt><dd>{showDate(task.departedAt)}</dd></div>
         <div><dt>Delivered</dt><dd>{showDate(task.deliveredAt)}</dd></div>
         <div><dt>Recipient proof</dt><dd>{verifiedSignature?"Recorded signature ("+showDate(task.signature?.signedAt)+")":"No verified task signature"}</dd></div>
-        <div><dt>Inventory posting</dt><dd>{deliveredCases>=order.cases?"Full order quantity posted":"Not fully posted"}</dd></div>
+        <div><dt>Inventory posting</dt><dd>{deliveredCases>order.cases+0.005?"Overposted: reconciliation required":deliveredCases>=order.cases?"Full order quantity posted":"Not fully posted"}</dd></div>
       </dl>
       {override&&currentUser?.role==="Administrator"&&<p className="prototype-note">Administrator override recorded {showDate(override.recordedAt)}. Reason: {override.reason}</p>}
       </section>
@@ -274,7 +274,7 @@ export function DeliveryOperationsDirectory(){
     });
   const col=(key:string,label:string)=><Column key={key} keyName={key} name={label} sort={sort}/>;
   return <div><Title heading="Delivery Operations" subtitle="Traceable orders, driver assignment, proof of delivery and inventory posting exceptions from existing records."/>
-    <Summary stats={[{label:"Orders in workflow",value:summary.length},{label:"Unassigned orders",value:summary.filter(x=>!x.task).length},{label:"Reconciliation exceptions",value:summary.filter(x=>Boolean(x.issue)).length},{label:"Delivered with recorded proof",value:summary.filter(x=>x.task?.status==="Delivered"&&x.proof&&x.delivered>=x.order.cases).length}]}/>
+    <Summary stats={[{label:"Orders in workflow",value:summary.length},{label:"Unassigned orders",value:summary.filter(x=>!x.task).length},{label:"Reconciliation exceptions",value:summary.filter(x=>Boolean(x.issue)).length},{label:"Delivered with recorded proof",value:summary.filter(x=>["Delivered","Paid"].includes(x.order.status)&&x.task?.status==="Delivered"&&x.proof&&!x.issue&&x.delivered>=x.order.cases&&x.delivered<=x.order.cases+0.005).length}]}/>
     <section className="prototype-panel"><div className="prototype-commerce-filters">
       <SearchInput value={query} onChange={setQuery} placeholder="Search orders, accounts, drivers or reconciliation issues"/>
       <label>Delivery state<select aria-label="Filter delivery operations" value={filter} onChange={e=>setFilter(e.target.value)}>
