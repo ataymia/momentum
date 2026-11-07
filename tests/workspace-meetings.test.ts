@@ -201,3 +201,12 @@ test("B06 authenticated UI awaits API acknowledgment rather than claiming a save
  assert.match(src,/const result=await rsvp\(/);
  assert.match(src,/const result=await cancel\(/);
 });
+
+test("B02 non-order approval list links to source departments instead of looping to legacy My Work",()=>{
+ const source=readFileSync("components/prototype/order-actions.tsx","utf8");
+ assert.match(source,/function approvalWorkspaceTarget/);
+ assert.match(source,/canVisitRoute\(currentUser,source\)/);
+ assert.match(source,/No authorized source view available/);
+ assert.match(source,/Open source workflow/);
+ assert.doesNotMatch(source,/navigateToRoute\("\/work\/workflow"\)/);
+});
