@@ -2,6 +2,7 @@ import {randomUUID} from "node:crypto";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore, type Firestore} from "firebase-admin/firestore";
 import {onRequest} from "firebase-functions/v2/https";
+import {staffMeetingFieldCollision} from "./staff-meeting-policy";
 
 /** Real connected meeting records are server-owned and never exposed as shared Firestore arrays. */
 type Row=Record<string,unknown>;
@@ -109,6 +110,17 @@ async function saveSchedule(db:Firestore,actor:Actor,body:Row,update:boolean){
       const occupied=str(s.data()?.meetingId);
       if(freshSlots.includes(keys[index])&&occupied&&occupied!==id)throw error(409,"An invited employee or organizer already has a meeting in that time slot.");
       if(occupied)stamps.set(keys[index],occupied);
+    }
+    // Reserve staff meeting slots and verify the existing field appointment ledger
+    // in the same transaction, including appointments beyond the organizer's UI scope.
+    const [workspaceAppointments,commercialAppointments]=await Promise.all([
+      tx.get(db.doc("domains/workspace/fields/appointments")),
+      tx.get(db.doc("domains/commercial/fields/appointments")),
+    ]);
+    const rows=(snapshot:typeof workspaceAppointments):unknown[]=>
+      Array.isArray(snapshot.data()?.items)?snapshot.data()!.items as unknown[]:[];
+    if(staffMeetingFieldCollision([...rows(workspaceAppointments),...rows(commercialAppointments)],input,actor.uid)){
+      throw error(409,"An invited employee or organizer has an overlapping recorded field appointment.");
     }
     const revision=old?Number(old.revision)+1:1;
     const existingRecipients=asStringArray(old?.attendeeIds),priorRsvps=obj(old?.rsvps)?old!.rsvps as Row:{};

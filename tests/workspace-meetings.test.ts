@@ -6,6 +6,7 @@ import {
  personalMeetings,upcomingMeetings,meetingHomeReminders,validateMeeting,type MeetingInput,type TeamMeeting,
 } from "../lib/workspace-meetings";
 import {addCalendarDays,arizonaDateKey} from "../lib/date-time";
+import {staffMeetingFieldCollision} from "../functions/src/staff-meeting-policy";
 import type {WorkspaceUser,Appointment} from "../lib/types";
 
 const user=(id:string,role:WorkspaceUser["role"]="Sales Representative",separated=false):WorkspaceUser=>({
@@ -217,4 +218,17 @@ test("B07–B08 Home reminders refresh and cancelled invitations remain reviewab
  assert.match(source,/m.status==="Scheduled"&&m.rsvps\[currentUser.id\]==="Pending"/);
  assert.match(source,/meetingHomeReminders\(meetings,currentUser,clock\)/);
  assert.match(source,/window.setInterval\(\(\)=>setClock\(new Date\(\)\),60000\)/);
+});
+
+test("B05/B06 server conflict protection respects authorized field appointments, including overnight and duplicate registers",()=>{
+ const date="2026-11-07";
+ const meeting={date,startTime:"09:00",endTime:"10:00",attendeeIds:["rep"]};
+ const field={id:"a",ownerId:"rep",date,startTime:"09:15",duration:45,status:"Scheduled"};
+ assert.equal(staffMeetingFieldCollision([field],meeting,"admin"),true);
+ assert.equal(staffMeetingFieldCollision([field,field],meeting,"admin"),true);
+ assert.equal(staffMeetingFieldCollision([{...field,ownerId:"other"}],meeting,"admin"),false);
+ assert.equal(staffMeetingFieldCollision([{...field,status:"Completed"}],meeting,"admin"),false);
+ assert.equal(staffMeetingFieldCollision([{...field,startTime:"10:00"}],meeting,"admin"),false);
+ assert.equal(staffMeetingFieldCollision([{...field,date:"2026-11-06",startTime:"23:30",duration:600}],meeting,"admin"),true);
+ assert.equal(staffMeetingFieldCollision([{...field,duration:0}],meeting,"admin"),false);
 });

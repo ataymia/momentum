@@ -187,7 +187,7 @@ export function SharedCalendarExperience(){
           </section>;
         })}
       </div>
-      <p className="prototype-note">Conflict checking uses staff meetings and field appointments visible to the organizer; the authenticated meeting service independently reserves staff time slots. Other off-scope field appointments and external calendars are not checked. Calendar export is a user-triggered .ics file, not direct third-party synchronization.</p>
+      <p className="prototype-note">Conflict checking uses staff meetings and field appointments visible to the organizer; the authenticated meeting service independently reserves staff time slots and checks recorded field appointments across company registers. External calendars and unsynchronized appointments are not checked. Calendar export is a user-triggered .ics file, not direct third-party synchronization.</p>
     </section>
   </main>;
 }
