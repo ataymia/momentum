@@ -106,7 +106,7 @@ export function WorkExceptionsExperience(){
     <p className="prototype-note">This list does not invent missing incidents or close tasks. Resolve issues in their original authorized workflows. A held lot is not automatically lost stock; a delivery mismatch needs custody investigation.</p>
     </section></div>;
 }
-export function CompletedWorkExperience(){
+export function CompletedWorkExperience({personalOnly=false}:{personalOnly?:boolean}={}){
   const {scope,currentUser}=useWorkspace();
   const {state:delivery}=useDelivery();
   const {ledger}=useInventoryLedger();
@@ -114,14 +114,14 @@ export function CompletedWorkExperience(){
   const [category,setCategory]=useState("all");
   const [newest,setNewest]=useState(true);
   if(!currentUser||currentUser.role==="Customer")return <Empty>This employee history view is not available.</Empty>;
-  const rows:WorkRow[]=scope.approvals.filter(a=>a.status==="Approved"||a.status==="Returned").map(a=>({
+  const rows:WorkRow[]=scope.approvals.filter(a=>(a.status==="Approved"||a.status==="Returned")&&(!personalOnly||a.requesterId===currentUser.id||a.decidedBy===currentUser.id)).map(a=>({
     id:"approval:"+a.id,title:a.title,detail:a.detail,category:"Approval review",
     state:a.status==="Approved"?"Approved":"Returned for correction",
     date:a.decidedAt,target:"/work/approvals",focus:a.recordId,
   }));
   if(canAccessPage(currentUser,"orders")){
     const orders=new Map(scope.orders.filter(o=>!o.testOnly).map(o=>[o.id,o]));
-    for(const task of delivery.tasks.filter(t=>t.status==="Delivered"&&Boolean(t.signature))){
+    for(const task of delivery.tasks.filter(t=>t.status==="Delivered"&&Boolean(t.signature)&&(!personalOnly||t.driverId===currentUser.id))){
       const order=orders.get(task.orderId);
       if(!order)continue;
       if(!hasRecordedRecipientAndInventoryEvidence(task,order,ledger))continue;
@@ -134,7 +134,7 @@ export function CompletedWorkExperience(){
   const categories=[...new Set(rows.map(x=>x.category))].sort();
   const filtered=rows.filter(r=>(category==="all"||r.category===category)&&[r.title,r.detail,r.state].join(" ").toLowerCase().includes(query.toLowerCase()))
     .sort((a,b)=>(newest?-1:1)*(a.date??"").localeCompare(b.date??"")||a.id.localeCompare(b.id));
-  return <div><Title heading="Reviewed & completed work" description="Recorded approval decisions and proof-linked deliveries. A returned request is a review outcome, not completed customer work."/>
+  return <div><Title heading={personalOnly?"My Completed Work":"Reviewed & completed work"} description={personalOnly?"Only reviews you requested or decided and deliveries assigned to you. Records without verified actor attribution are excluded.":"Recorded approval decisions and proof-linked deliveries. A returned request is a review outcome, not completed customer work."}/>
     <div className="prototype-domain-statbar"><article><ClipboardCheck size={18}/><small>Approved reviews</small><strong>{rows.filter(r=>r.state==="Approved").length}</strong></article>
       <article><CalendarCheck2 size={18}/><small>Returned for correction</small><strong>{rows.filter(r=>r.state==="Returned for correction").length}</strong></article>
       <article><ShieldAlert size={18}/><small>Deliveries with recorded proof</small><strong>{rows.filter(r=>r.category==="Delivery").length}</strong></article></div>
