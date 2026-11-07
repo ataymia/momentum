@@ -102,16 +102,16 @@ export function AuditProvider({ children }: { children: ReactNode }) {
       const existing = new Set(state.events.map(auditEventFingerprint));
       const verified = additions.filter((event) => !existing.has(auditEventFingerprint(event)));
       if (!verified.length) return state;
-      return { ...state, events: [...verified, ...state.events].sort((left, right) => right.at.localeCompare(left.at)).slice(0, 10000) };
+      return { ...state, events: [...verified, ...state.events].sort((left, right) => right.at.localeCompare(left.at)) };
     });
   }, [snapshots, data.users]);
 
   const visibleEvents = useMemo(() => visibleAuditEvents(currentUser, data, audit.events), [currentUser, data, audit.events]);
   const recordManualAudit = (input:ManualAuditInput) => {
     if (!currentUser || !input.module.trim() || !input.collection.trim() || !input.entityType.trim() || !input.entityId.trim() || !input.label.trim() || !input.summary.trim()) return false;
-    const changes=(input.changes??[]).filter((change)=>change.field?.trim()).slice(0,20);
+    const changes=(input.changes??[]).filter((change)=>change.field?.trim());
     const event:AuditEvent={id:`audit-manual-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,at:new Date().toISOString(),actorId:currentUser.id,actorRole:currentUser.role,provenanceStatus:"source-reported",action:"Updated",module:input.module.trim(),collection:input.collection.trim(),entityType:input.entityType.trim(),entityId:input.entityId.trim(),label:input.label.trim(),summary:input.summary.trim(),sensitivity:input.sensitivity??"admin",relatedAccountId:input.relatedAccountId,relatedUserId:input.relatedUserId,changes};
-    setAudit((state)=>({...state,events:[event,...state.events].slice(0,10000)}));
+    setAudit((state)=>({...state,events:[event,...state.events]}));
     return true;
   };
   const resetAudit = () => { if (!runtime.isDemo || currentUser?.role !== "Administrator") return false; setAudit(createAuditSeed()); previous.current = snapshots; return true; };
