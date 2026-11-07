@@ -11,7 +11,7 @@ import {momentumStorage} from "../../lib/persistence";
 
 const newLeaveRequestId=()=>`leave-${crypto.randomUUID()}`;
 
-export function HrTimeOffExperience(){
+export function HrTimeOffExperience({personalOnly=false}:{personalOnly?:boolean}={}){
  const {currentUser,data}=useWorkspace();const {hcm,setHcm}=useHcm();
  const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
  const [start,setStart]=useState("");const [end,setEnd]=useState("");
@@ -21,7 +21,7 @@ export function HrTimeOffExperience(){
  const assignment=activePtoAssignment(hcm,currentUser.id);
  const balance=assignment?ptoBalance(hcm,currentUser.id,assignment.policyId):null;
  const myRequests=hcm.leaveRequests.filter(r=>r.userId===currentUser.id).sort((a,b)=>b.submittedAt.localeCompare(a.submittedAt));
- const rows=currentUser.role==="Administrator"?hcm.leaveRequests:myRequests;
+ const rows=!personalOnly&&currentUser.role==="Administrator"?hcm.leaveRequests:myRequests;
  const submit=(event:FormEvent)=>{
   event.preventDefault();setError("");setNotice("");
   if(!writeEnabled){setError("Read-only prototype: submitting leave requires isolated local demo mode.");return;}
@@ -51,7 +51,7 @@ export function HrTimeOffExperience(){
   <section className="prototype-panel"><h2>My request history</h2>{myRequests.map(r=><div className="prototype-work-list" key={r.id}><strong>{r.startDate} to {r.endDate}</strong><span>{r.requestedHours} hours · {r.status}</span></div>)}{!myRequests.length&&<p>No requests recorded.</p>}</section>
  </div>
  <section className="prototype-panel"><h2>Records & controls</h2><button type="button" disabled={!rows.length} onClick={exportHistory}><Download size={15}/> Export authorized leave history</button>
- <button type="button" onClick={()=>navigateToRoute("/people")}>HR review and self-service</button>
+ <button type="button" onClick={()=>navigateToRoute(personalOnly?"/my-account":"/people")}>{personalOnly?"Back to My Account":"HR review and self-service"}</button>
  <p className="prototype-note">A submitted request is not approved leave. Approval and PTO ledger changes require the existing authorized review workflow.</p></section>
  {notice&&<p role="status" className="prototype-note">{notice}</p>}{error&&<p role="alert" className="prototype-note">{error}</p>}
  </div>;
