@@ -380,7 +380,7 @@ function CustomerRecord({id,section}:{id:string;section:string}){
           <label>From <input type="date" aria-label="Statement from date" value={statementFrom} onChange={e=>setStatementFrom(e.target.value)}/></label>
           <label>To <input type="date" aria-label="Statement through date" value={statementThrough} onChange={e=>setStatementThrough(e.target.value)}/></label>
           <button type="button" onClick={()=>setStatementAscending(v=>!v)}>Order: {statementAscending?"ascending":"descending"}</button>
-          <button type="button" disabled={!statementRows.length> onClick={()=>downloadCsv("momentum-customer-statement-"+loc.id+".csv",statementRows,customerStatementColumns)}>Save filtered statement CSV</button>
+          <button type="button" disabled={!statementRows.length} onClick={()=>downloadCsv("momentum-customer-statement-"+loc.id+".csv",statementRows,customerStatementColumns)}>Save filtered statement CSV</button>
         </div>
         <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>{statementHeader("date","Date")}{statementHeader("location","Location")}{statementHeader("reference","Reference")}{statementHeader("type","Transaction")}{statementHeader("status","Status")}{statementHeader("debit","Debit")}{statementHeader("credit","Credit")}</tr></thead>
           <tbody>{statementRows.map((row,i)=><tr key={row.reference+"-"+row.date+"-"+row.type+"-"+i}><td>{row.date}</td><td>{row.location}</td><td>{row.reference}</td><td>{row.type}</td><td>{row.status}</td><td>{row.debit?row.debit.toFixed(2):"—"}</td><td>{row.credit?row.credit.toFixed(2):"—"}</td></tr>)}</tbody>
