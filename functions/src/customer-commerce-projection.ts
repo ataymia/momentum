@@ -1,4 +1,4 @@
-/* eslint-disable max-len, comma-spacing, indent, valid-jsdoc, space-before-blocks, keyword-spacing, arrow-parens, require-jsdoc, key-spacing, comma-dangle, one-var, semi-spacing, curly */
+/* eslint-disable max-len, comma-spacing, indent, space-before-blocks, keyword-spacing, arrow-parens, key-spacing, comma-dangle, one-var, semi-spacing, curly */
 /** Server-only, account-scoped projections. No raw Firestore finance shards leave this module. */
 export type Row=Record<string,unknown>;
 export type DocRows={accounts:Row[];orders:Row[];invoices:Row[];payments:Row[];allocations:Row[];credits:Row[];refunds:Row[]};
@@ -19,8 +19,12 @@ const price=(v:number)=>Math.round(v*100)/100;
 const dates=(value:unknown)=>txt(value).slice(0,10);
 const validId=(x:string)=>/^[A-Za-z0-9_-]{1,128}$/.test(x);
 
-/** Strict identity join: an enabled userAccess record AND matching, admin-owned
- * employeeDirectory record must explicitly assign the business locations. */
+/**
+ * Return locations authorized by two separately controlled identity records.
+ * @param {Row|undefined} access Trusted access record.
+ * @param {Row|undefined} directory Trusted directory profile.
+ * @return {string[]} Valid authorized location IDs.
+ */
 export function customerAccountIds(access:Row|undefined,directory:Row|undefined):string[]{
  if(!access||!directory||txt(access.role)!=="Customer"||txt(directory.role)!=="Customer"||
    txt(access.accountState)!=="Active"||!txt(access.email)||
@@ -29,6 +33,13 @@ export function customerAccountIds(access:Row|undefined,directory:Row|undefined)
  if(!Array.isArray(ids)||!ids.length||ids.length>100||ids.some(id=>typeof id!=="string"||!validId(id)))return[];
  return [...new Set(ids as string[])];
 }
+/**
+ * Project scoped receivables and order history without returning raw shards.
+ * @param {readonly string[]} ids Verified authorized location IDs.
+ * @param {DocRows} docs Source records.
+ * @param {number} limit Maximum visible entries.
+ * @return {CustomerFinanceSnapshot} Sanitized record projection.
+ */
 export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=500):CustomerFinanceSnapshot{
  const accountIds=new Set(ids.filter(validId));
  if(!accountIds.size)throw new Error("Customer has no verified account scope.");
