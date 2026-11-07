@@ -33,6 +33,9 @@ test("G02: concurrent device read states union without ever removing existing re
 test("G02: reject unreadable shard ownership, mixed partitions and overflow",()=>{
   const bucket=receiptBucket("alpha");
   assert.throws(()=>mergeReceiptBucket("uid-owner",bucket,{userId:"uid-other",bucket,ids:["alpha"]},new Set()));
+  assert.throws(()=>mergeReceiptBucket("uid-owner",bucket,{userId:"uid-owner",bucket,ids:["alpha","alpha"]},new Set()),/Duplicate/);
+  assert.throws(()=>mergeReceiptBucket("uid-owner",bucket,{userId:"uid-owner",bucket,ids:["alpha",null as unknown as string]},new Set()),/Invalid/);
+  assert.throws(()=>mergeReceiptBucket("uid-owner",bucket,{userId:"uid-owner",bucket,ids:undefined as unknown as string[]},new Set()),/Invalid/);
   const foreign="suffixes".split("").find(x=>receiptBucket(x)!==bucket);
   assert.ok(foreign);
   assert.throws(()=>mergeReceiptBucket("uid-owner",bucket,{userId:"uid-owner",bucket,ids:[foreign!]},new Set()));
