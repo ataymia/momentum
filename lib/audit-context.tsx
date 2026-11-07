@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { AUDIT_STORAGE_KEY, AuditChange, AuditEvent, AuditSensitivity, AuditState, auditEventFingerprint, collectAuditableRecords, createAuditSeed, diffAuditableRecords, mergeAuditSnapshots, normalizeAuditState, visibleAuditEvents } from "./audit-engine";
+import { AUDIT_STORAGE_KEY, AuditChange, AuditEvent, AuditSensitivity, AuditState, auditEventFingerprint, auditPersistencePreservesSource, collectAuditableRecords, createAuditSeed, diffAuditableRecords, mergeAuditSnapshots, normalizeAuditState, visibleAuditEvents } from "./audit-engine";
 import { useAccounting } from "./accounting-context";
 import { useBrandAmbassadors } from "./brand-ambassador-context";
 import { useCommerce } from "./commerce-context";
@@ -21,7 +21,7 @@ import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
 
 type ManualAuditInput = { module:string; collection:string; entityType:string; entityId:string; label:string; summary:string; sensitivity?:AuditSensitivity; relatedAccountId?:string; relatedUserId?:string; changes?:AuditChange[] };
-type AuditContextValue = { audit: AuditState; visibleEvents: AuditEvent[]; eventsForRecord: (entityType: string, entityId: string) => AuditEvent[]; eventsForAccount: (accountId: string) => AuditEvent[]; recordManualAudit: (input:ManualAuditInput)=>boolean; resetAudit: () => boolean };
+type AuditContextValue = { audit: AuditState; visibleEvents: AuditEvent[]; eventsForRecord: (entityType: string, entityId: string) => AuditEvent[]; eventsForAccount: (accountId: string) => AuditEvent[]; recordManualAudit: (input:ManualAuditInput)=>boolean; auditWriteBlocked:boolean; resetAudit: () => boolean };
 const AuditContext = createContext<AuditContextValue | null>(null);
 
 function readAudit() { if (typeof window === "undefined") return createAuditSeed(); try { return normalizeAuditState(JSON.parse(momentumStorage.getItem(AUDIT_STORAGE_KEY) ?? "null")); } catch { return createAuditSeed(); } }
@@ -46,7 +46,18 @@ export function AuditProvider({ children }: { children: ReactNode }) {
   const [audit, setAudit] = useState<AuditState>(() => readAudit());
   const previous = useRef<ReturnType<typeof mergeAuditSnapshots> | null>(null);
 
-  useEffect(() => { if (typeof window !== "undefined") momentumStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify(audit)); }, [audit]);
+  // A malformed or partially normalized historical snapshot stays untouched.
+  // Display and recovery remain possible, but no browser rewrite may erase it.
+  const auditWriteBlocked=useMemo(()=>{
+    if(typeof window==="undefined"||runtime.isDemo)return false;
+    try{return !auditPersistencePreservesSource(momentumStorage.getItem(AUDIT_STORAGE_KEY),audit);}
+    catch{return true;}
+  },[audit,runtime.isDemo]);
+  useEffect(() => {
+    if(typeof window!=="undefined"&&!auditWriteBlocked){
+      momentumStorage.setItem(AUDIT_STORAGE_KEY,JSON.stringify(audit));
+    }
+  },[audit,auditWriteBlocked]);
   useRemoteStorageSync(AUDIT_STORAGE_KEY, () => setAudit(readAudit()));
 
   const auditableFieldTracking = useMemo(() => ({
@@ -102,21 +113,21 @@ export function AuditProvider({ children }: { children: ReactNode }) {
       const existing = new Set(state.events.map(auditEventFingerprint));
       const verified = additions.filter((event) => !existing.has(auditEventFingerprint(event)));
       if (!verified.length) return state;
-      return { ...state, events: [...verified, ...state.events].sort((left, right) => right.at.localeCompare(left.at)).slice(0, 10000) };
+      return { ...state, events: [...verified, ...state.events].sort((left, right) => right.at.localeCompare(left.at)) };
     });
   }, [snapshots, data.users]);
 
   const visibleEvents = useMemo(() => visibleAuditEvents(currentUser, data, audit.events), [currentUser, data, audit.events]);
   const recordManualAudit = (input:ManualAuditInput) => {
-    if (!currentUser || !input.module.trim() || !input.collection.trim() || !input.entityType.trim() || !input.entityId.trim() || !input.label.trim() || !input.summary.trim()) return false;
-    const changes=(input.changes??[]).filter((change)=>change.field?.trim()).slice(0,20);
-    const event:AuditEvent={id:`audit-manual-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,at:new Date().toISOString(),actorId:currentUser.id,actorRole:currentUser.role,action:"Updated",module:input.module.trim(),collection:input.collection.trim(),entityType:input.entityType.trim(),entityId:input.entityId.trim(),label:input.label.trim(),summary:input.summary.trim(),sensitivity:input.sensitivity??"admin",relatedAccountId:input.relatedAccountId,relatedUserId:input.relatedUserId,changes};
-    setAudit((state)=>({...state,events:[event,...state.events].slice(0,10000)}));
+    if (auditWriteBlocked || !currentUser || !input.module.trim() || !input.collection.trim() || !input.entityType.trim() || !input.entityId.trim() || !input.label.trim() || !input.summary.trim()) return false;
+    const changes=(input.changes??[]).filter((change)=>change.field?.trim());
+    const event:AuditEvent={id:`audit-manual-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,at:new Date().toISOString(),actorId:currentUser.id,actorRole:currentUser.role,provenanceStatus:"source-reported",action:"Updated",module:input.module.trim(),collection:input.collection.trim(),entityType:input.entityType.trim(),entityId:input.entityId.trim(),label:input.label.trim(),summary:input.summary.trim(),sensitivity:input.sensitivity??"admin",relatedAccountId:input.relatedAccountId,relatedUserId:input.relatedUserId,changes};
+    setAudit((state)=>({...state,events:[event,...state.events]}));
     return true;
   };
   const resetAudit = () => { if (!runtime.isDemo || currentUser?.role !== "Administrator") return false; setAudit(createAuditSeed()); previous.current = snapshots; return true; };
   const eventsForRecord = (entityType: string, entityId: string) => visibleEvents.filter((event) => event.entityType === entityType && event.entityId === entityId);
   const eventsForAccount = (accountId: string) => visibleEvents.filter((event) => event.relatedAccountId === accountId || (event.entityType === "Workspace.accounts" && event.entityId === accountId));
-  return <AuditContext.Provider value={{ audit, visibleEvents, eventsForRecord, eventsForAccount, recordManualAudit, resetAudit }}>{children}</AuditContext.Provider>;
+  return <AuditContext.Provider value={{ audit, visibleEvents, eventsForRecord, eventsForAccount, recordManualAudit, auditWriteBlocked, resetAudit }}>{children}</AuditContext.Provider>;
 }
 export function useAudit() { const value = useContext(AuditContext); if (!value) throw new Error("useAudit must be used inside AuditProvider"); return value; }

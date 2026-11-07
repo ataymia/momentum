@@ -334,6 +334,37 @@ service cloud.firestore {
       allow delete: if isEmployee() && request.auth.uid == uid;
     }
 
+    // User-owned, append-only notification read receipts shared by signed-in devices.
+    // Receipts are presentation metadata, never proof of an operational action.
+    // Even Administrators cannot view or alter another employee's receipts.
+    match /notificationReadReceipts/{uid}/buckets/{bucket} {
+      allow get: if isEmployee()
+        && uid == request.auth.uid && bucket.matches('^[0-9a-f]$');
+      // Explicit document lookups only; collection enumeration is unnecessary.
+      allow list: if false;
+      allow create: if isEmployee()
+        && uid == request.auth.uid && bucket.matches('^[0-9a-f]$')
+        && request.resource.data.keys().hasOnly(['userId','bucket','ids'])
+        && request.resource.data.userId == uid
+        && request.resource.data.bucket == bucket
+        && request.resource.data.ids is list
+        && request.resource.data.ids.size() > 0
+        && request.resource.data.ids.size() <= 800;
+      allow update: if isEmployee()
+        && uid == request.auth.uid && bucket.matches('^[0-9a-f]$')
+        && request.resource.data.keys().hasOnly(['userId','bucket','ids'])
+        && request.resource.data.userId == uid
+        && request.resource.data.bucket == bucket
+        && request.resource.data.ids is list
+        && resource.data.userId == uid
+        && resource.data.bucket == bucket
+        && resource.data.ids is list
+        && request.resource.data.ids.size() <= 800
+        && request.resource.data.ids.size() >= resource.data.ids.size()
+        && request.resource.data.ids.hasAll(resource.data.ids);
+      allow delete: if false;
+    }
+
     // Delivery corrections are evaluated and committed atomically by trusted Functions.
     // Browsers can review requests but cannot forge approvals, invoice revisions or stock.
     match /deliveryCorrectionRequests/{requestId} {

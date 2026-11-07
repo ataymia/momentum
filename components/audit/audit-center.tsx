@@ -3,6 +3,8 @@
 import { Search, ShieldCheck, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { AuditChange, AuditEvent } from "../../lib/audit-engine";
+import {recoverableUnverifiedAuditEvents} from "../../lib/audit-engine";
+import {auditRecoveryArchive} from "../../lib/audit-recovery";
 import { useAudit } from "../../lib/audit-context";
 import type { WorkspaceData } from "../../lib/types";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -31,15 +33,37 @@ function readableChanges(changes:AuditChange[],data:WorkspaceData):Array<{label:
 function eventSummary(event:AuditEvent,data:WorkspaceData):string{const changes=readableChanges(event.changes,data);if(event.action==="Created"){const detail=event.changes.find((change)=>change.field==="detail")?.after;return detail&&detail!=="null"&&detail!=="undefined"?detail:`${event.label} was created.`}if(event.action==="Deleted")return `${event.label} was removed.`;if(changes.length===0)return `${event.label} was updated.`;if(changes.length===1)return `${changes[0].label} changed from ${changes[0].before} to ${changes[0].after}.`;return `${changes.length} details were updated.`;}
 
 export function AuditCenter(){
-  const {visibleEvents}=useAudit();
+  const {audit,visibleEvents,auditWriteBlocked}=useAudit();
   const {currentUser,data}=useWorkspace();
   const [query,setQuery]=useState("");
   const [module,setModule]=useState("All");
+  const unverifiedCount=useMemo(()=>currentUser?.role==="Administrator"?
+    recoverableUnverifiedAuditEvents(audit).length:0,[currentUser?.role,audit]);
+  const downloadRecovery=()=>{
+    if(currentUser?.role!=="Administrator"||unverifiedCount===0||typeof document==="undefined")return;
+    const archive=auditRecoveryArchive(audit,new Date().toISOString());
+    const url=URL.createObjectURL(new Blob([JSON.stringify(archive,null,2)],{type:"application/json"}));
+    const link=document.createElement("a");
+    link.href=url;
+    link.download="momentum-unverified-audit-recovery.json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+  };
   const modules=useMemo(()=>["All",...Array.from(new Set(visibleEvents.map((event)=>event.module))).sort()],[visibleEvents]);
   const filtered=useMemo(()=>{const needle=query.trim().toLowerCase();return visibleEvents.filter((event)=>{if(module!=="All"&&event.module!==module)return false;if(!needle)return true;const actor=data.users.find((user)=>user.id===event.actorId)?.name??event.actorId;return[event.label,event.summary,moduleNames[event.module]??event.module,actor,...event.changes.map((change)=>`${humanField(change.field)} ${change.before??""} ${change.after??""}`)].join(" ").toLowerCase().includes(needle)}).slice(0,250)},[visibleEvents,query,module,data.users]);
   if(!currentUser||currentUser.role==="Customer")return null;
   return <Section title="Record history" action={<StatusPill tone="neutral">{visibleEvents.length} events</StatusPill>}>
+    {auditWriteBlocked&&<div className="audit-recovery-review" role="alert">
+      <p>Audit source protection is active: stored history contains records that cannot be preserved safely by automatic normalization. Saving new audit events is blocked, and the existing Firebase history has not been overwritten. An Administrator must reconcile the original records before resuming writes.</p>
+    </div>}
+    {currentUser.role==="Administrator"&&unverifiedCount>0&&<div className="audit-recovery-review" role="note">
+      <p>{unverifiedCount} legacy audit record{unverifiedCount===1?"":"s"} preserved separately because the originating user action or time cannot be verified. These are not shown as proven employee activity.</p>
+      <button type="button" onClick={downloadRecovery}>Export unverified history for source reconciliation</button>
+    </div>}
+    <p className="audit-source-note">Actor and time are recorded source metadata. Independent attribution requires authenticated server evidence; unverified legacy observations are excluded.</p>
     <div className="audit-toolbar"><label className="table-search"><Search size={16}/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Search history…"/></label><select aria-label="Filter record history by area" value={module} onChange={(event)=>setModule(event.target.value)}>{modules.map((item)=><option key={item} value={item}>{item==="All"?"All areas":moduleNames[item]??item}</option>)}</select></div>
-    <div className="audit-list">{filtered.map((event)=>{const actor=data.users.find((user)=>user.id===event.actorId);const changes=readableChanges(event.changes,data);return <article key={event.id} className="audit-item audit-item--readable"><span className="audit-item__icon"><ShieldCheck size={17}/></span><div className="audit-item__body"><div className="audit-item__head"><strong>{event.label}</strong><StatusPill tone={toneFor(event.action)} dot={false}>{event.action}</StatusPill></div><p>{eventSummary(event,data)}</p>{event.action==="Updated"&&changes.length>1&&<ul className="audit-readable-changes">{changes.map((change)=><li key={`${event.id}-${change.label}`}><span>{change.label}</span><b>{change.before}</b><em>to</em><b>{change.after}</b></li>)}</ul>}<small>{moduleNames[event.module]??event.module}</small></div><div className="audit-item__actor"><UserRound size={15}/><span>{actor?.name??(event.actorId==="system"?"Momentum system":`${event.actorRole} · ${event.actorId}`)}<small>{formatDate(event.at,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})}</small></span></div></article>})}{filtered.length===0&&<div className="review-empty"><ShieldCheck size={26}/><h3>No matching history</h3><p>No recorded events match this search.</p></div>}</div>
+    <div className="audit-list">{filtered.map((event)=>{const actor=data.users.find((user)=>user.id===event.actorId);const changes=readableChanges(event.changes,data);return <article key={event.id} className="audit-item audit-item--readable"><span className="audit-item__icon"><ShieldCheck size={17}/></span><div className="audit-item__body"><div className="audit-item__head"><strong>{event.label}</strong><StatusPill tone={toneFor(event.action)} dot={false}>{event.action}</StatusPill></div><p>{eventSummary(event,data)}</p>{event.action==="Updated"&&changes.length>1&&<ul className="audit-readable-changes">{changes.map((change)=><li key={`${event.id}-${change.label}`}><span>{change.label}</span><b>{change.before}</b><em>to</em><b>{change.after}</b></li>)}</ul>}<small>{moduleNames[event.module]??event.module}{event.provenanceStatus==="source-reported"?" · Source-reported attribution":""}</small></div><div className="audit-item__actor"><UserRound size={15}/><span>{actor?.name??(event.actorId==="system"?"Momentum system":`${event.actorRole} · ${event.actorId}`)}<small>{formatDate(event.at,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})}</small></span></div></article>})}{filtered.length===0&&<div className="review-empty"><ShieldCheck size={26}/><h3>No matching history</h3><p>No recorded events match this search.</p></div>}</div>
   </Section>;
 }

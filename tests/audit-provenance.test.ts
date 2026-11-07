@@ -3,10 +3,13 @@ import test from "node:test";
 import {readFileSync} from "node:fs";
 import {
   auditEventFingerprint,
+  auditPersistencePreservesSource,
   collectAuditableRecords,
   diffAuditableRecords,
   mergeAuditSnapshots,
   normalizeAuditState,
+  recoverableUnverifiedAuditEvents,
+  visibleAuditEvents,
   type AuditEvent,
 } from "../lib/audit-engine";
 import type { WorkspaceUser } from "../lib/types";
@@ -100,7 +103,7 @@ test("approval history uses the actual decision actor and decision timestamp", (
   assert.equal(event.at, "2026-10-06T20:00:00.000Z");
 });
 
-test("legacy unverified System events are removed and duplicate facts collapse", () => {
+test("unverified system history is preserved for recovery but hidden from attributed activity", () => {
   const verified: AuditEvent = {
     id:"audit-good-1",
     at:"2026-10-06T20:00:00.000Z",
@@ -125,9 +128,15 @@ test("legacy unverified System events are removed and duplicate facts collapse",
     actorRole:"System",
   };
   const state = normalizeAuditState({ version:1, events:[legacy, verified, duplicate] });
-  assert.equal(state.events.length, 1);
-  assert.equal(state.events[0].id, "audit-good-1");
-  assert.equal(auditEventFingerprint(state.events[0]), auditEventFingerprint(verified));
+  assert.equal(state.events.length, 3); // Two unique event IDs are two retained source records.
+  assert.equal(recoverableUnverifiedAuditEvents(state).length, 1);
+  assert.equal(recoverableUnverifiedAuditEvents(state)[0].id, "audit-legacy");
+  assert.equal(recoverableUnverifiedAuditEvents(state)[0].summary,legacy.summary);
+  assert.equal(recoverableUnverifiedAuditEvents(state)[0].at,legacy.at);
+  const visible=visibleAuditEvents(admin,{users:[admin],accounts:[]} as never,state.events);
+  assert.deepEqual(visible.map(event=>event.id),["audit-good-1","audit-good-2"]);
+  assert.equal(auditEventFingerprint(visible[0]), auditEventFingerprint(verified));
+  assert.deepEqual(recoverableUnverifiedAuditEvents(normalizeAuditState(state)).map(e=>e.id),["audit-legacy"]);
 });
 
 test("normalized history sorts by the real event timestamp", () => {
@@ -237,7 +246,7 @@ test("explicit HCM audit records keep their human actor and original timestamp",
 });
 
 
-test("legacy created history is retimed from its source timestamp instead of page-detection time", () => {
+test("account assignment dates never masquerade as creation dates", () => {
   const state = normalizeAuditState({
     version:1,
     events:[{
@@ -260,7 +269,9 @@ test("legacy created history is retimed from its source timestamp instead of pag
     }],
   });
   assert.equal(state.events.length, 1);
-  assert.equal(state.events[0].at, "2026-09-18T16:22:10.000Z");
+  assert.equal(state.events[0].at, "2026-10-06T23:30:00.000Z");
+  assert.equal(state.events[0].provenanceStatus,"unverified-legacy");
+  assert.equal(recoverableUnverifiedAuditEvents(state).length,1);
 });
 
 test("a reused unrelated audit snapshot does not generate spurious changes on field activity",()=>{
@@ -309,4 +320,171 @@ test("verified changes to actual business fields remain auditable",()=>{
   assert.ok(event);
   assert.equal(event.actorId,"admin-1");
   assert.deepEqual(event.changes,[{field:"stage",before:"Prospect",after:"Qualified"}]);
+  assert.equal(event.provenanceStatus,"source-reported");
+});
+
+test("reloaded CRM visits cannot credit the initial visitor with a later cache-only edit",()=>{
+  const before=collectAuditableRecords("CRM",{interactions:[{id:"visit-1",userId:"rep-1",occurredAt:"2026-10-02T18:00:00Z",summary:"Original"}]});
+  const after=collectAuditableRecords("CRM",{interactions:[{id:"visit-1",userId:"rep-1",occurredAt:"2026-10-02T18:00:00Z",summary:"Rehydrated text"}]});
+  assert.deepEqual(diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-11-06T18:00:00Z",[rep]),[]);
+});
+
+test("swapping actor metadata without changing source event time is not a new audit event",()=>{
+  const before=collectAuditableRecords("Workspace",{accounts:[{id:"account-1",name:"Market",stage:"Prospect",updatedBy:"admin-1",updatedAt:"2026-10-01T12:00:00Z"}]});
+  const after=collectAuditableRecords("Workspace",{accounts:[{id:"account-1",name:"Market",stage:"Qualified",updatedBy:"rep-1",updatedAt:"2026-10-01T12:00:00Z"}]});
+  assert.deepEqual(diffAuditableRecords(before,after,{id:"system",role:"System"},"2026-11-06T18:00:00Z",[rep,admin]),[]);
+});
+
+test("passive account sync is not attributed to the viewer even when their identity is passed",()=>{
+  const before=collectAuditableRecords("Workspace",{accounts:[{id:"account-1",name:"Market",stage:"Prospect"}]});
+  const after=collectAuditableRecords("Workspace",{accounts:[{id:"account-1",name:"Market",stage:"Qualified"}]});
+  assert.deepEqual(diffAuditableRecords(before,after,{id:"admin-1",role:"Administrator"},"2026-11-06T18:00:00Z",[admin]),[]);
+});
+
+test("same-millisecond audit writes with different changed fields remain independently recoverable",()=>{
+  const original={
+    id:"evt-1",at:"2026-10-06T20:00:00.000Z",actorId:"admin-1",actorRole:"Administrator",
+    action:"Updated" as const,module:"Workspace",collection:"accounts",
+    entityType:"Workspace.accounts",entityId:"acct-1",label:"Market",
+    summary:"Account changed",sensitivity:"operational" as const,
+    changes:[{field:"stage",before:"Prospect",after:"Qualified"}],
+  };
+  const next={...original,id:"evt-2",changes:[{field:"health",before:"New",after:"Strong"}]};
+  const state=normalizeAuditState({version:1,events:[original,next]});
+  assert.equal(state.events.length,2);
+  assert.notEqual(auditEventFingerprint(original),auditEventFingerprint(next));
+});
+test("explicitly source-verified account records are never quarantined for truncated diffs",()=>{
+  const original={
+    id:"verified-acct",at:"2026-10-06T20:00:00.000Z",actorId:"admin-1",
+    actorRole:"Administrator",action:"Created" as const,module:"Workspace",
+    collection:"accounts",entityType:"Workspace.accounts",entityId:"acct-1",
+    label:"Market",summary:"Account created",sensitivity:"operational" as const,
+    changes:[{field:"name",after:"Market"}],provenanceStatus:"verified" as const,
+  };
+  const state=normalizeAuditState({version:1,events:[original]});
+  assert.equal(state.events[0].provenanceStatus,"verified");
+  assert.equal(recoverableUnverifiedAuditEvents(state).length,0);
+});
+
+test("G04/G07: cache eviction cannot falsely label the last account editor as deleter",()=>{
+  const before=collectAuditableRecords("Workspace",{accounts:[{
+    id:"account-vanish",name:"Market",stage:"Qualified",
+    updatedBy:"admin-1",updatedAt:"2026-10-05T12:00:00Z",
+  }]});
+  const empty=collectAuditableRecords("Workspace",{accounts:[]});
+  const events=diffAuditableRecords(before,empty,
+    {id:"system",role:"System"},"2026-11-06T18:00:00Z",[admin]);
+  assert.deepEqual(events,[]);
+});
+
+test("G08: recovered unverified record keeps its original timestamp, actor and text",()=>{
+  const original={
+    id:"legacy-snapshot",at:"2026-11-02T12:00:00Z",actorId:"system",
+    actorRole:"System",action:"Updated" as const,module:"Workspace",
+    collection:"accounts",entityType:"Workspace.accounts",entityId:"acct-legacy",
+    label:"Market",summary:"Original imported note",sensitivity:"operational" as const,
+    changes:[{field:"updatedAt",before:"2026-10-01T01:00:00Z",after:"2026-10-03T01:00:00Z"}],
+  };
+  const recovered=normalizeAuditState({version:1,events:[original]}).events[0];
+  assert.equal(recovered.at,original.at);
+  assert.equal(recovered.actorId,original.actorId);
+  assert.equal(recovered.actorRole,original.actorRole);
+  assert.equal(recovered.summary,original.summary);
+  assert.equal(normalizeAuditState({version:1,events:[recovered]}).events[0].at,original.at);
+});
+
+test("G07: source-reported audit evidence is never silently promoted to verified status",()=>{
+  const event={
+    id:"source-1",at:"2026-11-05T14:00:00Z",actorId:"admin-1",
+    actorRole:"Administrator",action:"Updated" as const,module:"Workspace",
+    collection:"accounts",entityType:"Workspace.accounts",entityId:"account-1",
+    label:"Business",summary:"Business stage updated",
+    changes:[{field:"stage",before:"Prospect",after:"Qualified"}],
+    sensitivity:"operational" as const,provenanceStatus:"source-reported" as const,
+  };
+  const recovered=normalizeAuditState({version:1,events:[event]}).events[0];
+  assert.equal(recovered.provenanceStatus,"source-reported");
+  assert.equal(recovered.at,event.at);
+  assert.equal(recovered.actorId,event.actorId);
+});
+
+test("G08: normalizing more than ten thousand source audit records is lossless",()=>{
+  const changes=Array.from({length:37},(_,i)=>({field:"field-"+i,before:"before-"+i,after:"after-"+i}));
+  const records=Array.from({length:10023},(_,i)=>({
+    id:"historic-"+i,
+    at:new Date(Date.UTC(2025,0,1,0,i)).toISOString(),
+    actorId:"admin-1",actorRole:"Administrator",action:"Updated" as const,
+    module:"Workspace",collection:"accounts",entityType:"Workspace.accounts",
+    entityId:"account-"+(i%7),label:"Legacy company",summary:"Recorded update "+i,
+    sensitivity:"operational" as const,provenanceStatus:"source-reported" as const,
+    changes,
+  }));
+  const normalized=normalizeAuditState({version:1,events:records});
+  assert.equal(normalized.events.length,records.length);
+  assert.equal(new Set(normalized.events.map(x=>x.id)).size,records.length);
+  assert.equal(normalized.events.find(x=>x.id==="historic-0")?.changes.length,changes.length);
+  assert.equal(normalized.events.find(x=>x.id==="historic-10022")?.summary,"Recorded update 10022");
+  assert.equal(normalizeAuditState(normalized).events.length,records.length);
+});
+
+test("G08: two distinct historical event IDs with identical content survive normalization",()=>{
+  const common={at:"2026-11-02T02:00:00.000Z",actorId:"admin-1",actorRole:"Administrator",
+    action:"Updated" as const,module:"Workspace",collection:"accounts",
+    entityType:"Workspace.accounts",entityId:"account-1",label:"Account",
+    summary:"Updated account",sensitivity:"operational" as const,
+    changes:[{field:"stage",before:"Prospect",after:"Qualified"}]};
+  const normalized=normalizeAuditState({version:1,events:[{...common,id:"event-first"},{...common,id:"event-second"}]});
+  assert.deepEqual(normalized.events.map(x=>x.id),["event-first","event-second"]);
+});
+
+test("G08: persistence guard refuses a rewrite that would silently erase malformed or omitted history",()=>{
+  const source={version:1,events:[{
+    id:"old-1",at:"2026-11-02T02:00:00.000Z",actorId:"admin-1",
+    actorRole:"Administrator",action:"Updated",module:"Workspace",
+    collection:"accounts",entityType:"Workspace.accounts",entityId:"acc-1",
+    label:"Account",summary:"Original",changes:[{field:"name",before:"A",after:"B"}],
+  }]};
+  const recovered=normalizeAuditState(source);
+  assert.equal(auditPersistencePreservesSource(JSON.stringify(source),recovered),true);
+  assert.equal(auditPersistencePreservesSource(JSON.stringify(source),{version:1,events:[]}),false);
+  assert.equal(auditPersistencePreservesSource(JSON.stringify(source),{...recovered,
+    events:recovered.events.map(e=>({...e,changes:[]}))}),false);
+  assert.equal(auditPersistencePreservesSource(JSON.stringify(source),{...recovered,
+    events:recovered.events.map(e=>({...e,actorId:"different-user"}))}),false);
+  assert.equal(auditPersistencePreservesSource("not-json",recovered),false);
+  assert.equal(auditPersistencePreservesSource(null,recovered),true);
+  assert.equal(auditPersistencePreservesSource(JSON.stringify({
+    version:1,events:[...source.events,{...source.events[0],id:"old-broken",changes:[null]}],
+  }),recovered),false);
+});
+
+test("G08: changes used for provenance guesses never mutate original source attribution",()=>{
+  const source={version:1,events:[{
+    id:"old-2",at:"2026-11-02T02:00:00.000Z",actorId:"admin-1",
+    actorRole:"Administrator",action:"Updated",module:"Workspace",
+    collection:"accounts",entityType:"Workspace.accounts",entityId:"acc-1",
+    label:"Account",summary:"Original",changes:[
+      {field:"updatedAt",after:"2026-11-06T22:00:00.000Z"},
+    ],
+  }]};
+  const result=normalizeAuditState(source);
+  assert.equal(result.events[0].at,"2026-11-02T02:00:00.000Z");
+  assert.equal(result.events[0].actorId,"admin-1");
+  assert.equal(auditPersistencePreservesSource(JSON.stringify(source),result),true);
+});
+
+test("G08: new audit events record every changed field, not just the first twenty",()=>{
+  const before=collectAuditableRecords("Workspace",{accounts:[{id:"account-long",name:"Account",
+    updatedBy:"admin-1",updatedAt:"2026-11-05T10:00:00.000Z",
+    ...Object.fromEntries(Array.from({length:32},(_,i)=>["field"+i,"old"+i])),
+  }]});
+  const after=collectAuditableRecords("Workspace",{accounts:[{id:"account-long",name:"Account",
+    updatedBy:"admin-1",updatedAt:"2026-11-06T10:00:00.000Z",
+    ...Object.fromEntries(Array.from({length:32},(_,i)=>["field"+i,"new"+i])),
+  }]});
+  const [event]=diffAuditableRecords(before,after,{id:"system",role:"System"});
+  assert.ok(event);
+  assert.equal(event.changes.length,32);
+  assert.equal(event.changes[31].field,"field31");
 });

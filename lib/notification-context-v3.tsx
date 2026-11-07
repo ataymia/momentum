@@ -40,31 +40,25 @@ import {meetingNotices} from "./workspace-meetings";
 import {mergeFirstSeenTimes,notificationDisplayTime,parseFirstSeenTimes} from "./notification-display-time";
 
 const READ_KEY="momentum-derived-notification-read-v1";
+const sameReceiptIds=(left:ReadonlySet<string>,right:ReadonlySet<string>)=>
+  left.size===right.size&&[...left].every(id=>right.has(id));
 const FIRST_SEEN_KEY="momentum-notification-first-seen-v1";
 
-const readIds=(userId:string)=>{
+const readIds=(userId:string):Set<string>=>{
   if(typeof window==="undefined")return new Set<string>();
-  try{
-    const parsed=JSON.parse(
-      window.localStorage.getItem(`${READ_KEY}:${userId}`)??"[]",
-    );
-    return new Set(
-      Array.isArray(parsed)?
-        parsed.filter((item):item is string=>typeof item==="string"):
-        [],
-    );
-  }catch{
-    return new Set<string>();
-  }
+  try{return parseReadReceipts(JSON.parse(
+    window.localStorage.getItem(`${READ_KEY}:${userId}`)??"[]",
+  ));}
+  catch{return new Set<string>();}
 };
 
-const persist=(userId:string,ids:Set<string>)=>{
+const persist=(userId:string,ids:ReadonlySet<string>):Set<string>=>{
+  const merged=mergeReadReceipts(readIds(userId),ids);
   if(typeof window!=="undefined"){
-    window.localStorage.setItem(
-      `${READ_KEY}:${userId}`,
-      JSON.stringify([...ids].slice(-1000)),
-    );
+    try{window.localStorage.setItem(`${READ_KEY}:${userId}`,JSON.stringify([...merged]));}
+    catch{/* Storage can be blocked. Do not break the notification UI. */}
   }
+  return merged;
 };
 
 const readFirstSeen=(userId:string):Record<string,string>=>{
@@ -77,6 +71,7 @@ type NotificationContextValue={
   unreadCount:number;
   markRead:(id:string)=>void;
   markAllRead:()=>void;
+  readSyncStatus:"local"|"pending"|"synced"|"unavailable";
 };
 
 const NotificationContext=createContext<NotificationContextValue|null>(null);
@@ -105,25 +100,67 @@ function NotificationBridge({
   const [firstSeen,setFirstSeen]=useState<Record<string,string>>(
     ()=>readFirstSeen(userId),
   );
+  const [readSyncStatus,setReadSyncStatus]=useState<NotificationContextValue["readSyncStatus"]>("local");
+  const [cloudPulse,setCloudPulse]=useState(0);
+  // Never synchronize demo impersonation or another person's user ID.
+  const canCloudSync=Boolean(firebase?.status==="ready"&&firebase.session?.uid===userId
+    &&currentUser?.id===userId);
 
   useEffect(()=>{
     const timer=window.setInterval(()=>setClock(new Date()),60_000);
     return()=>window.clearInterval(timer);
   },[]);
 
-  useEffect(()=>persist(userId,readDerived),[userId,readDerived]);
   useEffect(()=>{
-    if(typeof window!=="undefined")window.localStorage.setItem(FIRST_SEEN_KEY+":"+userId,JSON.stringify(firstSeen));
+    persist(userId,readDerived);
+  },[userId,readDerived]);
+  useEffect(()=>{
+    if(typeof window==="undefined")return;
+    const merged=mergeFirstSeenRecords(readFirstSeen(userId),firstSeen);
+    try{window.localStorage.setItem(FIRST_SEEN_KEY+":"+userId,JSON.stringify(merged));}
+    catch{/* Presentation metadata must never block the application. */}
+
   },[userId,firstSeen]);
   // A second tab must not resurrect notifications that another tab already cleared.
   useEffect(()=>{
     const onStorage=(event:StorageEvent)=>{
-      if(event.key===READ_KEY+":"+userId)setReadDerived(readIds(userId));
-      if(event.key===FIRST_SEEN_KEY+":"+userId)setFirstSeen(readFirstSeen(userId));
+      if(event.key===READ_KEY+":"+userId)setReadDerived(current=>mergeReadReceipts(current,readIds(userId)));
+      if(event.key===FIRST_SEEN_KEY+":"+userId)setFirstSeen(current=>mergeFirstSeenRecords(current,readFirstSeen(userId)));
     };
     window.addEventListener("storage",onStorage);
     return()=>window.removeEventListener("storage",onStorage);
   },[userId]);
+
+  // Device-local receipts are immediate. Firestore synchronization is best-effort,
+  // owner-only and compare-and-swap; offline failures never erase local acknowledgments.
+  useEffect(()=>{
+    if(!canCloudSync)return;
+    const refresh=()=>setCloudPulse(n=>n+1);
+    const timer=window.setInterval(refresh,120_000);
+    window.addEventListener("online",refresh);
+    window.addEventListener("focus",refresh);
+    return()=>{window.clearInterval(timer);window.removeEventListener("online",refresh);
+      window.removeEventListener("focus",refresh);};
+  },[canCloudSync]);
+
+  useEffect(()=>{
+    if(!canCloudSync)return;
+    let active=true;
+    const timer=window.setTimeout(()=>{
+      setReadSyncStatus("pending");
+      void reconcileCloudReadReceipts(userId,readDerived).then(remote=>{
+        if(!active)return;
+        setReadSyncStatus("synced");
+        setReadDerived(current=>{
+          const joined=mergeReadReceipts(current,remote);
+          return sameReceiptIds(current,joined)?current:joined;
+        });
+      }).catch(()=>{
+        if(active)setReadSyncStatus("unavailable");
+      });
+    },250);
+    return()=>{active=false;window.clearTimeout(timer);};
+  },[canCloudSync,userId,readDerived,cloudPulse]);
 
   useEffect(()=>{
     if(!firebase||currentUser?.role!=="Administrator")return;
@@ -146,6 +183,8 @@ function NotificationBridge({
 
     const addIntent=(intent:NotificationIntent)=>{
       if(!notificationBellEnabled(intent.policyId))return;
+      // Do not resurrect years of historical status events as new unread mail.
+      if(!shouldSurfaceBellIntent(intent,clock))return;
       const id=`derived-intent:${intent.id}`;
       if(intent.recipientUserId!==currentUser.id)return;
       const stamp=notificationDisplayTime(intent.occurredAt,firstSeen[id],evaluatedAt);
@@ -296,19 +335,14 @@ function NotificationBridge({
   ).length;
 
   const markRead=(id:string)=>{
-    setReadDerived((current)=>{
-      const next=new Set(current);
-      next.add(id);
-      return next;
-    });
+    if(canCloudSync)setReadSyncStatus("pending");
+    setReadDerived(current=>mergeReadReceipts(current,readIds(userId),new Set([id])));
   };
 
   const markAllRead=()=>{
-    setReadDerived((current)=>{
-      const next=new Set(current);
-      for(const item of currentUserItems)next.add(item.id);
-      return next;
-    });
+    if(canCloudSync)setReadSyncStatus("pending");
+    setReadDerived(current=>mergeReadReceipts(current,readIds(userId),
+      new Set(currentUserItems.map(item=>item.id))));
   };
 
   return <NotificationContext.Provider value={{
@@ -316,6 +350,7 @@ function NotificationBridge({
     unreadCount,
     markRead,
     markAllRead,
+    readSyncStatus,
   }}>
     {children}
   </NotificationContext.Provider>;

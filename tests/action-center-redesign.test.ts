@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import test from "node:test";
 import {canVisitRoute,pageForPath,requiresPrototypePage} from "../lib/navigation-route-registry";
+import {deliveryAssignmentStillOpen} from "../lib/action-center-policy-v2";
 import type {Role,WorkspaceUser} from "../lib/types";
 
 const makeUser=(role:Role):WorkspaceUser=>({
@@ -31,4 +32,9 @@ test("Action Center hides invented times for undated tasks",()=>{
   const src=readFileSync("components/prototype/action-center-experience.tsx","utf8");
   assert.match(src,/Date not recorded/);
   assert.match(src,/dateLabel\(item\.occurredAt\)/);
+});
+
+test("G01: completed or cancelled deliveries do not remain active badge actions",()=>{
+  for(const state of ["Accepted","Loaded","In transit"] as const)assert.equal(deliveryAssignmentStillOpen(state),true);
+  for(const state of ["Delivered","Cancelled"] as const)assert.equal(deliveryAssignmentStillOpen(state),false);
 });
