@@ -44,3 +44,7 @@ Owner action: approve one initial provider architecture and merchant account; no
 3. Latest full GitHub audit green on the final commit; security rules and Functions build green.
 4. Staging browser/mobile testing with real roles and fake processor sandbox tokens; no real-charge QA.
 5. Written owner approval to merge, activate notifications or deploy. A PR never satisfies this gate automatically.
+
+### Finance email safety check (2026-11-07)
+- Payment and refund notification policies formerly trusted Administrator-authored finance shard transitions. These are not processor-confirmed, so they are now fail-closed: no customer or sales-rep payment/refund email may originate from these editable shards.
+- The existing gated notification transport stays available for authenticated order confirmation and departure emails. A future signed processor webhook must create a separate verified intent, with settlement evidence, source idempotency and provider-to-invoice linkage, before payment/paid notifications can be activated.

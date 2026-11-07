@@ -55,30 +55,18 @@ test("dispatch only alerts after loaded task actually departs",()=>{
   }),[]);
 });
 
-test("payments distinguish settled, failed and reversed from mere Pending",()=>{
+test("D16 payment/refund email intents are blocked on client-writable finance statuses",()=>{
  const payment={id:"p",status:"Pending"};
  const path="domains/commerce/fields/payments";
- assert.deepEqual(m.transitionPolicies(path,payment,{
-   ...payment,status:"Cleared",settledAt:at,settledBy:"admin",
- }),["payment.received.customer"]);
- assert.deepEqual(m.transitionPolicies(path,payment,{
-   ...payment,status:"Failed",failedAt:at,failureReason:"Declined",
- }),["payment.failed.customer"]);
- assert.deepEqual(m.transitionPolicies(path,{
-   ...payment,status:"Cleared",
- },{
-   ...payment,status:"Reversed",reversedAt:at,
-   reversalReason:"Confirmed reversal",
- }),["payment.refunded.customer","payment.refunded.rep"]);
- assert.deepEqual(m.transitionPolicies(path,payment,{
-   ...payment,status:"Cleared",
- }),[]);
+ for(const next of [
+  {...payment,status:"Cleared",settledAt:at,settledBy:"admin"},
+  {...payment,status:"Failed",failedAt:at,failureReason:"Declined"},
+  {...payment,status:"Reversed",reversedAt:at,reversalReason:"Confirmed reversal"},
+ ])assert.deepEqual(m.transitionPolicies(path,payment,next),[]);
  assert.deepEqual(m.transitionPolicies(
-  "domains/commerce/fields/refunds",{
-   id:"r",status:"Sent",
-  },{
-   id:"r",status:"Settled",settledAt:at,sentReference:"ref-1",
-  }),["payment.refunded.customer","payment.refunded.rep"]);
+  "domains/commerce/fields/refunds",
+  {id:"r",status:"Sent"},{id:"r",status:"Settled",settledAt:at,sentReference:"ref-1"}
+ ),[]);
 });
 
 test("status routing and employee separation enforce approval",()=>{
