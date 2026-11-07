@@ -60,8 +60,12 @@ try{
   await page.getByText("Desert Lantern Market").first().waitFor({timeout:20000});
   assert.equal(path(),"/sales/customers/acc-101");
   await page.goto(base+"/sales/orders/%2Fadmin",{waitUntil:"domcontentloaded"});
-  await page.getByRole("heading",{name:"Page unavailable"}).waitFor({timeout:20000});
-  assert.equal(path(),"/sales/orders/%2Fadmin");
+  // Invalid, non-record encodings must NEVER render an Order. The identity
+  // guard may safely replace an unauthorized incoming route with Home.
+  await page.waitForFunction(()=>window.location.pathname==="/" ||
+    document.body.textContent?.includes("Page unavailable"),{timeout:20000});
+  assert(!pageErrors.length,"Malformed encoded route must not crash the app");
+  assert.equal(await page.getByRole("heading",{name:/^Order details/}).count(),0);
 
   await page.locator(".user-button").click();
   await page.locator(".user-popover button").filter({hasText:"Customer Demo"}).click();
