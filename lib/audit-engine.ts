@@ -111,15 +111,17 @@ export function normalizeAuditState(input: unknown): AuditState {
     const unverifiedLegacy = event.provenanceStatus === "unverified-legacy" ||
       (event.provenanceStatus !== "verified" && (
         (event.actorId === "system" && event.actorRole === "System") ||
+        (!event.provenanceStatus && (repaired.at !== event.at || repaired.actorId !== event.actorId)) ||
         (event.collection === "accounts" && event.action === "Created" &&
           !changes.some(change => change.field === "createdAt" && preciseInstant(change.after)))));
     const normalized: AuditEvent = {
       id: event.id,
-      // Unverified history is evidence to preserve, not to silently rewrite.
-      // An authenticated event already carrying provenance must keep its source time.
-      at: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.at! : repaired.at,
-      actorId: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.actorId! : repaired.actorId,
-      actorRole: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.actorRole! : repaired.actorRole,
+      // The source event is immutable evidence, even when old field metadata
+      // suggests an alternative actor or timestamp. Never rewrite historical
+      // fields during a read/normalization pass.
+      at: event.at!,
+      actorId: event.actorId!,
+      actorRole: event.actorRole!,
       action: event.action,
       module: event.module,
       collection: event.collection,
@@ -140,6 +142,38 @@ export function normalizeAuditState(input: unknown): AuditState {
     events.push(normalized);
   }
   return { version: 1, events: events.sort((left, right) => right.at.localeCompare(left.at)) };
+}
+
+
+/**
+ * Audit writes must never shrink or rewrite persisted historical source facts.
+ * This also fails closed on corrupt JSON, missing event identities, duplicated IDs,
+ * or a migration that silently normalized away stored change fields.
+ * It protects the browser persistence boundary, not server-side administrator access.
+ */
+export function auditPersistencePreservesSource(raw:string|null,next:AuditState):boolean{
+  if(raw===null)return true;
+  let parsed:unknown;
+  try{parsed=JSON.parse(raw);}catch{return false;}
+  if(parsed===null)return true;
+  if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))return false;
+  const historical=(parsed as {events?:unknown}).events;
+  if(!Array.isArray(historical))return false;
+  const nextById=new Map(next.events.map(item=>[item.id,item]));
+  const seen=new Set<string>();
+  for(const row of historical){
+    if(!row||typeof row!=="object"||Array.isArray(row))return false;
+    const source=row as Record<string,unknown>;
+    if(typeof source.id!=="string"||!source.id||seen.has(source.id))return false;
+    seen.add(source.id);
+    const retained=nextById.get(source.id);
+    if(!retained||!Array.isArray(source.changes))return false;
+    for(const key of ["at","actorId","actorRole","action","module","collection","entityType","entityId","label","summary"] as const){
+      if(source[key]!==retained[key])return false;
+    }
+    if(JSON.stringify(source.changes)!==JSON.stringify(retained.changes))return false;
+  }
+  return true;
 }
 
 function recordLabel(record: Record<string, unknown>, id: string) {
