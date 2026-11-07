@@ -16,7 +16,7 @@ for(const line of menu.split("\n")){
   if(item&&groupName)groups[groupName].push({label:item[1],path:item[2],permission:item[3],state:item[4]});
 }
 const pages=Object.entries(groups).flatMap(([group,entries])=>entries.map(e=>({...e,group})));
-assert.equal(pages.length,84,"All 84 declared staff menu destinations must be audited");
+assert.equal(pages.length,83,"All 83 declared staff menu destinations must be audited, including personal Account");
 
 const browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
 const context=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1, reducedMotion:"reduce"});
