@@ -52,6 +52,7 @@ test("R09 personal Account only resolves the signed-in employee, not an arbitrar
   const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
   assert.match(accountUi,/userId===currentUser\.id/);
   assert.match(accountUi,/employeeId===currentUser\.id/);
+  assert.match(accountUi,/payroll\.runs\.filter\(run=>run\.status==="Released"\)/);
   assert.match(accountUi,/scope\.timecards\.filter\(item=>item\.userId===currentUser\.id\)/);
   assert.match(hub,/HrTimeOffExperience personalOnly/);
   assert.match(hub,/CompletedWorkExperience personalOnly/);
