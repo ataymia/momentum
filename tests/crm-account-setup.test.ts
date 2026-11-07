@@ -40,3 +40,9 @@ test("Account Setup now starts with new business creation and preserves existing
  assert.match(sourceCode,/duplicateId&&/);
  assert.match(sourceCode,/No pricing, orders, bonuses, tax verification or external commitments/);
 });
+
+test("new-account hydration cannot fall back to editing an unrelated existing customer",()=>{
+  const src=source();
+  assert.match(src,/const account=accountId\?scope\.accounts\.find\(a=>a\.id===accountId\):scope\.accounts\[0\]/);
+  assert.doesNotMatch(src,/scope\.accounts\.find\(a=>a\.id===accountId\)\|\|scope\.accounts\[0\]/);
+});
