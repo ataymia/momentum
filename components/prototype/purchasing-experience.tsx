@@ -1,9 +1,10 @@
 "use client";
 
-import {useEffect,useMemo,useState,type FormEvent} from "react";
+import {useEffect,useMemo,useState,useSyncExternalStore,type FormEvent} from "react";
 import {ArrowLeft,ArrowUpDown,Search,ShieldCheck} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {momentumStorage} from "../../lib/persistence";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {GOLDEN_EAGLE_SKUS,skuById} from "../../lib/product-catalog";
@@ -21,6 +22,9 @@ const sectionTitles:Record<Section,string>={
   bills:"Supplier Bills",payments:"Payments Made",credits:"Vendor Credits",
 };
 const sections=new Set(Object.keys(sectionTitles));
+const subscribeBrowser=()=>()=>{};
+const clientSnapshot=()=>true;
+const serverSnapshot=()=>false;
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n/100);
 const date=(v?:string)=>v?v.slice(0,10):"Not recorded";
 const cents=(s:string)=>Math.round(Number(s)*100);
@@ -31,7 +35,7 @@ const defaultDate=()=>new Date().toISOString().slice(0,10);
 const vendorName=(s:PurchasingState,id:string)=>s.vendors.find(v=>v.id===id)?.name??"Unknown vendor";
 const poName=(s:PurchasingState,id:string)=>s.orders.find(p=>p.id===id)?.id??"Unknown order";
 
-function PurchasingForm({section,state,run,role}:{section:Section;state:PurchasingState;run:(a:PurchaseAction)=>void;role:string}){
+function PurchasingForm({section,state,run,role}:{section:Section;state:PurchasingState;run:(a:PurchaseAction)=>boolean;role:string}){
   const isAdmin=role==="Administrator";const canPrepare=isAdmin||role==="Operations";
   const canReceive=canPrepare||role==="Warehouse";
   const canCreate=(section==="receipts"?canReceive:section==="orders"||section==="expenses"?canPrepare:isAdmin);
@@ -53,8 +57,9 @@ function PurchasingForm({section,state,run,role}:{section:Section;state:Purchasi
       case "credits":action={kind:"credit.record",billId:field(fd,"bill"),reference:field(fd,"reference"),reason:field(fd,"reason"),amountCents:cents(field(fd,"amount"))};break;
       case "expenses":action={kind:"expense.record",vendorId:field(fd,"vendor")||undefined,description:field(fd,"description"),amountCents:cents(field(fd,"amount"))};break;
     }
-    run(action);
-    e.currentTarget.reset();setSelection("");
+    if(run(action)){
+      e.currentTarget.reset();setSelection("");
+    }
   };
   const poOptions=orders.filter(p=>section==="receipts"?receivedCases(state,p.id)<p.cases:true);
   const purchaseOptions=poOptions;
@@ -119,7 +124,7 @@ function buildRows(s:PurchasingState,section:Section):Row[]{
     case "expenses":return s.expenses.map(e=>({id:e.id,date:date(e.recordedAt),status:e.approvedAt?"Approved":"Awaiting approval",values:{description:e.description,vendor:e.vendorId?vendorName(s,e.vendorId):"Not linked",total:e.amountCents,status:e.approvedAt?"Approved":"Awaiting approval"}}));
   }
 }
-function RowAction({section,id,state,role,actorId,run}:{section:Section;id:string;state:PurchasingState;role:string;actorId:string;run:(a:PurchaseAction)=>void}){
+function RowAction({section,id,state,role,actorId,run}:{section:Section;id:string;state:PurchasingState;role:string;actorId:string;run:(a:PurchaseAction)=>boolean}){
   const admin=role==="Administrator";
   if(section==="orders"){
     const po=state.orders.find(p=>p.id===id)!;if(!po.submittedAt&&!po.cancelledAt&&["Administrator","Operations"].includes(role))return <button type="button" onClick={()=>run({kind:"po.submit",id})}>Submit</button>;
@@ -142,10 +147,13 @@ function RowAction({section,id,state,role,actorId,run}:{section:Section;id:strin
 }
 export function PurchasingExperience({section,id}:{section:string;id?:string}){
   const runtime=useRuntimeMode();const {currentUser}=useWorkspace();
-  const demo=runtime.isDemo&&momentumStorage.mode()==="local";
+  const firebaseSession=useFirebaseSessionOptional();
+  const isClient=useSyncExternalStore(subscribeBrowser,clientSnapshot,serverSnapshot);
+  const demo=runtime.isDemo&&momentumStorage.mode()==="local"&&!firebaseSession;
   const selected=sections.has(section)?section as Section:"vendors";
   if(!currentUser)return <p className="prototype-empty">Sign in to view purchasing.</p>;
-  if(!demo)return <div><header className="prototype-heading"><h1>{sectionTitles[selected]}</h1><p>Purchasing is not yet connected to verified vendor, payable or warehouse receipt records.</p></header><section className="prototype-panel"><h2>Production connection blocked</h2><p>There is no approved purchasing backend or inventory-posting authorization for this new module. No vendor invoices, inventory receipts, payments or credits will be invented from retail orders.</p><p className="prototype-note">An isolated local demo is available only in demo mode with local storage. Its records never represent live company liabilities.</p></section></div>;
+  if(!demo)return <div><header className="prototype-heading"><h1>{sectionTitles[selected]}</h1><p>Purchasing is not yet connected to verified vendor, payable or warehouse receipt records.</p></header><section className="prototype-panel"><h2>Production connection blocked</h2><p>There is no approved purchasing backend or inventory-posting authorization for this new module. No vendor invoices, inventory receipts, payments or credits will be invented from retail orders.</p><p className="prototype-note">An isolated local demo is available only in demo mode, without a Firebase session and with local storage. Its records never represent live company liabilities.</p></section></div>;
+  if(!isClient)return <p className="prototype-note" role="status">Loading isolated purchasing demonstration…</p>;
   return <LocalPurchasingExperience section={section} id={id}/>;
 }
 
@@ -162,11 +170,12 @@ function LocalPurchasingExperience({section,id}:{section:string;id?:string}){
   const [sort,setSort]=useState("date");const [descending,setDescending]=useState(true);
   useEffect(()=>{momentumStorage.setItem(PURCHASING_DEMO_KEY,JSON.stringify(state));},[state]);
   const actor:PurchaseActor={id:currentUser?.id??"",role:currentUser?.role==="Administrator"||currentUser?.role==="Operations"||currentUser?.role==="Warehouse"?currentUser.role:"Other"};
-  const run=(action:PurchaseAction)=>{
-    if(!currentUser)return;
+  const run=(action:PurchaseAction):boolean=>{
+    if(!currentUser)return false;
     const result=applyPurchaseAction(state,actor,action,new Date().toISOString());
     setNotice(result.message);
     if(result.ok)setState(result.state);
+    return result.ok;
   };
   const records=useMemo(()=>buildRows(state,selected),[state,selected]);
   const statuses=[...new Set(records.map(x=>x.status))].sort();
@@ -177,7 +186,7 @@ function LocalPurchasingExperience({section,id}:{section:string;id?:string}){
   return <div>
     <header className="prototype-heading">{id&&<button type="button" className="prototype-back" onClick={()=>navigateToRoute("/purchases/"+selected)}><ArrowLeft size={15}/> Back to {sectionTitles[selected]}</button>}
       <h1>{sectionTitles[selected]}{id?" · "+id:""}</h1><p>Purchasing work queue with draft approvals, physical receipt evidence and three-way bill checks.</p></header>
-    <section className="prototype-panel"><p className="prototype-note"><ShieldCheck size={15}/> Isolated local demonstration. Purchase orders are not sent to vendors, receipts do not increase sellable stock, payment references do not reduce verified payables, and browser records are not a financial ledger.</p>
+    <section className="prototype-panel"><p className="prototype-note"><ShieldCheck size={15}/> Isolated local demonstration. Do not enter real vendor or financial information. Purchase orders are not sent to vendors, receipts do not increase sellable stock, payment references do not reduce verified payables, and browser records are not a financial ledger.</p>
     <p>Operating sequence: registered vendor → prepared PO → independent approval → physical receipt → invoice-to-PO/receipt match → independent bill approval → payment reference and vendor credit review.</p></section>
     <PurchasingForm key={selected} section={selected} state={state} role={currentUser.role} run={run}/>
     {notice&&<p className="prototype-note" role="status">{notice}</p>}
