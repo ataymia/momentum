@@ -1,5 +1,5 @@
 name: A-G Surgical Consolidation
-# Retry 3: retain source Markdown line-break semantics
+# Retry 4: combine import sets and expose all TypeScript diagnostics
 
 on:
   push:
@@ -43,7 +43,7 @@ jobs:
 
       - name: Install app and Functions dependencies
         run: |
-          npm ci
+          npm ci --ignore-scripts
           npm --prefix functions ci
 
       - name: Check TypeScript and ESLint
