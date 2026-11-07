@@ -243,3 +243,14 @@ test("four still-live legacy workflows never silently render the planned-module 
   assert.equal(canVisitRoute(user("Administrator"),"/people/directory"),true);
   assert.equal(canVisitRoute(user("Sales Representative"),"/people/directory"),false);
 });
+
+test("single route registry provides breadcrumb; legacy header menu duplicates are absent",()=>{
+  const shell=readFileSync("components/app-shell-v4.tsx","utf8");
+  assert.doesNotMatch(shell,/const primaryNav:/);
+  assert.doesNotMatch(shell,/const secondaryNav:/);
+  assert.doesNotMatch(shell,/const pageParent:/);
+  assert.doesNotMatch(shell,/const pageLabels:/);
+  assert.match(shell,/const pageName = canVisitRoute\(currentUser,activeRoute\) \? routeLabel\(activeRoute\) : "Page unavailable"/);
+  assert.match(shell,/aria-label="Primary navigation"/);
+  assert.match(shell,/aria-label="Breadcrumb"/);
+});

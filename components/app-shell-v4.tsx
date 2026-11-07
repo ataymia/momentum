@@ -1,13 +1,12 @@
 "use client";
 
-import { BadgeDollarSign, BarChart3, Bell, Boxes, Building2, CalendarDays, CheckSquare2, ChevronDown, ChevronRight, CircleDollarSign, CircleHelp, FileText, KeyRound, LayoutDashboard, LogOut, Mail, Megaphone, Menu, PanelLeftClose, PanelLeftOpen, PartyPopper, Search, Settings, ShoppingCart, UsersRound, X } from "lucide-react";
+import { Bell, ChevronDown, ChevronRight, KeyRound, LogOut, Mail, Menu, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
 import { FormEvent, Suspense, lazy, useEffect, useRef, useState } from "react";
 import { canAccessPage } from "../lib/access";
 import { useFirebaseSessionOptional } from "../lib/firebase-session-context";
 import {traceNavigationCommit} from "../lib/performance-diagnostics";
 import { useNotifications } from "../lib/notification-context";
 import { useRuntimeMode } from "../lib/runtime-mode";
-import type { PageKey, WorkspaceUser } from "../lib/types";
 import { useWorkspace } from "../lib/workspace-context";
 import {startRouteNavigation, useNavigationPage, useNavigationReady, useNavigationRoute} from "../lib/navigation-store";
 import {MENU_GROUPS, CUSTOMER_MENU, canVisitRoute, canShowModuleInMenu, requiresPrototypePage, routeLabel} from "../lib/navigation-route-registry";
@@ -69,38 +68,7 @@ const PerformanceWorkspacePage=lazy(()=>import("./pages/focused-workspace-pages"
 const ReportingCenterPage=lazy(()=>import("./pages/focused-workspace-pages").then((module)=>({default:module.ReportingCenterPage})));
 const TrainingSetupPage=lazy(()=>import("./pages/focused-workspace-pages").then((module)=>({default:module.TrainingSetupPage})));
 
-type NavItem = { key: PageKey; label: string; icon: typeof LayoutDashboard };
-
-const primaryNav: NavItem[] = [
-  { key: "home", label: "Home", icon: LayoutDashboard }, { key: "work", label: "My work", icon: CheckSquare2 },
-  { key: "accounts", label: "CRM & sales", icon: Building2 }, { key: "dispatch", label: "Dispatch board", icon: CalendarDays },
-  { key: "orders", label: "Orders & billing", icon: ShoppingCart },
-  { key: "inventory", label: "Inventory & fulfillment", icon: Boxes }, { key: "marketing", label: "Marketing", icon: Megaphone },
-  { key: "brandAmbassadors", label: "Brand Ambassadors", icon: PartyPopper },
-  { key: "timekeeping", label: "Clock In / Timekeeping", icon: CalendarDays },
-
-  { key: "people", label: "Human Resources", icon: UsersRound }, { key: "payroll", label: "Payroll", icon: BadgeDollarSign },
-  { key: "finance", label: "Finance & accounting", icon: CircleDollarSign },
-];
-const secondaryNav: NavItem[] = [
-  { key: "reports", label: "Performance & reports", icon: BarChart3 },
-  { key: "settings", label: "Administration", icon: Settings },
-  { key: "help", label: "Help", icon: CircleHelp },
-];
-
-const pageParent: Partial<Record<PageKey, PageKey>> = {
-  actions:"work", quickVisit:"accounts", salesMap:"accounts", accountSetup:"accounts", accountHealth:"accounts", orderCash:"orders", inventoryLedger:"inventory", products:"inventory",
-  materials:"people", employees:"people", newHire:"people", onboarding:"people", trainingAdmin:"people", accounting:"finance", performance:"reports",
-  reportingCenter:"reports", audit:"reports", workforceLive:"settings", dataExchange:"settings",
-};
-const pageLabels: Partial<Record<PageKey,string>> = {
-  actions:"Action center", quickVisit:"Quick Visit", salesMap:"Account map", accountSetup:"Account setup", accountHealth:"Account health", orderCash:"Invoices & payments", timekeeping:"Timekeeping", materials:"Training & resources", products:"Products",
-  inventoryLedger:"Inventory ledger", employees:"Employee directory", newHire:"New hire", onboarding:"Onboarding queue", trainingAdmin:"Training setup",
-  brandAmbassadors:"Brand Ambassadors",
-  accounting:"Accounting", performance:"Performance", reportingCenter:"Reporting center", audit:"Audit trail", workforceLive:"Workforce live", dataExchange:"Data exchange",
-};
 const demoTourIds = new Set(["usr-flo", "usr-mia", "usr-avery", "usr-jordan", "usr-customer"]);
-const labelFor = (item: NavItem, user: WorkspaceUser) => user.role === "Brand Ambassador" ? (item.key === "brandAmbassadors" ? "My schedule" : item.label) : user.role !== "Customer" ? item.label : item.key === "home" ? "Account overview" : item.key === "accounts" ? "My account" : item.key === "orders" ? "My orders" : item.label;
 
 function NavigationGroups(){
   const {currentUser,setSidebarOpen}=useWorkspace();
@@ -243,7 +211,7 @@ export function AppShell() {
   const switchableUsers = runtime.isDemo ? data.users.filter((user) => demoTourIds.has(user.id)) : [];
   const unread = generated.unreadCount;
   const unreadItems = generated.currentUserItems.filter(item=>item.status==="Unread");
-  const allNav = [...primaryNav, ...secondaryNav]; const rootPage=pageParent[activePage]??activePage; const activeNav = allNav.find((item) => item.key === rootPage); const pageName = activeRoute==="/"? "Home" : routeLabel(activeRoute) || pageLabels[activePage] || (activeNav ? labelFor(activeNav,currentUser) : "Home"); const customerMode = currentUser.role === "Customer";
+  const pageName = canVisitRoute(currentUser,activeRoute) ? routeLabel(activeRoute) : "Page unavailable"; const customerMode = currentUser.role === "Customer";
   const openNotification=(notification:(typeof generated.currentUserItems)[number])=>{generated.markRead(notification.id);if(notification.targetRecordId)sessionStorage.setItem("momentum-focus-record",notification.targetRecordId);const target=notification.targetPage;if(target&&canAccessPage(currentUser,target))navigate(target);else if(canAccessPage(currentUser,"work"))navigate("work");else navigate("home");setNotificationsOpen(false);};
   const markAll = () => { markNotificationsRead(); generated.markAllRead(); };
   const changeEmail=async(event:FormEvent)=>{event.preventDefault();setEmailError("");setEmailMessage("");if(!firebase){setEmailError("Firebase Authentication is not connected.");return;}const normalized=newEmail.trim().toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)){setEmailError("Enter a valid e-mail address.");return;}if(normalized===currentUser.email.toLowerCase()){setEmailError("That is already your sign-in e-mail.");return;}if(!currentPassword){setEmailError("Enter your current password.");return;}setEmailBusy(true);const result=await firebase.changeOwnEmail(newEmail,currentPassword);setEmailBusy(false);if(!result.ok){setEmailError(result.message??"E-mail change failed.");return;}setEmailMessage(result.message??"Sign-in e-mail updated.");setCurrentPassword("");setNewEmail(normalized);};

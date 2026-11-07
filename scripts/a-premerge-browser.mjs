@@ -59,6 +59,19 @@ try{
   await page.goto(base+"/sales/customers/acc-101",{waitUntil:"domcontentloaded"});
   await page.getByText("Desert Lantern Market").first().waitFor({timeout:20000});
   assert.equal(path(),"/sales/customers/acc-101");
+  // A10: until redesigned counterparts are integrated, do not replace four
+  // working CRM/HR workflows with a navigation-only placeholder.
+  for(const [route,title] of [
+    ["/crm/quick-visit","Quick Visit"],
+    ["/crm/account-setup","New Account Setup"],
+    ["/crm/account-health","Account health"],
+    ["/people/directory","Employee directory"],
+  ]){
+    await page.goto(base+route,{waitUntil:"domcontentloaded"});
+    await page.getByRole("heading",{name:title,exact:true}).first().waitFor({timeout:20000});
+    assert.equal(path(),route);
+    assert.equal(await page.getByText("Planned module • navigation prototype only").count(),0,route);
+  }
   await page.goto(base+"/sales/orders/%2Fadmin",{waitUntil:"domcontentloaded"});
   // Invalid, non-record encodings must NEVER render an Order. The identity
   // guard may safely replace an unauthorized incoming route with Home.
@@ -77,6 +90,21 @@ try{
   await page.getByRole("navigation",{name:"Customer portal navigation"}).waitFor();
   await screenshot("customer-portal");
 
+  await page.locator(".user-button").click();
+  await page.locator(".user-popover button").filter({hasText:"Owner Demo"}).click();
+  await page.goto(base+"/crm/deals",{waitUntil:"domcontentloaded"});
+  await nav().waitFor();
+  // No HR Administration through the sales role, but ordinary employee
+  // self-service remains available in the Workspace group.
+  await page.locator(".user-button").click();
+  await page.locator(".user-popover button").filter({hasText:"Sales Rep Demo"}).click();
+  await nav().waitFor();
+  assert.equal(await nav().getByRole("link",{name:"New Hire"}).count(),0);
+  assert.equal(await nav().getByRole("link",{name:"Employee Directory"}).count(),0);
+  assert(await nav().getByRole("link",{name:"My Employee Workspace"}).isVisible());
+  await page.goto(base+"/admin/employee-profiles",{waitUntil:"domcontentloaded"});
+  await page.waitForFunction(()=>document.body.textContent?.includes("Page unavailable")||window.location.pathname==="/");
+  assert.equal(await page.getByText("Compensation").count(),0);
   await page.locator(".user-button").click();
   await page.locator(".user-popover button").filter({hasText:"Owner Demo"}).click();
   await page.goto(base+"/crm/deals",{waitUntil:"domcontentloaded"});
@@ -100,7 +128,7 @@ try{
   await page.locator("aside.sidebar.is-open").waitFor({state:"detached"});
   await page.waitForFunction(()=>document.activeElement===document.querySelector('button[aria-label="Open menu"]'));
   assert.deepEqual(pageErrors,[],"Unexpected browser exception");
-  console.log("A browser QA passed: deep links, Back/Forward, refresh, role isolation, desktop/tablet/phone menus, keyboard focus");
+  console.log("A browser QA passed: links, history, legacy fallback, role isolation, desktop/tablet/phone menus and keyboard focus");
 }finally{
   await context.close();
   await browser.close();
