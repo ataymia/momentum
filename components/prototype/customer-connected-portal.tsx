@@ -43,7 +43,7 @@ export function CustomerConnectedPortal({section}:{section:Section}){
     const value=(r:typeof records[number]):number|string=>{
       if(sort==="number")return "invoice" in r?r.invoice:r.number;
       if(sort==="date")return "date" in r?r.date:r.placedAt;
-      if(sort==="amount")return r.amount??("cases" in r?r.cases:0);
+      if(sort==="amount")return "amount" in r?r.amount:r.cases;
       return r.status;
     };
     const x=value(a),y=value(b);

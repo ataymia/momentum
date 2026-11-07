@@ -7,7 +7,7 @@ const access={role:"Customer",accountState:"Active",email:"shop@example.com"};
 const user={role:"Customer",email:"shop@example.com",accountIds:["store-a"]};
 const data={
  accounts:[{id:"store-a",name:"Visible",location:"Phoenix"},{id:"store-b",name:"Hidden",location:"Tucson"}],
- orders:[{id:"o1",accountId:"store-a",status:"Delivered"},{id:"o2",accountId:"store-b",status:"Delivered"},{id:"o3",accountId:"store-a",status:"Awaiting approval"}],
+ orders:[{id:"o1",accountId:"store-a",status:"Delivered",cases:10,number:"GE-101",placedAt:"2026-11-06"},{id:"o2",accountId:"store-b",status:"Delivered",cases:12,number:"GE-202",placedAt:"2026-11-06"},{id:"o3",accountId:"store-a",status:"Awaiting approval"}],
  invoices:[{id:"i1",number:"INV-1",accountId:"store-a",orderId:"o1",status:"Open",issuedAt:"2026-11-06",total:240},
   {id:"i2",number:"INV-2",accountId:"store-b",orderId:"o2",status:"Open",issuedAt:"2026-11-06",total:900},
   {id:"i3",number:"INV-3",accountId:"store-a",orderId:"o3",status:"Open",issuedAt:"2026-11-06",total:999}],
