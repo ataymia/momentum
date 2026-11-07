@@ -230,7 +230,7 @@ export function AppShell() {
   const switchableUsers = runtime.isDemo ? data.users.filter((user) => demoTourIds.has(user.id)) : [];
   const unread = generated.unreadCount;
   const unreadItems = generated.currentUserItems.filter(item=>item.status==="Unread");
-  const pageName = canVisitRoute(currentUser,activeRoute) ? routeLabel(activeRoute) : "Page unavailable"; const customerMode = currentUser.role === "Customer";
+  const customerMode = currentUser.role === "Customer";
   const breadcrumbSteps=canVisitRoute(currentUser,activeRoute)?breadcrumbsForRoute(activeRoute,customerMode):[{label:"Page unavailable"}];
   const openNotification=(notification:(typeof generated.currentUserItems)[number])=>{generated.markRead(notification.id);if(notification.id.startsWith("meeting-demo:")&&notification.targetRecordId){const path="/calendar/meetings/"+encodeURIComponent(notification.targetRecordId);if(canVisitRoute(currentUser,path)){navigateToRoute(path);setNotificationsOpen(false);return;}}if(notification.targetRecordId)sessionStorage.setItem("momentum-focus-record",notification.targetRecordId);const target=notification.targetPage;if(target&&canAccessPage(currentUser,target))navigate(target);else if(canAccessPage(currentUser,"work"))navigate("work");else navigate("home");setNotificationsOpen(false);};
   const markAll = () => { markNotificationsRead(); generated.markAllRead(); };

@@ -1,0 +1,36 @@
+.momentum-timekeeping{display:grid;gap:18px;}
+.timekeeping-hero{border:1px solid #183963;border-radius:20px;background:linear-gradient(135deg,#061a38 0%,#103b69 70%,#0e3059 100%);color:#fff;padding:clamp(20px,3vw,34px);display:grid;grid-template-columns:minmax(0,1.55fr) minmax(240px,.8fr);gap:28px;box-shadow:0 16px 35px rgba(4,21,47,.14)}
+.timekeeping-hero-copy{min-width:0;display:grid;align-content:center;gap:8px}
+.timekeeping-eyebrow{display:flex;align-items:center;gap:8px;text-transform:uppercase;letter-spacing:.14em;color:#bdcff0;font-size:11px;font-weight:750;margin:0 0 5px}
+.timekeeping-status-row{display:flex;align-items:center;gap:12px}
+.timekeeping-status-row h2{font-size:clamp(23px,3vw,34px);letter-spacing:-.025em;margin:0;line-height:1.2;color:#fff}
+.timekeeping-live-dot{width:11px;height:11px;border-radius:50%;background:#57dfa4;box-shadow:0 0 0 5px rgba(87,223,164,.12);flex:none}
+.timekeeping-live-dot.is-off{background:#adbad0;box-shadow:0 0 0 5px rgba(173,186,208,.12)}
+.timekeeping-hero-copy>p:not(.timekeeping-eyebrow),.timekeeping-hero-copy>small{color:#d3e2f8;margin:0;line-height:1.6}
+.timekeeping-hero-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:20px}
+.timekeeping-hero-actions button{min-height:45px;padding-inline:20px;font-size:14px;font-weight:750}
+.timekeeping-hero-summary{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:10px 18px;display:grid;align-content:center}
+.timekeeping-hero-summary>div{padding:14px 4px;border-bottom:1px solid rgba(255,255,255,.14);display:grid;gap:5px}
+.timekeeping-hero-summary>div:last-child{border-bottom:0}
+.timekeeping-hero-summary span{color:#c6d7ef;text-transform:uppercase;letter-spacing:.08em;font-size:10px;font-weight:750}
+.timekeeping-hero-summary strong{color:#fff;font-size:27px;line-height:1.1;font-weight:800}
+.timekeeping-hero-summary strong small{font-size:12px;font-weight:500}
+.timekeeping-hero-summary .timekeeping-tracking-value{font-size:18px;overflow-wrap:anywhere}
+.timekeeping-hero-summary p{color:#c6d7ef;font-size:11px;margin:0;line-height:1.5}
+.timekeeping-meal-note{font-size:12px}
+.timekeeping-lower-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.85fr);gap:16px;align-items:start}
+.timekeeping-history{display:grid;gap:0}
+.timekeeping-history article{display:grid;grid-template-columns:minmax(115px,1fr) minmax(160px,1.25fr) minmax(90px,.65fr);align-items:center;gap:12px;padding:14px 4px;border-bottom:1px solid var(--line)}
+.timekeeping-history article:last-child{border-bottom:0}
+.timekeeping-history-date,.timekeeping-history-hours{display:grid;gap:4px}
+.timekeeping-history strong{font-size:13px;color:var(--ink)}
+.timekeeping-history small{font-size:11px;color:var(--muted)}
+.timekeeping-history-times{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:650;font-variant-numeric:tabular-nums}
+.timekeeping-history-times span:nth-child(2){color:#9ba9bd}
+.timekeeping-history-hours{text-align:right}
+.timekeeping-empty{padding:32px 8px;color:var(--muted)}
+.timekeeping-explainer{display:grid;gap:12px}
+.timekeeping-explainer p{display:flex;align-items:flex-start;gap:10px;line-height:1.65;font-size:12px;color:var(--muted);margin:0}
+.timekeeping-explainer p svg{flex:none;color:var(--blue-600);margin-top:2px}
+@media(max-width:1050px){.timekeeping-hero,.timekeeping-lower-grid{grid-template-columns:1fr}.timekeeping-hero-summary{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}.timekeeping-hero-summary>div{border-bottom:0;border-right:1px solid rgba(255,255,255,.14)}.timekeeping-hero-summary>div:last-child{border-right:0}}
+@media(max-width:620px){.timekeeping-hero{padding:20px;gap:19px}.timekeeping-status-row h2{font-size:24px}.timekeeping-hero-summary{grid-template-columns:1fr}.timekeeping-hero-summary>div{border-right:0;border-bottom:1px solid rgba(255,255,255,.14)}.timekeeping-hero-summary>div:last-child{border-bottom:0}.timekeeping-history article{grid-template-columns:1fr auto;gap:6px}.timekeeping-history-times{grid-column:1;grid-row:2}.timekeeping-history-hours{grid-column:2;grid-row:1/3}}

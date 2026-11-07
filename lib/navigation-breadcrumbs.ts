@@ -9,7 +9,9 @@ export function breadcrumbsForRoute(path:string,customerMode=false):BreadcrumbSt
     .sort((a,b)=>b.path.length-a.path.length)[0];
   if(!entry)return [{label:routeLabel(route)}];
   const group=customerMode?"Customer Portal":MENU_GROUPS.find(item=>item.entries.some(candidate=>candidate.path===entry.path))?.label??"Workspace";
-  const result:BreadcrumbStep[]=[{label:group},{label:entry.label,path:entry.path}];
+  const result:BreadcrumbStep[]=[{label:group}];
+  if(!customerMode&&route.startsWith("/my-account/"))result.push({label:"My Account",path:"/my-account"});
+  result.push({label:entry.label,path:entry.path});
   if(route===entry.path)return result;
   // Customer tab URLs identify a particular account before naming its tab.
   if(entry.path==="/sales/customers"){
