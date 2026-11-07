@@ -70,7 +70,7 @@ export function InventoryLocationsDirectory({id}:{id?:string}){
           return <tr key={lot.id}><td><button type="button" className="prototype-link" onClick={()=>navigateToRoute("/inventory/lots/"+encodeURIComponent(lot.id))}>{lot.lotCode}</button></td><td>{lot.product}</td><td>{fmt(cases)}</td><td>{lot.bestBy||"Unknown"}</td><td>{lot.status}</td><td>{risk.summary}</td></tr>;
         })}</tbody></table></div>
         {!balances.length&&<p className="prototype-empty">No recorded custody quantity at this location.</p>}
-        <p className="prototype-note">Location balances come exclusively from existing stock movements. Reservations are recorded separately against the warehouse inventory system, not physically at every bin. An expired lot is flagged for review, not automatically written off.</p>
+        <p className="prototype-note">Location balances come from movement records, including potential opening DEMO balances. Reservations are recorded against the warehouse inventory system, not every bin. Confirm physical counts and receipts before using these balances for decisions; expired lots are flagged, not automatically written off.</p>
       </section>
       <section className="prototype-panel"><h2>Receiving, transfers and adjustments</h2>
         <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Recorded time</th><th>Lot</th><th>Type</th><th>Cases</th><th>Direction</th><th>Actor</th><th>Source</th></tr></thead><tbody>
@@ -96,7 +96,7 @@ export function InventoryLocationsDirectory({id}:{id?:string}){
         <td><button type="button" className="prototype-link" onClick={()=>navigateToRoute("/inventory/locations/"+encodeURIComponent(r.node.id))}>{r.node.name}</button></td><td>{r.node.type}</td><td>{r.lotCount}</td><td>{fmt(r.cases)}</td><td>{r.unreconciledCounts}</td>
       </tr>)}</tbody></table></div>
       {!filtered.length&&<p className="prototype-empty">No physical locations match the filters.</p>}
-      <p className="prototype-note">Read-only view of existing custody locations. This does not provision warehouses, reclassify inventory, release holds or post receipts from the purchasing demo.</p>
+      <p className="prototype-note">Read-only view of existing custody locations. The ledger can include synthetic opening DEMO receipt balances generated from initial lot data. These are not a substitute for physical receiving evidence or a warehouse count. This does not provision warehouses, release holds or post purchasing-demo receipts.</p>
       </section>
     </>}
   </div>;
