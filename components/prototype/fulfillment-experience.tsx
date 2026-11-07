@@ -16,6 +16,10 @@ import {
 } from "../../lib/inventory-ledger";
 import {deliveryStatusForOrder,processedForDelivery,type DeliveryTask} from "../../lib/delivery-engine";
 import {deliveryReconciliationIssue} from "../../lib/delivery-reconciliation";
+import {buildPickListReview} from "../../lib/fulfillment-pick-review";
+import {arizonaDateKey} from "../../lib/date-time";
+import type {InventoryLedgerState} from "../../lib/inventory-ledger";
+import type {InventoryLot} from "../../lib/types";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {ShipmentWorkflowControls} from "./fulfillment-controls";
 import type {Order} from "../../lib/types";
@@ -151,13 +155,45 @@ export function ShipmentsDirectory(){
       <p className="prototype-note">Delivery proof is only complete when signature and inventory posting are verified. A field cash-collection note is not a settled payment.</p>
     </section></div>;
 }
+function PickListPanel({order,lots,ledger}:{order:Order;lots:InventoryLot[];ledger:InventoryLedgerState}){
+  const review=buildPickListReview(order,lots,ledger,arizonaDateKey());
+  const totalRequested=review.lines.reduce((n,l)=>n+l.orderedCases,0);
+  const totalReserved=review.lines.reduce((n,l)=>n+l.reservedCases,0);
+  return <section className="prototype-panel">
+    <h2>Warehouse picking review</h2>
+    <p className="prototype-note"><ShieldCheck size={14}/> Source-linked order SKU lines and active ledger reservations. This is NOT a physical packing slip, signed count, stock posting, or release authorization. Recheck lot best-by and condition before physically selecting cases.</p>
+    <div className="prototype-metrics">
+      <div><small>Ordered cases</small><strong>{totalRequested}</strong></div>
+      <div><small>Actively reserved cases</small><strong>{totalReserved}</strong></div>
+      <div><small>Products requiring review</small><strong>{review.lines.filter(l=>l.issues.length).length}</strong></div>
+    </div>
+    <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
+      <th>Ordered SKU</th><th>Ordered cases</th><th>Reserved cases</th><th>Not allocated</th><th>Reservation review</th>
+    </tr></thead><tbody>{review.lines.map(line=><tr key={line.product}>
+      <td>{line.product}</td><td>{line.orderedCases}</td><td>{line.reservedCases}</td><td>{line.unallocatedCases}</td>
+      <td>{line.status}{line.issues.length>0&&<p role="alert">{line.issues.join("; ")}</p>}</td>
+    </tr>)}</tbody></table></div>
+    <h3>Active lot reservations</h3>
+    <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
+      <th>Product</th><th>Lot / batch</th><th>Reserved cases</th><th>Warehouse cases</th><th>Total reserved</th><th>Best by</th><th>Review flags</th>
+    </tr></thead><tbody>{review.lines.flatMap(line=>line.reservations.map(r=><tr key={r.reservationId}>
+      <td>{line.product}</td><td><RecordLink path={"/inventory/lots/"+encodeURIComponent(r.lotId)}>{r.lotCode}</RecordLink></td>
+      <td>{r.cases}</td><td>{r.warehouseCases}</td><td>{r.allActiveReservedCases}</td><td>{r.bestBy||"Unknown"}</td>
+      <td>{r.issues.length?<span role="alert">{r.issues.join("; ")}</span>:"No review flag detected"}</td>
+    </tr>))}</tbody></table></div>
+    {!review.lines.some(line=>line.reservations.length)&&<p className="prototype-empty">No active lot reservations. An approved order is not evidence that inventory has been packed.</p>}
+    {review.unmatchedReservationIds.length>0&&<p role="alert" className="prototype-note">Unmatched reservation IDs need reconciliation before picking: {review.unmatchedReservationIds.join(", ")}. They were not silently allocated to another SKU.</p>}
+    <p className="prototype-note">Reservations may transition to Fulfilled after a recorded load. This section shows current active reservations only; use custody movements and the delivery task above for already-loaded orders.</p>
+  </section>;
+}
+
 export function ShipmentDetail({orderId}:{orderId:string}){
-  const {tasks,orders,accounts,users,ledger,state,currentUser}=useOperationalRecords();
+  const {tasks,orders,accounts,users,ledger,state,currentUser,scope}=useOperationalRecords();
   const order=orders.find(o=>o.id===orderId);
   const task=tasks.find(t=>t.orderId===orderId&&t.status!=="Cancelled")??tasks.find(t=>t.orderId===orderId);
   if(!order)return <p className="prototype-empty">Shipment order not found or access is restricted.</p>;
   if(!task)return <div><Title heading={"Prepare shipment for "+order.number} subtitle="No delivery task is currently assigned to this approved order." back="/inventory/shipments"/>
-    <ShipmentWorkflowControls order={order}/><Note/></div>;
+    <PickListPanel order={order} lots={scope.inventory} ledger={ledger}/><ShipmentWorkflowControls order={order}/><Note/></div>;
   const deliveredCases=orderDeliveryQuantity(ledger,order.id);
   const movements=ledger.movements.filter(m=>m.relatedOrderId===order.id);
   const verifiedSignature=Boolean(task.signature?.signedAt&&task.signature.strokes.length&&task.history.some(event=>event.type==="Delivered"&&event.actorId===task.signature?.capturedBy));
@@ -193,6 +229,7 @@ export function ShipmentDetail({orderId}:{orderId:string}){
       <div className="prototype-page-actionbar"><RecordLink path={"/sales/orders/"+encodeURIComponent(order.id)}>View sales order</RecordLink></div>
       <Note/>
     </section>
+    <PickListPanel order={order} lots={scope.inventory} ledger={ledger}/>
     <ShipmentWorkflowControls order={order} task={task}/>
   </div>;
 }
