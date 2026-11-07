@@ -11,9 +11,9 @@ const user = (role: Role): WorkspaceUser => ({
   initials:"PP",title:"Tester",role,team:"Sales",accent:"#123456",
 });
 
-test("all eight approved groups remain in one authenticated sidebar", () => {
+test("all nine approved groups, including personal Account, remain in the authenticated sidebar", () => {
   assert.deepEqual(MENU_GROUPS.map(group => group.label), [
-    "Workspace","Sales & CRM","Commerce","Operations","Human Resources",
+    "Workspace","Account","Sales & CRM","Commerce","Operations","Human Resources",
     "Marketing","Insights & Support","Administration",
   ]);
   const shell = readFileSync("components/app-shell-v4.tsx","utf8");
@@ -163,31 +163,38 @@ test("unsafe external and browser-normalized URL forms never become application 
   assert.equal(routeHref("/sales/orders/one","/app"),"/app/sales/orders/one");
 });
 
-test("employee self-service is in Workspace, not an exposed HR administration module",()=>{
-  const rep=user("Sales Representative"), ambassador=user("Brand Ambassador"), admin=user("Administrator");
-  for(const path of ["/self-service","/self-service/leave","/people/timekeeping","/people/materials"]){
-    assert.equal(canVisitRoute(rep,path),true,path);
-    assert.equal(canShowModuleInMenu(rep,path),true,path);
-    assert.equal(canVisitRoute(ambassador,path),true,path);
-    assert.equal(canShowModuleInMenu(ambassador,path),true,path);
+test("employee self-service lives in personal Account; legacy URLs remain supported but out of Workspace navigation",()=>{
+  const rep=user("Sales Representative"),ambassador=user("Brand Ambassador"),admin=user("Administrator");
+  const workspace=MENU_GROUPS.find(group=>group.label==="Workspace");
+  const account=MENU_GROUPS.find(group=>group.label==="Account");
+  assert.deepEqual(workspace?.entries.slice(0,3).map(entry=>entry.path),
+    ["/","/people/timekeeping","/work/actions"]);
+  assert(account?.entries.some(entry=>entry.path==="/my-account/pay"));
+  for(const path of ["/my-account","/my-account/employee","/my-account/time-off","/my-account/pay","/my-account/training","/my-account/completed"]){
+    assert(canVisitRoute(rep,path),path);
+    assert(canShowModuleInMenu(rep,path),path);
+    assert(canVisitRoute(ambassador,path),path);
+    assert(canShowModuleInMenu(ambassador,path),path);
   }
-  assert.equal(canVisitRoute(rep,"/self-service/pay"),true);
-  assert.equal(canShowModuleInMenu(rep,"/self-service/pay"),true);
-  assert.equal(canVisitRoute(ambassador,"/self-service/pay"),false);
-  assert.equal(canShowModuleInMenu(rep,"/people"),false);
-  assert.equal(canShowModuleInMenu(user("Marketing"),"/people"),false);
-  assert.equal(canShowModuleInMenu(user("Marketing"),"/marketing"),true);
+  for(const path of ["/self-service","/self-service/leave","/self-service/pay","/work/completed"]){
+    assert(canVisitRoute(rep,path),path);
+    assert(!canShowModuleInMenu(rep,path),path+" is a compatibility URL, not a sidebar entry");
+  }
+  assert(!canShowModuleInMenu(rep,"/people"));
+  assert(!canShowModuleInMenu(user("Marketing"),"/people"));
+  assert(canShowModuleInMenu(user("Marketing"),"/marketing"));
   for(const path of ["/people/directory","/people/new-hire","/people/onboarding","/people/onboarding/workflow","/people/payroll/workflow","/people/training"]){
-    assert.equal(canVisitRoute(rep,path),false,path);
-    assert.equal(canVisitRoute(admin,path),true,path);
-    assert.equal(canShowModuleInMenu(rep,path),false,path);
+    assert(!canVisitRoute(rep,path),path);
+    assert(canVisitRoute(admin,path),path);
+    assert(!canShowModuleInMenu(rep,path),path);
   }
   assert.equal(permissionForPath("/crm/account-health"),"accounts");
-  assert.equal(canVisitRoute(admin,"/crm/account-health"),true);
-  assert.equal(canShowModuleInMenu(admin,"/crm/account-health"),true);
+  assert(canVisitRoute(admin,"/crm/account-health"));
+  assert(canShowModuleInMenu(admin,"/crm/account-health"));
   assert(MENU_GROUPS.find(g=>g.label==="Commerce")?.entries.some(e=>e.path==="/finance/accounting"));
   const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
-  assert.match(hub,/if\(path==="\/self-service"\)return <PeopleExperience\/>/);
+  assert.match(hub,/if\(path==="\/my-account"\|\|path==="\/self-service"\)return <EmployeeAccountExperience\/>/);
+  assert.match(hub,/HrTimeOffExperience personalOnly/);
 });
 
 test("navigation readiness prevents unscoped Home flashing on copied URLs",()=>{
