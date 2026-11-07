@@ -1,4 +1,4 @@
-import { evaluateSalesRepAccountBonuses, orderFirstSettlementDate, type BonusMilestone } from "./bonus-engine";
+import { evaluateSalesRepAccountBonuses, orderQualifyingPaidDate, type BonusMilestone } from "./bonus-engine";
 import {acquisitionBonusHeldAccountIds} from "./acquisition-bonus-consolidation";
 import { arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import { activeBenefitEnrollments, activeCompensation, type HCMState } from "./hcm-engine";
@@ -223,14 +223,14 @@ export function bonusEarnedDate(data: WorkspaceData, signal: BonusMilestone) {
   if (signal.status !== "Earned") return undefined;
   const evidence = signal.evidenceOrderIds
     .map((orderId) => data.orders.find((order) => order.id === orderId))
-    .filter((order): order is WorkspaceData["orders"][number] => Boolean(order && orderFirstSettlementDate(data, order)))
-    .sort((a, b) => (orderFirstSettlementDate(data, a) ?? a.placedAt).localeCompare(orderFirstSettlementDate(data, b) ?? b.placedAt));
-  if (signal.milestone === "Opening order") return evidence[0] ? orderFirstSettlementDate(data, evidence[0]) : undefined;
+    .filter((order): order is WorkspaceData["orders"][number] => Boolean(order && orderQualifyingPaidDate(data, order)))
+    .sort((a, b) => (orderQualifyingPaidDate(data, a) ?? a.placedAt).localeCompare(orderQualifyingPaidDate(data, b) ?? b.placedAt));
+  if (signal.milestone === "Opening order") return evidence[0] ? orderQualifyingPaidDate(data, evidence[0]) : undefined;
   let cases = 0;
   for (const order of evidence) {
     if (!Number.isFinite(order.cases) || order.cases <= 0) continue;
     cases += order.cases;
-    if (cases >= signal.thresholdCases) return orderFirstSettlementDate(data, order);
+    if (cases >= signal.thresholdCases) return orderQualifyingPaidDate(data, order);
   }
   return undefined;
 }
