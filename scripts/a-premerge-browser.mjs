@@ -65,13 +65,13 @@ try{
   await page.goto(base+"/sales/customers/acc-101",{waitUntil:"domcontentloaded"});
   await page.getByText("Desert Lantern Market").first().waitFor({timeout:20000});
   assert.equal(path(),"/sales/customers/acc-101");
-  // A10: until redesigned counterparts are integrated, do not replace four
-  // working CRM/HR workflows with a navigation-only placeholder.
+  // The integrated C and F workstreams replace the legacy workflows with
+  // dedicated functional screens, never an empty "planned" placeholder.
   for(const [route,title] of [
-    ["/crm/quick-visit","Quick Visit"],
-    ["/crm/account-setup","New Account Setup"],
+    ["/crm/quick-visit","Quick visit"],
+    ["/crm/account-setup","Account setup"],
     ["/crm/account-health","Account health"],
-    ["/people/directory","Employee directory"],
+    ["/people/directory","Employee records"],
   ]){
     await page.goto(base+route,{waitUntil:"domcontentloaded"});
     await page.getByRole("heading",{name:title,exact:true}).first().waitFor({timeout:20000});
