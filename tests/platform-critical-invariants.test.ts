@@ -4,7 +4,7 @@ import test, { describe } from "node:test";
 import { reconcileApprovals, reconcileOrders } from "../lib/order-approval-engine";
 import { mergeDocument } from "../lib/persistence";
 import { GOLDEN_EAGLE_SKUS, HISTORICAL_PURCHASE_ORDER_POLICY, PRODUCT_CATALOG_INVENTORY_POLICY, WHOLESALE_BARCODE_POLICY } from "../lib/product-catalog";
-import { MAX_PERSISTED_NOTIFICATION_BYTES, MAX_PERSISTED_NOTIFICATION_DELIVERIES, auditEventCreatesNotification, compactNotificationDeliveries, notificationTarget } from "../lib/notification-engine";
+import { MAX_PERSISTED_NOTIFICATION_BYTES, MAX_PERSISTED_NOTIFICATION_DELIVERIES, auditEventCreatesNotification, compactNotificationDeliveries, normalizeNotificationState, notificationTarget } from "../lib/notification-engine";
 import { collectAuditableRecords, diffAuditableRecords } from "../lib/audit-engine";
 import { normalizeMarketingState } from "../lib/marketing-engine";
 import { documentReplacesOnWrite } from "../lib/firestore-domains";
@@ -98,6 +98,25 @@ describe("notification bell remains an action queue", () => {
       action: "Created", module: "Workspace", collection: "approvals", entityType: "Workspace.approvals", entityId: "apr-1",
       label: "Review GE-1", summary: "Approval created", sensitivity: "manager", changes: [{ field: "status", after: "Pending" }],
     }), true);
+  });
+});
+
+describe("notification persistence input validation", () => {
+  test("malformed delivery text cannot discard valid notifications", () => {
+    const user = { id: "admin", role: "Administrator", name: "Admin", email: "admin@example.test" };
+    const valid = {
+      id: "valid", sourceEventId: "event-valid", recipientUserId: "admin",
+      channel: "In app", title: "Review request", detail: "Action needed",
+      tone: "warning", createdAt: "2026-11-05T12:00:00.000Z", status: "Unread",
+    };
+    const result = normalizeNotificationState({
+      deliveries: [
+        { ...valid, id: "bad-title", title: 42 },
+        { ...valid, id: "bad-detail", detail: { nested: true } },
+        valid,
+      ],
+    }, [user] as unknown as Parameters<typeof normalizeNotificationState>[1]);
+    assert.deepEqual(result.deliveries.map((item) => item.id), ["valid"]);
   });
 });
 
