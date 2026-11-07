@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import type { PageKey } from "./types";
 import { normalizeRoutePath, pageForPath, routeForPage } from "./navigation-route-registry";
+import { isSafeInternalRoute } from "./navigation-route-contract";
 
 /**
  * Branch-only URL-aware navigation. The URL is the view's source of truth.
@@ -12,9 +13,13 @@ import { normalizeRoutePath, pageForPath, routeForPage } from "./navigation-rout
 let currentPage: PageKey = "home";
 let currentRoute = "/";
 let initialized = false;
+let bootstrapped = false;
+let clients = 0;
 const listeners = new Set<() => void>();
 const pageSnapshot = () => currentPage;
 const routeSnapshot = () => currentRoute;
+const readySnapshot = () => bootstrapped;
+const serverReadySnapshot = () => false;
 const serverPageSnapshot = (): PageKey => "home";
 const serverRouteSnapshot = () => "/";
 
@@ -42,16 +47,27 @@ function onPopState(): void {
 /** Install after hydration; returns a cleanup for client rendering/tests. */
 export function startRouteNavigation(): () => void {
   if (typeof window === "undefined") return () => {};
+  clients += 1;
   if (!initialized) {
     initialized = true;
     window.addEventListener("popstate", onPopState);
   }
   adopt(browserPath());
-  return () => {};
+  if (!bootstrapped) {
+    bootstrapped = true;
+    publish();
+  }
+  return () => {
+    clients = Math.max(0, clients - 1);
+    if (clients === 0 && initialized) {
+      window.removeEventListener("popstate", onPopState);
+      initialized = false;
+    }
+  };
 }
 
 export function navigateToRoute(nextPath: string, options?: {replace?: boolean}): void {
-  if (!nextPath.startsWith("/") || nextPath.startsWith("//")) return;
+  if (!isSafeInternalRoute(nextPath)) return;
   const next = normalizeRoutePath(nextPath);
   if (typeof window !== "undefined") {
     const base = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(/\/+$/, "");
@@ -67,6 +83,17 @@ export function navigateToRoute(nextPath: string, options?: {replace?: boolean})
 export function setNavigationPage(next: PageKey): void {
   navigateToRoute(routeForPage(next));
 }
+/** Current address before the signed-in shell has initialized its route store. */
+export function getRequestedNavigationPath(): string { return browserPath(); }
+/** Preserve initial copied URLs while authentication and employee directory
+ * hydrate independently. Only an existing signed-in identity change/logout
+ * resets the route; PageView still rejects unauthorized record links.
+ */
+export function shouldResetNavigationOnIdentityChange(previousId:string|null|undefined,nextId:string|null):boolean {
+  if(previousId===undefined || previousId===nextId)return false;
+  return !(previousId===null && nextId!==null);
+}
+
 export function getNavigationPage(): PageKey { return currentPage; }
 export function getNavigationRoute(): string { return currentRoute; }
 export function subscribeNavigationPage(subscriber: () => void): () => void {
@@ -78,4 +105,9 @@ export function useNavigationPage(): PageKey {
 }
 export function useNavigationRoute(): string {
   return useSyncExternalStore(subscribeNavigationPage, routeSnapshot, serverRouteSnapshot);
+}
+
+/** Prevent the root Home screen from flashing while resolving a copied deep link. */
+export function useNavigationReady(): boolean {
+  return useSyncExternalStore(subscribeNavigationPage, readySnapshot, serverReadySnapshot);
 }

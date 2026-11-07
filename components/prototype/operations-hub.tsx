@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { ArrowLeft, ArrowUpDown, ExternalLink, Search } from "lucide-react";
 import { canVisitRoute, routeEntry, routeLabel } from "../../lib/navigation-route-registry";
 import { navigateToRoute, useNavigationRoute } from "../../lib/navigation-store";
+import { SidebarRouteLink } from "../navigation/sidebar-route-link";
 import { GOLDEN_EAGLE_SKUS, skuForProductName } from "../../lib/product-catalog";
 import { orderFirstSettlementDate } from "../../lib/bonus-engine";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -45,7 +46,7 @@ function Empty({ children }: { children: ReactNode }) {
   return <div className="prototype-empty">{children}</div>;
 }
 function OpenLink({ to, children }: {to: string;children: ReactNode}) {
-  return <button type="button" className="prototype-link" onClick={() => navigateToRoute(to)}>{children}<ExternalLink size={13}/></button>;
+  return <SidebarRouteLink path={to} active={false} className="prototype-link">{children}<ExternalLink size={13}/></SidebarRouteLink>;
 }
 function Heading({title,description,back}:{title:string;description?:string;back?:string}){
   return <header className="prototype-heading">
@@ -375,6 +376,9 @@ export function PrototypeOperationsHub(){
   if(path==="/")return <WorkspaceHome/>;
   if(segments[0]==="portal"&&["orders","deliveries"].includes(segments[1])&&segments.length===3)return <CustomerOrderRecord id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
+  if(path==="/self-service")return <PeopleExperience/>;
+  if(path==="/self-service/leave")return <HrTimeOffExperience/>;
+  if(path==="/self-service/pay")return <PayrollWorkflowExperience/>;
   if(path==="/people")return <PeopleExperience/>;
   if(path==="/marketing")return <MarketingWorkspaceExperience/>;
   if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<Empty>Marketing write administration is available in isolated local demo only. The redesign provides source-linked read and export access.</Empty>;

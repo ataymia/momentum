@@ -1,8 +1,9 @@
 import type { PageKey, WorkspaceUser } from "./types";
 import { canAccessPage } from "./access";
+import { recordRouteMatch } from "./navigation-route-contract";
 
 /**
- * Prototype route contract for the inventory and fulfillment platform-inspired navigation.
+ * Momentum's unified navigation route contract. All department paths are local design.
  * Paths are stable, shareable addresses; record IDs are opaque IDs, not names.
  * This file controls presentation only. Firestore and server authorization remain authoritative.
  */
@@ -21,6 +22,11 @@ export type MenuGroup = {
 export const MENU_GROUPS: MenuGroup[] = [
   { label: "Workspace", entries: [
     { label: "Home", path: "/", permission: "home", state: "prototype" },
+    { label: "My Employee Workspace", path: "/self-service", permission: "timekeeping", state: "prototype" },
+    { label: "My Time Off", path: "/self-service/leave", permission: "timekeeping", state: "prototype" },
+    { label: "My Pay History", path: "/self-service/pay", permission: "payroll", state: "prototype" },
+    { label: "Clock In / Timekeeping", path: "/people/timekeeping", permission: "timekeeping", state: "existing" },
+    { label: "My Training Resources", path: "/people/materials", permission: "materials", state: "existing" },
     { label: "Approvals", path: "/work/approvals", permission: "work", state: "prototype" },
     { label: "Action Center", path: "/work/actions", permission: "actions", state: "prototype" },
     { label: "Exceptions", path: "/work/exceptions", permission: "work", state: "prototype" },
@@ -33,9 +39,9 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Contacts", path: "/crm/contacts", permission: "accounts", state: "prototype" },
     { label: "Accounts / Customers", path: "/sales/customers", permission: "accounts", state: "prototype" },
     { label: "Deals", path: "/crm/deals", permission: "accounts", state: "prototype" },
-    { label: "Quick Visits", path: "/crm/quick-visit", permission: "quickVisit", state: "prototype" },
-    { label: "Account Setup", path: "/crm/account-setup", permission: "accountSetup", state: "prototype" },
-    { label: "Account Health", path: "/crm/account-health", permission: "accountHealth", state: "prototype" },
+    { label: "Quick Visits", path: "/crm/quick-visit", permission: "quickVisit", state: "existing" },
+    { label: "Account Setup", path: "/crm/account-setup", permission: "accountSetup", state: "existing" },
+    { label: "Account Health", path: "/crm/account-health", permission: "accounts", state: "existing" },
     { label: "Account Map", path: "/crm/account-map", permission: "salesMap", state: "existing" },
     { label: "Territory Map", path: "/crm/territory-map", permission: "salesMap", state: "prototype" },
     { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "existing" },
@@ -48,6 +54,8 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Sales Orders", path: "/sales/orders", permission: "orders", state: "prototype" },
     { label: "Invoices", path: "/sales/invoices", permission: "orderCash", state: "prototype" },
     { label: "Payments Received", path: "/sales/payments", permission: "orderCash", state: "prototype" },
+    { label: "Finance Overview", path: "/finance", permission: "finance", state: "existing" },
+    { label: "Accounting", path: "/finance/accounting", permission: "accounting", state: "existing" },
     { label: "Sales Returns", path: "/sales/returns", permission: "orders", state: "prototype" },
     { label: "Credit Notes", path: "/sales/credit-notes", permission: "orderCash", state: "prototype" },
     { label: "Customer Portal", path: "/commerce/customer-portal", permission: "orders", state: "planned" },
@@ -66,10 +74,11 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Payments Made", path: "/purchases/payments", permission: "accounting", state: "planned" },
     { label: "Vendor Credits", path: "/purchases/credits", permission: "accounting", state: "planned" },
     { label: "Delivery Operations", path: "/operations/deliveries", permission: "orders", state: "prototype" },
+    { label: "Legacy Dispatch (retained)", path: "/operations/legacy-dispatch", permission: "dispatch", state: "existing" },
   ] },
   { label: "Human Resources", entries: [
     { label: "HR Overview", path: "/people", permission: "people", state: "prototype" },
-    { label: "Employee Directory", path: "/people/directory", permission: "employees", state: "prototype" },
+    { label: "Employee Directory", path: "/people/directory", permission: "employees", state: "existing" },
     { label: "New Hire", path: "/people/new-hire", permission: "newHire", state: "prototype" },
     { label: "Onboarding", path: "/people/onboarding", permission: "onboarding", state: "prototype" },
     { label: "Onboarding Workflow", path: "/people/onboarding/workflow", permission: "onboarding", state: "existing" },
@@ -88,6 +97,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Forecasts", path: "/reports/forecasts", permission: "reports", state: "planned" },
     { label: "Reports", path: "/reports", permission: "reports", state: "existing" },
     { label: "Dashboards", path: "/reports/performance", permission: "performance", state: "existing" },
+    { label: "Reporting Center", path: "/reports/center", permission: "reportingCenter", state: "existing" },
     { label: "Cases", path: "/support/cases", permission: "work", state: "planned" },
     { label: "Documents", path: "/documents", permission: "materials", state: "prototype" },
     { label: "Help", path: "/help", permission: "help", state: "existing" },
@@ -177,23 +187,13 @@ export function normalizeRoutePath(path: string): string {
 export function pageForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
   if (ROUTE_OVERRIDES[clean]) return ROUTE_OVERRIDES[clean];
-  // Deep-linked records must retain their owning workspace page, not fall back to Home.
-  if(clean.startsWith("/admin/employee-profiles/"))return "settings";
-  if(/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean))return "orders";
-  if(clean.startsWith("/sales/orders/"))return "orders";
-  if(clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/"))return "orderCash";
-  if(clean.startsWith("/sales/returns/"))return "orders";
-  if(clean.startsWith("/crm/deals/")||clean.startsWith("/crm/contacts/"))return "accounts";
-  if(clean.startsWith("/sales/customers/"))return "accounts";
-  if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
-  if(clean.startsWith("/items/"))return "products";
+  const record = recordRouteMatch(clean);
+  if (record) return record.page;
   const legacy = (Object.keys(LEGACY_PATHS) as PageKey[]).find(key => LEGACY_PATHS[key] === clean);
-  if(legacy)return legacy;
-  // Prototype-only modules still need a meaningful active page for breadcrumbs
-  // and other navigation consumers, even though their content is route-driven.
-  const menu=MENU_GROUPS.flatMap(group=>group.entries).find(entry=>entry.path===clean)
-    ??CUSTOMER_MENU.find(entry=>entry.path===clean);
-  return menu?.permission??null;
+  if (legacy) return legacy;
+  const menu = MENU_GROUPS.flatMap(group => group.entries).find(entry => entry.path === clean)
+    ?? CUSTOMER_MENU.find(entry => entry.path === clean);
+  return menu?.permission ?? null;
 }
 
 export function routeForPage(page: PageKey): string {
@@ -207,64 +207,61 @@ export function routeEntry(path: string): MenuEntry | undefined {
 
 export function routeLabel(path: string): string {
   const clean = normalizeRoutePath(path);
-  const item = routeEntry(clean) ?? CUSTOMER_MENU.find(entry=>entry.path===clean);
+  const item = routeEntry(clean) ?? CUSTOMER_MENU.find(entry => entry.path === clean);
   if (item) return item.label;
-  if (clean.startsWith("/items/")) return "Item details";
-  if(clean==="/inventory/workflow")return "Inventory operations";
-  if (clean.startsWith("/inventory/lots/")) return "Lot details";
-  if (clean.startsWith("/inventory/shipments/")) return "Shipment details";
-  if (clean.startsWith("/crm/deals/")) return "Deal details";
-  if (clean.startsWith("/crm/contacts/")) return "Contact details";
-  if (clean.startsWith("/sales/customers/")) return "Customer details";
-  if (clean==="/sales/orders/workflow") return "Order operations";
-  if(clean==="/sales/orders/new")return "Create sales order";
-  if(clean.startsWith("/sales/orders/")&&clean.endsWith("/edit"))return "Edit sales order";
-  if (clean.startsWith("/admin/employee-profiles/")) return "Employee profile";
-  if (clean.startsWith("/sales/orders/")) return "Order details";
-  if (clean.startsWith("/sales/invoices/")) return "Invoice details";
-  if (clean.startsWith("/sales/payments/")) return "Payment details";
-  if (clean.startsWith("/sales/returns/")) return "Return details";
-  if (clean.startsWith("/sales/credit-notes/")) return "Credit note details";
+  const record = recordRouteMatch(clean);
+  if (record) return record.label;
+  if (clean === "/inventory/workflow") return "Inventory operations";
+  if (clean === "/sales/orders/workflow") return "Order operations";
   return clean === "/" ? "Home" : "Workspace";
 }
 
 export function permissionForPath(path: string): PageKey | null {
   const clean = normalizeRoutePath(path);
-  if(clean.startsWith("/admin/employee-profiles/"))return "settings";
-  if(/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean))return "orders";
-  if (clean.startsWith("/items/")) return "products";
-  if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
-  if (clean.startsWith("/sales/customers/")) return "accounts";
-  const portal=CUSTOMER_MENU.find(item=>item.path===clean);
-  if (portal) return portal.permission;
-  if (clean.startsWith("/sales/orders/")) return "orders";
-  if (clean.startsWith("/sales/invoices/")||clean.startsWith("/sales/payments/")||clean.startsWith("/sales/credit-notes/")) return "orderCash";
-  if (clean.startsWith("/sales/returns/")) return "orders";
-  if (routeEntry(clean)) return routeEntry(clean)!.permission;
+  const record = recordRouteMatch(clean);
+  if (record) return record.page;
+  // Route-level permission is authoritative for a registered sidebar module;
+  // its legacy page key may differ (for example Account Health belongs to CRM).
+  const entry = routeEntry(clean) ?? CUSTOMER_MENU.find(item=>item.path===clean);
+  if (entry) return entry.permission;
   return pageForPath(clean);
 }
 
+/**
+ * A permission alone does not establish that a URL is a real application screen.
+ * Unregistered deep routes must be denied, not rendered as another department's
+ * legacy page. Add new record routes to navigation-route-contract.ts.
+ */
 export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean {
   if (!user) return false;
-  const clean=normalizeRoutePath(path);
-  if (user.role==="Customer") {
-    // Maintain direct links used by the existing customer dashboard and order flow.
-    const customerOrderDetail = clean.startsWith("/sales/orders/") &&
-      clean!=="/sales/orders/new" && clean!=="/sales/orders/workflow" &&
-      !clean.endsWith("/edit");
-    const legacyCustomer = clean==="/sales/orders" || clean==="/sales/customers" ||
-      customerOrderDetail || clean.startsWith("/sales/customers/");
-    const customerPortalDetail=/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean);
-    return (clean==="/" || Boolean(CUSTOMER_MENU.find(e=>e.path===clean)) || legacyCustomer || customerPortalDetail) &&
-      canAccessPage(user,permissionForPath(clean)??"home");
+  const clean = normalizeRoutePath(path);
+  const isKnown = Boolean(recordRouteMatch(clean) || routeEntry(clean)
+    || CUSTOMER_MENU.some(entry => entry.path === clean)
+    || Object.values(LEGACY_PATHS).includes(clean)
+    || Object.hasOwn(ROUTE_OVERRIDES, clean));
+  if (!isKnown) return false;
+  // Self-service is still available, but admin-only HR workflows cannot be
+  // reached by manually entering an otherwise recognized URL.
+  if (["/people/directory", "/people/new-hire", "/people/onboarding",
+    "/people/onboarding/workflow", "/people/payroll/workflow", "/people/training"].includes(clean)
+    && user.role !== "Administrator") return false;
+  if (user.role === "Customer") {
+    const customerOrderDetail = /^\/sales\/orders\/[^/]+$/.test(clean)
+      && clean !== "/sales/orders/new" && clean !== "/sales/orders/workflow";
+    const legacyCustomer = clean === "/sales/orders" || clean === "/sales/customers"
+      || customerOrderDetail || /^\/sales\/customers\/[^/]+(?:\/(?:overview|comments|transactions|mails|statements|locations))?$/.test(clean);
+    const portalDetail = /^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean);
+    return (clean === "/" || CUSTOMER_MENU.some(entry => entry.path === clean)
+      || legacyCustomer || portalDetail)
+      && canAccessPage(user, permissionForPath(clean) ?? "home");
   }
   if (clean.startsWith("/portal/")) return false;
-  if(clean==="/operations/deliveries" && !["Administrator","Operations","Warehouse"].includes(user.role)) return false;
-  if (clean.startsWith("/admin/") && user.role!=="Administrator") return false;
-  const permission=permissionForPath(clean);
-  return permission!==null && canAccessPage(user,permission);
+  if (clean === "/operations/deliveries"
+    && !["Administrator", "Operations", "Warehouse"].includes(user.role)) return false;
+  if (clean.startsWith("/admin/") && user.role !== "Administrator") return false;
+  const permission = permissionForPath(clean);
+  return permission !== null && canAccessPage(user, permission);
 }
-
 
 /** Prototype-only department visibility. Final policy will use per-action grants.
  * Department menus should not imply the user has HR or Marketing administrative access.
@@ -281,11 +278,13 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
-  if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
-  if(/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean))return true;
-  // Sensitive legacy HR and payroll tools are wrapped by a prototype demo-only gate.
-  if(clean==="/people/payroll/workflow"||clean==="/people/onboarding/workflow"||clean==="/admin/employee-profiles/workflow")return true;
-  if (clean.startsWith("/admin/employee-profiles/") || clean.startsWith("/inventory/shipments/") || clean.startsWith("/inventory/lots/") || clean.startsWith("/items/") || clean.startsWith("/sales/customers/") || clean.startsWith("/sales/orders/") || clean.startsWith("/sales/invoices/") || clean.startsWith("/sales/payments/") || clean.startsWith("/sales/returns/") || clean.startsWith("/sales/credit-notes/") || (clean.startsWith("/portal/") && clean!=="/portal/orders")) return true;
+  // Existing operational workflows retain their own implementation until parity
+  // is demonstrated; they must not silently fall through to a placeholder.
+  if (clean === "/sales/orders/workflow" || clean === "/inventory/workflow" || clean === "/work/workflow") return false;
+  if (clean === "/people/payroll/workflow" || clean === "/people/onboarding/workflow"
+    || clean === "/admin/employee-profiles/workflow") return true;
+  if (recordRouteMatch(clean)) return true;
+  if (clean.startsWith("/portal/") && clean !== "/portal/orders") return true;
   const entry = routeEntry(clean);
   return Boolean(entry && entry.state !== "existing");
 }

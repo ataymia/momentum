@@ -7,18 +7,18 @@ import {validateTaxIdentity,taxIdentityMissing} from "../lib/account-tax-identit
 import {legalBillingName} from "../lib/legal-billing-name";
 
 const read=(file:string)=>readFileSync(new URL("../"+file,import.meta.url),"utf8");
-test("device navigation is wired to role-filtered menu with accessible mobile destinations",()=>{
+test("one sidebar is accessible through the mobile topbar instead of duplicate bottom navigation",()=>{
   const shell=read("components/app-shell-v4.tsx");
-  const component=read("components/navigation/device-navigation.tsx");
-  assert.match(shell,/DeviceNavigation items=\{\[\.\.\.allowedPrimary,\.\.\.allowedSecondary\]\}/);
-  assert.match(component,/aria-label="Mobile main navigation"/);
-  assert.match(component,/aria-current=\{active\?"page":undefined\}/);
-  assert.match(component,/aria-haspopup="dialog"/);
-  assert.match(component,/aria-expanded=\{expanded\}/);
-  assert.match(component,/event\.key==="Escape"/);
-  assert.match(component,/setSidebarOpen\(false\)/);
-  assert.match(component,/currentUser\.role==="Sales Representative"/);
-  assert.match(component,/currentUser\.role==="Customer"/);
+  const link=read("components/navigation/sidebar-route-link.tsx");
+  const css=read("app/architecture-navigation.css");
+  assert.match(shell,/<NavigationGroups\/>/);
+  assert.doesNotMatch(shell,/<DeviceNavigation/);
+  assert.match(shell,/aria-controls="momentum-primary-sidebar"/);
+  assert.match(shell,/aria-expanded=\{sidebarOpen\}/);
+  assert.match(link,/aria-current=\{active \? "page" : undefined\}/);
+  assert.match(css,/\.app-layout>\.sidebar\.is-open/);
+  assert.match(css,/\.topbar \.menu-button/);
+  assert.match(css,/\.device-bottom-nav,\.device-nav-layer\{display:none!important\}/);
 });
 test("adaptive CSS is strictly confined to touch breakpoints and preserves desktop/print",()=>{
   const css=read("app/device-adaptive.css");
@@ -84,13 +84,13 @@ test("navigation is isolated from the shared workspace data context",()=>{
   const base=read("lib/workspace-context-v5.tsx");
   const shell=read("components/app-shell-v4.tsx");
   const app=read("components/app-shell.tsx");
-  const mobile=read("components/navigation/device-navigation.tsx");
+  const sidebar=read("components/navigation/sidebar-route-link.tsx");
   assert.match(base,/setNavigationPage\(allowed\)/);
   assert.doesNotMatch(base,/const \[activePage, setActivePage\]/);
   assert.doesNotMatch(base,/activePage: PageKey/);
   assert.match(shell,/const activePage=useNavigationPage\(\)/);
   assert.match(app,/const activePage=useNavigationPage\(\)/);
-  assert.match(mobile,/const activePage=useNavigationPage\(\)/);
+  assert.match(sidebar,/navigateToRoute\(path\)/);
   assert.match(shell,/Suspense fallback=\{<div className="page"/);
   assert.match(shell,/lazy\(\(\)=>import\("\.\/pages\/focused-workspace-pages"\)/);
 });

@@ -1,0 +1,49 @@
+name: A Navigation Browser QA (isolated demo)
+
+on:
+  push:
+    branches:
+      - review/track-a-platform-architecture-2026-11-06
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: momentum-a-browser-review
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install dependencies
+        run: npm ci
+      - name: Build static review app
+        run: npm run build
+      - name: Install ephemeral Playwright browser (no production connections)
+        run: |
+          npm install --no-save --ignore-scripts --package-lock=false playwright@1.55.1
+          npx playwright install --with-deps chromium
+      - name: Check synthetic desktop/tablet/mobile navigation in local Hosting emulator
+        run: npx --yes firebase-tools@15.30.1 emulators:exec --only hosting --project demo-momentum-browser --config firebase.architecture-smoke.json 'node scripts/a-premerge-browser.mjs'
+      - name: Save synthetic UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-premerge-synthetic-browser
+          path: artifacts/a-browser/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Ensure the audit did not change tracked files
+        run: git diff --exit-code

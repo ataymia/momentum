@@ -6,19 +6,19 @@ Owner-provided November 5, 2026 master checklist. **98 immutable IDs; none indep
 
 | ID | Requirement | Owner review snapshot | Engineering evidence / remaining gate |
 | --- | --- | --- | --- |
-| A01 | Multi-page, URL-addressable application | Partial | Unaccepted; independently verify |
-| A02 | Back, Forward, refresh and copied links | Partial | Unaccepted; independently verify |
-| A03 | Shareable business, order, product and record URLs | Partial | Unaccepted; independently verify |
-| A04 | URL-aware routing and Hosting fallback | Built; deployment QA pending | Unaccepted; independently verify |
-| A05 | One sidebar; remove old header module tabs | Partial | Unaccepted; independently verify |
-| A06 | Accurate active-page highlighting and Calendar vs Meetings | Testing | Unaccepted; independently verify |
-| A07 | Replace rather than embed legacy screens | Partial | Unaccepted; independently verify |
-| A08 | Specialized departments with consistent design system | Partial | Unaccepted; independently verify |
-| A09 | Research and implement useful enterprise workflows | Ongoing | Unaccepted; independently verify |
-| A10 | Preserve records, permissions, processes and logic | Regression QA pending | Unaccepted; independently verify |
-| A11 | Desktop, tablet and mobile layouts | Partial | Unaccepted; independently verify |
-| A12 | Isolated prototype; owner-approved merge/deploy only | Ongoing control | Unaccepted; independently verify |
-| A13 | Remove vendor references and obsolete branch safely | Partial | Unaccepted; independently verify |
+| A01 | Convert one-page application into multi-page, URL-addressable application. | Partial | Built: client URL-based views, native record links and Hosting SPA fallback. Browser demo QA passed 2026-11-07; still a client-rendered SPA, not independently server-rendered Next pages. Not accepted. |
+| A02 | Make browser Back, Forward, refresh, and copied links work correctly. | Partial | Browser-Verified in isolated synthetic Chromium: first-login copied URL, Back/Forward, direct refresh and history. Real staging-role/device QA pending; not accepted. |
+| A03 | Provide individual shareable URLs for businesses, orders, products, and records. | Partial | Browser-Verified example account deep link; native link and fail-closed encoded ID tests. B–E new record patterns require coordinated integration and foreign-record staging QA; not accepted. |
+| A04 | Complete URL-aware routing with Firebase Hosting fallback. | Built; deployment QA pending | Automated-Verified Firebase Hosting emulator fallback and direct URL with production build; deployed host/reverse-proxy QA pending; not accepted. |
+| A05 | Consolidate all navigation into left sidebar; remove old module header tabs. | Partial | Built: eight-group desktop/tablet/mobile sidebar, self-service Workspace, collapsed-label restoration; synthetic browser passed. Four still-live legacy routes restored pending C/F redesign; B–G parity pending; not accepted. |
+| A06 | Fix active-page highlighting, including Calendar vs. Meetings. | Testing | Browser-Verified in local Chromium: active Calendar vs Meetings across click, Back/Forward and refresh. Staging/browser matrix pending; not accepted. |
+| A07 | Completely redesign legacy screens instead of embedding old interfaces. | Partial | Partial: central header navigation removed; working old workflows retained until B–G redesign is reviewed, not replaced by placeholders. No claim of full screen parity; not accepted. |
+| A08 | Give each department a specialized application experience with consistent overall styling. | Partial | Partial: unified responsive shell and route contracts; B–G specialized screen parity and final cross-stream styling/role QA pending; not accepted. |
+| A09 | Research useful enterprise software ecosystem functionality and implement appropriate workflows. | Ongoing | Source-backed vendor-neutral enterprise UX conventions researched; functional adoption owned by B–G. No proprietary assets or external branding in new A source. Not accepted. |
+| A10 | Preserve data, permissions, processes, and business logic throughout redesign. | Regression QA pending | Automated-Verified route-denial checks and full rules regression on review SHA. No real production role/tenant or browser staging access verification; fallback legacy screens preserved pending redesign; not accepted. |
+| A11 | Support desktop, tablet, and mobile layouts. | Partial | Browser-Verified in isolated Chromium at desktop, tablet and phone viewport; collapsed mobile sidebar, focus, Escape, reduced motion CSS. Actual physical device and WCAG acceptance pending; not accepted. |
+| A12 | Maintain isolated prototype branch; no merge or deployment without Mia's approval. | Ongoing control | Protected: isolated draft PR #167 and expected-SHA updates; main untouched by A. No merge/deploy without Mia sign-off; not accepted for release. |
+| A13 | Remove external vendor naming from new source and documentation; clean up obsolete branch. | Partial | Partial: new A source/doc vendor-neutral. Historical prototype branch diverged with unique commits; do not delete without reconciliation. Not accepted. |
 
 ## B. Workspace, tasks, meetings & calendar
 
