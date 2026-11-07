@@ -46,7 +46,7 @@ First integrated run had 18 navigation/wiring failures; all were resolved by the
 
 ## Unresolved requirements and decisions (no fictitious completion)
 
-- **C01–C25:** new CRM pages and bonus/commission rules are present in code; connected production create/edit permissions, canonical account migration, and source-verified cash/bonus disbursement remain unfinished. **Owner-confirmed compensation direction is controlling and already reflected in the platform policy and tests. No obsolete document comparison or rate-conflict escalation is required. Actual payouts still require reconciled eligible collections and authorized release controls.**
+- **C01–C25:** new CRM pages and bonus calculations exist in code. The commission decision is final and implemented in the platform policy. Remaining engineering work: connected production create/edit permissions, canonical account migration, and reliable, source-verified payout attribution. No open commission-rate decision or outdated-document reconciliation blocker.
 - **D10–D16:** payment request design and read-only portals are not equivalent to an approved integrated ACH/card processor, recurring mandates, signed webhooks, verified collections and settlement/reconciliation.
 - **E08–E09:** purchasing workflow is designed and tested as isolated local demo; authoritative server operations, approved roles, real supplier invoices, receipt inventory posting and external settlement are not finished.
 - **F04–F06:** production payroll, compliant I-9/W-4/AZ document signatures, original secure employee files and privacy cutover remain incomplete. The HR review chain has further isolated designs, not activated endpoints.
