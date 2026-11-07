@@ -61,3 +61,26 @@ test("settlements after a 90-day window never backdate sustained qualification",
   assert.equal(rows.find(s=>s.milestone==="Sustained account")?.status,"Window expired");
   assert.equal(rows.find(s=>s.milestone==="Sustained account")?.observedCases,10);
 });
+
+test("first partial cash receipt cannot earn all order cases before final Paid settlement",()=>{
+ const partial=order("opening",10,{placedAt:"2026-10-01T08:30:00Z",paymentStatus:"Partially paid",firstSettledAt:"2026-10-03T12:00:00Z"});
+ const pending=evaluateSalesRepAccountBonuses(dataWith([partial]),new Date("2026-11-06T12:00:00Z"));
+ assert.equal(pending.find(s=>s.milestone==="Opening order")?.status,"Awaiting payment");
+ assert.equal(pending.find(s=>s.milestone==="Sustained account")?.observedCases,0);
+ const final={...partial,paymentStatus:"Paid" as const,paidAt:"2026-10-08T10:00:00Z"};
+ const approved=evaluateSalesRepAccountBonuses(dataWith([final]),new Date("2026-11-06T12:00:00Z"));
+ assert.equal(approved.find(s=>s.milestone==="Opening order")?.status,"Earned");
+ assert.equal(approved.find(s=>s.milestone==="Sustained account")?.observedCases,10);
+ assert.equal(approved.find(s=>s.milestone==="Opening order")?.windowStart,"2026-10-01");
+ assert.equal(approved.find(s=>s.milestone==="Opening order")?.windowEnd,"2026-12-30");
+});
+
+test("full settlement after 90-day deadline cannot backdate 40-case eligibility",()=>{
+ const late=order("opening",40,{
+   placedAt:"2026-07-01T10:00:00Z",firstSettledAt:"2026-07-02T10:00:00Z",
+   paymentStatus:"Paid",paidAt:"2026-11-01T10:00:00Z",
+ });
+ const signals=evaluateSalesRepAccountBonuses(dataWith([late]),new Date("2026-11-07T12:00:00Z"));
+ assert.equal(signals.find(s=>s.milestone==="Sustained account")?.status,"Window expired");
+ assert.equal(signals.find(s=>s.milestone==="Sustained account")?.observedCases,0);
+});
