@@ -208,7 +208,11 @@ export function DeliveryOperationsDirectory(){
   const summary=orders.map(order=>{
     const task=indexed.get(order.id);const delivered=orderDeliveryQuantity(ledger,order.id);
     const override=state.overrides.some(x=>x.orderId===order.id);
-    const issue=deliveryReconciliationIssue(order,task,delivered,override);
+    const matchIssue=deliveryReconciliationIssue(order,task,delivered,override);
+    const custody=orderOutboundQuantity(ledger,order.id);
+    const issue=delivered>order.cases+0.005?"Delivered inventory exceeds the ordered cases.":matchIssue??(
+      task&&["Loaded","In transit"].includes(task.status)&&custody+0.005<order.cases?
+        "Loaded or departed without full recorded warehouse outbound.":undefined);
     const proof=Boolean(task?.signature?.signedAt&&task.signature.strokes?.some(stroke=>stroke.length>=2));
     return {order,task,delivered,proof,issue,status:deliveryStatusForOrder(state,order)};
   });
