@@ -61,3 +61,28 @@ test("commerce prototype reads authoritative records without creating, charging,
   assert.doesNotMatch(src,/\bcreateOrder\(/);
   assert.doesNotMatch(src,/\bsendEmail\(/);
 });
+
+test("phone orders render readable cards while the sortable desktop table remains",()=>{
+  const src=readFileSync("components/prototype/commerce-experience.tsx","utf8");
+  const css=readFileSync("app/mobile-sales-orders.css","utf8");
+  const layout=readFileSync("app/layout.tsx","utf8");
+  assert.match(src,/momentum-order-desktop-table/);
+  assert.match(src,/momentum-mobile-order-list/);
+  assert.match(src,/momentum-mobile-order-card__facts/);
+  assert.match(src,/Mobile order sort/);
+  assert.match(src,/sorter\.select\(sorter\.field\)/);
+  assert.match(css,/@media screen and \(max-width:640px\)/);
+  assert.match(css,/\.momentum-order-desktop-table\{display:none!important\}/);
+  assert.match(css,/\.momentum-mobile-order-card/);
+  assert.match(layout,/import "\.\/mobile-sales-orders\.css"/);
+});
+
+test("administrators have a nonblank handoff instead of a representative self-delivery form",()=>{
+  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+  const view=readFileSync("components/orders/rep-self-delivery.tsx","utf8");
+  assert(canVisitRoute(person("Administrator"),"/crm/self-delivery"));
+  assert.match(hub,/currentUser\?\.role==="Sales Representative"\s*\?<RepSelfDelivery\/>/);
+  assert.match(hub,/Administrator delivery oversight/);
+  assert.match(hub,/Open Delivery Operations/);
+  assert.match(view,/if\(currentUser\?\.role!=="Sales Representative"\)return null/);
+});
