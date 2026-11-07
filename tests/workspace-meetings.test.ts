@@ -3,7 +3,7 @@ import test from "node:test";
 import {readFileSync} from "node:fs";
 import {
  meetingCalendarFile,meetingConflicts,meetingEligibleUsers,meetingNotices,meetingVisibleTo,mayOrganize,normalizeMeetings,
- personalMeetings,upcomingMeetings,meetingHomeReminders,validateMeeting,type MeetingInput,type TeamMeeting,
+ personalMeetings,upcomingMeetings,meetingHomeReminders,meetingHasEnded,validateMeeting,type MeetingInput,type TeamMeeting,
 } from "../lib/workspace-meetings";
 import {addCalendarDays,arizonaDateKey} from "../lib/date-time";
 // Functions is a CommonJS package; tests load its pure policy through the namespace
@@ -243,4 +243,19 @@ test("B08 connected meeting synchronization avoids background-tab Firestore requ
  assert.match(source,/document.visibilityState==="visible"/);
  assert.match(source,/document.addEventListener\("visibilitychange",onFocus\)/);
  assert.match(source,/window.addEventListener\("focus",onFocus\)/);
+});
+
+test("B08 stale invitations expire at meeting end, while cancellation changes remain reviewable",()=>{
+ const past=record({date:"2026-01-01",startTime:"09:00",endTime:"10:00"});
+ assert.equal(meetingHasEnded(past,"2026-01-02","08:00"),true);
+ assert.equal(meetingHasEnded(past,"2026-01-01","09:30"),false);
+ assert.equal(meetingHasEnded(past,"2026-01-01","10:00"),true);
+ assert.deepEqual(meetingNotices([past],rep),[]);
+ const cancelled=record({status:"Cancelled",revision:2,seenRevision:{admin:2,rep:1},date:"2026-01-01"});
+ assert.equal(meetingNotices([cancelled],rep)[0]?.title,"Meeting cancelled: Weekly territory sync");
+});
+test("B08 server rejects late RSVP and idempotently handles duplicate responses",()=>{
+ const backend=readFileSync("functions/src/staff-meetings.ts","utf8");
+ assert.match(backend,/This meeting has already ended\. Its RSVP is closed/);
+ assert.match(backend,/old.rsvps\[actor.uid\]===str\(body.response\)/);
 });

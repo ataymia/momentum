@@ -6,7 +6,7 @@ import {addCalendarDays,arizonaDateKey,startOfLocalWeek} from "../../lib/date-ti
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useMeetingWorkspace} from "../../lib/workspace-meetings-store";
-import {meetingCalendarFile,meetingConflicts,meetingNotices,meetingHomeReminders,upcomingMeetings,type MeetingInput,type TeamMeeting,type Rsvp} from "../../lib/workspace-meetings";
+import {meetingCalendarFile,meetingConflicts,meetingNotices,meetingHomeReminders,meetingHasEnded,upcomingMeetings,type MeetingInput,type TeamMeeting,type Rsvp} from "../../lib/workspace-meetings";
 
 const url=(id:string)=>"/calendar/meetings/"+encodeURIComponent(id);
 function Go({to,children}:{to:string;children:React.ReactNode}){return <button type="button" className="prototype-link" onClick={()=>navigateToRoute(to)}>{children}<ExternalLink size={13}/></button>}
@@ -98,7 +98,7 @@ function MeetingRecord({id}:{id:string}){
         <div><dt>Revision</dt><dd>{meeting.revision}</dd></div><div><dt>Updated</dt><dd>{meeting.updatedAt}</dd></div></dl>
       <p className="prototype-note">Personal calendar file import does not email attendees or modify an external calendar. Changes to a meeting require downloading the updated file. In-app invitations appear when the authenticated meeting service synchronizes; email delivery is not enabled.</p>
       {changed&&<button type="button" onClick={()=>{void Promise.resolve(seen(meeting.id)).then(result=>{if(!result.ok)setError(result.message??"Unable to acknowledge update.");});}}>Mark invitation / update reviewed</button>}
-      {invited&&meeting.status==="Scheduled"&&<div className="prototype-controls" aria-label="Respond to invitation"><strong>Your response: {status}</strong>
+      {invited&&meeting.status==="Scheduled"&&!meetingHasEnded(meeting)&&<div className="prototype-controls" aria-label="Respond to invitation"><strong>Your response: {status}</strong>
         {(["Accepted","Tentative","Declined"] as const).map(choice=><button key={choice} type="button" aria-pressed={status===choice} onClick={()=>doRsvp(choice)}>{choice}</button>)}
       </div>}
       {error&&<p role="status">{error}</p>}

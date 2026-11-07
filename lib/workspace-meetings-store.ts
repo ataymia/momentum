@@ -8,7 +8,7 @@ import {useWorkspace} from "./workspace-context";
 import {momentumStorage} from "./persistence";
 import {
   MEETINGS_DEMO_KEY,EMPTY_MEETINGS,meetingEligibleUsers,meetingVisibleTo,mayOrganize,
-  meetingConflicts,normalizeMeetings,validateMeeting,type MeetingInput,type TeamMeeting,type Rsvp,
+  meetingConflicts,meetingHasEnded,normalizeMeetings,validateMeeting,type MeetingInput,type TeamMeeting,type Rsvp,
 } from "./workspace-meetings";
 
 const eventName="momentum-demo-meetings-changed";
@@ -83,7 +83,8 @@ function useLocalMeetingWorkspace(){
   });
   const rsvp=(id:string,response:Exclude<Rsvp,"Pending">):ChangeResult=>commit(all=>{
     const m=all.find(item=>item.id===id);
-    if(!m||m.status!=="Scheduled"||!m.attendeeIds.includes(currentUser!.id)||!["Accepted","Tentative","Declined"].includes(response))return{result:{ok:false,message:"You cannot respond to this meeting."}};
+    if(!m||m.status!=="Scheduled"||meetingHasEnded(m)||!m.attendeeIds.includes(currentUser!.id)||!["Accepted","Tentative","Declined"].includes(response))return{result:{ok:false,message:"You cannot respond to this meeting."}};
+    if(m.rsvps[currentUser!.id]===response)return{result:{ok:true,id},meetings:all};
     const at=new Date().toISOString();
     const updated:TeamMeeting={...m,rsvps:{...m.rsvps,[currentUser!.id]:response},
       seenRevision:{...m.seenRevision,[currentUser!.id]:m.revision},history:[...m.history,{actorId:currentUser!.id,action:"RSVP" as const,at,detail:response}].slice(-200)};

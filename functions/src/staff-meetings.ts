@@ -21,6 +21,9 @@ const str=(v:unknown)=>typeof v==="string"?v.trim():"";
 const obj=(v:unknown):v is Row=>Boolean(v&&typeof v==="object"&&!Array.isArray(v));
 const phoenixDay=()=>{const parts=new Intl.DateTimeFormat("en-US",{timeZone:"America/Phoenix",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());const get=(name:string)=>parts.find(p=>p.type===name)?.value??"";return get("year")+"-"+get("month")+"-"+get("day");};
 const minutes=(s:string)=>Number(s.slice(0,2))*60+Number(s.slice(3));
+const phoenixTime=()=>new Intl.DateTimeFormat("en-US",{
+ timeZone:"America/Phoenix",hour:"2-digit",minute:"2-digit",hourCycle:"h23",
+}).format(new Date());
 const error=(status:number,message:string)=>new MeetingServerError(status,message);
 class MeetingServerError extends Error {
   constructor(readonly status:number,message:string){super(message);}
@@ -57,7 +60,7 @@ function inputFrom(value:unknown):Input{
     throw error(400,"Enter a valid title, agenda, location, future Arizona meeting date/time (max 3 hours), and 1–15 unique active employees.");
   }
   if(date===phoenixDay()){
-    const current=new Intl.DateTimeFormat("en-US",{timeZone:"America/Phoenix",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date());
+    const current=phoenixTime();
     if(endTime<=current)throw error(400,"This meeting has already ended in Arizona.");
   }
   return{title,agenda,location,date,startTime,endTime,attendeeIds};
@@ -167,12 +170,17 @@ async function respond(db:Firestore,actor:Actor,body:Row,action:"rsvp"|"seen"){
     if(!old||!member(old,actor))throw error(404,"Meeting not found for this employee.");
     const seenRevision:Row=obj(old.seenRevision)?{...old.seenRevision}:{};
     if(action==="seen"){
+      if(seenRevision[actor.uid]===old.revision)return old;
       seenRevision[actor.uid]=old.revision;
       const result={...old,seenRevision};
       tx.set(ref,result);
       return result;
     }
     if(old.status!=="Scheduled"||!asStringArray(old.attendeeIds).includes(actor.uid)||!rsvpOptions.has(str(body.response)))throw error(403,"Meeting response is not authorized.");
+    if(str(old.date)<phoenixDay()||(str(old.date)===phoenixDay()&&str(old.endTime)<=phoenixTime())){
+      throw error(409,"This meeting has already ended. Its RSVP is closed.");
+    }
+    if(obj(old.rsvps)&&old.rsvps[actor.uid]===str(body.response))return old;
     const at=new Date().toISOString();
     const rsvps=obj(old.rsvps)?{...old.rsvps}:{};
     rsvps[actor.uid]=str(body.response);

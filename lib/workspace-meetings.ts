@@ -72,9 +72,14 @@ export function meetingConflicts(meetings:readonly TeamMeeting[],input:MeetingIn
   }
   return conflicts;
 }
+/** A scheduled meeting no longer needs RSVP alerts after its recorded end. */
+export function meetingHasEnded(meeting:Pick<TeamMeeting,"date"|"endTime">,today=arizonaDateKey(),nowTime=arizonaTimeKey()){
+ return meeting.date<today||(meeting.date===today&&meeting.endTime<=nowTime);
+}
 export function meetingNotices(meetings:readonly TeamMeeting[],user:WorkspaceUser|null|undefined){
   if(!user||!member(user))return [];
   return personalMeetings(meetings,user).flatMap(m=>{
+    if(m.status==="Scheduled"&&meetingHasEnded(m))return [];
     const invited=m.attendeeIds.includes(user.id);
     const pending=invited&&m.status==="Scheduled"&&m.rsvps[user.id]==="Pending";
     const changed=(m.seenRevision[user.id]??0)<m.revision;
@@ -84,7 +89,7 @@ export function meetingNotices(meetings:readonly TeamMeeting[],user:WorkspaceUse
   }).sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
 }
 export function upcomingMeetings(meetings:readonly TeamMeeting[],user:WorkspaceUser|null|undefined,from=arizonaDateKey()){
-  return personalMeetings(meetings,user).filter(m=>m.status==="Scheduled"&&m.date>=from&&(from!==arizonaDateKey()||m.date>from||m.endTime>arizonaTimeKey()))
+  return personalMeetings(meetings,user).filter(m=>m.status==="Scheduled"&&m.date>=from&&(from!==arizonaDateKey()||!meetingHasEnded(m)))
     .sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime)||a.id.localeCompare(b.id));
 }
 /** Source-backed 24-hour reminder. This does not send or schedule external messages. */
