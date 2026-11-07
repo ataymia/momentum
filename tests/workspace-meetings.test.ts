@@ -6,7 +6,11 @@ import {
  personalMeetings,upcomingMeetings,meetingHomeReminders,validateMeeting,type MeetingInput,type TeamMeeting,
 } from "../lib/workspace-meetings";
 import {addCalendarDays,arizonaDateKey} from "../lib/date-time";
-import {staffMeetingFieldCollision} from "../functions/src/staff-meeting-policy";
+// Functions is a CommonJS package; tests load its pure policy through the namespace
+// so both tsx's CommonJS and ESM interoperability modes are supported.
+import * as serverPolicy from "../functions/src/staff-meeting-policy";
+const staffMeetingFieldCollision=(serverPolicy.staffMeetingFieldCollision??
+  (serverPolicy as unknown as {default?:typeof serverPolicy}).default?.staffMeetingFieldCollision)!;
 import type {WorkspaceUser,Appointment} from "../lib/types";
 
 const user=(id:string,role:WorkspaceUser["role"]="Sales Representative",separated=false):WorkspaceUser=>({
