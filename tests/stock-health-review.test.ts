@@ -99,3 +99,15 @@ test("E06 self-delivery redesign preserves the trusted server-only workflow and 
   assert.match(routes,/Rep Self-Delivery.*state: "prototype"/);
   assert.equal(requiresPrototypePage("/crm/self-delivery"),true);
 });
+
+test("E07 prevents premature office Dispatch retirement before scheduling parity",()=>{
+  const registry=readFileSync("lib/navigation-route-registry.ts","utf8");
+  const dispatch=readFileSync("components/pages/dispatch-board.tsx","utf8");
+  const review=readFileSync("components/prototype/fulfillment-experience.tsx","utf8");
+  assert.match(registry,/dispatch: "\/operations\/legacy-dispatch"/);
+  assert.match(dispatch,/createAppointment/);
+  assert.match(dispatch,/reassignAppointment/);
+  assert.match(dispatch,/moveAppointment/);
+  assert.match(dispatch,/canManageSchedule/);
+  assert.match(review,/Legacy office Dispatch must stay available/);
+});
