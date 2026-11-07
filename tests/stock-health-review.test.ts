@@ -111,3 +111,14 @@ test("E07 prevents premature office Dispatch retirement before scheduling parity
   assert.match(dispatch,/canManageSchedule/);
   assert.match(review,/Legacy office Dispatch must stay available/);
 });
+
+test("E05 distinguishes posted over-delivery and missing warehouse custody from legitimate completion",()=>{
+  const ops=readFileSync("components/prototype/fulfillment-experience.tsx","utf8");
+  const driver=readFileSync("components/prototype/driver-route-board.tsx","utf8");
+  assert.match(ops,/delivered>order\.cases\+0\.005/);
+  assert.match(ops,/orderOutboundQuantity\(ledger,order\.id\)/);
+  assert.match(ops,/Loaded or departed without full recorded warehouse outbound/);
+  assert.match(driver,/deliveryReconciliationIssue\(order,task,delivered,override\)/);
+  assert.match(driver,/state\.overrides\.some/);
+  assert.match(driver,/const complete=\(override\|\|task\.status==="Delivered"&&proof\)&&delivered>=order\.cases&&!issue/);
+});
