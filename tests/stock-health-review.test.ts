@@ -120,5 +120,8 @@ test("E05 distinguishes posted over-delivery and missing warehouse custody from 
   assert.match(ops,/Loaded or departed without full recorded warehouse outbound/);
   assert.match(driver,/deliveryReconciliationIssue\(order,task,delivered,override\)/);
   assert.match(driver,/state\.overrides\.some/);
-  assert.match(driver,/const complete=\(override\|\|task\.status==="Delivered"&&proof\)&&delivered>=order\.cases&&!issue/);
+  assert.match(driver,/const complete=\["Delivered","Paid"\]\.includes\(order\.status\)/);
+  assert.match(driver,/delivered<=order\.cases\+0\.005&&!issue/);
+  assert.match(ops,/Overposted: reconciliation required/);
+  assert.match(ops,/\["Delivered","Paid"\]\.includes\(x\.order\.status\)/);
 });
