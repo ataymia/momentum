@@ -141,6 +141,26 @@ for(const letter of ["C","A","B","D","E","G"]){
   exec(["commit","-m","merge(integration): preserve "+letter+" workstream at "+sha.slice(0,12)]);
   console.log("INTEGRATED "+letter+" HEAD="+exec(["rev-parse","HEAD"]));
 }
+// Merge overlapping product/ledger imports without dropping the CRM or Commerce variants.
+{
+  const path="components/prototype/operations-hub.tsx";
+  let hub=fs.readFileSync(path,"utf8");
+  const source='import { GOLDEN_EAGLE_SKUS, skuForProductName } from "../../lib/product-catalog";';
+  const merged='import { GOLDEN_EAGLE_SKUS, skuForProductName, skuForTraceableProduct } from "../../lib/product-catalog";';
+  if(hub.includes(source))hub=hub.replace(source,merged);
+  else if(!hub.includes('skuForTraceableProduct } from "../../lib/product-catalog"')){
+    throw new Error("Review unexpected merged SKU imports before continuing.");
+  }
+  const requirements=[
+    'import {nodeLotBalance,reservedQuantity,warehouseAvailable,warehouseNodeId} from "../../lib/inventory-ledger";',
+    'import {useInventoryLedger} from "../../lib/inventory-ledger-context";',
+    'import {canAccessPage} from "../../lib/access";'
+  ];
+  for(const line of requirements)if(!hub.includes(line))hub=hub.replace(merged,merged+"\\n"+line);
+  fs.writeFileSync(path,hub);
+  exec(["add",path]);
+  exec(["commit","-m","fix(integration): retain CRM product aliases and D traceable-inventory imports"]);
+}
 assertFeatureWiring();
 for(const [letter,sha] of Object.entries(sources)){
   exec(["merge-base","--is-ancestor",sha,"HEAD"]);
