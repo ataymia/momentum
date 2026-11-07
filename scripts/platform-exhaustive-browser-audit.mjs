@@ -166,8 +166,24 @@ try{
    else throw new Error("Invoice print-center toggle missing");
  });
  // Role-negative testing, not just hidden menus: copied URLs should fail closed.
+ await recordInteraction("Global staff search opens selected customer record",async()=>{
+   await goto("/sales/customers");
+   await page.locator(".sidebar-search").click();
+   const input=page.getByPlaceholder("Search records…");await input.fill("Desert Lantern");
+   const result=page.locator(".command-results button").filter({hasText:"Desert Lantern"}).first();
+   await result.waitFor({timeout:10000});await result.click();
+   assert.match(new URL(page.url()).pathname,/^\/sales\/customers\/[^/]+$/);
+ });
  await page.locator(".user-button").click();
  await page.locator(".user-popover button").filter({hasText:"Customer Demo"}).click();
+ await recordInteraction("Customer search opens portal order rather than internal sales workspace",async()=>{
+   await goto("/portal/orders");
+   await page.locator(".sidebar-search").click();
+   const input=page.getByPlaceholder("Search location or order…");await input.fill("GE-1047");
+   const result=page.locator(".command-results button").filter({hasText:"GE-1047"}).first();
+   await result.waitFor({timeout:10000});await result.click();
+   assert.match(new URL(page.url()).pathname,/^\/portal\/orders\/[^/]+$/);
+ });
  for(const route of ["/crm/deals","/admin/employee-profiles","/people/payroll","/inventory","/purchases/bills","/sales/orders/new"]){
   try{await goto(route);const state=await inspect();report.roleChecks.push({role:"Customer",route,blocked:state.blocked,pass:state.blocked});}
   catch(e){report.roleChecks.push({role:"Customer",route,pass:false,failure:String(e)});}
@@ -188,7 +204,7 @@ try{
  }
  await goto("/crm/self-delivery");await saveShot("rep-self-delivery");
  // Summary and audit artifact: failures are data, never silently dropped.
- const broken=report.routeChecks.filter(x=>x.failure||x.blank||x.errorText||x.blocked||x.placeholder||x.broken?.length);
+ const broken=report.routeChecks.filter(x=>x.failure||x.blank||x.errorText||x.blocked||(x.placeholder&&x.state!=="planned")||x.broken?.length);
  const visual=report.visualChecks.filter(x=>x.failure||x.overflowPx>8||x.blank||x.blocked||x.placeholder||x.broken?.length);
  const role=report.roleChecks.filter(x=>!x.pass);
  const interactions=report.interactions.filter(x=>x.result!=="PASS");
@@ -196,6 +212,7 @@ try{
   visualProblems:visual.length,roleChecks:report.roleChecks.length,roleProblems:role.length,
   interactionChecks:report.interactions.length,interactionProblems:interactions.length,
   uncaughtErrors:errors.length,consoleErrors:consoleErrors.length,
+  intentionallyPlanned:report.routeChecks.filter(x=>x.placeholder&&x.state==="planned").length,
   groups:Object.fromEntries(Object.entries(groups).map(([key,items])=>[key,items.length]))};
  fs.writeFileSync(path.join(OUT,"audit-report.json"),JSON.stringify(report,null,2));
  const markdown=[
