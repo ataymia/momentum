@@ -105,7 +105,7 @@ export function CrmCustomerDocuments({customer,locations,invoices,invoiceReadAut
           <td><button type="button" className="prototype-link" onClick={()=>navigateToRoute("/sales/invoices/"+encodeURIComponent(invoice.id))}>Open invoice</button></td>
         </tr>)}</tbody>
       </table></div>
-      {!invoices.length&&<p className="prototype-empty">No issued invoices for eligible delivered orders are recorded in this account's linked finance register.</p>}</>
+      {!invoices.length&&<p className="prototype-empty">No issued invoices for eligible delivered orders are recorded in this account&apos;s linked finance register.</p>}</>
       :<p className="prototype-empty">Connected financial documents require an authenticated, customer-scoped server read. No invoice list is inferred from raw order totals.</p>}
     <button type="button" className="prototype-link" onClick={()=>navigateToRoute(customerPath+"/transactions")}>View customer order history</button>
   </section>;
