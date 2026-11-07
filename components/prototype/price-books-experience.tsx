@@ -43,7 +43,7 @@ export function PriceBooksDirectory(){
     <section className="prototype-panel"><h2>Introductory and quarterly review rules</h2>
       <p>Qualified new locations start at $24 per case for the first 60 days, with a 10-case opening order. Buying at least 20 total cases during launch retains that level through the next full calendar quarter. Subsequent levels depend on average monthly purchases in the prior calendar quarter.</p>
       <p>Review dates: March 31, June 30, September 30, December 31. Account-specific approved price overrides, return credits, freight, taxes and payment terms remain separate.</p>
-      <p className="prototype-note">Retailer pricing uses a 60-day introduction followed by completed-calendar-quarter reviews. The separate 90-day sales-bonus window never governs retail prices. This page remains read-only, and account overrides require their own authorization.</p>
+      <p className="prototype-note">Retailer pricing uses a 60-day introduction followed by completed-calendar-quarter reviews. This page remains read-only, and account-specific overrides require their own authorization.</p>
     </section>
   </div>;
 }

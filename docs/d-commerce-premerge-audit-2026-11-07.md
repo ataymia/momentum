@@ -20,7 +20,7 @@ Mia clarified on 2026-11-07 that **90 days belongs to sales bonuses, not retail 
 | D01 | Built; testing pending | Searchable/sortable canonical SKU directory. Needs multi-role mobile/browser acceptance and master-catalog verification. |
 | D02 | Partial | Item detail, lot custody, linked orders, locations and movement history. A full approved product change audit and all history sources need validation. |
 | D03 | Partial | Strict SKU matching and warehouse ledger-derived quantities. Verify case barcodes, lot receipts, sellable/held stock and actual product labeling with supplier and E workstream. |
-| D04 | Built reference, not active pricing | Price Books directory/details and launch/quarterly evaluator with tests. On the D branch connected pricing uses the retailer 60-day/quarterly rules; final migration and staging acceptance remain. |
+| D04 | Connected rule implemented on D branch; acceptance pending | Price Books directory/details and launch/quarterly evaluator with tests. On the D branch connected pricing uses the retailer 60-day/quarterly rules; final migration and staging acceptance remain. |
 | D05 | Built prototype; testing pending | Orders list/detail, source-linked delivery and invoice evidence, reconciliation warnings. Full order lifecycle, mobile and permission QA outstanding. |
 | D06 | Partial | Independent invoices, linked details and print/export already exist. Invoice issuance/versions and customer-facing authorized PDFs are not production-accepted. |
 | D07 | Partial | Payments Received is a searchable read-only register. No actual ACH/card collection, proof of bank settlement or processor reconciliation. |
