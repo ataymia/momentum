@@ -28,7 +28,7 @@ export function CrmAccountSetup(){
   const [accountId,setAccountId]=useState("");
   const [message,setMessage]=useState("");
   const [errors,setErrors]=useState<Record<string,string>>({});
-  const account=scope.accounts.find(a=>a.id===accountId)||scope.accounts[0];
+  const account=accountId?scope.accounts.find(a=>a.id===accountId):scope.accounts[0];
   const customer=(data.customers??[]).find(c=>c.id===account?.customerId);
   const isManager=Boolean(currentUser&&["Administrator","Sales Manager"].includes(currentUser.role));
   const canEdit=Boolean(currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role)&&runtime.isDemo&&momentumStorage.mode()==="local");
