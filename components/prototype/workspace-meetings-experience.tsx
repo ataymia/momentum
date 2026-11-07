@@ -26,7 +26,8 @@ function downloadIcs(m:TeamMeeting){
   document.body.append(link);try{link.click();}finally{link.remove();window.setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);}
 }
 function MeetingForm({meeting}:{meeting?:TeamMeeting}){
-  const {users,currentUser,appointments,meetings,allowed,create,revise}=useMeetingWorkspace();
+  const {users,currentUser,appointments,meetings,allowed,isLocal,create,revise}=useMeetingWorkspace();
+  const [saving,setSaving]=useState(false);
   const [title,setTitle]=useState(meeting?.title??"");
   const [agenda,setAgenda]=useState(meeting?.agenda??"");
   const [location,setLocation]=useState(meeting?.location??"");
@@ -38,16 +39,20 @@ function MeetingForm({meeting}:{meeting?:TeamMeeting}){
   const input:MeetingInput={title,agenda,location,date,startTime,endTime,attendeeIds:selected};
   const potential=allowed&&currentUser?meetingConflicts(meetings,input,currentUser.id,meeting?.id,appointments):[];
   const available=users.filter(u=>u.id!==currentUser?.id).sort((a,b)=>a.name.localeCompare(b.name));
-  const submit=(event:FormEvent<HTMLFormElement>)=>{
+  const submit=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
-    const result=meeting?revise(meeting.id,input):create(input);
-    if(!result.ok){setError(result.message??"Unable to save meeting.");return;}
-    navigateToRoute(url(result.id??meeting!.id));
+    if(saving)return;
+    setSaving(true);
+    try{
+      const result=await (meeting?revise(meeting.id,input):create(input));
+      if(!result.ok){setError(result.message??"Unable to save meeting.");return;}
+      navigateToRoute(url(result.id??meeting!.id));
+    }finally{setSaving(false);}
   };
   return <main className="prototype-domain">
-    <Heading title={meeting?"Edit meeting":"Schedule meeting"} description="Arizona time · active employees only · local demonstration, not an email or production invitation"/>
+    <Heading title={meeting?"Edit meeting":"Schedule meeting"} description={"Arizona time · active employees · "+(isLocal?"local demonstration":"secure staff meeting register")+" · external email invitations not enabled"}/>
     <section className="prototype-panel"><div className="prototype-controls"><Go to={meeting?url(meeting.id):"/calendar/meetings"}>Back to meetings</Go></div>
-      {!allowed&&<p role="status" className="prototype-note">Meeting creation and changes are disabled outside isolated local demo mode and for non-organizer roles.</p>}
+      {!allowed&&<p role="status" className="prototype-note">Meeting creation is not available for this role or the secure meeting service has not loaded.</p>}
       <form onSubmit={submit} aria-label={meeting?"Update team meeting":"Create team meeting"}>
         <div className="prototype-controls">
           <label>Title <input aria-label="Meeting title" maxLength={160} required value={title} disabled={!allowed} onChange={e=>setTitle(e.target.value)}/></label>
@@ -58,20 +63,20 @@ function MeetingForm({meeting}:{meeting?:TeamMeeting}){
         </div>
         <label>Agenda <textarea aria-label="Meeting agenda" value={agenda} minLength={5} maxLength={4000} required rows={4} disabled={!allowed} onChange={e=>setAgenda(e.target.value)}/></label>
         <fieldset disabled={!allowed} className="prototype-panel"><legend>Invite employees ({selected.length} selected)</legend>
-          <p className="prototype-note">Only active employee identities appear. Customers and separated workers are excluded. Invitations are visible inside the isolated demo workspace; no email is sent.</p>
+          <p className="prototype-note">Only active employee identities appear. Customers and separated workers are excluded. Invitations appear inside each attendee’s Momentum workspace; no external email is sent.</p>
           <div className="prototype-controls">{available.map(user=><label key={user.id}><input type="checkbox" checked={selected.includes(user.id)} onChange={e=>setSelected(current=>e.target.checked?[...current,user.id]:current.filter(id=>id!==user.id))}/>{user.name} · {user.role}</label>)}</div>
           {!available.length&&<NoResults>No eligible employees available to invite.</NoResults>}
         </fieldset>
-        {potential.length>0&&<p role="alert" className="prototype-note">Scheduling conflict with visible calendar data: {potential.join("; ")}. Unavailable or unsynchronized employee calendars cannot be checked in this demo.</p>}
+        {potential.length>0&&<p role="alert" className="prototype-note">Scheduling conflict with visible calendar data: {potential.join("; ")}. External calendars and off-scope field appointments cannot be checked.</p>}
         {error&&<p role="alert">{error}</p>}
-        <div className="prototype-controls"><button type="submit" disabled={!allowed||selected.length===0||potential.length>0}>{meeting?"Save changes and notify invitees in demo":"Create meeting and notify invitees in demo"}</button><Go to="/calendar/meetings">Cancel editing</Go></div>
+        <div className="prototype-controls"><button type="submit" disabled={!allowed||saving||selected.length===0||potential.length>0}>{meeting?"Save changes for invitees":"Create meeting for invitees"}</button><Go to="/calendar/meetings">Cancel editing</Go></div>
       </form>
     </section>
   </main>;
 }
 function MeetingRecord({id}:{id:string}){
   const {data}=useWorkspace();
-  const {meetings,currentUser,rsvp,cancel,seen,isLocal}=useMeetingWorkspace();
+  const {meetings,currentUser,rsvp,cancel,seen,isLocal,cloudReady}=useMeetingWorkspace();
   const meeting=meetings.find(m=>m.id===id);
   const [error,setError]=useState("");
   if(!meeting||!currentUser)return <main><Heading title="Meeting unavailable" description="Not found or outside this employee's authorized meeting visibility."/><Go to="/calendar/meetings">Back to meetings</Go></main>;
@@ -80,19 +85,19 @@ function MeetingRecord({id}:{id:string}){
   const changed=(meeting.seenRevision[currentUser.id]??0)<meeting.revision;
   const status=invited?meeting.rsvps[currentUser.id]:undefined;
   const name=(id:string)=>data.users.find(u=>u.id===id)?.name??"Employee";
-  const doRsvp=(choice:Exclude<Rsvp,"Pending">)=>{const result=rsvp(meeting.id,choice);setError(result.ok?"Response recorded in local demo.":(result.message??"Response rejected."));};
-  const doCancel=()=>{if(!window.confirm("Cancel this meeting for all invited employees?"))return;const result=cancel(meeting.id);setError(result.ok?"Meeting cancelled in local demo.":(result.message??"Cancellation rejected."));};
+  const doRsvp=async(choice:Exclude<Rsvp,"Pending">)=>{const result=await rsvp(meeting.id,choice);setError(result.ok?"Response recorded.":(result.message??"Response rejected."));};
+  const doCancel=async()=>{if(!window.confirm("Cancel this meeting for all invited employees?"))return;const result=await cancel(meeting.id);setError(result.ok?"Meeting cancelled for invitees.":(result.message??"Cancellation rejected."));};
   return <main className="prototype-domain"><Heading title={meeting.title} description={meetingLabel(meeting)+" · "+meeting.status}/>
     <section className="prototype-panel">
       <div className="prototype-controls"><Go to="/calendar/meetings">All meetings</Go><Go to="/calendar">Calendar</Go>
         <button type="button" onClick={()=>downloadIcs(meeting)}>Save personal calendar file (.ics)</button>
-        {organizer&&meeting.status==="Scheduled"&&isLocal&&<><Go to={url(id)+"/edit"}>Edit meeting</Go><button type="button" onClick={doCancel}>Cancel meeting</button></>}
+        {organizer&&meeting.status==="Scheduled"&&(isLocal||cloudReady)&&<><Go to={url(id)+"/edit"}>Edit meeting</Go><button type="button" onClick={doCancel}>Cancel meeting</button></>}
       </div>
       <dl className="prototype-facts"><div><dt>Organizer</dt><dd>{name(meeting.organizerId)}</dd></div><div><dt>Date and time</dt><dd>{meetingLabel(meeting)}</dd></div>
         <div><dt>Location</dt><dd>{meeting.location}</dd></div><div><dt>Agenda</dt><dd>{meeting.agenda}</dd></div>
         <div><dt>Revision</dt><dd>{meeting.revision}</dd></div><div><dt>Updated</dt><dd>{meeting.updatedAt}</dd></div></dl>
-      <p className="prototype-note">Personal calendar file import does not email attendees or modify an external calendar. Changes to a meeting require downloading the updated file. The demo invitation is not a verified delivery.</p>
-      {changed&&<button type="button" onClick={()=>{const result=seen(meeting.id);if(!result.ok)setError(result.message??"Unable to acknowledge update.");}}>Mark invitation / update reviewed</button>}
+      <p className="prototype-note">Personal calendar file import does not email attendees or modify an external calendar. Changes to a meeting require downloading the updated file. In-app invitations appear when the authenticated meeting service synchronizes; email delivery is not enabled.</p>
+      {changed&&<button type="button" onClick={()=>{void Promise.resolve(seen(meeting.id)).then(result=>{if(!result.ok)setError(result.message??"Unable to acknowledge update.");});}}>Mark invitation / update reviewed</button>}
       {invited&&meeting.status==="Scheduled"&&<div className="prototype-controls" aria-label="Respond to invitation"><strong>Your response: {status}</strong>
         {(["Accepted","Tentative","Declined"] as const).map(choice=><button key={choice} type="button" aria-pressed={status===choice} onClick={()=>doRsvp(choice)}>{choice}</button>)}
       </div>}
@@ -103,13 +108,13 @@ function MeetingRecord({id}:{id:string}){
     </section>
     <section className="prototype-panel"><h2>Meeting change history</h2>
       {meeting.history.slice().reverse().map((entry,i)=><div className="prototype-activity" key={entry.at+":"+i}><strong>{entry.action} · {name(entry.actorId)}</strong><span>{entry.at} · {entry.detail}</span></div>)}
-      <p className="prototype-note">Audit information is stored in the local demonstration record, not an immutable production audit service.</p>
+      <p className="prototype-note">History is associated with the meeting record. A separate immutable compliance audit has not been verified.</p>
     </section>
   </main>;
 }
 function MeetingDirectory({kind}:{kind:"meetings"|"invitations"|"agenda"}){
   const {data,scope}=useWorkspace();
-  const {meetings,currentUser,allowed,isLocal}=useMeetingWorkspace();
+  const {meetings,currentUser,allowed,isLocal,cloudReady,cloudError}=useMeetingWorkspace();
   const [query,setQuery]=useState("");
   const [status,setStatus]=useState("active");
   const [sort,setSort]=useState<"date"|"name">("date");
@@ -129,7 +134,7 @@ function MeetingDirectory({kind}:{kind:"meetings"|"invitations"|"agenda"}){
         <Go to="/calendar">Shared calendar</Go><Go to="/calendar/meetings">Meetings</Go><Go to="/calendar/invitations">My invitations</Go><Go to="/calendar/agenda">My agenda</Go>
         {allowed&&<Go to="/calendar/meetings/new">Create meeting</Go>}
       </div>
-      {!isLocal&&<p className="prototype-note" role="status">Production meeting storage and notifications are not configured; no demonstration meeting data is shown in connected mode.</p>}
+      {!isLocal&&!cloudReady&&<p className="prototype-note" role="status">Secure meeting service unavailable: {cloudError||"Loading authorized records."} Connected accounts never fall back to local demo meetings.</p>}
       <div className="prototype-controls">
         <label>Search meetings <input aria-label="Search meetings" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Title, organizer or agenda"/></label>
         <label>Status <select aria-label="Filter meeting status" value={status} onChange={e=>setStatus(e.target.value)}><option value="active">Upcoming</option><option value="past">Past</option><option value="cancelled">Cancelled</option><option value="all">All</option></select></label>
@@ -155,7 +160,7 @@ function MeetingDirectory({kind}:{kind:"meetings"|"invitations"|"agenda"}){
   </main>;
 }
 export function SharedCalendarExperience(){
-  const {meetings,currentUser,allowed,isLocal}=useMeetingWorkspace(),{scope,data}=useWorkspace();
+  const {meetings,currentUser,allowed,isLocal,cloudReady,cloudError}=useMeetingWorkspace(),{scope,data}=useWorkspace();
   const [anchor,setAnchor]=useState(arizonaDateKey());
   const [length,setLength]=useState<"week"|"month">("week");
   const start=length==="week"?startOfLocalWeek(anchor):anchor.slice(0,7)+"-01";
@@ -165,7 +170,7 @@ export function SharedCalendarExperience(){
   return <main className="prototype-domain"><Heading title="Shared calendar" description="Arizona company calendar. Employee invitations are private to the organizer and invited attendees."/>
     <section className="prototype-panel">
       <div className="prototype-controls"><Go to="/calendar/meetings">Meetings</Go><Go to="/calendar/invitations">Invitations</Go><Go to="/calendar/agenda">My agenda</Go>{allowed&&<Go to="/calendar/meetings/new">Schedule meeting</Go>}</div>
-      {!isLocal&&<p className="prototype-note">Employee meetings require an approved production calendar service. The live calendar currently shows only authorized field appointments.</p>}
+      {!isLocal&&!cloudReady&&<p className="prototype-note">Secure staff meeting service unavailable: {cloudError||"Loading authorized meetings."} Field appointments remain visible according to their existing role restrictions.</p>}
       <div className="prototype-controls"><label>View date <input type="date" aria-label="Calendar anchor date" value={anchor} onChange={e=>setAnchor(e.target.value)}/></label>
         <label>View <select aria-label="Calendar view" value={length} onChange={e=>setLength(e.target.value as "week"|"month")}><option value="week">Week</option><option value="month">Month</option></select></label>
         <button type="button" onClick={()=>setAnchor(length==="week"?addCalendarDays(anchor,-7):shiftedMonth(anchor,-1))}>Previous</button>
@@ -182,7 +187,7 @@ export function SharedCalendarExperience(){
           </section>;
         })}
       </div>
-      <p className="prototype-note">Conflict checking covers local-demo meetings and field appointments already visible to the organizer, not unknown external calendars. Calendar export is a user-triggered .ics file, not direct third-party synchronization.</p>
+      <p className="prototype-note">Conflict checking uses staff meetings and field appointments visible to the organizer; the authenticated meeting service independently reserves staff time slots. Other off-scope field appointments and external calendars are not checked. Calendar export is a user-triggered .ics file, not direct third-party synchronization.</p>
     </section>
   </main>;
 }
@@ -198,8 +203,8 @@ export function MeetingWorkspaceExperience({view,id}:{view:"meetings"|"agenda"|"
   return <MeetingDirectory kind={view}/>;
 }
 export function MeetingHomePanel(){
-  const {meetings,currentUser,isLocal}=useMeetingWorkspace();
-  if(!isLocal||!currentUser||currentUser.role==="Customer")return null;
+  const {meetings,currentUser,isLocal,cloudReady}=useMeetingWorkspace();
+  if((!isLocal&&!cloudReady)||!currentUser||currentUser.role==="Customer")return null;
   const notices=meetingNotices(meetings,currentUser).slice(0,4);
   const reminders=meetingHomeReminders(meetings,currentUser).slice(0,3);
   const soon=upcomingMeetings(meetings,currentUser).slice(0,5);
@@ -208,16 +213,16 @@ export function MeetingHomePanel(){
     {reminders.map(m=><div key={"reminder:"+m.id} className="momentum-home-minirow"><span><strong>Starting within 24 hours: {m.title}</strong><small>{meetingLabel(m)}</small></span><Go to={url(m.id)}>Review</Go></div>)}
     {soon.map(m=><div key={m.id} className="momentum-home-minirow"><span><strong>{m.title}</strong><small>{meetingLabel(m)}</small></span><Go to={url(m.id)}>Open</Go></div>)}
     {!notices.length&&!soon.length&&<NoResults>No invitations or upcoming meetings assigned to you.</NoResults>}
-    <p className="momentum-home-panel-context">Local-demo in-app invitations only. No emails, SMS, external calendar updates or production reminders have been sent.</p>
+    <p className="momentum-home-panel-context">In-app invitations and source-based reminders only. Email, SMS, push, and external calendar updates are not enabled.</p>
   </section>;
 }
 export function MeetingActionQueue(){
-  const {meetings,currentUser,isLocal}=useMeetingWorkspace();
-  if(!isLocal||!currentUser||currentUser.role==="Customer")return null;
+  const {meetings,currentUser,isLocal,cloudReady}=useMeetingWorkspace();
+  if((!isLocal&&!cloudReady)||!currentUser||currentUser.role==="Customer")return null;
   const notices=meetingNotices(meetings,currentUser);
   return <section className="prototype-panel" aria-label="Meeting invitations requiring attention"><h2>Meeting invitations & updates ({notices.length})</h2>
     <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Meeting</th><th>Arizona date</th><th>Action</th></tr></thead><tbody>{notices.map(n=><tr key={n.id}><td>{n.title}</td><td>{n.date} · {azTimeLabel(n.time)}</td><td><Go to={url(n.meetingId)}>Respond / review</Go></td></tr>)}</tbody></table></div>
     {!notices.length&&<NoResults>No unreviewed meeting invitations or updates.</NoResults>}
-    <p className="prototype-note">Derived from the authoritative local-demo meeting records; clearing a bell alert does not update an invitation response.</p>
+    <p className="prototype-note">Derived from your authorized meeting records. Clearing a bell alert does not change an invitation response.</p>
   </section>;
 }
