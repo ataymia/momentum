@@ -6,19 +6,19 @@ Owner-provided November 5, 2026 master checklist. **98 immutable IDs; none indep
 
 | ID | Requirement | Owner review snapshot | Engineering evidence / remaining gate |
 | --- | --- | --- | --- |
-| A01 | Convert one-page application into multi-page, URL-addressable application. | Partial | A review: client record-route consolidation built; complete multi-page and browser acceptance outstanding; NOT ACCEPTED |
-| A02 | Make browser Back, Forward, refresh, and copied links work correctly. | Partial | A review: native links, popstate cleanup and regression tests built; live browser QA outstanding; NOT ACCEPTED |
-| A03 | Provide individual shareable URLs for businesses, orders, products, and records. | Partial | A review: typed record route contract built; per-record and role staging verification outstanding; NOT ACCEPTED |
-| A04 | Complete URL-aware routing with Firebase Hosting fallback. | Built; deployment QA pending | A review: Firebase fallback smoke automation introduced; emulator CI and staged hosting pending; NOT ACCEPTED |
-| A05 | Consolidate all navigation into left sidebar; remove old module header tabs. | Partial | A review: one role-scoped sidebar on all devices; residual legacy UI parity pending; NOT ACCEPTED |
-| A06 | Fix active-page highlighting, including Calendar vs. Meetings. | Testing | A review: most-specific selected menu path; calendar vs meetings browser QA pending; NOT ACCEPTED |
-| A07 | Completely redesign legacy screens instead of embedding old interfaces. | Partial | DEPENDENCY: B–G redesigned department screens; legacy views remain until accepted; NOT ACCEPTED |
-| A08 | Give each department a specialized application experience with consistent overall styling. | Partial | DEPENDENCY: B–G department-specific workflows plus A unified shell and styling; NOT ACCEPTED |
-| A09 | Research useful enterprise software ecosystem functionality and implement appropriate workflows. | Ongoing | Research reviewed; adopt enterprise list/record conventions only after workflow justification; NOT ACCEPTED |
-| A10 | Preserve data, permissions, processes, and business logic throughout redesign. | Regression QA pending | A review: route-level UI gate and regression; backend/tenant/role QA pending; NOT ACCEPTED |
-| A11 | Support desktop, tablet, and mobile layouts. | Partial | A review: responsive sidebar CSS; real device browser/accessibility acceptance pending; NOT ACCEPTED |
-| A12 | Maintain isolated prototype branch; no merge or deployment without Mia's approval. | Ongoing control | IN FORCE: isolated PR #167; no main merge/deployment; NOT ACCEPTED |
-| A13 | Remove external vendor naming from new source and documentation; clean up obsolete branch. | Partial | A review: vendor-neutral new source/docs; obsolete branch removal deferred to ownership review; NOT ACCEPTED |
+| A01 | Convert one-page application into multi-page, URL-addressable application. | Partial | Built: client URL-based views, native record links and Hosting SPA fallback. Browser demo QA passed 2026-11-07; still a client-rendered SPA, not independently server-rendered Next pages. Not accepted. |
+| A02 | Make browser Back, Forward, refresh, and copied links work correctly. | Partial | Browser-Verified in isolated synthetic Chromium: first-login copied URL, Back/Forward, direct refresh and history. Real staging-role/device QA pending; not accepted. |
+| A03 | Provide individual shareable URLs for businesses, orders, products, and records. | Partial | Browser-Verified example account deep link; native link and fail-closed encoded ID tests. B–E new record patterns require coordinated integration and foreign-record staging QA; not accepted. |
+| A04 | Complete URL-aware routing with Firebase Hosting fallback. | Built; deployment QA pending | Automated-Verified Firebase Hosting emulator fallback and direct URL with production build; deployed host/reverse-proxy QA pending; not accepted. |
+| A05 | Consolidate all navigation into left sidebar; remove old module header tabs. | Partial | Built: eight-group desktop/tablet/mobile sidebar, self-service Workspace, collapsed-label restoration; synthetic browser passed. Four still-live legacy routes restored pending C/F redesign; B–G parity pending; not accepted. |
+| A06 | Fix active-page highlighting, including Calendar vs. Meetings. | Testing | Browser-Verified in local Chromium: active Calendar vs Meetings across click, Back/Forward and refresh. Staging/browser matrix pending; not accepted. |
+| A07 | Completely redesign legacy screens instead of embedding old interfaces. | Partial | Partial: central header navigation removed; working old workflows retained until B–G redesign is reviewed, not replaced by placeholders. No claim of full screen parity; not accepted. |
+| A08 | Give each department a specialized application experience with consistent overall styling. | Partial | Partial: unified responsive shell and route contracts; B–G specialized screen parity and final cross-stream styling/role QA pending; not accepted. |
+| A09 | Research useful enterprise software ecosystem functionality and implement appropriate workflows. | Ongoing | Source-backed vendor-neutral enterprise UX conventions researched; functional adoption owned by B–G. No proprietary assets or external branding in new A source. Not accepted. |
+| A10 | Preserve data, permissions, processes, and business logic throughout redesign. | Regression QA pending | Automated-Verified route-denial checks and full rules regression on review SHA. No real production role/tenant or browser staging access verification; fallback legacy screens preserved pending redesign; not accepted. |
+| A11 | Support desktop, tablet, and mobile layouts. | Partial | Browser-Verified in isolated Chromium at desktop, tablet and phone viewport; collapsed mobile sidebar, focus, Escape, reduced motion CSS. Actual physical device and WCAG acceptance pending; not accepted. |
+| A12 | Maintain isolated prototype branch; no merge or deployment without Mia's approval. | Ongoing control | Protected: isolated draft PR #167 and expected-SHA updates; main untouched by A. No merge/deploy without Mia sign-off; not accepted for release. |
+| A13 | Remove external vendor naming from new source and documentation; clean up obsolete branch. | Partial | Partial: new A source/doc vendor-neutral. Historical prototype branch diverged with unique commits; do not delete without reconciliation. Not accepted. |
 
 ## B. Workspace, tasks, meetings & calendar
 

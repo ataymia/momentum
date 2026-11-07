@@ -57,3 +57,12 @@ A13: PARTIAL. New A files/documentation are vendor-neutral. The older vendor-nam
 
 ## MASTER HANDOFF
 A / November 6. Confirmed: URL architecture, hosting config and review branch as listed above. Decision: one role-scoped sidebar, exact record-route contract, no parallel menu. Open blockers: full CI, real-role browser/staging/deployed fallback tests, final B–G experience parity and Mia acceptance. A is owner of the central route file during consolidation. KPI affected: navigation reliability and unauthorized-route defense; no outcome measured yet. Next action: fix any CI regression, then request a safe staging browser/role acceptance walkthrough before release. No date was approved.
+
+## Deep-dive A audit supplement — November 7, 2026
+
+- **Fixed-source browser proof:** [GitHub Actions run 42382720126](https://github.com/ataymia/momentum/actions/runs/42382720126), commit `c2d7d795740ce1cb6d907b3e654b4f0b3e9fb4f1`, passed isolated Chromium login/deep links, history/refresh, Calendar/Meetings, customer role separation, tablet/phone drawer and keyboard navigation. This synthetic result is not approved staging acceptance.
+- **Fixed-source full audit:** [GitHub Actions run 42382720114](https://github.com/ataymia/momentum/actions/runs/42382720114), same commit, passed typecheck, lint, logic, Firestore/Storage emulator rules, Functions, production build and Hosting fallback. Review subsequent commit checks separately rather than inheriting this result.
+- **A10 regression found and repaired in the follow-up A patch:** /crm/quick-visit, /crm/account-setup, /crm/account-health and /people/directory had active older screens but were marked prototype and fell through to a placeholder. Their registry entries now route to the preserved functional legacy renderers until their department owners integrate the redesigned replacements. This protects functionality but does NOT satisfy A07 visual redesign.
+- **Account Health permission:** the recognized sidebar route uses its appropriate CRM/accounts access key, without requiring a non-granted legacy page permission.
+- **New audit file:** `docs/A_PREMERGE_NAVIGATION_AUDIT_2026-11-07.md` lists every A01–A13 gate and known B–E route collisions. A07/A08 cannot be accepted from this isolated A branch alone.
+- **Do not merge yet:** Integrate A+B+C+D+E+F+G into a NEW review chain; rerun complete CI, real-role staging, browser, security and accessible devices. Main has an independent Firebase Functions lint failure as of its 2026-11-06 run; it was not edited here.

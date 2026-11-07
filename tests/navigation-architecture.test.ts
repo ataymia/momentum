@@ -226,3 +226,20 @@ test("first login preserves copied URLs for fail-closed route validation; role s
   assert.match(source,/if\(previous===null&&currentUserId&&currentUser\)return/);
   assert.match(source,/const switchUser = useCallback[\s\S]*?setNavigationPage\("home"\)/);
 });
+
+test("four still-live legacy workflows never silently render the planned-module placeholder",()=>{
+  const shell=readFileSync("components/app-shell-v4.tsx","utf8");
+  for(const [route,page] of [
+    ["/crm/quick-visit","quickVisit"],
+    ["/crm/account-setup","accountSetup"],
+    ["/crm/account-health","accountHealth"],
+    ["/people/directory","employees"],
+  ] as const){
+    assert.equal(pageForPath(route),page,route);
+    assert.equal(requiresPrototypePage(route),false,route);
+    assert.match(shell,new RegExp('case "'+page+'": return <'));
+  }
+  assert.equal(permissionForPath("/crm/account-health"),"accounts");
+  assert.equal(canVisitRoute(user("Administrator"),"/people/directory"),true);
+  assert.equal(canVisitRoute(user("Sales Representative"),"/people/directory"),false);
+});

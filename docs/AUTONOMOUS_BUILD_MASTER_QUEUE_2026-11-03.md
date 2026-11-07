@@ -537,3 +537,12 @@ For every run record: local date/time; main and review-branch SHAs; item number;
 - **Evidence:** `components/prototype/crm-pipeline-experience.tsx`, `lib/crm-review-records.ts`, `components/prototype/operations-hub.tsx`, `lib/navigation-route-registry.ts`, `tests/crm-review-workflow.test.ts`, `package.json`; mandatory role/tenant, route and export checks. Existing CRM engine retained and writes disabled on connected business data.
 - **Release gates:** exact-final-SHA CI, permission/emulator, mobile browser, real CRM role staging, and Mia acceptance. No main change, merge, deployment or production mutation.
 - **Next different workflow:** C05 redesign Quick Visit, Account Setup and Account Health around the existing CRM/account records, after resolving this review branch's CI.
+
+### Architecture workstream continuity: November 7, 2026 (A01–A13 / review PR #167)
+
+- **Scope:** Original 98-ID checklist retained, A01–A13 only. A01–A06 and A10–A11 implementation and synthetic browser verification advanced; A07/A08 depend on B–G replacements. No A ID accepted or released.
+- **Validated fixed SHA:** `c2d7d795740ce1cb6d907b3e654b4f0b3e9fb4f1`; full CI https://github.com/ataymia/momentum/actions/runs/42382720114 ; synthetic Chromium https://github.com/ataymia/momentum/actions/runs/42382720126 . Later A fallback-route preservation patch is NOT covered by these older checks until CI reruns.
+- **Bug fixes:** authorized copied URL survived first login; history/Calendar state; malformed encoded IDs denied; mobile drawer, collapsed text, focus/escape. Preserve working Quick Visit, Account Setup, Account Health and Employee Directory until C/F owners replace them on integration.
+- **Required A readout:** `docs/A_PREMERGE_NAVIGATION_AUDIT_2026-11-07.md`. Other branch changes must not be overwritten. Avoid obsolete-branch deletion; unique divergent commits require reconciliation.
+- **Outstanding blockers:** complete B–G integration and role/record permission QA, deployed Hosting direct URLs, physical-device visual QA, owner acceptance and explicit approval. No production changes, external actions, merge, deployment or authority assumptions.
+- **Next unblocked action:** finish fixed-final-SHA checks of the four retained legacy-route regression, then hand off isolated A PR #167 to the authorized review-branch consolidator, preserving all original A01–A13 statuses.
