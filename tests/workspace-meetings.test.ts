@@ -259,3 +259,8 @@ test("B08 server rejects late RSVP and idempotently handles duplicate responses"
  assert.match(backend,/This meeting has already ended\. Its RSVP is closed/);
  assert.match(backend,/old.rsvps\[actor.uid\]===str\(body.response\)/);
 });
+
+test("B09 shared calendar does not render employee field appointments for separated users",()=>{
+ const source=readFileSync("components/prototype/workspace-meetings-experience.tsx","utf8");
+ assert.match(source,/currentUser\.employmentStatus==="Separated"\)return <NoResults>Employee calendar is not available/);
+});
