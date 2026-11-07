@@ -5,7 +5,6 @@ import type {FinanceState} from "../lib/finance-engine";
 import type {WorkspaceUser} from "../lib/types";
 import {
   mergeReadReceipts,parseReadReceipts,recentRecordedStatus,shouldSurfaceBellIntent,
-  MAX_READ_RECEIPTS,
 } from "../lib/notification-receipts";
 
 test("read receipts reject malformed persisted content and remain user-scoped inputs",()=>{
@@ -16,8 +15,12 @@ test("read receipts use additive set union so stale tabs cannot resurrect clears
   const tabOne=new Set(["cleared-a","cleared-b"]);
   const tabTwo=new Set(["cleared-a","cleared-c"]);
   assert.deepEqual([...mergeReadReceipts(tabOne,tabTwo)],["cleared-b","cleared-a","cleared-c"]);
-  const many=new Set(Array.from({length:MAX_READ_RECEIPTS+10},(_,i)=>"id-"+i));
-  assert.equal(mergeReadReceipts(many).size,MAX_READ_RECEIPTS);
+  // Read acknowledgments are not an expiring window. UI and cloud capacity
+  // controls must never silently evict a previously marked-read ID.
+  const many=new Set(Array.from({length:12810},(_,i)=>"id-"+i));
+  assert.equal(mergeReadReceipts(many).size,many.size);
+  assert.equal(parseReadReceipts([...many]).size,many.size);
+  assert.equal(mergeReadReceipts(many,new Set(["new-one"])).has("id-0"),true);
 });
 test("the bell excludes historical and undated statuses but never invents a timestamp",()=>{
   const now=new Date("2026-11-06T19:00:00.000Z");
