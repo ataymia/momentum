@@ -18,10 +18,50 @@ export type PurchaseAuditEvent={id:string;at:string;actorId:string;action:string
 export type PurchasingState={version:1;vendors:VendorRecord[];orders:PurchaseOrderRecord[];receipts:PurchaseReceiptRecord[];bills:VendorBillRecord[];payments:VendorPaymentRecord[];credits:VendorCreditRecord[];expenses:PurchaseExpenseRecord[];audit:PurchaseAuditEvent[]};
 export const PURCHASING_DEMO_KEY="momentum-e-purchasing-local-review-v1";
 export const emptyPurchasingState=():PurchasingState=>({version:1,vendors:[],orders:[],receipts:[],bills:[],payments:[],credits:[],expenses:[],audit:[]});
+/**
+ * Browser review data is untrusted. Fail closed on malformed local data rather than
+ * showing a fabricated paid bill, stock receipt, supplier or financial balance.
+ * This still does NOT make local storage tamper-proof or production-usable.
+ */
 export function normalizePurchasingDemoState(raw:unknown):PurchasingState{
   if(!raw||typeof raw!=="object"||(raw as {version?:unknown}).version!==1)return emptyPurchasingState();
   const v=raw as Partial<PurchasingState>;
-  if(!["vendors","orders","receipts","bills","payments","credits","expenses","audit"].every(k=>Array.isArray(v[k as keyof PurchasingState])))return emptyPurchasingState();
+  const keys=["vendors","orders","receipts","bills","payments","credits","expenses","audit"] as const;
+  if(!keys.every(k=>Array.isArray(v[k])&&v[k].length<=5000))return emptyPurchasingState();
+  const plain=(value:unknown):value is Record<string,unknown>=>Boolean(value)&&typeof value==="object"&&!Array.isArray(value);
+  const str=(value:unknown)=>typeof value==="string"&&value.trim().length>0&&value.length<=1000;
+  const integer=(value:unknown)=>typeof value==="number"&&Number.isSafeInteger(value)&&value>0;
+  const records=Object.fromEntries(keys.map(key=>[key,v[key]!])) as Record<typeof keys[number],unknown[]>;
+  const validate=(key:typeof keys[number],item:unknown):boolean=>{
+    if(!plain(item)||!str(item.id))return false;
+    switch(key){
+      case "vendors":return str(item.name)&&typeof item.contact==="string"&&typeof item.active==="boolean"&&str(item.createdAt)&&str(item.createdBy);
+      case "orders":return str(item.vendorId)&&str(item.sku)&&integer(item.cases)&&integer(item.unitCostCents)&&str(item.warehouse)&&str(item.expectedDate)&&str(item.createdAt)&&str(item.createdBy);
+      case "receipts":return str(item.poId)&&integer(item.cases)&&str(item.lotCode)&&str(item.bestBy)&&str(item.warehouse)&&str(item.recordedAt)&&str(item.recordedBy)&&item.inventoryPosted===false;
+      case "bills":return str(item.poId)&&str(item.invoiceNumber)&&integer(item.cases)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy);
+      case "payments":return str(item.billId)&&str(item.reference)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy)&&item.externalSettlementVerified===false;
+      case "credits":return str(item.billId)&&str(item.reference)&&str(item.reason)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy);
+      case "expenses":return str(item.description)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy)&&(!item.vendorId||str(item.vendorId));
+      case "audit":return str(item.at)&&str(item.actorId)&&str(item.action)&&str(item.recordId)&&typeof item.detail==="string";
+    }
+  };
+  for(const key of keys){
+    const ids=new Set<string>();
+    for(const item of records[key]){
+      if(!validate(key,item))return emptyPurchasingState();
+      const id=(item as Record<string,unknown>).id as string;
+      if(ids.has(id))return emptyPurchasingState();
+      ids.add(id);
+    }
+  }
+  const byId=(key:typeof keys[number])=>new Set(records[key].map(item=>(item as Record<string,unknown>).id));
+  const vendors=byId("vendors"),orders=byId("orders"),bills=byId("bills");
+  const linked=(items:unknown[],field:string,ids:Set<unknown>)=>items.every(item=>ids.has((item as Record<string,unknown>)[field]));
+  if(!linked(records.orders,"vendorId",vendors)||!linked(records.receipts,"poId",orders)||
+    !linked(records.bills,"poId",orders)||!linked(records.payments,"billId",bills)||
+    !linked(records.credits,"billId",bills)||
+    !records.expenses.every(item=>!(item as Record<string,unknown>).vendorId||vendors.has((item as Record<string,unknown>).vendorId)))return emptyPurchasingState();
+  if(keys.filter(key=>key!=="audit").some(key=>records[key].length>0)&&records.audit.length===0)return emptyPurchasingState();
   return {...emptyPurchasingState(),...v} as PurchasingState;
 }
 const amount=(n:number)=>Number.isSafeInteger(n)&&n>0;
