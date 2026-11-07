@@ -1,0 +1,22 @@
+/* Workstream B: responsive employee calendar. Uses existing Momentum surfaces; no vendor styling. */
+.momentum-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));align-items:stretch;gap:.7rem}
+.momentum-calendar-day{min-width:0;min-height:150px;padding:.75rem;border:1px solid var(--border,#e3e7ee);border-radius:12px;background:var(--surface,#fff);overflow-wrap:anywhere}
+.momentum-calendar-day h2{margin:0 0 .65rem;font-size:.84rem;font-weight:700;line-height:1.45}
+.momentum-calendar-day h2 span{display:block;letter-spacing:.05em;color:var(--muted,#667085);font-size:.7rem;text-transform:uppercase}
+.momentum-calendar-day .prototype-activity{min-width:0;line-height:1.45}
+.momentum-calendar-day .prototype-link{white-space:normal;text-align:left;min-height:32px;overflow-wrap:anywhere}
+.momentum-calendar-day small{display:block;color:var(--muted,#667085);line-height:1.45}
+.momentum-calendar-day:focus-within{outline:2px solid var(--primary,#2e6bc8);outline-offset:2px}
+@media screen and (min-width:768px) and (max-width:1350px){
+  .momentum-calendar-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media screen and (max-width:767px){
+  .momentum-calendar-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
+  .momentum-calendar-grid.is-week{grid-template-columns:minmax(0,1fr)}
+  .momentum-calendar-day{min-height:100px;padding:.65rem}
+  .momentum-calendar-day .prototype-link{min-height:44px}
+}
+@media print{
+  .momentum-calendar-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .momentum-calendar-day{break-inside:avoid}
+}

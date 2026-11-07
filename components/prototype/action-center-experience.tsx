@@ -12,6 +12,7 @@ import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {useMarketing} from "../../lib/marketing-context";
 import {usePerformance} from "../../lib/performance-context";
 import {useWorkspace} from "../../lib/workspace-context";
+import {MeetingActionQueue} from "./workspace-meetings-experience";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {routeForPage} from "../../lib/navigation-route-registry";
 
@@ -70,6 +71,7 @@ export function ActionCenterExperience(){
       <article><small>Due</small><strong>{actions.filter(item=>item.urgency==="Due").length}</strong></article>
       <article><small>Review</small><strong>{actions.filter(item=>item.urgency==="Review").length}</strong></article>
     </div>
+    <MeetingActionQueue/>
     <section className="prototype-panel">
       <div className="prototype-commerce-filters">
         <label className="prototype-search"><Search size={16}/><input aria-label="Search action center" placeholder="Search assigned work, category or details" value={query} onChange={e=>setQuery(e.target.value)}/></label>

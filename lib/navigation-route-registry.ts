@@ -226,6 +226,7 @@ export function routeLabel(path: string): string {
   const clean = normalizeRoutePath(path);
   const item = routeEntry(clean) ?? CUSTOMER_MENU.find(entry => entry.path === clean);
   if (item) return item.label;
+  if(clean.startsWith("/calendar/meetings/"))return "Meeting details";
   if (clean.startsWith("/items/")) return "Item details";
   if(clean==="/inventory/workflow")return "Inventory operations";
   if (clean.startsWith("/inventory/lots/")) return "Lot details";
@@ -255,6 +256,7 @@ export function permissionForPath(path: string): PageKey | null {
   if (clean.startsWith("/items/")) return "products";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
   if (clean.startsWith("/sales/customers/")) return "accounts";
+  if(/^\/calendar\/meetings\/[^/]+(?:\/edit)?$/.test(clean))return "work";
   const portal=CUSTOMER_MENU.find(item=>item.path===clean);
   if (portal) return portal.permission;
   if (clean.startsWith("/sales/orders/")) return "orders";
@@ -330,6 +332,7 @@ export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   if(clean==="/sales/orders/workflow"||clean==="/inventory/workflow"||clean==="/work/workflow")return false;
   if(/^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean))return true;
+  if(/^\/calendar\/meetings\/[^/]+(?:\/edit)?$/.test(clean))return true;
   if(/^\/crm\/(leads|contacts|deals)\/[^/]+$/.test(clean))return true;
   // Sensitive legacy HR and payroll tools are wrapped by a prototype demo-only gate.
   if(clean==="/people/payroll/workflow"||clean==="/people/onboarding/workflow"||clean==="/admin/employee-profiles/workflow")return true;

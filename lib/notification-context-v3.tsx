@@ -35,6 +35,8 @@ import {
 } from "./notification-policy-v2";
 import {usePerformance} from "./performance-context";
 import {useWorkspace} from "./workspace-context";
+import {useMeetingWorkspace} from "./workspace-meetings-store";
+import {meetingNotices} from "./workspace-meetings";
 import {mergeFirstSeenTimes,notificationDisplayTime,parseFirstSeenTimes} from "./notification-display-time";
 
 const READ_KEY="momentum-derived-notification-read-v1";
@@ -85,6 +87,7 @@ function NotificationBridge({
 }:{children:ReactNode;userId:string}){
   const {audit}=useAudit();
   const {data,scope,currentUser}=useWorkspace();
+  const {meetings}=useMeetingWorkspace();
   const firebase=useFirebaseSessionOptional();
   const {hcm}=useHcm();
   const {commerce}=useCommerce();
@@ -201,6 +204,23 @@ function NotificationBridge({
       }
     }
 
+    // Local-demo meeting notices have per-record revisions. An acknowledged old
+    // invitation never suppresses a subsequent change or cancellation.
+    for(const meetingNotice of meetingNotices(meetings,currentUser)){
+      const meeting=meetings.find(item=>item.id===meetingNotice.meetingId);
+      if(!meeting)continue;
+      const id="meeting-demo:"+meeting.id+":revision:"+meeting.revision;
+      const stamp=notificationDisplayTime(meeting.updatedAt,firstSeen[id],evaluatedAt);
+      items.push({
+        id,sourceEventId:"meeting:"+meeting.id+":"+meeting.revision,recipientUserId:currentUser.id,
+        channel:"In app",title:meetingNotice.title,
+        detail:meeting.date+" · "+meeting.startTime+" Arizona · "+meeting.location,
+        tone:meeting.status==="Cancelled"?"warning":"info",createdAt:stamp.time,
+        timestampSource:stamp.source,status:readDerived.has(id)?"Read":"Unread",
+        targetPage:"work",targetRecordId:meeting.id,actionLabel:"Open meeting",
+      });
+    }
+
     for(const intent of orderMilestoneIntents(data,currentUser))addIntent(intent);
     for(const intent of deliveryMilestoneIntents(
       data,
@@ -248,6 +268,7 @@ function NotificationBridge({
     currentUser,
     data,
     scope,
+    meetings,
     hcm,
     performance,
     finance,

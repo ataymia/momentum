@@ -55,6 +55,7 @@ import {PackagesDirectory,ShipmentsDirectory,ShipmentDetail,DeliveryOperationsDi
 import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
 import {ActionCenterExperience} from "./action-center-experience";
 import {WorkspaceHome} from "./workspace-home";
+import {SharedCalendarExperience,MeetingWorkspaceExperience} from "./workspace-meetings-experience";
 import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
 import {WorkExceptionsExperience,CompletedWorkExperience} from "./work-review-experience";
 import {DealsDirectory,DealEditor} from "./crm-deals-experience";
@@ -845,7 +846,15 @@ export function PrototypeOperationsHub(){
     return <ContactRoute id={id}/>;
   }
   if(path==="/crm/contacts")return <CrmContactsDirectory/>;
-  if(path==="/calendar"||path==="/calendar/meetings")return <CalendarPreview meetingsOnly={path.endsWith("/meetings")}/>;
+  if(path==="/calendar")return <SharedCalendarExperience/>;
+  if(path==="/calendar/agenda")return <MeetingWorkspaceExperience view="agenda"/>;
+  if(path==="/calendar/invitations")return <MeetingWorkspaceExperience view="invitations"/>;
+  if(path==="/calendar/meetings/new")return <MeetingWorkspaceExperience view="new"/>;
+  if(segments[0]==="calendar"&&segments[1]==="meetings"&&segments[2]&&segments[3]==="edit")
+    return <MeetingWorkspaceExperience view="edit" id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="calendar"&&segments[1]==="meetings"&&segments[2])
+    return <MeetingWorkspaceExperience view="record" id={decodeURIComponent(segments[2])}/>;
+  if(path==="/calendar/meetings")return <MeetingWorkspaceExperience view="meetings"/>;
   if(path==="/crm/incentives")return <IncentivePreview/>;
   if(path==="/crm/commission-only")return <CrmCommissionOnlyReview/>;
   const item=routeEntry(path);

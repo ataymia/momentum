@@ -22,6 +22,7 @@ import {momentumStorage} from "../../lib/persistence";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {useWorkspace} from "../../lib/workspace-context";
 import {navigateToRoute} from "../../lib/navigation-store";
+import {canVisitRoute} from "../../lib/navigation-route-registry";
 import type {Approval,Order} from "../../lib/types";
 
 type LineDraft={key:number;product:string;cases:string};
@@ -158,6 +159,21 @@ function OrderEditorForm({orderId,initialOrder}:{orderId?:string;initialOrder?:O
   </div>;
 }
 const accessibleOrder=(approval:Approval,orders:readonly Order[])=>orders.find(o=>o.id===approval.recordId&&!o.testOnly);
+/** Route a source-owned decision to its domain, never duplicate approval logic in Workspace. */
+export function approvalWorkspaceTarget(approval:Approval,orders:readonly Order[]):string|undefined{
+  if(approval.type==="Timecard")return "/people/timekeeping";
+  if(approval.type==="Territory exception")return "/crm/territories";
+  if(approval.type==="Inventory adjustment")return "/inventory/adjustments";
+  if(approval.type==="Leave")return "/people/leave";
+  if(approval.type==="Expense")return "/finance";
+  if(approval.type==="Marketing spend")return "/marketing";
+  if(approval.type==="Compensation")return "/people/payroll";
+  if(approval.type==="Price exception"){
+    const order=orders.find(item=>item.id===approval.recordId&&!item.testOnly);
+    return order?"/sales/orders/"+encodeURIComponent(order.id):undefined;
+  }
+  return undefined;
+}
 export function OrderApprovalDirectory(){
   const {data,scope,currentUser,decideApproval}=useWorkspace();
   const runtime=useRuntimeMode();
@@ -237,11 +253,19 @@ export function OrderApprovalDirectory(){
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Request</th><th>Type</th><th>Requester</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead><tbody>
         {otherApprovals.map(approval=><tr key={approval.id}><td>{approval.title}<small className="prototype-description">{approval.detail}</small></td>
           <td>{approval.type}</td><td>{approval.requestedBy}</td><td>{valueDate(approval.submittedAt)}</td><td>{approval.status}</td>
-          <td><button type="button" className="prototype-link" onClick={()=>navigateToRoute("/work/workflow")}>Open existing approval controls</button></td>
+          <td>{(()=>{
+            const source=approvalWorkspaceTarget(approval,scope.orders);
+            return source&&currentUser&&canVisitRoute(currentUser,source)
+              ?<button type="button" className="prototype-link" onClick={()=>{
+                  if(approval.recordId)window.sessionStorage.setItem("momentum-focus-record",approval.recordId);
+                  navigateToRoute(source);
+                }}>Open source workflow</button>
+              :<span className="prototype-note">No authorized source view available</span>;
+          })()}</td>
         </tr>)}
       </tbody></table></div>
       {!otherApprovals.length&&<p className="prototype-empty">No other requests match this status and search.</p>}
-      <Notes>Non-order approvals remain in the original authorized workflow until their new specialized decision screens have equivalent validation and audit controls.</Notes>
+      <Notes>Non-order approvals remain owned by their source departments. This list does not grant approval permissions or imply that a linked departmental page can complete the decision. Unlinked decisions still require the existing authorized workflow.</Notes>
     </section>
   </div>;
 }

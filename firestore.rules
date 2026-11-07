@@ -161,6 +161,15 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    // Employee meeting data is server-owned. Client callers must use the verified
+    // staffMeetingsApi function, which checks current userAccess for each action.
+    match /staffMeetings/{meetingId} {
+      allow read, write: if false;
+    }
+    match /staffMeetingSlots/{slotId} {
+      allow read, write: if false;
+    }
+
     match /employeeDirectory/{uid} {
       allow get, list: if isEmployee();
       allow create, update: if isAdmin()
