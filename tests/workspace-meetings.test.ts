@@ -236,3 +236,11 @@ test("B05/B06 server conflict protection respects authorized field appointments,
  assert.equal(staffMeetingFieldCollision([{...field,date:"2026-11-06",startTime:"23:30",duration:600}],meeting,"admin"),true);
  assert.equal(staffMeetingFieldCollision([{...field,duration:0}],meeting,"admin"),false);
 });
+
+test("B08 connected meeting synchronization avoids background-tab Firestore request churn",()=>{
+ const source=readFileSync("lib/workspace-meetings-store.ts","utf8");
+ assert.match(source,/window.setInterval\(onFocus,120000\)/);
+ assert.match(source,/document.visibilityState==="visible"/);
+ assert.match(source,/document.addEventListener\("visibilitychange",onFocus\)/);
+ assert.match(source,/window.addEventListener\("focus",onFocus\)/);
+});
