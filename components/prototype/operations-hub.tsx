@@ -40,6 +40,7 @@ import {WorkspaceHome} from "./workspace-home";
 import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
 import {PriceBooksDirectory,PriceBookDetail} from "./price-books-experience";
 import {CustomerCommerceLedgers} from "./customer-commerce-ledgers";
+import {CustomerConnectedPortal} from "./customer-connected-portal";
 import {WorkExceptionsExperience,CompletedWorkExperience} from "./work-review-experience";
 import type { Order } from "../../lib/types";
 
@@ -293,6 +294,13 @@ function CustomerPortalContent({section}:{section:string}){
   const {scope,currentUser}=useWorkspace();const {commerce}=useCommerce();const runtime=useRuntimeMode();
   if(currentUser?.role!=="Customer") return <Empty>Customer access only.</Empty>;
   if(section==="payments"||section==="statements")return <CustomerCommerceLedgers section={section}/>;
+  if((!runtime.isDemo||momentumStorage.mode()!=="local")&&
+    (section==="orders"||section==="invoices"||section==="account"||section==="deliveries"))
+      return <CustomerConnectedPortal section={section}/>;
+  if(section==="orders")return <div><Heading title="My Orders" description="Your authorized business orders in isolated demo mode."/>
+    <section className="prototype-panel"><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Cases</th><th>Status</th></tr></thead><tbody>{scope.orders.filter(o=>!o.testOnly).map(o=>
+      <tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{o.placedAt}</td><td>{o.cases}</td><td>{o.status}</td></tr>)}</tbody></table></div>
+      <p className="prototype-note">Order status is not confirmation of money received or a signed delivery.</p></section></div>;
   const current=scope.accounts[0];
   const orders=scope.orders.filter(o=>!o.testOnly).sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
   if(section==="invoices"&&(!runtime.isDemo||momentumStorage.mode()!=="local"))return <div><Heading title="My Invoices" description="Account-specific invoice access requires verification."/><section className="prototype-panel"><p>This customer invoice screen is enabled in the isolated demo only. Connected invoices need an account-scoped server read before release.</p></section></div>;
