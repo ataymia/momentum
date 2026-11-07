@@ -4,14 +4,13 @@ import {usableNotificationTime} from "./notification-display-time";
  * Read receipts are scoped to one signed-in user, never shared between users.
  * They are presentation state, not proof of delivery or a business event.
  */
-export const MAX_READ_RECEIPTS = 12000;
 export const STATUS_BELL_WINDOW_DAYS = 30;
 
 export function parseReadReceipts(input: unknown): Set<string> {
   if (!Array.isArray(input)) return new Set<string>();
   const ids = input.filter((item): item is string =>
     typeof item === "string" && item.length > 0 && item.length <= 500);
-  return new Set(ids.slice(-MAX_READ_RECEIPTS));
+  return new Set(ids);
 }
 
 /** Additive merge prevents an old tab from undoing clears written by another tab. */
@@ -20,11 +19,10 @@ export function mergeReadReceipts(...sets: ReadonlySet<string>[]): Set<string> {
   for (const source of sets) {
     for (const id of source) {
       if (typeof id !== "string" || !id || id.length > 500) continue;
-      ids.delete(id);
       ids.add(id);
     }
   }
-  return new Set([...ids].slice(-MAX_READ_RECEIPTS));
+  return ids;
 }
 
 /** The bell is not a historical status feed. Undated/old *status* changes
