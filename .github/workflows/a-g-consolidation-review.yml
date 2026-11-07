@@ -1,5 +1,5 @@
 name: A-G Surgical Consolidation
-# Retry 4: combine import sets and expose all TypeScript diagnostics
+# Retry 5: restore C contact exports and G cloud receipts
 
 on:
   push:
