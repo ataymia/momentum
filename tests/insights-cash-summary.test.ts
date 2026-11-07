@@ -41,7 +41,7 @@ test("F08: reports explorer is a real role-protected prototype route",()=>{
 
 test("F08: lot quality holds never count as sellable warehouse stock",()=>{
  const ui=readFileSync("components/prototype/insights-explorer-experience.tsx","utf8");
- assert(ui.includes('available:lot.status==="Quality hold"?0:warehouseAvailable(ledger,lot.id)'));
+ assert(ui.includes('available:lot.status==="Quality hold"?0:Math.max(0,warehouseAvailable(ledger,lot.id))'));
  assert(ui.includes('refundAllocationBlocked?"Needs reconciliation":money(summary.net)'));
 });
 
