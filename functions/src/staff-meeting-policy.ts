@@ -2,8 +2,8 @@
 /** Recorded field appointment collision helper. Does not claim access to external calendars. */
 type CalendarMeeting={date:string;startTime:string;endTime:string;attendeeIds:readonly string[]};
 type FieldRecord={date?:unknown;startTime?:unknown;duration?:unknown;ownerId?:unknown;status?:unknown};
-const validDay=(value:unknown)=>typeof value==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(value);
-const validTime=(value:unknown)=>typeof value==="string"&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+const validDay=(value:unknown):value is string=>typeof value==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(value);
+const validTime=(value:unknown):value is string=>typeof value==="string"&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 const instant=(date:string,time:string)=>Date.parse(date+"T"+time+":00-07:00");
 export function staffMeetingFieldCollision(
  appointments:readonly unknown[],meeting:CalendarMeeting,organizerId:string,
