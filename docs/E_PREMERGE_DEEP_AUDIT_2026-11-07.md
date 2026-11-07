@@ -6,17 +6,17 @@ Draft PR: https://github.com/ataymia/momentum/pull/170
 Original E branch base: b6f837ce9125e77f8887ee66e806bf4d4a99afe8
 
 ## Independent recommendation
-**NO-GO for live release or direct merge.** Code-level work substantially improves E01–E09, but purchasing is deliberately disconnected and restricted to an isolated local demonstration. Office Dispatch has not reached replacement parity. Other specialist work advanced the shared prototype after E branched, so automatic file replacement would discard code. Exact-head CI and staged multi-role acceptance are required, and Mia has not authorized a merge or deployment.
+**NO-GO for live release or direct merge.** Code-level work substantially improves E01–E09, but purchasing is deliberately disconnected and restricted to an isolated local demonstration. Office Dispatch has not reached replacement parity. Other specialist work advanced the shared prototype after E branched, so automatic file replacement would discard code. Exact-head CI on the exact final E SHA, reconciliation CI on the composite branch, and staged multi-role acceptance are required, and Mia has not authorized a merge or deployment.
 
 ## Requirement-by-requirement audit
 
 | ID | Confirmed code on E | Current readiness |
 | --- | --- | --- |
 | E01 | Lot-level searchable/sortable inventory with quality hold, aged best-by, reservation and custody exceptions in inventory-experience.tsx | Prototype built; connected warehouse/UI acceptance pending |
-| E02 | Existing adjustment, package, shipment and ledger directories retained, supported by fulfillment-experience.tsx and existing ledger/policy | Partial; complete audited write workflows and real exception parity missing |
+| E02 | Existing adjustments, packages, shipments and ledger retained. fulfillment-pick-review.ts provides a read-only SKU/lot picking check, FEFO priority, missing and over-reserved cases, custody exceptions, and no stock posting. | Partial; complete audited write workflows and real exception parity missing |
 | E03 | inventory-locations-experience.tsx now provides physical warehouse/bin/quality-hold locations, movement/custody/variance drilldowns with restricted role access | Built read-only; physical warehouse and multi-location reconciliation pending |
 | E04 | driver-route-board.tsx provides assigned-only stop manifest, address-to-maps links and recorded task/proof states | Prototype built; real route ordering/ETA and physical mobile/browser QA pending |
-| E05 | Delivery operations compares signed proof, order status, posted quantities and custody; flags overposted cases and loaded/departed orders without full recorded outbound | Read-only management view built; live exception workflows and browser QA pending |
+| E05 | fulfillment-closeout-review.ts is shared by Operations and Driver views and validates terminal order, recipient signature/event, posted cases, warehouse outbound, admin override and exception states. | Read-only management view built; live exception workflows and browser QA pending |
 | E06 | rep-self-delivery.tsx redesigned into a dedicated order/recipient-signature workspace retaining existing server repSelfDelivery endpoint and cloud reconciliation | New UI built; multi-role cloud and mobile staging testing pending |
 | E07 | Original legacy office dispatch-board.tsx and route explicitly retained; regression guard added | NOT retired; parity in scheduling, reassignment, geofence, exceptions and driver route controls missing |
 | E08 | purchasing-experience.tsx provides separate Vendors, Expenses, Purchase Orders, Purchase Receipts, Bills, Payments Made and Vendor Credits screens, local forms, search/filter/sort, record-detail drilldowns and event evidence | Isolated local demo; secure production backend, real suppliers, A/P/stock provider integrations missing |
@@ -58,3 +58,9 @@ Actions: E engineer to pass exact-head audit and reconcile failures, then coordi
 KPIs affected: warehouse variance, order accuracy, delivery closeout integrity, three-way invoice mismatch, payables reconciliation. No operational or financial gain measured.
 Blockers and escalation: branch conflict, missing trusted backend, audit/permission testing, missing staging and mobile acceptance, authority to post inventory or disburse.
 Master updates: keep E01–E09 unchecked until independently accepted; record exact SHA/test links and the four integration conflicts. Recommended next decision: assign purchasing system-of-record and independent approval authority.
+
+## Latest incremental audit coverage (Nov 7)
+- New logic suites: fulfillment-pick-review.test.ts (mixed-SKU, FEFO, missing/over-reserved lots, no physical posting), fulfillment-closeout-review.test.ts (signed closeout, unmatched history, open order override, bad stock, missing outbound), purchasing-storage-validation.test.ts (malformed and non-authoritative browser records).
+- Existing in-scope regression suites and current Firestore/Storage security emulator tests must pass at the FINAL E branch head. Those emulator rules do not authorize the not-yet-created purchasing backend.
+- Read-only import graph check of eleven E source modules found all ninety-three relative imports resolved; this is not a substitute for Next compilation or actual browser testing.
+- Exact-commit audit link and result must be checked after the final code/docs commit; do not cite an earlier green SHA as final verification.
