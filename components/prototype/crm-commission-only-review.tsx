@@ -16,13 +16,28 @@ export function CrmCommissionOnlyReview(){
   const [search,setSearch]=useState("");
   const [onlyAttention,setOnlyAttention]=useState(false);
   const [selected,setSelected]=useState("");
+  const [sort,setSort]=useState<"rep"|"employment"|"classification"|"signed"|"zip"|"credited"|"exceptions">("rep");
+  const [ascending,setAscending]=useState(true);
   const rows=useMemo(()=>data.users.filter(user=>user.role==="Sales Representative")
     .map(user=>commissionOnlyRepresentativeReview(data,hcm,user.id))
     .filter(row=>(!onlyAttention||row.blockers.length>0)&&[row.repName,row.repId,row.employmentStatus,row.workerClassification].join(" ").toLowerCase().includes(search.toLowerCase().trim()))
-    .sort((a,b)=>a.repName.localeCompare(b.repName)||a.repId.localeCompare(b.repId)),
-    [data,hcm,search,onlyAttention]);
+    .sort((a,b)=>{
+      const field=(r:typeof a):string|number=>{
+        if(sort==="employment")return r.employmentStatus;
+        if(sort==="classification")return r.workerClassification;
+        if(sort==="signed")return r.verifiedCommissionOnlyAgreement?"Recorded":"Missing";
+        if(sort==="zip")return r.activeTerritoryZips.length;
+        if(sort==="credited")return r.attributedOrders;
+        if(sort==="exceptions")return r.missingExplicitAttribution;
+        return r.repName;
+      };
+      const av=field(a),bv=field(b),comp=typeof av==="number"&&typeof bv==="number"?av-bv:String(av).localeCompare(String(bv),undefined,{numeric:true});
+      return (ascending?1:-1)*(comp||a.repId.localeCompare(b.repId));
+    }),
+    [data,hcm,search,onlyAttention,sort,ascending]);
   if(currentUser?.role!=="Administrator")return <div className="prototype-empty">Administrator approval and record access required for commission-only compensation review.</div>;
   const focus=rows.find(row=>row.repId===selected)??rows[0];
+  const heading=(key:typeof sort,label:string)=><th aria-sort={sort===key?(ascending?"ascending":"descending"):"none"}><button type="button" onClick={()=>{if(sort===key)setAscending(v=>!v);else{setSort(key);setAscending(true);}}}>{label}</button></th>;
   const exportRows=rows.map(row=>({
     rep:row.repName,directoryActive:row.activeDirectoryUser,employment:row.employmentStatus,
     classification:row.workerClassification,signedPlanRecorded:row.verifiedCommissionOnlyAgreement,
@@ -46,7 +61,7 @@ export function CrmCommissionOnlyReview(){
         <label><input type="checkbox" checked={onlyAttention} onChange={e=>setOnlyAttention(e.target.checked)}/> Needs review</label>
         <button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-commission-only-readiness.csv",exportRows,fields)}>Export admin review CSV</button>
       </div>
-      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Representative</th><th>Employee status</th><th>HR classification</th><th>Signed plan evidence</th><th>Active ZIP guidance</th><th>Explicit credited orders</th><th>Attribution exceptions</th><th>Review</th></tr></thead><tbody>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>{heading("rep","Representative")}{heading("employment","Employee status")}{heading("classification","HR classification")}{heading("signed","Signed plan evidence")}{heading("zip","Active ZIP guidance")}{heading("credited","Explicit credited orders")}{heading("exceptions","Attribution exceptions")}<th>Review</th></tr></thead><tbody>
         {rows.map(row=><tr key={row.repId}>
           <td>{row.repName}</td><td>{row.employmentStatus}</td><td>{row.workerClassification}</td><td>{row.verifiedCommissionOnlyAgreement?"Recorded":"Missing / unverified"}</td><td>{row.activeTerritoryZips.length}</td><td>{row.attributedOrders}</td><td>{row.missingExplicitAttribution}</td>
           <td><button type="button" className="prototype-link" onClick={()=>setSelected(row.repId)}>Inspect blockers</button></td>
