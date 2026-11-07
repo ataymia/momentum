@@ -1,4 +1,4 @@
-name: A-G Consolidation Conflict Review
+name: A-G Surgical Consolidation
 
 on:
   push:
@@ -8,51 +8,72 @@ on:
       - .github/workflows/a-g-consolidation-review.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  review:
+  integrate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 50
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout protected integration branch
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Examine pinned workstream merges without publishing
+          persist-credentials: true
+
+      - name: Pin integration branch and merge all six independent workstreams
         shell: bash
         run: |
-          set -u
-          git config user.name "Momentum Integration Review"
-          git config user.email "integration-review@users.noreply.github.com"
-          echo "BASE $(git rev-parse HEAD)"
-          while IFS='|' read -r label sha; do
-            [ -z "$label" ] && continue
-            echo "::group::${label} ${sha}"
-            git fetch --no-tags origin "$sha" >/dev/null 2>&1 || true
-            set +e
-            git merge --no-commit --no-ff "$sha" > /tmp/momentum-merge-log 2>&1
-            result=$?
-            set -e
-            if [ "$result" = 0 ]; then
-              echo "MERGE CLEAN ${label}"
-              git diff --cached --stat | tail -n 12 || true
-              git commit -m "dry-run: ${label}" >/dev/null 2>&1
-              echo "DRY-RUN HEAD $(git rev-parse HEAD)"
-            else
-              echo "MERGE CONFLICT ${label}"
-              echo "UNMERGED FILES"
-              git diff --name-only --diff-filter=U || true
-              echo "ERROR TAIL"
-              tail -n 12 /tmp/momentum-merge-log || true
-              git merge --abort || true
-            fi
-            echo "::endgroup::"
-          done <<'BRANCHES'
-          C|ad4eb26562038ca04dfe577a745d7ee7b6a9a110
-          A|e6df6688fc1f5b5fdad133a9c32fd57a9984d2ee
-          B|8d3fb4d61c5fd6ce1450fce54c6d06cc2775918b
-          D|212d7f1f36c90061aa824c5a8bb744061a78057f
-          E|c703d4a1053e7de0e00771dccb01d3ee6fd08101
-          G|0daa104a78e7349cf892cde2e70ca3517170614d
-          BRANCHES
-          echo "Review finished. No branch was modified."
+          set -euo pipefail
+          git checkout -B integration/a-g-unified-2026-11-07
+          node scripts/a-g-integrate.mjs
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.1"
+          cache: npm
+
+      - name: Set up Java for Firebase rules emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install app and Functions dependencies
+        run: |
+          npm ci
+          npm --prefix functions ci
+
+      - name: Check TypeScript and ESLint
+        run: |
+          npm run typecheck
+          npm run lint
+
+      - name: Verify complete combined logic test suite
+        run: npm run test:logic
+
+      - name: Run Firestore and Storage security emulators
+        run: |
+          npm run test:rules
+          npm run test:storage
+
+      - name: Verify Firebase Functions and production builds
+        run: |
+          npm --prefix functions run build
+          npm --prefix functions run lint
+          npm run build
+
+      - name: Confirm no generated-rule drift or source mutation
+        shell: bash
+        run: |
+          git diff --check
+          git diff --exit-code
+          git status --short
+
+      - name: Push verified consolidation branch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "integration/a-g-unified-2026-11-07"
+          git push origin HEAD:refs/heads/integration/a-g-unified-2026-11-07
