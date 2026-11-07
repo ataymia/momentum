@@ -3,14 +3,28 @@
 import {useState} from "react";
 import type {FormEvent} from "react";
 import {validateTaxIdentity} from "../../lib/account-tax-identity";
+import {validateLeadCreateDraft,type LeadCreateDraft} from "../../lib/crm-lead-create";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {momentumStorage} from "../../lib/persistence";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {useWorkspace} from "../../lib/workspace-context";
 
+const initialDraft:LeadCreateDraft={
+  legalBusinessName:"",locationName:"",city:"Phoenix, AZ",streetAddress:"",postalCode:"",
+  channel:"Independent retail",contactName:"",contactRole:"Owner / buyer",phone:"",email:"",territoryReason:"",
+};
+
 export function CrmAccountSetup(){
-  const {scope,data,currentUser,updateCustomerCommercial}=useWorkspace();
+  const {scope,data,currentUser,createAccount,updateCustomerCommercial}=useWorkspace();
   const runtime=useRuntimeMode();
+  const [mode,setMode]=useState<"new"|"existing">("new");
+  const [draft,setDraft]=useState<LeadCreateDraft>({...initialDraft});
+  const [creationMessage,setCreationMessage]=useState("");
+  const [duplicateId,setDuplicateId]=useState<string|null>(null);
+  const change=(field:keyof LeadCreateDraft,value:string)=>{
+    setDraft(current=>({...current,[field]:value}));
+    setCreationMessage("");setDuplicateId(null);
+  };
   const [accountId,setAccountId]=useState("");
   const [message,setMessage]=useState("");
   const [errors,setErrors]=useState<Record<string,string>>({});
@@ -19,6 +33,23 @@ export function CrmAccountSetup(){
   const isManager=Boolean(currentUser&&["Administrator","Sales Manager"].includes(currentUser.role));
   const canEdit=Boolean(currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role)&&runtime.isDemo&&momentumStorage.mode()==="local");
   if(!currentUser||currentUser.role==="Customer")return <div className="prototype-empty">Employee account setup access is required.</div>;
+  const createNew=(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();setCreationMessage("");setDuplicateId(null);
+    if(!canEdit){setCreationMessage("New-account creation requires an authorized, connected company write workflow. This demonstration cannot save live accounts.");return;}
+    // Only suggest duplicates from visible accounts. The source-of-truth guard
+    // still denies collisions elsewhere without disclosing inaccessible IDs.
+    const result=validateLeadCreateDraft(draft,scope.accounts);
+    if(!result.ok){
+      setCreationMessage(result.message);
+      if(result.duplicateAccountId&&scope.accounts.some(a=>a.id===result.duplicateAccountId))
+        setDuplicateId(result.duplicateAccountId);
+      return;
+    }
+    const id=createAccount(result.payload,result.territoryReason);
+    if(!id){setCreationMessage("Creation rejected. Review duplicate account, representative and territory controls before retrying.");return;}
+    setDraft({...initialDraft});
+    setAccountId(id);setMode("existing");setMessage("New prospect account created in the isolated demo. Complete its billing and A/P identity below; this has not approved credit, tax status or a contract.");
+  };
   const submit=(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();setMessage("");setErrors({});
     if(!canEdit||!customer||!account){setMessage("Setup is read-only until authenticated server edit authorization is available.");return;}
@@ -47,8 +78,47 @@ export function CrmAccountSetup(){
     setMessage(saved?"Customer setup saved to local demonstration records. No external tax form, e-sign or credit approval was generated.":"Setup rejected. Verify your access and the existing customer record.");
   };
   return <main className="prototype-workspace">
-    <header className="prototype-heading"><h1>Account setup</h1><p>Business identity, accounts payable and credit-review handoff for an existing linked customer. This is not a contract signature or a tax filing.</p></header>
-    <section className="prototype-panel">
+    <header className="prototype-heading"><h1>Account setup</h1><p>Create a new business/location first, then complete its billing identity, tax documentation status and accounts-payable contacts. Existing customers can be updated separately.</p></header>
+    <nav className="prototype-page-actionbar" aria-label="Account setup workflow">
+      <button type="button" className={mode==="new"?"prototype-primary-action":""} aria-pressed={mode==="new"} onClick={()=>{setMode("new");setCreationMessage("");}}>1. Create new account</button>
+      <button type="button" className={mode==="existing"?"prototype-primary-action":""} aria-pressed={mode==="existing"} onClick={()=>{setMode("existing");setCreationMessage("");}}>2. Complete existing account</button>
+    </nav>
+    {mode==="new"&&<section className="prototype-panel">
+      <h2>New customer and first store location</h2>
+      <p className="prototype-note">Create a new prospect using the same canonical customer/location records as Leads and Accounts. Account identity and territory checks run before a record is saved. No pricing, orders, bonuses, tax verification or external commitments are made here.</p>
+      {!canEdit&&<p role="status" className="prototype-note">Connected account creation requires authenticated server authorization. This prototype is read-only outside isolated local demo.</p>}
+      <form aria-label="Create new customer account" onSubmit={createNew}>
+        <fieldset className="prototype-account-form-section"><legend>Business and location</legend>
+          <div className="prototype-columns">
+            <label>Legal business name <input required maxLength={160} disabled={!canEdit} value={draft.legalBusinessName} onChange={event=>change("legalBusinessName",event.target.value)} placeholder="Registered legal business name"/></label>
+            <label>Store / location name <input maxLength={160} disabled={!canEdit} value={draft.locationName} onChange={event=>change("locationName",event.target.value)} placeholder="Uses business name when blank"/></label>
+            <label>Street address <input required disabled={!canEdit} value={draft.streetAddress} onChange={event=>change("streetAddress",event.target.value)} placeholder="Street and suite, if applicable"/></label>
+            <label>City / market <input required maxLength={120} disabled={!canEdit} value={draft.city} onChange={event=>change("city",event.target.value)}/></label>
+            <label>ZIP code <input required inputMode="numeric" maxLength={10} pattern="[0-9]{5}(-[0-9]{4})?" disabled={!canEdit} value={draft.postalCode} onChange={event=>change("postalCode",event.target.value)} placeholder="85001"/></label>
+            <label>Sales channel <select disabled={!canEdit} value={draft.channel} onChange={event=>change("channel",event.target.value)}>
+              {["Independent retail","Convenience store","Restaurant","Hospitality","Gym / fitness","Other"].map(value=><option key={value}>{value}</option>)}
+            </select></label>
+          </div>
+        </fieldset>
+        <fieldset className="prototype-account-form-section"><legend>Primary contact</legend>
+          <div className="prototype-columns">
+            <label>Buyer / primary contact <input required disabled={!canEdit} value={draft.contactName} onChange={event=>change("contactName",event.target.value)}/></label>
+            <label>Contact role <input required disabled={!canEdit} value={draft.contactRole} onChange={event=>change("contactRole",event.target.value)}/></label>
+            <label>Business phone <input type="tel" disabled={!canEdit} value={draft.phone} onChange={event=>change("phone",event.target.value)}/></label>
+            <label>Business email <input type="email" disabled={!canEdit} value={draft.email} onChange={event=>change("email",event.target.value)}/></label>
+          </div>
+        </fieldset>
+        <fieldset className="prototype-account-form-section"><legend>Territory review</legend>
+          <label>Out-of-territory explanation, if needed <textarea disabled={!canEdit} minLength={5} maxLength={500} value={draft.territoryReason} onChange={event=>change("territoryReason",event.target.value)} placeholder="Only required if this location is outside your assigned ZIP guidance"/></label>
+          <p className="prototype-note">A territory exception may need approval. An unassigned or conflicting location cannot silently bypass assignment controls.</p>
+        </fieldset>
+        {creationMessage&&<p role="alert" className="prototype-note">{creationMessage}</p>}
+        {duplicateId&&<button type="button" className="prototype-link" onClick={()=>navigateToRoute("/sales/customers/"+encodeURIComponent(duplicateId))}>Review potential duplicate</button>}
+        <div className="prototype-controls"><button type="submit" className="prototype-primary-action" disabled={!canEdit}>Create account & continue setup</button>
+          <button type="button" onClick={()=>{setDraft({...initialDraft});setCreationMessage("");setDuplicateId(null);}}>Clear form</button></div>
+      </form>
+    </section>}
+    {mode==="existing"&&<section className="prototype-panel">
       <div className="prototype-controls"><label>Business location <select aria-label="Select account setup location" value={account?.id??""} onChange={e=>{setAccountId(e.target.value);setMessage("");setErrors({});}}>
         {scope.accounts.map(a=><option value={a.id} key={a.id}>{a.name} · {a.location}</option>)}</select></label>
         {account&&<button type="button" className="prototype-link" onClick={()=>navigateToRoute("/sales/customers/"+encodeURIComponent(account.id))}>Open customer profile</button>}
@@ -77,6 +147,6 @@ export function CrmAccountSetup(){
           {canEdit&&<div className="prototype-controls"><button type="submit">Save account setup</button></div>}
         </form>
       </>}
-    </section>
+    </section>}
   </main>;
 }
