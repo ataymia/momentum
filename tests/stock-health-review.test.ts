@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {compareFefo,daysUntilBestBy,reviewInventoryLot} from "../lib/stock-health-review";
+import {canVisitRoute,requiresPrototypePage,routeLabel,permissionForPath} from "../lib/navigation-route-registry";
+import type {WorkspaceUser} from "../lib/types";
 const asOf="2026-11-06";
 const lot=(override:Partial<{bestBy:string;status:string;warehouseOnHand:number;reserved:number}>={})=>({bestBy:"2027-06-01",status:"Available",warehouseOnHand:20,reserved:4,...override});
 test("healthy warehouse lot stays unflagged and best-by cannot silently dispose cases",()=>{
@@ -54,4 +56,28 @@ test("E05-E07 delivery exception queue is sortable while established self-delive
   assert.match(routes,/Rep Self-Delivery/);
   assert.match(routes,/\/crm\/self-delivery/);
   assert.match(routes,/\/operations\/legacy-dispatch/);
+});
+
+test("warehouse location route supports deep links without exposing company stock to drivers, reps or customers",()=>{
+  const role=(role:WorkspaceUser["role"]):WorkspaceUser=>({id:"role-"+role,name:"Test",firstName:"Test",email:"test@example.invalid",initials:"TT",title:"Test",role,team:"Operations",accent:"#333"});
+  for(const allowed of ["Administrator","Operations","Warehouse"]){
+    assert.equal(canVisitRoute(role(allowed),"/inventory/locations"),true);
+    assert.equal(canVisitRoute(role(allowed),"/inventory/locations/node-warehouse-main"),true);
+  }
+  for(const forbidden of ["Customer","Sales Representative","Sales Manager","Delivery Driver","Marketing","Brand Ambassador"]){
+    assert.equal(canVisitRoute(role(forbidden),"/inventory/locations"),false);
+    assert.equal(canVisitRoute(role(forbidden),"/inventory/locations/node-warehouse-main"),false);
+  }
+  assert.equal(requiresPrototypePage("/inventory/locations"),true);
+  assert.equal(requiresPrototypePage("/inventory/locations/node-warehouse-main"),true);
+  assert.equal(permissionForPath("/inventory/locations/node-warehouse-main"),"inventory");
+  assert.equal(routeLabel("/inventory/locations/node-warehouse-main"),"Warehouse location details");
+});
+test("warehouse record detail reads existing movements, counts and lot identifiers without posting",()=>{
+  const source=readFileSync("components/prototype/inventory-locations-experience.tsx","utf8");
+  assert.match(source,/nodeLotBalance\(ledger,node\.id,lot\.id\)/);
+  assert.match(source,/ledger\.movements\.filter/);
+  assert.match(source,/ledger\.counts\.filter/);
+  assert.match(source,/reservedQuantity\(ledger,lot\.id\)/);
+  assert.doesNotMatch(source,/postMovement|reconcileCount|setItem|createReceipt/);
 });
