@@ -10,6 +10,7 @@ import {MapPin,PackageCheck,Search,ShieldCheck,Truck} from "lucide-react";
 import {deliveryAddressLabel,hasCompleteDeliveryAddress} from "../../lib/account-address";
 import {useDelivery} from "../../lib/delivery-context";
 import {orderDeliveryQuantity} from "../../lib/inventory-ledger";
+import {deliveryReconciliationIssue} from "../../lib/delivery-reconciliation";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useWorkspace} from "../../lib/workspace-context";
@@ -32,17 +33,20 @@ export function DriverRouteBoard(){
         const address=account?deliveryAddressLabel(account):"";
         const hasAddress=Boolean(account&&hasCompleteDeliveryAddress(account));
         const delivered=orderDeliveryQuantity(ledger,order.id);
-        const proof=Boolean(task.signature?.signedAt&&task.signature.strokes.length>0&&
+        const proof=Boolean(task.signature?.signedAt&&task.signature.strokes.some(stroke=>stroke.length>=2)&&
           task.history.some(event=>event.type==="Delivered"&&event.actorId===task.signature?.capturedBy));
-        const complete=task.status==="Delivered"&&proof&&delivered>=order.cases;
-        const exception=task.status==="Delivered"&&!complete;
-        return {task,order,account,address,hasAddress,delivered,proof,complete,exception};
+        const override=state.overrides.some(item=>item.orderId===order.id);
+        const reconciliation=deliveryReconciliationIssue(order,task,delivered,override);
+        const issue=delivered>order.cases+0.005?"Delivered inventory exceeds ordered cases.":reconciliation;
+        const complete=(override||task.status==="Delivered"&&proof)&&delivered>=order.cases&&!issue;
+        const exception=Boolean(issue)||task.status==="Delivered"&&!complete;
+        return {task,order,account,address,hasAddress,delivered,proof,complete,exception,issue};
       }).filter((x):x is NonNullable<typeof x>=>Boolean(x))
       .sort((a,b)=>{
         const rank=(status:string)=>status==="In transit"?0:status==="Loaded"?1:status==="Accepted"?2:status==="Delivered"?3:4;
         return rank(a.task.status)-rank(b.task.status)||a.task.acceptedAt.localeCompare(b.task.acceptedAt)||a.task.id.localeCompare(b.task.id);
       });
-  },[currentUser,scope.orders,scope.accounts,state.tasks,ledger]);
+  },[currentUser,scope.orders,scope.accounts,state.tasks,state.overrides,ledger]);
   if(currentUser?.role!=="Delivery Driver")return <p className="prototype-empty">Driver route records are only visible to the assigned driver.</p>;
   const shown=rows.filter(x=>(showCompleted||!x.complete)&&
     [x.order.number,x.account?.name,x.address,x.task.status].join(" ").toLowerCase().includes(query.toLowerCase()));
@@ -60,7 +64,7 @@ export function DriverRouteBoard(){
         <div><strong>{x.account?.name??"Account access restricted"}</strong><small>{x.order.number} · {x.task.status}</small>
           <p><MapPin size={14}/> {x.address||"Delivery address not verified. Contact Operations before travel."}</p>
           <p><PackageCheck size={14}/> {x.delivered}/{x.order.cases} cases posted · {x.proof?"Recipient signature recorded":"Signature not yet verified"}</p>
-          {x.exception&&<p role="alert">Delivery closeout exception: posted inventory and recipient proof do not match the order.</p>}
+          {x.exception&&<p role="alert">{x.issue??"Delivery closeout requires an Operations review of order status, recipient proof and custody."}</p>}
           <div className="prototype-driver-stop__actions">
             {x.hasAddress&&<a href={"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(x.address)} target="_blank" rel="noopener noreferrer">Open destination in Maps</a>}
             <button type="button" onClick={()=>navigateToRoute("/driver/deliveries")}><Truck size={15}/> Open delivery controls</button>
