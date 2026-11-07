@@ -99,22 +99,35 @@ export function CrmQuickVisit(){
     <section className="prototype-panel"><h2>Log field visit</h2>
       {!canWrite&&<p className="prototype-note" role="status">Read-only connected workspace. Local CRM logs cannot be mistaken for securely saved company records.</p>}
       <form aria-label="Record physical sales visit" onSubmit={submit}>
-        <div className="prototype-columns">
-          <label>Business visited <input value={business} required disabled={!canWrite} onChange={e=>{setBusiness(e.target.value);setSelectedId("");setFeedback("");}} placeholder="Find store or enter an unlisted business"/></label>
-          <div><strong>Match</strong>
-            {matched?<div><p>{matched.name} · {matched.location}</p><button className="prototype-link" type="button" onClick={()=>navigateToRoute("/sales/customers/"+encodeURIComponent(matched.id))}>Open customer record</button></div>
-            :<p className="prototype-note">No matching account selected. Freehand visit does not create a customer or prospect.</p>}
-            {suggestions.length>0&&<div role="group" aria-label="Matching authorized business locations">{suggestions.map(a=><button key={a.id} type="button" onClick={()=>choose(a.id)} className="prototype-link">{quickVisitBusinessLabel(a)}</button>)}</div>}
+        <fieldset className="prototype-field-step">
+          <legend><span className="prototype-field-step-number">1</span> Business visited</legend>
+          <div className="prototype-columns">
+            <label>Business or store name <input value={business} required disabled={!canWrite} onChange={e=>{setBusiness(e.target.value);setSelectedId("");setFeedback("");}} placeholder="Search a location or enter an unlisted business"/></label>
+            <div className="prototype-field-match"><strong>{matched?"Matching customer record":"Account match"}</strong>
+              {matched?<div><p>{matched.name} · {matched.location}</p><button className="prototype-link" type="button" onClick={()=>navigateToRoute("/sales/customers/"+encodeURIComponent(matched.id))}>Open linked customer record</button></div>
+              :<p className="prototype-note">This visit is not yet linked to an existing account. Entering a name will not create a new customer.</p>}
+              {suggestions.length>0&&<div role="group" aria-label="Matching authorized business locations">{suggestions.map(a=><button key={a.id} type="button" onClick={()=>choose(a.id)} className="prototype-link">{quickVisitBusinessLabel(a)}</button>)}</div>}
+            </div>
           </div>
-          <label>Prospect score 1–10 <input required disabled={!canWrite} type="number" min={1} max={10} step={1} value={score} onChange={e=>setScore(Number(e.target.value))}/></label>
-          <label>Visit outcome <select disabled={!canWrite} value={unsuccessful?"unsuccessful":"successful"} onChange={e=>setUnsuccessful(e.target.value==="unsuccessful")}><option value="successful">Contact made or visit attempted</option><option value="unsuccessful">Unsuccessful physical visit</option></select></label>
-          <label>Visit notes <textarea disabled={!canWrite} value={summary} onChange={e=>setSummary(e.target.value)} placeholder="Who did you meet and what happened?"/></label>
-          <label>Next action <input disabled={!canWrite} value={nextAction} onChange={e=>setNextAction(e.target.value)} placeholder="Call buyer, schedule tasting, return with samples"/></label>
-          <label>Follow-up date <input type="date" disabled={!canWrite} value={nextActionDate} onChange={e=>setNextActionDate(e.target.value)}/></label>
-          <label>Optional Golden Eagle sample <select disabled={!canWrite} value={sampleProduct} onChange={e=>setSampleProduct(e.target.value)}><option value="">No sample provided</option>{GOLDEN_EAGLE_SKUS.map(sku=><option key={sku.id} value={sku.description}>{sku.shortName}</option>)}</select></label>
-          {sampleProduct&&<label>Cans provided <input required disabled={!canWrite} min={1} max={10000} step={1} type="number" value={sampleQuantity} onChange={e=>setSampleQuantity(Number(e.target.value))}/></label>}
-        </div>
-        <label><input type="checkbox" checked={physical} disabled={!canWrite} onChange={e=>setPhysical(e.target.checked)}/> I confirm that I physically visited this business. This is an employee attestation, not verified GPS evidence.</label>
+        </fieldset>
+        <fieldset className="prototype-field-step">
+          <legend><span className="prototype-field-step-number">2</span> Visit outcome</legend>
+          <div className="prototype-columns">
+            <label>Visit outcome <select disabled={!canWrite} value={unsuccessful?"unsuccessful":"successful"} onChange={e=>setUnsuccessful(e.target.value==="unsuccessful")}><option value="successful">Contact made or visit attempted</option><option value="unsuccessful">Unsuccessful physical visit</option></select></label>
+            <label>Prospect score (1–10) <input required disabled={!canWrite} type="number" min={1} max={10} step={1} value={score} onChange={e=>setScore(Number(e.target.value))}/></label>
+            <label className="prototype-field-full">Visit notes <textarea disabled={!canWrite} value={summary} onChange={e=>setSummary(e.target.value)} placeholder="What happened, who was present and what needs attention?"/></label>
+          </div>
+          <label className="prototype-field-confirmation"><input type="checkbox" checked={physical} disabled={!canWrite} onChange={e=>setPhysical(e.target.checked)}/> <span>I confirm that I physically visited this business. This is an employee attestation, not GPS verification.</span></label>
+        </fieldset>
+        <fieldset className="prototype-field-step">
+          <legend><span className="prototype-field-step-number">3</span> Follow-up and sampling</legend>
+          <div className="prototype-columns">
+            <label>Next action <input disabled={!canWrite} value={nextAction} onChange={e=>setNextAction(e.target.value)} placeholder="Call buyer, schedule tasting, return with samples"/></label>
+            <label>Follow-up date <input type="date" disabled={!canWrite} value={nextActionDate} onChange={e=>setNextActionDate(e.target.value)}/></label>
+            <label>Golden Eagle sample (optional) <select disabled={!canWrite} value={sampleProduct} onChange={e=>setSampleProduct(e.target.value)}><option value="">No sample provided</option>{GOLDEN_EAGLE_SKUS.map(sku=><option key={sku.id} value={sku.description}>{sku.shortName}</option>)}</select></label>
+            {sampleProduct&&<label>Cans provided <input required disabled={!canWrite} min={1} max={10000} step={1} type="number" value={sampleQuantity} onChange={e=>setSampleQuantity(Number(e.target.value))}/></label>}
+          </div>
+        </fieldset>
         <p className="prototype-note">Samples are field logs only and do not deduct warehouse inventory. Do not log calls, route plans or virtual meetings as physical visits. No external messages are sent.</p>
         {feedback&&<p role="status">{feedback}</p>}
         {canWrite&&<div className="prototype-controls"><button type="submit" disabled={!physical}>Save field visit</button>{matched&&canClaimUnassignedProspect(currentUser,matched)&&<button type="button" onClick={()=>{if(claimUnassignedProspect(matched.id))setFeedback("Unassigned prospect claimed in local demo. Original visit and account IDs retained.");else setFeedback("Prospect claim rejected.");}}>Claim unassigned prospect</button>}</div>}
