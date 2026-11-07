@@ -1,5 +1,5 @@
 name: A-G Surgical Consolidation
-# Retry 5: restore C contact exports and G cloud receipts
+# Retry 6: publish merged candidate to isolated branch before full regression repairs
 
 on:
   push:
@@ -28,6 +28,13 @@ jobs:
           set -euo pipefail
           git checkout -B integration/a-g-unified-2026-11-07
           node scripts/a-g-integrate.mjs
+
+      - name: Publish isolated integration candidate for direct repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "integration/a-g-unified-2026-11-07"
+          git push origin HEAD:refs/heads/integration/a-g-unified-2026-11-07
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -72,9 +79,3 @@ jobs:
           git diff --exit-code
           git status --short
 
-      - name: Push verified consolidation branch only
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git branch --show-current)" = "integration/a-g-unified-2026-11-07"
-          git push origin HEAD:refs/heads/integration/a-g-unified-2026-11-07
