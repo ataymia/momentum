@@ -245,6 +245,7 @@ test("C redesigned CRM workflows and F employee directory retain distinct workin
   }
   assert.equal(permissionForPath("/crm/account-health"),"accounts");
   assert.equal(pageForPath("/people/directory"),"employees");
+  assert.match(hub,/if\(path==="\/people\/directory"\)return <HrPersonnelDirectory\/>/);
   assert.equal(requiresPrototypePage("/people/directory"),true);
   assert.equal(canVisitRoute(user("Administrator"),"/people/directory"),true);
   assert.equal(canVisitRoute(user("Sales Representative"),"/people/directory"),false);
