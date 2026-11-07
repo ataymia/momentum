@@ -38,7 +38,8 @@ export function DriverRouteBoard(){
         const override=state.overrides.some(item=>item.orderId===order.id);
         const reconciliation=deliveryReconciliationIssue(order,task,delivered,override);
         const issue=delivered>order.cases+0.005?"Delivered inventory exceeds ordered cases.":reconciliation;
-        const complete=(override||task.status==="Delivered"&&proof)&&delivered>=order.cases&&!issue;
+        const complete=["Delivered","Paid"].includes(order.status)&&
+          (override||task.status==="Delivered"&&proof)&&delivered>=order.cases&&delivered<=order.cases+0.005&&!issue;
         const exception=Boolean(issue)||task.status==="Delivered"&&!complete;
         return {task,order,account,address,hasAddress,delivered,proof,complete,exception,issue};
       }).filter((x):x is NonNullable<typeof x>=>Boolean(x))
