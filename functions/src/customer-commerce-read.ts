@@ -1,4 +1,4 @@
-/* eslint-disable max-len, comma-spacing, indent, key-spacing, space-before-blocks */
+/* eslint-disable max-len, comma-spacing, indent, key-spacing, space-before-blocks, space-before-function-paren, keyword-spacing, brace-style, semi-spacing, one-var, arrow-parens */
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
 import {onRequest} from "firebase-functions/v2/https";

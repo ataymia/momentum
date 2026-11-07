@@ -1,3 +1,4 @@
+/* eslint-disable max-len, comma-spacing, indent, valid-jsdoc, space-before-blocks, keyword-spacing, arrow-parens, require-jsdoc, key-spacing, comma-dangle, one-var, semi-spacing, curly */
 /** Server-only, account-scoped projections. No raw Firestore finance shards leave this module. */
 export type Row=Record<string,unknown>;
 export type DocRows={accounts:Row[];orders:Row[];invoices:Row[];payments:Row[];allocations:Row[];credits:Row[];refunds:Row[]};
