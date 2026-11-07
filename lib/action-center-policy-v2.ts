@@ -1,7 +1,7 @@
 import { canAccessPage, canManageUser, canReviewApproval } from "./access";
 import type { AccountingSourceEvent, AccountingState } from "./accounting-engine";
 import { arizonaDateKey, arizonaHour } from "./date-time";
-import type { DeliveryState } from "./delivery-engine";
+import type { DeliveryState, DeliveryTaskStatus } from "./delivery-engine";
 import type { FinanceState } from "./finance-engine";
 import type { HCMState } from "./hcm-engine";
 import { inventoryProductStatuses, type InventoryLedgerState } from "./inventory-ledger";
@@ -14,6 +14,8 @@ import type { PageKey, WorkspaceData, WorkspaceUser } from "./types";
 export type ActionUrgency="Blocking"|"Due"|"Review"|"Watch";
 export type ActionNotice={id:string;policyId:string;title:string;detail:string;category:string;page?:PageKey;urgency:ActionUrgency;focus?:string;peopleTab?:string;weeklyWeekStart?:string;occurredAt?:string};
 export type ActionNoticeInputs={data:WorkspaceData;scope:Pick<WorkspaceData,"appointments">;currentUser:WorkspaceUser;hcm:HCMState;performance:PerformanceState;finance:FinanceState;marketing:MarketingState;accounting:AccountingState;accountingEvents:AccountingSourceEvent[];ledger:InventoryLedgerState;delivery:DeliveryState;today?:string};
+
+export const deliveryAssignmentStillOpen=(status:DeliveryTaskStatus)=>["Accepted","Loaded","In transit"].includes(status);
 
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
 const date=(value:string)=>{const parsed=new Date(/^\d{4}-\d{2}-\d{2}$/.test(value)?`${value}T12:00:00-07:00`:value);return Number.isNaN(parsed.getTime())?value:new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric"}).format(parsed);};
@@ -39,7 +41,7 @@ export function buildActionNotices(input:ActionNoticeInputs):ActionNotice[]{
   }
 
   if(currentUser.role==="Delivery Driver"){
-    for(const task of delivery.tasks.filter(item=>item.driverId===currentUser.id&&item.status!=="Cancelled"&&item.status!=="Delivered"&&item.history.some(event=>event.type==="Assigned"))){
+    for(const task of delivery.tasks.filter(item=>item.driverId===currentUser.id&&deliveryAssignmentStillOpen(item.status)&&item.history.some(event=>event.type==="Assigned"))){
       const order=data.orders.find(item=>item.id===task.orderId);
       if(!order)continue;
       actions.push({id:`delivery-assigned:${task.id}`,policyId:"delivery.assigned",title:"Delivery assigned",detail:`${order.number} has been assigned to you.`,category:"Delivery",page:"orders",focus:order.id,urgency:"Due",occurredAt:task.history.find(event=>event.type==="Assigned")?.at});
