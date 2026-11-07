@@ -78,9 +78,10 @@ test("Customer invoice portal uses authorized fulfilled order and matching accou
 });
 
 
-test("local-demo leave creation uses event-generated IDs, with no render-time random source",()=>{
+test("employee leave creation uses event-generated IDs and authorized Firestore persistence, without render-time random sources",()=>{
  const src=readFileSync("components/prototype/hr-time-off-experience.tsx","utf8");
  assert.match(src,/newLeaveRequestId\(\)/);
  assert.doesNotMatch(src,/Date\.now\(\)|Math\.random\(\)/);
- assert.match(src,/writeEnabled=runtime\.isDemo&&momentumStorage\.mode\(\)==="local"/);
+ assert.match(src,/writeEnabled=\(runtime\.isDemo&&storageMode==="local"\)\|\|storageMode==="firestore"/);
+ assert.match(src,/flushAndConfirm\(HCM_STORAGE_KEY\)/);
 });
