@@ -6,7 +6,7 @@ import {downloadCsv} from "../../lib/browser-export";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useWorkspace} from "../../lib/workspace-context";
 
-type HealthSort="account"|"lastPaid"|"settledCases"|"nextAction"|"reviewDate";
+type HealthSort="account"|"rep"|"lastOrder"|"lastPaid"|"settledCases"|"nextAction"|"reviewDate";
 const columns=["account","city","representative","lastPlacedOrder","lastSettledPayment","settledCases90Days","settledOrderCount","nextAction","pricingReview"] as const;
 const today=()=>new Date();
 
@@ -24,6 +24,8 @@ export function CrmAccountHealth(){
     .filter(({account})=>[account.name,account.location,account.postalCode,names.get(account.ownerId)].join(" ").toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a,b)=>{
       const field=(row:typeof a)=>{
+        if(sort==="rep")return names.get(row.account.ownerId)??"Unassigned";
+        if(sort==="lastOrder")return row.health.lastOrderDate??"";
         if(sort==="lastPaid")return row.health.lastPaidOrderDate??"";
         if(sort==="settledCases")return row.health.rolling90PaidCases;
         if(sort==="nextAction")return row.account.nextActionDate??"";
@@ -36,6 +38,8 @@ export function CrmAccountHealth(){
     }),[scope.accounts,data,rep,reviewDue,query,sort,ascending,names]);
   if(!currentUser||currentUser.role==="Customer")return <div className="prototype-empty">Employee account-health access is required.</div>;
   const repIds=[...new Set(scope.accounts.map(a=>a.ownerId).filter(Boolean))];
+  const header=(key:HealthSort,label:string)=><th aria-sort={sort===key?(ascending?"ascending":"descending"):"none"}><button type="button" aria-label={"Sort account health by "+label}
+    onClick={()=>{if(sort===key)setAscending(v=>!v);else{setSort(key);setAscending(true);}}}>{label}</button></th>;
   const exported=rows.map(({account,health})=>({
     account:account.name,city:account.location,representative:names.get(account.ownerId)??"Unassigned",
     lastPlacedOrder:health.lastOrderDate??"",lastSettledPayment:health.lastPaidOrderDate??"",
@@ -51,12 +55,12 @@ export function CrmAccountHealth(){
         <label>Find account <input type="search" aria-label="Find account health record" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Store, city, ZIP or assigned rep"/></label>
         <label>Assigned rep <select aria-label="Filter health by representative" value={rep} onChange={e=>setRep(e.target.value)}><option value="all">All accessible reps</option>{repIds.map(id=><option value={id} key={id}>{names.get(id)??id}</option>)}</select></label>
         <label><input type="checkbox" checked={reviewDue} onChange={e=>setReviewDue(e.target.checked)}/> Pricing review due</label>
-        <label>Order <select aria-label="Sort account health" value={sort} onChange={e=>setSort(e.target.value as HealthSort)}><option value="lastPaid">Last settlement</option><option value="settledCases">90-day settled cases</option><option value="nextAction">Next action</option><option value="reviewDate">Pricing review date</option><option value="account">Account name</option></select></label>
+        <label>Order <select aria-label="Sort account health" value={sort} onChange={e=>setSort(e.target.value as HealthSort)}><option value="lastPaid">Last settlement</option><option value="lastOrder">Last order</option><option value="rep">Assigned representative</option><option value="settledCases">90-day settled cases</option><option value="nextAction">Next action</option><option value="reviewDate">Pricing review date</option><option value="account">Account name</option></select></label>
         <button type="button" onClick={()=>setAscending(v=>!v)}>{ascending?"Ascending":"Descending"}</button>
         <button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-account-health.csv",exported,columns)}>Save scoped health CSV</button>
       </div>
       <p className="prototype-note">{rows.length} accessible locations match. A missing settlement date is displayed as unverified, never inferred from order placement or a Paid flag.</p>
-      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Location</th><th>Assigned rep</th><th>Last order</th><th>Last verified settlement</th><th>90-day paid cases</th><th>Next action</th><th>Pricing review</th><th>Open record</th></tr></thead>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>{header("account","Location")}{header("rep","Assigned rep")}{header("lastOrder","Last order")}{header("lastPaid","Last verified settlement")}{header("settledCases","90-day paid cases")}{header("nextAction","Next action")}{header("reviewDate","Pricing review")}<th>Open record</th></tr></thead>
         <tbody>{rows.map(({account,health})=><tr key={account.id}>
           <td>{account.name}<small className="prototype-description">{account.location} · {account.postalCode||"ZIP unknown"}</small></td>
           <td>{names.get(account.ownerId)??"Unassigned"}</td>
