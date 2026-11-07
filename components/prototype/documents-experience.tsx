@@ -38,7 +38,7 @@ export function DocumentsExperience(){
      id:"training-"+m.id,source:"Training" as const,title:m.title,category:m.kind,status:"Available",owner:hcm.courses.find(c=>c.id===m.courseId)?.title??"Training",
      version:"",recordedAt:m.updatedAt.slice(0,10),url:safeExternal(m.url)
    }));
-   const assets:DocumentRow[]=admin||marketer?marketing.assets.map(m=>({
+   const assets:DocumentRow[]=admin||marketer?marketing.assets.filter(m=>admin||m.status==="Approved").map(m=>({
      id:"asset-"+m.id,source:"Brand assets" as const,title:m.name,category:m.type,status:m.status,
      owner:"Marketing",version:String(m.version),recordedAt:m.updatedAt.slice(0,10)
    })):[];
@@ -48,7 +48,7 @@ export function DocumentsExperience(){
  const exportRows=()=>downloadCsv("momentum-visible-document-register.csv",rows.map(r=>({source:r.source,title:r.title,category:r.category,status:r.status,owner:r.owner,version:r.version,recordedAt:r.recordedAt})),["source","title","category","status","owner","version","recordedAt"]);
  if(!currentUser||currentUser.role==="Customer")return <div className="prototype-empty">Employee access is required.</div>;
  return <div className="prototype-domain">
-  <header className="prototype-heading"><h1><FileText size={20}/> Documents</h1><p>One searchable index of authorized document metadata, training resources and approved marketing records. Existing source systems retain their originals.</p></header>
+  <header className="prototype-heading"><h1><FileText size={20}/> Documents</h1><p>One searchable index of authorized document metadata, training resources and role-approved marketing assets. Existing source systems retain their originals.</p></header>
   <section className="prototype-panel"><div className="prototype-domain-statbar">
    <article><small>Visible document records</small><strong>{visible.length}</strong></article>
    <article><small>Missing HR records in scope</small><strong>{visible.filter(r=>r.source.startsWith("HR")||r.source==="My HR").filter(r=>r.status==="Missing").length}</strong></article>
@@ -69,7 +69,7 @@ export function DocumentsExperience(){
     {!rows.length&&<p className="prototype-note">No authorized records match these filters.</p>}
   </section>
   <section className="prototype-panel"><h2><ShieldCheck size={18}/> Document access control</h2>
-   <p className="prototype-note">HR employee records are limited to your own documents unless you are an Administrator. A stored filename or metadata entry is not proof a secure original was signed or archived. External training links have not been independently verified. Marketing assets without a validated download location remain metadata-only.</p>
+   <p className="prototype-note">HR employee records are limited to your own documents unless you are an Administrator. A stored filename or metadata entry is not proof a secure original was signed or archived. External training links have not been independently verified. Non-admin Marketing users see approved assets only; draft and retired assets remain Administrator-only. Assets without a validated download location remain metadata-only.</p>
    <p className="prototype-note">This index does not copy tax identifiers, signatures, completed PDFs, or private form field values. File downloads must continue through existing authenticated Storage permissions and an approved form provider.</p>
   </section>
  </div>;

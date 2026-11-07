@@ -3,6 +3,7 @@ import {readFileSync} from "node:fs";
 import test from "node:test";
 import type {CollectedCashFact,PaidOrderFact} from "../lib/commercial-source";
 import {insightCashSummary} from "../lib/insights-cash-summary";
+import {reportEligibleOrders,reportSellableWarehouseCases} from "../lib/reporting-visibility";
 import {canVisitRoute,requiresPrototypePage} from "../lib/navigation-route-registry";
 import type {WorkspaceUser} from "../lib/types";
 const cash=(id:string,kind:CollectedCashFact["kind"],amount:number,settledAt:string):CollectedCashFact=>({
@@ -40,4 +41,16 @@ test("F08: lot quality holds never count as sellable warehouse stock",()=>{
  const ui=readFileSync("components/prototype/insights-explorer-experience.tsx","utf8");
  assert(ui.includes('available:lot.status==="Quality hold"?0:warehouseAvailable(ledger,lot.id)'));
  assert(ui.includes('invalid?"Invalid period":money(summary.net)'));
+});
+
+// Reports and Insights must exclude intentionally synthetic orders and unsellable inventory.
+test("F08: test-only orders never enter eligible reporting evidence",()=>{
+ const visible=reportEligibleOrders([{id:"real",testOnly:false},{id:"synthetic",testOnly:true},{id:"legacy"}]);
+ assert.deepEqual(visible.map(row=>row.id),["real","legacy"]);
+});
+test("F08: quality-held and negative inventory cannot inflate sellable stock",()=>{
+ const lots=[{id:"released",status:"Available"},{id:"blocked",status:"Quality hold"},{id:"negative",status:"Available"}];
+ const ledger=new Map([["released",8],["blocked",100],["negative",-4]]);
+ assert.equal(reportSellableWarehouseCases(lots,id=>ledger.get(id)??0),8);
+ assert.equal(reportSellableWarehouseCases([{id:"x",status:"Available"}],()=>Number.NaN),0);
 });

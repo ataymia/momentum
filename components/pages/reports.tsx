@@ -13,6 +13,7 @@ import { nodeLotBalance, warehouseAvailable, warehouseNodeId } from "../../lib/i
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import { useWorkspace } from "../../lib/workspace-context";
+import {reportEligibleOrders,reportSellableWarehouseCases} from "../../lib/reporting-visibility";
 import { ManagementKpiDashboard } from "../performance/management-kpi-dashboard";
 import { PageHeader, Section, StatusPill, formatMoney } from "../ui";
 
@@ -29,7 +30,8 @@ export function ReportsPage() {
   const [reportScope, setReportScope] = useState<ReportScope>("commercial");
   const today = arizonaDateKey();
 
-  const visibleOrderIds = new Set(records.orders.map((order) => order.id));
+  const eligibleOrders = reportEligibleOrders(records.orders);
+  const visibleOrderIds = new Set(eligibleOrders.map((order) => order.id));
   const cashRoles = ["Administrator","Sales Manager","Sales Representative","Operations"];
   const showCommercial = cashRoles.includes(currentUser?.role ?? "");
   const showKpiCenter = ["Administrator","Sales Manager","Sales Representative"].includes(currentUser?.role ?? "");
@@ -44,8 +46,8 @@ export function ReportsPage() {
   const visibleFieldPings=tracking.state.samples.filter(sample=>teamIds.has(sample.userId)).length;
   const paidFacts = resolvedPaidOrderFacts(data, commerce).filter((fact) => visibleOrderIds.has(fact.orderId));
   const paid = collectedCashFacts(data, commerce).filter((fact) => visibleOrderIds.has(fact.orderId)).reduce((sum, fact) => sum + fact.amount, 0);
-  const delivered = records.orders.filter((order) => !order.testOnly && (["Delivered", "Paid"].includes(order.status) || taskForOrder(order.id)?.status === "Delivered")).reduce((sum, order) => sum + order.cases, 0);
-  const available = records.inventory.reduce((sum, lot) => sum + warehouseAvailable(ledger, lot.id), 0);
+  const delivered = eligibleOrders.filter((order) => ["Delivered", "Paid"].includes(order.status) || taskForOrder(order.id)?.status === "Delivered").reduce((sum, order) => sum + order.cases, 0);
+  const available = reportSellableWarehouseCases(records.inventory,lotId=>warehouseAvailable(ledger,lotId));
   const onHand = records.inventory.reduce((sum, lot) => sum + Math.max(0, nodeLotBalance(ledger, warehouseNodeId, lot.id)), 0);
   const paidByAccount = new Map<string, number>();
   paidFacts.forEach((fact) => paidByAccount.set(fact.accountId, (paidByAccount.get(fact.accountId) ?? 0) + 1));
@@ -76,7 +78,7 @@ export function ReportsPage() {
     : effectiveScope === "operations"
       ? [
           ["Warehouse on hand", `${onHand} cs`, "Formula: custody ledger balance at the warehouse node"],
-          ["Warehouse available", `${available} cs`, "Formula: warehouse custody balance less active order reservations"],
+          ["Warehouse available", `${available} cs`, "Formula: sellable warehouse custody less order reservations; quality-held lots excluded"],
           ["Open field work", String(records.appointments.filter((item) => item.status !== "Completed").length), "Appointments whose status is not Completed"],
           ["Placement issues", String(records.placements.filter((item) => item.status !== "Healthy").length), "Placement records whose status is not Healthy"],
         ]
@@ -95,7 +97,7 @@ export function ReportsPage() {
     {showKpiCenter&&<ManagementKpiDashboard/>}
 
     <div className="report-integrity-banner"><Database size={20}/><div><strong>{showCommercial?"KPI sources are connected to Momentum records.":"Role-scoped operational reporting"}</strong>
-      {showCommercial?<p>Evidence in your authorized scope: {records.orders.length} orders · {visibleClearedPayments} cleared payments with visible invoice allocations · {visibleVisits} physical visits · {records.appointments.length} appointments · {visibleFieldPings} scoped field pings. Payments allocated to multiple invoices require separate reconciliation.</p>:
+      {showCommercial?<p>Evidence in your authorized scope: {eligibleOrders.length} orders · {visibleClearedPayments} cleared payments with visible invoice allocations · {visibleVisits} physical visits · {records.appointments.length} appointments · {visibleFieldPings} scoped field pings. Payments allocated to multiple invoices require separate reconciliation.</p>:
       <p>Commercial cash, customer revenue and sales KPIs are excluded from this role. Operational and personal HR summaries remain subject to source permissions; this view does not expose company-wide financial events.</p>}
     </div></div>
 
@@ -104,9 +106,9 @@ export function ReportsPage() {
 
     {effectiveScope === "commercial" && <Section title="Commercial record flow" description="Each milestone is reported separately" className="reality-panel">
       <div className="reality-flow">{[
-        ["Orders", records.orders.length, "Entered"],
+        ["Orders", eligibleOrders.length, "Entered"],
         ["Paid", paidFacts.length, "Fully paid from commerce evidence"],
-        ["Delivered", records.orders.filter((item) => !item.testOnly && (["Delivered", "Paid"].includes(item.status) || taskForOrder(item.id)?.status === "Delivered")).length, "Received"],
+        ["Delivered", eligibleOrders.filter((item) => ["Delivered", "Paid"].includes(item.status) || taskForOrder(item.id)?.status === "Delivered").length, "Received"],
         ["Placed", records.placements.length, "Observed"],
         ["Reordered", reordered, "Bought again"],
       ].map(([title, value, detail], index) => <div key={title as string}><span>{index + 1}</span><div><small>{title as string}</small><strong>{value as number}</strong><p>{detail as string}</p></div></div>)}</div>

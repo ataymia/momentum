@@ -15,3 +15,9 @@ test("F03: attendance table sorting never mutates the scoped timecards",()=>{
  assert(source.includes("[...visibleTimecards].sort("));
  assert(!source.includes("{visibleTimecards.sort("));
 });
+
+// F10 data minimization: marketers see only approved asset metadata.
+test("F10: document index excludes marketing drafts and retired assets for non-admin users",()=>{
+ const source=readFileSync("components/prototype/documents-experience.tsx","utf8");
+ assert(source.includes('marketing.assets.filter(m=>admin||m.status==="Approved")'));
+});
