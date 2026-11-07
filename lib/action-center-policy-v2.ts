@@ -39,7 +39,7 @@ export function buildActionNotices(input:ActionNoticeInputs):ActionNotice[]{
   }
 
   if(currentUser.role==="Delivery Driver"){
-    for(const task of delivery.tasks.filter(item=>item.driverId===currentUser.id&&item.status!=="Cancelled"&&item.history.some(event=>event.type==="Assigned"))){
+    for(const task of delivery.tasks.filter(item=>item.driverId===currentUser.id&&item.status!=="Cancelled"&&item.status!=="Delivered"&&item.history.some(event=>event.type==="Assigned"))){
       const order=data.orders.find(item=>item.id===task.orderId);
       if(!order)continue;
       actions.push({id:`delivery-assigned:${task.id}`,policyId:"delivery.assigned",title:"Delivery assigned",detail:`${order.number} has been assigned to you.`,category:"Delivery",page:"orders",focus:order.id,urgency:"Due",occurredAt:task.history.find(event=>event.type==="Assigned")?.at});
