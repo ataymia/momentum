@@ -65,6 +65,9 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const { data, currentUser, reconcileOrderPayment } = useWorkspace();
   const runtime = useRuntimeMode();
   const canManageCash = currentUser?.role === "Administrator";
+  // Client-held payment states are never authoritative settlement evidence in
+  // a connected session. Provider verification must be implemented server-side.
+  const localSettlementSandbox=runtime.isDemo&&momentumStorage.mode()==="local";
   const read = () => {
     if (typeof window === "undefined") return createCommerceSeed(data);
     try {
@@ -115,6 +118,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   }));
 
   useEffect(() => {
+    if(!localSettlementSandbox)return;
     const handle = window.setTimeout(() => {
       for (const invoice of commerce.invoices) {
         const order = data.orders.find((item) => item.id === invoice.orderId);
@@ -133,7 +137,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
       }
     }, 0);
     return () => window.clearTimeout(handle);
-  }, [commerce, data.orders, reconcileOrderPayment]);
+  }, [commerce, data.orders, localSettlementSandbox, reconcileOrderPayment]);
 
   const setInvoiceTerms = (invoiceId: string, terms: InvoiceTerms, dueDate?: string) => {
     if (!canManageCash || (dueDate !== undefined && dueDate !== "" && !isValidCalendarDateKey(dueDate))) return;
@@ -152,7 +156,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
     if (!canManageCash || !currentUser || input.method === "Cash" || !Number.isFinite(input.amount)) return null;
     const invoice = commerce.invoices.find((item) => item.id === input.invoiceId);
     if (!invoice || computedInvoiceStatus(commerce, invoice) === "Void" || input.amount <= 0 || input.amount > invoiceRecordableAmount(commerce, invoice)) return null;
-    if (input.status === "Cleared" && !canRecordSettlementDate(input.settlementDate)) return null;
+    if (input.status === "Cleared" && (!localSettlementSandbox || !canRecordSettlementDate(input.settlementDate))) return null;
     const paymentId = uid("payment");
     const payment: Payment = { id: paymentId, accountId: invoice.accountId, receivedAt: now(), settledAt: input.status === "Cleared" ? input.settlementDate : undefined, settledBy: input.status === "Cleared" ? currentUser.id : undefined, amount: input.amount, method: input.method, status: input.status, processorReference: input.processorReference?.trim() || undefined, note: input.note?.trim() || undefined, createdBy: currentUser.id, createdAt: now() };
     const allocation: PaymentAllocation = { id: uid("allocation"), paymentId, invoiceId: invoice.id, amount: input.amount, createdAt: now(), createdBy: currentUser.id };
@@ -163,7 +167,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const setPaymentStatus = (paymentId: string, status: "Cleared", settlementDate?: string) => {
     if (!canManageCash || !currentUser || status !== "Cleared") return false;
     const payment = commerce.payments.find((item) => item.id === paymentId);
-    if (!payment || payment.status !== "Pending" || !canRecordSettlementDate(settlementDate)) return false;
+    if (!payment || payment.status !== "Pending" || !localSettlementSandbox || !canRecordSettlementDate(settlementDate)) return false;
     setCommerce((state) => ({
       ...state,
       payments: state.payments.map((item) => item.id === paymentId ? { ...item, status: "Cleared", settledAt: settlementDate, settledBy: currentUser.id } : item),

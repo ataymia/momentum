@@ -57,6 +57,9 @@ import {ActionCenterExperience} from "./action-center-experience";
 import {WorkspaceHome} from "./workspace-home";
 import {SharedCalendarExperience,MeetingWorkspaceExperience} from "./workspace-meetings-experience";
 import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
+import {PriceBooksDirectory,PriceBookDetail} from "./price-books-experience";
+import {CustomerCommerceLedgers} from "./customer-commerce-ledgers";
+import {CustomerConnectedPortal} from "./customer-connected-portal";
 import {WorkExceptionsExperience,CompletedWorkExperience} from "./work-review-experience";
 import {DealsDirectory,DealEditor} from "./crm-deals-experience";
 import {CrmContactsDirectory,CrmContactEditor} from "./crm-contacts-experience";
@@ -407,34 +410,70 @@ function CustomerRecord({id,section}:{id:string;section:string}){
   </div>;
 }
 function matchingLines(order:Order,skuId:string){
-  if(order.lines?.length)return order.lines.filter(l=>skuForProductName(l.product)?.id===skuId).map(l=>({cases:l.cases,product:l.product}));
-  if(order.testSkuId===skuId||(!order.testSkuId&&order.product&&skuForProductName(order.product)?.id===skuId))return [{cases:order.cases,product:order.product??""}];
+  if(order.lines?.length)return order.lines.filter(l=>skuForTraceableProduct(l.product)?.id===skuId).map(l=>({cases:l.cases,product:l.product}));
+  if(order.testSkuId===skuId||(!order.testSkuId&&order.product&&skuForTraceableProduct(order.product)?.id===skuId))return [{cases:order.cases,product:order.product??""}];
   return [];
 }
 function ProductDirectory(){
-  const [query,setQuery]=useState(""); const [asc,setAsc]=useState(true);
-  const skus=GOLDEN_EAGLE_SKUS.filter(s=>[s.shortName,s.description,s.id].join(" ").toLowerCase().includes(query.toLowerCase())).sort((a,b)=>(asc?1:-1)*a.shortName.localeCompare(b.shortName));
-  return <div><Heading title="Items" description="Product master with connected records, stock locations and transaction history."/>
-    <section className="prototype-panel"><div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search items" placeholder="Search item or SKU" value={query} onChange={e=>setQuery(e.target.value)}/></label><button type="button" onClick={()=>setAsc(!asc)}><ArrowUpDown size={15}/> Name {asc?"A–Z":"Z–A"}</button></div>
-      <table className="prototype-table"><thead><tr><th>Item</th><th>SKU</th><th>Case pack</th><th>Status</th></tr></thead><tbody>{skus.map(s=><tr key={s.id}><td><OpenLink to={"/items/"+encodeURIComponent(s.id)}>{s.shortName}</OpenLink><small className="prototype-description">{s.description}</small></td><td>{s.id}</td><td>{s.casePack}</td><td>{s.active?"Active":"Inactive"}</td></tr>)}</tbody></table>
+  const {scope,currentUser}=useWorkspace();
+  const {ledger}=useInventoryLedger();
+  const showStock=canAccessPage(currentUser,"inventory");
+  const [query,setQuery]=useState(""),[sort,setSort]=useState<"name"|"sku"|"casePack"|"orders"|"available"|"status">("name"),[asc,setAsc]=useState(true);
+  const rows=GOLDEN_EAGLE_SKUS.map(s=>{
+    const lots=scope.inventory.filter(l=>skuForTraceableProduct(l.product)?.id===s.id);
+    const available=lots.filter(l=>l.status!=="Quality hold").reduce((n,l)=>n+warehouseAvailable(ledger,l.id),0);
+    const orders=scope.orders.filter(o=>!o.testOnly&&o.status!=="Cancelled"&&matchingLines(o,s.id).length>0).length;
+    return {s,available,orders};
+  }).filter(x=>[x.s.shortName,x.s.description,x.s.id].join(" ").toLowerCase().includes(query.toLowerCase()))
+    .sort((a,b)=>{
+      const value=(r:typeof a):string|number=>sort==="name"?r.s.shortName:sort==="sku"?r.s.id:sort==="casePack"?r.s.casePack:sort==="orders"?r.orders:sort==="available"?r.available:r.s.active?"Active":"Inactive";
+      const left=value(a),right=value(b);
+      const comparison=typeof left==="number"&&typeof right==="number"?left-right:String(left).localeCompare(String(right),undefined,{numeric:true});
+      return (asc?1:-1)*(comparison||a.s.id.localeCompare(b.s.id));
+    });
+  const header=(key:typeof sort,label:string)=><button type="button" aria-label={"Sort by "+label} onClick={()=>{if(sort===key)setAsc(v=>!v);else{setSort(key);setAsc(true);}}}>{label} <ArrowUpDown size={14}/></button>;
+  return <div><Heading title="Items / Products" description="Canonical SKU catalog linked to recorded orders and, where authorized, the physical inventory custody ledger."/>
+    <section className="prototype-panel"><div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search items" placeholder="Search item or SKU" value={query} onChange={e=>setQuery(e.target.value)}/></label></div>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>{header("name","Item")}</th><th>{header("sku","SKU")}</th><th>{header("casePack","Case pack")}</th><th>{header("orders","Orders")}</th>{showStock&&<th>{header("available","Available cases")}</th>}<th>{header("status","Status")}</th></tr></thead>
+      <tbody>{rows.map(({s,orders,available})=><tr key={s.id}>
+        <td><OpenLink to={"/items/"+encodeURIComponent(s.id)}>{s.shortName}</OpenLink><small className="prototype-description">{s.description}</small></td>
+        <td>{s.id}</td><td>{s.casePack}</td><td>{orders}</td>{showStock&&<td>{available}</td>}<td>{s.active?"Active":"Inactive"}</td>
+      </tr>)}</tbody></table></div>{!rows.length&&<Empty>No matching items.</Empty>}
+      <p className="prototype-note">SKU and case-pack data come from the product master. Stock shown to authorized personnel comes from ledger custody after reservations and quality holds, never from historical supplier quantities.</p>
     </section></div>;
 }
 function ProductRecord({skuId,section}:{skuId:string;section:string}){
-  const {scope}=useWorkspace();const sku=GOLDEN_EAGLE_SKUS.find(s=>s.id===skuId);
+  const {scope,currentUser,data}=useWorkspace();const {ledger}=useInventoryLedger();const sku=GOLDEN_EAGLE_SKUS.find(s=>s.id===skuId);
   if(!sku)return <Empty>Item not found, or it is unavailable.</Empty>;
   const matched=scope.orders.filter(o=>!o.testOnly&&!["Cancelled","Draft"].includes(o.status)).map(o=>({order:o,lines:matchingLines(o,sku.id)})).filter(x=>x.lines.length>0).sort((a,b)=>b.order.placedAt.localeCompare(a.order.placedAt));
-  const lots=scope.inventory.filter(l=>skuForProductName(l.product)?.id===sku.id);
+  const lots=scope.inventory.filter(l=>skuForTraceableProduct(l.product)?.id===sku.id);
   const delivered=matched.filter(x=>["Delivered","Paid"].includes(x.order.status));
   const units=delivered.reduce((n,x)=>n+x.lines.reduce((m,l)=>m+l.cases,0),0);
+
+  const canSeeStock=canAccessPage(currentUser,"inventory");
+  const available=lots.filter(l=>l.status!=="Quality hold").reduce((n,l)=>n+warehouseAvailable(ledger,l.id),0);
+  const reserved=lots.reduce((n,l)=>n+reservedQuantity(ledger,l.id),0);
+  const lotIds=new Set(lots.map(l=>l.id));
+  const movements=ledger.movements.filter(m=>lotIds.has(m.lotId)).sort((a,b)=>b.at.localeCompare(a.at)||b.id.localeCompare(a.id));
+  const names=new Map(data.users.map(u=>[u.id,u.name]));
   const base="/items/"+encodeURIComponent(sku.id),tab=safeTab(section,ITEM_TABS);
   return <div><Heading title={sku.shortName} description={sku.description} back="/items"/><Tabs items={ITEM_TABS} current={tab} base={base}/>
-    {tab==="overview"&&<><div className="prototype-metrics"><div><small>Case pack</small><strong>{sku.casePack}</strong></div><div><small>Orders containing item</small><strong>{matched.length}</strong></div><div><small>Cases on delivered/paid orders</small><strong>{units}</strong></div></div>
+    {tab==="overview"&&<><div className="prototype-metrics"><div><small>Case pack</small><strong>{sku.casePack}</strong></div><div><small>Orders containing item</small><strong>{matched.length}</strong></div><div><small>Cases on delivered/paid orders</small><strong>{units}</strong></div>{canSeeStock&&<div><small>Warehouse available</small><strong>{available}</strong></div>}</div>
       <section className="prototype-panel"><h2>Item master</h2><dl className="prototype-facts"><div><dt>SKU</dt><dd>{sku.id}</dd></div><div><dt>Case barcode</dt><dd>{sku.caseBarcode??"Pending verified barcode"}</dd></div><div><dt>Active</dt><dd>{sku.active?"Yes":"No"}</dd></div></dl><p className="prototype-note">Delivered-order counts are not proof of end-consumer sell-through. Historical PO metadata is not current inventory.</p></section></>}
     {tab==="transactions"&&<section className="prototype-panel"><h2>Orders containing this item</h2><table className="prototype-table"><thead><tr><th>Sales order</th><th>Where placed</th><th>Date</th><th>Cases</th><th>Order status</th></tr></thead><tbody>{matched.map(({order,lines})=><tr key={order.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(order.id)}>{order.number}</OpenLink></td><td>{scope.accounts.find(a=>a.id===order.accountId)?.name??"Restricted location"}</td><td>{order.placedAt}</td><td>{lines.reduce((n,l)=>n+l.cases,0)}</td><td>{order.status}</td></tr>)}</tbody></table>{!matched.length&&<Empty>No linked item-level order lines found in your accessible records. Legacy orders without product identity are intentionally not attributed to a SKU.</Empty>}</section>}
-    {tab==="stock"&&<section className="prototype-panel"><h2>Verified inventory lot records</h2><table className="prototype-table"><thead><tr><th>Warehouse / Bin</th><th>Lot</th><th>On hand</th><th>Available</th><th>Best by</th></tr></thead><tbody>{lots.map(l=><tr key={l.id}><td>{l.location}</td><td>{l.lotCode}</td><td>{l.onHand}</td><td>{l.available}</td><td>{l.bestBy}</td></tr>)}</tbody></table>{!lots.length&&<Empty>No accessible, SKU-matched inventory lot records. Historical supplier quantities do not populate inventory.</Empty>}</section>}
-    {tab==="history"&&<section className="prototype-panel"><h2>Item activity</h2><p className="prototype-note">This prototype shows order and lot links, not a full audit history. The existing audit ledger should provide authoritative changes and actors in the completed experience.</p>
-      {matched.slice(0,30).map(({order})=><p className="prototype-activity" key={order.id}><strong>{order.placedAt} • {order.number}</strong><span>{order.status} • {scope.accounts.find(a=>a.id===order.accountId)?.name??"Restricted location"}</span></p>)}
-      {!matched.length&&<Empty>No linked order activity.</Empty>}</section>}
+    {tab==="stock"&&<section className="prototype-panel"><h2>Warehouse / Bin inventory</h2>
+      {!canSeeStock?<Empty>Stock and custody records are restricted to authorized inventory roles.</Empty>:<>
+        <div className="prototype-metrics"><div><small>Warehouse available</small><strong>{available}</strong></div><div><small>Reserved cases</small><strong>{reserved}</strong></div></div>
+        <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Lot</th><th>Location</th><th>Warehouse custody</th><th>Reserved</th><th>Available</th><th>Best by</th></tr></thead><tbody>
+        {lots.map(l=><tr key={l.id}><td><OpenLink to={"/inventory/lots/"+encodeURIComponent(l.id)}>{l.lotCode}</OpenLink></td><td>{l.location}</td><td>{nodeLotBalance(ledger,warehouseNodeId,l.id)}</td><td>{reservedQuantity(ledger,l.id)}</td><td>{l.status==="Quality hold"?0:warehouseAvailable(ledger,l.id)}</td><td>{l.bestBy}</td></tr>)}
+        </tbody></table></div>{!lots.length&&<Empty>No source-linked inventory lots found.</Empty>}<p className="prototype-note">Only warehouse custody after reservations is sellable. Held, delivered and disposed product is not available stock.</p>
+      </>}</section>}
+    {tab==="history"&&<section className="prototype-panel"><h2>SKU custody history</h2>
+      {!canSeeStock?<Empty>Inventory movement history requires inventory access.</Empty>:<>
+        <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Recorded at</th><th>Lot</th><th>Movement</th><th>Cases</th><th>Actor</th><th>Order</th></tr></thead><tbody>
+        {movements.map(m=><tr key={m.id}><td>{m.at.slice(0,16)}</td><td>{lots.find(l=>l.id===m.lotId)?.lotCode??"Unknown"}</td><td>{m.type}</td><td>{m.quantity}</td><td>{names.get(m.actorId)??"System / unverified"}</td><td>{m.relatedOrderId&&scope.orders.some(o=>o.id===m.relatedOrderId)?<OpenLink to={"/sales/orders/"+encodeURIComponent(m.relatedOrderId)}>{scope.orders.find(o=>o.id===m.relatedOrderId)?.number}</OpenLink>:"Not linked"}</td></tr>)}
+        </tbody></table></div>{!movements.length&&<Empty>No verified source-ledger movement for this item.</Empty>}<p className="prototype-note">This is a custody history, not a record-change audit. A movement is displayed only when the SKU matches a visible lot.</p>
+      </>}</section>}
   </div>;
 }
 function CalendarPreview({meetingsOnly}:{meetingsOnly:boolean}){
@@ -593,6 +632,14 @@ function CustomerPortalContent({section}:{section:string}){
   const [deliveryAccount,setDeliveryAccount]=useState("all");const [deliveryFrom,setDeliveryFrom]=useState("");
   const [deliveryThrough,setDeliveryThrough]=useState("");const [deliverySort,setDeliverySort]=useState<"newest"|"oldest"|"order"|"cases">("newest");
   if(currentUser?.role!=="Customer") return <Empty>Customer access only.</Empty>;
+  if(section==="payments"||section==="statements")return <CustomerCommerceLedgers section={section}/>;
+  if((!runtime.isDemo||momentumStorage.mode()!=="local")&&
+    (section==="orders"||section==="invoices"||section==="account"||section==="deliveries"))
+      return <CustomerConnectedPortal section={section}/>;
+  if(section==="orders")return <div><Heading title="My Orders" description="Your authorized business orders in isolated demo mode."/>
+    <section className="prototype-panel"><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Placed</th><th>Cases</th><th>Status</th></tr></thead><tbody>{scope.orders.filter(o=>!o.testOnly).map(o=>
+      <tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{o.placedAt}</td><td>{o.cases}</td><td>{o.status}</td></tr>)}</tbody></table></div>
+      <p className="prototype-note">Order status is not confirmation of money received or a signed delivery.</p></section></div>;
   const current=scope.accounts[0];
   const accountIds=new Set(scope.accounts.map(a=>a.id));
   const orders=authorizedCustomerOrders(scope.orders,accountIds);
@@ -809,6 +856,7 @@ export function PrototypeOperationsHub(){
   if(path==="/crm/quick-visit")return <CrmQuickVisit/>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
+  if(segments[0]==="commerce"&&segments[1]==="price-books"&&segments[2])return <PriceBookDetail id={decodeURIComponent(segments[2])}/>;
   if(path==="/work/approvals")return <OrderApprovalDirectory/>;
   if(path==="/work/actions")return <ActionCenterExperience/>;
   if(path==="/work/exceptions")return <WorkExceptionsExperience/>;
@@ -834,6 +882,7 @@ export function PrototypeOperationsHub(){
   if(path==="/sales/invoices")return <InvoiceDirectory/>;
   if(path==="/sales/payments")return <PaymentsDirectory/>;
   if(path==="/items")return <ProductDirectory/>;
+  if(path==="/commerce/price-books")return <PriceBooksDirectory/>;
   if(path==="/sales/customers")return <AccountsDirectory/>;
   if(segments[0]==="crm"&&segments[1]==="leads"&&segments[2])return <LeadRecord id={decodeURIComponent(segments[2])}/>;
   if(path==="/crm/leads")return <AccountsDirectory leadMode/>;

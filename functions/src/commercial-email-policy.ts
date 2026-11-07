@@ -138,7 +138,7 @@ export function transitionPolicies(
   if(sourcePath==="domains/commercial/fields/orders"){
     if(changedTo(previous,current,"Approved")&&
       text(previous.status)==="Awaiting approval")
-      return ["order.confirmed.customer"];
+      return ["order.confirmed.customer","order.confirmed.rep"];
     if(changedTo(previous,current,"Cancelled")&&
       ["Approved","Allocated","Out for delivery","Delivered","Paid"]
         .includes(text(previous.status))&&validTime(current.cancelledAt))
@@ -150,7 +150,7 @@ export function transitionPolicies(
       text(previous.status)==="Pending"&&
       ["Order","Low stock sale"].includes(text(current.type))&&
       validTime(current.decidedAt)&&text(current.decidedBy))
-      return ["order.confirmed.customer"];
+      return ["order.confirmed.customer","order.confirmed.rep"];
     if(changedTo(previous,current,"Returned")&&
       text(previous.status)==="Pending"&&
       ["Order","Low stock sale"].includes(text(current.type)))
@@ -160,22 +160,13 @@ export function transitionPolicies(
     if(changedTo(previous,current,"In transit")&&
       text(previous.status)==="Loaded"&&validTime(current.departedAt)&&
       validTime(current.loadedAt))
-      return ["delivery.out_for_delivery.customer"];
+      return ["delivery.out_for_delivery.customer","delivery.out_for_delivery.rep"];
   }
-  if(sourcePath==="domains/commerce/fields/payments"){
-    if(changedTo(previous,current,"Cleared")&&
-      validTime(current.settledAt)&&text(current.settledBy))
-      return ["payment.received.customer"];
-    if(changedTo(previous,current,"Failed")&&
-      validTime(current.failedAt)&&text(current.failureReason))
-      return ["payment.failed.customer"];
-    if(changedTo(previous,current,"Reversed")&&
-      validTime(current.reversedAt)&&text(current.reversalReason))
-      return ["payment.refunded.customer","payment.refunded.rep"];
-  }
-  if(sourcePath==="domains/commerce/fields/refunds"&&
-     changedTo(previous,current,"Settled")&&
-     validTime(current.settledAt)&&text(current.sentReference))
-    return ["payment.refunded.customer","payment.refunded.rep"];
+  // Finance shards accept administrator-authored edits. A signed-in admin is not
+  // a trusted bank or merchant settlement oracle. Disable customer and rep
+  // payment/refund confirmations until a provider-signed, server-only event
+  // source replaces this browser-writable transition observer.
+  if(sourcePath==="domains/commerce/fields/payments"||
+     sourcePath==="domains/commerce/fields/refunds")return [];
   return [];
 }

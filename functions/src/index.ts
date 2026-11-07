@@ -1740,6 +1740,7 @@ export {
   emailPaymentTransitions,
   emailRefundSettlements,
 } from "./commercial-email-producers";
+export {customerCommerceSnapshot} from "./customer-commerce-read";
 export {
   sendProgramPricingWarnings,
   sendInventoryReorderWarnings,

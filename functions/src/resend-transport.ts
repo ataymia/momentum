@@ -50,10 +50,12 @@ export const deliverApprovedNotification=onDocumentCreated({
     if(!mail||mail.id!==mailRef.id||validMailToSend(mail,cutoff()))return null;
     const trustedKinds:Record<string,string>={
       "order_confirmed":"order.confirmed.customer",
+      "order_confirmed_rep":"order.confirmed.rep",
       "order_cancelled":"order.cancelled.customer",
       "order_cancelled_rep":"order.cancelled.rep",
       "order_returned":"order.returned_for_correction",
       "order_out_for_delivery":"delivery.out_for_delivery.customer",
+      "order_out_for_delivery_rep":"delivery.out_for_delivery.rep",
       "payment_received":"payment.received.customer",
       "payment_failed":"payment.failed.customer",
       "payment_refunded":"payment.refunded.customer",

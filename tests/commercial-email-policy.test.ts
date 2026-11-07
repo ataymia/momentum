@@ -11,7 +11,7 @@ test("order emails require confirmed approval and prior confirmation for cancel"
  const approved={...awaiting,status:"Approved"};
  assert.deepEqual(m.transitionPolicies(
   "domains/commercial/fields/orders",awaiting,approved),
-  ["order.confirmed.customer"]);
+  ["order.confirmed.customer","order.confirmed.rep"]);
  assert.deepEqual(m.transitionPolicies(
   "domains/commercial/fields/orders",undefined,approved),[]);
  assert.deepEqual(m.transitionPolicies(
@@ -36,11 +36,11 @@ test("approval return requires real Pending to Returned transition",()=>{
  assert.deepEqual(m.transitionPolicies(
   "domains/commercial/fields/approvals",
   previous,{...previous,status:"Approved",decidedBy:"admin-uid",decidedAt:at}),
-  ["order.confirmed.customer"]);
+  ["order.confirmed.customer","order.confirmed.rep"]);
  assert.deepEqual(m.transitionPolicies(
   "domains/workspace/fields/approvals",
   previous,{...previous,status:"Approved",decidedBy:"admin-uid",decidedAt:at}),
-  ["order.confirmed.customer"]);
+  ["order.confirmed.customer","order.confirmed.rep"]);
 });
 
 test("dispatch only alerts after loaded task actually departs",()=>{
@@ -48,37 +48,25 @@ test("dispatch only alerts after loaded task actually departs",()=>{
  assert.deepEqual(m.transitionPolicies(
   "domains/delivery/fields/tasks",task,{
    ...task,status:"In transit",departedAt:at,
-  }),["delivery.out_for_delivery.customer"]);
+  }),["delivery.out_for_delivery.customer","delivery.out_for_delivery.rep"]);
  assert.deepEqual(m.transitionPolicies(
   "domains/delivery/fields/tasks",task,{
    ...task,status:"In transit",
   }),[]);
 });
 
-test("payments distinguish settled, failed and reversed from mere Pending",()=>{
+test("D16 payment/refund email intents are blocked on client-writable finance statuses",()=>{
  const payment={id:"p",status:"Pending"};
  const path="domains/commerce/fields/payments";
- assert.deepEqual(m.transitionPolicies(path,payment,{
-   ...payment,status:"Cleared",settledAt:at,settledBy:"admin",
- }),["payment.received.customer"]);
- assert.deepEqual(m.transitionPolicies(path,payment,{
-   ...payment,status:"Failed",failedAt:at,failureReason:"Declined",
- }),["payment.failed.customer"]);
- assert.deepEqual(m.transitionPolicies(path,{
-   ...payment,status:"Cleared",
- },{
-   ...payment,status:"Reversed",reversedAt:at,
-   reversalReason:"Confirmed reversal",
- }),["payment.refunded.customer","payment.refunded.rep"]);
- assert.deepEqual(m.transitionPolicies(path,payment,{
-   ...payment,status:"Cleared",
- }),[]);
+ for(const next of [
+  {...payment,status:"Cleared",settledAt:at,settledBy:"admin"},
+  {...payment,status:"Failed",failedAt:at,failureReason:"Declined"},
+  {...payment,status:"Reversed",reversedAt:at,reversalReason:"Confirmed reversal"},
+ ])assert.deepEqual(m.transitionPolicies(path,payment,next),[]);
  assert.deepEqual(m.transitionPolicies(
-  "domains/commerce/fields/refunds",{
-   id:"r",status:"Sent",
-  },{
-   id:"r",status:"Settled",settledAt:at,sentReference:"ref-1",
-  }),["payment.refunded.customer","payment.refunded.rep"]);
+  "domains/commerce/fields/refunds",
+  {id:"r",status:"Sent"},{id:"r",status:"Settled",settledAt:at,sentReference:"ref-1"}
+ ),[]);
 });
 
 test("status routing and employee separation enforce approval",()=>{

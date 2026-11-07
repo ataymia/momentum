@@ -205,7 +205,7 @@ export function pageForPath(path: string): PageKey | null {
   if(clean.startsWith("/sales/customers/"))return "accounts";
   if(/^\/crm\/(leads|contacts|deals)\/[^/]+$/.test(clean))return "accounts";
   if(clean.startsWith("/inventory/lots/")||clean.startsWith("/inventory/shipments/"))return "inventory";
-  if(clean.startsWith("/items/"))return "products";
+  if(clean.startsWith("/items/")||clean.startsWith("/commerce/price-books/"))return "products";
   const legacy = (Object.keys(LEGACY_PATHS) as PageKey[]).find(key => LEGACY_PATHS[key] === clean);
   if (legacy) return legacy;
   const menu = MENU_GROUPS.flatMap(group => group.entries).find(entry => entry.path === clean)
@@ -228,6 +228,7 @@ export function routeLabel(path: string): string {
   if (item) return item.label;
   if(clean.startsWith("/calendar/meetings/"))return "Meeting details";
   if (clean.startsWith("/items/")) return "Item details";
+  if (clean.startsWith("/commerce/price-books/")) return "Price book details";
   if(clean==="/inventory/workflow")return "Inventory operations";
   if (clean.startsWith("/inventory/lots/")) return "Lot details";
   if (clean.startsWith("/inventory/shipments/")) return "Shipment details";
