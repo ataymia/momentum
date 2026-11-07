@@ -115,7 +115,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       detail="Receipt recorded in local review only; inventory posting remains blocked.";break;
     }
     case "bill.record":{
-      if(!isAdmin(actor))return reject("Only an administrator may register bills.");
+      if(!canProcure(actor))return reject("Only purchasing staff may register supplier bills.");
       const p=s.orders.find(x=>x.id===action.poId);
       if(!p?.approvedAt||p.cancelledAt||!label(action.invoiceNumber)||!amount(action.cases)||!amount(action.amountCents))return reject("An approved order, supplier invoice and positive billed amount are required.");
       if(billedCases(s,p.id)+action.cases>p.cases)return reject("Billed quantities cannot exceed the approved order.");
@@ -139,7 +139,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       detail="Local payment note only; no money moved and no external settlement verified.";break;
     }
     case "credit.record":{
-      if(!isAdmin(actor))return reject("Only an administrator may record vendor credits.");
+      if(!canProcure(actor))return reject("Only purchasing staff may submit vendor credit requests.");
       const bill=s.bills.find(b=>b.id===action.billId);
       if(!bill?.approvedAt||!label(action.reference)||!label(action.reason)||!amount(action.amountCents)||action.amountCents>billDueCents(s,bill)-pendingPaymentCents(s,bill.id)-pendingCreditCents(s,bill.id))return reject("An approved bill, reason, reference and credit within remaining uncommitted payable are required.");
       if(s.credits.some(c=>c.reference.toLowerCase()===action.reference.trim().toLowerCase()))return reject("Vendor credit reference already recorded.");
