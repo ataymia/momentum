@@ -319,6 +319,7 @@ test("verified changes to actual business fields remain auditable",()=>{
   assert.ok(event);
   assert.equal(event.actorId,"admin-1");
   assert.deepEqual(event.changes,[{field:"stage",before:"Prospect",after:"Qualified"}]);
+  assert.equal(event.provenanceStatus,"source-reported");
 });
 
 test("reloaded CRM visits cannot credit the initial visitor with a later cache-only edit",()=>{
@@ -390,4 +391,19 @@ test("G08: recovered unverified record keeps its original timestamp, actor and t
   assert.equal(recovered.actorRole,original.actorRole);
   assert.equal(recovered.summary,original.summary);
   assert.equal(normalizeAuditState({version:1,events:[recovered]}).events[0].at,original.at);
+});
+
+test("G07: source-reported audit evidence is never silently promoted to verified status",()=>{
+  const event={
+    id:"source-1",at:"2026-11-05T14:00:00Z",actorId:"admin-1",
+    actorRole:"Administrator",action:"Updated" as const,module:"Workspace",
+    collection:"accounts",entityType:"Workspace.accounts",entityId:"account-1",
+    label:"Business",summary:"Business stage updated",
+    changes:[{field:"stage",before:"Prospect",after:"Qualified"}],
+    sensitivity:"operational" as const,provenanceStatus:"source-reported" as const,
+  };
+  const recovered=normalizeAuditState({version:1,events:[event]}).events[0];
+  assert.equal(recovered.provenanceStatus,"source-reported");
+  assert.equal(recovered.at,event.at);
+  assert.equal(recovered.actorId,event.actorId);
 });
