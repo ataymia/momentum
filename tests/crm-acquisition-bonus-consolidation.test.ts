@@ -12,7 +12,7 @@ const loc=(id:string,streetAddress:string,parent="parent-1"):Account=>({
 } as Account);
 const order=(id:string,accountId:string,number=id,extra:Partial<Order>={}):Order=>({
  id,accountId,number,cases:10,pricePerCase:24,amount:240,status:"Delivered",
- placedAt:"2026-10-01",ownerId:"rep-1",creditedRepId:"rep-1",
+ placedAt:"2026-10-01",ownerId:"rep-1",creditedRepId:"rep-1",priceBasis:"Approved pricing",
  paymentStatus:"Paid",firstSettledAt:"2026-10-04T10:00:00Z",...extra,
 });
 const data=(accounts:Account[],orders:Order[]=[]):WorkspaceData=>({
