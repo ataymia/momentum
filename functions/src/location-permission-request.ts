@@ -6,7 +6,9 @@ const text=(v:unknown)=>typeof v==="string"?v.trim():"";
 const isId=(v:string)=>/^[A-Za-z0-9_-]{5,128}$/.test(v);
 const COOLDOWN_MS=5*60_000;
 const EXPIRY_MS=7*24*60*60_000;
+/** Typed refusal for unauthorized or malformed location-permission requests. */
 export class LocationPermissionRequestError extends Error{
+ /** @param {number} status HTTP error status. @param {string} message User-safe explanation. */
  constructor(public readonly status:number,message:string){super(message);}
 }
 const fail=(status:number,message:string):never=>{throw new LocationPermissionRequestError(status,message);};
@@ -14,6 +16,9 @@ const fail=(status:number,message:string):never=>{throw new LocationPermissionRe
  * The Admin can request a voluntary on-device permission review, not grant or
  * remotely trigger geolocation. Coordinates are NEVER collected by this API.
  * The employee alone can try the browser prompt on their own device.
+ * @param {string} actorUid Authenticated employee Firebase UID.
+ * @param {unknown} payload Request action and target identity from the caller.
+ * @return {Promise<object>} Verified request or response receipt.
  */
 export async function operateLocationPermissionRequest(actorUid:string,payload:unknown){
  if(!payload||typeof payload!=="object"||Array.isArray(payload))
