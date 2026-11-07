@@ -1,5 +1,5 @@
 name: A-G Surgical Consolidation
-# Retry 2: validate union tests only after all merges
+# Retry 3: retain source Markdown line-break semantics
 
 on:
   push:
