@@ -97,7 +97,7 @@ function reconcileShared(){
       }
     }
   }
-  for(const path of logicFiles)if(!fs.existsSync(path))throw new Error("Union regression test is absent: "+path);
+  // Some branch-owned test files are added later in the sequential merge; verify existence at the end.
   manifest.scripts["test:logic"]="node --import tsx --test "+logicFiles.join(" ");
   fs.writeFileSync("package.json",JSON.stringify(manifest,null,2)+"\n");
   console.log("RECONCILED "+allExpectedRoutes.size+" expected sidebar routes, "+logicFiles.length+" logic test suites");
@@ -108,7 +108,10 @@ function assertFeatureWiring(){
   const pkg=JSON.parse(fs.readFileSync("package.json","utf8"));
   for(const p of Object.values(packageSources)){
     const files=p.scripts?.["test:logic"]?.match(/tests\/[\w/-]+\.test\.[cm]?[jt]sx?/g)||[];
-    for(const file of files)if(!pkg.scripts["test:logic"].includes(file))throw new Error("Lost test "+file);
+    for(const file of files){
+      if(!pkg.scripts["test:logic"].includes(file))throw new Error("Lost test "+file);
+      if(!fs.existsSync(file))throw new Error("Missing branch regression test "+file);
+    }
   }
   const hub=fs.readFileSync("components/prototype/operations-hub.tsx","utf8");
   for(const file of [
