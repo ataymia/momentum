@@ -205,14 +205,16 @@ test("private nicknames are scoped to the employee, are not queried per account,
   assert.doesNotMatch(delivery,/privateAccountNickname|nicknames\.get/);
 });
 
-test("invoices require the licensed legal name, not a location, nickname or fallback display name",()=>{
+test("invoice email requires legal name while existing invoice printing remains accessible",()=>{
   assert.equal(legalBillingName({legalBusinessName:"  ABC Market LLC  "}),"ABC Market LLC");
   assert.equal(legalBillingName({legalBusinessName:""}),null);
   assert.equal(legalBillingName(null),null);
   const print=read("components/finance/invoice-print-center.tsx");
   const delivery=read("functions/src/delivery-invoice-email.ts");
-  assert.match(print,/legalBillingName\(customer\)\?\?"Legal business name required"/);
-  assert.match(print,/Add the licensed legal business name/);
+  // Preserve Nov 6 production P0: missing legal name may not block an existing print job.
+  assert.match(print,/legalBillingName\(customer\) \?\? customer\?\.name \?\? location\?\.name/);
+  assert.doesNotMatch(print,/Add the licensed legal business name before printing/);
+  // Delivery email remains subject to authoritative licensed identity checks.
   assert.match(delivery,/const legalName=text\(customer\?\.legalBusinessName\)/);
   assert.match(delivery,/customerName:legalName/);
   assert.match(delivery,/Invoice email held for account review/);
