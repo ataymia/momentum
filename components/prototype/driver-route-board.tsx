@@ -9,8 +9,8 @@ import {useMemo,useState} from "react";
 import {MapPin,PackageCheck,Search,ShieldCheck,Truck} from "lucide-react";
 import {deliveryAddressLabel,hasCompleteDeliveryAddress} from "../../lib/account-address";
 import {useDelivery} from "../../lib/delivery-context";
-import {orderDeliveryQuantity} from "../../lib/inventory-ledger";
-import {deliveryReconciliationIssue} from "../../lib/delivery-reconciliation";
+import {orderDeliveryQuantity,orderOutboundQuantity} from "../../lib/inventory-ledger";
+import {reviewDeliveryCloseout} from "../../lib/fulfillment-closeout-review";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useWorkspace} from "../../lib/workspace-context";
@@ -33,13 +33,12 @@ export function DriverRouteBoard(){
         const address=account?deliveryAddressLabel(account):"";
         const hasAddress=Boolean(account&&hasCompleteDeliveryAddress(account));
         const delivered=orderDeliveryQuantity(ledger,order.id);
-        const proof=Boolean(task.signature?.signedAt&&task.signature.strokes.some(stroke=>stroke.length>=2)&&
-          task.history.some(event=>event.type==="Delivered"&&event.actorId===task.signature?.capturedBy));
         const override=state.overrides.some(item=>item.orderId===order.id);
-        const reconciliation=deliveryReconciliationIssue(order,task,delivered,override);
-        const issue=delivered>order.cases+0.005?"Delivered inventory exceeds ordered cases.":reconciliation;
-        const complete=["Delivered","Paid"].includes(order.status)&&
-          (override||task.status==="Delivered"&&proof)&&delivered>=order.cases&&delivered<=order.cases+0.005&&!issue;
+        const review=reviewDeliveryCloseout({order,task,deliveredCases:delivered,
+          outboundCases:orderOutboundQuantity(ledger,order.id),administratorOverride:override});
+        const proof=review.recipientProofRecorded;
+        const complete=review.complete;
+        const issue=review.issueText;
         const exception=Boolean(issue)||task.status==="Delivered"&&!complete;
         return {task,order,account,address,hasAddress,delivered,proof,complete,exception,issue};
       }).filter((x):x is NonNullable<typeof x>=>Boolean(x))
