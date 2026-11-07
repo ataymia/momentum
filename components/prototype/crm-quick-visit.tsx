@@ -33,10 +33,32 @@ export function CrmQuickVisit(){
   const [sampleQuantity,setSampleQuantity]=useState(1);
   const [feedback,setFeedback]=useState("");
   const [historyCount,setHistoryCount]=useState(20);
+  const [historySearch,setHistorySearch]=useState("");
+  const [historyFrom,setHistoryFrom]=useState("");
+  const [historyThrough,setHistoryThrough]=useState("");
+  const [historySort,setHistorySort]=useState<"when"|"business"|"score"|"outcome"|"notes">("when");
+  const [historyAscending,setHistoryAscending]=useState(false);
   const canWrite=Boolean(currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role)&&runtime.isDemo&&momentumStorage.mode()==="local");
   const matched=scope.accounts.find(a=>a.id===selectedId)??matchQuickVisitAccount(scope.accounts,business);
   const suggestions=useMemo(()=>business.trim()&&!matched?quickVisitSuggestions(scope.accounts,business):[],[scope.accounts,business,matched]);
   const visits=useMemo(()=>currentUser?employeePhysicalVisits(crm,currentUser.id):[],[crm,currentUser]);
+  const filteredVisits=useMemo(()=>visits.filter(v=>
+    (!historyFrom||v.occurredAt.slice(0,10)>=historyFrom)&&
+    (!historyThrough||v.occurredAt.slice(0,10)<=historyThrough)&&
+    [employeeVisitLabel(v,data),v.summary,v.type,v.visitUnsuccessful?"Unsuccessful":"Recorded"].join(" ")
+      .toLowerCase().includes(historySearch.trim().toLowerCase()))
+    .sort((a,b)=>{
+      const field=(v:typeof a):string|number=>{
+        if(historySort==="business")return employeeVisitLabel(v,data);
+        if(historySort==="score")return v.prospectRating??-1;
+        if(historySort==="outcome")return v.visitUnsuccessful?"Unsuccessful":"Recorded";
+        if(historySort==="notes")return v.summary;
+        return v.occurredAt;
+      };
+      const x=field(a),y=field(b);
+      const cmp=typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y),undefined,{numeric:true});
+      return (historyAscending?1:-1)*(cmp||a.id.localeCompare(b.id));
+    }),[visits,data,historySearch,historyFrom,historyThrough,historySort,historyAscending]);
   if(!currentUser||!["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role))return <div className="prototype-empty">An authorized Sales employee session is required.</div>;
 
   const choose=(id:string)=>{
@@ -99,11 +121,20 @@ export function CrmQuickVisit(){
       </form>
     </section>
     <section className="prototype-panel"><h2>My recorded physical visits</h2>
-      <p className="prototype-note">{visits.length} accessible visits. Existing visit records preserve their original actor and event time.</p>
-      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>When</th><th>Business</th><th>Score</th><th>Outcome</th><th>Notes</th></tr></thead>
-      <tbody>{visits.slice(0,historyCount).map(visit=><tr key={visit.id}><td>{visit.occurredAt.slice(0,16).replace("T"," ")}</td><td>{employeeVisitLabel(visit,data)}</td><td>{visit.prospectRating??"Not scored"}</td><td>{visit.visitUnsuccessful?"Unsuccessful":"Recorded"}</td><td>{visit.summary}</td></tr>)}</tbody></table></div>
-      {!visits.length&&<p className="prototype-empty">No physical visits have been recorded for this employee.</p>}
-      {visits.length>historyCount&&<button type="button" onClick={()=>setHistoryCount(n=>n+20)}>Show more visits</button>}
+      <div className="prototype-controls">
+        <label>Search visit <input type="search" aria-label="Search my visit history" value={historySearch} onChange={e=>{setHistorySearch(e.target.value);setHistoryCount(20);}} placeholder="Business, outcome or notes"/></label>
+        <label>From <input type="date" aria-label="Visit history from" value={historyFrom} onChange={e=>setHistoryFrom(e.target.value)}/></label>
+        <label>Through <input type="date" aria-label="Visit history through" value={historyThrough} onChange={e=>setHistoryThrough(e.target.value)}/></label>
+        <button type="button" onClick={()=>{setHistorySearch("");setHistoryFrom("");setHistoryThrough("");setHistorySort("when");setHistoryAscending(false);}}>Clear visit filters</button>
+      </div>
+      <p className="prototype-note">{filteredVisits.length} of {visits.length} accessible physical visits. Original actor, notes and event times are preserved.</p>
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>{([
+        ["when","When"],["business","Business"],["score","Score"],["outcome","Outcome"],["notes","Notes"]
+      ] as const).map(([key,label])=><th key={key}><button type="button" aria-label={"Sort visits by "+label} aria-sort={historySort===key?(historyAscending?"ascending":"descending"):"none"}
+        onClick={()=>{if(historySort===key)setHistoryAscending(v=>!v);else{setHistorySort(key);setHistoryAscending(true);}}}>{label}</button></th>)}</tr></thead>
+      <tbody>{filteredVisits.slice(0,historyCount).map(visit=><tr key={visit.id}><td>{visit.occurredAt.slice(0,16).replace("T"," ")}</td><td>{employeeVisitLabel(visit,data)}</td><td>{visit.prospectRating??"Not scored"}</td><td>{visit.visitUnsuccessful?"Unsuccessful":"Recorded"}</td><td>{visit.summary}</td></tr>)}</tbody></table></div>
+      {!filteredVisits.length&&<p className="prototype-empty">No matching physical visits for this employee.</p>}
+      {filteredVisits.length>historyCount&&<button type="button" onClick={()=>setHistoryCount(n=>n+20)}>Show more visits</button>}
     </section>
   </main>;
 }
