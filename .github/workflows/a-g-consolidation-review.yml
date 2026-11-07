@@ -1,4 +1,5 @@
 name: A-G Surgical Consolidation
+# Retry 2: validate union tests only after all merges
 
 on:
   push:
