@@ -100,14 +100,20 @@ try{
   await page.locator(".user-popover button").filter({hasText:"Owner Demo"}).click();
   await page.goto(base+"/crm/deals",{waitUntil:"domcontentloaded"});
   await nav().waitFor();
-  // No HR Administration through the sales role, but ordinary employee
-  // self-service remains available in the Workspace group.
+  // HR administration stays private; employee self-service is now in Account.
   await page.locator(".user-button").click();
   await page.locator(".user-popover button").filter({hasText:"Sales Rep Demo"}).click();
   await nav().waitFor();
   assert.equal(await nav().getByRole("link",{name:"New Hire"}).count(),0);
   assert.equal(await nav().getByRole("link",{name:"Employee Directory"}).count(),0);
-  assert(await nav().getByRole("link",{name:"My Employee Workspace"}).isVisible());
+  const personalAccount=nav().getByRole("button",{name:"Account",exact:true});
+  if(await personalAccount.getAttribute("aria-expanded")!=="true")await personalAccount.click();
+  assert(await nav().getByRole("link",{name:"My Account",exact:true}).isVisible());
+  assert.equal(await nav().getByRole("link",{name:"My Pay History"}).count(),1);
+  assert.equal(await nav().getByRole("link",{name:"My Time Off"}).count(),1);
+  const workspaceRoutes=nav().getByRole("button",{name:"Workspace",exact:true});
+  if(await workspaceRoutes.getAttribute("aria-expanded")!=="true")await workspaceRoutes.click();
+  assert.equal(await nav().getByRole("link",{name:"My Employee Workspace"}).count(),0);
   await page.goto(base+"/admin/employee-profiles",{waitUntil:"domcontentloaded"});
   await page.waitForFunction(()=>document.body.textContent?.includes("Page unavailable")||window.location.pathname==="/");
   assert.equal(await page.getByText("Compensation").count(),0);
