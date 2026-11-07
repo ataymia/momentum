@@ -3,6 +3,7 @@ import test from "node:test";
 import {readFileSync} from "node:fs";
 import {
   auditEventFingerprint,
+  observedAuditSourceKey,
   auditPersistencePreservesSource,
   collectAuditableRecords,
   diffAuditableRecords,
@@ -487,4 +488,26 @@ test("G08: new audit events record every changed field, not just the first twent
   assert.ok(event);
   assert.equal(event.changes.length,32);
   assert.equal(event.changes[31].field,"field31");
+});
+
+test("R69 passive re-observation cannot flood Audit Center with one source event",()=>{
+  const first={
+    id:"audit-observed-first",at:"2026-11-07T12:04:00.000Z",
+    actorId:"rep-1",actorRole:"Sales Representative",action:"Updated" as const,
+    module:"Workspace",collection:"accounts",entityType:"Workspace.accounts",
+    entityId:"acct-1",label:"Market",summary:"Market updated",
+    sensitivity:"operational" as const,provenanceStatus:"source-reported" as const,
+    changes:[{field:"stage",before:"Prospect",after:"Qualified"}],
+  };
+  const hydration={...first,id:"audit-observed-replay",changes:[{field:"health",before:"Watch",after:"Strong"}]};
+  assert.notEqual(auditEventFingerprint(first),auditEventFingerprint(hydration));
+  assert.equal(observedAuditSourceKey(first),observedAuditSourceKey(hydration));
+  assert.notEqual(observedAuditSourceKey(first),observedAuditSourceKey({...first,at:"2026-11-07T12:05:00.000Z"}));
+  const context=readFileSync("lib/audit-context.tsx","utf8");
+  assert.match(context,/const observed = new Set\(state\.events/);
+  assert.match(context,/observed\.has\(sourceKey\)/);
+  assert.match(context,/observed\.add\(sourceKey\)/);
+  // Do not collapse distinct original event records during normalization.
+  const history=normalizeAuditState({version:1,events:[first,hydration]});
+  assert.equal(history.events.length,2);
 });
