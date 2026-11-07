@@ -156,7 +156,7 @@ for(const letter of ["C","A","B","D","E","G"]){
     'import {useInventoryLedger} from "../../lib/inventory-ledger-context";',
     'import {canAccessPage} from "../../lib/access";'
   ];
-  for(const line of requirements)if(!hub.includes(line))hub=hub.replace(merged,merged+"\\n"+line);
+  for(const line of requirements)if(!hub.includes(line))hub=hub.replace(merged,merged+"\n"+line);
   fs.writeFileSync(path,hub);
   exec(["add",path]);
   exec(["commit","-m","fix(integration): retain CRM product aliases and D traceable-inventory imports"]);
