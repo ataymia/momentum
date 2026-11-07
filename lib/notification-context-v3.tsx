@@ -37,8 +37,11 @@ import {usePerformance} from "./performance-context";
 import {useWorkspace} from "./workspace-context";
 import {mergeFirstSeenRecords,mergeFirstSeenTimes,notificationDisplayTime,parseFirstSeenTimes} from "./notification-display-time";
 import {mergeReadReceipts,parseReadReceipts,shouldSurfaceBellIntent} from "./notification-receipts";
+import {reconcileCloudReadReceipts} from "./notification-read-cloud";
 
 const READ_KEY="momentum-derived-notification-read-v1";
+const sameReceiptIds=(left:ReadonlySet<string>,right:ReadonlySet<string>)=>
+  left.size===right.size&&[...left].every(id=>right.has(id));
 const FIRST_SEEN_KEY="momentum-notification-first-seen-v1";
 
 const readIds=(userId:string):Set<string>=>{
@@ -68,6 +71,7 @@ type NotificationContextValue={
   unreadCount:number;
   markRead:(id:string)=>void;
   markAllRead:()=>void;
+  readSyncStatus:"local"|"pending"|"synced"|"unavailable";
 };
 
 const NotificationContext=createContext<NotificationContextValue|null>(null);
@@ -95,6 +99,11 @@ function NotificationBridge({
   const [firstSeen,setFirstSeen]=useState<Record<string,string>>(
     ()=>readFirstSeen(userId),
   );
+  const [readSyncStatus,setReadSyncStatus]=useState<NotificationContextValue["readSyncStatus"]>("local");
+  const [cloudPulse,setCloudPulse]=useState(0);
+  // Never synchronize demo impersonation or another person's user ID.
+  const canCloudSync=Boolean(firebase?.status==="ready"&&firebase.session?.uid===userId
+    &&currentUser?.id===userId);
 
   useEffect(()=>{
     const timer=window.setInterval(()=>setClock(new Date()),60_000);
@@ -120,6 +129,37 @@ function NotificationBridge({
     window.addEventListener("storage",onStorage);
     return()=>window.removeEventListener("storage",onStorage);
   },[userId]);
+
+  // Device-local receipts are immediate. Firestore synchronization is best-effort,
+  // owner-only and compare-and-swap; offline failures never erase local acknowledgments.
+  useEffect(()=>{
+    if(!canCloudSync)return;
+    const refresh=()=>setCloudPulse(n=>n+1);
+    const timer=window.setInterval(refresh,120_000);
+    window.addEventListener("online",refresh);
+    window.addEventListener("focus",refresh);
+    return()=>{window.clearInterval(timer);window.removeEventListener("online",refresh);
+      window.removeEventListener("focus",refresh);};
+  },[canCloudSync]);
+
+  useEffect(()=>{
+    if(!canCloudSync)return;
+    let active=true;
+    const timer=window.setTimeout(()=>{
+      setReadSyncStatus("pending");
+      void reconcileCloudReadReceipts(userId,readDerived).then(remote=>{
+        if(!active)return;
+        setReadSyncStatus("synced");
+        setReadDerived(current=>{
+          const joined=mergeReadReceipts(current,remote);
+          return sameReceiptIds(current,joined)?current:joined;
+        });
+      }).catch(()=>{
+        if(active)setReadSyncStatus("unavailable");
+      });
+    },250);
+    return()=>{active=false;window.clearTimeout(timer);};
+  },[canCloudSync,userId,readDerived,cloudPulse]);
 
   useEffect(()=>{
     if(!firebase||currentUser?.role!=="Administrator")return;
@@ -276,10 +316,12 @@ function NotificationBridge({
   ).length;
 
   const markRead=(id:string)=>{
+    if(canCloudSync)setReadSyncStatus("pending");
     setReadDerived(current=>mergeReadReceipts(current,readIds(userId),new Set([id])));
   };
 
   const markAllRead=()=>{
+    if(canCloudSync)setReadSyncStatus("pending");
     setReadDerived(current=>mergeReadReceipts(current,readIds(userId),
       new Set(currentUserItems.map(item=>item.id))));
   };
@@ -289,6 +331,7 @@ function NotificationBridge({
     unreadCount,
     markRead,
     markAllRead,
+    readSyncStatus,
   }}>
     {children}
   </NotificationContext.Provider>;
