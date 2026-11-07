@@ -14,7 +14,7 @@ test("read receipts reject malformed persisted content and remain user-scoped in
 test("read receipts use additive set union so stale tabs cannot resurrect clears",()=>{
   const tabOne=new Set(["cleared-a","cleared-b"]);
   const tabTwo=new Set(["cleared-a","cleared-c"]);
-  assert.deepEqual([...mergeReadReceipts(tabOne,tabTwo)],["cleared-b","cleared-a","cleared-c"]);
+  assert.deepEqual(mergeReadReceipts(tabOne,tabTwo),new Set(["cleared-a","cleared-b","cleared-c"]));
   // Read acknowledgments are not an expiring window. UI and cloud capacity
   // controls must never silently evict a previously marked-read ID.
   const many=new Set(Array.from({length:12810},(_,i)=>"id-"+i));
