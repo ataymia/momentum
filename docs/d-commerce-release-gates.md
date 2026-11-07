@@ -4,7 +4,7 @@ Ownership: Momentum D workstream. Date: 2026-11-06. All implementation here rema
 
 ## Truth and authority
 - The supplied retailer program states a minimum 10-case opening order at $24 per 24-can case during a 60-day introduction. At least 20 cases purchased during that introduction may qualify for pricing through the next complete calendar quarter. Established pricing is reviewed by completed calendar quarter, not a rolling 90-day window.
-- The pre-existing connected pricing engine still uses a rolling-window volume calculation. The new price-book evaluator is **comparison-only**, and its display does not approve pricing or contracts.
+- Owner clarification on 2026-11-07: the **60-day introduction applies to retailer Preferred Partner pricing**; the **90-day window belongs to sales bonuses**, which are a separate workstream. This isolated D branch now uses 60-day launch and completed-calendar-quarter rules for connected order-pricing evaluation. The price book detail remains read-only and does not approve contracts.
 - Pricing eligibility requires approval of the account/location program, authoritative date and payment evidence. Source document wording does not conclusively resolve whether unpaid orders count toward first-60-day purchased cases. The current comparison uses paid orders as a conservative assumption. The decision owner must resolve that before activation.
 - Account-level exceptional pricing, tax, rebates, freight, credit terms, and major-chain negotiations must remain outside the default retailer price book.
 
@@ -13,7 +13,7 @@ Ownership: Momentum D workstream. Date: 2026-11-06. All implementation here rema
 - A catalog item's presence is not proof stock is sellable. Warehouse availability must be computed from source custody plus active reservations, minus holds. Unknown or fuzzy-matched SKU names must not be allocated automatically.
 
 ## Price Book and ordering (D04–D09)
-- Publish no default price-book change until decision owner signs off on migration cases for Day 1, Day 60, Day 61, quarter transition, returns and account-specific overrides.
+- Retailer timing is confirmed at 60 introductory days, followed by Day-61 and completed-quarter review rules. Keep boundary, historical-account migration, return and account-specific exception tests in release acceptance.
 - Every confirmed order must retain immutable order line prices, approval decision, owner, fulfillment movements, invoice link, payment allocations, and history. History rows must have real event times.
 - A return movement, credit note, refund approval and actual settled refund are distinct events. Credit and refund records need immutable source links, adjustment review and idempotency; a physical return alone is not customer cash entitlement.
 - A displayed Paid state without reconciled invoice balance and trusted settlement evidence is an exception, not proof of cleared funds.

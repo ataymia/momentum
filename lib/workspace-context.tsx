@@ -11,6 +11,7 @@ import { findAccountDuplicate } from "./duplicate-engine";
 import { activeFieldAppointmentForUser } from "./field-work-session";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { evaluatePartnerPricing } from "./pricing-engine";
+import { RETAIL_PROGRAM_POLICY } from "./retail-price-book";
 import { useRuntimeModeValue } from "./runtime-mode-store";
 import { isTerritoryDeviation, normalizePostalCode, territoryForPostalCode, territorySystemEnabled, validateTerritoryDraft, type TerritoryDraft } from "./territory-engine";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
@@ -630,7 +631,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       const available=Number.isFinite(line.inventoryAvailableAtOrder)?Number(line.inventoryAvailableAtOrder):0;
       return{id:`${id}-line-${index+1}`,product:line.product,cases:line.cases,pricePerCase:price,amount:line.cases*price,inventoryAvailableAtOrder:available,sourcePlacementId:sourcePlacement?.id,lowStockApprovalRequired:!testOnly&&available<50};
     });
-    const cases=lines.reduce((sum,line)=>sum+line.cases,0);const amount=lines.reduce((sum,line)=>sum+line.amount,0);const lowStock=lines.some((line)=>line.lowStockApprovalRequired);const available=Math.min(...lines.map((line)=>line.inventoryAvailableAtOrder??0));
+    const cases=lines.reduce((sum,line)=>sum+line.cases,0);
+    // A first qualified opening order requires 10 cases. Internal QA stock is excluded.
+    if(!testOnly&&pricing.status==="Not started"&&cases<RETAIL_PROGRAM_POLICY.openingMinCases)return null;
+    const amount=lines.reduce((sum,line)=>sum+line.amount,0);const lowStock=lines.some((line)=>line.lowStockApprovalRequired);const available=Math.min(...lines.map((line)=>line.inventoryAvailableAtOrder??0));
     const product=lines.length===1?lines[0].product:"Multiple products";
     const order:Order={id,number,accountId,cases,pricePerCase:price,amount,status:"Awaiting approval",placedAt:today(),ownerId:currentUser.id,creditedRepId,testOnly:testOnly||undefined,testSkuId,sourcePlacementId:lines.length===1?lines[0].sourcePlacementId:undefined,product,inventoryAvailableAtOrder:available,lowStockApprovalRequired:lowStock,priceBasis,paymentStatus:"Not invoiced",lines};
     const lineSummary=lines.map((line)=>`${line.cases} ${line.product}`).join(" · ");

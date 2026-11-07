@@ -11,7 +11,7 @@ Scope: Original D01–D18 only, no duplicate requirement IDs.
 
 The current Preferred Partner Program document provided by Mia sets a 24-can case, $30 standard (1–9 average monthly cases), $27 preferred (10–19), $24 partner (20+), a minimum 10-case new-location opening order, a 60-day $24 introduction, and a 20-case launch-volume exception lasting through the next full calendar quarter. Subsequent price reviews use completed calendar quarters. These are document claims, **not independently approved live contract terms**.
 
-The legacy connected price engine still uses a rolling 90-day window and must **not** be silently switched to the new comparison engine. The document does not define a zero-case quarter price, nor does it specify whether a purchased case must be ordered, delivered, invoiced or paid. No zero-volume price or qualification basis may be invented. Taxes, freight, account-specific contracts and credits remain separate.
+Mia clarified on 2026-11-07 that **90 days belongs to sales bonuses, not retail prices**. On this isolated D branch, connected price evaluation now uses the documented retailer 60-day introduction and completed-calendar-quarter review. This source-code change is not a deployed pricing migration. The document does not define a zero-case quarter price, nor does it specify whether a purchased case must be ordered, delivered, invoiced or paid. No zero-volume price or qualification basis may be invented. Taxes, freight, account-specific contracts and credits remain separate.
 
 ## D01–D18 requirement register
 
@@ -20,7 +20,7 @@ The legacy connected price engine still uses a rolling 90-day window and must **
 | D01 | Built; testing pending | Searchable/sortable canonical SKU directory. Needs multi-role mobile/browser acceptance and master-catalog verification. |
 | D02 | Partial | Item detail, lot custody, linked orders, locations and movement history. A full approved product change audit and all history sources need validation. |
 | D03 | Partial | Strict SKU matching and warehouse ledger-derived quantities. Verify case barcodes, lot receipts, sellable/held stock and actual product labeling with supplier and E workstream. |
-| D04 | Built reference, not active pricing | Price Books directory/details and launch/quarterly evaluator with tests. Existing live 90-day policy conflicts; approvals and migration tests required. |
+| D04 | Built reference, not active pricing | Price Books directory/details and launch/quarterly evaluator with tests. On the D branch connected pricing uses the retailer 60-day/quarterly rules; final migration and staging acceptance remain. |
 | D05 | Built prototype; testing pending | Orders list/detail, source-linked delivery and invoice evidence, reconciliation warnings. Full order lifecycle, mobile and permission QA outstanding. |
 | D06 | Partial | Independent invoices, linked details and print/export already exist. Invoice issuance/versions and customer-facing authorized PDFs are not production-accepted. |
 | D07 | Partial | Payments Received is a searchable read-only register. No actual ACH/card collection, proof of bank settlement or processor reconciliation. |
@@ -40,7 +40,7 @@ No D requirement is **Completed/Accepted**. Do not confuse a GitHub PR, prototyp
 
 ## High-severity findings and safeguards
 
-1. **Pricing mismatch:** 90-day connected engine vs 60-day launch and calendar-quarter program. Keep new evaluator read-only pending executive sign-off.
+1. **Retailer pricing timing corrected:** The connected D-branch evaluator now uses the 60-day retailer window and completed calendar quarters. Sales bonuses retain their separate 90-day clock. Historical migration and staging remain unverified.
 2. **Incorrect stock perception:** metadata/historical supplier purchase quantities are not sellable on-hand. Views now use custody ledger movements, reservations and quality holds for authorized users.
 3. **Unverified funds:** connected browser settlement changes must not convert orders to Paid. Separate provider verification required.
 4. **Shared payment refunds:** a refund against one payment allocated across invoices cannot be debited in full from every invoice. Server customer projections withhold ambiguous/unbalanced records; internal invoice/order views flag reconciliation exceptions.
@@ -71,7 +71,7 @@ Official vendor references (checked 2026-11-07):
 
 - [ ] CI green on the exact final integrated SHA: app typecheck, app lint, all critical and full logic tests, Firestore and Storage rules tests, Functions compilation/lint, production build, clean git diff.
 - [ ] Product canonical master, case UPC/barcodes, current lot/receipt evidence, holds and expiration verified.
-- [ ] Pricing: document owner approves purchase counting, per-location eligibility, zero-case quarter policy, Day 60/61, launch extension and legacy 90-day migration.
+- [ ] Pricing: 60-day retailer/90-day bonus separation confirmed by Mia; test Day 60/61, launch extension, historical migration and real checkout. Paid versus purchased evidence, account eligibility and zero-case-quarter treatment remain separate policy/data questions.
 - [ ] Stripe/GoCardless or alternative provider formally selected and merchant verified. No card/bank credentials stored by Momentum.
 - [ ] Server-side signed raw webhook, idempotency, payout/settlement proof, retries and chargeback/refund reconcilers tested with sandbox.
 - [ ] Customer tenant isolation tested against real authenticated roles, including account revocation, multiple locations, disabled and separated identities, unauthorized IDs and cross-account invoice access.
@@ -86,4 +86,4 @@ Official vendor references (checked 2026-11-07):
 **D permanent owner:** Commerce integration. Coordinate with C for customer account hierarchy and sales attribution, E for stock/lot and delivery custody, F for documents and identities, G for audit/reliability and A for shared navigation.  
 **Decision owner:** Mia and designated company executive for commercial pricing, processor contracts and payment collection (exact company approval authority still unverified).  
 **Reversibility:** The current D branch is isolated, no real payment data written by these new read views, no production migration or deployment.  
-**Next action:** Get the final CI report green and choose the payment architecture + written retail pricing-policy reconciliation before integrating with the master release branch.
+**Next action:** Re-run full CI on the pricing-correction commit, verify connected retail-quote timing boundaries and decide payment architecture before master integration.
