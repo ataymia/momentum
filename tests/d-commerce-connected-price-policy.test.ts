@@ -33,3 +33,10 @@ test("quarterly retailer pricing does not use a rolling 90-day window",()=>{
   assert.equal(result.countedCases,60);
   assert.equal(result.effectiveTier,"A");
 });
+
+test("earlier draft and unapproved orders do not start the 60-day clock",()=>{
+  const rows=data({...paid("draft","2026-01-01",10),status:"Draft"},paid("open","2026-01-10",10));
+  const result=evaluatePartnerPricing(rows,"store",on("2026-01-20"));
+  assert.equal(result.firstOrderDate,"2026-01-10");
+  assert.equal(result.currentWindowStart,"2026-01-10");
+});

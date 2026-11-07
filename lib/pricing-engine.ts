@@ -1,4 +1,4 @@
-import { addCalendarDays, arizonaDateKey } from "./date-time";
+import { addCalendarDays, arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import { assessRetailPriceBook, quarterStart, RETAIL_PROGRAM_POLICY } from "./retail-price-book";
 import type { PricingTier, WorkspaceData } from "./types";
 
@@ -36,7 +36,10 @@ export function evaluatePartnerPricing(data: WorkspaceData,accountId: string,asO
   const asOfKey=arizonaDateKey(asOf);
   const assessed=assessRetailPriceBook(accountId,data.orders,asOfKey);
   const firstOrder=data.orders
-    .filter(order=>order.accountId===accountId&&!order.testOnly&&order.status!=="Cancelled")
+    .filter(order=>order.accountId===accountId&&!order.testOnly&&
+      ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status)&&
+      isValidCalendarDateKey(order.placedAt.slice(0,10))&&order.placedAt.slice(0,10)<=asOfKey&&
+      Number.isSafeInteger(order.cases)&&order.cases>0)
     .sort((a,b)=>a.placedAt.localeCompare(b.placedAt)||a.id.localeCompare(b.id))[0];
   if(assessed.status==="Not started"){
     return{
