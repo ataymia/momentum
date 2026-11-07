@@ -39,7 +39,7 @@ export function DealsDirectory(){
   const header=(field:DealSort,label:string)=><th aria-sort={sort===field?(ascending?"ascending":"descending"):"none"}><button type="button" aria-label={"Sort deals by "+label} onClick={()=>{if(sort===field)setAscending(value=>!value);else{setSort(field);setAscending(true);}}}>{label} <ArrowUpDown size={13}/></button></th>;
   return <main className="prototype-workspace">
     <header className="prototype-heading"><h1>Deals</h1><p>Opportunity pipeline connected to authorized customer locations. CRM outcomes do not issue orders or recognize revenue.</p>
-      {canWrite&&<button type="button" onClick={()=>navigateToRoute("/crm/deals/new")}>New deal</button>}</header>
+      {canWrite&&<button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/crm/deals/new")}>New deal</button>}</header>
     <section className="prototype-panel" aria-label="Deal register">
       <div className="prototype-controls">
         <label>Search deals <input aria-label="Search deals" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Deal, stage or next action"/></label>
