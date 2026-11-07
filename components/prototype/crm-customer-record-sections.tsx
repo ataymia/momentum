@@ -46,7 +46,7 @@ export function CrmCustomerActivity({locations,canonicalActivities}:{
         return (ascending?1:-1)*(key(a).localeCompare(key(b),undefined,{numeric:true})||a.id.localeCompare(b.id));
       });
   },[canonicalActivities,crm.interactions,ids,places,names,canonicalIds,search,from,through,sort,ascending]);
-  if(!currentUser)return <p>Sign in to view related account activity.</p>;
+  if(!currentUser||currentUser.role==="Customer")return <p>Staff authorization is required to review internal customer activity.</p>;
   const column=(key:TimelineSort,label:string)=><th aria-sort={sort===key?(ascending?"ascending":"descending"):"none"}><button type="button" aria-label={"Sort account activity by "+label} onClick={()=>{if(sort===key)setAscending(v=>!v);else{setSort(key);setAscending(true);}}}>{label}</button></th>;
   return <section className="prototype-panel" aria-label="Customer activity">
     <h2>Account activity</h2><p className="prototype-note">Actual accessible location activities plus independently logged CRM interactions. System-generated mirrors are deduplicated. This does not invent customer emails or external communications.</p>
