@@ -861,6 +861,7 @@ export function PrototypeOperationsHub(){
   if(path==="/crm/account-setup")return <CrmAccountSetup/>;
   if(path==="/crm/account-map")return <CrmAccountMap/>;
   if(path==="/crm/quick-visit")return <CrmQuickVisit/>;
+  if(path==="/crm/self-delivery")return <RepSelfDelivery/>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
   if(segments[0]==="commerce"&&segments[1]==="price-books"&&segments[2])return <PriceBookDetail id={decodeURIComponent(segments[2])}/>;
