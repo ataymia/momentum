@@ -1,5 +1,5 @@
 import { addCalendarDays, arizonaDateKey } from "./date-time";
-import {orderFirstSettlementDate} from "./bonus-engine";
+import {orderQualifyingPaidDate} from "./bonus-engine";
 import type { Account, PricingTier, WorkspaceData } from "./types";
 
 export const ACCOUNT_PRICING_TIERS: Record<PricingTier, { pricePerCase: number; label: string }> = {
@@ -34,7 +34,7 @@ export function accountHealthSnapshot(data: WorkspaceData, account: Account, asO
   const orders = data.orders.filter((order) => order.accountId === account.id && !order.testOnly && order.status !== "Cancelled")
     .sort((a,b)=>a.placedAt.localeCompare(b.placedAt)||a.id.localeCompare(b.id));
   // "Paid" is a UI/display status, not proof of collected cash. Settlement evidence is authoritative.
-  const paid = orders.map(order=>({order,settledAt:orderFirstSettlementDate(data,order)}))
+  const paid = orders.map(order=>({order,settledAt:orderQualifyingPaidDate(data,order)}))
     .filter((entry):entry is {order:typeof orders[number];settledAt:string}=>Boolean(entry.settledAt&&entry.settledAt<=asOfKey))
     .sort((a,b)=>a.settledAt.localeCompare(b.settledAt)||a.order.id.localeCompare(b.order.id));
   const lastOrderDate=orders.at(-1)?.placedAt.slice(0,10);
