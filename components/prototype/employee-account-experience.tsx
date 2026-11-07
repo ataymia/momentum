@@ -31,7 +31,7 @@ export function EmployeeAccountExperience({section="overview"}:{section?:Account
   const ownLeave=hcm.leaveRequests.filter(item=>item.userId===currentUser.id);
   const courses=hcm.training.filter(item=>item.userId===currentUser.id);
   const ownTimecards=scope.timecards.filter(item=>item.userId===currentUser.id);
-  const payEntries=payroll.runs.flatMap(run=>run.lines.filter(line=>line.employeeId===currentUser.id)
+  const payEntries=payroll.runs.filter(run=>run.status==="Released").flatMap(run=>run.lines.filter(line=>line.employeeId===currentUser.id)
     .map(line=>({id:run.id,period:run.periodStart+" to "+run.periodEnd,payDate:run.payDate,status:run.status,netPay:line.netPay,grossPay:line.grossPay,runKind:run.kind})))
     .sort((a,b)=>b.payDate.localeCompare(a.payDate)||a.id.localeCompare(b.id));
   const manager=data.users.find(item=>item.id===(employee?.managerId??currentUser.managerId));
@@ -46,7 +46,7 @@ export function EmployeeAccountExperience({section="overview"}:{section?:Account
   </div>;
   const back=<button type="button" className="prototype-back" onClick={()=>navigateToRoute("/my-account")}>Back to My Account</button>;
   if(section==="pay")return <div className="prototype-domain prototype-domain--people">
-    {back}{head("My Pay History","Only pay-run entries assigned to your employee identity are displayed. A released pay run is not proof of bank settlement.")}
+    {back}{head("My Pay History","Only released pay-run entries assigned to your employee identity are displayed. Release is not proof of bank settlement.")}
     <section className="prototype-panel"><h2>My recorded pay</h2>
       <div className="prototype-table-scroll"><table className="prototype-table">
         <thead><tr><th>Pay date</th><th>Pay period</th><th>Type</th><th>Status</th><th>Gross</th><th>Net</th></tr></thead>
