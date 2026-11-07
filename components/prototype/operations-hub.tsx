@@ -6,7 +6,9 @@ import { ArrowLeft, ArrowUpDown, ExternalLink, Search } from "lucide-react";
 import { canVisitRoute, routeEntry, routeLabel } from "../../lib/navigation-route-registry";
 import { navigateToRoute, useNavigationRoute } from "../../lib/navigation-store";
 import { GOLDEN_EAGLE_SKUS, skuForProductName } from "../../lib/product-catalog";
-import { orderFirstSettlementDate } from "../../lib/bonus-engine";
+import {evaluateSalesRepAccountBonuses,type BonusMilestoneStatus} from "../../lib/bonus-engine";
+import {accountBonusProgress,type BonusProgressSort,type BonusProgressDirection} from "../../lib/bonus-progress";
+import {acquisitionBonusHeldAccountIds} from "../../lib/acquisition-bonus-consolidation";
 import { useWorkspace } from "../../lib/workspace-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {momentumStorage} from "../../lib/persistence";
@@ -378,57 +380,61 @@ function CalendarPreview({meetingsOnly}:{meetingsOnly:boolean}){
     <section className="prototype-panel"><h2>Staff meetings: next phase</h2><p>Authorized organizers will schedule a meeting, select attendees, check conflicts, send invitations, add it to each attendee calendar, and display a reminder on Home. This is not an active scheduler yet.</p></section>
   </div>;
 }
-type IncentiveSortField="name"|"locations"|"cases"|"rep";
 function IncentivePreview(){
   const {scope,data}=useWorkspace();
   const [query,setQuery]=useState("");
   const [repFilter,setRepFilter]=useState("all");
-  const [sort,setSort]=useState<IncentiveSortField>("name");
-  const [ascending,setAscending]=useState(true);
-  const names=new Map(data.users.map(u=>[u.id,u.name]));
-  const groups=new Map<string,{name:string;ids:Set<string>;reps:Set<string>}>();
-  // Only explicitly shared parent IDs are grouped. Names alone are not merge authority.
-  for(const loc of scope.accounts){
-    const key=loc.customerId??loc.id;
-    const group=groups.get(key)??{name:loc.name,ids:new Set<string>(),reps:new Set<string>()};
-    group.ids.add(loc.id);if(loc.ownerId)group.reps.add(loc.ownerId);
-    groups.set(key,group);
-  }
-  const entries=[...groups].map(([,g])=>{
-    const orders=scope.orders.filter(o=>g.ids.has(o.accountId)&&!o.testOnly&&o.status!=="Cancelled").sort((a,b)=>a.placedAt.localeCompare(b.placedAt));
-    const firstDate=orders[0]?.placedAt.slice(0,10);
-    const start=firstDate?new Date(firstDate+"T12:00:00Z").getTime():0;
-    const settled=orders.filter(o=>{
-      const day=orderFirstSettlementDate(data,o);
-      const ms=day?new Date(day+"T12:00:00Z").getTime():Infinity;
-      return Boolean(day&&ms>=start&&ms<=start+90*86400000&&ms<=Date.now());
-    });
-    return {id:[...g.ids].sort().join(":"),name:g.name,locations:g.ids.size,cases:settled.reduce((n,o)=>n+o.cases,0),repIds:[...g.reps]};
-  }).filter(e=>(repFilter==="all"||e.repIds.includes(repFilter))&&[e.name,...e.repIds.map(id=>names.get(id)??id)].join(" ").toLowerCase().includes(query.toLowerCase()))
-    .sort((a,b)=>{
-      const value=(e:typeof a)=>sort==="name"?e.name:sort==="rep"?e.repIds.map(id=>names.get(id)??id).join(", "):e[sort];
-      const ax=value(a),bx=value(b),comp=typeof ax==="number"&&typeof bx==="number"?ax-bx:String(ax).localeCompare(String(bx),undefined,{numeric:true});
-      return (ascending?1:-1)*(comp||a.id.localeCompare(b.id));
-    });
-  const reps=[...new Set(scope.accounts.map(a=>a.ownerId).filter(Boolean))].sort((a,b)=>(names.get(a)??"").localeCompare(names.get(b)??""));
-  const header=(key:IncentiveSortField,label:string)=><button type="button" aria-label={"Sort by "+label} onClick={()=>{if(sort===key)setAscending(v=>!v);else{setSort(key);setAscending(true);}}}>{label}<ArrowUpDown size={14}/></button>;
-  return <div><Heading title="Sales incentives" description="Continuous case-volume progress. Every eligible case increments the displayed value; no artificial 20-case milestone."/>
-    <section className="prototype-panel">
-      <p className="prototype-note">READ-ONLY PREVIEW: Case totals use the current modeled 90-day opening window and known settlement evidence. This is not a payroll approval, commission statement, or verified bonus award. Historical rep credit may differ from current assigned representatives.</p>
+  const [statusFilter,setStatusFilter]=useState("all");
+  const [sort,setSort]=useState<BonusProgressSort>("remaining");
+  const [direction,setDirection]=useState<BonusProgressDirection>("asc");
+  const names=useMemo(()=>new Map(data.users.map(u=>[u.id,u.name])),[data.users]);
+  const accounts=useMemo(()=>new Map(scope.accounts.map(a=>[a.id,a])),[scope.accounts]);
+  const allowedIds=useMemo(()=>new Set(scope.accounts.map(a=>a.id)),[scope.accounts]);
+  // Calculate per PHYSICAL location, never aggregate unrelated store orders into
+  // a single 40-case milestone merely because the stores share a billing parent.
+  const signals=useMemo(()=>evaluateSalesRepAccountBonuses(data)
+    .filter(signal=>allowedIds.has(signal.accountId)),[data,allowedIds]);
+  const held=useMemo(()=>acquisitionBonusHeldAccountIds(data),[data]);
+  const rows=useMemo(()=>accountBonusProgress(signals,{
+    repId:repFilter,
+    status:statusFilter==="all"?undefined:statusFilter as BonusMilestoneStatus,
+    accountSearch:query,sort,direction,
+    accountNames:new Map(scope.accounts.map(a=>[a.id,a.locationName??a.name])),
+    repNames:names,
+  }),[signals,repFilter,statusFilter,query,sort,direction,scope.accounts,names]);
+  const reps=[...new Set(signals.map(s=>s.repId))].sort((a,b)=>(names.get(a)??a).localeCompare(names.get(b)??b));
+  const header=(label:string,key:BonusProgressSort)=><button type="button" aria-label={"Sort incentives by "+label}
+    onClick={()=>{if(sort===key)setDirection(v=>v==="asc"?"desc":"asc");else{setSort(key);setDirection("asc");}}}>{label} <ArrowUpDown size={14}/></button>;
+  return <div><Heading title="Sales incentives" description="Separate 10-case opening and 40-case sustained milestones per physical customer location, with continuous settled-case progress toward 40."/>
+    <section className="prototype-panel" aria-label="Acquisition bonus progress">
+      <p className="prototype-note">Tracking only, not payroll authorization. A 10-case opening qualifies for the first approved milestone after verified settlement. The 40-case milestone includes the opening cases and additional qualifying paid cases inside the 90-day window. There is no 20-case bonus.</p>
       <div className="prototype-controls">
-        <label className="prototype-search"><Search size={16}/><input aria-label="Search business incentive progress" placeholder="Business or assigned representative" value={query} onChange={e=>setQuery(e.target.value)}/></label>
-        <label>Current assigned rep <select aria-label="Filter incentive progress by representative" value={repFilter} onChange={e=>setRepFilter(e.target.value)}>
-          <option value="all">All visible reps</option>{reps.map(id=><option key={id} value={id}>{names.get(id)??id}</option>)}
+        <label>Find account <input type="search" aria-label="Search incentive account" placeholder="Location or business name" value={query} onChange={e=>setQuery(e.target.value)}/></label>
+        <label>Credited representative <select aria-label="Filter incentives by historically credited representative" value={repFilter} onChange={e=>setRepFilter(e.target.value)}><option value="all">All accessible reps</option>{reps.map(id=><option value={id} key={id}>{names.get(id)??id}</option>)}</select></label>
+        <label>Milestone status <select aria-label="Filter incentive milestone status" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+          <option value="all">All</option>{(["Not started","Awaiting payment","Tracking","Earned","Window expired","Not qualified"] as BonusMilestoneStatus[]).map(status=><option key={status} value={status}>{status}</option>)}
         </select></label>
+        <label>Sort <select aria-label="Sort incentive records" value={sort} onChange={e=>setSort(e.target.value as BonusProgressSort)}><option value="remaining">Cases remaining</option><option value="cases">Settled cases</option><option value="account">Account</option><option value="representative">Historical representative</option><option value="deadline">Window deadline</option></select></label>
+        <button type="button" onClick={()=>setDirection(v=>v==="asc"?"desc":"asc")}>Order: {direction==="asc"?"ascending":"descending"}</button>
       </div>
+      <p role="status" className="prototype-note">{rows.length} matching store location{rows.length===1?"":"s"}, each with independent bonus evidence and historical attribution.</p>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
-        <th>{header("name","Business")}</th><th>{header("rep","Assigned reps")}</th><th>{header("locations","Locations")}</th><th>{header("cases","Settled cases")}</th><th>Continuous progress</th>
-      </tr></thead><tbody>{entries.map(e=><tr key={e.id}>
-        <td>{e.name}</td><td>{e.repIds.map(id=>names.get(id)??"Unassigned").join(", ")||"Unassigned"}</td><td>{e.locations}</td><td>{e.cases}</td>
-        <td><div role="progressbar" aria-label={"Case volume progress for "+e.name} aria-valuemin={0} aria-valuemax={40} aria-valuenow={Math.min(40,e.cases)} className="prototype-progress"><div style={{width:Math.min(100,(e.cases/40)*100)+"%"}}/></div><small>{e.cases} of 40 cases{e.cases>=40?" · 40-case threshold met":""}</small></td>
-      </tr>)}</tbody></table></div>
-      {!entries.length&&<Empty>No eligible visible businesses match your filters.</Empty>}
-    </section></div>;
+        <th>{header("Account","account")}</th><th>{header("Credited rep","representative")}</th><th>{header("Paid cases","cases")}</th><th>{header("Remaining","remaining")}</th><th>Progress to 40</th><th>Opening / sustained</th><th>{header("Deadline","deadline")}</th><th>Record</th>
+      </tr></thead><tbody>{rows.map(row=>{
+        const account=accounts.get(row.accountId);
+        const blocked=held.has(row.accountId);
+        return <tr key={row.accountId}>
+          <td>{account?.locationName??account?.name??row.accountId}<small className="prototype-description">{account?.streetAddress??account?.location??"Address unrecorded"}</small></td>
+          <td>{names.get(row.repId)??"Unverified"}</td><td>{row.settledCases}</td><td>{row.remainingCases}</td>
+          <td><div role="progressbar" aria-label={"40-case paid progress for "+(account?.name??row.accountId)} aria-valuemin={0} aria-valuemax={40} aria-valuenow={Math.min(40,row.settledCases)} className="prototype-progress"><div style={{width:row.percent+"%"}}/></div><small>{row.settledCases}/40 paid cases</small></td>
+          <td>{row.opening.status} / {row.sustained.status}{blocked&&<small className="prototype-description" role="alert">Payout hold: duplicate acquisition evidence needs administrator review</small>}</td>
+          <td>{row.windowEnd??"Not started"}</td><td><OpenLink to={"/sales/customers/"+encodeURIComponent(row.accountId)}>Open account</OpenLink></td>
+        </tr>;
+      })}</tbody></table></div>
+      {!rows.length&&<Empty>No incentive records match those filters.</Empty>}
+      <p className="prototype-note">Account identity, historical representative credit, plan eligibility, genuine cleared funds, prior payouts and possible consolidation duplicates must be reviewed before issuing pay. The display cannot approve or create a payment.</p>
+    </section>
+  </div>;
 }
 type ContactSortField="contactName"|"name"|"contactRole"|"email"|"phone"|"location"|"stage";
 function ContactsDirectory(){
