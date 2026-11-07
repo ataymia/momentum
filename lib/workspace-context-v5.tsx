@@ -1,6 +1,6 @@
 "use client";
 import {traceNavigationPaint} from "./performance-diagnostics";
-import {getRequestedNavigationPath,setNavigationPage} from "./navigation-store";
+import {getRequestedNavigationPath,setNavigationPage,shouldResetNavigationOnIdentityChange} from "./navigation-store";
 import {canVisitRoute} from "./navigation-route-registry";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -236,11 +236,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   useEffect(()=>{
     const previous=previousIdentityRef.current;
     previousIdentityRef.current=currentUserId;
-    if(previous===undefined||previous===currentUserId)return;
-    // First login only: preserve even an unauthorized copied URL so the
-    // route gate can show Page unavailable without exposing any record.
-    if(previous===null&&currentUserId&&currentUser)return;
-    setNavigationPage("home");
+    // Do not reset a copied URL while Firebase identity is present but its
+    // employee-directory record has not hydrated yet. PageView still denies
+    // unknown/unauthorized routes after login; switching identities resets.
+    if(shouldResetNavigationOnIdentityChange(previous,currentUserId))
+      setNavigationPage("home");
   },[currentUserId,currentUser]);
   // Reset a now-forbidden route on a real role change. Page permission aliases
   // are NOT equivalent to registered route grants (e.g. Account Health).

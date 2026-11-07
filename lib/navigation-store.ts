@@ -85,6 +85,15 @@ export function setNavigationPage(next: PageKey): void {
 }
 /** Current address before the signed-in shell has initialized its route store. */
 export function getRequestedNavigationPath(): string { return browserPath(); }
+/** Preserve initial copied URLs while authentication and employee directory
+ * hydrate independently. Only an existing signed-in identity change/logout
+ * resets the route; PageView still rejects unauthorized record links.
+ */
+export function shouldResetNavigationOnIdentityChange(previousId:string|null|undefined,nextId:string|null):boolean {
+  if(previousId===undefined || previousId===nextId)return false;
+  return !(previousId===null && nextId!==null);
+}
+
 export function getNavigationPage(): PageKey { return currentPage; }
 export function getNavigationRoute(): string { return currentRoute; }
 export function subscribeNavigationPage(subscriber: () => void): () => void {

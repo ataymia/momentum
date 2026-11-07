@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import type { Role, WorkspaceUser } from "../lib/types";
 import { activeMenuPath, isSafeInternalRoute, recordRouteMatch, routeHref } from "../lib/navigation-route-contract";
 import { canShowModuleInMenu, canVisitRoute, MENU_GROUPS, pageForPath, permissionForPath, requiresPrototypePage, routeLabel } from "../lib/navigation-route-registry";
-import { getNavigationRoute, navigateToRoute, startRouteNavigation } from "../lib/navigation-store";
+import { getNavigationRoute, navigateToRoute, startRouteNavigation, shouldResetNavigationOnIdentityChange } from "../lib/navigation-store";
 
 const user = (role: Role): WorkspaceUser => ({
   id:"u",email:"u@example.invalid",name:"Person",firstName:"Person",
@@ -222,8 +222,13 @@ test("first login preserves copied URLs for fail-closed route validation; role s
   const store=readFileSync("lib/navigation-store.ts","utf8");
   assert.match(store,/export function getRequestedNavigationPath/);
   assert.match(source,/previousIdentityRef=useRef/);
-  assert.match(source,/if\(previous===null&&currentUserId&&currentUser/);
-  assert.match(source,/if\(previous===null&&currentUserId&&currentUser\)return/);
+  assert.match(source,/shouldResetNavigationOnIdentityChange\(previous,currentUserId\)/);
+  assert.equal(shouldResetNavigationOnIdentityChange(undefined,null),false);
+  assert.equal(shouldResetNavigationOnIdentityChange(null,"employee-loading"),false,"First-login route survives even before directory hydration");
+  assert.equal(shouldResetNavigationOnIdentityChange("employee-loading","employee-loading"),false);
+  assert.equal(shouldResetNavigationOnIdentityChange("employee-loading","other-employee"),true);
+  assert.equal(shouldResetNavigationOnIdentityChange("employee-loading",null),true);
+  assert.doesNotMatch(source,/previous===null&&currentUserId&&currentUser/);
   assert.match(source,/const switchUser = useCallback[\s\S]*?setNavigationPage\("home"\)/);
 });
 
