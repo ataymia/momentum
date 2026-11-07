@@ -50,7 +50,7 @@ test("Human Resources and Marketing menus do not cross departmental roles",()=>{
   assert(!canShowModuleInMenu(person("Operations"),"/marketing"));
 });
 
-test("retained rep self-delivery, account map, and quick visits route to existing screens",()=>{
+test("server-backed rep self-delivery is redesigned while account map and quick visits retain existing workflow",()=>{
   const rep=person("Sales Representative");
   assert(canVisitRoute(rep,"/crm/self-delivery"));
   assert(canVisitRoute(rep,"/crm/account-map"));
@@ -58,7 +58,9 @@ test("retained rep self-delivery, account map, and quick visits route to existin
   assert.equal(pageForPath("/crm/self-delivery"),"orders");
   assert.equal(pageForPath("/crm/account-map"),"salesMap");
   assert.equal(pageForPath("/crm/quick-visit"),"quickVisit");
-  assert(!requiresPrototypePage("/crm/self-delivery"));
+  assert(requiresPrototypePage("/crm/self-delivery"));
+  assert(!canVisitRoute(person("Operations"),"/crm/self-delivery"));
+  assert(!canVisitRoute(person("Sales Manager"),"/crm/self-delivery"));
   assert(!requiresPrototypePage("/portal/orders"));
   assert(requiresPrototypePage("/portal/account"));
 });
