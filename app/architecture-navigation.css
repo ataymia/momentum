@@ -49,6 +49,14 @@
   .app-layout.is-sidebar-collapsed>.sidebar{
     width:min(340px,92vw)!important;
   }
+  /* A collapsed desktop sidebar must expand fully in the mobile drawer. */
+  .app-layout>.sidebar.is-collapsed .brand{display:inline-flex!important}
+  .app-layout>.sidebar.is-collapsed .brand__type{display:inline-flex!important}
+  .app-layout>.sidebar.is-collapsed .nav-item span{display:block!important;min-width:0}
+  .app-layout>.sidebar.is-collapsed .sidebar-search span{display:inline-flex!important}
+  .app-layout>.sidebar.is-collapsed .sidebar-search{width:auto!important;margin:12px 0!important;justify-content:flex-start}
+  .app-layout>.sidebar.is-collapsed .prototype-nav-item{width:100%!important;margin:0!important;justify-content:flex-start!important;min-height:44px}
+  .app-layout>.sidebar.is-collapsed .prototype-nav-group-title{min-height:44px}
   .app-layout>.sidebar .sidebar__collapse{display:none!important}
   .app-layout>.sidebar .sidebar__close{display:grid!important}
   .topbar .menu-button{

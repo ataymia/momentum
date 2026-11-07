@@ -36,7 +36,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Deals", path: "/crm/deals", permission: "accounts", state: "prototype" },
     { label: "Quick Visits", path: "/crm/quick-visit", permission: "quickVisit", state: "prototype" },
     { label: "Account Setup", path: "/crm/account-setup", permission: "accountSetup", state: "prototype" },
-    { label: "Account Health", path: "/crm/account-health", permission: "accountHealth", state: "prototype" },
+    { label: "Account Health", path: "/crm/account-health", permission: "accounts", state: "prototype" },
     { label: "Account Map", path: "/crm/account-map", permission: "salesMap", state: "existing" },
     { label: "Territory Map", path: "/crm/territory-map", permission: "salesMap", state: "prototype" },
     { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "existing" },
@@ -50,6 +50,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Invoices", path: "/sales/invoices", permission: "orderCash", state: "prototype" },
     { label: "Payments Received", path: "/sales/payments", permission: "orderCash", state: "prototype" },
     { label: "Finance Overview", path: "/finance", permission: "finance", state: "existing" },
+    { label: "Accounting", path: "/finance/accounting", permission: "accounting", state: "existing" },
     { label: "Sales Returns", path: "/sales/returns", permission: "orders", state: "prototype" },
     { label: "Credit Notes", path: "/sales/credit-notes", permission: "orderCash", state: "prototype" },
     { label: "Customer Portal", path: "/commerce/customer-portal", permission: "orders", state: "planned" },
@@ -232,6 +233,11 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
     || Object.values(LEGACY_PATHS).includes(clean)
     || Object.hasOwn(ROUTE_OVERRIDES, clean));
   if (!isKnown) return false;
+  // Self-service is still available, but admin-only HR workflows cannot be
+  // reached by manually entering an otherwise recognized URL.
+  if (["/people/directory", "/people/new-hire", "/people/onboarding",
+    "/people/onboarding/workflow", "/people/payroll/workflow", "/people/training"].includes(clean)
+    && user.role !== "Administrator") return false;
   if (user.role === "Customer") {
     const customerOrderDetail = /^\/sales\/orders\/[^/]+$/.test(clean)
       && clean !== "/sales/orders/new" && clean !== "/sales/orders/workflow";
@@ -260,7 +266,8 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
   const group = MENU_GROUPS.find(g=>g.entries.some(e=>e.path===normalizeRoutePath(path)))?.label;
   if (group==="Human Resources" && user.role!=="Administrator") {
     // Ordinary employees may enter existing self-service routes, never HR admin or payroll.
-    return ["/people/timekeeping", "/people/materials"].includes(normalizeRoutePath(path));
+    return ["/people", "/people/payroll", "/people/leave",
+      "/people/timekeeping", "/people/materials"].includes(normalizeRoutePath(path));
   }
   if (group==="Marketing" && !["Administrator","Marketing","Brand Ambassador"].includes(user.role)) return false;
   return true;

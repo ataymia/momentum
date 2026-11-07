@@ -36,7 +36,18 @@ const RECORD_ROUTES: readonly RecordRouteDefinition[] = [
   { pattern: /^\/portal\/deliveries\/[^/]+$/, page: "orders", label: "Delivery details", prototype: true },
 ];
 
+/** Fail closed on malformed URL encodings and IDs which decode into path separators.
+ * Record views decode an ID once before querying the scoped record store.
+ */
 export function recordRouteMatch(path: string): RecordRouteMatch | null {
+  for (const segment of path.split("/").slice(1)) {
+    try {
+      const decoded = decodeURIComponent(segment);
+      if (decoded === "." || decoded === ".." || /[/\\\u0000-\u001f\u007f]/.test(decoded)) return null;
+    } catch {
+      return null;
+    }
+  }
   for (const record of RECORD_ROUTES) if (record.pattern.test(path)) {
     return { page: record.page, label: record.label, prototype: record.prototype };
   }
@@ -56,8 +67,12 @@ export function activeMenuPath(path: string, visiblePaths: readonly string[]): s
 /** Static exports can serve arbitrary app URLs through the authorized host's SPA fallback.
  * Always form links using the same base path configured in Next.
  */
+export function isSafeInternalRoute(path: string): boolean {
+  return path.startsWith("/") && !path.startsWith("//") &&
+    !/[\\\u0000-\u001f\u007f]/.test(path);
+}
 export function routeHref(path: string, basePath = ""): string {
-  if (!path.startsWith("/") || path.startsWith("//")) return "/";
+  if (!isSafeInternalRoute(path)) return "/";
   const base = basePath.replace(/\/+$/, "");
   return base + (path || "/");
 }

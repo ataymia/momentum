@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import type { PageKey } from "./types";
 import { normalizeRoutePath, pageForPath, routeForPage } from "./navigation-route-registry";
+import { isSafeInternalRoute } from "./navigation-route-contract";
 
 /**
  * Branch-only URL-aware navigation. The URL is the view's source of truth.
@@ -12,10 +13,13 @@ import { normalizeRoutePath, pageForPath, routeForPage } from "./navigation-rout
 let currentPage: PageKey = "home";
 let currentRoute = "/";
 let initialized = false;
+let bootstrapped = false;
 let clients = 0;
 const listeners = new Set<() => void>();
 const pageSnapshot = () => currentPage;
 const routeSnapshot = () => currentRoute;
+const readySnapshot = () => bootstrapped;
+const serverReadySnapshot = () => false;
 const serverPageSnapshot = (): PageKey => "home";
 const serverRouteSnapshot = () => "/";
 
@@ -49,6 +53,10 @@ export function startRouteNavigation(): () => void {
     window.addEventListener("popstate", onPopState);
   }
   adopt(browserPath());
+  if (!bootstrapped) {
+    bootstrapped = true;
+    publish();
+  }
   return () => {
     clients = Math.max(0, clients - 1);
     if (clients === 0 && initialized) {
@@ -59,7 +67,7 @@ export function startRouteNavigation(): () => void {
 }
 
 export function navigateToRoute(nextPath: string, options?: {replace?: boolean}): void {
-  if (!nextPath.startsWith("/") || nextPath.startsWith("//")) return;
+  if (!isSafeInternalRoute(nextPath)) return;
   const next = normalizeRoutePath(nextPath);
   if (typeof window !== "undefined") {
     const base = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(/\/+$/, "");
@@ -86,4 +94,9 @@ export function useNavigationPage(): PageKey {
 }
 export function useNavigationRoute(): string {
   return useSyncExternalStore(subscribeNavigationPage, routeSnapshot, serverRouteSnapshot);
+}
+
+/** Prevent the root Home screen from flashing while resolving a copied deep link. */
+export function useNavigationReady(): boolean {
+  return useSyncExternalStore(subscribeNavigationPage, readySnapshot, serverReadySnapshot);
 }

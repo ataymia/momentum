@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import type { Role, WorkspaceUser } from "../lib/types";
-import { activeMenuPath, recordRouteMatch, routeHref } from "../lib/navigation-route-contract";
-import { canVisitRoute, MENU_GROUPS, pageForPath, requiresPrototypePage, routeLabel } from "../lib/navigation-route-registry";
+import { activeMenuPath, isSafeInternalRoute, recordRouteMatch, routeHref } from "../lib/navigation-route-contract";
+import { canShowModuleInMenu, canVisitRoute, MENU_GROUPS, pageForPath, requiresPrototypePage, routeLabel } from "../lib/navigation-route-registry";
 import { getNavigationRoute, navigateToRoute, startRouteNavigation } from "../lib/navigation-store";
 
 const user = (role: Role): WorkspaceUser => ({
@@ -141,3 +141,68 @@ test("static export and Firebase Hosting fallback preserve deep route entry poin
   assert.match(css,/\.topbar \.menu-button/);
   assert.match(css,/prefers-reduced-motion/);
 });
+
+test("record route IDs reject malformed encodings, traversal and encoded separators", () => {
+  for(const url of [
+    "/sales/orders/%E0%A4%A", "/sales/orders/%2Fadmin",
+    "/sales/customers/..", "/crm/deals/%5Cother",
+    "/items/%00invalid", "/admin/employee-profiles/%2fcompensation",
+  ]) {
+    assert.equal(recordRouteMatch(url),null,url);
+    assert.equal(canVisitRoute(user("Administrator"),url),false,url);
+  }
+  assert.equal(recordRouteMatch("/sales/orders/order%20one")?.page,"orders");
+});
+
+test("unsafe external and browser-normalized URL forms never become application links", () => {
+  for(const path of ["//outside.invalid","/\\\\outside.invalid","/orders\u0001other","https://outside.invalid","relative/path"]) {
+    assert.equal(isSafeInternalRoute(path),false,path);
+    assert.equal(routeHref(path),"/",path);
+  }
+  assert.equal(isSafeInternalRoute("/sales/orders/one"),true);
+  assert.equal(routeHref("/sales/orders/one","/app"),"/app/sales/orders/one");
+});
+
+test("self-service HR routes remain visible without granting new-hire or HR administration",()=>{
+  const rep=user("Sales Representative"),admin=user("Administrator");
+  const {canShowModuleInMenu} = requireNavigationMenu();
+  for(const path of ["/people","/people/leave","/people/payroll","/people/timekeeping","/people/materials"]){
+    assert.equal(canVisitRoute(rep,path),true,path);
+    assert.equal(canShowModuleInMenu(rep,path),true,path);
+  }
+  for(const path of ["/people/directory","/people/new-hire","/people/onboarding","/people/onboarding/workflow","/people/payroll/workflow","/people/training"]){
+    assert.equal(canVisitRoute(rep,path),false,path);
+    assert.equal(canVisitRoute(admin,path),true,path);
+    assert.equal(canShowModuleInMenu(rep,path),false,path);
+  }
+  assert.equal(canVisitRoute(admin,"/crm/account-health"),true);
+  assert.equal(canShowModuleInMenu(admin,"/crm/account-health"),true);
+  assert(MENU_GROUPS.find(g=>g.label==="Commerce")?.entries.some(e=>e.path==="/finance/accounting"));
+});
+
+test("navigation readiness prevents unscoped Home flashing on copied URLs",()=>{
+  const store=readFileSync("lib/navigation-store.ts","utf8");
+  const shell=readFileSync("components/app-shell-v4.tsx","utf8");
+  assert.match(store,/export function useNavigationReady/);
+  assert.match(store,/bootstrapped = true;/);
+  assert.match(shell,/if\(!navigationReady\)return/);
+  assert.match(shell,/if\(!canVisitRoute\(currentUser,route\)\)/);
+});
+
+test("mobile sidebar restores collapsed labels and supports keyboard and focus dismissal",()=>{
+  const shell=readFileSync("components/app-shell-v4.tsx","utf8");
+  const css=readFileSync("app/architecture-navigation.css","utf8");
+  assert.match(shell,/sidebarRef=useRef/);
+  assert.match(shell,/menuTriggerRef=useRef/);
+  assert.match(shell,/event.key==="Escape"/);
+  assert.match(shell,/event.key!=="Tab"/);
+  assert.match(shell,/document.body.style.overflow="hidden"/);
+  assert.match(shell,/trigger\?\.focus\(\)/);
+  assert.match(css,/\.sidebar\.is-collapsed \.nav-item span\{display:block!important/);
+  assert.match(css,/\.sidebar\.is-collapsed \.brand\{display:inline-flex!important/);
+});
+
+function requireNavigationMenu(){
+  // Keep this lightweight helper typed, without dynamic imports or runtime module mocks.
+  return {canShowModuleInMenu};
+}
