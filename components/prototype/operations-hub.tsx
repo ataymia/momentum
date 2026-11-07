@@ -835,6 +835,7 @@ export function PrototypeOperationsHub(){
   if(path==="/self-service/leave")return <HrTimeOffExperience/>;
   if(path==="/self-service/pay")return <PayrollWorkflowExperience/>;
   if(path==="/people")return <PeopleExperience/>;
+  if(path==="/people/directory")return <HrPersonnelDirectory/>;
   if(path==="/marketing")return <MarketingWorkspaceExperience/>;
   if(path==="/marketing/campaigns")return <MarketingWorkspaceExperience key="marketing-campaigns" initialTab="campaigns"/>;
   if(path==="/reports/forecasts")return <ForecastsExperience/>;
