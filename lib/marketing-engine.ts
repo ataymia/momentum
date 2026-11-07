@@ -46,6 +46,11 @@ export function normalizeMarketingState(input:unknown):MarketingState{
   const partnerships=Array.isArray(state.partnerships)?state.partnerships.filter((item)=>item&&item.id&&item.name?.trim()&&item.type?.trim()&&item.notes?.trim()&&validDateRange(item.startDate,item.endDate)):[];
   return{version:3,requests,deliveryNotices,campaigns,spend,assets,materials,materialMovements,touches,attributions,partnerships};
 }
+/** Demo reconciliation requires a recorded receipt reference and prior approval.
+ * A filename is not evidence of funds settlement or a verified signed receipt. */
+export function marketingSpendReadyForReconciliation(spend:MarketingSpend):boolean{
+ return spend.status==="Approved"&&Boolean(spend.receiptName?.trim()&&spend.approvedAt&&spend.approvedBy);
+}
 export function campaignSpend(state:MarketingState,campaignId:string){return state.spend.filter((item)=>item.campaignId===campaignId&&["Approved","Reconciled"].includes(item.status)&&finitePositive(item.amount)).reduce((sum,item)=>sum+item.amount,0);}
 export function materialBalance(state:MarketingState,itemId:string){const item=state.materials.find((material)=>material.id===itemId);if(!item||!finiteNonnegative(item.openingQty))return 0;return item.openingQty+state.materialMovements.filter((movement)=>movement.itemId===itemId&&finitePositive(movement.quantity)).reduce((sum,movement)=>sum+(movement.type==="Receipt"||movement.type==="Return"?movement.quantity:-movement.quantity),0);}
 /** Paid means an order marked Paid in legacy source state, not independently verified settlement. */

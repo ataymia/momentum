@@ -107,7 +107,7 @@ test("F08 F13: reporting summaries and manager KPI scopes do not leak global cas
  const dashboard=fs.readFileSync("components/performance/management-kpi-dashboard.tsx","utf8");
  assert(report.includes("visibleClearedPayments"));
  assert(report.includes("showCommercial?"));
- assert(report.includes("showKpiCenter&&<ManagementKpiDashboard/>"));
+ assert(report.includes("showKpiCenter&&!refundAllocationBlocked&&<ManagementKpiDashboard/>"));
  assert(dashboard.includes("currentUser ? [currentUser.id] : []"));
 });
 

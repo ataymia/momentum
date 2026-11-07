@@ -44,7 +44,7 @@ export function InsightsExplorerExperience(){
  const paid=useMemo(()=>resolvedPaidOrderFacts(data,commerce).filter(f=>visibleOrders.has(f.orderId)),[data,commerce,visibleOrders]);
  const summary=useMemo(()=>insightCashSummary(cash,paid,from,through),[cash,paid,from,through]);
  const invalid=from>through;
- const lots=scope.inventory.map(lot=>({lot,onHand:Math.max(0,nodeLotBalance(ledger,warehouseNodeId,lot.id)),available:lot.status==="Quality hold"?0:warehouseAvailable(ledger,lot.id)}));
+ const lots=scope.inventory.map(lot=>({lot,onHand:Math.max(0,nodeLotBalance(ledger,warehouseNodeId,lot.id)),available:lot.status==="Quality hold"?0:Math.max(0,warehouseAvailable(ledger,lot.id))}));
  const staffName=(id:string)=>data.users.find(u=>u.id===id)?.name??"Employee";
  const commercialRows:EvidenceRow[]=cash.filter(f=>!invalid&&f.settledAt>=from&&f.settledAt<=through).map(f=>({
   id:f.kind+"-"+f.id,name:accounts.get(f.accountId)??"Restricted customer",date:f.settledAt,

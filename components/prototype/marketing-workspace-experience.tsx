@@ -8,7 +8,7 @@
 import {useState} from "react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useMarketing} from "../../lib/marketing-context";
-import {campaignSpend,attributionSummary,materialBalance,type MarketingRequestType} from "../../lib/marketing-engine";
+import {campaignSpend,attributionSummary,materialBalance,marketingSpendReadyForReconciliation,type MarketingRequestType} from "../../lib/marketing-engine";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {momentumStorage} from "../../lib/persistence";
 import {downloadCsv} from "../../lib/browser-export";
@@ -206,7 +206,7 @@ export function MarketingWorkspaceExperience({initialTab="requests"}:{initialTab
          {demo&&s.status==="Submitted"&&<div className="request-actions">
           <button type="button" onClick={()=>action("Spend approved",()=>decideSpend(s.id,"Approved"))}>Approve</button>
           <button type="button" onClick={()=>action("Spend returned",()=>decideSpend(s.id,"Returned"))}>Return</button></div>}
-         {demo&&s.status==="Approved"&&<button type="button" onClick={()=>action("Spend reconciliation",()=>reconcileSpend(s.id))}>Reconcile</button>}
+         {demo&&s.status==="Approved"&&<button type="button" disabled={!marketingSpendReadyForReconciliation(s)} title={marketingSpendReadyForReconciliation(s)?"Record local reconciliation":"Prior approval and receipt reference are required"} onClick={()=>action("Spend reconciliation",()=>reconcileSpend(s.id))}>Record reconciliation</button>}
        </article>)}{!spend.length&&<p>No marketing spend records match.</p>}
      </div>}
      {tab==="outcomes"&&admin&&<div className="company-request-list">
@@ -227,6 +227,6 @@ export function MarketingWorkspaceExperience({initialTab="requests"}:{initialTab
        {!partners.length&&<p>No matching partnerships.</p>}
      </div>}
    </section>
-   <p className="prototype-note">Campaign spend and paid-order association are not interchangeable. Source-linked, reviewed attribution is shown separately from total sales. No money, email, or payroll is executed from this screen.</p>
+   <p className="prototype-note">Campaign spend and paid-order association are not interchangeable. Source-linked, reviewed attribution is shown separately from total sales. No money, email, or payroll is executed from this screen. A receipt filename or local reconciliation label is not proof of bank settlement.</p>
  </div>;
 }

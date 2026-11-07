@@ -97,7 +97,8 @@ export function ReportsPage() {
   return <div className="page page--reports">
     <PageHeader eyebrow="Operational reporting" title="Reports"/>
 
-    {showKpiCenter&&<ManagementKpiDashboard/>}
+    {showKpiCenter&&!refundAllocationBlocked&&<ManagementKpiDashboard/>}
+    {showKpiCenter&&refundAllocationBlocked&&<p role="alert" className="prototype-note">The management KPI center is withheld until multi-order refunds are allocated. Employee commission and revenue summaries must not rely on ambiguous settlement attribution.</p>}
 
     <div className="report-integrity-banner"><Database size={20}/><div><strong>{showCommercial?"KPI sources are connected to Momentum records.":"Role-scoped operational reporting"}</strong>
       {showCommercial?<p>Evidence in your authorized scope: {eligibleOrders.length} orders · {visibleClearedPayments} cleared payments with visible invoice allocations · {visibleVisits} physical visits · {records.appointments.length} appointments · {visibleFieldPings} scoped field pings. Payments allocated to multiple invoices require separate reconciliation.</p>:
