@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { AUDIT_STORAGE_KEY, AuditChange, AuditEvent, AuditSensitivity, AuditState, auditEventFingerprint, auditPersistencePreservesSource, collectAuditableRecords, createAuditSeed, diffAuditableRecords, mergeAuditSnapshots, normalizeAuditState, visibleAuditEvents } from "./audit-engine";
+import { AUDIT_STORAGE_KEY, AuditChange, AuditEvent, AuditSensitivity, AuditState, auditEventFingerprint, observedAuditSourceKey, auditPersistencePreservesSource, collectAuditableRecords, createAuditSeed, diffAuditableRecords, mergeAuditSnapshots, normalizeAuditState, visibleAuditEvents } from "./audit-engine";
 import { useAccounting } from "./accounting-context";
 import { useBrandAmbassadors } from "./brand-ambassador-context";
 import { useCommerce } from "./commerce-context";
@@ -111,7 +111,17 @@ export function AuditProvider({ children }: { children: ReactNode }) {
     previous.current = snapshots;
     if (additions.length) setAudit((state) => {
       const existing = new Set(state.events.map(auditEventFingerprint));
-      const verified = additions.filter((event) => !existing.has(auditEventFingerprint(event)));
+      // Replaying a source timestamp with a different hydrated field projection
+      // does not establish another employee action. Keep historic evidence intact.
+      const observed = new Set(state.events
+        .filter(event => event.id.startsWith("audit-") && !event.id.startsWith("audit-manual-"))
+        .map(observedAuditSourceKey));
+      const verified = additions.filter((event) => {
+        const sourceKey=observedAuditSourceKey(event);
+        if(existing.has(auditEventFingerprint(event))||observed.has(sourceKey))return false;
+        observed.add(sourceKey);
+        return true;
+      });
       if (!verified.length) return state;
       return { ...state, events: [...verified, ...state.events].sort((left, right) => right.at.localeCompare(left.at)) };
     });
