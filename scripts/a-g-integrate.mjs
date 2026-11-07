@@ -161,6 +161,32 @@ for(const letter of ["C","A","B","D","E","G"]){
   exec(["add",path]);
   exec(["commit","-m","fix(integration): retain CRM product aliases and D traceable-inventory imports"]);
 }
+// Restore semantically independent imports discarded by overlapping workstream hunks.
+{
+  const hubPath="components/prototype/operations-hub.tsx";
+  let hub=fs.readFileSync(hubPath,"utf8");
+  if(!hub.includes('contactExportRows')){
+    throw new Error("C contact export handler was not preserved.");
+  }
+  if(!hub.includes('import {contactExportRows,contactExportColumns} from "../../lib/saturday-scoped-workflows";')){
+    hub=hub.replace('"use client";','"use client";\\nimport {contactExportRows,contactExportColumns} from "../../lib/saturday-scoped-workflows";');
+  }
+  fs.writeFileSync(hubPath,hub);
+  const notifPath="lib/notification-context-v3.tsx";
+  let notif=fs.readFileSync(notifPath,"utf8");
+  const previous='import {mergeFirstSeenTimes,notificationDisplayTime,parseFirstSeenTimes} from "./notification-display-time";';
+  const upgraded='import {mergeFirstSeenRecords,mergeFirstSeenTimes,notificationDisplayTime,parseFirstSeenTimes} from "./notification-display-time";';
+  if(notif.includes(previous))notif=notif.replace(previous,upgraded);
+  if(!notif.includes('import {mergeReadReceipts,parseReadReceipts,shouldSurfaceBellIntent} from "./notification-receipts";')){
+    notif=notif.replace(upgraded,upgraded+'\nimport {mergeReadReceipts,parseReadReceipts,shouldSurfaceBellIntent} from "./notification-receipts";');
+  }
+  if(!notif.includes('import {reconcileCloudReadReceipts} from "./notification-read-cloud";')){
+    notif=notif.replace('import {mergeReadReceipts,parseReadReceipts,shouldSurfaceBellIntent} from "./notification-receipts";','import {mergeReadReceipts,parseReadReceipts,shouldSurfaceBellIntent} from "./notification-receipts";\\nimport {reconcileCloudReadReceipts} from "./notification-read-cloud";');
+  }
+  fs.writeFileSync(notifPath,notif);
+  exec(["add",hubPath,notifPath]);
+  exec(["commit","-m","fix(integration): preserve C contact exports and G cloud receipt imports"]);
+}
 assertFeatureWiring();
 for(const [letter,sha] of Object.entries(sources)){
   exec(["merge-base","--is-ancestor",sha,"HEAD"]);
