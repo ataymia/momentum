@@ -1,5 +1,5 @@
 "use client";
-import {useMemo,useState} from "react";
+import {useEffect,useMemo,useState} from "react";
 import type {FormEvent} from "react";
 import {ArrowUpDown,CalendarDays,CalendarPlus,ExternalLink} from "lucide-react";
 import {addCalendarDays,arizonaDateKey,startOfLocalWeek} from "../../lib/date-time";
@@ -76,10 +76,10 @@ function MeetingForm({meeting}:{meeting?:TeamMeeting}){
 }
 function MeetingRecord({id}:{id:string}){
   const {data}=useWorkspace();
-  const {meetings,currentUser,rsvp,cancel,seen,isLocal,cloudReady}=useMeetingWorkspace();
+  const {meetings,currentUser,rsvp,cancel,seen,isLocal,cloudReady,cloudError}=useMeetingWorkspace();
   const meeting=meetings.find(m=>m.id===id);
   const [error,setError]=useState("");
-  if(!meeting||!currentUser)return <main><Heading title="Meeting unavailable" description="Not found or outside this employee's authorized meeting visibility."/><Go to="/calendar/meetings">Back to meetings</Go></main>;
+  if(!meeting||!currentUser)return <main><Heading title="Meeting unavailable" description={!isLocal&&!cloudReady?(cloudError||"Loading authorized meeting records."): "Not found or outside this employee's authorized meeting visibility."}/><Go to="/calendar/meetings">Back to meetings</Go></main>;
   const organizer=meeting.organizerId===currentUser.id;
   const invited=meeting.attendeeIds.includes(currentUser.id);
   const changed=(meeting.seenRevision[currentUser.id]??0)<meeting.revision;
@@ -116,11 +116,11 @@ function MeetingDirectory({kind}:{kind:"meetings"|"invitations"|"agenda"}){
   const {data,scope}=useWorkspace();
   const {meetings,currentUser,allowed,isLocal,cloudReady,cloudError}=useMeetingWorkspace();
   const [query,setQuery]=useState("");
-  const [status,setStatus]=useState("active");
+  const [status,setStatus]=useState(kind==="invitations"?"all":"active");
   const [sort,setSort]=useState<"date"|"name">("date");
   const [ascending,setAscending]=useState(true);
   const rows=useMemo(()=>{
-    const input=meetings.filter(m=>kind!=="invitations"||Boolean(currentUser&&m.attendeeIds.includes(currentUser.id)&&(m.rsvps[currentUser.id]==="Pending"||(m.seenRevision[currentUser.id]??0)<m.revision)))
+    const input=meetings.filter(m=>kind!=="invitations"||Boolean(currentUser&&m.attendeeIds.includes(currentUser.id)&&((m.status==="Scheduled"&&m.rsvps[currentUser.id]==="Pending")||(m.seenRevision[currentUser.id]??0)<m.revision)))
       .filter(m=>status==="all"||(status==="active"?m.status==="Scheduled"&&m.date>=arizonaDateKey():status==="cancelled"?m.status==="Cancelled":m.status==="Scheduled"&&m.date<arizonaDateKey()))
       .filter(m=>[m.title,m.location,m.agenda,data.users.find(u=>u.id===m.organizerId)?.name].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
     return input.sort((a,b)=>(ascending?1:-1)*(sort==="date"?(a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime)):a.title.localeCompare(b.title))||a.id.localeCompare(b.id));
@@ -204,9 +204,11 @@ export function MeetingWorkspaceExperience({view,id}:{view:"meetings"|"agenda"|"
 }
 export function MeetingHomePanel(){
   const {meetings,currentUser,isLocal,cloudReady}=useMeetingWorkspace();
+  const [clock,setClock]=useState(()=>new Date());
+  useEffect(()=>{const timer=window.setInterval(()=>setClock(new Date()),60000);return()=>window.clearInterval(timer);},[]);
   if((!isLocal&&!cloudReady)||!currentUser||currentUser.role==="Customer")return null;
   const notices=meetingNotices(meetings,currentUser).slice(0,4);
-  const reminders=meetingHomeReminders(meetings,currentUser).slice(0,3);
+  const reminders=meetingHomeReminders(meetings,currentUser,clock).slice(0,3);
   const soon=upcomingMeetings(meetings,currentUser).slice(0,5);
   return <section className="momentum-home-panel"><header className="momentum-home-panel-head"><div><CalendarDays size={17}/><h2>My meetings and invitations</h2></div><Go to="/calendar/invitations">Invitations</Go></header>
     {notices.map(n=><button type="button" className="momentum-home-actionrow" key={n.id} onClick={()=>navigateToRoute(url(n.meetingId))}><strong>{n.title}</strong><small>{n.date} · {azTimeLabel(n.time)}</small></button>)}

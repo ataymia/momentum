@@ -210,3 +210,11 @@ test("B02 non-order approval list links to source departments instead of looping
  assert.match(source,/Open source workflow/);
  assert.doesNotMatch(source,/navigateToRoute\("\/work\/workflow"\)/);
 });
+
+test("B07–B08 Home reminders refresh and cancelled invitations remain reviewable",()=>{
+ const source=readFileSync("components/prototype/workspace-meetings-experience.tsx","utf8");
+ assert.match(source,/useState\(kind==="invitations"\?"all":"active"\)/);
+ assert.match(source,/m.status==="Scheduled"&&m.rsvps\[currentUser.id\]==="Pending"/);
+ assert.match(source,/meetingHomeReminders\(meetings,currentUser,clock\)/);
+ assert.match(source,/window.setInterval\(\(\)=>setClock\(new Date\(\)\),60000\)/);
+});
