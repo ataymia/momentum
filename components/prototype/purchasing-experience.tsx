@@ -38,7 +38,7 @@ const poName=(s:PurchasingState,id:string)=>s.orders.find(p=>p.id===id)?.id??"Un
 function PurchasingForm({section,state,run,role}:{section:Section;state:PurchasingState;run:(a:PurchaseAction)=>boolean;role:string}){
   const isAdmin=role==="Administrator";const canPrepare=isAdmin||role==="Operations";
   const canReceive=canPrepare||role==="Warehouse";
-  const canCreate=(section==="receipts"?canReceive:section==="orders"||section==="expenses"?canPrepare:isAdmin);
+  const canCreate=(section==="receipts"?canReceive:["orders","expenses","bills","credits"].includes(section)?canPrepare:isAdmin);
   const [open,setOpen]=useState(false);
   const [selection,setSelection]=useState("");
   if(!canCreate)return null;
