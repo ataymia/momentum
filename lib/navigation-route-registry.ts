@@ -286,10 +286,10 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
   // Purchasing actions have distinct preparation, receipt, and payment rights.
   // These UI checks are not a substitute for backend transaction authorization.
   if(clean.startsWith("/purchases/")){
-    const module=clean.split("/")[2];
-    if(module==="receipts")return ["Administrator","Operations","Warehouse"].includes(user.role);
-    if(module==="payments")return user.role==="Administrator";
-    if(["vendors","expenses","orders","bills","credits"].includes(module))
+    const purchaseSection=clean.split("/")[2];
+    if(purchaseSection==="receipts")return ["Administrator","Operations","Warehouse"].includes(user.role);
+    if(purchaseSection==="payments")return user.role==="Administrator";
+    if(["vendors","expenses","orders","bills","credits"].includes(purchaseSection))
       return ["Administrator","Operations"].includes(user.role);
     return false;
   }
