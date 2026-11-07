@@ -264,7 +264,8 @@ test("single route registry provides breadcrumb; legacy header menu duplicates a
   assert.doesNotMatch(shell,/const secondaryNav:/);
   assert.doesNotMatch(shell,/const pageParent:/);
   assert.doesNotMatch(shell,/const pageLabels:/);
-  assert.match(shell,/const pageName = canVisitRoute\(currentUser,activeRoute\) \? routeLabel\(activeRoute\) : "Page unavailable"/);
+  assert.match(shell,/breadcrumbsForRoute\(activeRoute,customerMode\)/);
+  assert.match(shell,/breadcrumbSteps\.map/);
   assert.match(shell,/aria-label="Primary navigation"/);
   assert.match(shell,/aria-label="Breadcrumb"/);
 });
