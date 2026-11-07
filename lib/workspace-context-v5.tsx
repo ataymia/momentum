@@ -237,8 +237,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const previous=previousIdentityRef.current;
     previousIdentityRef.current=currentUserId;
     if(previous===undefined||previous===currentUserId)return;
-    if(previous===null&&currentUserId&&currentUser
-      &&canVisitRoute(currentUser,getRequestedNavigationPath()))return;
+    // First login only: preserve even an unauthorized copied URL so the
+    // route gate can show Page unavailable without exposing any record.
+    if(previous===null&&currentUserId&&currentUser)return;
     setNavigationPage("home");
   },[currentUserId,currentUser]);
   // A role downgrade or separation cannot retain an administrative screen.
@@ -257,7 +258,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setDemoUserId(user.id);
     // Do not destroy an authorized copied URL before the authenticated shell
     // mounts and validates its record scope. Denied paths go to Home.
-    if(!canVisitRoute(user,getRequestedNavigationPath()))setNavigationPage("home");
+    // Authentication does not imply navigation permission. The post-login
+    // shell denies unknown and unauthorized URLs without rewriting them.
     momentumStorage.setItem(SESSION_KEY, user.id);
     return { ok: true };
   }, [data.users, firebase]);
