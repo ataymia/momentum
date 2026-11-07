@@ -6,11 +6,21 @@ import { ArrowLeft, ArrowUpDown, ExternalLink, Search } from "lucide-react";
 import { canVisitRoute, routeEntry, routeLabel } from "../../lib/navigation-route-registry";
 import { navigateToRoute, useNavigationRoute } from "../../lib/navigation-store";
 import { GOLDEN_EAGLE_SKUS, skuForProductName } from "../../lib/product-catalog";
-import { orderFirstSettlementDate } from "../../lib/bonus-engine";
+import {evaluateSalesRepAccountBonuses,type BonusMilestoneStatus} from "../../lib/bonus-engine";
+import {accountBonusProgress,type BonusProgressSort,type BonusProgressDirection} from "../../lib/bonus-progress";
+import {acquisitionBonusHeldAccountIds} from "../../lib/acquisition-bonus-consolidation";
 import { useWorkspace } from "../../lib/workspace-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {momentumStorage} from "../../lib/persistence";
 import { TerritoryPanel } from "../crm/territory-panel";
+import {SalesUserPicker} from "../crm/sales-user-picker";
+import {CrmLeadCreator} from "./crm-lead-create";
+import {CrmAccountHealth} from "./crm-account-health";
+import {CrmAccountSetup} from "./crm-account-setup";
+import {CrmAccountMap} from "./crm-account-map";
+import {CrmQuickVisit} from "./crm-quick-visit";
+import {CrmCommissionOnlyReview} from "./crm-commission-only-review";
+import {CrmCustomerActivity,CrmCustomerDocuments,CrmCustomerRepresentatives} from "./crm-customer-record-sections";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience } from "./hr-payroll-experiences";
@@ -38,6 +48,9 @@ import {ActionCenterExperience} from "./action-center-experience";
 import {WorkspaceHome} from "./workspace-home";
 import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
 import {WorkExceptionsExperience,CompletedWorkExperience} from "./work-review-experience";
+import {DealsDirectory,DealEditor} from "./crm-deals-experience";
+import {CrmContactsDirectory,CrmContactEditor} from "./crm-contacts-experience";
+import {useCrm} from "../../lib/crm-context";
 import type { Order } from "../../lib/types";
 
 function Empty({ children }: { children: ReactNode }) {
@@ -57,7 +70,7 @@ function Tabs({items,current,base}:{items:{key:string;label:string}[];current:st
     <button key={item.key} type="button" aria-current={current===item.key?"page":undefined} className={current===item.key?"is-active":""} onClick={()=>navigateToRoute(base+(item.key==="overview"?"":"/"+item.key))}>{item.label}</button>
   )}</nav>;
 }
-const CUSTOMER_TABS=[{key:"overview",label:"Overview"},{key:"comments",label:"Comments"},{key:"transactions",label:"Transactions"},{key:"mails",label:"Mails"},{key:"statements",label:"Statements"},{key:"locations",label:"Locations"}];
+const CUSTOMER_TABS=[{key:"overview",label:"Overview"},{key:"comments",label:"Comments"},{key:"transactions",label:"Transactions"},{key:"mails",label:"Mails"},{key:"statements",label:"Statements"},{key:"locations",label:"Locations"},{key:"documents",label:"Documents"},{key:"representatives",label:"Representatives"},{key:"activity",label:"Activity"}];
 const ITEM_TABS=[{key:"overview",label:"Overview"},{key:"transactions",label:"Transactions"},{key:"stock",label:"Stock Locations"},{key:"history",label:"History"}];
 const safeTab=(value:string|undefined,allowed:{key:string}[])=>(allowed.some(tab=>tab.key===value)?value:"overview")??"overview";
 
@@ -90,6 +103,7 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
   const repIds=[...new Set(scope.accounts.map(a=>a.ownerId).filter(Boolean))].sort((a,b)=>(names.get(a)??"").localeCompare(names.get(b)??""));
   const stages=[...new Set(scope.accounts.map(a=>a.stage))].sort();
   return <div><Heading title={leadMode?"Leads":"Accounts & Customers"} description="Searchable, filtered and sortable business locations. Open any record for its linked customer profile."/>
+  {leadMode&&<CrmLeadCreator/>}
   <section className="prototype-panel">
     <div className="prototype-controls">
       <label className="prototype-search"><Search size={16}/><input aria-label="Search businesses" placeholder="Business, location, contact, ZIP, rep" value={query} onChange={e=>setQuery(e.target.value)}/></label>
@@ -161,11 +175,28 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
 }
 
 function LeadRecord({id}:{id:string}){
-  const {scope,data}=useWorkspace();
+  const {scope,data,currentUser,transferAccountResponsibility,qualifyLead}=useWorkspace();
+  const {isDemo}=useRuntimeMode();
   const account=scope.accounts.find(a=>a.id===id&&["Prospect","Qualified","Sampled"].includes(a.stage));
+  const [qualificationReason,setQualificationReason]=useState("");
+  const [qualificationFeedback,setQualificationFeedback]=useState("");
+  const [newOwner,setNewOwner]=useState("");
+  const [handoffReason,setHandoffReason]=useState("");
+  const [handoffFeedback,setHandoffFeedback]=useState("");
+  const canQualify=isDemo&&momentumStorage.mode()==="local"&&!!currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role);
+  const canHandoff=isDemo&&momentumStorage.mode()==="local"&&!!currentUser&&["Administrator","Sales Manager"].includes(currentUser.role);
+  const eligibleReps=data.users.filter(u=>u.role==="Sales Representative"&&u.employmentStatus!=="Separated"&&u.id!==account?.ownerId);
+  const handoff=(event:React.FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(!canHandoff||!account||!eligibleReps.some(u=>u.id===newOwner)||handoffReason.trim().length<3){setHandoffFeedback("Choose an eligible representative and provide a reason of at least three characters.");return;}
+    const accepted=transferAccountResponsibility(account.id,newOwner,handoffReason.trim());
+    if(!accepted){setHandoffFeedback("Assignment rejected. Verify your role, representative eligibility, territory and account access.");return;}
+    setHandoffFeedback("Responsibility updated in this demonstration workspace. Historical order credit is unchanged.");
+    setNewOwner("");setHandoffReason("");
+  };
   const [activityQuery,setActivityQuery]=useState("");
   const [orderQuery,setOrderQuery]=useState("");
-  if(!account)return <div><Heading title="Lead unavailable" back="/crm/leads"/><Empty>Lead not found, no longer in the lead pipeline, or outside your authorized workspace.</Empty></div>;
+  if(!account)return <div><Heading title="Lead unavailable" description="No accessible lead record matched this link." back="/crm/leads"/><Empty>Lead not found, no longer in the lead pipeline, or outside your authorized workspace.</Empty></div>;
   const rep=data.users.find(u=>u.id===account.ownerId);
   const activities=scope.activities.filter(a=>a.accountId===id&&[a.title,a.detail].join(" ").toLowerCase().includes(activityQuery.trim().toLowerCase()))
     .sort((a,b)=>b.at.localeCompare(a.at)||a.id.localeCompare(b.id));
@@ -176,7 +207,33 @@ function LeadRecord({id}:{id:string}){
     <div className="prototype-columns"><section className="prototype-panel"><h2>Business and contact</h2>
       <dl className="prototype-facts"><div><dt>Location</dt><dd>{account.location}</dd></div><div><dt>ZIP</dt><dd>{account.postalCode||"Not recorded"}</dd></div><div><dt>Contact</dt><dd>{account.contactName||"Not recorded"}</dd></div><div><dt>Email</dt><dd>{account.email||"Not recorded"}</dd></div><div><dt>Phone</dt><dd>{account.phone||"Not recorded"}</dd></div></dl>
       <div className="prototype-controls"><OpenLink to={"/sales/customers/"+encodeURIComponent(id)}>Customer account</OpenLink>{account.contactName&&<OpenLink to={"/crm/contacts/"+encodeURIComponent(id)}>Contact detail</OpenLink>}</div>
-      <p className="prototype-note">Lead stage and ownership are sourced from the existing account record. Editing remains disabled until audited server authorization is available.</p>
+      <div className="prototype-controls"><OpenLink to="/crm/deals">Sales opportunities</OpenLink><OpenLink to="/crm/deals/new">Create a deal</OpenLink></div>
+
+      {canQualify&&<form className="prototype-panel" aria-label="Update lead qualification" onSubmit={event=>{
+        event.preventDefault();
+        const target=account.stage==="Prospect"?"Qualified":account.stage==="Qualified"?"Sampled":"Qualified";
+        const result=qualifyLead(account.id,target,qualificationReason);
+        setQualificationFeedback(result.ok?"Lead stage updated in the isolated CRM demonstration workspace.":(result.message??"Qualification rejected."));
+        if(result.ok)setQualificationReason("");
+      }}>
+        <h3>Qualify lead</h3>
+        <label>Next stage <select aria-label="Next lead qualification stage" value={account.stage==="Prospect"?"Qualified":account.stage==="Qualified"?"Sampled":"Qualified"} disabled>
+          {account.stage==="Prospect"?<option value="Qualified">Qualified</option>:account.stage==="Qualified"?<option value="Sampled">Sampled</option>:<option value="Qualified">Qualified (manager correction only)</option>}
+        </select></label>
+        <label>Qualification reason <textarea required minLength={5} maxLength={500} value={qualificationReason} onChange={event=>setQualificationReason(event.target.value)} placeholder="Evidence supporting this stage change"/></label>
+        <button type="submit" disabled={qualificationReason.trim().length<5}>Save stage</button>
+        {qualificationFeedback&&<p role="status">{qualificationFeedback}</p>}
+      </form>}
+
+      <p className="prototype-note">Lead stage is sourced from the existing account record. Stage editing remains disabled pending audited server authorization.</p>
+      {canHandoff&&<form className="prototype-panel" aria-label="Transfer lead responsibility" onSubmit={handoff}>
+        <h3>Reassign lead</h3>
+        <div className="prototype-controls"><SalesUserPicker label="New lead representative" users={eligibleReps} value={newOwner} onChange={id=>{setNewOwner(id);setHandoffFeedback("");}} allowUnassigned={false}/></div>
+        <label>Reason for reassignment <textarea required minLength={3} maxLength={500} value={handoffReason} onChange={e=>setHandoffReason(e.target.value)} /></label>
+        <button type="submit" disabled={!newOwner||handoffReason.trim().length<3}>Transfer responsibility</button>
+        {handoffFeedback&&<p role="status">{handoffFeedback}</p>}
+        <p className="prototype-note">Manager-only demonstration action. The existing authority engine validates eligibility and records the handoff in account activity. This does not alter historical sales credit.</p>
+      </form>}
     </section><section className="prototype-panel"><h2>Next visit</h2><p>Schedule a visit using the existing territory, role and calendar conflict checks.</p><LeadFollowupScheduler accountId={id} defaultDate={account.nextActionDate}/></section></div>
     <section className="prototype-panel"><h2>Activity history</h2><label className="prototype-search">Search activities <input aria-label="Search lead activity" value={activityQuery} onChange={e=>setActivityQuery(e.target.value)}/></label>
       {activities.map(a=><div className="prototype-activity" key={a.id}><strong>{a.title}</strong><span>{a.at.slice(0,10)} · {a.detail}</span></div>)}
@@ -225,7 +282,22 @@ function LeadFollowupScheduler({accountId,defaultDate}:{accountId:string;default
 }
 
 function CustomerRecord({id,section}:{id:string;section:string}){
-  const {scope,data}=useWorkspace();
+  const {scope,data,currentUser}=useWorkspace();
+  const {commerce}=useCommerce();
+  const runtime=useRuntimeMode();
+  const [statementSearch,setStatementSearch]=useState("");
+  const [statementFrom,setStatementFrom]=useState("");
+  const [statementThrough,setStatementThrough]=useState("");
+  const [statementSort,setStatementSort]=useState<"date"|"location"|"reference"|"type"|"status"|"debit"|"credit">("date");
+  const [statementAscending,setStatementAscending]=useState(false);
+  const [transactionSearch,setTransactionSearch]=useState("");
+  const [transactionFrom,setTransactionFrom]=useState("");
+  const [transactionThrough,setTransactionThrough]=useState("");
+  const [transactionSort,setTransactionSort]=useState<"number"|"location"|"date"|"cases"|"status"|"payment">("date");
+  const [transactionAscending,setTransactionAscending]=useState(false);
+  const [locationSearch,setLocationSearch]=useState("");
+  const [locationSort,setLocationSort]=useState<"location"|"zip"|"rep"|"id">("location");
+  const [locationAscending,setLocationAscending]=useState(true);
   const loc=scope.accounts.find(a=>a.id===id);
   if(!loc)return <Empty>Customer not found or not accessible to your account.</Empty>;
   // Only group by explicitly stored parent ID; never use name matching as evidence of shared ownership.
@@ -234,9 +306,52 @@ function CustomerRecord({id,section}:{id:string;section:string}){
   const ids=new Set(locations.map(a=>a.id));
   const orders=scope.orders.filter(o=>ids.has(o.accountId)&&!o.testOnly).sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
   const activities=scope.activities.filter(a=>a.accountId&&ids.has(a.accountId)).sort((a,b)=>b.at.localeCompare(a.at));
+  const visibleOrders=orders.filter(o=>
+    (!transactionFrom||o.placedAt.slice(0,10)>=transactionFrom)&&
+    (!transactionThrough||o.placedAt.slice(0,10)<=transactionThrough)&&
+    [o.number,o.status,o.paymentStatus,locations.find(a=>a.id===o.accountId)?.name??""].join(" ").toLowerCase().includes(transactionSearch.trim().toLowerCase()))
+    .sort((a,b)=>{
+      const field=(o:typeof a):number|string=>{
+        if(transactionSort==="location")return locations.find(loc=>loc.id===o.accountId)?.locationName??o.accountId;
+        if(transactionSort==="number")return o.number;
+        if(transactionSort==="cases")return o.cases;
+        if(transactionSort==="status")return o.status;
+        if(transactionSort==="payment")return o.paymentStatus;
+        return o.placedAt;
+      };
+      const x=field(a),y=field(b),compare=typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y),undefined,{numeric:true});
+      return (transactionAscending?1:-1)*(compare||a.id.localeCompare(b.id));
+    });
+  const visibleLocations=[...locations].filter(a=>
+    [a.locationName,a.name,a.postalCode,a.id,data.users.find(u=>u.id===a.ownerId)?.name].join(" ").toLowerCase().includes(locationSearch.trim().toLowerCase()))
+    .sort((a,b)=>{
+      const value=(a:typeof b)=>{
+        if(locationSort==="zip")return a.postalCode??"";
+        if(locationSort==="rep")return data.users.find(u=>u.id===a.ownerId)?.name??"Unassigned";
+        if(locationSort==="id")return a.id;
+        return a.locationName??a.name;
+      };
+      return (locationAscending?1:-1)*(value(a).localeCompare(value(b),undefined,{numeric:true})||a.id.localeCompare(b.id));
+    });
   const path="/sales/customers/"+encodeURIComponent(id),tab=safeTab(section,CUSTOMER_TABS);
   const label=parent?.name??loc.name;
-  return <div><Heading title={label} description="Linked customer profile • read-only architecture prototype" back="/sales/customers"/>
+  // Only local demo can project the full browser Commerce register.
+  // Connected employee/customer sessions must receive server-scoped finance data.
+  const finance=runtime.isDemo&&momentumStorage.mode()==="local"&&currentUser?.role!=="Customer"
+    ?projectCustomerFinance(commerce,orders,ids,new Map(locations.map(a=>[a.id,a.locationName??a.name])))
+    :null;
+  const statementRows=(finance?.statement??[])
+    .filter(row=>(!statementFrom||row.date>=statementFrom)&&(!statementThrough||row.date<=statementThrough))
+    .filter(row=>[row.location,row.reference,row.type,row.status].join(" ").toLowerCase().includes(statementSearch.trim().toLowerCase()))
+    .sort((a,b)=>{
+      const x=a[statementSort],y=b[statementSort];
+      const cmp=typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y),undefined,{numeric:true});
+      return (statementAscending?1:-1)*(cmp||a.reference.localeCompare(b.reference)||a.type.localeCompare(b.type));
+    });
+  const statementHeader=(key:typeof statementSort,label:string)=><th aria-sort={statementSort===key?(statementAscending?"ascending":"descending"):"none"}><button type="button" onClick={()=>{if(statementSort===key)setStatementAscending(v=>!v);else{setStatementSort(key);setStatementAscending(true);}}}>{label}</button></th>;
+  const transactionHeader=(key:typeof transactionSort,label:string)=><th aria-sort={transactionSort===key?(transactionAscending?"ascending":"descending"):"none"}><button type="button" onClick={()=>{if(transactionSort===key)setTransactionAscending(v=>!v);else{setTransactionSort(key);setTransactionAscending(true);}}}>{label}</button></th>;
+  const locationHeader=(key:typeof locationSort,label:string)=><th aria-sort={locationSort===key?(locationAscending?"ascending":"descending"):"none"}><button type="button" onClick={()=>{if(locationSort===key)setLocationAscending(v=>!v);else{setLocationSort(key);setLocationAscending(true);}}}>{label}</button></th>;
+  return <div><Heading title={label} description="Linked customer locations, activity and source-backed records" back="/sales/customers"/>
     <Tabs base={path} items={CUSTOMER_TABS} current={tab}/>
     {tab==="overview"&&<div className="prototype-columns"><section className="prototype-panel"><h2>Contact & billing details</h2>
       <dl className="prototype-facts"><div><dt>Primary contact</dt><dd>{loc.contactName||"Not recorded"}</dd></div><div><dt>Email</dt><dd>{loc.email||"Not recorded"}</dd></div><div><dt>Phone</dt><dd>{loc.phone||"Not recorded"}</dd></div>
@@ -248,11 +363,37 @@ function CustomerRecord({id,section}:{id:string;section:string}){
       {activities.length===0&&<Empty>No recorded activity.</Empty>}</section></div>}
     {tab==="comments"&&<section className="prototype-panel"><h2>Comments and notes</h2><p className="prototype-note">Existing account notes are displayed below. A dedicated audited internal comment thread requires its own write permissions.</p>
       {locations.map(a=><div key={a.id} className="prototype-activity"><strong>{a.locationName??a.name}</strong><span>{a.notes||"No recorded notes"}</span></div>)}</section>}
-    {tab==="transactions"&&<section className="prototype-panel"><h2>Sales transactions</h2><table className="prototype-table"><thead><tr><th>Order</th><th>Location</th><th>Date</th><th>Cases</th><th>State</th><th>Payment</th></tr></thead><tbody>{orders.map(o=><tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{locations.find(a=>a.id===o.accountId)?.locationName??locations.find(a=>a.id===o.accountId)?.location??"Unknown"}</td><td>{o.placedAt}</td><td>{o.cases}</td><td>{o.status}</td><td>{o.paymentStatus}</td></tr>)}</tbody></table>{!orders.length&&<Empty>No recorded sales orders.</Empty>}</section>}
+    {tab==="transactions"&&<section className="prototype-panel"><h2>Sales transactions</h2>
+      <div className="prototype-controls">
+        <label>Search orders <input type="search" aria-label="Search customer transactions" value={transactionSearch} onChange={e=>setTransactionSearch(e.target.value)}/></label>
+        <label>From <input type="date" aria-label="Customer transaction from" value={transactionFrom} onChange={e=>setTransactionFrom(e.target.value)}/></label>
+        <label>Through <input type="date" aria-label="Customer transaction through" value={transactionThrough} onChange={e=>setTransactionThrough(e.target.value)}/></label>
+      </div>
+      <table className="prototype-table"><thead><tr>{transactionHeader("number","Order")}{transactionHeader("location","Location")}{transactionHeader("date","Date")}{transactionHeader("cases","Cases")}{transactionHeader("status","State")}{transactionHeader("payment","Payment")}</tr></thead><tbody>{visibleOrders.map(o=><tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{locations.find(a=>a.id===o.accountId)?.locationName??locations.find(a=>a.id===o.accountId)?.location??"Unknown"}</td><td>{o.placedAt}</td><td>{o.cases}</td><td>{o.status}</td><td>{o.paymentStatus}</td></tr>)}</tbody></table>{!visibleOrders.length&&<Empty>No sales orders match this customer and filter.</Empty>}</section>}
     {tab==="mails"&&<section className="prototype-panel"><h2>Customer mail history</h2><Empty>No verified customer-linked outbound or inbound email history is available in this prototype. Gmail remains the company inbox, and the event-mail system requires approved server integration before it can populate this tab.</Empty></section>}
-    {tab==="statements"&&<section className="prototype-panel"><h2>Account statements</h2><Empty>Statements must be generated from reconciled invoices, payment allocations, credits, and opening balances in the accounting source. Order totals alone are not a valid customer statement, so no balance is estimated here.</Empty></section>}
+    {tab==="statements"&&<section className="prototype-panel"><h2>Customer statement</h2>
+      {!finance?<Empty>Statements require server-authorized invoice and payment access in connected mode. No amount is estimated from order totals.</Empty>:<>
+        <p className="prototype-note">Demo financial projection from this customer&apos;s accessible delivered orders, registered invoices, cleared allocated payments, applied credits and settled refunds. Opening balances and unreconciled adjustments are not included. Not an approved financial statement.</p>
+        <div className="prototype-metrics"><div><small>Invoices with verified order links</small><strong>{finance.invoices.length}</strong></div><div><small>Registered invoice balance</small><strong>{finance.openBalance.toLocaleString("en-US",{style:"currency",currency:"USD"})}</strong></div></div>
+        <div className="prototype-controls">
+          <label>Search statement <input type="search" aria-label="Search customer statement" value={statementSearch} onChange={e=>setStatementSearch(e.target.value)}/></label>
+          <label>From <input type="date" aria-label="Statement from date" value={statementFrom} onChange={e=>setStatementFrom(e.target.value)}/></label>
+          <label>To <input type="date" aria-label="Statement through date" value={statementThrough} onChange={e=>setStatementThrough(e.target.value)}/></label>
+          <button type="button" onClick={()=>setStatementAscending(v=>!v)}>Order: {statementAscending?"ascending":"descending"}</button>
+          <button type="button" disabled={!statementRows.length} onClick={()=>downloadCsv("momentum-customer-statement-"+loc.id+".csv",statementRows,customerStatementColumns)}>Save filtered statement CSV</button>
+        </div>
+        <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>{statementHeader("date","Date")}{statementHeader("location","Location")}{statementHeader("reference","Reference")}{statementHeader("type","Transaction")}{statementHeader("status","Status")}{statementHeader("debit","Debit")}{statementHeader("credit","Credit")}</tr></thead>
+          <tbody>{statementRows.map((row,i)=><tr key={row.reference+"-"+row.date+"-"+row.type+"-"+i}><td>{row.date}</td><td>{row.location}</td><td>{row.reference}</td><td>{row.type}</td><td>{row.status}</td><td>{row.debit?row.debit.toFixed(2):"—"}</td><td>{row.credit?row.credit.toFixed(2):"—"}</td></tr>)}</tbody>
+        </table></div>
+        {!statementRows.length&&<Empty>No verified financial events match this statement filter.</Empty>}
+      </>}
+    </section>}
     {tab==="locations"&&<section className="prototype-panel"><h2>Related locations</h2><p className="prototype-note">Only explicitly linked customer IDs are grouped. Same-name records are not merged automatically.</p>
-      <table className="prototype-table"><thead><tr><th>Location</th><th>ZIP</th><th>Assigned representative</th><th>Account ID</th></tr></thead><tbody>{locations.map(a=><tr key={a.id}><td>{a.locationName??a.name}</td><td>{a.postalCode??"Unknown"}</td><td>{data.users.find(u=>u.id===a.ownerId)?.name??"Unassigned"}</td><td className="prototype-small">{a.id}</td></tr>)}</tbody></table></section>}
+      <label>Search locations <input type="search" aria-label="Search related customer locations" value={locationSearch} onChange={e=>setLocationSearch(e.target.value)}/></label>
+      <table className="prototype-table"><thead><tr>{locationHeader("location","Location")}{locationHeader("zip","ZIP")}{locationHeader("rep","Assigned representative")}{locationHeader("id","Account ID")}</tr></thead><tbody>{visibleLocations.map(a=><tr key={a.id}><td>{a.locationName??a.name}</td><td>{a.postalCode??"Unknown"}</td><td>{data.users.find(u=>u.id===a.ownerId)?.name??"Unassigned"}</td><td className="prototype-small">{a.id}</td></tr>)}</tbody></table></section>}
+    {tab==="documents"&&<CrmCustomerDocuments customer={parent} locations={locations}/>}
+    {tab==="representatives"&&<CrmCustomerRepresentatives locations={locations}/>}
+    {tab==="activity"&&<CrmCustomerActivity locations={locations} canonicalActivities={activities}/>}
   </div>;
 }
 function matchingLines(order:Order,skuId:string){
@@ -294,57 +435,61 @@ function CalendarPreview({meetingsOnly}:{meetingsOnly:boolean}){
     <section className="prototype-panel"><h2>Staff meetings: next phase</h2><p>Authorized organizers will schedule a meeting, select attendees, check conflicts, send invitations, add it to each attendee calendar, and display a reminder on Home. This is not an active scheduler yet.</p></section>
   </div>;
 }
-type IncentiveSortField="name"|"locations"|"cases"|"rep";
 function IncentivePreview(){
   const {scope,data}=useWorkspace();
   const [query,setQuery]=useState("");
   const [repFilter,setRepFilter]=useState("all");
-  const [sort,setSort]=useState<IncentiveSortField>("name");
-  const [ascending,setAscending]=useState(true);
-  const names=new Map(data.users.map(u=>[u.id,u.name]));
-  const groups=new Map<string,{name:string;ids:Set<string>;reps:Set<string>}>();
-  // Only explicitly shared parent IDs are grouped. Names alone are not merge authority.
-  for(const loc of scope.accounts){
-    const key=loc.customerId??loc.id;
-    const group=groups.get(key)??{name:loc.name,ids:new Set<string>(),reps:new Set<string>()};
-    group.ids.add(loc.id);if(loc.ownerId)group.reps.add(loc.ownerId);
-    groups.set(key,group);
-  }
-  const entries=[...groups].map(([,g])=>{
-    const orders=scope.orders.filter(o=>g.ids.has(o.accountId)&&!o.testOnly&&o.status!=="Cancelled").sort((a,b)=>a.placedAt.localeCompare(b.placedAt));
-    const firstDate=orders[0]?.placedAt.slice(0,10);
-    const start=firstDate?new Date(firstDate+"T12:00:00Z").getTime():0;
-    const settled=orders.filter(o=>{
-      const day=orderFirstSettlementDate(data,o);
-      const ms=day?new Date(day+"T12:00:00Z").getTime():Infinity;
-      return Boolean(day&&ms>=start&&ms<=start+90*86400000&&ms<=Date.now());
-    });
-    return {id:[...g.ids].sort().join(":"),name:g.name,locations:g.ids.size,cases:settled.reduce((n,o)=>n+o.cases,0),repIds:[...g.reps]};
-  }).filter(e=>(repFilter==="all"||e.repIds.includes(repFilter))&&[e.name,...e.repIds.map(id=>names.get(id)??id)].join(" ").toLowerCase().includes(query.toLowerCase()))
-    .sort((a,b)=>{
-      const value=(e:typeof a)=>sort==="name"?e.name:sort==="rep"?e.repIds.map(id=>names.get(id)??id).join(", "):e[sort];
-      const ax=value(a),bx=value(b),comp=typeof ax==="number"&&typeof bx==="number"?ax-bx:String(ax).localeCompare(String(bx),undefined,{numeric:true});
-      return (ascending?1:-1)*(comp||a.id.localeCompare(b.id));
-    });
-  const reps=[...new Set(scope.accounts.map(a=>a.ownerId).filter(Boolean))].sort((a,b)=>(names.get(a)??"").localeCompare(names.get(b)??""));
-  const header=(key:IncentiveSortField,label:string)=><button type="button" aria-label={"Sort by "+label} onClick={()=>{if(sort===key)setAscending(v=>!v);else{setSort(key);setAscending(true);}}}>{label}<ArrowUpDown size={14}/></button>;
-  return <div><Heading title="Sales incentives" description="Continuous case-volume progress. Every eligible case increments the displayed value; no artificial 20-case milestone."/>
-    <section className="prototype-panel">
-      <p className="prototype-note">READ-ONLY PREVIEW: Case totals use the current modeled 90-day opening window and known settlement evidence. This is not a payroll approval, commission statement, or verified bonus award. Historical rep credit may differ from current assigned representatives.</p>
+  const [statusFilter,setStatusFilter]=useState("all");
+  const [sort,setSort]=useState<BonusProgressSort>("remaining");
+  const [direction,setDirection]=useState<BonusProgressDirection>("asc");
+  const names=useMemo(()=>new Map(data.users.map(u=>[u.id,u.name])),[data.users]);
+  const accounts=useMemo(()=>new Map(scope.accounts.map(a=>[a.id,a])),[scope.accounts]);
+  const allowedIds=useMemo(()=>new Set(scope.accounts.map(a=>a.id)),[scope.accounts]);
+  // Calculate per PHYSICAL location, never aggregate unrelated store orders into
+  // a single 40-case milestone merely because the stores share a billing parent.
+  const signals=useMemo(()=>evaluateSalesRepAccountBonuses(data)
+    .filter(signal=>allowedIds.has(signal.accountId)),[data,allowedIds]);
+  const held=useMemo(()=>acquisitionBonusHeldAccountIds(data),[data]);
+  const rows=useMemo(()=>accountBonusProgress(signals,{
+    repId:repFilter,
+    status:statusFilter==="all"?undefined:statusFilter as BonusMilestoneStatus,
+    accountSearch:query,sort,direction,
+    accountNames:new Map(scope.accounts.map(a=>[a.id,a.locationName??a.name])),
+    repNames:names,
+  }),[signals,repFilter,statusFilter,query,sort,direction,scope.accounts,names]);
+  const reps=[...new Set(signals.map(s=>s.repId))].sort((a,b)=>(names.get(a)??a).localeCompare(names.get(b)??b));
+  const header=(label:string,key:BonusProgressSort)=><button type="button" aria-label={"Sort incentives by "+label}
+    onClick={()=>{if(sort===key)setDirection(v=>v==="asc"?"desc":"asc");else{setSort(key);setDirection("asc");}}}>{label} <ArrowUpDown size={14}/></button>;
+  return <div><Heading title="Sales incentives" description="Separate 10-case opening and 40-case sustained milestones per physical customer location, with continuous settled-case progress toward 40."/>
+    <section className="prototype-panel" aria-label="Acquisition bonus progress">
+      <p className="prototype-note">Tracking only, not payroll authorization. A 10-case opening qualifies for the first approved milestone after verified settlement. The 40-case milestone includes the opening cases and additional qualifying paid cases inside the 90-day window. There is no 20-case bonus.</p>
       <div className="prototype-controls">
-        <label className="prototype-search"><Search size={16}/><input aria-label="Search business incentive progress" placeholder="Business or assigned representative" value={query} onChange={e=>setQuery(e.target.value)}/></label>
-        <label>Current assigned rep <select aria-label="Filter incentive progress by representative" value={repFilter} onChange={e=>setRepFilter(e.target.value)}>
-          <option value="all">All visible reps</option>{reps.map(id=><option key={id} value={id}>{names.get(id)??id}</option>)}
+        <label>Find account <input type="search" aria-label="Search incentive account" placeholder="Location or business name" value={query} onChange={e=>setQuery(e.target.value)}/></label>
+        <label>Credited representative <select aria-label="Filter incentives by historically credited representative" value={repFilter} onChange={e=>setRepFilter(e.target.value)}><option value="all">All accessible reps</option>{reps.map(id=><option value={id} key={id}>{names.get(id)??id}</option>)}</select></label>
+        <label>Milestone status <select aria-label="Filter incentive milestone status" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+          <option value="all">All</option>{(["Not started","Awaiting payment","Tracking","Earned","Window expired","Not qualified"] as BonusMilestoneStatus[]).map(status=><option key={status} value={status}>{status}</option>)}
         </select></label>
+        <label>Sort <select aria-label="Sort incentive records" value={sort} onChange={e=>setSort(e.target.value as BonusProgressSort)}><option value="remaining">Cases remaining</option><option value="cases">Settled cases</option><option value="account">Account</option><option value="representative">Historical representative</option><option value="deadline">Window deadline</option></select></label>
+        <button type="button" onClick={()=>setDirection(v=>v==="asc"?"desc":"asc")}>Order: {direction==="asc"?"ascending":"descending"}</button>
       </div>
+      <p role="status" className="prototype-note">{rows.length} matching store location{rows.length===1?"":"s"}, each with independent bonus evidence and historical attribution.</p>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
-        <th>{header("name","Business")}</th><th>{header("rep","Assigned reps")}</th><th>{header("locations","Locations")}</th><th>{header("cases","Settled cases")}</th><th>Continuous progress</th>
-      </tr></thead><tbody>{entries.map(e=><tr key={e.id}>
-        <td>{e.name}</td><td>{e.repIds.map(id=>names.get(id)??"Unassigned").join(", ")||"Unassigned"}</td><td>{e.locations}</td><td>{e.cases}</td>
-        <td><div role="progressbar" aria-label={"Case volume progress for "+e.name} aria-valuemin={0} aria-valuemax={40} aria-valuenow={Math.min(40,e.cases)} className="prototype-progress"><div style={{width:Math.min(100,(e.cases/40)*100)+"%"}}/></div><small>{e.cases} of 40 cases{e.cases>=40?" · 40-case threshold met":""}</small></td>
-      </tr>)}</tbody></table></div>
-      {!entries.length&&<Empty>No eligible visible businesses match your filters.</Empty>}
-    </section></div>;
+        <th>{header("Account","account")}</th><th>{header("Credited rep","representative")}</th><th>{header("Paid cases","cases")}</th><th>{header("Remaining","remaining")}</th><th>Progress to 40</th><th>Opening / sustained</th><th>{header("Deadline","deadline")}</th><th>Record</th>
+      </tr></thead><tbody>{rows.map(row=>{
+        const account=accounts.get(row.accountId);
+        const blocked=held.has(row.accountId);
+        return <tr key={row.accountId}>
+          <td>{account?.locationName??account?.name??row.accountId}<small className="prototype-description">{account?.streetAddress??account?.location??"Address unrecorded"}</small></td>
+          <td>{names.get(row.repId)??"Unverified"}</td><td>{row.settledCases}</td><td>{row.remainingCases}</td>
+          <td><div role="progressbar" aria-label={"40-case paid progress for "+(account?.name??row.accountId)} aria-valuemin={0} aria-valuemax={40} aria-valuenow={Math.min(40,row.settledCases)} className="prototype-progress"><div style={{width:row.percent+"%"}}/></div><small>{row.settledCases}/40 paid cases</small></td>
+          <td>{row.opening.status} / {row.sustained.status}{blocked&&<small className="prototype-description" role="alert">Payout hold: duplicate acquisition evidence needs administrator review</small>}</td>
+          <td>{row.windowEnd??"Not started"}</td><td><OpenLink to={"/sales/customers/"+encodeURIComponent(row.accountId)}>Open account</OpenLink></td>
+        </tr>;
+      })}</tbody></table></div>
+      {!rows.length&&<Empty>No incentive records match those filters.</Empty>}
+      <p className="prototype-note">Account identity, historical representative credit, plan eligibility, genuine cleared funds, prior payouts and possible consolidation duplicates must be reviewed before issuing pay. The display cannot approve or create a payment.</p>
+    </section>
+  </div>;
 }
 type ContactSortField="contactName"|"name"|"contactRole"|"email"|"phone"|"location"|"stage";
 function ContactsDirectory(){
@@ -374,6 +519,13 @@ function ContactsDirectory(){
 
 /** Contact records currently inherit the canonical location ID. Never invent an
  * independent person ID or infer that matching names are the same person. */
+
+/** Retain old account-ID contact deep links while independent contact IDs get real records. */
+function ContactRoute({id}:{id:string}){
+  const {crm}=useCrm();
+  return crm.contacts.some(contact=>contact.id===id)?<CrmContactEditor key={id} id={id}/>:<ContactRecord id={id}/>;
+}
+
 function ContactRecord({id}:{id:string}){
   const {scope,data}=useWorkspace();
   const account=scope.accounts.find(a=>a.id===id);
@@ -471,7 +623,7 @@ function CustomerPortalContent({section}:{section:string}){
     return <div><Heading title="My Invoices" description="Recorded documents for delivered orders linked to your authorized business account."/>
       <section className="prototype-panel">
        <p className="prototype-note">Only invoices tied to your authorized customer locations and orders recorded Delivered or Paid are shown. A recorded invoice is not proof of a separately emailed invoice or settled payment.</p>
-       <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search my invoices" value={invoiceQuery} onChange={event=>setInvoiceQuery(event.target.value)} placeholder="Invoice or order number"/></label><label>Status <select aria-label="Filter invoice status" value={invoiceStatus} onChange={event=>setInvoiceStatus(event.target.value)}><option value="all">All statuses</option>{invoiceStatuses.map(status=><option key={status} value={status}>{status}</option>)}</select></label><label>Sort <select aria-label="Sort my invoices" value={invoiceSort} onChange={event=>setInvoiceSort(event.target.value)}><option value="issued-desc">Newest issued</option><option value="issued-asc">Oldest issued</option><option value="due-asc">Due date</option><option value="balance-desc">Highest balance</option></select></label></div>
+       <div className="prototype-controls"><label className="prototype-search"><Search size={16}/><input aria-label="Search my invoices" value={invoiceQuery} onChange={event=>setInvoiceQuery(event.target.value)} placeholder="Invoice or order number"/></label><label>Status <select aria-label="Filter invoice status" value={invoiceStatus} onChange={event=>setInvoiceStatus(event.target.value)}><option value="all">All statuses</option>{invoiceStatuses.map(status=><option key={status} value={status}>{status}</option>)}</select></label><label>Sort <select aria-label="Sort my invoices" value={invoiceSort} onChange={event=>setInvoiceSort(event.target.value as "issued-desc"|"issued-asc"|"due-asc"|"balance-desc")}><option value="issued-desc">Newest issued</option><option value="issued-asc">Oldest issued</option><option value="due-asc">Due date</option><option value="balance-desc">Highest balance</option></select></label></div>
        <button type="button" disabled={!visibleRegister.length} onClick={()=>
          downloadCsv("momentum-my-invoices.csv",visibleRegister,
           ["invoiceNumber","orderNumber","recordedAt","dueDate","terms","total","balance","status"])}>
@@ -630,6 +782,10 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="admin"&&segments[1]==="employee-profiles"&&segments[2])return <HrPersonnelRecord id={decodeURIComponent(segments[2])} section={segments[3]}/>
   if(path==="/admin/employees")return <div><Heading title="Employee Directory" description="Administrator view of active staff."/><EmployeeDirectory/></div>;
   if(path==="/crm/territory-map")return <TerritoryMapPreview/>;
+  if(path==="/crm/account-health")return <CrmAccountHealth/>;
+  if(path==="/crm/account-setup")return <CrmAccountSetup/>;
+  if(path==="/crm/account-map")return <CrmAccountMap/>;
+  if(path==="/crm/quick-visit")return <CrmQuickVisit/>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
   if(path==="/work/approvals")return <OrderApprovalDirectory/>;
@@ -660,10 +816,18 @@ export function PrototypeOperationsHub(){
   if(path==="/sales/customers")return <AccountsDirectory/>;
   if(segments[0]==="crm"&&segments[1]==="leads"&&segments[2])return <LeadRecord id={decodeURIComponent(segments[2])}/>;
   if(path==="/crm/leads")return <AccountsDirectory leadMode/>;
-  if(segments[0]==="crm"&&segments[1]==="contacts"&&segments[2])return <ContactRecord id={decodeURIComponent(segments[2])}/>;
-  if(path==="/crm/contacts")return <ContactsDirectory/>;
+  if(path==="/crm/deals/new")return <DealEditor/>;
+  if(segments[0]==="crm"&&segments[1]==="deals"&&segments[2])return <DealEditor id={decodeURIComponent(segments[2])}/>;
+  if(path==="/crm/deals")return <DealsDirectory/>;
+  if(path==="/crm/contacts/new")return <CrmContactEditor/>;
+  if(segments[0]==="crm"&&segments[1]==="contacts"&&segments[2]){
+    const id=decodeURIComponent(segments[2]);
+    return <ContactRoute id={id}/>;
+  }
+  if(path==="/crm/contacts")return <CrmContactsDirectory/>;
   if(path==="/calendar"||path==="/calendar/meetings")return <CalendarPreview meetingsOnly={path.endsWith("/meetings")}/>;
   if(path==="/crm/incentives")return <IncentivePreview/>;
+  if(path==="/crm/commission-only")return <CrmCommissionOnlyReview/>;
   const item=routeEntry(path);
   return <div><Heading title={routeLabel(path)} description="Planned module • navigation prototype only"/><section className="prototype-panel">
     <h2>{item?.label??"Module"} workflow</h2>

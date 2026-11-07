@@ -41,6 +41,7 @@ type MutationResult = { ok: boolean; message?: string };
 type CrmContextValue = {
   crm: CrmState;
   addContact: (input: NewContact) => string;
+  updateContact: (id:string,patch:Partial<Pick<CrmContact,"name"|"role"|"email"|"phone"|"decisionRole"|"active">>)=>MutationResult;
   addInteraction: (input: NewInteraction) => string;
   addOpportunity: (input: NewOpportunity) => string;
   updateOpportunity: (id: string, patch: OpportunityUpdate) => MutationResult;
@@ -103,6 +104,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   }, [currentUser, customerIds, data, locationIds, salesRole, state]);
 
   const addContact = (input: NewContact) => {
+    if (!runtime.isDemo || momentumStorage.mode() !== "local") return "";
     if (!salesRole || !currentUser || !contactScopes.has(input.scope) || !decisionRoles.has(input.decisionRole) || typeof input.primary !== "boolean" || typeof input.active !== "boolean" || !customerInScope(input.customerId) || !input.name.trim() || !input.role.trim()) return "";
     const location = input.locationId ? data.accounts.find((item) => item.id === input.locationId) : undefined;
     if (input.scope === "Location" && (!location || !locationInScope(location.id) || location.customerId !== input.customerId)) return "";
@@ -121,7 +123,28 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     return id;
   };
 
+
+  const updateContact = (id:string, patch:Partial<Pick<CrmContact,"name"|"role"|"email"|"phone"|"decisionRole"|"active">>):MutationResult => {
+    const existing=state.contacts.find(contact=>contact.id===id);
+    if(!runtime.isDemo||momentumStorage.mode()!=="local"||!salesRole||!currentUser||!existing||existing.createdBy==="system"
+      ||!(existing.locationId?locationInScope(existing.locationId):customerInScope(existing.customerId))){
+      return {ok:false,message:"Contact is read-only or outside your authorized local-demo CRM scope."};
+    }
+    const name=(patch.name??existing.name).trim(),role=(patch.role??existing.role).trim();
+    if(!name||name.length>160||!role||role.length>100||!decisionRoles.has(patch.decisionRole??existing.decisionRole)){
+      return {ok:false,message:"Enter a valid contact name, title and decision role."};
+    }
+    const email=patch.email===undefined?existing.email:(patch.email.trim()||undefined);
+    if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return {ok:false,message:"Invalid contact email."};
+    const phone=patch.phone===undefined?existing.phone:(patch.phone.trim()||undefined);
+    if(phone&&phone.length>60)return {ok:false,message:"Contact phone is too long."};
+    const updated={...existing,...patch,name,role,email,phone};
+    setCrm(current=>({...current,contacts:current.contacts.map(contact=>contact.id===id?updated:contact)}));
+    return {ok:true};
+  };
+
   const addInteraction = (input: NewInteraction) => {
+    if (!runtime.isDemo || momentumStorage.mode() !== "local") return "";
     const quickVisit = isQuickVisitLocationId(input.locationId) && ["Visit", "Sample"].includes(input.type) && Boolean(input.quickVisitBusinessName?.trim());
     if (!salesRole || !currentUser || (!locationInScope(input.locationId) && !quickVisit) || !interactionTypes.has(input.type) || !input.summary.trim()) return "";
     if (input.contactId && (!locationInScope(input.locationId) || !contactMatchesLocation(state, input.contactId, input.locationId, data))) return "";
@@ -148,6 +171,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   };
 
   const addOpportunity = (input: NewOpportunity) => {
+    if (!runtime.isDemo || momentumStorage.mode() !== "local") return "";
     if (!salesRole || !currentUser || !locationInScope(input.locationId) || !customerInScope(input.customerId)) return "";
     const location = data.accounts.find((item) => item.id === input.locationId);
     if (!location || location.customerId !== input.customerId || input.stage === "Won" || input.stage === "Lost") return "";
@@ -163,6 +187,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   };
 
   const updateOpportunity = (id: string, patch: OpportunityUpdate): MutationResult => {
+    if (!runtime.isDemo || momentumStorage.mode() !== "local") return { ok: false, message: "Connected CRM updates require server-authorized persistence." };
     const existing = state.opportunities.find((item) => item.id === id);
     if (!salesRole || !existing || !locationInScope(existing.locationId)) return { ok: false, message: "Opportunity is outside your CRM scope." };
     const normalized = normalizeOpportunityTransition(existing, patch);
@@ -172,6 +197,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   };
 
   const recordResponsibility = (input: NewResponsibility) => {
+    if (!runtime.isDemo || momentumStorage.mode() !== "local") return "";
     if (!currentUser || !["Administrator", "Sales Manager"].includes(currentUser.role) || !locationInScope(input.locationId) || !input.reason.trim() || input.fromUserId === input.toUserId) return "";
     const location = data.accounts.find((item) => item.id === input.locationId);
     const target = data.users.find((user) => user.id === input.toUserId && ["Sales Representative", "Sales Manager"].includes(user.role));
@@ -183,9 +209,9 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   };
 
   const resetCrm = () => {
-    if (runtime.isDemo && currentUser?.role === "Administrator") setCrm(createCrmSeed(data));
+    if (runtime.isDemo && momentumStorage.mode() === "local" && currentUser?.role === "Administrator") setCrm(createCrmSeed(data));
   };
-  const value: CrmContextValue = { crm, addContact, addInteraction, addOpportunity, updateOpportunity, recordResponsibility, resetCrm };
+  const value: CrmContextValue = { crm, addContact, updateContact, addInteraction, addOpportunity, updateOpportunity, recordResponsibility, resetCrm };
   return <CrmContext.Provider value={value}>{children}</CrmContext.Provider>;
 }
 

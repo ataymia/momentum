@@ -529,3 +529,33 @@ For every run record: local date/time; main and review-branch SHAs; item number;
 - **Verification:** implementation and mandatory regression registration committed; fixed-final-SHA GitHub Actions CI, permission-scoped backend reads and browser/staging QA **PENDING**. No Automated-Verified, Accepted or Released claim.
 - **Security boundary:** projections require an upstream authenticated and server-authorized customer scope. UI filters and local demo data are not a server authorization boundary. Connected sessions fail closed with no financial register. Existing commerce seed/demo data must not be interpreted as authoritative production settlement.
 - **Next unblocked action:** run complete exact-SHA CI and repair failures, then build server-side customer account-scoped invoice/payment query and emulator role-isolation tests before enabling connected finance views.
+
+### November 6, 2026 06:15 Phoenix: CRM lead assignment review increment
+- Checklist C01/C03: **BUILT-UNVERIFIED** on review/rc-lead-assignment-2026-11-06-0615. Added manager/Admin-only demonstration lead reassignment with representative dropdown, required reason, canonical transferAccountResponsibility validation and recorded account activity. Existing history/order credit is preserved; rejected transfers display errors. No connected production edits.
+- Changed components/prototype/operations-hub.tsx and tests/lead-assignment-review.test.ts; implementation commit 8d1baa0d9788fbcdb6c6adba61abd13d86787e3b, test commit 588811d1acab53a8ae7d8b34c00125acc7c9e4cd. No automated CI evidence yet; browser/staging/user acceptance and release remain unverified. This is not complete CRM qualification or independent contact editing.
+- Next highest-value action: complete authorized lead qualification stage editing and persistence with backend permission tests in an approved isolated environment. No main modification, merge, deployment, communications, financial action or live data mutation.
+
+### November 6, 2026: Persistent review branch — complete Deals workspace slice
+- **Branch/PR:** Reused existing review/rc-lead-assignment-2026-11-06-0615 and draft PR #166. No additional per-run branch or PR, no main change.
+- **Checklist C04–C06:** BUILT-UNVERIFIED increment only. Replaced missing /crm/deals placeholder with opportunity register (search/status/stage/rep filters, sortable columns), /crm/deals/new with authenticated-workspace-location selector and validated local-demo create, and /crm/deals/:id with validated stage/status/loss reason edits, canonical customer/lead links, related orders, empty and error states. Existing CrmProvider addOpportunity/updateOpportunity and normalizeOpportunityTransition enforce canonical relationships; no fake deal revenue or historical order attribution. Connected business writes remain disabled.
+- **Files:** components/prototype/crm-deals-experience.tsx, components/prototype/operations-hub.tsx, lib/crm-deals-view.ts, tests/crm-deals-workflow.test.ts, package.json, this queue.
+- **Verification:** Source and pure projection regression tests added to mandatory logic suite. Exact final SHA CI, Firestore/Storage emulators, Functions/build, authenticated production persistence, cross-role browser/mobile/staging QA and owner acceptance remain pending. This is NOT an accepted/released production CRM workflow.
+- **Next unblocked product slice:** Complete independent CRM contacts (creation/detail/edit) and account/lead qualification with server-authorized persistence rather than more read-only filters.
+
+### November 6, 2026: Persistent review branch — independent Contacts workstream
+- **Reuse:** Same existing review branch and draft PR #166; no new PR or branch, no main modification.
+- **Checklist C02/C03:** BUILT-UNVERIFIED increment. Actual independent contact register, scoped search/status/decision role/sort, allowlisted CSV, new record form, separate contact deep links, edit/name/title/email/phone/active status for user-created contacts, account/lead and related-order/activity navigation. Preserves historical account-ID contact URLs. Reuses existing CrmProvider and canonical customer/location relations; generated seed contacts remain read-only to avoid false edits. No connected/live data writes.
+- **Files:** components/prototype/crm-contacts-experience.tsx, lib/crm-contacts-view.ts, lib/crm-context.tsx, components/prototype/operations-hub.tsx, tests/crm-contacts-workflow.test.ts, package.json, this queue.
+- **Quality gates:** new source/projection regressions registered for mandatory logic suite; exact SHA CI, full emulator/Functions tests, role browser/mobile QA, authenticated server-side connected CRUD and owner acceptance pending. NOT user accepted or released.
+- **Next slice:** server-authorized account/lead qualification edits and unified CRM workflow QA without introducing per-run branches.
+
+### November 6, 2026: Persistent review branch — lead qualification action
+- **Branch/PR:** Reused PR #166 and the existing review branch, without new feature branch/PR.
+- **Checklist C01/C03:** BUILT-UNVERIFIED increment. LeadRecord now provides a validated stage action with evidence reason for assigned rep or management, safe Prospect→Qualified→Sampled progression and manager-only Sampled→Qualified correction; rejects outside-scope actors and order/customer-stage regressions. Canonical account stage update is recorded in commercial account patch and audited activity. Local demonstration only; no live connected write. Existing rep reassignment and visit scheduling remain.
+- **Files:** lib/lead-qualification.ts, lib/workspace-context.tsx, components/prototype/operations-hub.tsx, tests/lead-qualification-workflow.test.ts, package.json and this queue.
+- **Remaining gates:** exact-SHA CI, end-to-end browser QA, server-authorized production persistence, stage/role emulators and owner acceptance. No item is User-Accepted or Released.
+
+### November 6, 2026: 98-item additive release-candidate acceptance index
+- Checked in docs/RELEASE_CANDIDATE_98_ACCEPTANCE_LEDGER.md with exactly A01–G10 (98 distinct product IDs) and FIX-CI-01–07 separated, automated ID/no-duplicate regression, without fabricating unavailable original descriptions or converting unknown historical statuses to Not Started.
+- **Partial CRM increments C01–C06 are NOT full checklist completions**. The acceptance stages remain blocked until owner criteria, exact-SHA build, isolated server authority and approved browser/staging QA are verified.
+- Same persistent review branch and existing PR #166; no main changes, merge, deployment or external writes.
