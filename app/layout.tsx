@@ -26,6 +26,7 @@ import "./mobile-sales-orders.css";
 import "./workspace-meetings.css";
 import "./personal-account.css";
 import "./crm-field-workflows.css";
+import "./interface-preferences.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 

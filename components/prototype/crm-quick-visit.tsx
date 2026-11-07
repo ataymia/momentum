@@ -97,12 +97,12 @@ export function CrmQuickVisit(){
     <p>Record a physical stop, prospect outcome, product sampling and a real follow-up date. Your existing business and visit history remain linked.</p>
   </header>
     <section className="prototype-panel"><h2>Log field visit</h2>
-      {!canWrite&&<p className="prototype-note" role="status">Read-only connected workspace. Local CRM logs cannot be mistaken for securely saved company records.</p>}
+      {!canWrite&&<p className="prototype-note" role="status">You may enter and review this visit, but connected CRM submission is not available until the authorized server write is enabled. Nothing entered here is saved to company records.</p>}
       <form aria-label="Record physical sales visit" onSubmit={submit}>
         <fieldset className="prototype-field-step">
           <legend><span className="prototype-field-step-number">1</span> Business visited</legend>
           <div className="prototype-columns">
-            <label>Business or store name <input value={business} required disabled={!canWrite} onChange={e=>{setBusiness(e.target.value);setSelectedId("");setFeedback("");}} placeholder="Search a location or enter an unlisted business"/></label>
+            <label>Business or store name <input value={business} required  onChange={e=>{setBusiness(e.target.value);setSelectedId("");setFeedback("");}} placeholder="Search a location or enter an unlisted business"/></label>
             <div className="prototype-field-match"><strong>{matched?"Matching customer record":"Account match"}</strong>
               {matched?<div><p>{matched.name} · {matched.location}</p><button className="prototype-link" type="button" onClick={()=>navigateToRoute("/sales/customers/"+encodeURIComponent(matched.id))}>Open linked customer record</button></div>
               :<p className="prototype-note">This visit is not yet linked to an existing account. Entering a name will not create a new customer.</p>}
@@ -113,19 +113,19 @@ export function CrmQuickVisit(){
         <fieldset className="prototype-field-step">
           <legend><span className="prototype-field-step-number">2</span> Visit outcome</legend>
           <div className="prototype-columns">
-            <label>Visit outcome <select disabled={!canWrite} value={unsuccessful?"unsuccessful":"successful"} onChange={e=>setUnsuccessful(e.target.value==="unsuccessful")}><option value="successful">Contact made or visit attempted</option><option value="unsuccessful">Unsuccessful physical visit</option></select></label>
-            <label>Prospect score (1–10) <input required disabled={!canWrite} type="number" min={1} max={10} step={1} value={score} onChange={e=>setScore(Number(e.target.value))}/></label>
-            <label className="prototype-field-full">Visit notes <textarea disabled={!canWrite} value={summary} onChange={e=>setSummary(e.target.value)} placeholder="What happened, who was present and what needs attention?"/></label>
+            <label>Visit outcome <select  value={unsuccessful?"unsuccessful":"successful"} onChange={e=>setUnsuccessful(e.target.value==="unsuccessful")}><option value="successful">Contact made or visit attempted</option><option value="unsuccessful">Unsuccessful physical visit</option></select></label>
+            <label>Prospect score (1–10) <input required  type="number" min={1} max={10} step={1} value={score} onChange={e=>setScore(Number(e.target.value))}/></label>
+            <label className="prototype-field-full">Visit notes <textarea  value={summary} onChange={e=>setSummary(e.target.value)} placeholder="What happened, who was present and what needs attention?"/></label>
           </div>
-          <label className="prototype-field-confirmation"><input type="checkbox" checked={physical} disabled={!canWrite} onChange={e=>setPhysical(e.target.checked)}/> <span>I confirm that I physically visited this business. This is an employee attestation, not GPS verification.</span></label>
+          <label className="prototype-field-confirmation"><input type="checkbox" checked={physical}  onChange={e=>setPhysical(e.target.checked)}/> <span>I confirm that I physically visited this business. This is an employee attestation, not GPS verification.</span></label>
         </fieldset>
         <fieldset className="prototype-field-step">
           <legend><span className="prototype-field-step-number">3</span> Follow-up and sampling</legend>
           <div className="prototype-columns">
-            <label>Next action <input disabled={!canWrite} value={nextAction} onChange={e=>setNextAction(e.target.value)} placeholder="Call buyer, schedule tasting, return with samples"/></label>
-            <label>Follow-up date <input type="date" disabled={!canWrite} value={nextActionDate} onChange={e=>setNextActionDate(e.target.value)}/></label>
-            <label>Golden Eagle sample (optional) <select disabled={!canWrite} value={sampleProduct} onChange={e=>setSampleProduct(e.target.value)}><option value="">No sample provided</option>{GOLDEN_EAGLE_SKUS.map(sku=><option key={sku.id} value={sku.description}>{sku.shortName}</option>)}</select></label>
-            {sampleProduct&&<label>Cans provided <input required disabled={!canWrite} min={1} max={10000} step={1} type="number" value={sampleQuantity} onChange={e=>setSampleQuantity(Number(e.target.value))}/></label>}
+            <label>Next action <input  value={nextAction} onChange={e=>setNextAction(e.target.value)} placeholder="Call buyer, schedule tasting, return with samples"/></label>
+            <label>Follow-up date <input type="date"  value={nextActionDate} onChange={e=>setNextActionDate(e.target.value)}/></label>
+            <label>Golden Eagle sample (optional) <select  value={sampleProduct} onChange={e=>setSampleProduct(e.target.value)}><option value="">No sample provided</option>{GOLDEN_EAGLE_SKUS.map(sku=><option key={sku.id} value={sku.description}>{sku.shortName}</option>)}</select></label>
+            {sampleProduct&&<label>Cans provided <input required  min={1} max={10000} step={1} type="number" value={sampleQuantity} onChange={e=>setSampleQuantity(Number(e.target.value))}/></label>}
           </div>
         </fieldset>
         <p className="prototype-note">Samples are field logs only and do not deduct warehouse inventory. Do not log calls, route plans or virtual meetings as physical visits. No external messages are sent.</p>
