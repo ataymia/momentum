@@ -138,7 +138,7 @@ export const CUSTOMER_MENU: MenuEntry[] = [
 export const DRIVER_MENU = [
   {label:"My Deliveries",path:"/driver/deliveries"},
   {label:"Delivery Requests",path:"/driver/requests"},
-  {label:"Route Map",path:"/driver/map"},
+  {label:"My Stops",path:"/driver/map"},
   {label:"Inventory",path:"/driver/inventory"},
   {label:"Time & HR",path:"/driver/time"},
   {label:"Employee Directory",path:"/driver/directory"},
@@ -232,6 +232,7 @@ export function routeLabel(path: string): string {
   if(clean==="/inventory/workflow")return "Inventory operations";
   if (clean.startsWith("/inventory/lots/")) return "Lot details";
   if (clean.startsWith("/inventory/shipments/")) return "Shipment details";
+  if (clean.startsWith("/inventory/locations/")) return "Warehouse location details";
   if (clean.startsWith("/sales/customers/")) return "Customer details";
   if (clean==="/sales/orders/workflow") return "Order operations";
   if(clean==="/sales/orders/new")return "Create sales order";
@@ -243,6 +244,7 @@ export function routeLabel(path: string): string {
   if (clean.startsWith("/sales/orders/")) return "Order details";
   if (clean.startsWith("/sales/invoices/")) return "Invoice details";
   if (clean.startsWith("/sales/payments/")) return "Payment details";
+  if (clean.startsWith("/purchases/")) return "Purchasing record details";
   if (clean.startsWith("/sales/returns/")) return "Return details";
   if (clean.startsWith("/sales/credit-notes/")) return "Credit note details";
   return clean === "/" ? "Home" : "Workspace";

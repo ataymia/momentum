@@ -15,6 +15,11 @@ import {
   activeReservedForOrder,orderOutboundQuantity,orderDeliveryQuantity,
 } from "../../lib/inventory-ledger";
 import {deliveryStatusForOrder,processedForDelivery,type DeliveryTask} from "../../lib/delivery-engine";
+import {reviewDeliveryCloseout} from "../../lib/fulfillment-closeout-review";
+import {buildPickListReview} from "../../lib/fulfillment-pick-review";
+import {arizonaDateKey} from "../../lib/date-time";
+import type {InventoryLedgerState} from "../../lib/inventory-ledger";
+import type {InventoryLot} from "../../lib/types";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {ShipmentWorkflowControls} from "./fulfillment-controls";
 import type {Order} from "../../lib/types";
@@ -150,13 +155,45 @@ export function ShipmentsDirectory(){
       <p className="prototype-note">Delivery proof is only complete when signature and inventory posting are verified. A field cash-collection note is not a settled payment.</p>
     </section></div>;
 }
+function PickListPanel({order,lots,ledger}:{order:Order;lots:InventoryLot[];ledger:InventoryLedgerState}){
+  const review=buildPickListReview(order,lots,ledger,arizonaDateKey());
+  const totalRequested=review.lines.reduce((n,l)=>n+l.orderedCases,0);
+  const totalReserved=review.lines.reduce((n,l)=>n+l.reservedCases,0);
+  return <section className="prototype-panel">
+    <h2>Warehouse picking review</h2>
+    <p className="prototype-note"><ShieldCheck size={14}/> Source-linked order SKU lines and active ledger reservations. This is NOT a physical packing slip, signed count, stock posting, or release authorization. Recheck lot best-by and condition before physically selecting cases.</p>
+    <div className="prototype-metrics">
+      <div><small>Ordered cases</small><strong>{totalRequested}</strong></div>
+      <div><small>Actively reserved cases</small><strong>{totalReserved}</strong></div>
+      <div><small>Products requiring review</small><strong>{review.lines.filter(l=>l.issues.length).length}</strong></div>
+    </div>
+    <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
+      <th>Ordered SKU</th><th>Ordered cases</th><th>Reserved cases</th><th>Not allocated</th><th>Reservation review</th>
+    </tr></thead><tbody>{review.lines.map(line=><tr key={line.product}>
+      <td>{line.product}</td><td>{line.orderedCases}</td><td>{line.reservedCases}</td><td>{line.unallocatedCases}</td>
+      <td>{line.status}{line.issues.length>0&&<p role="alert">{line.issues.join("; ")}</p>}</td>
+    </tr>)}</tbody></table></div>
+    <h3>Active lot reservations</h3>
+    <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
+      <th>Product</th><th>Lot / batch</th><th>Reserved cases</th><th>Warehouse cases</th><th>Total reserved</th><th>Best by</th><th>Review flags</th>
+    </tr></thead><tbody>{review.lines.flatMap(line=>line.reservations.map(r=><tr key={r.reservationId}>
+      <td>{line.product}</td><td><RecordLink path={"/inventory/lots/"+encodeURIComponent(r.lotId)}>{r.lotCode}</RecordLink></td>
+      <td>{r.cases}</td><td>{r.warehouseCases}</td><td>{r.allActiveReservedCases}</td><td>{r.bestBy||"Unknown"}</td>
+      <td>{r.issues.length?<span role="alert">{r.issues.join("; ")}</span>:"No review flag detected"}</td>
+    </tr>))}</tbody></table></div>
+    {!review.lines.some(line=>line.reservations.length)&&<p className="prototype-empty">No active lot reservations. An approved order is not evidence that inventory has been packed.</p>}
+    {review.unmatchedReservationIds.length>0&&<p role="alert" className="prototype-note">Unmatched reservation IDs need reconciliation before picking: {review.unmatchedReservationIds.join(", ")}. They were not silently allocated to another SKU.</p>}
+    <p className="prototype-note">Reservations may transition to Fulfilled after a recorded load. This section shows current active reservations only; use custody movements and the delivery task above for already-loaded orders.</p>
+  </section>;
+}
+
 export function ShipmentDetail({orderId}:{orderId:string}){
-  const {tasks,orders,accounts,users,ledger,state,currentUser}=useOperationalRecords();
+  const {tasks,orders,accounts,users,ledger,state,currentUser,scope}=useOperationalRecords();
   const order=orders.find(o=>o.id===orderId);
   const task=tasks.find(t=>t.orderId===orderId&&t.status!=="Cancelled")??tasks.find(t=>t.orderId===orderId);
   if(!order)return <p className="prototype-empty">Shipment order not found or access is restricted.</p>;
   if(!task)return <div><Title heading={"Prepare shipment for "+order.number} subtitle="No delivery task is currently assigned to this approved order." back="/inventory/shipments"/>
-    <ShipmentWorkflowControls order={order}/><Note/></div>;
+    <PickListPanel order={order} lots={scope.inventory} ledger={ledger}/><ShipmentWorkflowControls order={order}/><Note/></div>;
   const deliveredCases=orderDeliveryQuantity(ledger,order.id);
   const movements=ledger.movements.filter(m=>m.relatedOrderId===order.id);
   const verifiedSignature=Boolean(task.signature?.signedAt&&task.signature.strokes.length&&task.history.some(event=>event.type==="Delivered"&&event.actorId===task.signature?.capturedBy));
@@ -172,7 +209,7 @@ export function ShipmentDetail({orderId}:{orderId:string}){
         <div><dt>Departed</dt><dd>{showDate(task.departedAt)}</dd></div>
         <div><dt>Delivered</dt><dd>{showDate(task.deliveredAt)}</dd></div>
         <div><dt>Recipient proof</dt><dd>{verifiedSignature?"Recorded signature ("+showDate(task.signature?.signedAt)+")":"No verified task signature"}</dd></div>
-        <div><dt>Inventory posting</dt><dd>{deliveredCases>=order.cases?"Full order quantity posted":"Not fully posted"}</dd></div>
+        <div><dt>Inventory posting</dt><dd>{deliveredCases>order.cases+0.005?"Overposted: reconciliation required":deliveredCases>=order.cases?"Full order quantity posted":"Not fully posted"}</dd></div>
       </dl>
       {override&&currentUser?.role==="Administrator"&&<p className="prototype-note">Administrator override recorded {showDate(override.recordedAt)}. Reason: {override.reason}</p>}
       </section>
@@ -192,6 +229,7 @@ export function ShipmentDetail({orderId}:{orderId:string}){
       <div className="prototype-page-actionbar"><RecordLink path={"/sales/orders/"+encodeURIComponent(order.id)}>View sales order</RecordLink></div>
       <Note/>
     </section>
+    <PickListPanel order={order} lots={scope.inventory} ledger={ledger}/>
     <ShipmentWorkflowControls order={order} task={task}/>
   </div>;
 }
@@ -199,27 +237,55 @@ export function DeliveryOperationsDirectory(){
   const {orders,indexed,accounts,users,ledger,currentUser,state}=useOperationalRecords();
   const [query,setQuery]=useState("");
   const [filter,setFilter]=useState("all");
+  const [from,setFrom]=useState(""),[through,setThrough]=useState("");
+  const [exceptionsOnly,setExceptionsOnly]=useState(false);
+  const sort=useTableSort("placedAt");
   if(!currentUser||!["Administrator","Operations","Warehouse"].includes(currentUser.role))
     return <p className="prototype-empty">Use your assigned delivery workspace. Company-wide delivery operations are restricted.</p>;
-  const rows=orders.map(order=>({
-    order,task:indexed.get(order.id),status:deliveryStatusForOrder(state,order),
-    delivered:orderDeliveryQuantity(ledger,order.id),
-  })).filter(item=>filter==="all"||item.status===filter)
-    .filter(item=>[item.order.number,accounts.get(item.order.accountId)?.name,item.status,users.get(item.task?.driverId??"")].join(" ").toLowerCase().includes(query.toLowerCase()));
-  const options=[...new Set(rows.map(item=>item.status))].sort();
-  return <div><Title heading="Delivery Operations" subtitle="Company-level fulfillment overview: approved orders, assigned drivers, custody progress and delivery exceptions."/>
-    <Summary stats={[{label:"Visible approved or fulfilled orders",value:rows.length},{label:"Orders without an active delivery task",value:rows.filter(x=>!x.task).length},{label:"Orders with incomplete delivery posting",value:rows.filter(x=>x.task?.status==="Delivered"&&x.delivered<x.order.cases).length}]}/>
+  const summary=orders.map(order=>{
+    const task=indexed.get(order.id);const delivered=orderDeliveryQuantity(ledger,order.id);
+    const override=state.overrides.some(x=>x.orderId===order.id);
+    const review=reviewDeliveryCloseout({order,task,deliveredCases:delivered,
+      outboundCases:orderOutboundQuantity(ledger,order.id),administratorOverride:override});
+    return {order,task,delivered,proof:review.recipientProofRecorded,
+      complete:review.complete,issue:review.issueText,status:deliveryStatusForOrder(state,order)};
+  });
+  const statuses=[...new Set(summary.map(x=>x.status))].sort();
+  const rows=summary.filter(x=>filter==="all"||x.status===filter)
+    .filter(x=>!exceptionsOnly||Boolean(x.issue))
+    .filter(x=>(!from||x.order.placedAt.slice(0,10)>=from)&&(!through||x.order.placedAt.slice(0,10)<=through))
+    .filter(x=>[x.order.number,accounts.get(x.order.accountId)?.name,x.status,users.get(x.task?.driverId??""),x.issue].join(" ").toLowerCase().includes(query.toLowerCase()))
+    .sort((a,b)=>{
+      const value=(x:typeof a):string|number=>{switch(sort.field){
+        case "order":return x.order.number;
+        case "customer":return accounts.get(x.order.accountId)?.name??"";
+        case "cases":return x.order.cases;
+        case "driver":return users.get(x.task?.driverId??"")??"";
+        case "status":return x.status;
+        case "delivered":return x.delivered;
+        case "proof":return x.proof?"Recorded":"Missing";
+        case "issue":return x.issue??"";
+        default:return x.order.placedAt;
+      }};
+      return sortValue(value(a),value(b),sort.direction)||a.order.id.localeCompare(b.order.id);
+    });
+  const col=(key:string,label:string)=><Column key={key} keyName={key} name={label} sort={sort}/>;
+  return <div><Title heading="Delivery Operations" subtitle="Traceable orders, driver assignment, proof of delivery and inventory posting exceptions from existing records."/>
+    <Summary stats={[{label:"Orders in workflow",value:summary.length},{label:"Unassigned orders",value:summary.filter(x=>!x.task).length},{label:"Reconciliation exceptions",value:summary.filter(x=>Boolean(x.issue)).length},{label:"Delivered with recorded proof",value:summary.filter(x=>x.complete&&x.proof).length}]}/>
     <section className="prototype-panel"><div className="prototype-commerce-filters">
-      <SearchInput value={query} onChange={setQuery} placeholder="Search orders, accounts, drivers and delivery states"/>
+      <SearchInput value={query} onChange={setQuery} placeholder="Search orders, accounts, drivers or reconciliation issues"/>
       <label>Delivery state<select aria-label="Filter delivery operations" value={filter} onChange={e=>setFilter(e.target.value)}>
-        <option value="all">All delivery states</option>{options.map(x=><option key={x}>{x}</option>)}</select></label>
-    </div><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Customer</th><th>Cases</th><th>Driver</th><th>Delivery state</th><th>Delivered cases</th><th>Evidence</th></tr></thead><tbody>
-      {rows.map(x=><tr key={x.order.id}><td><RecordLink path={"/sales/orders/"+encodeURIComponent(x.order.id)}>{x.order.number}</RecordLink></td>
-        <td>{accounts.get(x.order.accountId)?.name??"Restricted"}</td><td>{x.order.cases}</td>
-        <td>{x.task?users.get(x.task.driverId)??"Historical driver":"Unassigned"}</td><td>{x.status}</td>
-        <td>{x.delivered}</td><td><RecordLink path={"/inventory/shipments/"+encodeURIComponent(x.order.id)}>{x.task?"Manage shipment":"Assign / review"}</RecordLink></td></tr>)}</tbody></table></div>
-      {!rows.length&&<p className="prototype-empty">No matching delivery orders.</p>}
+        <option value="all">All delivery states</option>{statuses.map(x=><option key={x}>{x}</option>)}</select></label>
+      <DateFilter start={from} setStart={setFrom} end={through} setEnd={setThrough}/>
+      <label className="prototype-driver-completed"><input type="checkbox" checked={exceptionsOnly} onChange={e=>setExceptionsOnly(e.target.checked)}/> Show exceptions only</label>
+    </div><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
+      {col("order","Order")}{col("customer","Customer")}{col("placedAt","Placed")}{col("cases","Cases")}{col("driver","Assigned driver")}{col("status","Delivery status")}{col("delivered","Posted cases")}{col("proof","Recipient proof")}{col("issue","Reconciliation")}</tr></thead><tbody>
+      {rows.map(x=><tr key={x.order.id}><td><RecordLink path={"/inventory/shipments/"+encodeURIComponent(x.order.id)}>{x.order.number}</RecordLink></td>
+        <td>{accounts.get(x.order.accountId)?.name??"Restricted"}</td><td>{showDate(x.order.placedAt)}</td><td>{x.order.cases}</td>
+        <td>{x.task?users.get(x.task.driverId)??"Recorded driver ID":"Unassigned"}</td><td>{x.status}</td>
+        <td>{x.delivered}</td><td>{x.proof?"Signature recorded":"Not verified"}</td><td>{x.issue??"No detected discrepancy"}</td></tr>)}</tbody></table></div>
+      {!rows.length&&<p className="prototype-empty">No recorded delivery orders match these filters.</p>}
       <Note/>
-      <p className="prototype-note">Management assignment, preparation and custody transitions are available only in a disconnected local demonstration. Customer signature, payment reconciliation and administrator overrides remain in existing authorized workflows.</p>
+      <p className="prototype-note">An administrator override is not a substitute for missing stock posting. Assignments, field signatures and stock movement changes remain in their authorized workflows. Legacy office Dispatch must stay available until route planning and exception parity pass acceptance testing.</p>
     </section></div>;
 }
