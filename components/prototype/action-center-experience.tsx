@@ -14,7 +14,7 @@ import {usePerformance} from "../../lib/performance-context";
 import {useWorkspace} from "../../lib/workspace-context";
 import {MeetingActionQueue} from "./workspace-meetings-experience";
 import {navigateToRoute} from "../../lib/navigation-store";
-import {routeForPage} from "../../lib/navigation-route-registry";
+import {canVisitRoute,routeForPage} from "../../lib/navigation-route-registry";
 
 const urgencyOrder:Record<ActionUrgency,number>={Blocking:0,Due:1,Review:2,Watch:3};
 const dateLabel=(raw?:string)=>raw&&Number.isFinite(Date.parse(raw))?
@@ -65,6 +65,11 @@ export function ActionCenterExperience(){
   const categories=[...new Set(actions.map(item=>item.category))].sort();
   return <div className="prototype-domain">
     <header className="prototype-heading"><h1>Action Center</h1><p>Open work requiring follow-up. Each entry comes from an existing approval, assignment, or operational source record.</p></header>
+    <div className="prototype-page-actionbar">
+      {canVisitRoute(currentUser,"/work/exceptions")&&<button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/work/exceptions")}>Review exceptions & risks</button>}
+      {canVisitRoute(currentUser,"/work/approvals")&&<button type="button" onClick={()=>navigateToRoute("/work/approvals")}>Open approval queue</button>}
+      <span className="prototype-note">Action Center summarizes outstanding work; decisions happen in the authorized source workflow.</span>
+    </div>
     <div className="prototype-domain-statbar">
       <article><small>Open action notices</small><strong>{actions.length}</strong></article>
       <article><small>Blocking</small><strong>{actions.filter(item=>item.urgency==="Blocking").length}</strong></article>
