@@ -65,7 +65,7 @@ async function userAccess(db:Firestore,uid:string):Promise<Row|undefined>{
   const snapshot=await db.collection("userAccess").doc(uid).get();
   return snapshot.data() as Row|undefined;
 }
-async function authenticate(request:Parameters<Parameters<typeof onRequest>[1]>[0]):Promise<Actor>{
+async function authenticate(request:{headers:{authorization?:string|string[]}}):Promise<Actor>{
   const bearer=str(request.headers.authorization);
   if(!bearer.startsWith("Bearer "))throw error(401,"Sign in to continue.");
   let token:{uid:string};
@@ -160,9 +160,9 @@ async function respond(db:Firestore,actor:Actor,body:Row,action:"rsvp"|"seen"){
     const at=new Date().toISOString();
     const rsvps=obj(old.rsvps)?{...old.rsvps}:{};
     rsvps[actor.uid]=str(body.response);
-    const revision=Number(old.revision)+1;
+    const revision=Number(old.revision);
     seenRevision[actor.uid]=revision;
-    const result={...old,rsvps,seenRevision,revision,updatedAt:at,history:[...(Array.isArray(old.history)?old.history:[]),history(actor,"RSVP",at,str(body.response))].slice(-200)};
+    const result={...old,rsvps,seenRevision,history:[...(Array.isArray(old.history)?old.history:[]),history(actor,"RSVP",at,str(body.response))].slice(-200)};
     tx.set(ref,result);
     return result;
   });
