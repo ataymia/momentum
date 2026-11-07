@@ -7,7 +7,7 @@
  */
 import {useMemo,useState} from "react";
 import {ArrowLeft,ArrowUpDown,Search} from "lucide-react";
-import {nodeLotBalance,warehouseNodeId} from "../../lib/inventory-ledger";
+import {nodeLotBalance,reservedQuantity,warehouseNodeId} from "../../lib/inventory-ledger";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useWorkspace} from "../../lib/workspace-context";
@@ -66,7 +66,7 @@ export function InventoryLocationsDirectory({id}:{id?:string}){
       <section className="prototype-panel"><h2>Physical lot custody</h2>
         <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Lot / batch</th><th>Product</th><th>Cases here</th><th>Best by</th><th>Quality status</th><th>Review exception</th></tr></thead><tbody>
         {balances.map(({lot,cases})=>{
-          const risk=reviewInventoryLot({bestBy:lot.bestBy,status:lot.status,warehouseOnHand:cases,reserved:selected.node.id===warehouseNodeId?lot.reserved:0},arizonaDateKey());
+          const risk=reviewInventoryLot({bestBy:lot.bestBy,status:lot.status,warehouseOnHand:cases,reserved:selected.node.id===warehouseNodeId?reservedQuantity(ledger,lot.id):0},arizonaDateKey());
           return <tr key={lot.id}><td><button type="button" className="prototype-link" onClick={()=>navigateToRoute("/inventory/lots/"+encodeURIComponent(lot.id))}>{lot.lotCode}</button></td><td>{lot.product}</td><td>{fmt(cases)}</td><td>{lot.bestBy||"Unknown"}</td><td>{lot.status}</td><td>{risk.summary}</td></tr>;
         })}</tbody></table></div>
         {!balances.length&&<p className="prototype-empty">No recorded custody quantity at this location.</p>}
