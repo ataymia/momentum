@@ -35,7 +35,7 @@ export function customerAccountIds(access:Row|undefined,directory:Row|undefined)
 }
 /**
  * Project scoped receivables and order history without returning raw shards.
- * @param {readonly string[]} ids Verified authorized location IDs.
+ * @param {string[]} ids Verified authorized location IDs.
  * @param {DocRows} docs Source records.
  * @param {number} limit Maximum visible entries.
  * @return {CustomerFinanceSnapshot} Sanitized record projection.
