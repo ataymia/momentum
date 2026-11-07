@@ -140,7 +140,9 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
     continue;
   }
   const balance=Math.max(0,amount-cleared-appliedCredits);
-  const status=balance===0?"Paid":balance<amount?"Partially paid":"Open";
+  // A browser-originated ledger flag is not independent bank settlement proof.
+  const status=balance===0?"Zero balance recorded (not bank verified)":
+    balance<amount?"Partial allocations recorded":"Open";
   statements.push({id:txt(invoice.id),accountId:txt(invoice.accountId),invoice:txt(invoice.number),
    date:dates(invoice.issuedAt),due:dates(invoice.dueDate),
    status,amount:price(amount),cleared:price(cleared),pending:price(pending),

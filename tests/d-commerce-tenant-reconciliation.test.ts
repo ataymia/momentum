@@ -31,4 +31,5 @@ test("D17 isolated fully allocated payment and balanced credit produce only link
  const one=result.statements.find(r=>r.id==="i1");
  const two=result.statements.find(r=>r.id==="i2");
  assert.equal(one?.balance,0);assert.equal(two?.balance,80);
+ assert.equal(one?.status,"Zero balance recorded (not bank verified)");
 });
