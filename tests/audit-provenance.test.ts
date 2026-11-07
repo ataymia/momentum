@@ -130,7 +130,8 @@ test("unverified system history is preserved for recovery but hidden from attrib
   assert.equal(state.events.length, 2);
   assert.equal(recoverableUnverifiedAuditEvents(state).length, 1);
   assert.equal(recoverableUnverifiedAuditEvents(state)[0].id, "audit-legacy");
-  assert.match(recoverableUnverifiedAuditEvents(state)[0].summary,/Unverified historical record/);
+  assert.equal(recoverableUnverifiedAuditEvents(state)[0].summary,legacy.summary);
+  assert.equal(recoverableUnverifiedAuditEvents(state)[0].at,legacy.at);
   const visible=visibleAuditEvents(admin,{users:[admin],accounts:[]} as never,state.events);
   assert.deepEqual(visible.map(event=>event.id),["audit-good-1"]);
   assert.equal(auditEventFingerprint(visible[0]), auditEventFingerprint(verified));
@@ -373,4 +374,20 @@ test("G04/G07: cache eviction cannot falsely label the last account editor as de
   const events=diffAuditableRecords(before,empty,
     {id:"system",role:"System"},"2026-11-06T18:00:00Z",[admin]);
   assert.deepEqual(events,[]);
+});
+
+test("G08: recovered unverified record keeps its original timestamp, actor and text",()=>{
+  const original={
+    id:"legacy-snapshot",at:"2026-11-02T12:00:00Z",actorId:"system",
+    actorRole:"System",action:"Updated" as const,module:"Workspace",
+    collection:"accounts",entityType:"Workspace.accounts",entityId:"acct-legacy",
+    label:"Market",summary:"Original imported note",sensitivity:"operational" as const,
+    changes:[{field:"updatedAt",before:"2026-10-01T01:00:00Z",after:"2026-10-03T01:00:00Z"}],
+  };
+  const recovered=normalizeAuditState({version:1,events:[original]}).events[0];
+  assert.equal(recovered.at,original.at);
+  assert.equal(recovered.actorId,original.actorId);
+  assert.equal(recovered.actorRole,original.actorRole);
+  assert.equal(recovered.summary,original.summary);
+  assert.equal(normalizeAuditState({version:1,events:[recovered]}).events[0].at,original.at);
 });
