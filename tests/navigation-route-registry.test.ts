@@ -13,7 +13,7 @@ function makeUser(role:Role):WorkspaceUser {
 
 test("department groups have distinct Human Resources and Marketing entries",()=>{
   assert.deepEqual(MENU_GROUPS.map(g=>g.label),[
-    "Workspace","Sales & CRM","Commerce","Operations","Human Resources",
+    "Workspace","Account","Sales & CRM","Commerce","Operations","Human Resources",
     "Marketing","Insights & Support","Administration"
   ]);
   assert.equal(MENU_GROUPS.some(g=>g.label==="People & Marketing"),false);
@@ -111,10 +111,14 @@ test("F07: copying a Campaigns URL cannot bypass the Marketing department access
  assert.equal(canVisitRoute(admin,"/marketing/campaigns"),true);
 });
 
-test("F01: Marketing has HR self-service access without HR administration access",()=>{
+test("F01/R05: Marketing employees have private Account self-service without HR administration access",()=>{
  const marketer=makeUser("Marketing");
- assert.equal(canShowModuleInMenu(marketer,"/people/leave"),true);
- assert.equal(canShowModuleInMenu(marketer,"/people/attendance"),true);
+ assert.equal(canShowModuleInMenu(marketer,"/my-account"),true);
+ assert.equal(canShowModuleInMenu(marketer,"/my-account/time-off"),true);
+ assert.equal(canShowModuleInMenu(marketer,"/my-account/pay"),true);
+ assert.equal(canShowModuleInMenu(marketer,"/people/leave"),false);
+ assert.equal(canShowModuleInMenu(marketer,"/people/attendance"),false);
  assert.equal(canShowModuleInMenu(marketer,"/people"),false);
  assert.equal(canShowModuleInMenu(marketer,"/people/new-hire"),false);
+ assert.equal(canVisitRoute(marketer,"/people/new-hire"),false);
 });
