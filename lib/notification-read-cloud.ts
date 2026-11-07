@@ -44,9 +44,13 @@ export function mergeReceiptBucket(
   requested:ReadonlySet<string>,
 ):ReceiptBucketDocument{
   if(existing&&(existing.userId!==uid||existing.bucket!==bucket))throw new Error("Notification receipt ownership mismatch.");
+  // A malformed stored receipt must block writes, never be silently filtered
+  // and replaced with a shorter list. That would resurrect old notifications.
+  if(existing&&(!Array.isArray(existing.ids)||existing.ids.some(id=>
+    typeof id!=="string"||!id||id.length>500)))throw new Error("Invalid stored receipt bucket; no overwrite performed.");
   const old=existing?parseReadReceipts(existing.ids):new Set<string>();
-  // A corrupted or mixed-bucket document cannot be silently reinterpreted.
-  if([...old].some(id=>receiptBucket(id)!==bucket))throw new Error("Notification receipt bucket mismatch.");
+  if(existing&&old.size!==existing.ids.length)throw new Error("Duplicate stored receipt IDs; no overwrite performed.");
+  if([...old,...requested].some(id=>receiptBucket(id)!==bucket))throw new Error("Notification receipt bucket mismatch.");
   const candidate=mergeReadReceipts(old,requested);
   if(candidate.size>MAX_RECEIPTS_PER_BUCKET)throw new Error("Notification receipt bucket capacity reached. Preserve existing receipts.");
   return{userId:uid,bucket,ids:[...candidate]};
