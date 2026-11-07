@@ -281,8 +281,8 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
   if(clean.startsWith("/purchases/")){
     const group=clean.split("/")[2];
     if(group==="receipts")return ["Administrator","Operations","Warehouse"].includes(user.role);
-    if(group==="orders")return ["Administrator","Operations"].includes(user.role);
-    return ["vendors","expenses","bills","payments","credits"].includes(group)&&user.role==="Administrator";
+    if(["orders","vendors","expenses","bills","credits"].includes(group))return ["Administrator","Operations"].includes(user.role);
+    return group==="payments"&&user.role==="Administrator";
   }
   if(clean==="/operations/deliveries" && !["Administrator","Operations","Warehouse"].includes(user.role)) return false;
   if (clean.startsWith("/admin/") && user.role!=="Administrator") return false;
