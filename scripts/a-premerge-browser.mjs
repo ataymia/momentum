@@ -59,9 +59,9 @@ try{
   await page.goto(base+"/sales/customers/acc-101",{waitUntil:"domcontentloaded"});
   await page.getByText("Desert Lantern Market").first().waitFor({timeout:20000});
   assert.equal(path(),"/sales/customers/acc-101");
-  await page.goto(base+"/sales/orders/%E0%A4%A",{waitUntil:"domcontentloaded"});
+  await page.goto(base+"/sales/orders/%2Fadmin",{waitUntil:"domcontentloaded"});
   await page.getByRole("heading",{name:"Page unavailable"}).waitFor({timeout:20000});
-  assert.equal(path(),"/sales/orders/%E0%A4%A");
+  assert.equal(path(),"/sales/orders/%2Fadmin");
 
   await page.locator(".user-button").click();
   await page.locator(".user-popover button").filter({hasText:"Customer Demo"}).click();
