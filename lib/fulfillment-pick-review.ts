@@ -5,7 +5,7 @@
  */
 import {nodeLotBalance,reservedQuantity,warehouseNodeId,type InventoryLedgerState} from "./inventory-ledger";
 import {orderLinesFor,productKey,productsEquivalent} from "./order-lines";
-import {reviewInventoryLot} from "./stock-health-review";
+import {compareFefo,reviewInventoryLot} from "./stock-health-review";
 import type {InventoryLot,Order} from "./types";
 
 export type PickReservationReview={
@@ -48,7 +48,7 @@ export function buildPickListReview(order:Order,lots:readonly InventoryLot[],led
         reservationId:reservation.id,lotId:lot.id,lotCode:lot.lotCode,cases:reservation.quantity,
         warehouseCases,allActiveReservedCases,bestBy:lot.bestBy,issues,
       };
-    }).sort((a,b)=>a.bestBy.localeCompare(b.bestBy)||a.lotCode.localeCompare(b.lotCode));
+    }).sort((a,b)=>compareFefo(a,b));
     const reservedCases=reservations.reduce((n,r)=>n+r.cases,0);
     const unallocatedCases=Math.max(0,group.orderedCases-reservedCases);
     const issues:string[]=[];
