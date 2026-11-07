@@ -38,7 +38,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Account Health", path: "/crm/account-health", permission: "accountHealth", state: "prototype" },
     { label: "Account Map", path: "/crm/account-map", permission: "salesMap", state: "existing" },
     { label: "Territory Map", path: "/crm/territory-map", permission: "salesMap", state: "prototype" },
-    { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "existing" },
+    { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "prototype" },
     { label: "Sales Incentives", path: "/crm/incentives", permission: "accounts", state: "prototype" },
     { label: "Territories & Routes", path: "/crm/territories", permission: "salesMap", state: "existing" },
   ] },
@@ -276,6 +276,7 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
     return ["Administrator","Sales Manager","Sales Representative","Operations"].includes(user.role)&&canAccessPage(user,"reports");
   if (clean==="/marketing/campaigns"||clean.startsWith("/marketing/campaigns/")) return user.role==="Administrator"&&canAccessPage(user,"marketing");
   if (clean==="/support/cases"||clean.startsWith("/support/cases/")) return ["Administrator","Operations","Sales Manager","Sales Representative"].includes(user.role)&&canAccessPage(user,"work");
+  if(clean==="/crm/self-delivery")return user.role==="Sales Representative";
   if (clean.startsWith("/portal/")) return false;
   if(clean==="/inventory/locations"||clean.startsWith("/inventory/locations/"))return ["Administrator","Operations","Warehouse"].includes(user.role);
   if(clean.startsWith("/purchases/")){
