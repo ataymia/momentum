@@ -1,5 +1,6 @@
 import type {WorkspaceData,CustomerAccount,Activity} from "./types";
 import {manualConsolidationCandidate} from "./account-consolidation-review";
+import {acquisitionBonusConsolidationHolds} from "./acquisition-bonus-consolidation";
 
 export type AccountAssociationRequest={
   accountIds:string[];
@@ -69,5 +70,12 @@ export function applyAccountAssociation(
   // Source records, including orders, appointments, payments (separate ledger)
   // and rep/bonus attribution, are intentionally left with their original IDs.
   const next:WorkspaceData={...data,customers,accounts,activities:[...additions,...data.activities]};
+  const held=acquisitionBonusConsolidationHolds(next)
+    .filter(conflict=>conflict.accountIds.some(id=>selected.has(id)));
+  // Don't create a new parent with ambiguous duplicate acquisition evidence.
+  // Existing earned/payable history is never deleted or automatically clawed back.
+  if(held.length)return {ok:false,message:"Association paused: potential duplicate acquisition evidence ("+
+    held.map(item=>item.accountIds.join("/")+" "+item.reason).join("; ")+
+    "). Resolve physical location and order identity before linking billing parents."};
   return {ok:true,data:next,parentId:parent.id,updatedAccountIds};
 }
