@@ -1078,3 +1078,33 @@ describe("historical correction and isolated sandbox authority",()=>{
     }
   });
 });
+
+describe("G02 owner-only, immutable notification receipt shards",()=>{
+  const shard=(who:string,owner:string,key="a")=>doc(dbFor(who),"notificationReadReceipts",owner,"buckets",key);
+  test("owner can read, create and append receipts; cannot erase or add unrelated fields",async()=>{
+    const owned=shard(REP,REP,"a");
+    await assertSucceeds(setDoc(owned,{userId:REP,bucket:"a",ids:["derived-action:approval:1"]}));
+    await assertSucceeds(getDoc(owned));
+    await assertSucceeds(getDocs(collection(dbFor(REP),"notificationReadReceipts",REP,"buckets")));
+    await assertSucceeds(setDoc(owned,{userId:REP,bucket:"a",ids:["derived-action:approval:1","derived-action:approval:2"]}));
+    await assertFails(setDoc(owned,{userId:REP,bucket:"a",ids:["derived-action:approval:2"]}));
+    await assertFails(deleteDoc(owned));
+    await assertFails(setDoc(owned,{userId:REP,bucket:"a",ids:["derived-action:approval:1","derived-action:approval:2"],secret:"no"}));
+  });
+  test("no manager, administrator, peer, or signed-out caller can observe or mark a different user's receipts",async()=>{
+    for(const who of [ADMIN,MANAGER,OTHER_REP,OPS,MARKETING]){
+      await assertFails(getDoc(shard(who,REP)));
+      await assertFails(getDocs(collection(dbFor(who),"notificationReadReceipts",REP,"buckets")));
+      await assertFails(setDoc(shard(who,REP),{userId:REP,bucket:"a",ids:["forged"]}));
+    }
+    await assertFails(getDoc(doc(dbFor(null),"notificationReadReceipts",REP,"buckets","a")));
+    await assertFails(setDoc(doc(dbFor(null),"notificationReadReceipts",REP,"buckets","a"),{userId:REP,bucket:"a",ids:["forged"]}));
+  });
+  test("invalid shard ID, forged owner and malformed payloads fail closed",async()=>{
+    await assertFails(setDoc(shard(REP,REP,"bad-name"),{userId:REP,bucket:"bad-name",ids:["a"]}));
+    await assertFails(setDoc(shard(REP,REP,"b"),{userId:OTHER_REP,bucket:"b",ids:["a"]}));
+    await assertFails(setDoc(shard(REP,REP,"c"),{userId:REP,bucket:"c",ids:"not-an-array"}));
+    await assertFails(setDoc(shard(REP,REP,"d"),{userId:REP,bucket:"d",ids:Array.from({length:801},(_,i)=>"receipt-"+i)}));
+    await assertFails(setDoc(shard(REP,REP,"e"),{userId:REP,bucket:"e",ids:[]}));
+  });
+});
