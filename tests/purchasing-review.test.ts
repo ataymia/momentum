@@ -133,7 +133,10 @@ test("approval and receipt references do not allow cancellation of posted purcha
 test("purchasing is gated to isolated demo and route-specific roles",()=>{
   const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
   const routes=readFileSync("lib/navigation-route-registry.ts","utf8");
-  assert.match(view,/runtime\.isDemo&&momentumStorage\.mode\(\)==="local"/);
+  assert.match(view,/runtime\.isDemo&&momentumStorage\.mode\(\)==="local"&&!firebaseSession/);
+  assert.match(view,/useFirebaseSessionOptional/);
+  assert.match(view,/useSyncExternalStore\(subscribeBrowser,clientSnapshot,serverSnapshot\)/);
+  assert.match(view,/if\(run\(action\)\)/);
   assert.match(view,/inventoryPosted:false|receipts do not increase sellable stock/);
   for(const route of ["vendors","expenses","orders","receipts","bills","payments","credits"])assert.match(routes,new RegExp("/purchases/"+route));
   assert.match(routes,/if\(clean\.startsWith\("\/purchases\/"\)\)/);
