@@ -39,6 +39,10 @@ try{
   await page.getByRole("heading",{name:"Deals",exact:true}).first().waitFor({timeout:20000});
   await screenshot("desktop-deals");
 
+  // The sidebar now defaults unrelated departments closed. Open Workspace
+  // explicitly rather than assuming its Meetings link is already mounted.
+  const workspaceGroup=nav().getByRole("button",{name:"Workspace",exact:true});
+  if(await workspaceGroup.getAttribute("aria-expanded")!=="true")await workspaceGroup.click();
   await entry("Meetings").click();
   assert.equal(path(),"/calendar/meetings");
   assert.equal(await entry("Meetings").getAttribute("aria-current"),"page");
@@ -111,6 +115,10 @@ try{
   await page.locator(".user-popover button").filter({hasText:"Owner Demo"}).click();
   await page.goto(base+"/crm/deals",{waitUntil:"domcontentloaded"});
   await nav().waitFor();
+  // Keep only the active department open before measuring phone visibility.
+  const workspaceAfterSwitch=nav().getByRole("button",{name:"Workspace",exact:true});
+  if(await workspaceAfterSwitch.getAttribute("aria-expanded")==="true")await workspaceAfterSwitch.click();
+  await page.getByRole("heading",{name:"Deals",exact:true}).first().waitFor({timeout:20000});
 
   await page.locator(".sidebar__collapse").click();
   await page.setViewportSize({width:768,height:1024});
