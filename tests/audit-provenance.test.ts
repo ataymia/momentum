@@ -3,6 +3,7 @@ import test from "node:test";
 import {readFileSync} from "node:fs";
 import {
   auditEventFingerprint,
+  auditPersistencePreservesSource,
   collectAuditableRecords,
   diffAuditableRecords,
   mergeAuditSnapshots,
@@ -435,4 +436,40 @@ test("G08: two distinct historical event IDs with identical content survive norm
     changes:[{field:"stage",before:"Prospect",after:"Qualified"}]};
   const normalized=normalizeAuditState({version:1,events:[{...common,id:"event-first"},{...common,id:"event-second"}]});
   assert.deepEqual(normalized.events.map(x=>x.id),["event-first","event-second"]);
+});
+
+test("G08: persistence guard refuses a rewrite that would silently erase malformed or omitted history",()=>{
+  const source={version:1,events:[{
+    id:"old-1",at:"2026-11-02T02:00:00.000Z",actorId:"admin-1",
+    actorRole:"Administrator",action:"Updated",module:"Workspace",
+    collection:"accounts",entityType:"Workspace.accounts",entityId:"acc-1",
+    label:"Account",summary:"Original",changes:[{field:"name",before:"A",after:"B"}],
+  }]};
+  const recovered=normalizeAuditState(source);
+  assert.equal(auditPersistencePreservesSource(JSON.stringify(source),recovered),true);
+  assert.equal(auditPersistencePreservesSource(JSON.stringify(source),{version:1,events:[]}),false);
+  assert.equal(auditPersistencePreservesSource(JSON.stringify(source),{...recovered,
+    events:recovered.events.map(e=>({...e,changes:[]}))}),false);
+  assert.equal(auditPersistencePreservesSource(JSON.stringify(source),{...recovered,
+    events:recovered.events.map(e=>({...e,actorId:"different-user"}))}),false);
+  assert.equal(auditPersistencePreservesSource("not-json",recovered),false);
+  assert.equal(auditPersistencePreservesSource(null,recovered),true);
+  assert.equal(auditPersistencePreservesSource(JSON.stringify({
+    version:1,events:[...source.events,{...source.events[0],id:"old-broken",changes:[null]}],
+  }),recovered),false);
+});
+
+test("G08: changes used for provenance guesses never mutate original source attribution",()=>{
+  const source={version:1,events:[{
+    id:"old-2",at:"2026-11-02T02:00:00.000Z",actorId:"admin-1",
+    actorRole:"Administrator",action:"Updated",module:"Workspace",
+    collection:"accounts",entityType:"Workspace.accounts",entityId:"acc-1",
+    label:"Account",summary:"Original",changes:[
+      {field:"updatedAt",after:"2026-11-06T22:00:00.000Z"},
+    ],
+  }]};
+  const result=normalizeAuditState(source);
+  assert.equal(result.events[0].at,"2026-11-02T02:00:00.000Z");
+  assert.equal(result.events[0].actorId,"admin-1");
+  assert.equal(auditPersistencePreservesSource(JSON.stringify(source),result),true);
 });
