@@ -15,6 +15,7 @@ import { attachFirestorePersistence, detachFirestorePersistence, momentumStorage
 import {recordPerformanceSample} from "./performance-diagnostics";
 import type { Role, Team, WorkspaceUser } from "./types";
 import { normalizeUsername, usernameProblem } from "./username";
+import {recordSalesInteractiveSignIn} from "./sales-inactivity-client";
 
 export type FirebaseSessionStatus="unconfigured"|"initializing"|"signed-out"|"no-access"|"loading-workspace"|"ready"|"error";
 export type ActionResult={ok:boolean;message?:string};
@@ -189,6 +190,8 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
         ?await signInWithFirebasePassword(login.email,password)
         :await signInWithUsername(login.username,password);
       setSession(active);
+      // Only genuine credential-based sign-ins reach this path; session restoration does not.
+      await recordSalesInteractiveSignIn(active).catch(()=>undefined);
       await loadWorkspace(active);
       return{ok:true};
     }catch(caught){

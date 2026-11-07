@@ -32,6 +32,7 @@ import {MeetingProvider} from "../lib/workspace-meetings-store";
 import { WorkspaceProvider, useWorkspace } from "../lib/workspace-context";
 import { AppShell } from "./app-shell";
 import { DeparturePrompt } from "./field-tracking/departure-prompt";
+import { SalesInactivityGuard } from "./field-tracking/sales-inactivity-guard";
 import { FirebaseGate } from "./firebase-gate";
 import {FormValidationListener} from "./form-validation-listener";
 import { OnboardingPortal } from "./hcm/onboarding-portal";
@@ -71,7 +72,7 @@ function MomentumExperience(){
     onboardingState:currentRecord?.state,
   });
   if(entry!=="Workspace")return <OnboardingPortal/>;
-  return <><AppShell/><DeparturePrompt/></>;
+  return <SalesInactivityGuard><AppShell/><DeparturePrompt/></SalesInactivityGuard>;
 }
 
 function MomentumProviders(){

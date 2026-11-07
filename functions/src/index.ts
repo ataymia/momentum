@@ -21,6 +21,7 @@ import {
 import {submitDeliveryCorrection,approveDeliveryCorrection,closeDeliveryCorrection,listDeliveryCorrections,DeliveryCorrectionError} from "./delivery-correction";
 import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
+import {operateLocationPermissionRequest,LocationPermissionRequestError} from "./location-permission-request";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -1664,6 +1665,25 @@ export const closeDeliveredOrderCorrection=onRequest({
     }
     console.error("closeDeliveredOrderCorrection failed",error);
     json(response,502,{ok:false,message:"Correction remains pending. Refresh before retrying."});
+  }
+});
+
+/** Employee-controlled geolocation recovery request. Administrator cannot remotely prompt GPS. */
+export const locationPermissionRequestWorkflow=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await operateLocationPermissionRequest(actor,request.body);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof LocationPermissionRequestError){json(response,error.status,{ok:false,message:error.message});return;}
+    console.error("locationPermissionRequestWorkflow failed",error);
+    json(response,502,{ok:false,message:"Permission request was not confirmed. Refresh and retry."});
   }
 });
 
