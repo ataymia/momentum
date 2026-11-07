@@ -4,7 +4,7 @@ import type { WorkspaceData, WorkspaceUser } from "./types";
 export const AUDIT_STORAGE_KEY = "momentum-audit-v1";
 export type AuditSensitivity = "operational" | "manager" | "admin";
 export type AuditChange = { field: string; before?: string; after?: string };
-export type AuditEvent = { id: string; at: string; actorId: string; actorRole: string; action: "Created" | "Updated" | "Deleted"; module: string; collection: string; entityType: string; entityId: string; label: string; summary: string; sensitivity: AuditSensitivity; relatedAccountId?: string; relatedUserId?: string; changes: AuditChange[]; provenanceStatus?: "verified" | "unverified-legacy" };
+export type AuditEvent = { id: string; at: string; actorId: string; actorRole: string; action: "Created" | "Updated" | "Deleted"; module: string; collection: string; entityType: string; entityId: string; label: string; summary: string; sensitivity: AuditSensitivity; relatedAccountId?: string; relatedUserId?: string; changes: AuditChange[]; provenanceStatus?: "verified" | "source-reported" | "unverified-legacy" };
 export type AuditState = { version: 1; events: AuditEvent[] };
 export type AuditSnapshot = { key: string; module: string; collection: string; entityType: string; entityId: string; label: string; sensitivity: AuditSensitivity; relatedAccountId?: string; relatedUserId?: string; payload: Record<string, unknown> };
 
@@ -118,9 +118,9 @@ export function normalizeAuditState(input: unknown): AuditState {
       id: event.id,
       // Unverified history is evidence to preserve, not to silently rewrite.
       // An authenticated event already carrying provenance must keep its source time.
-      at: unverifiedLegacy || event.provenanceStatus==="verified" ? event.at : repaired.at,
-      actorId: unverifiedLegacy || event.provenanceStatus==="verified" ? event.actorId : repaired.actorId,
-      actorRole: unverifiedLegacy || event.provenanceStatus==="verified" ? event.actorRole : repaired.actorRole,
+      at: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.at : repaired.at,
+      actorId: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.actorId : repaired.actorId,
+      actorRole: unverifiedLegacy || Boolean(event.provenanceStatus) ? event.actorRole : repaired.actorRole,
       action: event.action,
       module: event.module,
       collection: event.collection,
@@ -128,7 +128,7 @@ export function normalizeAuditState(input: unknown): AuditState {
       entityId: event.entityId,
       label: event.label,
       summary: event.summary, // Raw legacy summary belongs in the recovery archive unchanged.
-      provenanceStatus: unverifiedLegacy ? "unverified-legacy" : "verified",
+      provenanceStatus: unverifiedLegacy ? "unverified-legacy" : event.provenanceStatus==="verified" ? "verified" : "source-reported",
       sensitivity: sensitivityFor(event.module, event.collection),
       relatedAccountId: typeof event.relatedAccountId === "string" ? event.relatedAccountId : undefined,
       relatedUserId: typeof event.relatedUserId === "string" ? event.relatedUserId : undefined,
@@ -445,7 +445,7 @@ export function diffAuditableRecords(
       at: provenance.at,
       actorId: provenance.actorId,
       actorRole,
-      provenanceStatus: "verified",
+      provenanceStatus: "source-reported",
       action,
       module: snapshot.module,
       collection: snapshot.collection,
