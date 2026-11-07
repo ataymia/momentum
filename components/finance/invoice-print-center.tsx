@@ -92,22 +92,6 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       setPrintNotice("Select at least one invoice to print.");
       return;
     }
-    // Never print a customer-facing invoice with an unconfirmed trading name.
-    const missing=unique.filter(id=>{
-      const invoice=invoices.find(row=>row.id===id);
-      const location=data.accounts.find(row=>row.id===invoice?.accountId);
-      const customer=location?customerForLocation(data,location):null;
-      return !legalBillingName(customer);
-    });
-    if(missing.length){
-      setPrintNotice(`Add the licensed legal business name to the account profile before printing ${missing.length} invoice(s).`);
-      return;
-    }
-    const archived=unique.filter(id=>invoices.find(invoice=>invoice.id===id)?.status==="Void");
-    if(archived.length){
-      setPrintNotice("Voided invoices are historical records. Print the active amended revision instead.");
-      return;
-    }
     if (typeof window.print !== "function") {
       setPrintNotice("This browser does not expose a print dialog. Open the invoice preview in a browser that supports printing.");
       return;
@@ -155,7 +139,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
 
       <section className="invoice-sheet__legacy-grid">
         <div><small>FROM</small><strong>{company.name}</strong><span>{company.street}</span><span>{company.cityStateZip}</span><span>{company.phone} · {company.attention}</span><span>{company.salesEmail}</span></div>
-        <div><small>BILL TO</small><strong>{legalBillingName(customer)??"Legal business name required"}</strong>{billToAddress && <span>{billToAddress}</span>}{apName && <span>A/P: {apName}</span>}{apPhone && <span>{apPhone}{apExtension ? ` ext. ${apExtension}` : ""}</span>}{apEmail && <span>{apEmail}</span>}{customer?.az5000Number && <span>AZ-5000: {customer.az5000Number}</span>}</div>
+        <div><small>BILL TO</small><strong>{legalBillingName(customer) ?? customer?.name ?? location?.name ?? ""}</strong>{billToAddress && <span>{billToAddress}</span>}{apName && <span>A/P: {apName}</span>}{apPhone && <span>{apPhone}{apExtension ? ` ext. ${apExtension}` : ""}</span>}{apEmail && <span>{apEmail}</span>}{customer?.az5000Number && <span>AZ-5000: {customer.az5000Number}</span>}</div>
         <div><small>SHIP TO</small><strong>{location ? locationLabel(location) : "Customer location"}</strong>{shipToAddress && <span>{shipToAddress}</span>}{location?.contactName && <span>{location.contactName}{location.contactRole ? ` · ${location.contactRole}` : ""}</span>}{location?.phone && <span>{location.phone}</span>}</div>
         
       </section>
