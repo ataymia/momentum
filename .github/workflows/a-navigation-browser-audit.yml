@@ -8,6 +8,9 @@ on:
     paths:
       - .github/workflows/a-navigation-browser-audit.yml
       - scripts/a-premerge-browser.mjs
+      - components/prototype/operations-hub.tsx
+      - lib/navigation-route-registry.ts
+      - components/app-shell-v4.tsx
   workflow_dispatch:
 
 permissions:
