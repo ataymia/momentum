@@ -27,3 +27,16 @@ test("tax identity guards reject invalid tax IDs without claiming signature comp
  assert.match(source(),/Tax-document route is informational|Tax document route/);
  assert.match(source(),/previously reviewed external package state/);
 });
+
+test("Account Setup now starts with new business creation and preserves existing identity completion",()=>{
+ const sourceCode=source();
+ assert.match(sourceCode,/useState<"new"\|"existing">\("new"\)/);
+ assert.match(sourceCode,/validateLeadCreateDraft\(draft,scope\.accounts\)/);
+ assert.match(sourceCode,/createAccount\(result\.payload,result\.territoryReason\)/);
+ assert.match(sourceCode,/setMode\("existing"\)/);
+ assert.match(sourceCode,/setAccountId\(id\)/);
+ assert.match(sourceCode,/aria-label="Create new customer account"/);
+ assert.match(sourceCode,/aria-label="Customer account setup"/);
+ assert.match(sourceCode,/duplicateId&&/);
+ assert.match(sourceCode,/No pricing, orders, bonuses, tax verification or external commitments/);
+});
