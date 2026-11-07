@@ -1,4 +1,5 @@
 import type { Order, WorkspaceData } from "./types";
+import {arizonaDateKey} from "./date-time";
 
 export const SALES_REP_ACCOUNT_BONUS_RULE = {
   openingOrderCases: 10,
@@ -27,8 +28,17 @@ export function orderFirstSettlementDate(data:WorkspaceData,order:Order){
   return undefined;
 }
 
+/** A credited case is eligible only when the entire order is reported Paid AND
+ * a settlement timestamp is recorded. The first partial cash application alone
+ * does not qualify 100% of an order's cases. Use the final paid date when known.
+ */
+export function orderQualifyingPaidDate(data:WorkspaceData,order:Order){
+  if(order.paymentStatus!=="Paid")return undefined;
+  return order.paidAt?.slice(0,10)||orderFirstSettlementDate(data,order);
+}
+
 export function evaluateSalesRepAccountBonuses(data:WorkspaceData,asOf=new Date()):BonusMilestone[]{
-  const rule=SALES_REP_ACCOUNT_BONUS_RULE;const repIds=new Set(data.users.filter((user)=>user.role==="Sales Representative").map((user)=>user.id));const asOfKey=dateKey(asOf);const signals:BonusMilestone[]=[];
+  const rule=SALES_REP_ACCOUNT_BONUS_RULE;const repIds=new Set(data.users.filter((user)=>user.role==="Sales Representative").map((user)=>user.id));const asOfKey=arizonaDateKey(asOf);const signals:BonusMilestone[]=[];
   for(const account of data.accounts){
     // Cancelled and synthetic QA orders cannot establish a bonus-earning opening
     // or inflate the 40-case paid-sales milestone.
@@ -44,8 +54,8 @@ export function evaluateSalesRepAccountBonuses(data:WorkspaceData,asOf=new Date(
       : !firstOrder&&repIds.has(account.ownerId)?account.ownerId:undefined;
     if(!historicalRepId)continue;
     if(!firstOrder){signals.push({id:`bonus-${account.id}-opening`,accountId:account.id,repId:historicalRepId,milestone:"Opening order",amount:rule.openingBonusAmount,thresholdCases:rule.openingOrderCases,observedCases:0,status:"Not started",evidenceOrderIds:[],ruleNote:`The first order must be at least ${rule.openingOrderCases} cases and its payment must settle before the opening bonus is earned.`});signals.push({id:`bonus-${account.id}-sustained`,accountId:account.id,repId:historicalRepId,milestone:"Sustained account",amount:rule.sustainedBonusAmount,thresholdCases:rule.sustainedAccountCases,observedCases:0,status:"Not started",evidenceOrderIds:[],ruleNote:`A qualifying opening order starts the ${rule.windowDays}-day window. The account must reach ${rule.sustainedAccountCases} total settled cases in that window, including the opening order.`});continue;}
-    const windowStart=firstOrder.placedAt;const windowEnd=addDays(windowStart,rule.windowDays);const openingQualified=firstOrder.cases>=rule.openingOrderCases;const openingSettlement=orderFirstSettlementDate(data,firstOrder);const expired=asOfKey>windowEnd;
-    const settledOrdersInWindow=allOrders.filter((order)=>{const settledAt=orderFirstSettlementDate(data,order);return order.placedAt>=windowStart&&order.placedAt<=windowEnd&&Boolean(settledAt&&settledAt<=windowEnd&&settledAt<=asOfKey);});
+    const windowStart=firstOrder.placedAt.slice(0,10);const windowEnd=addDays(windowStart,rule.windowDays);const openingQualified=firstOrder.cases>=rule.openingOrderCases;const openingSettlement=orderQualifyingPaidDate(data,firstOrder);const expired=asOfKey>windowEnd;
+    const settledOrdersInWindow=allOrders.filter((order)=>{const settledAt=orderQualifyingPaidDate(data,order);const orderedAt=order.placedAt.slice(0,10);return orderedAt>=windowStart&&orderedAt<=windowEnd&&Boolean(settledAt&&settledAt<=windowEnd&&settledAt<=asOfKey);});
     const totalSettledCases=settledOrdersInWindow.reduce((sum,order)=>sum+order.cases,0);
     signals.push({id:`bonus-${account.id}-opening`,accountId:account.id,repId:historicalRepId,milestone:"Opening order",amount:rule.openingBonusAmount,thresholdCases:rule.openingOrderCases,observedCases:firstOrder.cases,status:!openingQualified?"Not qualified":openingSettlement&&openingSettlement<=asOfKey?"Earned":"Awaiting payment",windowStart,windowEnd,evidenceOrderIds:[firstOrder.id],ruleNote:openingQualified?`Opening order met the ${rule.openingOrderCases}-case threshold. The $${rule.openingBonusAmount} becomes earned when that order's payment first settles. Once earned, later refund or receivable activity does not erase the earning unless a future approved compensation policy explicitly creates a clawback rule. Attribution is locked to the historical opening-order representative.`:`The first order was below ${rule.openingOrderCases} cases, so it does not qualify as the bonus-eligible opening order.`});
     const sustainedStatus:BonusMilestoneStatus=!openingQualified?"Not qualified":totalSettledCases>=rule.sustainedAccountCases?"Earned":expired?"Window expired":"Tracking";
