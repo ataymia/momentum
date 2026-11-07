@@ -15,7 +15,7 @@ export type RecordRouteMatch = {
 type RecordRouteDefinition = RecordRouteMatch & { pattern: RegExp };
 
 const RECORD_ROUTES: readonly RecordRouteDefinition[] = [
-  { pattern: /^\/sales\/customers\/[^/]+(?:\/(?:overview|comments|transactions|mails|statements|locations))?$/, page: "accounts", label: "Customer details", prototype: true },
+  { pattern: /^\/sales\/customers\/[^/]+(?:\/(?:overview|comments|transactions|mails|statements|locations|documents|representatives|activity))?$/, page: "accounts", label: "Customer details", prototype: true },
   { pattern: /^\/sales\/orders\/new$/, page: "orders", label: "Create sales order", prototype: true },
   { pattern: /^\/sales\/orders\/[^/]+\/edit$/, page: "orders", label: "Edit sales order", prototype: true },
   { pattern: /^\/sales\/orders\/[^/]+$/, page: "orders", label: "Order details", prototype: true },
