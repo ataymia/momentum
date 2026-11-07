@@ -127,13 +127,13 @@ test("unverified system history is preserved for recovery but hidden from attrib
     actorRole:"System",
   };
   const state = normalizeAuditState({ version:1, events:[legacy, verified, duplicate] });
-  assert.equal(state.events.length, 2);
+  assert.equal(state.events.length, 3); // Two unique event IDs are two retained source records.
   assert.equal(recoverableUnverifiedAuditEvents(state).length, 1);
   assert.equal(recoverableUnverifiedAuditEvents(state)[0].id, "audit-legacy");
   assert.equal(recoverableUnverifiedAuditEvents(state)[0].summary,legacy.summary);
   assert.equal(recoverableUnverifiedAuditEvents(state)[0].at,legacy.at);
   const visible=visibleAuditEvents(admin,{users:[admin],accounts:[]} as never,state.events);
-  assert.deepEqual(visible.map(event=>event.id),["audit-good-1"]);
+  assert.deepEqual(visible.map(event=>event.id),["audit-good-1","audit-good-2"]);
   assert.equal(auditEventFingerprint(visible[0]), auditEventFingerprint(verified));
   assert.deepEqual(recoverableUnverifiedAuditEvents(normalizeAuditState(state)).map(e=>e.id),["audit-legacy"]);
 });
@@ -406,4 +406,33 @@ test("G07: source-reported audit evidence is never silently promoted to verified
   assert.equal(recovered.provenanceStatus,"source-reported");
   assert.equal(recovered.at,event.at);
   assert.equal(recovered.actorId,event.actorId);
+});
+
+test("G08: normalizing more than ten thousand source audit records is lossless",()=>{
+  const changes=Array.from({length:37},(_,i)=>({field:"field-"+i,before:"before-"+i,after:"after-"+i}));
+  const records=Array.from({length:10023},(_,i)=>({
+    id:"historic-"+i,
+    at:new Date(Date.UTC(2025,0,1,0,i)).toISOString(),
+    actorId:"admin-1",actorRole:"Administrator",action:"Updated" as const,
+    module:"Workspace",collection:"accounts",entityType:"Workspace.accounts",
+    entityId:"account-"+(i%7),label:"Legacy company",summary:"Recorded update "+i,
+    sensitivity:"operational" as const,provenanceStatus:"source-reported" as const,
+    changes,
+  }));
+  const normalized=normalizeAuditState({version:1,events:records});
+  assert.equal(normalized.events.length,records.length);
+  assert.equal(new Set(normalized.events.map(x=>x.id)).size,records.length);
+  assert.equal(normalized.events.find(x=>x.id==="historic-0")?.changes.length,changes.length);
+  assert.equal(normalized.events.find(x=>x.id==="historic-10022")?.summary,"Recorded update 10022");
+  assert.equal(normalizeAuditState(normalized).events.length,records.length);
+});
+
+test("G08: two distinct historical event IDs with identical content survive normalization",()=>{
+  const common={at:"2026-11-02T02:00:00.000Z",actorId:"admin-1",actorRole:"Administrator",
+    action:"Updated" as const,module:"Workspace",collection:"accounts",
+    entityType:"Workspace.accounts",entityId:"account-1",label:"Account",
+    summary:"Updated account",sensitivity:"operational" as const,
+    changes:[{field:"stage",before:"Prospect",after:"Qualified"}]};
+  const normalized=normalizeAuditState({version:1,events:[{...common,id:"event-first"},{...common,id:"event-second"}]});
+  assert.deepEqual(normalized.events.map(x=>x.id),["event-first","event-second"]);
 });
