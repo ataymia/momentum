@@ -1,6 +1,7 @@
 "use client";
 import {traceNavigationPaint} from "./performance-diagnostics";
-import {getNavigationPage,setNavigationPage} from "./navigation-store";
+import {getNavigationPage,getRequestedNavigationPath,setNavigationPage} from "./navigation-store";
+import {canVisitRoute} from "./navigation-route-registry";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -229,8 +230,17 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [data, ready]);
 
   const currentUser = useMemo(() => data.users.find((user) => user.id === currentUserId) ?? null, [currentUserId, data.users]);
-  // A new identity must not inherit the previous employee\'s open screen.
-  useEffect(()=>{setNavigationPage("home");},[currentUserId]);
+  // Keep a copied record URL across the FIRST authenticated login only when
+  // that role may visit the route. Switching users/logging out still resets.
+  const previousIdentityRef=useRef<string|null|undefined>(undefined);
+  useEffect(()=>{
+    const previous=previousIdentityRef.current;
+    previousIdentityRef.current=currentUserId;
+    if(previous===undefined||previous===currentUserId)return;
+    if(previous===null&&currentUserId&&currentUser
+      &&canVisitRoute(currentUser,getRequestedNavigationPath()))return;
+    setNavigationPage("home");
+  },[currentUserId,currentUser]);
   // A role downgrade or separation cannot retain an administrative screen.
   useEffect(()=>{if(currentUser&&!canAccessPage(currentUser,getNavigationPage()))setNavigationPage("home");},[currentUser]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
@@ -245,7 +255,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const user = data.users.find((item) => (item.username && item.username === asUsername) || item.email.toLowerCase() === typed);
     if (!user || password !== "admin") return { ok: false, message: "Use a demo username or e-mail and the password admin." };
     setDemoUserId(user.id);
-    setNavigationPage("home");
+    // Do not destroy an authorized copied URL before the authenticated shell
+    // mounts and validates its record scope. Denied paths go to Home.
+    if(!canVisitRoute(user,getRequestedNavigationPath()))setNavigationPage("home");
     momentumStorage.setItem(SESSION_KEY, user.id);
     return { ok: true };
   }, [data.users, firebase]);

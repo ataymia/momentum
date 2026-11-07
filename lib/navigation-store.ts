@@ -83,6 +83,8 @@ export function navigateToRoute(nextPath: string, options?: {replace?: boolean})
 export function setNavigationPage(next: PageKey): void {
   navigateToRoute(routeForPage(next));
 }
+/** Current address before the signed-in shell has initialized its route store. */
+export function getRequestedNavigationPath(): string { return browserPath(); }
 export function getNavigationPage(): PageKey { return currentPage; }
 export function getNavigationRoute(): string { return currentRoute; }
 export function subscribeNavigationPage(subscriber: () => void): () => void {
