@@ -22,13 +22,13 @@ export type AcquisitionBonusHold={
  */
 function normalizedStreet(value:string){
   return value.toLowerCase()
-    .replace(/\\bwest\\b/g,"w").replace(/\\beast\\b/g,"e")
-    .replace(/\\bnorth\\b/g,"n").replace(/\\bsouth\\b/g,"s")
-    .replace(/\\bstreet\\b/g,"st").replace(/\\bavenue\\b/g,"ave")
-    .replace(/\\broad\\b/g,"rd").replace(/\\bboulevard\\b/g,"blvd")
-    .replace(/\\bdrive\\b/g,"dr").replace(/\\bparkway\\b/g,"pkwy")
-    .replace(/(?:#|\\bsuite\\b|\\bste\\b|\\bunit\\b)\\s*([a-z0-9-]+)/g," unit $1")
-    .replace(/[^a-z0-9]+/g," ").trim().replace(/\\s+/g," ");
+    .replace(/\bwest\b/g,"w").replace(/\beast\b/g,"e")
+    .replace(/\bnorth\b/g,"n").replace(/\bsouth\b/g,"s")
+    .replace(/\bstreet\b/g,"st").replace(/\bavenue\b/g,"ave")
+    .replace(/\broad\b/g,"rd").replace(/\bboulevard\b/g,"blvd")
+    .replace(/\bdrive\b/g,"dr").replace(/\bparkway\b/g,"pkwy")
+    .replace(/(?:#|\bsuite\b|\bste\b|\bunit\b)\s*([a-z0-9-]+)/g," unit $1")
+    .replace(/[^a-z0-9]+/g," ").trim().replace(/\s+/g," ");
 }
 
 export function acquisitionBonusConsolidationHolds(data:WorkspaceData):AcquisitionBonusHold[]{
