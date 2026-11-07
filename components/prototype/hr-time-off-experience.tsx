@@ -24,14 +24,15 @@ export function HrTimeOffExperience({personalOnly=false}:{personalOnly?:boolean}
  // require an exact-key Firestore confirmation before claiming submission.
  useEffect(()=>{
    if(!pendingId||!currentUser)return;
-   if(!hcm.leaveRequests.some(request=>request.id===pendingId&&request.userId===currentUser.id)){
-     setPendingId("");setError("The request did not pass HR validation. Nothing was submitted.");return;
-   }
-   if(storageMode==="local"){
-     setPendingId("");setNotice("Demo request saved in this browser. No employer notification was sent.");return;
-   }
    let active=true;
    const handle=window.setTimeout(()=>{
+     if(!active)return;
+     if(!hcm.leaveRequests.some(request=>request.id===pendingId&&request.userId===currentUser.id)){
+       setPendingId("");setError("The request did not pass HR validation. Nothing was submitted.");return;
+     }
+     if(storageMode==="local"){
+       setPendingId("");setNotice("Demo request saved in this browser. No employer notification was sent.");return;
+     }
      void momentumStorage.flushAndConfirm(HCM_STORAGE_KEY).then(result=>{
        if(!active)return;
        if(result.ok){setNotice("Request saved to the company HR record. Submitted for approval, not approved.");setError("");}
