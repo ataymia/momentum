@@ -33,7 +33,7 @@ function readableChanges(changes:AuditChange[],data:WorkspaceData):Array<{label:
 function eventSummary(event:AuditEvent,data:WorkspaceData):string{const changes=readableChanges(event.changes,data);if(event.action==="Created"){const detail=event.changes.find((change)=>change.field==="detail")?.after;return detail&&detail!=="null"&&detail!=="undefined"?detail:`${event.label} was created.`}if(event.action==="Deleted")return `${event.label} was removed.`;if(changes.length===0)return `${event.label} was updated.`;if(changes.length===1)return `${changes[0].label} changed from ${changes[0].before} to ${changes[0].after}.`;return `${changes.length} details were updated.`;}
 
 export function AuditCenter(){
-  const {audit,visibleEvents}=useAudit();
+  const {audit,visibleEvents,auditWriteBlocked}=useAudit();
   const {currentUser,data}=useWorkspace();
   const [query,setQuery]=useState("");
   const [module,setModule]=useState("All");
@@ -55,6 +55,9 @@ export function AuditCenter(){
   const filtered=useMemo(()=>{const needle=query.trim().toLowerCase();return visibleEvents.filter((event)=>{if(module!=="All"&&event.module!==module)return false;if(!needle)return true;const actor=data.users.find((user)=>user.id===event.actorId)?.name??event.actorId;return[event.label,event.summary,moduleNames[event.module]??event.module,actor,...event.changes.map((change)=>`${humanField(change.field)} ${change.before??""} ${change.after??""}`)].join(" ").toLowerCase().includes(needle)}).slice(0,250)},[visibleEvents,query,module,data.users]);
   if(!currentUser||currentUser.role==="Customer")return null;
   return <Section title="Record history" action={<StatusPill tone="neutral">{visibleEvents.length} events</StatusPill>}>
+    {auditWriteBlocked&&<div className="audit-recovery-review" role="alert">
+      <p>Audit source protection is active: stored history contains records that cannot be preserved safely by automatic normalization. Saving new audit events is blocked, and the existing Firebase history has not been overwritten. An Administrator must reconcile the original records before resuming writes.</p>
+    </div>}
     {currentUser.role==="Administrator"&&unverifiedCount>0&&<div className="audit-recovery-review" role="note">
       <p>{unverifiedCount} legacy audit record{unverifiedCount===1?"":"s"} preserved separately because the originating user action or time cannot be verified. These are not shown as proven employee activity.</p>
       <button type="button" onClick={downloadRecovery}>Export unverified history for source reconciliation</button>
