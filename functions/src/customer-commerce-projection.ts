@@ -64,10 +64,35 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
  for(const i of eligible)perOrder.set(txt(i.orderId),(perOrder.get(txt(i.orderId))??0)+1);
  const unique=eligible.filter(i=>perOrder.get(txt(i.orderId))===1)
    .sort((a,b)=>txt(b.issuedAt).localeCompare(txt(a.issuedAt))||txt(a.id).localeCompare(txt(b.id)));
- const selected=unique.slice(0,limit);
+ // An allocation shared by several invoices makes a payment-level refund
+ // impossible to attribute to a single receivable without explicit refund
+ // allocation evidence. Never subtract the same refund from multiple invoices.
+ const paymentInvoices=new Map<string,Set<string>>();
+ const paymentTotals=new Map<string,number>();
+ for(const allocation of docs.allocations){
+   const paymentId=txt(allocation.paymentId),invoiceId=txt(allocation.invoiceId);
+   if(!paymentId||!invoiceId||num(allocation.amount)<=0)continue;
+   const set=paymentInvoices.get(paymentId)??new Set<string>();
+   set.add(invoiceId);paymentInvoices.set(paymentId,set);
+   paymentTotals.set(paymentId,(paymentTotals.get(paymentId)??0)+num(allocation.amount));
+ }
+ const paymentIndex=new Map(docs.payments.map(p=>[txt(p.id),p]));
+ const disputedPayments=new Set<string>();
+ for(const refund of docs.refunds){
+   if(txt(refund.status)==="Settled"&&num(refund.amount)>0&&
+      (paymentInvoices.get(txt(refund.paymentId))?.size??0)>1)
+     disputedPayments.add(txt(refund.paymentId));
+ }
+ for(const [id,total] of paymentTotals){
+   const payment=paymentIndex.get(id);
+   if(!payment||total>num(payment.amount)+0.005)disputedPayments.add(id);
+ }
+ const ambiguousInvoiceIds=new Set(docs.allocations.filter(a=>disputedPayments.has(txt(a.paymentId))).map(a=>txt(a.invoiceId)));
+ const safeInvoices=unique.filter(i=>!ambiguousInvoiceIds.has(txt(i.id)));
+ const selected=safeInvoices.slice(0,limit);
  const statements:CustomerFinanceSnapshot["statements"]=[];
  const payments:CustomerFinanceSnapshot["payments"]=[];
- const paymentIndex=new Map(docs.payments.map(p=>[txt(p.id),p]));
+ let excludedForUnbalancedFunds=false;
  for(const invoice of selected){
   const allocations=docs.allocations.filter(a=>txt(a.invoiceId)===txt(invoice.id)&&num(a.amount)>0);
   let cleared=0,pending=0;
@@ -89,6 +114,14 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
     .reduce((n,c)=>n+num(c.amount),0);
   const amount=num(invoice.total);
   cleared=Math.max(0,cleared-settledRefunds);
+  if(cleared+appliedCredits>amount+0.005||pending>amount+0.005){
+    excludedForUnbalancedFunds=true;
+    // A zeroed, overpaid or overcredited balance without an exception trail
+    // must not be advertised as paid to the customer.
+    payments.splice(payments.findIndex(row=>row.invoice===txt(invoice.number))<0?payments.length:
+      payments.findIndex(row=>row.invoice===txt(invoice.number)));
+    continue;
+  }
   const balance=Math.max(0,amount-cleared-appliedCredits);
   const status=balance===0?"Paid":balance<amount?"Partially paid":"Open";
   statements.push({id:txt(invoice.id),accountId:txt(invoice.accountId),invoice:txt(invoice.number),
@@ -96,5 +129,5 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
    status,amount:price(amount),cleared:price(cleared),pending:price(pending),
    credits:price(appliedCredits),balance:price(balance)});
  }
- return{accounts,orders:visibleOrders,statements,payments,truncated:eligible.length>limit||unique.length!==eligible.length||sourceOrders.length>limit};
+ return{accounts,orders:visibleOrders,statements,payments,truncated:eligible.length>limit||unique.length!==eligible.length||safeInvoices.length!==unique.length||excludedForUnbalancedFunds||sourceOrders.length>limit};
 }
