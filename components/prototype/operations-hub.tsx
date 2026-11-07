@@ -20,6 +20,7 @@ import {CrmAccountSetup} from "./crm-account-setup";
 import {CrmAccountMap} from "./crm-account-map";
 import {CrmQuickVisit} from "./crm-quick-visit";
 import {CrmCommissionOnlyReview} from "./crm-commission-only-review";
+import {CrmCustomerActivity,CrmCustomerDocuments,CrmCustomerRepresentatives} from "./crm-customer-record-sections";
 import { AdminEmployeeProfiles } from "../hcm/admin-employee-profiles";
 import { EmployeeDirectory } from "../hcm/employee-directory";
 import { PeopleExperience } from "./hr-payroll-experiences";
@@ -69,7 +70,7 @@ function Tabs({items,current,base}:{items:{key:string;label:string}[];current:st
     <button key={item.key} type="button" aria-current={current===item.key?"page":undefined} className={current===item.key?"is-active":""} onClick={()=>navigateToRoute(base+(item.key==="overview"?"":"/"+item.key))}>{item.label}</button>
   )}</nav>;
 }
-const CUSTOMER_TABS=[{key:"overview",label:"Overview"},{key:"comments",label:"Comments"},{key:"transactions",label:"Transactions"},{key:"mails",label:"Mails"},{key:"statements",label:"Statements"},{key:"locations",label:"Locations"}];
+const CUSTOMER_TABS=[{key:"overview",label:"Overview"},{key:"comments",label:"Comments"},{key:"transactions",label:"Transactions"},{key:"mails",label:"Mails"},{key:"statements",label:"Statements"},{key:"locations",label:"Locations"},{key:"documents",label:"Documents"},{key:"representatives",label:"Representatives"},{key:"activity",label:"Activity"}];
 const ITEM_TABS=[{key:"overview",label:"Overview"},{key:"transactions",label:"Transactions"},{key:"stock",label:"Stock Locations"},{key:"history",label:"History"}];
 const safeTab=(value:string|undefined,allowed:{key:string}[])=>(allowed.some(tab=>tab.key===value)?value:"overview")??"overview";
 
@@ -340,6 +341,9 @@ function CustomerRecord({id,section}:{id:string;section:string}){
     </section>}
     {tab==="locations"&&<section className="prototype-panel"><h2>Related locations</h2><p className="prototype-note">Only explicitly linked customer IDs are grouped. Same-name records are not merged automatically.</p>
       <table className="prototype-table"><thead><tr><th>Location</th><th>ZIP</th><th>Assigned representative</th><th>Account ID</th></tr></thead><tbody>{locations.map(a=><tr key={a.id}><td>{a.locationName??a.name}</td><td>{a.postalCode??"Unknown"}</td><td>{data.users.find(u=>u.id===a.ownerId)?.name??"Unassigned"}</td><td className="prototype-small">{a.id}</td></tr>)}</tbody></table></section>}
+    {tab==="documents"&&<CrmCustomerDocuments customer={parent} locations={locations}/>}
+    {tab==="representatives"&&<CrmCustomerRepresentatives locations={locations}/>}
+    {tab==="activity"&&<CrmCustomerActivity locations={locations} canonicalActivities={activities}/>}
   </div>;
 }
 function matchingLines(order:Order,skuId:string){
