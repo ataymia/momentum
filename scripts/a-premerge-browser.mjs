@@ -114,6 +114,19 @@ try{
   const workspaceRoutes=nav().getByRole("button",{name:"Workspace",exact:true});
   if(await workspaceRoutes.getAttribute("aria-expanded")!=="true")await workspaceRoutes.click();
   assert.equal(await nav().getByRole("link",{name:"My Employee Workspace"}).count(),0);
+  // Verify actual personal pages, not only the sidebar destinations.
+  await page.goto(base+"/my-account",{waitUntil:"domcontentloaded"});
+  await page.getByRole("heading",{name:"My Account",exact:true}).waitFor({timeout:20000});
+  assert(await page.getByText("Your personal employee information").count()>0);
+  await screenshot("employee-account");
+  await page.goto(base+"/my-account/employee",{waitUntil:"domcontentloaded"});
+  await page.getByRole("heading",{name:"My Employee Profile",exact:true}).waitFor({timeout:20000});
+  await page.goto(base+"/my-account/pay",{waitUntil:"domcontentloaded"});
+  await page.getByRole("heading",{name:"My Pay History",exact:true}).waitFor({timeout:20000});
+  await page.goto(base+"/my-account/time-off",{waitUntil:"domcontentloaded"});
+  await page.getByRole("heading",{name:"Time-off requests",exact:true}).waitFor({timeout:20000});
+  await page.goto(base+"/my-account/completed",{waitUntil:"domcontentloaded"});
+  await page.getByRole("heading",{name:"My Completed Work",exact:true}).waitFor({timeout:20000});
   await page.goto(base+"/admin/employee-profiles",{waitUntil:"domcontentloaded"});
   await page.waitForFunction(()=>document.body.textContent?.includes("Page unavailable")||window.location.pathname==="/");
   assert.equal(await page.getByText("Compensation").count(),0);
