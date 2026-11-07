@@ -862,7 +862,13 @@ export function PrototypeOperationsHub(){
   if(path==="/crm/account-setup")return <CrmAccountSetup/>;
   if(path==="/crm/account-map")return <CrmAccountMap/>;
   if(path==="/crm/quick-visit")return <CrmQuickVisit/>;
-  if(path==="/crm/self-delivery")return <RepSelfDelivery/>;
+  if(path==="/crm/self-delivery")return currentUser?.role==="Sales Representative"
+    ?<RepSelfDelivery/>
+    :<div><Heading title="Rep Self-Delivery" description="This fulfillment action belongs to the sales representative assigned to the order."/>
+      <section className="prototype-panel"><h2>Administrator delivery oversight</h2>
+        <p>Self-delivery pickup, custody and recipient signature must be performed by the authorized representative. Administrators can review warehouse and delivery exceptions in Delivery Operations; this page does not impersonate a representative or complete a delivery.</p>
+        <OpenLink to="/operations/deliveries">Open Delivery Operations</OpenLink>
+      </section></div>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
   if(segments[0]==="commerce"&&segments[1]==="price-books"&&segments[2])return <PriceBookDetail id={decodeURIComponent(segments[2])}/>;
