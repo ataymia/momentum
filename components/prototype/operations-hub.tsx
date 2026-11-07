@@ -37,6 +37,7 @@ import {PayrollPage as LegacyPayrollPage} from "../pages/payroll";
 import { AccountConsolidationReview } from "./account-consolidation-review";
 import { OrdersDirectory, OrderDetail, InvoiceDirectory, InvoiceDetail, PaymentsDirectory, PaymentDetail } from "./commerce-experience";
 import { InventoryDirectory, InventoryLotDetail, InventoryLedgerDirectory, InventoryAdjustmentDirectory } from "./inventory-experience";
+import {InventoryLocationsDirectory} from "./inventory-locations-experience";
 import {PackagesDirectory,ShipmentsDirectory,ShipmentDetail,DeliveryOperationsDirectory} from "./fulfillment-experience";
 import {PurchasingExperience} from "./purchasing-experience";
 import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
@@ -374,6 +375,7 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="sales"&&segments[1]==="invoices"&&segments[2])return <InvoiceDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="sales"&&segments[1]==="payments"&&segments[2])return <PaymentDetail id={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="inventory"&&segments[1]==="lots"&&segments[2])return <InventoryLotDetail id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="inventory"&&segments[1]==="locations")return <InventoryLocationsDirectory id={segments[2]?decodeURIComponent(segments[2]):undefined}/>;
   if(segments[0]==="inventory"&&segments[1]==="shipments"&&segments[2])return <ShipmentDetail orderId={decodeURIComponent(segments[2])}/>;
   if(segments[0]==="purchases"&&segments[1])return <PurchasingExperience section={segments[1]} id={segments[2]?decodeURIComponent(segments[2]):undefined}/>;
   if(path==="/inventory/packages")return <PackagesDirectory/>;
