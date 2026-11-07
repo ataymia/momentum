@@ -6,6 +6,7 @@ import {useCommerce} from "../../lib/commerce-context";
 import {collectedCashFacts} from "../../lib/commercial-source";
 import {arizonaDateKey} from "../../lib/date-time";
 import {downloadCsv} from "../../lib/browser-export";
+import {ambiguousSettledRefundIds} from "../../lib/reporting-cash-reconciliation";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useWorkspace} from "../../lib/workspace-context";
 
@@ -24,13 +25,16 @@ export function ForecastsExperience(){
  const today=arizonaDateKey(),from=dateBack(today,days-1);
  const permittedOrders=useMemo(()=>new Set(scope.orders.filter(o=>!o.testOnly).map(o=>o.id)),[scope.orders]);
  const accounts=useMemo(()=>new Map(scope.accounts.map(a=>[a.id,a.name])),[scope.accounts]);
- const facts=useMemo(()=>collectedCashFacts(data,commerce).filter(f=>
+ const ambiguousRefunds=useMemo(()=>ambiguousSettledRefundIds(commerce,permittedOrders,from,today),[commerce,permittedOrders,from,today]);
+ const ambiguousIds=new Set(ambiguousRefunds);
+ const facts=useMemo(()=>collectedCashFacts(data,commerce).filter(f=>!ambiguousIds.has(f.id)&&
    permittedOrders.has(f.orderId)&&f.settledAt>=from&&f.settledAt<=today&&Number.isFinite(f.amount)
- ),[data,commerce,permittedOrders,from,today]);
+ ),[data,commerce,permittedOrders,from,today,ambiguousRefunds]);
  const total=facts.reduce((n,f)=>n+f.amount,0);
  const collections=facts.filter(f=>f.kind==="Collection").reduce((n,f)=>n+f.amount,0);
  const refunds=-facts.filter(f=>f.kind==="Refund").reduce((n,f)=>n+f.amount,0);
- const evidence=facts.length>0;
+ const allocationBlocked=ambiguousRefunds.length>0;
+ const evidence=facts.length>0&&!allocationBlocked;
  const monthlyBasis=evidence?total*30/days:null;
  const scenarios=[{label:"Conservative",factor:0.75},{label:"Current run rate",factor:1},{label:"Growth case",factor:1.25}];
  const records=facts.filter(f=>[accounts.get(f.accountId),f.orderId,f.kind,f.settledAt].join(" ").toLowerCase().includes(query.trim().toLowerCase())).sort((a,b)=>{
@@ -53,16 +57,17 @@ export function ForecastsExperience(){
    </div>
    <div className="prototype-domain-statbar">
     <article><small>Cleared collections</small><strong>{currency(collections)}</strong></article>
-    <article><small>Settled refunds</small><strong>{currency(refunds)}</strong></article>
-    <article><small>Net historical cash</small><strong>{currency(total)}</strong></article>
-    <article><small>Source transactions</small><strong>{facts.length}</strong></article>
+    <article><small>Settled refunds</small><strong>{allocationBlocked?"Needs allocation":currency(refunds)}</strong></article>
+    <article><small>Net historical cash</small><strong>{allocationBlocked?"Needs reconciliation":currency(total)}</strong></article>
+    <article><small>Attributable cash events</small><strong>{facts.length}</strong></article>
    </div>
   </section>
   <section className="prototype-panel"><h2><TrendingUp size={18}/> Next 30-day scenarios</h2>
    <p className="prototype-note">Formula: (net historical collections ÷ {days} calendar days) × 30 × scenario factor. Factors of 75%, 100%, and 125% are illustrative planning assumptions, not approved company targets.</p>
    <div className="prototype-domain-statbar">{scenarios.map(item=><article key={item.label}><small>{item.label} · {Math.round(item.factor*100)}%</small>
     <strong>{monthlyBasis===null?"Insufficient evidence":currency(Math.max(0,monthlyBasis*item.factor))}</strong></article>)}</div>
-   {!evidence&&<p className="prototype-note" role="status">No eligible settled cash transactions were found. A zero forecast would misrepresent missing evidence, so no numeric scenario is presented.</p>}
+   {allocationBlocked&&<p className="prototype-note" role="alert">{ambiguousRefunds.length} settled refund(s) span multiple orders. Their order attribution is unverified, so net cash and forecast scenarios are blocked pending Commerce reconciliation.</p>}
+   {!evidence&&!allocationBlocked&&<p className="prototype-note" role="status">No eligible settled cash transactions were found. A zero forecast would misrepresent missing evidence, so no numeric scenario is presented.</p>}
    {evidence&&total<0&&<p className="prototype-note"><TriangleAlert size={15}/> Refunds exceed collections in this lookback. Scenarios are floored at zero, but the negative net remains visible above.</p>}
    <p className="prototype-note">These scenarios do not include open deals, uncollected invoices, seasonality, expected new accounts, inventory limits, or a verified container goal. They are not a promise of future revenue.</p>
   </section>
@@ -76,6 +81,7 @@ export function ForecastsExperience(){
    <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Settled</th><th>Account</th><th>Source order</th><th>Event</th><th>Net cash</th></tr></thead>
     <tbody>{records.map(f=><tr key={f.id}><td>{f.settledAt}</td><td>{accounts.get(f.accountId)??"Restricted"}</td><td><button type="button" className="prototype-link" onClick={()=>navigateToRoute("/sales/orders/"+encodeURIComponent(f.orderId))}>{f.orderId}</button></td><td>{f.kind}</td><td>{currency(f.amount)}</td></tr>)}</tbody></table></div>
    {!records.length&&<p className="prototype-note">No eligible matching evidence for this lookback and permission scope.</p>}
+   {allocationBlocked&&<p className="prototype-note">Unattributed multi-order refunds are deliberately excluded from this export and drill-down; the net amount above is withheld.</p>}
   </section>
  </div>;
 }

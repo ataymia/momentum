@@ -14,6 +14,7 @@ import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import { useWorkspace } from "../../lib/workspace-context";
 import {reportEligibleOrders,reportSellableWarehouseCases} from "../../lib/reporting-visibility";
+import {ambiguousSettledRefundIds} from "../../lib/reporting-cash-reconciliation";
 import { ManagementKpiDashboard } from "../performance/management-kpi-dashboard";
 import { PageHeader, Section, StatusPill, formatMoney } from "../ui";
 
@@ -32,6 +33,8 @@ export function ReportsPage() {
 
   const eligibleOrders = reportEligibleOrders(records.orders);
   const visibleOrderIds = new Set(eligibleOrders.map((order) => order.id));
+  const unresolvedRefundIds=ambiguousSettledRefundIds(commerce,visibleOrderIds);
+  const refundAllocationBlocked=unresolvedRefundIds.length>0;
   const cashRoles = ["Administrator","Sales Manager","Sales Representative","Operations"];
   const showCommercial = cashRoles.includes(currentUser?.role ?? "");
   const showKpiCenter = ["Administrator","Sales Manager","Sales Representative"].includes(currentUser?.role ?? "");
@@ -70,7 +73,7 @@ export function ReportsPage() {
 
   const metrics = effectiveScope === "commercial"
     ? [
-        ["Net collected sales", formatMoney(paid), "Cleared payment allocations less settled refunds in permitted order scope"],
+        ["Net collected cash", refundAllocationBlocked?"Needs reconciliation":formatMoney(paid), "Cleared allocations less settled refunds in authorized order scope. Multi-order payment refunds must be assigned before net cash is certified."],
         ["Delivered cases", String(delivered), "Formula: sum cases where fulfillment status = Delivered or legacy Paid"],
         ["Active placements", String(records.placements.length), "Count of placement records in permitted scope"],
         ["Reordered accounts", String(reordered), "Distinct accounts with more than one fully paid order in the commerce-backed history"],
@@ -100,7 +103,10 @@ export function ReportsPage() {
       {showCommercial?<p>Evidence in your authorized scope: {eligibleOrders.length} orders · {visibleClearedPayments} cleared payments with visible invoice allocations · {visibleVisits} physical visits · {records.appointments.length} appointments · {visibleFieldPings} scoped field pings. Payments allocated to multiple invoices require separate reconciliation.</p>:
       <p>Commercial cash, customer revenue and sales KPIs are excluded from this role. Operational and personal HR summaries remain subject to source permissions; this view does not expose company-wide financial events.</p>}
     </div></div>
-
+    {showCommercial&&refundAllocationBlocked&&<p role="alert" className="prototype-note">
+      {unresolvedRefundIds.length} settled refund record(s) span multiple source orders and cannot be safely attributed by this view.
+      Net cash is withheld until the Commerce team reconciles the source allocation.
+    </p>}
     <div className="report-scope-tabs">{reportScopes.map((item) => <button key={item} className={effectiveScope === item ? "is-active" : ""} onClick={() => setReportScope(item)}>{item}</button>)}</div>
     <div className="report-metric-grid">{metrics.map(([label, value, detail]) => <article key={label}><div><span>{label}</span></div><strong>{value}</strong><p>{detail}</p></article>)}</div>
 

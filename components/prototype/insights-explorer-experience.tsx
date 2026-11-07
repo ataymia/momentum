@@ -7,6 +7,7 @@ import {collectedCashFacts,resolvedPaidOrderFacts} from "../../lib/commercial-so
 import {arizonaDateKey} from "../../lib/date-time";
 import {useHcm} from "../../lib/hcm-context";
 import {insightCashSummary} from "../../lib/insights-cash-summary";
+import {ambiguousSettledRefundIds} from "../../lib/reporting-cash-reconciliation";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {nodeLotBalance,warehouseAvailable,warehouseNodeId} from "../../lib/inventory-ledger";
 import {downloadCsv} from "../../lib/browser-export";
@@ -36,7 +37,10 @@ export function InsightsExplorerExperience(){
  const visibleOrders=useMemo(()=>new Set(scope.orders.filter(o=>!o.testOnly).map(o=>o.id)),[scope.orders]);
  const accounts=new Map(scope.accounts.map(a=>[a.id,a.name]));
  const orderNames=new Map(scope.orders.map(o=>[o.id,o.number]));
- const cash=useMemo(()=>collectedCashFacts(data,commerce).filter(f=>visibleOrders.has(f.orderId)),[data,commerce,visibleOrders]);
+ const unresolvedRefundIds=useMemo(()=>ambiguousSettledRefundIds(commerce,visibleOrders,from,through),[commerce,visibleOrders,from,through]);
+ const unresolvedRefundSet=new Set(unresolvedRefundIds);
+ const refundAllocationBlocked=unresolvedRefundIds.length>0;
+ const cash=useMemo(()=>collectedCashFacts(data,commerce).filter(f=>visibleOrders.has(f.orderId)&&!unresolvedRefundSet.has(f.id)),[data,commerce,visibleOrders,unresolvedRefundIds]);
  const paid=useMemo(()=>resolvedPaidOrderFacts(data,commerce).filter(f=>visibleOrders.has(f.orderId)),[data,commerce,visibleOrders]);
  const summary=useMemo(()=>insightCashSummary(cash,paid,from,through),[cash,paid,from,through]);
  const invalid=from>through;
@@ -97,16 +101,17 @@ export function InsightsExplorerExperience(){
    {focus==="Commercial"?<>
     <div className="prototype-domain-statbar">
      <article><small>Cleared collections</small><strong>{invalid?"Invalid period":money(summary.collections)}</strong></article>
-     <article><small>Settled refunds</small><strong>{invalid?"Invalid period":money(summary.refunds)}</strong></article>
-     <article><small>Net collected cash</small><strong>{invalid?"Invalid period":money(summary.net)}</strong></article>
+     <article><small>Settled refunds</small><strong>{invalid?"Invalid period":refundAllocationBlocked?"Needs allocation":money(summary.refunds)}</strong></article>
+     <article><small>Net collected cash</small><strong>{invalid?"Invalid period":refundAllocationBlocked?"Needs reconciliation":money(summary.net)}</strong></article>
      <article><small>Marked-paid cases</small><strong>{invalid?"Invalid period":summary.markedPaidCases}</strong></article>
      <article><small>Accounts with a reorder</small><strong>{invalid?"Invalid period":summary.reorderAccounts}</strong></article>
     </div>
-    {!cash.length&&<p className="prototype-note" role="status">No eligible cleared cash source facts were located. This is a missing-evidence state, not a verified zero-revenue claim.</p>}
+    {refundAllocationBlocked&&<p role="alert" className="prototype-note">{unresolvedRefundIds.length} settled refund(s) span multiple orders. Net cash and monthly charts are withheld until the source payment is reconciled.</p>}
+    {!cash.length&&!refundAllocationBlocked&&<p className="prototype-note" role="status">No eligible cleared cash source facts were located. This is a missing-evidence state, not a verified zero-revenue claim.</p>}
     <h2>Collections by recorded settlement month</h2>
-    {summary.months.length?summary.months.map(m=><div className="prototype-work-list" key={m.month}><strong>{m.month} · net {money(m.net)}</strong><progress aria-label={"Absolute net cash activity for "+m.month} max={maxMonthly} value={Math.abs(m.net)}/><span>Collections {money(m.collections)} · refunds {money(m.refunds)}{m.net<0?" · negative net":""}</span></div>):
+    {!refundAllocationBlocked&&summary.months.length?summary.months.map(m=><div className="prototype-work-list" key={m.month}><strong>{m.month} · net {money(m.net)}</strong><progress aria-label={"Absolute net cash activity for "+m.month} max={maxMonthly} value={Math.abs(m.net)}/><span>Collections {money(m.collections)} · refunds {money(m.refunds)}{m.net<0?" · negative net":""}</span></div>):
     <p className="prototype-note">No cash transactions with eligible dates in this period.</p>}
-    <p className="prototype-note"><ShieldAlert size={14}/> Marked-paid counts may include legacy order statuses. Only cleared allocations and settled refunds enter the cash amounts. Multi-invoice refund allocation needs separate reconciliation review.</p>
+    <p className="prototype-note"><ShieldAlert size={14}/> Marked-paid counts may include legacy order statuses. Only cleared allocations and attributable settled refunds enter cash summaries. Ambiguous refunds are excluded from detail exports and block net results.</p>
    </>:focus==="Operations"?<div className="prototype-domain-statbar">
     <article><small>Authorized inventory lots</small><strong>{lots.length}</strong></article>
     <article><small>Warehouse on-hand cases</small><strong>{lots.reduce((n,r)=>n+r.onHand,0)}</strong></article>

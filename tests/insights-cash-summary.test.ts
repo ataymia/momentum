@@ -4,6 +4,8 @@ import test from "node:test";
 import type {CollectedCashFact,PaidOrderFact} from "../lib/commercial-source";
 import {insightCashSummary} from "../lib/insights-cash-summary";
 import {reportEligibleOrders,reportSellableWarehouseCases} from "../lib/reporting-visibility";
+import {ambiguousSettledRefundIds} from "../lib/reporting-cash-reconciliation";
+import type {CommerceState} from "../lib/commerce-engine";
 import {canVisitRoute,requiresPrototypePage} from "../lib/navigation-route-registry";
 import type {WorkspaceUser} from "../lib/types";
 const cash=(id:string,kind:CollectedCashFact["kind"],amount:number,settledAt:string):CollectedCashFact=>({
@@ -40,7 +42,7 @@ test("F08: reports explorer is a real role-protected prototype route",()=>{
 test("F08: lot quality holds never count as sellable warehouse stock",()=>{
  const ui=readFileSync("components/prototype/insights-explorer-experience.tsx","utf8");
  assert(ui.includes('available:lot.status==="Quality hold"?0:warehouseAvailable(ledger,lot.id)'));
- assert(ui.includes('invalid?"Invalid period":money(summary.net)'));
+ assert(ui.includes('refundAllocationBlocked?"Needs reconciliation":money(summary.net)'));
 });
 
 // Reports and Insights must exclude intentionally synthetic orders and unsellable inventory.
@@ -53,4 +55,20 @@ test("F08: quality-held and negative inventory cannot inflate sellable stock",()
  const ledger=new Map([["released",8],["blocked",100],["negative",-4]]);
  assert.equal(reportSellableWarehouseCases(lots,id=>ledger.get(id)??0),8);
  assert.equal(reportSellableWarehouseCases([{id:"x",status:"Available"}],()=>Number.NaN),0);
+});
+
+// Commerce Refunds are payment-level, not invoice-level. Do not guess attribution.
+test("F08: settled multi-order refunds must block cash reporting within the user's visible order scope",()=>{
+ const commerce={invoices:[
+  {id:"i1",orderId:"o1",status:"Paid"},{id:"i2",orderId:"o2",status:"Paid"},{id:"i3",orderId:"o3",status:"Paid"}],
+  allocations:[{id:"a1",paymentId:"p1",invoiceId:"i1",amount:50},{id:"a2",paymentId:"p1",invoiceId:"i2",amount:50},
+  {id:"a3",paymentId:"p2",invoiceId:"i3",amount:50}],
+  refunds:[{id:"r1",paymentId:"p1",status:"Settled",settledAt:"2026-11-07",amount:10},
+  {id:"r2",paymentId:"p2",status:"Settled",settledAt:"2026-11-07",amount:5},
+  {id:"r3",paymentId:"p1",status:"Requested",amount:4}]
+ } as CommerceState;
+ assert.deepEqual(ambiguousSettledRefundIds(commerce,new Set(["o1"])),["r1"]);
+ assert.deepEqual(ambiguousSettledRefundIds(commerce,new Set(["o2"]),"2026-11-08","2026-11-10"),[]);
+ assert.deepEqual(ambiguousSettledRefundIds(commerce,new Set(["o3"])),[]);
+ assert.deepEqual(ambiguousSettledRefundIds(commerce,new Set(["missing"])),[]);
 });
