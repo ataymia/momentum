@@ -50,3 +50,24 @@ test("direct CRM record, create and lead URLs are permitted by the correct role"
     assert.equal(canVisitRoute(role("Customer"),path),false,path);
   }
 });
+
+test("every Deals register data column can sort by its visible representation",()=>{
+ const sample=[
+  deal("a","loc1",{name:"Zulu",stage:"Prospecting",status:"Open",ownerId:"rep-a",estimatedCases:12,nextActionDate:"2026-11-08"}),
+  deal("b","loc2",{name:"Alpha",stage:"Qualified",status:"Open",ownerId:"rep-b",estimatedCases:8,nextActionDate:"2026-11-06"}),
+  deal("foreign","forbidden",{name:"Foreign",updatedAt:"2027-01-01T00:00:00Z"}),
+ ];
+ const locationNames=new Map([["loc1","Omega Market"],["loc2","Beta Mart"],["forbidden","Fake"]]);
+ const representativeNames=new Map([["rep-a","Zoe"],["rep-b","Alex"]]);
+ for(const sort of ["name","location","stage","status","owner","cases","nextAction","updated"] as const){
+  const result=visibleDeals(sample,new Set(["loc1","loc2"]),{sort,ascending:true,accountNames:locationNames,representativeNames});
+  assert.equal(result.length,2);
+  assert.ok(result.every(deal=>deal.id!=="foreign"));
+  const descending=visibleDeals(sample,new Set(["loc1","loc2"]),{sort,ascending:false,accountNames:locationNames,representativeNames});
+  assert.deepEqual(descending.map(d=>d.id),[...result].reverse().map(d=>d.id));
+ }
+ const ui=readFileSync("components/prototype/crm-deals-experience.tsx","utf8");
+ for(const key of ["name","location","stage","status","owner","cases","nextAction","updated"])assert.match(ui,new RegExp('header\\("'+key+'"'));
+ assert.match(ui,/Deals updated from/);
+ assert.match(ui,/Deals updated through/);
+});
