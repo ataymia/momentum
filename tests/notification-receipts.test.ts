@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {expenseStatusIntents} from "../lib/notification-policy-v2";
+import type {FinanceState} from "../lib/finance-engine";
+import type {WorkspaceUser} from "../lib/types";
 import {
   mergeReadReceipts,parseReadReceipts,recentRecordedStatus,shouldSurfaceBellIntent,
   MAX_READ_RECEIPTS,
@@ -35,4 +38,19 @@ test("G01: historical 66-item status backlog never becomes 66 unread actionable 
   const shown=[...legacy,...actionable,...recent].filter(intent=>shouldSurfaceBellIntent(intent,now));
   assert.deepEqual(shown.map(x=>x.id),["active-0","active-1","active-2","recent-status"]);
   assert.equal(shown.length,4);
+});
+
+test("G01/G03: finance approval uses the genuine decision time rather than inventing a render timestamp",()=>{
+  const decisionAt="2026-11-06T18:35:00.000Z";
+  const finance:FinanceState={version:3,expenses:[{
+    id:"exp-1",requesterId:"employee-1",submittedAt:"2026-11-04T16:00:00.000Z",
+    merchant:"Office supply",amount:80,category:"Supplies",businessPurpose:"Receipts",
+    status:"Finance approved",managerReviewerId:"manager-1",
+    managerDecisionAt:"2026-11-05T10:00:00.000Z",
+    financeReviewerId:"admin-1",financeDecisionAt:decisionAt,
+  }]};
+  const user={id:"employee-1"} as WorkspaceUser;
+  const [notice]=expenseStatusIntents(finance,user);
+  assert.equal(notice.occurredAt,decisionAt);
+  assert.equal(shouldSurfaceBellIntent(notice,new Date("2026-11-07T14:00:00.000Z")),true);
 });
