@@ -109,7 +109,7 @@ export function OrdersDirectory(){
     {currentUser?.role!=="Customer"&&canCreateOrder(currentUser)&&<div className="prototype-page-actionbar"><button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/sales/orders/new")}>Create sales order</button><span className="prototype-note">New order review and submission are available in local demo only until production acceptance.</span></div>}
     <CatalogSummary data={[{label:"Visible orders",value:rows.length},{label:"Cases in filtered orders",value:rows.reduce((n,o)=>n+o.cases,0)},{label:"Non-cancelled order value",value:money(rows.filter(o=>o.status!=="Cancelled").reduce((n,o)=>n+o.amount,0))}]}/>
     <section className="prototype-panel"><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statusOptions={options} from={from} setFrom={setFrom} to={to} setTo={setTo} searchLabel="Search orders, accounts, rep" repOptions={repIds.map(id=>({id,name:userById.get(id)??id})).sort((a,b)=>a.name.localeCompare(b.name))} rep={rep} setRep={setRep}/>
-      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
+      <div className="prototype-table-scroll momentum-order-desktop-table"><table className="prototype-table"><thead><tr>
       {([["number","Order"],["account","Customer"],["placedAt","Placed"],["rep","Sales rep"],["cases","Cases"],["amount","Order amount"],["status","Fulfillment"],["payment","Payment"]] as const).map(([key,label])=><Header key={key} name={label} selected={sorter.field===key} direction={sorter.direction} onClick={()=>sorter.select(key)}/>)}
       </tr></thead><tbody>{rows.map(o=><tr key={o.id}>
         <td><Link url={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</Link></td>
@@ -117,6 +117,37 @@ export function OrdersDirectory(){
         <td>{showDate(o.placedAt)}</td><td>{userById.get(o.creditedRepId??o.ownerId)??"Unknown"}</td>
         <td>{o.cases}</td><td>{money(o.amount)}</td><td><Status value={o.status}/></td><td>{o.paymentStatus}</td>
       </tr>)}</tbody></table></div>
+      <section className="momentum-mobile-order-list" aria-label="Mobile sales order register">
+        <div className="momentum-mobile-order-sort">
+          <label>Sort orders
+            <select aria-label="Mobile order sort" value={sorter.field} onChange={event=>sorter.select(event.target.value)}>
+              <option value="placedAt">Placed date</option><option value="number">Order number</option>
+              <option value="account">Customer</option><option value="rep">Sales representative</option>
+              <option value="cases">Case quantity</option><option value="amount">Order amount</option>
+              <option value="status">Fulfillment</option><option value="payment">Payment</option>
+            </select>
+          </label>
+          <button type="button" aria-label="Reverse mobile order sort" onClick={()=>sorter.select(sorter.field)}>
+            {sorter.direction==="desc"?"Descending":"Ascending"} <ArrowUpDown size={14}/>
+          </button>
+        </div>
+        {rows.map(order=><article className="momentum-mobile-order-card" key={order.id}>
+          <div className="momentum-mobile-order-card__head">
+            <div><small>Order</small><Link url={"/sales/orders/"+encodeURIComponent(order.id)}>{order.number}</Link></div>
+            <Status value={order.status}/>
+          </div>
+          <div className="momentum-mobile-order-card__customer">
+            <strong>{accountById.get(order.accountId)?.name??"Account inaccessible"}</strong>
+            <small>Placed {showDate(order.placedAt)}</small>
+          </div>
+          <dl className="momentum-mobile-order-card__facts">
+            <div><dt>Cases</dt><dd>{order.cases}</dd></div>
+            <div><dt>Order amount</dt><dd>{money(order.amount)}</dd></div>
+            <div><dt>Sales representative</dt><dd>{userById.get(order.creditedRepId??order.ownerId)??"Unknown"}</dd></div>
+            <div><dt>Payment status</dt><dd>{order.paymentStatus}</dd></div>
+          </dl>
+        </article>)}
+      </section>
       {!rows.length&&<Empty text="No orders match your filters."/>}
       <p className="prototype-note">Order value represents submitted transactions, not collected revenue. Cancelled and test-only orders are excluded from the total.</p>
       {currentUser?.role!=="Customer"&&<div className="prototype-legacy-actions"><button type="button" onClick={()=>navigateToRoute("/sales/orders/workflow")}>Existing order operations</button><small>Temporary access to fulfillment, exception controls and rep self-delivery while those interfaces are redesigned. The separate new order editor is in the prototype.</small></div>}
