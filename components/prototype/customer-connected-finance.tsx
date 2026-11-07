@@ -29,11 +29,11 @@ export function CustomerConnectedFinance({section}:{section:"payments"|"statemen
        });
        const body=await response.json().catch(()=>null) as Partial<FinanceResponse>&{error?:string}|null;
        if(!response.ok||body?.ok!==true)throw new Error(body?.error||"Customer finance service is unavailable.");
-       if(!Array.isArray(body.accounts)||!Array.isArray(body.payments)||!Array.isArray(body.statements))
+       if(!Array.isArray(body.accounts)||!Array.isArray(body.orders)||!Array.isArray(body.payments)||!Array.isArray(body.statements))
          throw new Error("Customer finance service returned an invalid response.");
        if(!active)return;
        setState({status:"ready",finance:{
-         accounts:body.accounts,statements:body.statements,payments:body.payments,
+         accounts:body.accounts,orders:body.orders,statements:body.statements,payments:body.payments,
          truncated:body.truncated===true,
        },error:""});
      }catch(error){

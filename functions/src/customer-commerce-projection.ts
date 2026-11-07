@@ -2,7 +2,8 @@
 export type Row=Record<string,unknown>;
 export type DocRows={accounts:Row[];orders:Row[];invoices:Row[];payments:Row[];allocations:Row[];credits:Row[];refunds:Row[]};
 export type CustomerFinanceSnapshot={
- accounts:{id:string;name:string;location:string}[];
+ accounts:{id:string;name:string;location:string;contactName:string;email:string;phone:string;streetAddress:string}[];
+ orders:{id:string;accountId:string;number:string;placedAt:string;status:string;cases:number}[];
  statements:{id:string;accountId:string;invoice:string;date:string;due:string;status:string;amount:number;cleared:number;pending:number;credits:number;balance:number}[];
  payments:{id:string;accountId:string;invoice:string;date:string;settled:string;status:string;method:string;amount:number}[];
  truncated:boolean;
@@ -31,7 +32,8 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
  const accountIds=new Set(ids.filter(validId));
  if(!accountIds.size)throw new Error("Customer has no verified account scope.");
  const accounts=docs.accounts.filter(a=>accountIds.has(txt(a.id))).map(a=>({
-  id:txt(a.id),name:txt(a.name)||"Authorized business",location:txt(a.location)
+  id:txt(a.id),name:txt(a.name)||"Authorized business",location:txt(a.location),
+  contactName:txt(a.contactName),email:txt(a.email),phone:txt(a.phone),streetAddress:txt(a.streetAddress)
  }));
  const accessible=new Set(accounts.map(a=>a.id));
  if(!accessible.size)throw new Error("No authorized customer location exists in company records.");
@@ -43,6 +45,17 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
    if(id&&!orders.has(id))orders.set(id,o);
   }
  }
+ const allowedStates=new Set(["Awaiting approval","Approved","Allocated","Out for delivery","Delivered","Paid","Cancelled"]);
+ const sourceOrders=docs.orders.filter(o=>accessible.has(txt(o.accountId))&&
+   o.testOnly!==true&&allowedStates.has(txt(o.status))&&txt(o.id)&&txt(o.number)&&
+   Number.isSafeInteger(o.cases)&&num(o.cases)>0)
+   .sort((a,b)=>txt(b.placedAt).localeCompare(txt(a.placedAt))||txt(a.id).localeCompare(txt(b.id)));
+ const uniqueCustomerOrders=new Map<string,Row>();
+ for(const order of sourceOrders)if(!uniqueCustomerOrders.has(txt(order.id)))uniqueCustomerOrders.set(txt(order.id),order);
+ const visibleOrders=[...uniqueCustomerOrders.values()].slice(0,limit).map(o=>({
+   id:txt(o.id),accountId:txt(o.accountId),number:txt(o.number),
+   placedAt:dates(o.placedAt),status:txt(o.status),cases:num(o.cases),
+ }));
  const eligible=docs.invoices.filter(i=>accessible.has(txt(i.accountId))&&
    txt(i.status)!=="Void"&&txt(i.status)!=="Draft"&&
    txt(orders.get(txt(i.orderId))?.accountId)===txt(i.accountId)&&
@@ -83,5 +96,5 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
    status,amount:price(amount),cleared:price(cleared),pending:price(pending),
    credits:price(appliedCredits),balance:price(balance)});
  }
- return{accounts,statements,payments,truncated:eligible.length>limit||unique.length!==eligible.length};
+ return{accounts,orders:visibleOrders,statements,payments,truncated:eligible.length>limit||unique.length!==eligible.length||sourceOrders.length>limit};
 }

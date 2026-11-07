@@ -45,3 +45,10 @@ test("D17 endpoint enforces verified bearer identity and reads only server-owned
  assert.match(src,/customerAccountIds\(access,directory\)/);
  assert.doesNotMatch(src,/request\.body\.accountIds/);
 });
+
+test("D17 customer order projection returns only active scoped non-QA orders",()=>{
+ const result=projection.projectCustomerFinance(["store-a"],data);
+ assert.deepEqual(result.orders.map(o=>o.id),["o1"]);
+ assert.equal(result.orders[0].status,"Delivered");
+ assert(!JSON.stringify(result).includes("Hidden"));
+});
