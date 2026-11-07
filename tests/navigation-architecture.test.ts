@@ -217,13 +217,12 @@ function requireNavigationMenu(){
   return {canShowModuleInMenu};
 }
 
-test("first login preserves authorized copied URLs but role switching still resets the route",()=>{
+test("first login preserves copied URLs for fail-closed route validation; role switching still resets",()=>{
   const source=readFileSync("lib/workspace-context-v5.tsx","utf8");
   const store=readFileSync("lib/navigation-store.ts","utf8");
   assert.match(store,/export function getRequestedNavigationPath/);
   assert.match(source,/previousIdentityRef=useRef/);
   assert.match(source,/if\(previous===null&&currentUserId&&currentUser/);
-  assert.match(source,/canVisitRoute\(currentUser,getRequestedNavigationPath\(\)\)/);
-  assert.match(source,/if\(!canVisitRoute\(user,getRequestedNavigationPath\(\)\)\)setNavigationPage\("home"\)/);
+  assert.match(source,/if\(previous===null&&currentUserId&&currentUser\)return/);
   assert.match(source,/const switchUser = useCallback[\s\S]*?setNavigationPage\("home"\)/);
 });
