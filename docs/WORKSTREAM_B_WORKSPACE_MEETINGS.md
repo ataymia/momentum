@@ -36,3 +36,10 @@ Choose secure meeting storage/transport after the business owner confirms whethe
 - Added revision-keyed, source-time-backed meeting invitation/update/cancellation notices to the existing notification bell for local demonstration only. Clearing the bell does not mark an RSVP or meeting action complete; newer revisions produce new notices.
 - Notification click verifies allowed route and goes directly to that meeting rather than mistakenly navigating to Approvals.
 - Production email, SMS, push, provider delivery receipts and server-side meeting data authorization still not implemented. B08 remains partial, B09 production blocked.
+
+## Connected implementation and audit update — November 7, 2026
+- Connected-mode UI is wired to a verified Firebase Auth token and server-owned staffMeetingsApi; no direct Firestore browser meeting reads/writes.
+- Firebase transaction uses per-person, 15-minute lock records to reject overlapping employee meetings, with optimistic meeting revision check on edits and cancellation.
+- Company roster is rechecked server-side for active status. Active invitees retain historical meetings when former staff have separated, while separated users cannot access the server endpoint.
+- In-app notifications use source revisions. RSVP updates do not manufacture schedule-change alerts. No email, SMS or calendar provider invitation has been dispatched.
+- Emulator denial tests explicitly cover staff meeting records and slot locks for multiple employee roles and anonymous users. These are safety gates, not permission to deploy.

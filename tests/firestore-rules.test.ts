@@ -1078,3 +1078,22 @@ describe("historical correction and isolated sandbox authority",()=>{
     }
   });
 });
+
+
+describe("B09 employee meetings are server-owned and client writes fail closed",()=>{
+  test("no browser role may get, list, alter or delete meeting records or slot locks",async()=>{
+    for(const [name,id] of [["staffMeetings","mtg-protected"],["staffMeetingSlots","uid-rep_2026-11-07_1200"]]){
+      const recordPath=name+"/"+id;
+      await env.withSecurityRulesDisabled(async ctx=>{
+        await setDoc(doc(ctx.firestore(),recordPath),{id,organizerId:ADMIN,attendeeIds:[REP],date:"2026-11-07"});
+      });
+      for(const uid of [ADMIN,MANAGER,REP,OPS,MARKETING,DRIVER,ONBOARDING,null]){
+        const db=dbFor(uid),target=doc(db,recordPath);
+        await assertFails(getDoc(target));
+        await assertFails(getDocs(collection(db,name)));
+        await assertFails(setDoc(target,{organizerId:uid??"anonymous",attendeeIds:[REP],date:"2026-11-07"}));
+        await assertFails(deleteDoc(target));
+      }
+    }
+  });
+});

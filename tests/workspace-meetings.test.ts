@@ -174,3 +174,30 @@ test("B06 preview enforces production meeting duration and attendee limits",()=>
  const many=Array.from({length:16},(_,i)=>user("staff"+i));
  assert.equal(validateMeeting({...input,attendeeIds:many.map(u=>u.id)},admin,[admin,...many]).ok,false);
 });
+
+
+test("B06–B09 connected staff meeting provider uses verified server service and has no demo fallback",()=>{
+ const app=readFileSync("components/momentum-app.tsx","utf8");
+ const store=readFileSync("lib/workspace-meetings-store.ts","utf8");
+ const client=readFileSync("lib/staff-meetings-client.ts","utf8");
+ const api=readFileSync("functions/src/staff-meetings.ts","utf8");
+ const rules=readFileSync("firestore.rules","utf8");
+ assert.match(app,/<MeetingProvider><PeriodLockProvider>/);
+ assert.match(store,/cloudReady\?remote.meetings.filter/);
+ assert.match(store,/staffMeetingRequest\(\{action:"list"\}\)/);
+ assert.match(store,/meetings:cloudVisible/);
+ assert.match(client,/currentFirebaseSession\(\)/);
+ assert.match(client,/firebaseFunctionUrl\("staffMeetingsApi"\)/);
+ assert.match(client,/authorization:"Bearer "\+session.idToken/);
+ assert.match(api,/verifyIdToken\(bearer.slice\(7\),true\)/);
+ assert.match(api,/const access=await userAccess\(/);
+ assert.match(api,/db.runTransaction/);
+ assert.match(api,/staffMeetingSlots/);
+ assert.match(rules,/match \/staffMeetings\/\{meetingId\} \{\s*allow read, write: if false;/);
+});
+test("B06 authenticated UI awaits API acknowledgment rather than claiming a saved meeting early",()=>{
+ const src=readFileSync("components/prototype/workspace-meetings-experience.tsx","utf8");
+ assert.match(src,/const result=await \(meeting\?revise/);
+ assert.match(src,/const result=await rsvp\(/);
+ assert.match(src,/const result=await cancel\(/);
+});
