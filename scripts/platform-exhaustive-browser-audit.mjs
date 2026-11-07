@@ -126,6 +126,13 @@ try{
    try{
     await goto(url);
     const state=await inspect();
+    if(device==="phone"&&url==="/sales/orders"){
+      const cards=page.locator(".momentum-mobile-order-card");
+      const count=await cards.count();
+      const desktopVisible=await page.locator(".momentum-order-desktop-table").isVisible();
+      if(count===0||desktopVisible)state.failure="Mobile Sales Orders must show legible record cards instead of the desktop table.";
+      else state.mobileCards=count;
+    }
     report.visualChecks.push({device,url,label,...state});
     if(device!=="tablet"||state.overflowPx>8)
       await saveShot(device+"-"+slug(label));
