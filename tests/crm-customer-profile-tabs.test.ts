@@ -44,3 +44,25 @@ test("rep history is scoped, historical and separate from current owner and orde
  assert.match(s,/Transfers cannot rewrite old orders/);
  assert.doesNotMatch(s,/transferAccountResponsibility\(/);
 });
+
+test("customer Documents, Representatives and Activity tabs have authorized deep-link routes",()=>{
+ const route=readFileSync("lib/navigation-route-contract.ts","utf8");
+ const source=hub();
+ for(const section of ["documents","representatives","activity"]){
+   assert.match(route,new RegExp("\\\\/sales\\\\/customers"));
+   assert.match(source,new RegExp('key:"'+section+'"'));
+ }
+ // The exact route contract is checked by the route navigation tests.
+ const nav=readFileSync("lib/navigation-route-registry.ts","utf8");
+ assert.match(nav,/recordRouteMatch\(clean\)/);
+});
+
+test("customer Documents lists issued invoice records only from authorized finance projections",()=>{
+ const source=hub(),details=sections();
+ assert.match(source,/invoices=\{finance\?\.invoices\?\?\[\]\}/);
+ assert.match(source,/invoiceReadAuthorized=\{finance!==null\}/);
+ assert.match(details,/Invoices and transaction documents/);
+ assert.match(details,/Open invoice/);
+ assert.match(details,/customerPath\+"\/transactions"/);
+ assert.match(details,/Connected financial documents require an authenticated, customer-scoped server read/);
+});
