@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - review/track-a-platform-architecture-2026-11-06
+      - integration/a-g-unified-2026-11-07
+    paths:
+      - .github/workflows/a-navigation-browser-audit.yml
+      - scripts/a-premerge-browser.mjs
   workflow_dispatch:
 
 permissions:
