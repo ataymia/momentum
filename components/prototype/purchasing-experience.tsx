@@ -145,6 +145,49 @@ function RowAction({section,id,state,role,actorId,run}:{section:Section;id:strin
   }
   return <span>Review only</span>;
 }
+
+/** Record details are a read-only local review, not externally verified A/P evidence. */
+function PurchasingRecordDetail({section,id,state}:{section:Section;id:string;state:PurchasingState}){
+  const facts:{label:string;value:string}[]=[];
+  const related:{id:string;type:string;detail:string}[]=[];
+  if(section==="vendors"){
+    const v=state.vendors.find(x=>x.id===id);if(!v)return <p className="prototype-empty">Vendor record not found in this local review.</p>;
+    facts.push({label:"Vendor",value:v.name},{label:"Contact",value:v.contact||"Not supplied"},{label:"Registered",value:v.createdAt},{label:"Entered by",value:v.createdBy},{label:"Status",value:v.active?"Active":"Inactive"});
+    state.orders.filter(x=>x.vendorId===id).forEach(p=>related.push({id:p.id,type:"Purchase order",detail:poStatus(state,p)+" · "+p.cases+" cases"}));
+  }else if(section==="orders"){
+    const p=state.orders.find(x=>x.id===id);if(!p)return <p className="prototype-empty">Purchase order not found in this local review.</p>;
+    facts.push({label:"Vendor",value:vendorName(state,p.vendorId)},{label:"Product",value:skuById(p.sku)?.description??p.sku},{label:"Ordered cases",value:String(p.cases)},{label:"Quoted cost per case",value:money(p.unitCostCents)},{label:"Order total",value:money(p.unitCostCents*p.cases)},{label:"Receiving warehouse",value:p.warehouse},{label:"Expected date",value:p.expectedDate},{label:"Stage",value:poStatus(state,p)},{label:"Created by",value:p.createdBy},{label:"Submitted",value:p.submittedAt??"Not submitted"},{label:"Approved by",value:p.approvedBy??"Not approved"});
+    state.receipts.filter(x=>x.poId===id).forEach(r=>related.push({id:r.id,type:"Physical receipt note",detail:r.cases+" cases · "+r.lotCode+" · inventory NOT posted"}));
+    state.bills.filter(x=>x.poId===id).forEach(b=>related.push({id:b.id,type:"Supplier invoice",detail:b.invoiceNumber+" · "+money(b.amountCents)+" · "+(b.approvedAt?"Review approved":"Pending review")}));
+  }else if(section==="receipts"){
+    const r=state.receipts.find(x=>x.id===id);if(!r)return <p className="prototype-empty">Receipt record not found.</p>;
+    facts.push({label:"Approved PO",value:poName(state,r.poId)},{label:"Cases physically reported",value:String(r.cases)},{label:"Lot code",value:r.lotCode},{label:"Best-by date",value:r.bestBy},{label:"Warehouse",value:r.warehouse},{label:"Recorded by",value:r.recordedBy},{label:"Recorded at",value:r.recordedAt},{label:"Inventory posting",value:"Not posted to stock"});
+  }else if(section==="bills"){
+    const b=state.bills.find(x=>x.id===id);if(!b)return <p className="prototype-empty">Supplier bill record not found.</p>;
+    const match=threeWayMatch(state,b);
+    facts.push({label:"Supplier invoice",value:b.invoiceNumber},{label:"Purchase order",value:poName(state,b.poId)},{label:"Vendor",value:match.po?vendorName(state,match.po.vendorId):"Not linked"},{label:"Billed cases",value:String(b.cases)},{label:"Recorded received cases",value:String(match.received)},{label:"Supplier invoice total",value:money(b.amountCents)},{label:"PO-price variance",value:money(match.varianceCents)},{label:"Three-way match",value:match.matched?"Matched for independent review":"Not matched"},{label:"Independent approval",value:b.approvedAt?b.approvedBy+" · "+b.approvedAt:"Not approved"},{label:"Remaining review payable",value:money(billDueCents(state,b))},{label:"Recorded by",value:b.recordedBy});
+    state.payments.filter(x=>x.billId===id).forEach(p=>related.push({id:p.id,type:"Unverified payment reference",detail:p.reference+" · "+money(p.amountCents)+" · not bank-confirmed"}));
+    state.credits.filter(x=>x.billId===id).forEach(c=>related.push({id:c.id,type:"Vendor credit review",detail:c.reference+" · "+money(c.amountCents)+" · "+(c.approvedAt?"Reviewed locally":"Pending review")}));
+  }else if(section==="payments"){
+    const p=state.payments.find(x=>x.id===id);if(!p)return <p className="prototype-empty">Payment reference not found.</p>;
+    facts.push({label:"Bill",value:p.billId},{label:"Reference",value:p.reference},{label:"Amount recorded",value:money(p.amountCents)},{label:"Entered by",value:p.recordedBy},{label:"Recorded at",value:p.recordedAt},{label:"External settlement",value:"NOT VERIFIED · no money moved by this review"});
+  }else if(section==="credits"){
+    const c=state.credits.find(x=>x.id===id);if(!c)return <p className="prototype-empty">Credit request not found.</p>;
+    facts.push({label:"Bill",value:c.billId},{label:"Supplier credit reference",value:c.reference},{label:"Reason",value:c.reason},{label:"Requested credit",value:money(c.amountCents)},{label:"Recorded by",value:c.recordedBy},{label:"Reviewed by",value:c.approvedBy??"Pending"},{label:"External supplier/GL proof",value:"Not verified"});
+  }else{
+    const e=state.expenses.find(x=>x.id===id);if(!e)return <p className="prototype-empty">Expense request not found.</p>;
+    facts.push({label:"Expense",value:e.description},{label:"Vendor",value:e.vendorId?vendorName(state,e.vendorId):"Not linked"},{label:"Amount",value:money(e.amountCents)},{label:"Recorded by",value:e.recordedBy},{label:"Recorded at",value:e.recordedAt},{label:"Independent reviewer",value:e.approvedBy??"Pending"});
+  }
+  const history=state.audit.filter(event=>event.recordId===id).slice().sort((a,b)=>b.at.localeCompare(a.at));
+  return <section className="prototype-panel"><h2>Record evidence</h2>
+    <dl className="prototype-facts">{facts.map(fact=><div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>
+    {related.length>0&&<><h3>Related purchasing records</h3><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Record</th><th>Type</th><th>Evidence</th></tr></thead><tbody>{related.map(row=><tr key={row.id}><td>{row.id}</td><td>{row.type}</td><td>{row.detail}</td></tr>)}</tbody></table></div></>}
+    <h3>Review activity</h3><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>When</th><th>Actor</th><th>Recorded step</th><th>Control note</th></tr></thead><tbody>{history.map(event=><tr key={event.id}><td>{event.at}</td><td>{event.actorId}</td><td>{event.action}</td><td>{event.detail||"Local review event"}</td></tr>)}</tbody></table></div>
+    {!history.length&&<p className="prototype-empty">No matching review event in this local session.</p>}
+    <p className="prototype-note">These details are editable local demonstration evidence. They are NOT a supplier accounting ledger, production audit, verified warehouse receipt or proof of settlement.</p>
+  </section>;
+}
+
 export function PurchasingExperience({section,id}:{section:string;id?:string}){
   const runtime=useRuntimeMode();const {currentUser}=useWorkspace();
   const firebaseSession=useFirebaseSessionOptional();
@@ -190,6 +233,7 @@ function LocalPurchasingExperience({section,id}:{section:string;id?:string}){
     <p>Operating sequence: registered vendor → prepared PO → independent approval → physical receipt → invoice-to-PO/receipt match → independent bill approval → payment reference and vendor credit review.</p></section>
     <PurchasingForm key={selected} section={selected} state={state} role={currentUser.role} run={run}/>
     {notice&&<p className="prototype-note" role="status">{notice}</p>}
+    {id&&<PurchasingRecordDetail section={selected} id={id} state={state}/>}
     <div className="prototype-metrics"><div><small>Records in module</small><strong>{records.length}</strong></div><div><small>Matching filters</small><strong>{filtered.length}</strong></div><div><small>Audit events</small><strong>{state.audit.length}</strong></div></div>
     <section className="prototype-panel">
       <div className="prototype-commerce-filters">
@@ -204,7 +248,7 @@ function LocalPurchasingExperience({section,id}:{section:string;id?:string}){
         {columns[selected].map(col=><th key={col.key}><button type="button" onClick={()=>{setDescending(sort===col.key?!descending:false);setSort(col.key);}}>{col.label} <ArrowUpDown size={13}/></button></th>)}
         {["orders","bills","credits","expenses"].includes(selected)&&<th>Control</th>}
       </tr></thead><tbody>{filtered.map(row=><tr key={row.id}>
-        <td>{row.date}</td><td>{selected==="orders"||selected==="bills"?<button className="prototype-link" type="button" onClick={()=>navigateToRoute("/purchases/"+selected+"/"+encodeURIComponent(row.id))}>{row.id}</button>:row.id}</td>
+        <td>{row.date}</td><td><button className="prototype-link" type="button" onClick={()=>navigateToRoute("/purchases/"+selected+"/"+encodeURIComponent(row.id))}>{row.id}</button></td>
         {columns[selected].map(col=><td key={col.key}>{monetaryColumns.has(col.key)?money(Number(row.values[col.key]??0)):String(row.values[col.key]??"")}</td>)}
         {["orders","bills","expenses"].includes(selected)&&<td><RowAction section={selected} id={row.id} state={state} run={run} role={currentUser.role} actorId={currentUser.id}/></td>}
       </tr>)}</tbody></table></div>
