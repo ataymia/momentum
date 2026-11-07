@@ -169,7 +169,7 @@ for(const letter of ["C","A","B","D","E","G"]){
     throw new Error("C contact export handler was not preserved.");
   }
   if(!hub.includes('import {contactExportRows,contactExportColumns} from "../../lib/saturday-scoped-workflows";')){
-    hub=hub.replace('"use client";','"use client";\\nimport {contactExportRows,contactExportColumns} from "../../lib/saturday-scoped-workflows";');
+    hub=hub.replace('"use client";','"use client";\nimport {contactExportRows,contactExportColumns} from "../../lib/saturday-scoped-workflows";');
   }
   fs.writeFileSync(hubPath,hub);
   const notifPath="lib/notification-context-v3.tsx";
@@ -181,7 +181,7 @@ for(const letter of ["C","A","B","D","E","G"]){
     notif=notif.replace(upgraded,upgraded+'\nimport {mergeReadReceipts,parseReadReceipts,shouldSurfaceBellIntent} from "./notification-receipts";');
   }
   if(!notif.includes('import {reconcileCloudReadReceipts} from "./notification-read-cloud";')){
-    notif=notif.replace('import {mergeReadReceipts,parseReadReceipts,shouldSurfaceBellIntent} from "./notification-receipts";','import {mergeReadReceipts,parseReadReceipts,shouldSurfaceBellIntent} from "./notification-receipts";\\nimport {reconcileCloudReadReceipts} from "./notification-read-cloud";');
+    notif=notif.replace('import {mergeReadReceipts,parseReadReceipts,shouldSurfaceBellIntent} from "./notification-receipts";','import {mergeReadReceipts,parseReadReceipts,shouldSurfaceBellIntent} from "./notification-receipts";\nimport {reconcileCloudReadReceipts} from "./notification-read-cloud";');
   }
   fs.writeFileSync(notifPath,notif);
   exec(["add",hubPath,notifPath]);
