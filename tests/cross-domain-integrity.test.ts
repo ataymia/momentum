@@ -58,8 +58,8 @@ test("R74 cross-functional audit joins delivery, marketing, HR and reported orde
  const {data,crm,commerce,ledger}=sample();
  data.users=[{id:"employee-1",role:"Sales Representative"}] as WorkspaceData["users"];
  const issues=scanCrossDomainIntegrity(data,crm,commerce,ledger,{
-  delivery:{tasks:[{id:"delivery-1",orderId:"not-present",driverId:"former-driver",status:"Delivered",collections:[{id:"cash-1"}]}] as import("../lib/delivery-engine").DeliveryTask[],overrides:[]},
-  marketing:{campaigns:[{id:"campaign-1"}] as import("../lib/marketing-engine").Campaign,
+  delivery:{tasks:[{id:"delivery-1",orderId:"not-present",driverId:"former-driver",status:"Delivered",collections:[{id:"cash-1"}]}] as unknown as import("../lib/delivery-engine").DeliveryTask[],overrides:[]},
+  marketing:{campaigns:[{id:"campaign-1"}] as unknown as import("../lib/marketing-engine").Campaign[],
     attributions:[{id:"attr-1",campaignId:"campaign-1",accountId:"acc-1",sourceType:"Order",sourceId:"missing-order",reviewed:true}] as import("../lib/marketing-engine").MarketingAttribution[],
     touches:[]},
   hcm:{employees:[{userId:"employee-1",status:"Active",classification:"Hourly"}] as import("../lib/hcm-engine").EmploymentRecord[],documents:[]},
@@ -76,8 +76,8 @@ test("R74 a healthy cross-department source chain is not labeled broken",()=>{
  const {data,crm,commerce,ledger}=sample();
  data.users=[{id:"employee-1",role:"Sales Representative"}] as WorkspaceData["users"];
  const issues=scanCrossDomainIntegrity(data,crm,commerce,ledger,{
-   delivery:{tasks:[{id:"task-1",orderId:"order-1",driverId:"employee-1",status:"Delivered",signature:{signedAt:"2026-11-05",capturedBy:"employee-1",strokes:[]},history:[]}] as import("../lib/delivery-engine").DeliveryTask[],overrides:[]},
-   marketing:{campaigns:[{id:"campaign-1"}] as import("../lib/marketing-engine").Campaign,attributions:[{id:"attr-1",campaignId:"campaign-1",accountId:"acc-1",sourceType:"Order",sourceId:"order-1",reviewed:true}] as import("../lib/marketing-engine").MarketingAttribution[],touches:[]},
+   delivery:{tasks:[{id:"task-1",orderId:"order-1",driverId:"employee-1",status:"Delivered",signature:{signedAt:"2026-11-05",capturedBy:"employee-1",strokes:[]},history:[]}] as unknown as import("../lib/delivery-engine").DeliveryTask[],overrides:[]},
+   marketing:{campaigns:[{id:"campaign-1"}] as unknown as import("../lib/marketing-engine").Campaign[],attributions:[{id:"attr-1",campaignId:"campaign-1",accountId:"acc-1",sourceType:"Order",sourceId:"order-1",reviewed:true}] as import("../lib/marketing-engine").MarketingAttribution[],touches:[]},
    hcm:{employees:[],documents:[]},
    performance:{reports:[]},
  });
