@@ -51,8 +51,7 @@ test("F07: test orders and unsupported paid labels cannot inflate campaign reven
  assert.equal(campaignCommercialActivity(state,data,campaignId).paidRevenue,240);
  // Connected-mode preview without source Commerce evidence cannot treat the
  // label on either order as an actual cleared payment.
- const unverified={version:1 as const,invoices:[],payments:[],allocations:[],credits:[],refunds:[],notes:[]}
-   as import("../lib/commerce-engine").CommerceState;
+ const unverified={version:1 as const,invoices:[],payments:[],allocations:[],credits:[],refunds:[],notes:[]} as import("../lib/commerce-engine").CommerceState;
  assert.equal(campaignCommercialActivity(state,data,campaignId,unverified).paidRevenue,0);
  // Now prove a server-sourced linked payment, not merely a label.
  const at="2026-11-07T10:00:00Z";
