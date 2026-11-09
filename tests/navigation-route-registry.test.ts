@@ -50,10 +50,19 @@ test("HR and Marketing department menu visibility are kept apart",()=>{
   assert.equal(canShowModuleInMenu(rep,"/sales/customers"),true);
 });
 
-test("unbuilt workflows remain visibly identified and never appear as existing",()=>{
-  const planned=MENU_GROUPS.flatMap(group=>group.entries).filter(e=>e.state==="planned");
-  assert.ok(planned.length>0);
-  for(const item of planned)assert.equal(requiresPrototypePage(item.path),true);
+test("planned workflows remain visibly identified and customer portal oversight is real",()=>{
+  const all=MENU_GROUPS.flatMap(group=>group.entries);
+  const planned=all.filter(entry=>entry.state==="planned");
+  for(const item of planned){
+    assert.equal(requiresPrototypePage(item.path),true);
+    assert.notEqual(item.state,"existing");
+  }
+  // A previously planned Commerce destination now has a source-linked,
+  // employee-scoped overview. Never require an artificial placeholder.
+  const portal=all.find(entry=>entry.path==="/commerce/customer-portal");
+  assert(portal);
+  assert.equal(portal.state,"prototype");
+  assert.equal(requiresPrototypePage(portal.path),true);
 });
 
 
