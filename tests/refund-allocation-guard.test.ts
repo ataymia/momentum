@@ -41,6 +41,18 @@ test("each refund transition requires verified single-invoice source",()=>{
  const source=readFileSync("lib/commerce-context.tsx","utf8");
  assert.match(source,/refundCanRequest\(commerce, paymentId/);
  assert.match(source,/!refundHasSingleInvoiceAllocation\(commerce,refund.paymentId\) \|\| !refundCanApprove/);
- assert.match(source,/!refundHasSingleInvoiceAllocation\(commerce,refund.paymentId\) \|\| !refundCanSend/);
- assert.match(source,/!refundHasSingleInvoiceAllocation\(commerce,refund.paymentId\) \|\| !refundCanSettle/);
+ assert.match(source,/!localSettlementSandbox \|\| !refund \|\| !refundHasSingleInvoiceAllocation\(commerce,refund.paymentId\) \|\| !refundCanSend/);
+ assert.match(source,/!localSettlementSandbox \|\| !refund \|\| !refundHasSingleInvoiceAllocation\(commerce,refund.paymentId\) \|\| !refundCanSettle/);
+ assert.match(source,/!localSettlementSandbox \|\| !payment \|\| !paymentCanReverse/);
+});
+
+test("connected environments cannot self-certify a refund transfer or processor reversal",()=>{
+ const source=readFileSync("lib/commerce-context.tsx","utf8");
+ assert.match(source,/const localSettlementSandbox=runtime.isDemo&&momentumStorage.mode\(\)==="local"/);
+ for(const action of ["markRefundSent","settleRefund","reversePayment"]){
+   const index=source.indexOf("const "+action+" =");
+   assert(index>=0,"Missing action "+action);
+   const body=source.slice(index,index+850);
+   assert.match(body,/!localSettlementSandbox/);
+ }
 });
