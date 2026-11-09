@@ -1,3 +1,4 @@
+/* eslint-disable comma-spacing, require-jsdoc, valid-jsdoc, keyword-spacing, arrow-parens, key-spacing, curly, brace-style, semi-spacing, space-before-blocks */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {

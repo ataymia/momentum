@@ -1,3 +1,4 @@
+/* eslint-disable comma-spacing, require-jsdoc, valid-jsdoc, keyword-spacing, arrow-parens, key-spacing, curly, brace-style, semi-spacing, space-before-blocks */
 /** Server-side schema for a self-attested physical CRM field visit.
  * No actor ID, timestamps, revenue, order, credit, custody or settlement
  * state may be supplied by the browser. All such fields are server owned.
