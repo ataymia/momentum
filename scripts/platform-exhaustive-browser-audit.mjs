@@ -61,7 +61,29 @@ const inspect=async()=>page.evaluate(()=>{
  const broken=images.filter(img=>img.complete&&img.naturalWidth===0).map(img=>img.src.slice(0,140));
  const doc=document.documentElement;
  const overflow=Math.max(doc.scrollWidth,body.scrollWidth)-doc.clientWidth;
+ // Structural and visual consistency evidence, not just "a route loaded".
+ const uiRoot=document.querySelector(".page-container");
+ const styled=uiRoot instanceof HTMLElement&&uiRoot.classList.contains("momentum-workspace-ui");
+ const mainLandmark=uiRoot?.matches("main[role=main],main#momentum-workspace-content")===true;
+ const blocks=[...(uiRoot?.querySelectorAll(".panel,.prototype-panel,section,article,.card,.metric-card")??[])];
+ const headingStructure=[...(uiRoot?.querySelectorAll("h1,h2,h3")??[])].map(el=>el.textContent?.trim()??"").filter(Boolean);
+ const foreground=uiRoot?getComputedStyle(uiRoot).color:null;
+ const canvas=uiRoot?getComputedStyle(uiRoot).backgroundColor:null;
+ const pageLabel=document.querySelector(".topbar__location")?.textContent?.trim()??"";
+ const visibleInputElements=[...(uiRoot?.querySelectorAll("input:not([type=hidden]),select,textarea")??[])].filter(el=>el instanceof HTMLElement && el.getClientRects().length>0 && !(el instanceof HTMLInputElement && ["checkbox","radio"].includes(el.type)));
+ const unlabeledInputs=visibleInputElements.filter(el=>{
+   const input=el;
+   const name=input.getAttribute("aria-label")?.trim()||input.getAttribute("aria-labelledby")?.trim()||
+       input.closest("label")?.textContent?.trim()|| (input.id?document.querySelector('label[for="'+CSS.escape(input.id)+'"]')?.textContent?.trim():"");
+   return !name;
+ }).length;
+ const compactActions=[...(uiRoot?.querySelectorAll("button")??[])].filter(el=>{
+   const r=el.getBoundingClientRect();
+   return r.width>0&&r.height>0&&!el.disabled&&r.height<30&&r.width<30;
+ }).length;
  return{title:document.title,h1,textLength:text.length,blank:text.length<35,
+  styled,mainLandmark,canvas,foreground,breadcrumb:pageLabel,contentBlocks:blocks.length,headingStructure,
+  unlabeledInputs,compactActions,layoutReview:(!h1.length||!blocks.length),
   blocked:text.includes("Page unavailable"),
   placeholder:text.includes("Planned module")&&text.includes("navigation prototype only"),
   connectionBlocked:text.includes("Production connection blocked"),
@@ -74,7 +96,7 @@ const inspect=async()=>page.evaluate(()=>{
   visibleText:text.slice(0,180),
  };
 });
-const report={sha:process.env.GITHUB_SHA??"local",timestamp:new Date().toISOString(),routeChecks:[],visualChecks:[],roleChecks:[],interactions:[],errors,consoleErrors,summary:{}};
+const report={sha:process.env.GITHUB_SHA??"local",timestamp:new Date().toISOString(),routeChecks:[],visualChecks:[],roleChecks:[],interactions:[],errors,consoleErrors,summary:{},contractVersion:"visual-r72-v1"};
 async function recordInteraction(name,operation){
  try{await operation();report.interactions.push({name,result:"PASS"});}
  catch(e){report.interactions.push({name,result:"FAIL",message:String(e).slice(0,400)});}
@@ -93,7 +115,7 @@ try{
   try{
    await goto(entry.path);
    Object.assign(result,await inspect());
-   if(result.blank||result.errorText||result.blocked||result.placeholder||result.broken.length){
+   if(result.blank||result.errorText||result.blocked||result.placeholder||result.broken.length||!result.styled||!result.mainLandmark){
     await saveShot("issue-"+slug(entry.group+"-"+entry.label));
    }
   }catch(e){result.failure=String(e).slice(0,500);await saveShot("exception-"+slug(entry.group+"-"+entry.label));}
@@ -119,10 +141,22 @@ try{
   ["/support/cases","Support Cases"],
   ["/calendar/meetings","Meetings"],
   ["/admin","Administration"],
+  ["/crm/quick-visit","Quick Visit"],
+  ["/crm/account-setup","Account Setup"],
+  ["/people/timekeeping","Timekeeping"],
+  ["/my-account/time-off","Personal Leave"],
+  ["/admin/employee-profiles","Employee Profiles"],
+  ["/admin/audit","Audit Center"],
+  ["/admin/workforce","Workforce Live"],
+  ["/people/leave","HR Leave"],
  ];
+ // Every registered destination must be screened at desktop and phone width.
+ // Tablet retains a high-risk representative set to bound browser audit time.
+ const representative=visualRoutes;
+ const allRoutes=[...new Map([...representative,...pages.map(item=>[item.path,item.group+" / "+item.label])].map(item=>[item[0],item])).values()];
  for(const [width,height,device] of [[1440,900,"desktop"],[768,1024,"tablet"],[390,844,"phone"]]){
   await page.setViewportSize({width,height});
-  for(const [url,label] of visualRoutes){
+  for(const [url,label] of (device==="tablet"?representative:allRoutes)){
    try{
     await goto(url);
     const state=await inspect();
@@ -135,7 +169,7 @@ try{
     }
     report.visualChecks.push({device,url,label,...state});
     if(device!=="tablet"||state.overflowPx>8)
-      await saveShot(device+"-"+slug(label));
+      await saveShot(device+"-"+slug(label)+"-"+slug(url));
    }catch(e){report.visualChecks.push({device,url,label,failure:String(e).slice(0,350)});}
   }
   console.log("VISUAL_AUDIT_PROGRESS "+device);
@@ -171,6 +205,89 @@ try{
    const toggle=page.getByRole("button",{name:/Print \/ Save PDF \(single or bulk\)/});
    if(await toggle.count()>0){await toggle.first().click();assert(await page.getByText(/Print selected|Print \/ Save PDF/).count()>0);}
    else throw new Error("Invoice print-center toggle missing");
+ });
+ // R15/R16: a physical Quick Visit is an editable three-stage form.
+ await recordInteraction("R15 Quick Visit freehand entry, validation and demo persistence",async()=>{
+   await goto("/crm/quick-visit");
+   const name=page.getByLabel("Business or store name");
+   assert(await name.isEditable(),"Quick Visit business name must be editable");
+   await name.fill("Audit-only physical store example");
+   await page.getByLabel("Visit notes").fill("Isolated automated browser audit entry");
+   await page.getByLabel(/I confirm that I physically visited this business/).check();
+   await page.getByRole("button",{name:"Save field visit"}).click();
+   await page.getByText(/Physical visit recorded in the local demonstration CRM/).waitFor({timeout:10000});
+   await page.reload({waitUntil:"domcontentloaded"});
+   await page.getByText("Audit-only physical store example").first().waitFor({timeout:10000});
+ });
+ // R52: submit leave from personal account; don't imply HR approval.
+ await recordInteraction("R52 employee can submit a demo leave request",async()=>{
+   await goto("/my-account/time-off");
+   const form=page.locator('form').filter({has:page.getByRole("button",{name:/Submit request/})}).first();
+   assert(await form.isVisible(),"Leave request form must render");
+   await form.locator('input[type="date"]').nth(0).fill("2027-01-18");
+   await form.locator('input[type="date"]').nth(1).fill("2027-01-18");
+   await form.locator('input[type="number"]').fill("8");
+   await form.locator("textarea").fill("Automated local-demo workflow check");
+   await form.getByRole("button",{name:"Submit request"}).click();
+   await page.getByText(/Demo request saved in this browser/).waitFor({timeout:10000});
+   await page.getByText("2027-01-18 to 2027-01-18").waitFor({timeout:10000});
+ });
+ // R10: punch and then restore original state to avoid misleading test timecards.
+ await recordInteraction("R10 timekeeping has visible actionable state and reversible punches",async()=>{
+   await goto("/people/timekeeping");
+   const hero=page.locator(".timekeeping-hero");
+   assert(await hero.isVisible(),"New timekeeper hero absent");
+   const clockIn=hero.getByRole("button",{name:"Clock in"});
+   const originallyOpen=!(await clockIn.count());
+   await hero.getByRole("button",{name:originallyOpen?"Clock out":"Clock in"}).click();
+   await hero.getByRole("button",{name:originallyOpen?"Clock in":"Clock out"}).waitFor({timeout:10000});
+   await hero.getByRole("button",{name:originallyOpen?"Clock in":"Clock out"}).click();
+   await hero.getByRole("button",{name:originallyOpen?"Clock out":"Clock in"}).waitFor({timeout:10000});
+ });
+ // R72: inspect account menu and genuine persisted display preference, not inert links.
+ await recordInteraction("R72 account menu lets user edit display preferences",async()=>{
+   await goto("/my-account");
+   await page.locator(".user-button").click();
+   await page.getByRole("button",{name:/Display preferences/}).click();
+   const selector=page.getByRole("dialog").getByRole("combobox");
+   await selector.selectOption("compact");
+   assert(await page.locator("html.momentum-density-compact").count()===1,"Compact layout choice did not apply");
+   await page.getByRole("dialog").getByRole("button",{name:"Done"}).click();
+   await goto("/crm/leads");
+   assert(await page.locator("html.momentum-density-compact").count()===1,"Display preference was lost on navigation");
+   await page.locator(".user-button").click();
+   await page.getByRole("button",{name:/Display preferences/}).click();
+   await page.getByRole("dialog").getByRole("combobox").selectOption("comfortable");
+   await page.getByRole("dialog").getByRole("button",{name:"Done"}).click();
+ });
+ // R73: hierarchy is not the former single leaf label.
+ await recordInteraction("R73 account breadcrumbs include every parent segment",async()=>{
+   await goto("/my-account/time-off");
+   const breadcrumb=await page.getByRole("navigation",{name:"Breadcrumb"}).innerText();
+   assert.match(breadcrumb,/Momentum/);
+   assert.match(breadcrumb,/Account/);
+   assert.match(breadcrumb,/My Account/);
+   assert.match(breadcrumb,/My Time Off/);
+ });
+ await recordInteraction("R23 customer account transactions show relationship and provenance",async()=>{
+   await goto("/sales/customers");
+   await page.locator(".sidebar-search").click();
+   await page.getByPlaceholder("Search records…").fill("Desert Lantern");
+   const record=page.locator(".command-results button").filter({hasText:"Desert Lantern"}).first();
+   await record.waitFor({timeout:10000});await record.click();
+   const pathname=new URL(page.url()).pathname;
+   assert.match(pathname,/^\/sales\/customers\/[^/]+$/);
+   await goto(pathname+"/transactions");
+   const body=await page.locator(".page-container").innerText();
+   assert.match(body,/Orders & billing transactions/);
+   assert.match(body,/Sales orders, invoiced amounts and settled payment evidence are distinct records/);
+ });
+ await recordInteraction("R50 admin employee profile has clear record sections",async()=>{
+   await goto("/admin/employee-profiles");
+   const body=await page.locator(".page-container").innerText();
+   assert.match(body,/Employee|Profile/);
+   assert(await page.locator(".employee-profile-card").count()>0,"Employee record card not present");
+   assert(await page.locator(".employee-directory-list").count()>0,"Employee list missing");
  });
  // Role-negative testing, not just hidden menus: copied URLs should fail closed.
  await recordInteraction("Global staff search opens selected customer record",async()=>{
@@ -211,11 +328,15 @@ try{
  }
  await goto("/crm/self-delivery");await saveShot("rep-self-delivery");
  // Summary and audit artifact: failures are data, never silently dropped.
- const broken=report.routeChecks.filter(x=>x.failure||x.blank||x.errorText||x.blocked||(x.placeholder&&x.state!=="planned")||x.broken?.length);
- const visual=report.visualChecks.filter(x=>x.failure||x.overflowPx>8||x.blank||x.blocked||x.placeholder||x.broken?.length);
+ const broken=report.routeChecks.filter(x=>x.failure||x.blank||x.errorText||x.blocked||(x.placeholder&&x.state!=="planned")||x.broken?.length||!x.styled||!x.mainLandmark);
+ const visual=report.visualChecks.filter(x=>x.failure||x.overflowPx>8||x.blank||x.blocked||x.placeholder||x.broken?.length||!x.styled||!x.mainLandmark);
  const role=report.roleChecks.filter(x=>!x.pass);
  const interactions=report.interactions.filter(x=>x.result!=="PASS");
  report.summary={staffRoutes:pages.length,staffBroken:broken.length,visualViews:report.visualChecks.length,
+  styledRoutes:report.routeChecks.filter(x=>x.styled&&x.mainLandmark).length,
+  structureReviewRoutes:report.routeChecks.filter(x=>x.layoutReview).length,
+  unlabeledInputsObserved:report.routeChecks.reduce((n,x)=>n+(x.unlabeledInputs||0),0),
+  compactControlsObserved:report.routeChecks.reduce((n,x)=>n+(x.compactActions||0),0),
   visualProblems:visual.length,roleChecks:report.roleChecks.length,roleProblems:role.length,
   interactionChecks:report.interactions.length,interactionProblems:interactions.length,
   uncaughtErrors:errors.length,consoleErrors:consoleErrors.length,
@@ -228,6 +349,7 @@ try{
  "## Summary\n"+JSON.stringify(report.summary,null,2),
  "## Broken static routes\n"+JSON.stringify(broken,null,2),
  "## Responsive exceptions\n"+JSON.stringify(visual,null,2),
+ "## Route-by-route layout inventory (all staff pages)\n"+JSON.stringify(report.routeChecks.map(({group,path,label,h1,styled,mainLandmark,contentBlocks,headingStructure,unlabeledInputs,compactActions,canvas,breadcrumb,layoutReview})=>({group,path,label,h1,styled,mainLandmark,contentBlocks,headingStructure,unlabeledInputs,compactActions,canvas,breadcrumb,layoutReview})),null,2),
  "## Role problems\n"+JSON.stringify(role,null,2),
  "## Interaction results\n"+JSON.stringify(report.interactions,null,2),
  "## Page exceptions\n"+JSON.stringify(errors,null,2),

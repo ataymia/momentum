@@ -7,6 +7,11 @@ on:
     paths:
       - .github/workflows/platform-exhaustive-browser-audit.yml
       - scripts/platform-exhaustive-browser-audit.mjs
+      - app/momentum-workspace-system.css
+      - components/app-shell-v4.tsx
+      - components/prototype/hr-time-off-experience.tsx
+      - components/prototype/crm-quick-visit.tsx
+      - components/prototype/operations-hub.tsx
   workflow_dispatch:
 
 permissions:
@@ -15,7 +20,7 @@ permissions:
 jobs:
   survey:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Set up Node
@@ -31,7 +36,7 @@ jobs:
         run: |
           npm install --no-save --ignore-scripts --package-lock=false playwright@1.55.1
           npx playwright install --with-deps chromium
-      - name: Survey all 84 staff routes, 51 layout views, roles and interactions
+      - name: Survey every staff route at desktop and phone, tablet core routes, roles and actual journeys
         run: npx --yes firebase-tools@15.30.1 emulators:exec --only hosting --project demo-momentum-product-review --config firebase.architecture-smoke.json 'node scripts/platform-exhaustive-browser-audit.mjs'
       - name: Upload findings and responsive screenshots
         if: always()
@@ -40,7 +45,7 @@ jobs:
           name: momentum-exhaustive-audit
           path: artifacts/full-platform-audit/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 21
       - name: Ensure no application source files changed
         if: always()
         run: git diff --exit-code
