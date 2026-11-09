@@ -58,7 +58,7 @@ export function CustomerPortalAdminOverview(){
     <p>Customer-facing orders, invoices, payments, deliveries, documents and account details live on separate <strong>customer-only routes</strong>. Open the portal only through a genuinely authorized customer sign-in.</p>
     <p>These counts describe records accessible to the current employee. They are <strong>not</strong> confirmed customer-visible records, a payment processor reconciliation, a customer invitation, or evidence of successful customer activation.</p>
    </div>
-   <p className="prototype-note"><Store size={15}/> Do not mark a customer portal as verified until a role-scoped customer test confirms exactly which records they can see, including another customer's denial.</p>
+   <p className="prototype-note"><Store size={15}/> Do not mark a customer portal as verified until a role-scoped customer test confirms exactly which records they can see, including denial of cross-customer access.</p>
   </section>
  </div>;
 }
