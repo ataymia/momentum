@@ -5,6 +5,11 @@
 **Ledger:** 77 stable IDs R01–R77, separate from original A01–G10 (98 requirements).
 **Owner:** Mia confirms acceptance; engineering updates are evidence, not final acceptance.
 
+## November 9 latest control corrections (NOT owner-accepted)
+- **R30/R74 payment exceptions:** The Administrator cross-domain audit now flags cleared payments reusing a payment-method/provider reference as **review required**, and identifies refunds greater than the source payment's eligible invoice allocations or marked settled without date/actor metadata. These are detection controls, not processor bank reconciliation or a basis to automatically reverse money.
+- **R41/R45/R74 employee onboarding truth:** Administrator override now preserves all original onboarding task statuses and evidence and keeps the case open where work remains. It records the access override as its own completed event. Documents, training and legally required forms are not marked complete by an access override. Real-user and provider acceptance are still pending.
+- **Engineering gate:** Exact-head CI and the expanded browser audit must rerun after these changes before either correction can be accepted. Both remain unmerged and undeployed.
+
 ## November 9 implementation evidence update (NOT owner-accepted)
 - **R15/R16:** Connected Quick Visit now has a code-level client-to-Firebase Function pathway (`recordCrmFieldVisit`), explicit physical-visit validation, server-authenticated actor, role/location scope check, transactional sample logging, request replay protection, and server-generated timestamps. Direct browser writes to the shared CRM interactions field are disabled in Firestore rules. This does **not** mean the function is deployed, the real customer/account scope is staging-verified, or all CRM mutations are connected. Existing contacts, deals, customer setup, and history imports remain separate work.
 - **R23/R30:** In connected-mode finance, synthetic "Cleared" receipts derived solely from a demo order's "Paid" label are not created. Previously generated synthetic receipts with the exact demo provenance are excluded from the connected authoritative payment projection, while original order records remain. Invoice status is derived from surviving payment/credit evidence. This is NOT bank/provider reconciliation and does not attest legacy payment records.
