@@ -12,6 +12,11 @@ on:
       - components/prototype/hr-time-off-experience.tsx
       - components/prototype/crm-quick-visit.tsx
       - components/prototype/operations-hub.tsx
+      - components/audit/**
+      - components/pages/focused-workspace-pages.tsx
+      - lib/cross-domain-integrity.ts
+      - lib/commerce-engine.ts
+      - lib/commerce-context.tsx
   workflow_dispatch:
 
 permissions:
