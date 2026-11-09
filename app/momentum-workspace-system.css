@@ -1,0 +1,378 @@
+/*
+ Momentum interface system v1 | R54 / R72 / R76.
+ One consistent business-app hierarchy, informed by Zoho's information density,
+ without copying Zoho branding or obscuring real permission and sync states.
+ KEEP THIS STYLESHEET LAST. Avoid per-page !important rules when adding modules.
+*/
+:root{
+  --workspace-canvas:#f2f5f9;
+  --workspace-surface:#ffffff;
+  --workspace-subtle:#f8fafc;
+  --workspace-border:#dce4ed;
+  --workspace-divider:#e8edf4;
+  --workspace-ink:#17283e;
+  --workspace-muted:#5e6f84;
+  --workspace-accent:#1558b0;
+  --workspace-accent-hover:#0c448d;
+  --workspace-accent-soft:#eef5ff;
+  --workspace-warning:#af7b11;
+  --workspace-radius:12px;
+  --workspace-shadow:0 1px 2px rgba(16,32,62,.035),0 6px 22px rgba(16,32,62,.032);
+  --workspace-column-gap:18px;
+}
+body{background:var(--workspace-canvas);}
+.app-main{background:var(--workspace-canvas);}
+.page-container.momentum-workspace-ui{
+  color:var(--workspace-ink);
+  background:var(--workspace-canvas);
+  padding:clamp(14px,2vw,28px) clamp(15px,2.1vw,32px) 52px;
+  width:100%;
+  min-height:calc(100vh - 68px);
+}
+.page-container.momentum-workspace-ui>:is(.page,.prototype-domain),
+.page-container.momentum-workspace-ui>div>:is(.page,.prototype-domain),
+.page-container.momentum-workspace-ui :is(.page,.prototype-domain){
+  min-width:0;
+}
+.page-container.momentum-workspace-ui :is(.page,.prototype-domain,.prototype-workspace,.company-workspace){
+  max-width:1640px;
+  width:100%;
+  margin-inline:auto;
+}
+/* Consistent page header: title + contextual explanation + actions. */
+.page-container.momentum-workspace-ui :is(.page-header,.prototype-heading){
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px 20px;
+  padding:4px 0 21px;
+  margin:0 0 19px;
+  border-bottom:1px solid var(--workspace-divider);
+  background:transparent;
+}
+.page-container.momentum-workspace-ui :is(.page-header,.prototype-heading) h1{
+  margin:3px 0 0;
+  color:var(--navy-950);
+  letter-spacing:-.027em;
+  font-size:clamp(22px,2.2vw,29px);
+  font-weight:750;
+  line-height:1.18;
+  max-width:100%;
+}
+.page-container.momentum-workspace-ui :is(.page-header__description,.prototype-heading>p){
+  max-width:850px;
+  margin:8px 0 0;
+  font-size:13px;
+  line-height:1.55;
+  color:var(--workspace-muted);
+}
+.page-container.momentum-workspace-ui .page-header__eyebrow{
+  color:#537091;
+  font-size:10px;
+  font-weight:760;
+  letter-spacing:.105em;
+}
+.page-container.momentum-workspace-ui .page-header__actions{
+  display:flex;
+  gap:9px;
+  flex-wrap:wrap;
+  align-items:center;
+  margin-left:auto;
+}
+.page-container.momentum-workspace-ui :is(.prototype-back,.page-header__actions a){
+  min-height:36px;
+  font-size:12px;
+  font-weight:650;
+}
+/* Cards: same surfaces, radius, border, and meaningful section heading location. */
+.page-container.momentum-workspace-ui :is(.panel,.prototype-panel){
+  background:var(--workspace-surface);
+  border:1px solid var(--workspace-border);
+  border-radius:var(--workspace-radius);
+  box-shadow:var(--workspace-shadow);
+  min-width:0;
+  margin-bottom:var(--workspace-column-gap);
+  overflow-wrap:anywhere;
+}
+.page-container.momentum-workspace-ui .prototype-panel{
+  padding:clamp(16px,1.65vw,22px);
+}
+.page-container.momentum-workspace-ui .panel__header{
+  display:flex;
+  gap:12px;
+  justify-content:space-between;
+  align-items:center;
+  padding:17px 20px;
+  background:var(--workspace-subtle);
+  border-bottom:1px solid var(--workspace-divider);
+}
+.page-container.momentum-workspace-ui :is(.prototype-panel>h2,.panel__heading>h2){
+  color:#1b304c;
+  letter-spacing:-.012em;
+  font-size:15px;
+  line-height:1.3;
+  font-weight:760;
+}
+.page-container.momentum-workspace-ui .prototype-panel>h2{
+  padding:0 0 12px;
+  margin:0 0 16px;
+  border-bottom:1px solid var(--workspace-divider);
+}
+.page-container.momentum-workspace-ui :is(.prototype-panel h3,.panel h3){
+  color:#233852;
+  font-size:13px;
+  font-weight:720;
+  line-height:1.4;
+}
+.page-container.momentum-workspace-ui :is(.prototype-note,.panel__description){
+  color:var(--workspace-muted);
+  font-size:12px;
+  line-height:1.55;
+}
+/* Data tables are dense but legible and consistent across CRM, HR, Commerce. */
+.page-container.momentum-workspace-ui :is(.prototype-table-scroll,.table-scroll,.table-wrap,.company-table-wrap){
+  width:100%;
+  max-width:100%;
+  overflow-x:auto;
+  border:1px solid var(--workspace-divider);
+  border-radius:10px;
+  -webkit-overflow-scrolling:touch;
+}
+.page-container.momentum-workspace-ui table{
+  border-collapse:separate;
+  border-spacing:0;
+  width:100%;
+  color:var(--workspace-ink);
+  font-variant-numeric:tabular-nums;
+}
+.page-container.momentum-workspace-ui table thead{
+  background:#f3f6fb;
+}
+.page-container.momentum-workspace-ui table th{
+  color:#4e627c;
+  background:#f3f6fb;
+  letter-spacing:.035em;
+  text-transform:none;
+  white-space:nowrap;
+  text-align:left;
+  font-weight:740;
+  font-size:11px!important;
+  line-height:1.3;
+  padding:12px 13px;
+  border-bottom:1px solid var(--workspace-border);
+}
+.page-container.momentum-workspace-ui table td{
+  font-size:12px!important;
+  color:#22364e;
+  padding:12px 13px;
+  vertical-align:middle;
+  border-bottom:1px solid #edf1f6;
+  line-height:1.5;
+}
+.page-container.momentum-workspace-ui table tbody tr:last-child td{border-bottom:0;}
+.page-container.momentum-workspace-ui table tbody tr:hover td{background:#f8faff;}
+.page-container.momentum-workspace-ui table th button{
+  font-size:inherit;
+  font-weight:inherit;
+  color:inherit;
+  min-height:28px;
+}
+/* Metric summaries and fact tiles: one density and hierarchy. */
+.page-container.momentum-workspace-ui :is(.prototype-metrics,.prototype-tiles,.company-rule-facts,.hcm-overview-strip){
+  gap:12px;
+  margin-bottom:18px;
+}
+.page-container.momentum-workspace-ui :is(.prototype-metrics,.prototype-tiles) >div,
+.page-container.momentum-workspace-ui .company-rule-facts >div{
+  border:1px solid var(--workspace-border);
+  border-radius:var(--workspace-radius);
+  background:var(--workspace-surface);
+  padding:15px 17px;
+  box-shadow:var(--workspace-shadow);
+}
+.page-container.momentum-workspace-ui :is(.prototype-metrics,.prototype-tiles,.company-rule-facts) small{
+  color:#65778e;
+  font-size:11px!important;
+  font-weight:600;
+  line-height:1.35;
+}
+.page-container.momentum-workspace-ui :is(.prototype-metrics,.prototype-tiles,.company-rule-facts) strong{
+  color:#172e4b;
+  font-size:clamp(19px,1.65vw,25px);
+  font-weight:780;
+  line-height:1.2;
+  letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;
+}
+/* Filters and contextual tabs: same relationship between lists and detail cards. */
+.page-container.momentum-workspace-ui :is(.prototype-controls,.company-filter-bar,.filter-bar){
+  display:flex;
+  align-items:end;
+  flex-wrap:wrap;
+  justify-content:flex-start;
+  gap:10px 12px;
+  margin-bottom:17px;
+  min-width:0;
+}
+.page-container.momentum-workspace-ui :is(.prototype-controls,.company-filter-bar,.filter-bar)>label{
+  color:#465d76;
+  font-size:11px;
+  font-weight:680;
+  min-width:130px;
+}
+.page-container.momentum-workspace-ui :is(.prototype-tabs,.company-tabs,.hcm-tabs){
+  display:flex;
+  flex-wrap:nowrap;
+  gap:2px;
+  margin:0 0 18px;
+  border:1px solid var(--workspace-border);
+  border-radius:10px;
+  background:var(--workspace-surface);
+  overflow-x:auto;
+  padding:5px;
+  scrollbar-width:thin;
+}
+.page-container.momentum-workspace-ui :is(.prototype-tabs,.company-tabs,.hcm-tabs)>button{
+  flex:0 0 auto;
+  border:1px solid transparent;
+  border-radius:8px;
+  padding:9px 13px;
+  min-height:38px;
+  background:transparent;
+  color:#4f6580;
+  font-size:12px;
+  font-weight:650;
+  white-space:nowrap;
+  opacity:1;
+  line-height:1.25;
+}
+.page-container.momentum-workspace-ui .prototype-tabs>button.is-active,
+.page-container.momentum-workspace-ui :is(.company-tabs,.hcm-tabs)>button.is-active{
+  background:var(--workspace-accent-soft);
+  border-color:#d5e4ff;
+  color:var(--workspace-accent-hover);
+  font-weight:760;
+  box-shadow:none;
+}
+.page-container.momentum-workspace-ui :is(.prototype-tabs,.company-tabs,.hcm-tabs)>button:not(.is-active):hover{
+  background:#f3f6fb;
+  color:#1a355a;
+}
+/* Forms: true, visible input affordances, focus rings, sensible heights. */
+.page-container.momentum-workspace-ui :is(label,.field__label){
+  color:#3a526d;
+  font-size:12px;
+  font-weight:630;
+  line-height:1.5;
+}
+.page-container.momentum-workspace-ui :is(input,select,textarea):not([type="checkbox"]):not([type="radio"]):not([type="range"]){
+  color:#1c2e44;
+  background:#fff;
+  border:1px solid #bfcbd9;
+  border-radius:9px;
+  box-shadow:inset 0 1px 2px rgba(8,25,48,.022);
+  font-size:13px;
+  font-weight:460;
+}
+.page-container.momentum-workspace-ui :is(input,select):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]){
+  min-height:40px;
+  padding:9px 11px;
+}
+.page-container.momentum-workspace-ui textarea{
+  min-height:88px;
+  padding:11px 12px;
+  resize:vertical;
+}
+.page-container.momentum-workspace-ui :is(input,select,textarea)::placeholder{color:#8795a8;opacity:1;}
+.page-container.momentum-workspace-ui :is(input,select,textarea):not(:disabled):focus-visible{
+  outline:3px solid #a8cdfb;
+  outline-offset:1px;
+  border-color:var(--workspace-accent);
+}
+.page-container.momentum-workspace-ui :is(input,select,textarea):disabled{
+  background:#f3f5f8;
+  color:#68798b;
+  opacity:.8;
+  cursor:not-allowed;
+}
+.page-container.momentum-workspace-ui :is(.button,.prototype-controls>button,.prototype-panel>button,.company-tabs button,.prototype-tabs button){
+  transition:background-color .13s,border-color .13s,box-shadow .13s;
+}
+.page-container.momentum-workspace-ui :is(.prototype-controls>button,.prototype-panel>button,.prototype-link){
+  min-height:38px;
+  border-radius:9px;
+  font-size:12px;
+  font-weight:670;
+}
+.page-container.momentum-workspace-ui :is(.button,.prototype-controls>button,.prototype-panel>button):focus-visible{
+  outline:3px solid #a8cdfb;
+  outline-offset:2px;
+}
+.page-container.momentum-workspace-ui :is(.prototype-link,.text-button){color:var(--workspace-accent);}
+.page-container.momentum-workspace-ui :is(.prototype-empty,.empty-state,.company-empty){
+  background:#f8fafc;
+  border:1px dashed #cbd6e4;
+  border-radius:11px;
+  padding:23px;
+  color:#5c6d81;
+  line-height:1.6;
+  font-size:13px;
+}
+/* Actionable notices should not resemble informational paragraphs. */
+.page-container.momentum-workspace-ui :is(.form-error,.prototype-error,[role="alert"]){
+  border-radius:9px;
+  padding:10px 12px;
+  line-height:1.55;
+}
+.page-container.momentum-workspace-ui :is(.prototype-columns,.company-grid){
+  min-width:0;
+  gap:var(--workspace-column-gap);
+}
+.page-container.momentum-workspace-ui .prototype-facts>div{
+  padding:11px 0;
+  border-color:var(--workspace-divider);
+}
+.page-container.momentum-workspace-ui .prototype-facts dt{
+  font-size:11px;
+  color:#61758c;
+  font-weight:680;
+}
+.page-container.momentum-workspace-ui .prototype-facts dd{
+  font-size:13px;
+  color:#182e46;
+}
+/* Don't override intentionally dark/brand-specific interactive surfaces. */
+.page-container.momentum-workspace-ui :is(.timekeeping-hero,.employee-directory-heading) :is(h2,small,p,strong){
+  color:inherit;
+}
+/* Use compact mode consistently rather than only on a few arbitrary cards. */
+.momentum-density-compact .page-container.momentum-workspace-ui{
+  --workspace-column-gap:12px;
+  padding-top:14px;
+}
+.momentum-density-compact .page-container.momentum-workspace-ui :is(.prototype-panel,.panel__header){
+  padding:12px 15px;
+}
+.momentum-density-compact .page-container.momentum-workspace-ui table :is(th,td){padding:9px 10px;}
+@media(max-width:1023px){
+  .page-container.momentum-workspace-ui{padding:17px 18px 40px;}
+  .page-container.momentum-workspace-ui .page-header__actions{margin-left:0;width:100%;justify-content:flex-start;}
+  .page-container.momentum-workspace-ui .prototype-columns{grid-template-columns:minmax(0,1fr);}
+  .page-container.momentum-workspace-ui .prototype-panel{overflow-x:auto;}
+}
+@media(max-width:600px){
+  .page-container.momentum-workspace-ui{padding:13px 12px 32px;}
+  .page-container.momentum-workspace-ui :is(.page-header,.prototype-heading){margin-bottom:13px;padding-bottom:16px;}
+  .page-container.momentum-workspace-ui :is(.page-header,.prototype-heading) h1{font-size:23px;}
+  .page-container.momentum-workspace-ui :is(.panel__header,.prototype-panel){padding:14px;}
+  .page-container.momentum-workspace-ui :is(.prototype-metrics,.prototype-tiles,.company-rule-facts){grid-template-columns:repeat(auto-fit,minmax(140px,1fr));}
+  .page-container.momentum-workspace-ui .prototype-controls{align-items:stretch;}
+  .page-container.momentum-workspace-ui .prototype-controls>label{flex:1 1 100%;}
+  .page-container.momentum-workspace-ui :is(.prototype-tabs,.company-tabs,.hcm-tabs)>button{min-height:42px;padding:9px 12px;}
+  .page-container.momentum-workspace-ui table th{padding:10px;}
+  .page-container.momentum-workspace-ui table td{padding:10px;}
+}
+@media(prefers-reduced-motion:reduce){
+  .page-container.momentum-workspace-ui :is(.button,.prototype-controls>button,.prototype-panel>button,.company-tabs button,.prototype-tabs button){transition:none;}
+}
