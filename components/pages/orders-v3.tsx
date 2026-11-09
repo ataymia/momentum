@@ -137,7 +137,7 @@ export function OrdersPage(){
   if(!testDraft&&(!formPrice||formPrice<=0)){setError("Current order pricing must be configured before this order can be submitted.");return}
   if(lines.some(l=>qaSkus.some(s=>s.description===l.product))&&!testDraft){setError("QA products cannot be mixed with sellable products. Create a separate internal test order.");return}
   const submissionAccount=scope.accounts.find((account)=>account.id===(editingOrder?.accountId??accountId));
-  if(!submissionAccount||!hasCompleteDeliveryAddress(submissionAccount)){setError("Add a complete delivery street address, city / market, and five-digit ZIP code to this account before submitting an order.");return}
+  if(!submissionAccount||!hasCompleteDeliveryAddress(submissionAccount)){setError("Add a complete delivery street address, city / market, and valid ZIP code (five digits or ZIP+4) to this account before submitting an order.");return}
   if(!lines.length||lines.some((l)=>!Number.isInteger(l.cases)||l.cases<1)){setError("Every order line needs a whole-number case quantity of at least 1.");return}
   setSubmitting(true);setError("");
   const lineInput=lines.map((l)=>({...l,inventoryAvailableAtOrder:productInventoryStatus(ledger,data,l.product).available}));
