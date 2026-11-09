@@ -4,6 +4,10 @@ import {useWorkspace} from "../../lib/workspace-context";
 import {useCrm} from "../../lib/crm-context";
 import {useCommerce} from "../../lib/commerce-context";
 import {useInventoryLedger} from "../../lib/inventory-ledger-context";
+import {useDelivery} from "../../lib/delivery-context";
+import {useMarketing} from "../../lib/marketing-context";
+import {useHcm} from "../../lib/hcm-context";
+import {usePerformance} from "../../lib/performance-context";
 import {scanCrossDomainIntegrity} from "../../lib/cross-domain-integrity";
 import {Section,StatusPill} from "../ui";
 
@@ -13,15 +17,19 @@ export function CrossDomainIntegrityPanel(){
  const {crm}=useCrm();
  const {commerce}=useCommerce();
  const {ledger}=useInventoryLedger();
+ const {state:delivery}=useDelivery();
+ const {state:marketing}=useMarketing();
+ const {hcm}=useHcm();
+ const {performance}=usePerformance();
  const [filter,setFilter]=useState<"all"|"blocker"|"review">("all");
  const issues=useMemo(()=>currentUser?.role==="Administrator"?
-   scanCrossDomainIntegrity(data,crm,commerce,ledger):[],
-   [currentUser?.role,data,crm,commerce,ledger]);
+   scanCrossDomainIntegrity(data,crm,commerce,ledger,{delivery,marketing,hcm,performance}):[],
+   [currentUser?.role,data,crm,commerce,ledger,delivery,marketing,hcm,performance]);
  if(currentUser?.role!=="Administrator")return null;
  const blockerCount=issues.filter(issue=>issue.severity==="blocker").length;
  const shown=issues.filter(issue=>filter==="all"||issue.severity===filter);
  return <Section title="Cross-department record integrity" className="cross-domain-integrity-panel"
-  description="Read-only joins across CRM, customer locations, sales orders, invoices, payments, refunds and inventory custody. Does not certify bank settlement or replace server source reconciliation."
+  description="Read-only links across CRM, Commerce, inventory, delivery, HR documents, marketing attribution and report sources. Does not certify bank settlement, official signatures or server source reconciliation."
   action={<StatusPill tone={blockerCount?"danger":issues.length?"warning":"neutral"}>{issues.length} flagged records</StatusPill>}>
   <div className="prototype-panel" style={{border:"none",boxShadow:"none",margin:0}}>
    <div className="prototype-metrics">
@@ -29,7 +37,7 @@ export function CrossDomainIntegrityPanel(){
     <div><small>Review exceptions</small><strong>{issues.length-blockerCount}</strong></div>
     <div><small>Evidence source</small><strong style={{fontSize:14}}>Current workspace</strong></div>
    </div>
-   <p className="prototype-note" role="note">These checks only cover records loaded for this Administrator. A zero count does not prove that live processor deposits, external HR signatures, missing imports, or inventory outside this workspace were reconciled.</p>
+   <p className="prototype-note" role="note">These checks only cover records loaded for this Administrator. A zero count does not prove that live processor deposits, external HR signatures, missing imports, customer access or inventory outside this workspace were reconciled.</p>
    <div className="prototype-controls">
     <label>Show exceptions
       <select value={filter} onChange={event=>setFilter(event.target.value as "all"|"blocker"|"review")}>

@@ -49,7 +49,37 @@ test("only Administrator sees cross-domain provenance panel on actual Audit page
  const panel=readFileSync("components/audit/cross-domain-integrity-panel.tsx","utf8");
  const route=readFileSync("components/pages/focused-workspace-pages.tsx","utf8");
  assert.match(panel,/currentUser\?\.role!=="Administrator"/);
- assert.match(panel,/scanCrossDomainIntegrity\(data,crm,commerce,ledger\)/);
+ assert.match(panel,/scanCrossDomainIntegrity\(data,crm,commerce,ledger,\{delivery,marketing,hcm,performance\}\)/);
  assert.match(panel,/Does not certify bank settlement/);
  assert.match(route,/<CrossDomainIntegrityPanel\/><AuditCenter\/>/);
+});
+
+test("R74 cross-functional audit joins delivery, marketing, HR and reported orders without fabricating source records",()=>{
+ const {data,crm,commerce,ledger}=sample();
+ data.users=[{id:"employee-1",role:"Sales Representative"}] as WorkspaceData["users"];
+ const issues=scanCrossDomainIntegrity(data,crm,commerce,ledger,{
+  delivery:{tasks:[{id:"delivery-1",orderId:"not-present",driverId:"former-driver",status:"Delivered",collections:[{id:"cash-1"}]}] as import("../lib/delivery-engine").DeliveryTask[],overrides:[]},
+  marketing:{campaigns:[{id:"campaign-1"}] as import("../lib/marketing-engine").Campaign,
+    attributions:[{id:"attr-1",campaignId:"campaign-1",accountId:"acc-1",sourceType:"Order",sourceId:"missing-order",reviewed:true}] as import("../lib/marketing-engine").MarketingAttribution[],
+    touches:[]},
+  hcm:{employees:[{userId:"employee-1",status:"Active",classification:"Hourly"}] as import("../lib/hcm-engine").EmploymentRecord[],documents:[]},
+  performance:{reports:[{id:"rpt-1",type:"Daily",sourceOrderIds:["missing-order"]}] as import("../lib/performance-engine").WorkReport[]},
+ });
+ for(const code of ["DELIVERY_ORDER_MISSING","DELIVERY_DRIVER_MISSING",
+  "DELIVERY_COLLECTION_NOT_SETTLEMENT","ATTRIBUTION_ORDER_LINK_INVALID",
+  "REQUIRED_DOCUMENT_MISSING","REPORT_SOURCE_ORDER_MISSING"]){
+  assert(issues.some(issue=>issue.code===code),code);
+ }
+ assert(issues.some(issue=>issue.code==="ATTRIBUTION_ORDER_LINK_INVALID"&&issue.severity==="blocker"));
+});
+test("R74 a healthy cross-department source chain is not labeled broken",()=>{
+ const {data,crm,commerce,ledger}=sample();
+ data.users=[{id:"employee-1",role:"Sales Representative"}] as WorkspaceData["users"];
+ const issues=scanCrossDomainIntegrity(data,crm,commerce,ledger,{
+   delivery:{tasks:[{id:"task-1",orderId:"order-1",driverId:"employee-1",status:"Delivered",signature:{signedAt:"2026-11-05",capturedBy:"employee-1",strokes:[]},history:[]}] as import("../lib/delivery-engine").DeliveryTask[],overrides:[]},
+   marketing:{campaigns:[{id:"campaign-1"}] as import("../lib/marketing-engine").Campaign,attributions:[{id:"attr-1",campaignId:"campaign-1",accountId:"acc-1",sourceType:"Order",sourceId:"order-1",reviewed:true}] as import("../lib/marketing-engine").MarketingAttribution[],touches:[]},
+   hcm:{employees:[],documents:[]},
+   performance:{reports:[]},
+ });
+ assert.deepEqual(issues,[]);
 });
