@@ -135,6 +135,41 @@ export function scanCrossDomainIntegrity(
         "Payment is marked Cleared without recorded settlement date and recorder.");
     }
   }
+  // A processor reference alone is not settlement confirmation, and repeated
+  // references can represent batch IDs or a duplicated collection. Escalate
+  // without guessing which row to remove or claiming money was collected.
+  const clearedReferences=new Map<string,string>();
+  for(const payment of commerce.payments.filter(p=>p.status==="Cleared")){
+    const reference=payment.processorReference?.trim().toLowerCase();
+    if(!reference)continue;
+    const key=payment.method+"|"+reference;
+    const prior=clearedReferences.get(key);
+    if(prior&&prior!==payment.id){
+      add("Commerce","SETTLEMENT_REFERENCE_REUSED",payment.id,"review",
+        "Two cleared payment entries share a method and processor reference. Confirm source provider transactions before posting collection.");
+    }else{
+      clearedReferences.set(key,payment.id);
+    }
+  }
+  const activeRefundTotals=new Map<string,number>();
+  for(const refund of commerce.refunds){
+    if(refund.status==="Failed"||!Number.isFinite(refund.amount)||refund.amount<=0)continue;
+    activeRefundTotals.set(refund.paymentId,
+      (activeRefundTotals.get(refund.paymentId)??0)+refund.amount);
+    if(refund.status==="Settled"&&(!refund.settledAt||!refund.settledBy)){
+      add("Commerce","REFUND_SETTLEMENT_EVIDENCE_MISSING",refund.id,"blocker",
+        "Refund is marked Settled without a settlement date and a recorded actor. Require source evidence.");
+    }
+  }
+  for(const [paymentId,refundTotal] of activeRefundTotals){
+    const payment=payments.get(paymentId);
+    if(!payment)continue; // Missing payment is already flagged per refund.
+    const allocated=allocationsByPayment.get(paymentId)??0;
+    if(refundTotal>Math.min(payment.amount,allocated)+0.005){
+      add("Commerce","REFUNDS_EXCEED_ALLOCATED_PAYMENT",paymentId,"blocker",
+        "Active or settled refunds exceed the payment's source invoice allocations. Hold the refund and reconcile the source ledger.");
+    }
+  }
   for(const credit of commerce.credits){
     if(!invoices.has(credit.invoiceId)){
       add("Commerce","CREDIT_INVOICE_MISSING",credit.id,"blocker",

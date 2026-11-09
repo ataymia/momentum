@@ -83,3 +83,33 @@ test("R74 a healthy cross-department source chain is not labeled broken",()=>{
  });
  assert.deepEqual(issues,[]);
 });
+
+test("R74 reused payment references and excess refunds are surfaced without editing source records",()=>{
+ const {data,crm,commerce,ledger}=sample();
+ commerce.payments.push(
+  {id:"pay-1",accountId:"acc-1",amount:90,method:"ACH",status:"Cleared",processorReference:"batch-778",settledAt:"2026-11-02",settledBy:"finance"} as CommerceState["payments"][number],
+  {id:"pay-2",accountId:"acc-1",amount:10,method:"ACH",status:"Cleared",processorReference:"BATCH-778",settledAt:"2026-11-02",settledBy:"finance"} as CommerceState["payments"][number],
+ );
+ commerce.allocations.push({id:"alloc-1",invoiceId:"inv-1",paymentId:"pay-1",amount:40} as CommerceState["allocations"][number]);
+ commerce.refunds.push({id:"refund-1",paymentId:"pay-1",amount:55,status:"Settled"} as CommerceState["refunds"][number]);
+ const before=JSON.stringify({data,crm,commerce,ledger});
+ const issues=scanCrossDomainIntegrity(data,crm,commerce,ledger);
+ for(const [code,id] of [
+  ["SETTLEMENT_REFERENCE_REUSED","pay-2"],
+  ["REFUNDS_EXCEED_ALLOCATED_PAYMENT","pay-1"],
+  ["REFUND_SETTLEMENT_EVIDENCE_MISSING","refund-1"],
+ ]){
+  assert(issues.some(issue=>issue.code===code&&issue.recordId===id),code);
+ }
+ assert.equal(JSON.stringify({data,crm,commerce,ledger}),before);
+});
+test("R74 valid single-invoice settlement is not mistakenly flagged",()=>{
+ const {data,crm,commerce,ledger}=sample();
+ commerce.payments.push({id:"pay-good",accountId:"acc-1",amount:96,method:"ACH",status:"Cleared",processorReference:"txn-unique-1",settledAt:"2026-11-02",settledBy:"finance"} as CommerceState["payments"][number]);
+ commerce.allocations.push({id:"alloc-good",invoiceId:"inv-1",paymentId:"pay-good",amount:96} as CommerceState["allocations"][number]);
+ commerce.refunds.push({id:"refund-good",paymentId:"pay-good",amount:20,status:"Settled",settledAt:"2026-11-03",settledBy:"finance"} as CommerceState["refunds"][number]);
+ const alerts=scanCrossDomainIntegrity(data,crm,commerce,ledger);
+ for(const code of ["SETTLEMENT_REFERENCE_REUSED","REFUNDS_EXCEED_ALLOCATED_PAYMENT","REFUND_SETTLEMENT_EVIDENCE_MISSING"]){
+  assert.equal(alerts.some(issue=>issue.code===code),false,code);
+ }
+});
