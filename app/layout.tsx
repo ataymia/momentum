@@ -29,6 +29,7 @@ import "./crm-field-workflows.css";
 import "./interface-preferences.css";
 import "./timekeeping-modern.css";
 import "./employee-profile-modern.css";
+import "./momentum-workspace-system.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 

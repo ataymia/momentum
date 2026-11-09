@@ -376,3 +376,7 @@ body{background:var(--workspace-canvas);}
 @media(prefers-reduced-motion:reduce){
   .page-container.momentum-workspace-ui :is(.button,.prototype-controls>button,.prototype-panel>button,.company-tabs button,.prototype-tabs button){transition:none;}
 }
+
+/* Keyboard navigation through the persistent shell. */
+.momentum-skip-link{position:fixed;top:-100px;left:16px;z-index:500;background:#fff;color:#0c448d;border:2px solid #0c448d;padding:10px 16px;border-radius:10px;font-weight:800;box-shadow:0 6px 22px #10203d22}
+.momentum-skip-link:focus{top:10px}
