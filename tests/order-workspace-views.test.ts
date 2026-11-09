@@ -18,6 +18,15 @@ test("delivered orders leave active regardless of invoice payment; payment alone
  assert.equal(orderWorkspaceView(orders[3],commerce,false),"Active / Pending");
  assert.equal(orderWorkspaceView(orders[2],commerce,false),"Hidden / Canceled");
 });
+test("terminal Paid orders appear as Delivered, while payment alone never completes fulfillment",()=>{
+ const paidTerminal={...orders[0],id:"paid-terminal",status:"Paid"} as Order;
+ const prepaidApproved={...orders[3],id:"prepaid-approved",status:"Approved",paymentStatus:"Paid"} as Order;
+ assert.equal(orderWorkspaceView(paidTerminal,commerce,false),"Delivered");
+ assert.equal(orderWorkspaceView(prepaidApproved,commerce,false),"Active / Pending");
+ const expanded=[...orders,paidTerminal,prepaidApproved];
+ assert.deepEqual(filterOrderWorkspace(data,expanded,commerce,new Set(),opts("Delivered")).map(order=>order.id).sort(),["o1","o2","paid-terminal"]);
+ assert.deepEqual(filterOrderWorkspace(data,expanded,commerce,new Set(),opts("Active / Pending")).map(order=>order.id).sort(),["o4","prepaid-approved"]);
+});
 test("all views reference original orders without mutating or hiding history",()=>{
  const original=JSON.stringify(orders);
  assert.deepEqual(filterOrderWorkspace(data,orders,commerce,new Set(),opts("Delivered")).map(o=>o.id),["o2","o1"]);
