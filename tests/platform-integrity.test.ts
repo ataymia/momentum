@@ -4,7 +4,7 @@ import { canReviewApproval } from "../lib/access";
 import { collectAuditableRecords, diffAuditableRecords } from "../lib/audit-engine";
 import { auditEventCreatesNotification } from "../lib/notification-engine";
 import { reconcileApprovals, reconcileOrders } from "../lib/order-approval-engine";
-import type { Approval, Order, WorkspaceData, WorkspaceUser } from "../lib/types";
+import type { Account, Approval, Order, WorkspaceData, WorkspaceUser } from "../lib/types";
 
 const ADMIN = "admin"; const REP = "rep"; const MANAGER = "manager";
 const user=(id:string,role:WorkspaceUser["role"],team:WorkspaceUser["team"]):WorkspaceUser=>({id,name:id,firstName:id,email:`${id}@test.local`,initials:id.slice(0,2).toUpperCase(),title:role,role,team,accent:"#53657d",managerId:role==="Sales Representative"?MANAGER:undefined,managedTeams:role==="Sales Manager"?["Sales"]:undefined});
@@ -63,4 +63,30 @@ test("canonical Golden Eagle SKU master keeps historical PO quantities separate 
   assert.match(HISTORICAL_PURCHASE_ORDER_POLICY,/never populate current on-hand/i);
   assert.equal(skuForProductName("Regular")?.description,"0.25L (8.4oz) Golden Eagle Energy Drink (24pack)");
   assert.equal(skuForProductName("Made Up Flavor"),undefined);
+});
+
+import { accountHealthSnapshot } from "../lib/account-health";
+
+test("account health reports the most recently settled order rather than the latest placed paid order",()=>{
+  const account:Account={id:"acct-health",name:"Market",location:"Phoenix",channel:"Retail",stage:"Reordered",ownerId:REP,contactName:"Owner",contactRole:"Buyer",phone:"6025550000",email:"owner@example.com",lastActivity:"",nextAction:"",nextActionDate:"2026-11-01",health:"Strong",lifetimeCases:14,reorderCount:1,notes:""};
+  const olderPlaced:Order={id:"older-placed",number:"GE-OLDER",accountId:account.id,cases:10,pricePerCase:24,amount:240,status:"Paid",placedAt:"2026-09-05",paidAt:"2026-10-30",ownerId:REP,priceBasis:"Tier A",paymentStatus:"Paid"};
+  const newerPlaced:Order={...olderPlaced,id:"newer-placed",number:"GE-NEWER",cases:4,amount:96,placedAt:"2026-10-05",paidAt:"2026-10-06"};
+  const snapshot=accountHealthSnapshot({...data,accounts:[account],orders:[olderPlaced,newerPlaced]},account,new Date("2026-11-01T19:00:00Z"));
+  assert.equal(snapshot.lastOrderDate,"2026-10-05");
+  assert.equal(snapshot.lastPaidOrderDate,"2026-10-30");
+  assert.equal(snapshot.daysSinceLastPaidOrder,2);
+  assert.equal(snapshot.rolling90PaidCases,14);
+  assert.equal(snapshot.rolling90PaidOrderCount,2);
+});
+
+test("account health keeps the placed-date fallback for legacy paid orders and leaves unpaid history unmarked",()=>{
+  const account:Account={id:"acct-legacy",name:"Legacy",location:"Phoenix",channel:"Retail",stage:"Placed",ownerId:REP,contactName:"Owner",contactRole:"Buyer",phone:"6025550000",email:"owner@example.com",lastActivity:"",nextAction:"",nextActionDate:"2026-11-01",health:"New",lifetimeCases:2,reorderCount:0,notes:""};
+  const legacyPaid:Order={id:"legacy-paid",number:"GE-LEGACY",accountId:account.id,cases:2,pricePerCase:24,amount:48,status:"Paid",placedAt:"2026-10-31",ownerId:REP,priceBasis:"Tier A",paymentStatus:"Paid"};
+  const asOf=new Date("2026-11-01T19:00:00Z");
+  const snapshot=accountHealthSnapshot({...data,accounts:[account],orders:[legacyPaid]},account,asOf);
+  assert.equal(snapshot.lastPaidOrderDate,"2026-10-31");
+  assert.equal(snapshot.daysSinceLastPaidOrder,1);
+  const unpaid=accountHealthSnapshot({...data,accounts:[account],orders:[{...legacyPaid,status:"Approved",paymentStatus:"Open"}]},account,asOf);
+  assert.equal(unpaid.lastPaidOrderDate,undefined);
+  assert.equal(unpaid.daysSinceLastPaidOrder,undefined);
 });

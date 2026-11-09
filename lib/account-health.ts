@@ -33,7 +33,8 @@ export function accountHealthSnapshot(data: WorkspaceData, account: Account, asO
   const orders = data.orders.filter((order) => order.accountId === account.id).sort((a, b) => a.placedAt.localeCompare(b.placedAt) || a.id.localeCompare(b.id));
   const paid = orders.filter((order) => order.paymentStatus === "Paid");
   const lastOrderDate = orders.at(-1)?.placedAt;
-  const lastPaidOrderDate = paid.at(-1)?.paidAt ?? paid.at(-1)?.placedAt;
+  // A newer order can settle before an older order. Recency follows the payment date, not order placement.
+  const lastPaidOrderDate = paid.map((order) => order.paidAt ?? order.placedAt).sort().at(-1);
   const rollingStart = addCalendarDays(asOfKey, -90);
   const rollingPaid = paid.filter((order) => {
     const settled = order.paidAt ?? order.placedAt;
