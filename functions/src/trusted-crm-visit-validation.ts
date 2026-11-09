@@ -59,7 +59,8 @@ export function validateTrustedCrmVisit(input:unknown):ValidVisit {
   if (input.physicallyVisited!==true || typeof input.unsuccessful!=="boolean") {
     return{ok:false,message:"Confirm the physical visit and its outcome."};
   }
-  if (!Number.isInteger(score) || Number(score)<1 || Number(score)>10) {
+  if (typeof score!=="number" || !Number.isInteger(score) ||
+      score<1 || score>10) {
     return{ok:false,message:"Prospect score must be a whole number 1–10."};
   }
   if (!summary || summary.length>1800) {
@@ -74,8 +75,9 @@ export function validateTrustedCrmVisit(input:unknown):ValidVisit {
   if (sampleProduct && sampleProduct.length>160) {
     return{ok:false,message:"Sample product name is too long."};
   }
-  if (sampleProduct && (!Number.isInteger(sampleQuantity) ||
-      Number(sampleQuantity)<1 || Number(sampleQuantity)>1000)) {
+  if (sampleProduct && (typeof sampleQuantity!=="number" ||
+      !Number.isInteger(sampleQuantity) ||
+      sampleQuantity<1 || sampleQuantity>1000)) {
     return{ok:false,message:"Sample cans must be a whole number 1–1000."};
   }
   if (!sampleProduct && sampleQuantity!==undefined) {
