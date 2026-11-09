@@ -7,17 +7,29 @@ import {
 } from "./trusted-crm-visit-validation";
 
 type Row=Record<string,unknown>;
-/** @param {unknown} value Possible Firestore object. @return {boolean} Whether it is a record. */
+/**
+ * @param {unknown} value Possible Firestore object.
+ * @return {boolean} Whether it is a record.
+ */
 const isRow=(value:unknown):value is Row=>
   Boolean(value&&typeof value==="object"&&!Array.isArray(value));
-/** @param {unknown} value Untrusted field. @return {string} Trimmed string or empty. */
+/**
+ * @param {unknown} value Untrusted field.
+ * @return {string} Trimmed string or empty.
+ */
 const text=(value:unknown)=>typeof value==="string"?value.trim():"";
-/** @param {Row|undefined} data Field document. @return {Row[]} Valid record items. */
+/**
+ * @param {Row|undefined} data Field document.
+ * @return {Row[]} Valid record items.
+ */
 const items=(data:Row|undefined):Row[]=>
   Array.isArray(data?.items)?data.items.filter(isRow):[];
 
 export class TrustedCrmVisitError extends Error {
-  /** @param {number} status HTTP status. @param {string} message Safe error for the caller. */
+  /**
+   * @param {number} status HTTP status.
+   * @param {string} message Safe error for the caller.
+   */
   constructor(public readonly status:number,message:string){super(message);}
 }
 

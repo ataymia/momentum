@@ -20,10 +20,16 @@ export type ValidVisit =
   {ok:true;value:TrustedVisitInput}|
   {ok:false;message:string};
 
-/** @param {unknown} value Unknown field. @return {boolean} Whether it is a plain object. */
+/**
+ * @param {unknown} value Unknown field.
+ * @return {boolean} Whether it is a plain object.
+ */
 const record=(value:unknown):value is Record<string,unknown>=>
   Boolean(value && typeof value==="object" && !Array.isArray(value));
-/** @param {unknown} value Field value. @return {string} Canonical trimmed string. */
+/**
+ * @param {unknown} value Field value.
+ * @return {string} Canonical trimmed string.
+ */
 const str=(value:unknown)=>typeof value==="string"?value.trim():"";
 const permitted=new Set([
   "businessName","accountId","physicallyVisited","unsuccessful",
@@ -31,7 +37,10 @@ const permitted=new Set([
   "sampleProduct","sampleQuantity",
 ]);
 
-/** @param {string} input YYYY-MM-DD field. @return {boolean} True only for a calendar day. */
+/**
+ * @param {string} input YYYY-MM-DD field.
+ * @return {boolean} True only for a calendar day.
+ */
 function validDay(input:string):boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input))return false;
   const time=new Date(input+"T00:00:00.000Z");
@@ -39,7 +48,10 @@ function validDay(input:string):boolean {
     time.toISOString().slice(0,10)===input;
 }
 
-/** @param {unknown} input Untrusted field event. @return {ValidVisit} Validated data or denial. */
+/**
+ * @param {unknown} input Untrusted field event.
+ * @return {ValidVisit} Validated data or denial.
+ */
 export function validateTrustedCrmVisit(input:unknown):ValidVisit {
   if (!record(input))return{ok:false,message:"Visit details are required."};
   if (Object.keys(input).some(key=>!permitted.has(key))) {
@@ -96,7 +108,10 @@ export function validateTrustedCrmVisit(input:unknown):ValidVisit {
   }};
 }
 
-/** @param {string} name Unlinked business. @return {string} Deterministic synthetic CRM reference. */
+/**
+ * @param {string} name Unlinked business.
+ * @return {string} Deterministic synthetic CRM reference.
+ */
 export function syntheticVisitLocationId(name:string):string {
   const normalized=name.trim().toLowerCase().replace(/\s+/g," ");
   let hash=2166136261;
@@ -109,7 +124,10 @@ export function syntheticVisitLocationId(name:string):string {
   return "quick-visit:"+slug+"-"+(hash>>>0).toString(36);
 }
 
-/** @param {unknown} id Proposed request key. @return {boolean} Whether it is a bounded key. */
+/**
+ * @param {unknown} id Proposed request key.
+ * @return {boolean} Whether it is a bounded key.
+ */
 export function validCrmVisitRequestId(id:unknown):id is string {
   return typeof id==="string"&&/^[A-Za-z0-9_-]{16,80}$/.test(id);
 }
