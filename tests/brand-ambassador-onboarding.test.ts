@@ -292,6 +292,39 @@ describe("role-targeted training audiences", () => {
     assert.deepEqual(normalized.materials.map((item) => item.id).sort(), ["link", "stored"]);
     assert.equal(normalized.materials.find((item) => item.id === "stored")?.url, undefined);
   });
+
+  test("one malformed title does not discard otherwise valid training records", () => {
+    const at = "2026-10-29T12:00:00.000Z";
+    const base = { courseId: "course-ba", kind: "Link" as const, active: true, createdAt: at, updatedAt: at };
+    const normalized = normalizeTrainingLibraryState({
+      version: 1,
+      audiences: [{ courseId: "course-ba", roles: ["Brand Ambassador"] }],
+      materials: [
+        { ...base, id: "valid", title: "Safety overview", url: "https://example.com/safety" },
+        { ...base, id: "numeric-title", title: 42, url: "https://example.com/invalid" },
+        { ...base, id: "null-title", title: null, url: "https://example.com/invalid" },
+      ],
+    }, new Set(["course-ba"]));
+    assert.deepEqual(normalized.materials.map((item) => item.id), ["valid"]);
+    assert.deepEqual(normalized.audiences, [{ courseId: "course-ba", roles: ["Brand Ambassador"] }]);
+  });
+
+  test("malformed optional descriptions are ignored without losing the material", () => {
+    const at = "2026-10-29T12:00:00.000Z";
+    const base = { courseId: "course-ba", title: "Field guide", kind: "Document" as const, active: true, createdAt: at, updatedAt: at, url: "https://example.com/guide" };
+    const normalized = normalizeTrainingLibraryState({
+      version: 1,
+      audiences: [],
+      materials: [
+        { ...base, id: "bad-description", description: { unexpected: true } },
+        { ...base, id: "good-description", description: "  Read before first visit  " },
+      ],
+    }, new Set(["course-ba"]));
+    assert.deepEqual(normalized.materials.map((item) => item.id), ["bad-description", "good-description"]);
+    assert.equal(normalized.materials[0].description, undefined);
+    assert.equal(normalized.materials[1].description, "Read before first visit");
+  });
+
 });
 
 describe("Administrator onboarding rescue", () => {
