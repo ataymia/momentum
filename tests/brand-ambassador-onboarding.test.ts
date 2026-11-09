@@ -399,6 +399,15 @@ describe("an onboarding override stays truthful", () => {
     const documents = after.documents.filter((item) => item.userId === REP_A);
     assert.ok(documents.length > 0, "the override must not delete the required document package");
     assert.ok(documents.every((item) => item.status === "Missing"), "an override must never fabricate verified paperwork");
+    const originalCase = before.lifecycleCases.find((item) => item.type === "Onboarding" && item.userId === REP_A && item.status === "Open");
+    const overriddenCase = after.lifecycleCases.find((item) => item.type === "Onboarding" && item.userId === REP_A);
+    assert.equal(overriddenCase?.status, "Open", "access overrides cannot close an unfinished onboarding case");
+    for (const task of originalCase?.tasks ?? []) {
+      const sameTask = overriddenCase?.tasks.find((item) => item.id === task.id);
+      assert.deepEqual(sameTask, task, "override must preserve original task status, evidence, and completion timestamp");
+    }
+    const overrideTask = overriddenCase?.tasks.find((item) => item.title === "Administrator override activation");
+    assert.equal(overrideTask?.status, "Complete", "the override itself must have explicit recorded evidence");
     assert.ok(after.training.filter((item) => item.userId === REP_A).every((item) => item.status !== "Complete"), "an override must never fabricate completed training");
     const profile = after.privateProfiles.find((item) => item.userId === REP_A);
     assert.equal(profile?.phone, undefined, "an override must never invent employee contact data");

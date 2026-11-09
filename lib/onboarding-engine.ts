@@ -208,8 +208,8 @@ export function activateEmploymentAfterOnboarding(state: HCMState, userId: strin
 
 /**
  * Explicit Administrator override. This changes access and employment state, but it never fabricates missing
- * documents, training completion, or employee profile data. The reason is preserved in the HCM audit and on
- * the completed lifecycle tasks so an override can be distinguished from ordinary onboarding later.
+ * documents, training completion, or employee profile data. Incomplete lifecycle
+ * tasks remain open; a separate completed override event records who granted access.
  */
 export function administratorOverrideEmploymentActivation(state: HCMState, data: WorkspaceData, userId: string, actorId: string, reason: string) {
   const target = data.users.find((user) => user.id === userId && user.role !== "Customer" && user.role !== "Administrator");
@@ -233,11 +233,16 @@ export function administratorOverrideEmploymentActivation(state: HCMState, data:
   const openCase = state.lifecycleCases.find((item) => item.type === "Onboarding" && item.userId === userId && item.status === "Open");
   const completedCase: LifecycleCase = openCase ? {
     ...openCase,
-    status: "Complete",
-    reason: `Administrator override: ${cleanReason}`,
-    tasks: openCase.tasks.map((task) => ({ ...task, status: "Complete", completedAt: task.completedAt ?? at, evidence: task.evidence ?? `Administrator override: ${cleanReason}` })),
+    // Access override is NOT completion of the onboarding case. Keep all
+    // unfinished tasks open and their original evidence untouched.
+    status: "Open",
+    reason: `Administrator access override (onboarding outstanding): ${cleanReason}`,
+    tasks: [
+      ...openCase.tasks,
+      { id: uid("task"), title: "Administrator override activation", status: "Complete", completedAt: at, evidence: cleanReason },
+    ],
   } : {
-    id: uid("onboarding-override"), type: "Onboarding", userId, effectiveDate: at.slice(0, 10), status: "Complete", reason: `Administrator override: ${cleanReason}`, createdAt: at, createdBy: actorId,
+    id: uid("onboarding-override"), type: "Onboarding", userId, effectiveDate: at.slice(0, 10), status: "Open", reason: `Administrator access override (onboarding outstanding): ${cleanReason}`, createdAt: at, createdBy: actorId,
     tasks: [{ id: uid("task"), title: "Administrator override activation", status: "Complete", completedAt: at, evidence: cleanReason }],
   };
   const next: HCMState = {
