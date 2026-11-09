@@ -1,4 +1,5 @@
 import { appendAudit, type EmployeeDocument, type EmploymentRecord, type HCMState, type LifecycleCase, type TrainingAssignment, type WorkerClassification } from "./hcm-engine";
+import { validExternalVerification } from "./hr-document-controls";
 import { isFailClosedPlaceholder, type AccountAccessState, type IdentityProvisioningRecord, type IdentityProvisioningState, type ProvisioningDraft } from "./identity-provisioning";
 import type { WorkspaceData, WorkspaceUser } from "./types";
 
@@ -175,8 +176,14 @@ export function onboardingReadiness(state: HCMState, record: IdentityProvisionin
   employeeChecks.push(lifecycleExists);
   if (!lifecycleExists) blockers.push("HR has not prepared the onboarding case yet.");
 
-  const documentsComplete = requiredTitles.size > 0 && documents.length === requiredTitles.size && documents.every((item) => item.status === "Available");
-  if (!documentsComplete) activationBlockers.push("Administrator must verify every required employment and tax document before activation.");
+  // "Available" only describes document availability, not authenticated
+  // completion. Even external references are HR attestations, not a provider
+  // webhook, immutable PDF or form-specific legal compliance certificate.
+  const documentsComplete = requiredTitles.size > 0 && documents.length === requiredTitles.size
+    && documents.every((item) => item.status === "Available"
+      && validExternalVerification(item.verification, item.version));
+  if (!documentsComplete) activationBlockers.push(
+    "Every required employment, compensation and tax document needs a current externally verified original reference. Available alone is not a signature.");
 
   const readyForEmployeeSubmission = passwordComplete && employmentConfigured && profileComplete && compensationConfigured && trainingComplete && lifecycleExists;
   if (!readyForEmployeeSubmission) activationBlockers.push("Employee onboarding has not been completed and submitted.");
