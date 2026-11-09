@@ -29,7 +29,7 @@ const permitted=new Set([
 ]);
 
 function validDay(input:string):boolean {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(input))return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input))return false;
   const time=new Date(input+"T00:00:00.000Z");
   return Number.isFinite(time.getTime()) &&
     time.toISOString().slice(0,10)===input;
@@ -92,7 +92,7 @@ export function validateTrustedCrmVisit(input:unknown):ValidVisit {
 }
 
 export function syntheticVisitLocationId(name:string):string {
-  const normalized=name.trim().toLowerCase().replace(/\\s+/g," ");
+  const normalized=name.trim().toLowerCase().replace(/\s+/g," ");
   let hash=2166136261;
   for (let i=0;i<normalized.length;i++) {
     hash^=normalized.charCodeAt(i);
