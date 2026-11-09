@@ -21,6 +21,7 @@ import {
 import {submitDeliveryCorrection,approveDeliveryCorrection,closeDeliveryCorrection,listDeliveryCorrections,DeliveryCorrectionError} from "./delivery-correction";
 import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
 import {commitTrustedCrmFieldVisit,TrustedCrmVisitError} from "./trusted-crm-field-visit";
+import {submitTrustedHrLeave,TrustedHrLeaveError} from "./trusted-hr-leave-request";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
 import {operateLocationPermissionRequest,LocationPermissionRequestError} from "./location-permission-request";
 
@@ -1728,6 +1729,34 @@ export const sandboxWorkflow=onRequest({cors:true,region:"us-central1"},async(re
     }
     console.error("sandboxWorkflow failed",error);
     json(response,502,{ok:false,message:"Sandbox action was not committed. Refresh before retrying."});
+  }
+});
+
+/** Authenticated leave submission: the server owns status, actor and timestamp. */
+export const submitHrLeaveRequest=onRequest({
+  cors:true,region:"us-central1",
+},async(request,response)=>{
+  if(request.method!=="POST"){
+    json(response,405,{ok:false,message:"POST required."});return;
+  }
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?
+    authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const receipt=await submitTrustedHrLeave(actor,request.body?.request,
+      request.body?.requestId);
+    json(response,200,{ok:true,...receipt});
+  }catch(error){
+    if(error instanceof TrustedHrLeaveError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("submitHrLeaveRequest failed",error);
+    json(response,502,{ok:false,message:
+      "Leave save not confirmed. Check request history before retrying."});
   }
 });
 
