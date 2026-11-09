@@ -119,6 +119,47 @@ describe("production persistence incident guards", () => {
     assert.ok(compacted.every((item) => item.status === "Unread"), "actionable entries are kept ahead of resolved history");
   });
 
+  test("notification compaction keeps recent unread actions instead of stale first-in entries", () => {
+    const deliveries = Array.from({ length: 700 }, (_, index) => ({
+      id: `notice-${index}`,
+      sourceEventId: `event-${index}`,
+      recipientUserId: "admin",
+      channel: "In app" as const,
+      title: `Action ${index}`,
+      detail: "Needs attention",
+      tone: "warning" as const,
+      createdAt: new Date(Date.UTC(2026, 9, 1, 0, 0, index)).toISOString(),
+      status: "Unread" as const,
+    }));
+    const before = JSON.stringify(deliveries);
+    const compacted = compactNotificationDeliveries(deliveries);
+    assert.equal(compacted.length, MAX_PERSISTED_NOTIFICATION_DELIVERIES);
+    assert.equal(compacted[0].id, "notice-699");
+    assert.equal(compacted.at(-1)?.id, "notice-200");
+    assert.equal(compacted.some((item) => item.id === "notice-0"), false);
+    assert.equal(JSON.stringify(deliveries), before, "compaction must not mutate its input");
+  });
+
+  test("unread actions outrank newer resolved history while each group stays newest-first", () => {
+    const make = (id: string, status: "Unread" | "Read", day: number) => ({
+      id, sourceEventId: id, recipientUserId: "admin",
+      channel: "In app" as const, title: id, detail: id,
+      tone: "info" as const,
+      createdAt: new Date(Date.UTC(2026, 9, day)).toISOString(),
+      status,
+      ...(status === "Read" ? { readAt: new Date(Date.UTC(2026, 9, day)).toISOString() } : {}),
+    });
+    const compacted = compactNotificationDeliveries([
+      make("old-unread", "Unread", 1),
+      make("new-read", "Read", 8),
+      make("new-unread", "Unread", 4),
+      make("old-read", "Read", 2),
+    ]);
+    assert.deepEqual(compacted.map((item) => item.id), [
+      "new-unread", "old-unread", "new-read", "old-read",
+    ]);
+  });
+
   test("notification delivery storage also respects a byte budget below Firestore's 1 MiB ceiling", () => {
     const deliveries = Array.from({ length: 100 }, (_, index) => ({
       id: `large-${index}`,
