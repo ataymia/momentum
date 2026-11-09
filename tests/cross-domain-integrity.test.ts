@@ -50,6 +50,6 @@ test("only Administrator sees cross-domain provenance panel on actual Audit page
  const route=readFileSync("components/pages/focused-workspace-pages.tsx","utf8");
  assert.match(panel,/currentUser\?\.role!=="Administrator"/);
  assert.match(panel,/scanCrossDomainIntegrity\(data,crm,commerce,ledger\)/);
- assert.match(panel,/does not certify bank settlement/);
+ assert.match(panel,/Does not certify bank settlement/);
  assert.match(route,/<CrossDomainIntegrityPanel\/><AuditCenter\/>/);
 });
