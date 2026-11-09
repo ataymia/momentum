@@ -70,11 +70,11 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   // a connected session. Provider verification must be implemented server-side.
   const localSettlementSandbox=runtime.isDemo&&momentumStorage.mode()==="local";
   const read = () => {
-    if (typeof window === "undefined") return createCommerceSeed(data);
+    if (typeof window === "undefined") return createCommerceSeed(data,localSettlementSandbox);
     try {
-      return normalizeCommerceState(JSON.parse(momentumStorage.getItem(COMMERCE_STORAGE_KEY) ?? "null"), data);
+      return normalizeCommerceState(JSON.parse(momentumStorage.getItem(COMMERCE_STORAGE_KEY) ?? "null"), data,localSettlementSandbox);
     } catch {
-      return createCommerceSeed(data);
+      return createCommerceSeed(data,localSettlementSandbox);
     }
   };
   const [commerce, setCommerce] = useState<CommerceState>(() => read());
@@ -82,12 +82,12 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handle = window.setTimeout(() => {
       setCommerce((state) => {
-        const next=normalizeCommerceState(state,data);
+        const next=normalizeCommerceState(state,data,localSettlementSandbox);
         return JSON.stringify(next)===JSON.stringify(state)?state:next;
       });
     }, 0);
     return () => window.clearTimeout(handle);
-  }, [data]);
+  }, [data,localSettlementSandbox]);
 
   useEffect(() => {
     if (!canManageCash) return;
@@ -285,7 +285,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   };
 
   const resetCommerce = () => {
-    if (runtime.isDemo && currentUser?.role === "Administrator") setCommerce(createCommerceSeed(data));
+    if (localSettlementSandbox && currentUser?.role === "Administrator") setCommerce(createCommerceSeed(data));
   };
   const value: CommerceContextValue = { commerce, setInvoiceTerms, recordPayment, setPaymentStatus, failPayment, reversePayment, createCredit, approveCredit, applyCredit, requestRefund, approveRefund, markRefundSent, settleRefund, failRefund, addNote, voidInvoice, resetCommerce };
   return <CommerceContext.Provider value={value}>{children}</CommerceContext.Provider>;
