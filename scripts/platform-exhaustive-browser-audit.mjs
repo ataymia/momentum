@@ -282,12 +282,22 @@ try{
    assert.match(body,/Orders & billing transactions/);
    assert.match(body,/Sales orders, invoiced amounts and settled payment evidence are distinct records/);
  });
- await recordInteraction("R50 admin employee profile has clear record sections",async()=>{
+ await recordInteraction("R50 employee directory opens source-linked employee record and sections",async()=>{
    await goto("/admin/employee-profiles");
-   const body=await page.locator(".page-container").innerText();
-   assert.match(body,/Employee|Profile/);
-   assert(await page.locator(".employee-profile-card").count()>0,"Employee record card not present");
-   assert(await page.locator(".employee-directory-list").count()>0,"Employee list missing");
+   assert(await page.locator(".momentum-personnel-directory").count()===1,"Employee directory absent");
+   const open=page.getByRole("button",{name:"Open profile"}).first();
+   await open.waitFor({timeout:10000});await open.click();
+   assert.match(new URL(page.url()).pathname,/^\/admin\/employee-profiles\/[^/]+$/);
+   await page.locator(".momentum-personnel-record").waitFor({timeout:10000});
+   assert(await page.locator(".momentum-personnel-record-hero").count()===1,"Employee detail hero absent");
+   const sections=page.getByRole("navigation",{name:"Employee record sections"});
+   assert(await sections.isVisible(),"Employee record tabs absent");
+   for(const label of ["Overview","Time","Documents","Training","Compensation"]){
+     assert(await sections.getByRole("button",{name:label}).count()===1,"Missing record section: "+label);
+   }
+   await sections.getByRole("button",{name:"Documents"}).click();
+   assert.match(new URL(page.url()).pathname,/\/documents$/);
+   assert(await page.getByRole("heading",{name:"HR document register"}).isVisible());
  });
  // Role-negative testing, not just hidden menus: copied URLs should fail closed.
  await recordInteraction("Global staff search opens selected customer record",async()=>{
@@ -329,7 +339,8 @@ try{
  await goto("/crm/self-delivery");await saveShot("rep-self-delivery");
  // Summary and audit artifact: failures are data, never silently dropped.
  const broken=report.routeChecks.filter(x=>x.failure||x.blank||x.errorText||x.blocked||(x.placeholder&&x.state!=="planned")||x.broken?.length||!x.styled||!x.mainLandmark);
- const visual=report.visualChecks.filter(x=>x.failure||x.overflowPx>8||x.blank||x.blocked||x.placeholder||x.broken?.length||!x.styled||!x.mainLandmark);
+ const plannedPaths=new Set(pages.filter(entry=>entry.state==="planned").map(entry=>entry.path));
+ const visual=report.visualChecks.filter(x=>x.failure||x.overflowPx>8||x.blank||x.blocked||(x.placeholder&&!plannedPaths.has(x.url))||x.broken?.length||!x.styled||!x.mainLandmark);
  const role=report.roleChecks.filter(x=>!x.pass);
  const interactions=report.interactions.filter(x=>x.result!=="PASS");
  report.summary={staffRoutes:pages.length,staffBroken:broken.length,visualViews:report.visualChecks.length,

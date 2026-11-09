@@ -33,8 +33,8 @@ export function HrPersonnelDirectory(){
   const exportRoster=()=>downloadCsv("momentum-employee-roster.csv",list.map(({user,employment})=>({
     employeeNumber:employment?.employeeNumber??"",name:user.name,department:employment?.department??user.team,jobTitle:employment?.jobTitle??user.title,location:employment?.location??"",role:user.role,employmentStatus:employment?.status??"Not configured",hireDate:employment?.hireDate??"",manager:data.users.find(u=>u.id===employment?.managerId)?.name??""
   })),["employeeNumber","name","department","jobTitle","location","role","employmentStatus","hireDate","manager"]);
-  return <div className="prototype-domain prototype-domain--people">
-    <header className="prototype-heading"><h1>Employee records</h1><p>People directory, employment status, reporting lines, HR files, training and detailed profiles. Compensation exports require a separate deliberate action.</p></header>
+  return <div className="prototype-domain prototype-domain--people momentum-personnel-directory">
+    <header className="prototype-heading"><div><span className="page-header__eyebrow">Human Resources / Personnel</span><h1>Employee records</h1><p>Search real employee records, reporting lines, employment status, training and verified HR document metadata. Compensation exports stay separate.</p></div></header>
     <div className="prototype-domain-statbar">
       <article><UserRound size={18}/><small>Employees in directory</small><strong>{data.users.filter(u=>u.role!=="Customer").length}</strong></article>
       <article><UserRound size={18}/><small>Active employment records</small><strong>{hcm.employees.filter(e=>e.status==="Active").length}</strong></article>
@@ -48,9 +48,9 @@ export function HrPersonnelDirectory(){
         <button type="button" onClick={()=>setReverse(v=>!v)}>{reverse?"Descending":"Ascending"}</button>
         <button type="button" disabled={!list.length} onClick={exportRoster}><Download size={15}/> Export visible roster</button>
       </div>
-      <div className="prototype-table-scroll"><table className="prototype-table">
+      <div className="prototype-table-scroll"><table className="prototype-table momentum-personnel-table">
         <thead><tr><th>Employee</th><th>Number</th><th>Department</th><th>Job title</th><th>Status</th><th>Hire date</th><th>Profile</th></tr></thead><tbody>
-        {list.map(({user,employment})=><tr key={user.id}><td><strong>{user.name}</strong><small className="prototype-description">{user.email}</small></td><td>{employment?.employeeNumber??"Not assigned"}</td><td>{employment?.department??user.team}</td><td>{employment?.jobTitle??user.title}</td><td>{employment?.status??"Not configured"}</td><td>{employment?.hireDate??"Not recorded"}</td><td><button type="button" className="prototype-link" onClick={()=>navigateToRoute(profilePath(user.id))}>Open profile</button></td></tr>)}
+        {list.map(({user,employment})=><tr key={user.id}><td><div className="momentum-personnel-person"><span className="momentum-personnel-avatar" aria-hidden="true">{user.initials}</span><span><strong>{user.name}</strong><small className="prototype-description">{user.email}</small></span></div></td><td>{employment?.employeeNumber??"Not assigned"}</td><td>{employment?.department??user.team}</td><td>{employment?.jobTitle??user.title}</td><td>{employment?.status??"Not configured"}</td><td>{employment?.hireDate??"Not recorded"}</td><td><button type="button" className="prototype-link" onClick={()=>navigateToRoute(profilePath(user.id))}>Open profile</button></td></tr>)}
         </tbody></table></div>
         {!list.length&&<div className="prototype-empty">No employee records match these filters.</div>}
     </section>
@@ -86,10 +86,15 @@ export function HrPersonnelRecord({id,section="overview"}:{id:string;section?:st
   const exportPaySetup=()=>{if(!compensation)return;downloadCsv("momentum-employee-"+id+"-compensation.csv",[
     {employee:user.name,employeeId:id,basis:compensation.basis,rate:compensation.rate,effectiveDate:compensation.effectiveDate,status:compensation.status,approvedBy:compensation.approvedBy}
   ],["employee","employeeId","basis","rate","effectiveDate","status","approvedBy"]);};
-  return <div className="prototype-domain prototype-domain--people">
-    <header className="prototype-heading">
-      <button type="button" className="prototype-back" onClick={()=>navigateToRoute("/admin/employee-profiles")}><ArrowLeft size={15}/> Back to employee records</button>
-      <h1>{user.name}</h1><p>{employment?.jobTitle??user.title} · {employment?.department??user.team} · {employment?.status??"Employment not configured"}</p>
+  return <div className="prototype-domain prototype-domain--people momentum-personnel-record">
+    <header className="prototype-heading momentum-personnel-record-hero">
+      <div className="momentum-personnel-identity"><span className="momentum-personnel-avatar momentum-personnel-avatar--hero" aria-hidden="true">{user.initials}</span>
+        <div><span className="page-header__eyebrow">Administrator / Employee profile</span>
+          <h1>{user.name}</h1><p>{employment?.jobTitle??user.title} · {employment?.department??user.team}</p>
+          <span className="momentum-personnel-record-state">{employment?.status??"Employment not configured"} · {employment?.employeeNumber??"No employee number"}</span>
+        </div>
+      </div>
+      <button type="button" className="prototype-back" onClick={()=>navigateToRoute("/admin/employee-profiles")}><ArrowLeft size={15}/> Employee directory</button>
     </header>
     <div className="prototype-controls"><button type="button" onClick={exportProfile}><Download size={14}/> Download profile summary</button><button type="button" disabled={!writeEnabled} onClick={()=>{if(typeof window!=="undefined")window.sessionStorage.setItem("momentum-employee-profile-focus",id);navigateToRoute("/admin/employee-profiles/workflow");}}>Open secure profile editor</button></div>
     <nav className="prototype-tabs" aria-label="Employee record sections">{sections.map(s=><button key={s} type="button" className={area===s?"is-active":""} aria-current={area===s?"page":undefined} onClick={()=>navigateToRoute(profilePath(id,s==="overview"?undefined:s))}>{s[0].toUpperCase()+s.slice(1)}</button>)}</nav>
