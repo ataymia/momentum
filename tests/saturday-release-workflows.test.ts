@@ -82,6 +82,6 @@ test("employee leave creation uses event-generated IDs and authorized Firestore 
  const src=readFileSync("components/prototype/hr-time-off-experience.tsx","utf8");
  assert.match(src,/newLeaveRequestId\(\)/);
  assert.doesNotMatch(src,/Date\.now\(\)|Math\.random\(\)/);
- assert.match(src,/writeEnabled=\(runtime\.isDemo&&storageMode==="local"\)\|\|storageMode==="firestore"/);
- assert.match(src,/flushAndConfirm\(HCM_STORAGE_KEY\)/);
+ assert.match(src,/writeEnabled=localDemo\|\|connected/);
+ assert.match(src,/submitConnectedLeaveRequest\(firebase\.session,request,requestId\)/);
 });

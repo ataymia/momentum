@@ -592,7 +592,7 @@ service cloud.firestore {
       allow get, list: if field in ['acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'compensation', 'compensationChanges', 'dependents', 'documents', 'employmentChanges', 'goals', 'leaveRequests', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'reviews', 'shiftRequests', 'tasks', 'training', 'workflows']
         && (uid == request.auth.uid ? isEmployee() : (isAdmin() || (!(field in ['audit', 'compensation']) && manages(uid)) || false));
       allow write: if field in ['acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'compensation', 'compensationChanges', 'dependents', 'documents', 'employmentChanges', 'goals', 'leaveRequests', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'reviews', 'shiftRequests', 'tasks', 'training', 'workflows']
-        && (isAdmin() || (uid == request.auth.uid ? (!(field in ['compensation', 'compensationChanges', 'employmentChanges', 'ptoAssignments', 'ptoLedger']) && isEmployee()) : ((!(field in ['audit', 'compensation']) && manages(uid) && activeEmployee()) || false)));
+        && (isAdmin() || (uid == request.auth.uid ? (!(field in ['compensation', 'compensationChanges', 'employmentChanges', 'leaveRequests', 'ptoAssignments', 'ptoLedger']) && isEmployee()) : ((!(field in ['audit', 'compensation']) && manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-identity-provisioning-v1
