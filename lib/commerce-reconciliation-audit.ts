@@ -25,9 +25,9 @@ export function invoiceReconciliationAlerts(state:CommerceState,invoice:Invoice)
    if(allocated>payment.amount+0.005)alerts.push("Payment allocations exceed the source payment face amount.");
    if(payment.status==="Cleared"&&!payment.settledAt)
      alerts.push("Payment is recorded Cleared without a settlement date.");
-   if(state.refunds.some(r=>r.paymentId===payment.id&&r.status==="Settled"&&r.amount>0)&&
+   if(state.refunds.some(r=>r.paymentId===payment.id&&r.status!=="Failed"&&r.amount>0)&&
       new Set(allAllocations.map(a=>a.invoiceId)).size>1)
-     alerts.push("A settled payment refund spans multiple invoices without invoice-specific refund allocation.");
+     alerts.push("A payment refund spans multiple invoices without invoice-specific refund allocation; hold review and settlement.");
    const settledRefunds=state.refunds.filter(r=>r.paymentId===payment.id&&r.status==="Settled")
      .reduce((n,r)=>n+r.amount,0);
    if(settledRefunds>allocated+0.005)alerts.push("Settled refunds exceed the associated payment allocation.");

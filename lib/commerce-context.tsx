@@ -27,6 +27,7 @@ import {
   refundCanApprove,
   refundCanFail,
   refundCanRequest,
+  refundHasSingleInvoiceAllocation,
   refundCanSend,
   refundCanSettle,
 } from "./commerce-engine";
@@ -236,7 +237,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const approveRefund = (refundId: string) => {
     if (!canManageCash || !currentUser) return false;
     const refund = commerce.refunds.find((item) => item.id === refundId);
-    if (!refund || !refundCanApprove(refund, currentUser.id)) return false;
+    if (!refund || !refundHasSingleInvoiceAllocation(commerce,refund.paymentId) || !refundCanApprove(refund, currentUser.id)) return false;
     const approvedAt = now();
     setCommerce((state) => ({ ...state, refunds: state.refunds.map((item) => item.id === refundId ? { ...item, status: "Approved", approvedBy: currentUser.id, approvedAt } : item) }));
     return true;
@@ -245,7 +246,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const markRefundSent = (refundId: string, reference: string) => {
     if (!canManageCash || !currentUser) return false;
     const refund = commerce.refunds.find((item) => item.id === refundId);
-    if (!refund || !refundCanSend(refund, reference)) return false;
+    if (!refund || !refundHasSingleInvoiceAllocation(commerce,refund.paymentId) || !refundCanSend(refund, reference)) return false;
     const sentAt = now();
     setCommerce((state) => ({ ...state, refunds: state.refunds.map((item) => item.id === refundId ? { ...item, status: "Sent", sentReference: reference.trim(), sentAt, sentBy: currentUser.id } : item) }));
     return true;
@@ -254,7 +255,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const settleRefund = (refundId: string, settlementDate: string) => {
     if (!canManageCash || !currentUser) return false;
     const refund = commerce.refunds.find((item) => item.id === refundId);
-    if (!refund || !refundCanSettle(refund, settlementDate)) return false;
+    if (!refund || !refundHasSingleInvoiceAllocation(commerce,refund.paymentId) || !refundCanSettle(refund, settlementDate)) return false;
     setCommerce((state) => ({ ...state, refunds: state.refunds.map((item) => item.id === refundId ? { ...item, status: "Settled", settledAt: settlementDate, settledBy: currentUser.id } : item) }));
     return true;
   };

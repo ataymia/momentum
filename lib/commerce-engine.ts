@@ -113,7 +113,22 @@ export function canRecordSettlementDate(value?:string){return Boolean(value&&isV
 export function paymentCanFail(payment:Payment,reason:string){return payment.status==="Pending"&&Boolean(reason.trim());}
 export function paymentCanReverse(state:CommerceState,payment:Payment,reason:string){return payment.status==="Cleared"&&Boolean(reason.trim())&&!state.refunds.some((refund)=>refund.paymentId===payment.id&&refund.status!=="Failed");}
 export function refundRemainingAmount(state:CommerceState,paymentId:string){const payment=state.payments.find((item)=>item.id===paymentId);if(!payment||!finitePositive(payment.amount))return 0;const allocated=Math.min(payment.amount,state.allocations.filter((allocation)=>allocation.paymentId===paymentId&&finitePositive(allocation.amount)).reduce((sum,item)=>sum+item.amount,0));const committed=state.refunds.filter((refund)=>refund.paymentId===paymentId&&refund.status!=="Failed"&&finitePositive(refund.amount)).reduce((sum,refund)=>sum+refund.amount,0);return Math.max(0,allocated-committed);}
-export function refundCanRequest(state:CommerceState,paymentId:string,amount:number,reason:string,evidence:string){const payment=state.payments.find((item)=>item.id===paymentId);return Boolean(payment&&payment.status==="Cleared"&&finitePositive(amount)&&amount<=refundRemainingAmount(state,paymentId)&&reason.trim()&&evidence.trim());}
+/** Refunds currently have paymentId but no invoiceId. A refund of a payment
+ * spanning multiple invoices cannot be assigned honestly to a sales order,
+ * account statement or salesperson. Freeze further transitions until Commerce
+ * can allocate refunds explicitly to invoices, with reviewed source evidence. */
+export function refundHasSingleInvoiceAllocation(state:CommerceState,paymentId:string):boolean{
+  const payment=state.payments.find(p=>p.id===paymentId);
+  if(!payment||!finitePositive(payment.amount))return false;
+  const allocations=state.allocations.filter(a=>a.paymentId===paymentId&&finitePositive(a.amount));
+  const invoiceIds=new Set(allocations.map(a=>a.invoiceId));
+  if(invoiceIds.size!==1)return false;
+  const invoice=state.invoices.find(i=>i.id===allocations[0].invoiceId);
+  if(!invoice||invoice.accountId!==payment.accountId||invoice.status==="Void"||invoice.supersededByInvoiceId)return false;
+  const total=allocations.reduce((sum,a)=>sum+a.amount,0);
+  return total<=payment.amount+0.005&&total>0;
+}
+export function refundCanRequest(state:CommerceState,paymentId:string,amount:number,reason:string,evidence:string){const payment=state.payments.find((item)=>item.id===paymentId);return Boolean(payment&&payment.status==="Cleared"&&refundHasSingleInvoiceAllocation(state,paymentId)&&finitePositive(amount)&&amount<=refundRemainingAmount(state,paymentId)&&reason.trim()&&evidence.trim());}
 export function creditCanApprove(credit:CreditMemo,actorId:string){return credit.status==="Draft"&&Boolean(actorId)&&credit.createdBy!==actorId;}
 export function creditCanApply(state:CommerceState,credit:CreditMemo){if(credit.status!=="Approved"||!finitePositive(credit.amount))return false;const invoice=state.invoices.find((item)=>item.id===credit.invoiceId);return Boolean(invoice&&computedInvoiceStatus(state,invoice)!=="Void"&&credit.amount<=invoiceRecordableAmount(state,invoice));}
 export function refundCanApprove(refund:Refund,actorId:string){return refund.status==="Requested"&&Boolean(actorId)&&refund.createdBy!==actorId;}
