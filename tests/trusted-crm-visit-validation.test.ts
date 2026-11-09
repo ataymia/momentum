@@ -1,10 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {
+import {createRequire} from "node:module";
+type VisitPolicy=typeof import("../functions/src/trusted-crm-visit-validation");
+const {
   syntheticVisitLocationId,validCrmVisitRequestId,
   validateTrustedCrmVisit,
-} from "../functions/src/trusted-crm-visit-validation";
+}=createRequire(import.meta.url)(
+  "../functions/src/trusted-crm-visit-validation.ts") as VisitPolicy;
 import {quickVisitLocationId} from "../lib/quick-visit";
 import {documentWritable} from "../lib/firestore-domains";
 import type {PersistenceScope} from "../lib/firebase-access";
