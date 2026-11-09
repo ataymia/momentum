@@ -33,10 +33,39 @@ test("F07: new marketing workspaces never invent a campaign, collateral approval
  assert.equal(seed.materials.length,0);
  assert.equal(seed.spend.length,0);
 });
-test("F07: synthetic paid orders cannot influence the displayed campaign outcome engine",()=>{
- const source=readFileSync("lib/marketing-engine.ts","utf8");
- assert(source.includes('!order.testOnly&&linkedAccountIds.has(order.accountId)'));
- assert(source.includes('!order.testOnly&&orderIds.has(order.id)'));
+test("F07: test orders and unsupported paid labels cannot inflate campaign revenue",async()=>{
+ const {createMarketingSeed,campaignCommercialActivity}=await import("../lib/marketing-engine");
+ const campaignId="camp-f07", accountId="location-one";
+ const state=createMarketingSeed();
+ state.campaigns.push({id:campaignId,name:"Test outreach",objective:"Retail demand",audience:"Retail",
+   startDate:"2026-11-01",endDate:"2026-11-30",requestedBudget:0,ownerId:"marketer",
+   status:"Approved",successMeasure:"Verified paid cases",createdAt:"2026-11-01T09:00:00Z"});
+ state.touches.push({id:"touch-1",campaignId,accountId,type:"Retail activation",
+   occurredAt:"2026-11-05T09:00:00Z",summary:"Sample outreach",createdBy:"marketer"});
+ const realOrder={id:"order-verified",number:"GE-verified",accountId,ownerId:"rep",creditedRepId:"rep",
+   status:"Paid",paymentStatus:"Paid",placedAt:"2026-11-05T09:00:00Z",
+   paidAt:"2026-11-07T10:00:00Z",amount:240,cases:10,pricePerCase:24,priceBasis:"Customer rate"};
+ const demoOrder={...realOrder,id:"order-demo",number:"GE-demo",amount:24000,cases:1000,testOnly:true};
+ const data={accounts:[],orders:[realOrder,demoOrder]} as unknown as import("../lib/types").WorkspaceData;
+ // Legacy/demo view can show real legacy Paid labels but never QA test orders.
+ assert.equal(campaignCommercialActivity(state,data,campaignId).paidRevenue,240);
+ // Connected-mode preview without source Commerce evidence cannot treat the
+ // label on either order as an actual cleared payment.
+ const unverified={version:1 as const,invoices:[],payments:[],allocations:[],credits:[],refunds:[],notes:[]}
+   as import("../lib/commerce-engine").CommerceState;
+ assert.equal(campaignCommercialActivity(state,data,campaignId,unverified).paidRevenue,0);
+ // Now prove a server-sourced linked payment, not merely a label.
+ const at="2026-11-07T10:00:00Z";
+ const verified={...unverified,
+   invoices:[{id:"invoice-1",number:"INV-1",orderId:"order-verified",accountId,
+      status:"Paid" as const,issuedAt:at,terms:"COD" as const,total:240,createdAt:at}],
+   payments:[{id:"payment-1",accountId,receivedAt:at,amount:240,
+     method:"ACH" as const,status:"Cleared" as const,settledAt:at,
+     settledBy:"finance",createdAt:at,createdBy:"finance"}],
+   allocations:[{id:"allocation-1",paymentId:"payment-1",invoiceId:"invoice-1",
+     amount:240,createdAt:at,createdBy:"finance"}],
+ } as import("../lib/commerce-engine").CommerceState;
+ assert.equal(campaignCommercialActivity(state,data,campaignId,verified).paidRevenue,240);
 });
 
 test("F07: campaign expense cannot be marked reconciled without receipt reference and approved evidence",()=>{
