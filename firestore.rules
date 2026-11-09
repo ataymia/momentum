@@ -455,7 +455,7 @@ service cloud.firestore {
     // momentum-crm-v1
     match /crm/fields/{field} {
       allow get, list: if field in ['_root', 'contacts', 'interactions', 'opportunities', 'responsibilityHistory'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative']));
-      allow write: if field in ['_root', 'contacts', 'interactions', 'opportunities', 'responsibilityHistory'] && ((activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative']));
+      allow write: if field in ['_root', 'contacts', 'interactions', 'opportunities', 'responsibilityHistory'] && (field in ['interactions'] ? (activeEmployee() && role() in []) : (activeEmployee() && role() in ['Administrator', 'Sales Manager', 'Sales Representative']));
     }
 
     // momentum-territory-v2

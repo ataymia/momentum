@@ -20,6 +20,7 @@ import {
 } from "./rep-self-delivery";
 import {submitDeliveryCorrection,approveDeliveryCorrection,closeDeliveryCorrection,listDeliveryCorrections,DeliveryCorrectionError} from "./delivery-correction";
 import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
+import {commitTrustedCrmFieldVisit,TrustedCrmVisitError} from "./trusted-crm-field-visit";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
 import {operateLocationPermissionRequest,LocationPermissionRequestError} from "./location-permission-request";
 
@@ -1727,6 +1728,36 @@ export const sandboxWorkflow=onRequest({cors:true,region:"us-central1"},async(re
     }
     console.error("sandboxWorkflow failed",error);
     json(response,502,{ok:false,message:"Sandbox action was not committed. Refresh before retrying."});
+  }
+});
+
+/** Store one physical field visit and optional sample in a single server transaction.
+ * Caller cannot submit actor identity, event timestamps, finance or inventory data.
+ */
+export const recordCrmFieldVisit=onRequest({
+  cors:true,region:"us-central1",
+},async(request,response)=>{
+  if(request.method!=="POST"){
+    json(response,405,{ok:false,message:"POST required."});return;
+  }
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?
+    authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await commitTrustedCrmFieldVisit(
+      actor,request.body?.visit,request.body?.requestId);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof TrustedCrmVisitError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("recordCrmFieldVisit failed",error);
+    json(response,502,{ok:false,message:
+      "Visit save not confirmed. Refresh the record before retrying."});
   }
 });
 
