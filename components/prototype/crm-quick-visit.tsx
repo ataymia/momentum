@@ -1,12 +1,15 @@
 "use client";
 
-import {useMemo,useState} from "react";
+import {useMemo,useRef,useState} from "react";
 import type {FormEvent} from "react";
 import {canClaimUnassignedProspect} from "../../lib/access";
 import {employeePhysicalVisits,employeeVisitLabel} from "../../lib/employee-admin";
 import {GOLDEN_EAGLE_SKUS} from "../../lib/product-catalog";
 import {matchQuickVisitAccount,quickVisitBusinessLabel,quickVisitLocationId,quickVisitSuggestions} from "../../lib/quick-visit";
 import {momentumStorage} from "../../lib/persistence";
+import {CRM_STORAGE_KEY} from "../../lib/crm-engine";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
+import {recordTrustedFieldVisit,type TrustedFieldVisitPayload} from "../../lib/firebase-crm-field-visit";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useCrm} from "../../lib/crm-context";
@@ -15,12 +18,15 @@ import {navigateToRoute} from "../../lib/navigation-store";
 /**
  * A physical field visit is user-attested, not GPS-verified. It is never
  * inferred from meeting, route or page events. Samples are recorded as field
- * logs without inventory removal. Connected CRM writes fail closed.
+ * logs without inventory removal. Connected saves require a trusted server receipt.
  */
 export function CrmQuickVisit(){
   const {scope,data,currentUser,claimUnassignedProspect}=useWorkspace();
   const {crm,addInteraction}=useCrm();
   const runtime=useRuntimeMode();
+  const firebase=useFirebaseSessionOptional();
+  const requestRef=useRef<{payload:string;id:string}|null>(null);
+  const [saving,setSaving]=useState(false);
   const [business,setBusiness]=useState("");
   const [selectedId,setSelectedId]=useState("");
   const [score,setScore]=useState(5);
@@ -38,7 +44,9 @@ export function CrmQuickVisit(){
   const [historyThrough,setHistoryThrough]=useState("");
   const [historySort,setHistorySort]=useState<"when"|"business"|"score"|"outcome"|"notes">("when");
   const [historyAscending,setHistoryAscending]=useState(false);
-  const canWrite=Boolean(currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role)&&runtime.isDemo&&momentumStorage.mode()==="local");
+  const localDemo=runtime.isDemo&&momentumStorage.mode()==="local";
+  const connected=!runtime.isDemo&&momentumStorage.mode()==="firestore"&&firebase?.status==="ready"&&Boolean(firebase.session);
+  const canWrite=Boolean(currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role)&&(localDemo||connected));
   const matched=scope.accounts.find(a=>a.id===selectedId)??matchQuickVisitAccount(scope.accounts,business);
   const suggestions=useMemo(()=>business.trim()&&!matched?quickVisitSuggestions(scope.accounts,business):[],[scope.accounts,business,matched]);
   const visits=useMemo(()=>currentUser?employeePhysicalVisits(crm,currentUser.id):[],[crm,currentUser]);
@@ -65,14 +73,50 @@ export function CrmQuickVisit(){
     const account=scope.accounts.find(a=>a.id===id);
     if(account){setSelectedId(account.id);setBusiness(quickVisitBusinessLabel(account));setFeedback("");}
   };
-  const submit=(event:FormEvent<HTMLFormElement>)=>{
+  const submit=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
     if(!canWrite){setFeedback("Connected CRM write requires trusted server authorization.");return;}
     const name=business.trim();
     if(!physical||!name){setFeedback("Confirm you physically visited the business and provide its name.");return;}
     if(!Number.isInteger(score)||score<1||score>10){setFeedback("A prospect score must be between 1 and 10.");return;}
-    if(sampleProduct&&(!Number.isInteger(sampleQuantity)||sampleQuantity<1||sampleQuantity>10000)){setFeedback("Sample cans must be a positive whole number.");return;}
+    if(sampleProduct&&(!Number.isInteger(sampleQuantity)||sampleQuantity<1||sampleQuantity>1000)){setFeedback("Sample cans must be a positive whole number up to 1000.");return;}
     const linked=scope.accounts.find(a=>a.id===selectedId)??matchQuickVisitAccount(scope.accounts,name);
+    if(connected&&firebase?.session){
+      if(saving)return;
+      const visit:TrustedFieldVisitPayload={
+        businessName:name,accountId:linked?.id,
+        physicallyVisited:true,unsuccessful,score,
+        summary:summary.trim()||"Physical business visit",
+        nextAction:nextAction.trim()||undefined,
+        nextActionDate:nextActionDate||undefined,
+        sampleProduct:sampleProduct||undefined,
+        sampleQuantity:sampleProduct?sampleQuantity:undefined,
+      };
+      const fingerprint=JSON.stringify(visit);
+      const requestId=requestRef.current?.payload===fingerprint?
+        requestRef.current.id:crypto.randomUUID();
+      requestRef.current={payload:fingerprint,id:requestId};
+      setSaving(true);
+      setFeedback("");
+      try{
+        const receipt=await recordTrustedFieldVisit(firebase.session,visit,requestId);
+        // Never infer persistence from a React state update. Confirm cloud
+        // refresh separately; server receipt already proves the write.
+        const sync=await momentumStorage.refreshKeys([CRM_STORAGE_KEY]);
+        setFeedback(sync.ok?
+          "Company CRM confirmed this physical visit"+(receipt.sampleId?" and sample log":"")+
+          ". No account, order, payment or inventory movement was created.":
+          "CRM server confirmed the save, but this device has not refreshed the record. Check synchronization before entering another visit.");
+        requestRef.current=null;
+        setPhysical(false);setSummary("");setNextAction("");
+        setNextActionDate("");setSampleProduct("");setSampleQuantity(1);
+        setUnsuccessful(false);setScore(5);
+      }catch(error){
+        setFeedback(error instanceof Error?error.message:
+          "CRM could not confirm the visit. Check history before retrying.");
+      }finally{setSaving(false);}
+      return;
+    }
     const locationId=linked?.id??quickVisitLocationId(name);
     const visit=addInteraction({
       locationId,type:"Visit",physicalVisit:true,visitUnsuccessful:unsuccessful,
@@ -97,7 +141,7 @@ export function CrmQuickVisit(){
     <p>Record a physical stop, prospect outcome, product sampling and a real follow-up date. Your existing business and visit history remain linked.</p>
   </header>
     <section className="prototype-panel"><h2>Log field visit</h2>
-      {!canWrite&&<p className="prototype-note" role="status">You may enter and review this visit, but connected CRM submission is not available until the authorized server write is enabled. Nothing entered here is saved to company records.</p>}
+      {!canWrite&&<p className="prototype-note" role="status">A ready, authorized employee session is required to save connected visits. Unsaved form entries are not company records.</p>}
       <form aria-label="Record physical sales visit" onSubmit={submit}>
         <fieldset className="prototype-field-step">
           <legend><span className="prototype-field-step-number">1</span> Business visited</legend>
@@ -125,12 +169,12 @@ export function CrmQuickVisit(){
             <label>Next action <input  value={nextAction} onChange={e=>setNextAction(e.target.value)} placeholder="Call buyer, schedule tasting, return with samples"/></label>
             <label>Follow-up date <input type="date"  value={nextActionDate} onChange={e=>setNextActionDate(e.target.value)}/></label>
             <label>Golden Eagle sample (optional) <select  value={sampleProduct} onChange={e=>setSampleProduct(e.target.value)}><option value="">No sample provided</option>{GOLDEN_EAGLE_SKUS.map(sku=><option key={sku.id} value={sku.description}>{sku.shortName}</option>)}</select></label>
-            {sampleProduct&&<label>Cans provided <input required  min={1} max={10000} step={1} type="number" value={sampleQuantity} onChange={e=>setSampleQuantity(Number(e.target.value))}/></label>}
+            {sampleProduct&&<label>Cans provided <input required  min={1} max={1000} step={1} type="number" value={sampleQuantity} onChange={e=>setSampleQuantity(Number(e.target.value))}/></label>}
           </div>
         </fieldset>
         <p className="prototype-note">Samples are field logs only and do not deduct warehouse inventory. Do not log calls, route plans or virtual meetings as physical visits. No external messages are sent.</p>
         {feedback&&<p role="status">{feedback}</p>}
-        {canWrite&&<div className="prototype-controls"><button type="submit" disabled={!physical}>Save field visit</button>{matched&&canClaimUnassignedProspect(currentUser,matched)&&<button type="button" onClick={()=>{if(claimUnassignedProspect(matched.id))setFeedback("Unassigned prospect claimed in local demo. Original visit and account IDs retained.");else setFeedback("Prospect claim rejected.");}}>Claim unassigned prospect</button>}</div>}
+        {canWrite&&<div className="prototype-controls"><button type="submit" disabled={!physical||saving}>{saving?"Saving to CRM…":"Save field visit"}</button>{matched&&canClaimUnassignedProspect(currentUser,matched)&&<button type="button" onClick={()=>{if(claimUnassignedProspect(matched.id))setFeedback("Unassigned prospect claimed in local demo. Original visit and account IDs retained.");else setFeedback("Prospect claim rejected.");}}>Claim unassigned prospect</button>}</div>}
       </form>
     </section>
     <section className="prototype-panel"><h2>My recorded physical visits</h2>
