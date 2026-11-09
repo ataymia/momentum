@@ -1,4 +1,4 @@
-/* eslint-disable comma-spacing, require-jsdoc, valid-jsdoc, keyword-spacing, arrow-parens, key-spacing, curly, brace-style, semi-spacing, space-before-blocks */
+/* eslint-disable comma-spacing, keyword-spacing, arrow-parens, key-spacing, curly, brace-style, semi-spacing, space-before-blocks */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {
@@ -7,13 +7,17 @@ import {
 } from "./trusted-crm-visit-validation";
 
 type Row=Record<string,unknown>;
+/** @param {unknown} value Possible Firestore object. @return {boolean} Whether it is a record. */
 const isRow=(value:unknown):value is Row=>
   Boolean(value&&typeof value==="object"&&!Array.isArray(value));
+/** @param {unknown} value Untrusted field. @return {string} Trimmed string or empty. */
 const text=(value:unknown)=>typeof value==="string"?value.trim():"";
+/** @param {Row|undefined} data Field document. @return {Row[]} Valid record items. */
 const items=(data:Row|undefined):Row[]=>
   Array.isArray(data?.items)?data.items.filter(isRow):[];
 
 export class TrustedCrmVisitError extends Error {
+  /** @param {number} status HTTP status. @param {string} message Safe error for the caller. */
   constructor(public readonly status:number,message:string){super(message);}
 }
 
@@ -25,6 +29,10 @@ type VisitResult={
  * Idempotent Firestore transaction. A browser cannot choose the actor, event
  * time, link to a foreign customer, create a sale, or decrement inventory.
  * Samples and physical visits succeed or fail together.
+ * @param {string} actorUid Firebase identity proven by caller.
+ * @param {unknown} untrusted Untrusted form payload.
+ * @param {unknown} requestId Idempotency key from the signed-in client.
+ * @return {Promise<VisitResult>} Authenticated server receipt.
  */
 export async function commitTrustedCrmFieldVisit(
   actorUid:string,untrusted:unknown,requestId:unknown,
