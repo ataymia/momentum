@@ -1,5 +1,5 @@
 "use client";
-import {useMemo,useState} from "react";
+import {useState} from "react";
 import {ArrowUpRight,Search,ShieldCheck,Store} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useCommerce} from "../../lib/commerce-context";
@@ -14,13 +14,13 @@ export function CustomerPortalAdminOverview(){
  const {commerce}=useCommerce();
  const [query,setQuery]=useState("");
  const accessible=new Set(scope.accounts.map(location=>location.id));
- const accounts=useMemo(()=>scope.accounts.filter(location=>location.role!=="Customer"),[scope.accounts]);
- const invoices=useMemo(()=>commerce.invoices.filter(invoice=>accessible.has(invoice.accountId)),[commerce.invoices,accessible]);
+ const accounts=scope.accounts;
+ const invoices=commerce.invoices.filter(invoice=>accessible.has(invoice.accountId));
  const orders=scope.orders.filter(order=>accessible.has(order.accountId));
- const rows=useMemo(()=>accounts.filter(location=>
+ const rows=accounts.filter(location=>
    [location.name,location.locationName,location.location,location.customerId,location.contactName].filter(Boolean)
      .join(" ").toLowerCase().includes(query.toLowerCase().trim())
- ).sort((left,right)=>left.name.localeCompare(right.name,undefined,{numeric:true})),[accounts,query]);
+ ).sort((left,right)=>left.name.localeCompare(right.name,undefined,{numeric:true}));
  if(!currentUser||currentUser.role==="Customer")return <div className="prototype-empty">Internal account oversight requires employee access.</div>;
  return <div className="prototype-domain prototype-domain--commerce momentum-portal-oversight">
   <header className="prototype-heading"><div>

@@ -48,6 +48,7 @@ import {HrPerformanceExperience} from "./hr-performance-experience";
 import {InsightsExplorerExperience} from "./insights-explorer-experience";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
 import {HrPersonnelDirectory,HrPersonnelRecord} from "./hr-personnel-experience";
+import {CustomerPortalAdminOverview} from "./customer-portal-admin-overview";
 import {HrTimeOffExperience} from "./hr-time-off-experience";
 import {HrNewHireExperience} from "./hr-new-hire-experience";
 import {NewHireProvisioning} from "../hcm/new-hire-provisioning";
@@ -918,6 +919,7 @@ export function PrototypeOperationsHub(){
   if(path==="/sales/invoices")return <InvoiceDirectory/>;
   if(path==="/sales/payments")return <PaymentsDirectory/>;
   if(path==="/items")return <ProductDirectory/>;
+  if(path==="/commerce/customer-portal")return <CustomerPortalAdminOverview/>;
   if(path==="/commerce/price-books")return <PriceBooksDirectory/>;
   if(path==="/sales/customers")return <AccountsDirectory/>;
   if(segments[0]==="crm"&&segments[1]==="leads"&&segments[2])return <LeadRecord id={decodeURIComponent(segments[2])}/>;

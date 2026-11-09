@@ -60,7 +60,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Payments Received", path: "/sales/payments", permission: "orderCash", state: "prototype" },
     { label: "Sales Returns", path: "/sales/returns", permission: "orders", state: "prototype" },
     { label: "Credit Notes", path: "/sales/credit-notes", permission: "orderCash", state: "prototype" },
-    { label: "Customer Portal", path: "/commerce/customer-portal", permission: "orders", state: "planned" },
+    { label: "Customer Portal", path: "/commerce/customer-portal", permission: "orders", state: "prototype" },
     { label: "Finance Overview", path: "/finance", permission: "finance", state: "existing" },
     { label: "Accounting", path: "/finance/accounting", permission: "accounting", state: "existing" },
   ] },
