@@ -1,4 +1,6 @@
-/* eslint-disable comma-spacing, keyword-spacing, arrow-parens, key-spacing, curly, brace-style, semi-spacing, space-before-blocks */
+/* eslint-disable comma-spacing, keyword-spacing, arrow-parens */
+/* eslint-disable key-spacing, curly, brace-style, semi-spacing */
+/* eslint-disable space-before-blocks */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {
@@ -25,6 +27,7 @@ const text=(value:unknown)=>typeof value==="string"?value.trim():"";
 const items=(data:Row|undefined):Row[]=>
   Array.isArray(data?.items)?data.items.filter(isRow):[];
 
+/** A safe, status-coded refusal of a trusted CRM field-visit action. */
 export class TrustedCrmVisitError extends Error {
   /**
    * @param {number} status HTTP status.

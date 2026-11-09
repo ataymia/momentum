@@ -1,4 +1,6 @@
-/* eslint-disable comma-spacing, keyword-spacing, arrow-parens, key-spacing, curly, brace-style, semi-spacing, space-before-blocks */
+/* eslint-disable comma-spacing, keyword-spacing, arrow-parens */
+/* eslint-disable key-spacing, curly, brace-style, semi-spacing */
+/* eslint-disable space-before-blocks */
 /** Server-side schema for a self-attested physical CRM field visit.
  * No actor ID, timestamps, revenue, order, credit, custody or settlement
  * state may be supplied by the browser. All such fields are server owned.
