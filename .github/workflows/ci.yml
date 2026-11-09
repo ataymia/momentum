@@ -64,6 +64,9 @@ jobs:
       - name: Compile Firebase Functions
         run: npm --prefix functions run build
 
+      - name: Trusted CRM visit server transaction emulator
+        run: npx --yes firebase-tools@15.30.1 emulators:exec --only firestore --project momentum-rules-test 'node --test functions/test/trusted-crm-visit-emulator.test.cjs'
+
       - name: Lint Firebase Functions
         run: npm --prefix functions run lint
 
