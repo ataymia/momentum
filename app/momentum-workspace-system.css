@@ -176,7 +176,9 @@ body{background:var(--workspace-canvas);}
   font-size:inherit;
   font-weight:inherit;
   color:inherit;
-  min-height:28px;
+  min-height:36px;
+  min-width:38px;
+  padding:5px 8px;
 }
 /* Metric summaries and fact tiles: one density and hierarchy. */
 .page-container.momentum-workspace-ui :is(.prototype-metrics,.prototype-tiles,.company-rule-facts,.hcm-overview-strip){

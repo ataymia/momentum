@@ -93,7 +93,7 @@ export function CrmQuickVisit(){
     setFeedback("Physical visit recorded in the local demonstration CRM. No account, order, charge or inventory movement was created.");
     setPhysical(false);setSummary("");setNextAction("");setNextActionDate("");setSampleProduct("");setSampleQuantity(1);setUnsuccessful(false);setScore(5);
   };
-  return <main className="prototype-workspace"><header className="prototype-heading"><h1>Quick visit</h1>
+  return <section className="prototype-workspace"><header className="prototype-heading"><h1>Quick visit</h1>
     <p>Record a physical stop, prospect outcome, product sampling and a real follow-up date. Your existing business and visit history remain linked.</p>
   </header>
     <section className="prototype-panel"><h2>Log field visit</h2>
@@ -149,5 +149,5 @@ export function CrmQuickVisit(){
       {!filteredVisits.length&&<p className="prototype-empty">No matching physical visits for this employee.</p>}
       {filteredVisits.length>historyCount&&<button type="button" onClick={()=>setHistoryCount(n=>n+20)}>Show more visits</button>}
     </section>
-  </main>;
+  </section>;
 }

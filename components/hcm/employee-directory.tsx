@@ -206,7 +206,7 @@ export function EmployeeDirectory() {
 
     <div className="employee-directory-layout">
       <aside className="employee-directory-list">
-        <label className="employee-search"><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, title, department…"/></label>
+        <label className="employee-search"><Search size={16}/><input aria-label="Search employee directory" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, title, department…"/></label>
         <div>{filtered.map((user) => {
           const record = hcm.employees.find((item) => item.userId === user.id);
           const status = employeePresence(data, user.id);
