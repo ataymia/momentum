@@ -13,9 +13,23 @@ type CustomerPaymentRow={date:string;location:string;reference:string;method:str
 export function projectCustomerFinance(
  state:CommerceState,authorizedOrders:readonly Order[],
  authorizedAccountIds:ReadonlySet<string>,locations:ReadonlyMap<string,string>
-):{invoices:Invoice[];payments:CustomerPaymentRow[];statement:CustomerStatementRow[];openBalance:number}{
+):{invoices:Invoice[];payments:CustomerPaymentRow[];statement:CustomerStatementRow[];openBalance:number;reconciliationRequired:number}{
  const orders=new Map(authorizedOrders.filter(o=>!o.testOnly&&authorizedAccountIds.has(o.accountId)&&["Delivered","Paid"].includes(o.status)).map(o=>[o.id,o]));
- const invoices=state.invoices.filter(i=>i.status!=="Void"&&authorizedAccountIds.has(i.accountId)&&orders.get(i.orderId)?.accountId===i.accountId);
+ // Invoice corrections create a new current revision, not a second demand.
+ // Duplicate current invoices or unreconciled funds on older revisions must
+ // be reviewed, never advertised as a clean customer receivable.
+ const issued=new Set(["Open","Partially paid","Paid"]);
+ const candidates=state.invoices.filter(i=>issued.has(i.status)&&!i.supersededByInvoiceId&&
+   Number.isFinite(i.total)&&i.total>0&&authorizedAccountIds.has(i.accountId)&&
+   orders.get(i.orderId)?.accountId===i.accountId);
+ const perOrder=new Map<string,number>();
+ for(const invoice of candidates)perOrder.set(invoice.orderId,(perOrder.get(invoice.orderId)??0)+1);
+ const priorFunds=new Set(state.invoices.filter(previous=>previous.supersededByInvoiceId&&
+   (state.allocations.some(a=>a.invoiceId===previous.id&&Number.isFinite(a.amount)&&a.amount>0)||
+    state.credits.some(c=>c.invoiceId===previous.id&&c.status==="Applied"&&
+      Number.isFinite(c.amount)&&c.amount>0))).map(previous=>previous.orderId));
+ const invoices=candidates.filter(i=>perOrder.get(i.orderId)===1&&!priorFunds.has(i.orderId));
+ const reconciliationRequired=candidates.length-invoices.length;
  const byInvoice=new Map(invoices.map(i=>[i.id,i]));
  const cleared=new Map(state.payments.filter(p=>p.status==="Cleared"&&authorizedAccountIds.has(p.accountId)&&Boolean(p.settledAt&&p.settledBy)).map(p=>[p.id,p]));
  const statement:CustomerStatementRow[]=[];
@@ -54,5 +68,5 @@ export function projectCustomerFinance(
  }
  statement.sort((a,b)=>b.date.localeCompare(a.date)||a.reference.localeCompare(b.reference)||a.type.localeCompare(b.type));
  const payments=[...paymentRows.values()].sort((a,b)=>b.date.localeCompare(a.date)||a.reference.localeCompare(b.reference));
- return {invoices,payments,statement,openBalance:invoices.reduce((total,invoice)=>total+invoiceBalance(state,invoice),0)};
+ return {invoices,payments,statement,openBalance:invoices.reduce((total,invoice)=>total+invoiceBalance(state,invoice),0),reconciliationRequired};
 }
