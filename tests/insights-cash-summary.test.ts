@@ -6,6 +6,8 @@ import {insightCashSummary} from "../lib/insights-cash-summary";
 import {reportEligibleOrders,reportSellableWarehouseCases} from "../lib/reporting-visibility";
 import {ambiguousSettledRefundIds} from "../lib/reporting-cash-reconciliation";
 import type {CommerceState} from "../lib/commerce-engine";
+import {financeOverviewSource} from "../lib/finance-overview-source";
+import type {Order,WorkspaceData} from "../lib/types";
 import {canVisitRoute,requiresPrototypePage} from "../lib/navigation-route-registry";
 import type {WorkspaceUser} from "../lib/types";
 const cash=(id:string,kind:CollectedCashFact["kind"],amount:number,settledAt:string):CollectedCashFact=>({
@@ -71,4 +73,69 @@ test("F08: settled multi-order refunds must block cash reporting within the user
  assert.deepEqual(ambiguousSettledRefundIds(commerce,new Set(["o2"]),"2026-11-08","2026-11-10"),[]);
  assert.deepEqual(ambiguousSettledRefundIds(commerce,new Set(["o3"])),[]);
  assert.deepEqual(ambiguousSettledRefundIds(commerce,new Set(["missing"])),[]);
+});
+
+const financeOrder=(id:string,accountId:string):Order=>({
+ id,accountId,number:"GE-"+id,ownerId:"rep",cases:5,amount:100,pricePerCase:20,
+ priceBasis:"Approved price",status:"Delivered",placedAt:"2026-11-08",paymentStatus:"Open"
+});
+const financeInvoice=(id:string,orderId:string,accountId:string)=>({
+ id,orderId,accountId,number:"INV-"+id,issuedAt:"2026-11-08",
+ createdAt:"2026-11-08",terms:"COD" as const,status:"Open" as const,total:100
+});
+const financeState=(orders:readonly Order[]):WorkspaceData=>({orders:[...orders]} as WorkspaceData);
+
+test("R28 Finance overview counts only scoped allocations, never an entire partly allocated payment",()=>{
+ const own=financeOrder("owned","a"),foreign=financeOrder("foreign","b");
+ const source:CommerceState={version:1,invoices:[
+   financeInvoice("owned","owned","a"),financeInvoice("foreign","foreign","b")],
+   payments:[{id:"p",accountId:"a",receivedAt:"2026-11-09",amount:100,
+      method:"ACH",status:"Cleared",settledAt:"2026-11-09",settledBy:"operator",
+      createdAt:"2026-11-09",createdBy:"operator"}],
+   allocations:[{id:"al-a",invoiceId:"owned",paymentId:"p",amount:40,createdAt:"2026-11-09",createdBy:"operator"},
+     {id:"al-b",invoiceId:"foreign",paymentId:"p",amount:60,createdAt:"2026-11-09",createdBy:"operator"}],
+   refunds:[],credits:[],notes:[]};
+ const result=financeOverviewSource(financeState([own,foreign]),source,[own]);
+ assert.equal(result.netRecordedCollections,40);
+ assert.equal(result.openReceivables,60);
+ assert.equal(result.openInvoiceCount,1);
+ assert.equal(result.invoiceReviewCount,0);
+});
+
+test("R28 Finance overview withholds cash and AR when duplicate active invoices need reconciliation",()=>{
+ const own=financeOrder("owned","a");
+ const source:CommerceState={version:1,invoices:[
+   financeInvoice("i1","owned","a"),financeInvoice("i2","owned","a")],
+   payments:[],allocations:[],refunds:[],credits:[],notes:[]};
+ const result=financeOverviewSource(financeState([own]),source,[own]);
+ assert.equal(result.netRecordedCollections,null);
+ assert.equal(result.openReceivables,null);
+ assert.equal(result.invoiceReviewCount,2);
+});
+
+test("R30 Finance overview withholds net collections for multi-order settled refunds",()=>{
+ const own=financeOrder("one","a"),second=financeOrder("two","a");
+ const source:CommerceState={version:1,invoices:[
+   financeInvoice("i1","one","a"),financeInvoice("i2","two","a")],
+   payments:[{id:"p",accountId:"a",amount:100,receivedAt:"2026-11-09",
+      method:"ACH",status:"Cleared",settledAt:"2026-11-09",settledBy:"operator",
+      createdAt:"2026-11-09",createdBy:"operator"}],
+   allocations:[{id:"a1",invoiceId:"i1",paymentId:"p",amount:40,createdBy:"operator",createdAt:"2026-11-09"},
+      {id:"a2",invoiceId:"i2",paymentId:"p",amount:60,createdBy:"operator",createdAt:"2026-11-09"}],
+   refunds:[{id:"r",paymentId:"p",amount:20,reason:"Refund",status:"Settled",
+      createdAt:"2026-11-10",createdBy:"operator",settledAt:"2026-11-10",settledBy:"operator"}],
+   credits:[],notes:[]};
+ const result=financeOverviewSource(financeState([own,second]),source,[own,second]);
+ assert.equal(result.netRecordedCollections,null);
+ assert.equal(result.openReceivables,null);
+ assert.equal(result.refundReviewCount,1);
+});
+
+test("R28 Finance Overview uses source-linked metrics and labels unverified external cash",()=>{
+ const ui=readFileSync("components/pages/finance-v2.tsx","utf8");
+ assert.match(ui,/financeOverviewSource\(data,commerce,scope\.orders\)/);
+ assert.match(ui,/Recorded net collections/);
+ assert.match(ui,/Not bank-verified/);
+ assert.match(ui,/Needs reconciliation/);
+ assert.doesNotMatch(ui,/Cleared customer cash/);
 });
