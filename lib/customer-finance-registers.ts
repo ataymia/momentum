@@ -28,7 +28,49 @@ export function projectCustomerFinance(
    (state.allocations.some(a=>a.invoiceId===previous.id&&Number.isFinite(a.amount)&&a.amount>0)||
     state.credits.some(c=>c.invoiceId===previous.id&&c.status==="Applied"&&
       Number.isFinite(c.amount)&&c.amount>0))).map(previous=>previous.orderId));
- const invoices=candidates.filter(i=>perOrder.get(i.orderId)===1&&!priorFunds.has(i.orderId));
+ const paymentById=new Map(state.payments.map(p=>[p.id,p]));
+ const allocatedByPayment=new Map<string,number>();
+ const invoicesByPayment=new Map<string,Set<string>>();
+ for(const allocation of state.allocations){
+   if(!Number.isFinite(allocation.amount)||allocation.amount<=0)continue;
+   allocatedByPayment.set(allocation.paymentId,(allocatedByPayment.get(allocation.paymentId)??0)+allocation.amount);
+   const linked=invoicesByPayment.get(allocation.paymentId)??new Set<string>();
+   linked.add(allocation.invoiceId);
+   invoicesByPayment.set(allocation.paymentId,linked);
+ }
+ const unsafeInvoiceIds=new Set<string>();
+ for(const invoice of candidates){
+   const allocations=state.allocations.filter(a=>a.invoiceId===invoice.id&&
+     Number.isFinite(a.amount)&&a.amount>0);
+   const appliedCredits=state.credits.filter(c=>c.invoiceId===invoice.id&&
+     c.status==="Applied"&&Number.isFinite(c.amount)&&c.amount>0);
+   let cleared=0,pending=0,refunded=0,invalid=false;
+   for(const allocation of allocations){
+     const p=paymentById.get(allocation.paymentId);
+     if(!p||p.accountId!==invoice.accountId||
+       (allocatedByPayment.get(p.id)??0)>p.amount+0.005){invalid=true;break;}
+     if(p.status==="Cleared"){
+       if(!p.settledAt||!p.settledBy){invalid=true;break;}
+       cleared+=allocation.amount;
+     }else if(p.status==="Pending")pending+=allocation.amount;
+     const related=state.refunds.filter(r=>r.paymentId===p.id&&r.status==="Settled");
+     if(related.length&&((invoicesByPayment.get(p.id)?.size??0)!==1||
+       related.some(r=>!r.settledAt||!Number.isFinite(r.amount)||r.amount<=0))){
+       invalid=true;break;
+     }
+     refunded+=related.reduce((sum,r)=>sum+r.amount,0);
+   }
+   // Refunds are payment-level events. They are only unambiguous for an
+   // invoice with one allocation per payment, not split or duplicate rows.
+   const allocatedIds=allocations.map(a=>a.paymentId);
+   if(new Set(allocatedIds).size!==allocatedIds.length)invalid=true;
+   if(refunded>cleared+0.005||
+     cleared-refunded+pending+appliedCredits.reduce((sum,c)=>sum+c.amount,0)>invoice.total+0.005||
+     appliedCredits.some(c=>!c.appliedAt))invalid=true;
+   if(invalid)unsafeInvoiceIds.add(invoice.id);
+ }
+ const invoices=candidates.filter(i=>perOrder.get(i.orderId)===1&&
+   !priorFunds.has(i.orderId)&&!unsafeInvoiceIds.has(i.id));
  const reconciliationRequired=candidates.length-invoices.length;
  const byInvoice=new Map(invoices.map(i=>[i.id,i]));
  const cleared=new Map(state.payments.filter(p=>p.status==="Cleared"&&authorizedAccountIds.has(p.accountId)&&Boolean(p.settledAt&&p.settledBy)).map(p=>[p.id,p]));
