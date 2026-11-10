@@ -88,10 +88,10 @@ test("F05 F13 F14: private HR routes are denied to non-admin roles even by direc
   for(const excluded of ["calls","solutions","internal instant messaging","gmail inbox"]) assert(!labels.includes(excluded));
 });
 
-test("F07: Campaigns navigation must match Administrator-only campaign actions",()=>{
+test("F07/R56: Campaigns bookmark remains admin-only without duplicate sidebar link",()=>{
  const admin=person("Administrator"),marketing=person("Marketing");
  assert(canVisitRoute(admin,"/marketing/campaigns"));
- assert(canShowModuleInMenu(admin,"/marketing/campaigns"));
+ assert(!canShowModuleInMenu(admin,"/marketing/campaigns"),"Campaigns is a tab within Marketing, not a duplicate top-level menu link");
  assert(!canVisitRoute(marketing,"/marketing/campaigns"));
  assert(!canShowModuleInMenu(marketing,"/marketing/campaigns"));
  assert(canVisitRoute(marketing,"/marketing"));
