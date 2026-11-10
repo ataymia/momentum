@@ -68,8 +68,11 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
    id:txt(o.id),accountId:txt(o.accountId),number:txt(o.number),
    placedAt:dates(o.placedAt),status:txt(o.status),cases:num(o.cases),
  }));
+ // Superseded invoice revisions are historical documents, not current balances.
+ // Include only issued states; never turn an unknown raw status into a receivable.
+ const issuedStates=new Set(["Open","Partially paid","Paid"]);
  const eligible=docs.invoices.filter(i=>accessible.has(txt(i.accountId))&&
-   txt(i.status)!=="Void"&&txt(i.status)!=="Draft"&&
+   issuedStates.has(txt(i.status))&&!txt(i.supersededByInvoiceId)&&
    txt(orders.get(txt(i.orderId))?.accountId)===txt(i.accountId)&&
    txt(i.id)&&num(i.total)>0);
  const perOrder=new Map<string,number>();
@@ -132,7 +135,9 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
     continue;
   }
   cleared=Math.max(0,cleared-settledRefunds);
-  if(cleared+appliedCredits>amount+0.005||pending>amount+0.005){
+  // Pending allocations also reserve invoice capacity. Checking them
+  // separately can display overlapping funds as a valid customer balance.
+  if(cleared+pending+appliedCredits>amount+0.005){
     excludedForUnbalancedFunds=true;
     // A zeroed, overpaid or overcredited balance without an exception trail
     // must not be advertised as paid to the customer.
