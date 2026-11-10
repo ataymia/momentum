@@ -1,4 +1,4 @@
-/* eslint-disable comma-spacing, key-spacing, keyword-spacing, curly, brace-style, space-before-blocks */
+/* eslint-disable comma-spacing, key-spacing, keyword-spacing, curly, brace-style, space-before-blocks, max-len, indent, arrow-parens, valid-jsdoc */
 /** Only the server owns submitted/approval states, user ID and timestamps. */
 export type TrustedLeaveInput={
  startDate:string;endDate:string;requestedHours:number;reason:string;
