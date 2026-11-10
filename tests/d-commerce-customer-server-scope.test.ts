@@ -52,3 +52,35 @@ test("D17 customer order projection returns only active scoped non-QA orders",()
  assert.equal(result.orders[0].status,"Delivered");
  assert(!JSON.stringify(result).includes("Hidden"));
 });
+
+test("R23 revised invoices replace superseded receivables without hiding the current statement",()=>{
+ const old={...data.invoices[0],supersededByInvoiceId:"i4"};
+ const revised={...data.invoices[0],id:"i4",number:"INV-1-R2",total:230};
+ const result=projection.projectCustomerFinance(["store-a"],{
+   ...data,invoices:[old,revised,...data.invoices.slice(1)],
+ });
+ assert.deepEqual(result.statements.map(row=>row.id),["i4"]);
+ assert.equal(result.statements[0].amount,230);
+ assert.equal(result.statements[0].balance,230);
+ assert.equal(result.truncated,false);
+});
+
+test("R30 pending and cleared funds cannot overlap invoice capacity",()=>{
+ const pending={id:"p3",accountId:"store-a",status:"Pending",amount:200,
+   method:"ACH",receivedAt:"2026-11-08"};
+ const allocation={id:"al3",invoiceId:"i1",paymentId:"p3",amount:200};
+ const result=projection.projectCustomerFinance(["store-a"],{
+   ...data,payments:[...data.payments,pending],allocations:[...data.allocations,allocation],
+ });
+ assert.deepEqual(result.statements,[]);
+ assert.deepEqual(result.payments,[]);
+ assert.equal(result.truncated,true);
+});
+
+test("R23 unrecognized invoice states never become customer receivables",()=>{
+ const forged={...data.invoices[0],status:"Settled"};
+ const result=projection.projectCustomerFinance(["store-a"],{
+   ...data,invoices:[forged,...data.invoices.slice(1)],
+ });
+ assert.deepEqual(result.statements,[]);
+});
