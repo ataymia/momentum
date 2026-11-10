@@ -24,6 +24,22 @@ page.on("pageerror",error=>pageErrors.push(error.message));
 const path=()=>new URL(page.url()).pathname;
 const nav=()=>page.getByRole("navigation",{name:"Primary navigation"});
 const entry=label=>nav().getByRole("link",{name:label,exact:true});
+const awaitActiveDeals=async(viewport)=>{
+  try{
+    await entry("Deals").waitFor({state:"visible",timeout:12000});
+  }catch(error){
+    const diagnostics=await nav().evaluate(node=>({
+      sidebarClass:node.closest("aside")?.className,
+      matchingLinks:[...node.querySelectorAll("a")].filter(a=>a.textContent?.includes("Deals"))
+        .map(a=>({text:a.textContent,display:getComputedStyle(a).display,visibility:getComputedStyle(a).visibility})),
+      salesGroup:[...node.querySelectorAll("button")].filter(b=>b.textContent?.includes("Sales & CRM"))
+        .map(b=>({expanded:b.getAttribute("aria-expanded"),text:b.textContent})),
+      location:window.location.pathname,
+    }));
+    console.error("Active Deals navigation failed at "+viewport,diagnostics);
+    throw error;
+  }
+};
 const screenshot=async name=>page.screenshot({path:"artifacts/a-browser/"+name+".png",fullPage:true,animations:"disabled"});
 
 try{
@@ -143,7 +159,7 @@ try{
   await page.setViewportSize({width:768,height:1024});
   await page.getByRole("button",{name:"Open menu"}).click();
   await page.locator("aside.sidebar.is-open").waitFor();
-  assert(await entry("Deals").isVisible());
+  await awaitActiveDeals("tablet");
   assert(await entry("Deals").locator("span").isVisible(),"Collapsed desktop state may not hide tablet labels");
   await screenshot("tablet-menu");
   await page.keyboard.press("Escape");
@@ -151,7 +167,7 @@ try{
   await page.setViewportSize({width:390,height:844});
   await page.getByRole("button",{name:"Open menu"}).click();
   await page.locator("aside.sidebar.is-open").waitFor();
-  assert(await entry("Deals").isVisible());
+  await awaitActiveDeals("phone");
   const activeDealsBox=await entry("Deals").boundingBox();
   assert(activeDealsBox && activeDealsBox.y+activeDealsBox.height<=844,
     "The active section should be within the initial phone viewport without scrolling past unrelated groups");
