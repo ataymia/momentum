@@ -25,7 +25,7 @@ export function HrNewHireExperience(){
    <div className="prototype-domain-card prototype-domain-card--static"><strong>03 · Compensation</strong><span>Approved pay and pay group; no placeholder payroll</span></div>
    <div className="prototype-domain-card prototype-domain-card--static"><strong>04 · Readiness</strong><span>Training, credentials, official form evidence and activation review</span></div>
   </div>
-  <div className="prototype-controls"><button type="button" onClick={()=>navigateToRoute("/people/onboarding")}>Review onboarding cases</button><button type="button" onClick={()=>navigateToRoute("/admin/employee-profiles")}>Employee roster</button></div>
+  <div className="prototype-controls"><button type="button" onClick={()=>navigateToRoute("/people/onboarding")}>Review onboarding cases</button><button type="button" onClick={()=>navigateToRoute("/admin/employees")}>Employee roster</button></div>
   <section className="prototype-panel prototype-onboarding-wizard"><h2><FileCheck2 size={18}/> Secure new-hire wizard</h2><p className="prototype-note">Existing identity and provisioning workflow, restricted to isolated local demo mode for redesign acceptance. Do not use demo credentials as real employee access.</p>{writeEnabled?<NewHireProvisioning view="create"/>:<div className="prototype-empty">Read-only prototype: new-hire provisioning is disabled against connected data until approved release testing.</div>}</section>
  </div>;
 }

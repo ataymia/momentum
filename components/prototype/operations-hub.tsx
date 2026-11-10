@@ -48,6 +48,7 @@ import {HrPerformanceExperience} from "./hr-performance-experience";
 import {ReportsWorkspaceExperience} from "./reports-workspace-experience";
 import {TrainingWorkspaceExperience,WorkforceWorkspaceExperience,DataExchangeWorkspaceExperience,AccountingWorkspaceExperience} from "./department-workspaces";
 import {AdminOverviewExperience} from "./admin-overview-experience";
+import {UsersRolesExperience} from "./users-roles-experience";
 import {DispatchPage} from "../pages/dispatch";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
 import {HrPersonnelDirectory,HrPersonnelRecord} from "./hr-personnel-experience";
@@ -869,6 +870,7 @@ export function PrototypeOperationsHub(){
   if(path==="/reports/forecasts")return <ForecastsExperience/>;
   if(path==="/reports"||path==="/reports/explorer")return <ReportsWorkspaceExperience initialTab={path==="/reports/explorer"?"explorer":undefined}/>;
   if(path==="/admin")return <AdminOverviewExperience/>;
+  if(path==="/admin/access")return <UsersRolesExperience/>;
   if(path==="/admin/workforce")return <WorkforceWorkspaceExperience/>;
   if(path==="/admin/data-exchange")return <DataExchangeWorkspaceExperience/>;
   if(path==="/finance/accounting")return <AccountingWorkspaceExperience/>;

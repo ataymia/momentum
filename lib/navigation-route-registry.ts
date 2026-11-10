@@ -111,7 +111,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   { label: "Administration", entries: [
     { label: "Administration", path: "/admin", permission: "settings", state: "prototype" },
     { label: "Employee Directory & Profiles", path: "/admin/employees", permission: "settings", state: "prototype" },
-    { label: "Users & Roles", path: "/admin/access", permission: "settings", state: "existing" },
+    { label: "Users & Roles", path: "/admin/access", permission: "settings", state: "prototype" },
     { label: "Workforce Live", path: "/admin/workforce", permission: "workforceLive", state: "prototype" },
     { label: "Audit Center", path: "/admin/audit", permission: "audit", state: "existing" },
     { label: "Account Consolidation", path: "/admin/accounts", permission: "settings", state: "prototype" },

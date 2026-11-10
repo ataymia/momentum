@@ -5,6 +5,7 @@ import { ArrowDownUp, CalendarDays, ClipboardList, GraduationCap, Search, Shield
 import { useWorkspace } from "../../lib/workspace-context";
 import { useHcm } from "../../lib/hcm-context";
 import { usePayroll } from "../../lib/payroll-context";
+import {hiringReadiness} from "../../lib/hr-compliance-readiness";
 import { navigateToRoute } from "../../lib/navigation-store";
 import { formatMoney } from "../ui";
 
@@ -40,6 +41,9 @@ export function PeopleExperience(){
   // Scope self-service summaries to the signed-in employee, not the whole workspace.
   const visibleTimecards=scope.timecards.filter(r=>admin||r.userId===currentUser.id);
   const pendingTimecards=visibleTimecards.filter(r=>r.status==="Submitted");
+  const complianceReviews=admin?hcm.employees.filter(e=>e.status!=="Separated")
+    .map(employee=>hiringReadiness(employee,hcm.documents)):[];
+  const unresolvedCompliance=complianceReviews.filter(review=>review.blockers.length>0);
   return <div className="prototype-domain prototype-domain--people">
     {title(admin?"Human Resources":"My Employee Workspace",admin?"Personnel records, requests, attendance and learning.":"Authorized self-service information and tasks.")}
     <div className="prototype-domain-statbar">
@@ -47,10 +51,12 @@ export function PeopleExperience(){
       <article><CalendarDays size={18}/><small>Leave awaiting review</small><strong>{leave.filter(r=>r.status==="Submitted").length}</strong></article>
       <article><GraduationCap size={18}/><small>Incomplete learning</small><strong>{training.filter(r=>r.status!=="Complete").length}</strong></article>
       <article><ClipboardList size={18}/><small>Pending timecards</small><strong>{pendingTimecards.length}</strong></article>
+      {admin&&<article><ShieldCheck size={18}/><small>Records needing compliance review</small><strong>{unresolvedCompliance.length}</strong></article>}
     </div>
     <div className="prototype-domain-cards">
       <NavTile label="Employee Directory" path="/people/directory" detail="Identity and reporting lines"/>
-      {admin&&<NavTile label="Employee Profiles" path="/admin/employee-profiles" detail="Authorized personnel records"/>}
+      {admin&&<NavTile label="Employee Profiles" path="/admin/employees" detail="Authorized personnel records"/>}
+      {admin&&<NavTile label="Hiring Compliance" path="/people/compliance" detail="Document evidence and regulatory release blockers"/>}
       {admin&&<NavTile label="New Hire" path="/people/new-hire" detail="Provision a new employee securely"/>}
       {admin&&<NavTile label="Onboarding Queue" path="/people/onboarding" detail="New-hire requirements"/>}
       {admin&&<NavTile label="Training administration" path="/people/training" detail="Manage training and resources"/>}
@@ -58,6 +64,7 @@ export function PeopleExperience(){
       <NavTile label="Performance & development" path="/people/performance" detail="Recorded goals and review cycles"/>
       <NavTile label="Time off & leave" path="/people/leave" detail="Submit requests and review balances"/>
     </div>
+    {admin&&<p role="status" className="prototype-note">HR readiness counts are based on loaded personnel records and signed-original evidence requirements. Zero records here would not certify legal onboarding, identity verification, tax setup or retention.</p>}
     <Pane label={admin?"Employee register":"My employee profile"}>
       <div className="prototype-controls">
         <label className="prototype-search"><Search size={16}/><input aria-label="Search employees" placeholder="Find employee or department" value={query} onChange={e=>setQuery(e.target.value)}/></label>
