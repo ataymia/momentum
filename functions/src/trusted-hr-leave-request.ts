@@ -1,4 +1,4 @@
-/* eslint-disable comma-spacing, key-spacing, keyword-spacing, curly, brace-style, space-before-blocks, arrow-parens, max-len, indent, valid-jsdoc */
+/* eslint-disable comma-spacing, key-spacing, keyword-spacing, curly, brace-style, space-before-blocks, arrow-parens, max-len, indent */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {validLeaveRequestId,validateTrustedLeaveRequest} from "./trusted-hr-leave-validation";
