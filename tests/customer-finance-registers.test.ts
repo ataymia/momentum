@@ -15,7 +15,7 @@ test("customer finance register excludes foreign invoices, payments and unfulfil
  ],allocations:[
  {id:"alloc-a",paymentId:"pay-a",invoiceId:"a",amount:20,createdAt:"2026-11-05",createdBy:"test"},
  {id:"alloc-b",paymentId:"pay-b",invoiceId:"b",amount:20,createdAt:"2026-11-05",createdBy:"test"},
- {id:"alloc-pending",paymentId:"pay-pending",invoiceId:"a",amount:5,createdAt:"2026-11-05",createdBy:"test"},
+ {id:"alloc-pending",paymentId:"pay-pending",invoiceId:"c",amount:5,createdAt:"2026-11-05",createdBy:"test"},
  ],credits:[],refunds:[],notes:[]};
  const unfulfilled={...order("c","owned"),status:"Draft" as const};
  const result=projectCustomerFinance(state,[order("a","owned"),order("b","foreign"),unfulfilled],new Set(["owned"]),new Map([["owned","Store A"]]));
@@ -92,4 +92,29 @@ test("R23 two simultaneous current invoices for one order never become two recei
  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
  assert.match(hub,/finance\.reconciliationRequired>0/);
  assert.match(hub,/Ask accounting to review the originals before collecting payment/);
+});
+
+test("R30 cleared payment with no recorded settlement must not extinguish the customer receivable",()=>{
+ const missingSettlement={id:"pay",accountId:"owned",receivedAt:"2026-11-05",amount:20,
+   method:"ACH" as const,status:"Cleared" as const,createdBy:"operator",createdAt:"2026-11-05"};
+ const state:CommerceState={version:1,invoices:[invoice("i","o","owned")],
+   payments:[missingSettlement],allocations:[{id:"a",paymentId:"pay",invoiceId:"i",amount:20,createdAt:"2026-11-05",createdBy:"operator"}],
+   credits:[],refunds:[],notes:[]};
+ const result=projectCustomerFinance(state,[order("o","owned")],new Set(["owned"]),new Map());
+ assert.deepEqual(result.invoices,[]);
+ assert.deepEqual(result.payments,[]);
+ assert.equal(result.reconciliationRequired,1);
+});
+
+test("R30 pending plus cleared reservations exceeding invoice amount require review",()=>{
+ const base={id:"p1",accountId:"owned",receivedAt:"2026-11-05",amount:20,method:"ACH" as const,
+   status:"Cleared" as const,settledAt:"2026-11-05",settledBy:"reviewer",createdBy:"test",createdAt:"2026-11-05"};
+ const state:CommerceState={version:1,invoices:[invoice("i","o","owned")],
+   payments:[base,{...base,id:"p2",status:"Pending",settledAt:undefined,settledBy:undefined}],
+   allocations:[{id:"a",paymentId:"p1",invoiceId:"i",amount:20,createdAt:"2026-11-05",createdBy:"test"},
+     {id:"b",paymentId:"p2",invoiceId:"i",amount:5,createdAt:"2026-11-05",createdBy:"test"}],
+   credits:[],refunds:[],notes:[]};
+ const result=projectCustomerFinance(state,[order("o","owned")],new Set(["owned"]),new Map());
+ assert.deepEqual(result.invoices,[]);
+ assert.equal(result.reconciliationRequired,1);
 });
