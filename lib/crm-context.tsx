@@ -75,15 +75,25 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   }, [data]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") momentumStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+    // Connected CRM writes are server-owned. Reading or normalizing a remote
+    // snapshot must never publish browser-held CRM records back to Firestore.
+    if (runtime.isDemo && momentumStorage.mode() === "local" && typeof window !== "undefined") {
+      momentumStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(state));
+    }
+  }, [runtime.isDemo, state]);
   useRemoteStorageSync(CRM_STORAGE_KEY, () => setCrm((current) => {
     const next=read();
     return JSON.stringify(next)===JSON.stringify(current)?current:next;
   }));
   useEffect(()=>{
-    if(!currentUser)return;for(const account of data.accounts){const reason=prospectOwnershipReleaseReason(account,state.interactions);if(reason)releaseProspectOwnership(account.id,reason);}
-  },[currentUser,data.accounts,state.interactions,releaseProspectOwnership]);
+    // Ownership changes require authenticated backend policy in connected mode.
+    // Demo-only automatic release must not act on remote CRM read snapshots.
+    if(!currentUser || !runtime.isDemo || momentumStorage.mode() !== "local")return;
+    for(const account of data.accounts){
+      const reason=prospectOwnershipReleaseReason(account,state.interactions);
+      if(reason)releaseProspectOwnership(account.id,reason);
+    }
+  },[currentUser,data.accounts,state.interactions,releaseProspectOwnership,runtime.isDemo]);
 
   const locationIds = useMemo(() => new Set(scope.accounts.map((account) => account.id)), [scope.accounts]);
   const customerIds = useMemo(() => new Set(scope.accounts.map((account) => account.customerId).filter((id): id is string => Boolean(id))), [scope.accounts]);
