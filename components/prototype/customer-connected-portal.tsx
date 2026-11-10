@@ -36,7 +36,13 @@ export function CustomerConnectedPortal({section}:{section:Section}){
   void load();return()=>{mounted=false;};
  },[version]);
  const title={orders:"My Orders",invoices:"My Invoices",account:"My Account",deliveries:"My Deliveries"}[section];
- const records=view.data?(section==="invoices"?view.data.statements:view.data.orders):[];
+ // A delivery is not the same thing as a placed or cancelled sales order.
+ // Until server PODs are available, show only order states indicating dispatch
+ // or delivery and disclose that the status is not signature evidence.
+ const deliveryStates=new Set(["Out for delivery","Delivered","Paid"]);
+ const records=view.data?(section==="invoices"?view.data.statements:
+   section==="deliveries"?view.data.orders.filter(order=>deliveryStates.has(order.status)):
+   view.data.orders):[];
  const rows=records.filter(item=>(location==="all"||item.accountId===location)&&
   (query.trim()===""||[item.id,item.status,("invoice" in item?item.invoice:item.number)].join(" ").toLowerCase().includes(query.trim().toLowerCase())))
   .sort((a,b)=>{
@@ -82,7 +88,7 @@ export function CustomerConnectedPortal({section}:{section:Section}){
           <td>{"invoice" in row?cash(row.amount):row.cases}</td>
           {section==="invoices"&&<td>{"balance" in row?cash(row.balance):""}</td>}
          </tr>)}</tbody></table></div>
-        {!rows.length&&<div className="prototype-empty">No authorized records matched.</div>}
+        {!rows.length&&<div className="prototype-empty">{section==="deliveries"?"No dispatched or delivered orders match. Pending and cancelled orders remain in My Orders.":"No authorized records matched."}</div>}
         {section==="invoices"&&<p className="prototype-note">Official PDF access and hosted payment links require server-verified document authorization and an approved payment provider.</p>}
         {section==="deliveries"&&<p className="prototype-note">Only recorded order states are shown here, not a verified route ETA, recipient signature, or proof of delivery.</p>}
        </>}
