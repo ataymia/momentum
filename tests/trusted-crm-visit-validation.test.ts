@@ -90,3 +90,18 @@ test("R75 Firestore denies direct browser CRM interaction edits, retaining sales
   assert.match(ui,/recordTrustedFieldVisit\(firebase\.session,visit,requestId\)/);
   assert.match(ui,/momentumStorage\.refreshKeys\(\[CRM_STORAGE_KEY\]\)/);
 });
+
+test("R75 connected CRM snapshots cannot trigger browser writes or prospect ownership changes",()=>{
+  const provider=readFileSync("lib/crm-context.tsx","utf8");
+  const workspace=readFileSync("lib/workspace-context.tsx","utf8");
+  // The existing Quick Visit server receipt remains the only connected write
+  // pathway. Mounting the CRM provider must never republish its read snapshot.
+  assert.match(provider,/if \(runtime\.isDemo && momentumStorage\.mode\(\) === "local" && typeof window !== "undefined"\)/);
+  assert.match(provider,/if\(!currentUser \|\| !runtime\.isDemo \|\| momentumStorage\.mode\(\) !== "local"\)return;/);
+  for(const action of ["claimUnassignedProspect","releaseProspectOwnership"]){
+    const start=workspace.indexOf("const "+action+"=");
+    assert(start>=0,"Missing prospect lifecycle action "+action);
+    const body=workspace.slice(start,start+360);
+    assert.match(body,/if\(!demoMode \|\| momentumStorage\.mode\(\)!=="local"\)return false;/);
+  }
+});
