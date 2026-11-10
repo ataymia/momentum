@@ -142,7 +142,7 @@ export function HelpPage() {
     {label:"Home",path:"/"},{label:"Action Center",path:"/work/actions"},
     {label:"CRM & Sales",path:"/sales/customers"},
     {label:"Territories & Map",path:"/crm/territories"},
-    {label:"Field scheduling",path:"/operations/legacy-dispatch"},
+    {label:"Field scheduling",path:"/operations/field-schedule"},
     {label:"Delivery Operations",path:"/operations/deliveries"},
     {label:"Orders",path:"/sales/orders"},
     {label:"Human Resources",path:"/people"},

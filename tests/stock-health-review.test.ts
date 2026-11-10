@@ -102,16 +102,20 @@ test("E06 self-delivery redesign preserves the trusted server-only workflow and 
   assert.equal(requiresPrototypePage("/crm/self-delivery"),true);
 });
 
-test("E07 prevents premature office Dispatch retirement before scheduling parity",()=>{
+test("E07/R34-R35 preserves field appointment scheduling while consolidating delivery work",()=>{
   const registry=readFileSync("lib/navigation-route-registry.ts","utf8");
   const dispatch=readFileSync("components/pages/dispatch-board.tsx","utf8");
   const review=readFileSync("components/prototype/fulfillment-experience.tsx","utf8");
-  assert.match(registry,/dispatch: "\/operations\/legacy-dispatch"/);
+  assert.match(registry,/dispatch: "\/operations\/field-schedule"/);
+  assert.match(registry,/Field Scheduling.*permission: "dispatch"/);
+  assert.doesNotMatch(registry,/label: "Legacy Dispatch/);
   assert.match(dispatch,/createAppointment/);
   assert.match(dispatch,/reassignAppointment/);
   assert.match(dispatch,/moveAppointment/);
   assert.match(dispatch,/canManageSchedule/);
-  assert.match(review,/Legacy office Dispatch must stay available/);
+  assert.match(review,/<DispatchPage\/>/);
+  assert.match(review,/Open field scheduling board/);
+  assert.match(review,/Review shipment workflow/);
 });
 
 test("E05 distinguishes posted over-delivery and missing warehouse custody from legitimate completion",()=>{

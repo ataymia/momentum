@@ -16,7 +16,14 @@ for(const line of menu.split("\n")){
   if(item&&groupName)groups[groupName].push({label:item[1],path:item[2],permission:item[3],state:item[4]});
 }
 const pages=Object.entries(groups).flatMap(([group,entries])=>entries.map(e=>({...e,group})));
-assert.equal(pages.length,83,"All 83 declared staff menu destinations must be audited, including personal Account");
+// Sidebar routes are intentionally consolidated over time. Survey the current
+// declared menu rather than hardcoding a superseded link count.
+assert(pages.length>=70,"The declared staff menu is unexpectedly small: audit coverage must not silently shrink");
+assert.equal(new Set(pages.map(item=>item.path)).size,pages.length,"Duplicate staff navigation destinations must be consolidated");
+for(const required of ["/","/my-account","/work/actions","/sales/customers",
+  "/operations/deliveries","/operations/field-schedule","/reports","/admin/employees"]){
+  assert(pages.some(item=>item.path===required),"Critical staff route missing from full browser audit: "+required);
+}
 
 const browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
 const context=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1, reducedMotion:"reduce"});

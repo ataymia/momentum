@@ -45,7 +45,9 @@ import {SupportCasesExperience} from "./support-cases-experience";
 import {HrComplianceReadinessExperience} from "./hr-compliance-readiness-experience";
 import {HrAttendanceExperience} from "./hr-attendance-experience";
 import {HrPerformanceExperience} from "./hr-performance-experience";
-import {InsightsExplorerExperience} from "./insights-explorer-experience";
+import {ReportsWorkspaceExperience} from "./reports-workspace-experience";
+import {AdminOverviewExperience} from "./admin-overview-experience";
+import {DispatchPage} from "../pages/dispatch";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
 import {HrPersonnelDirectory,HrPersonnelRecord} from "./hr-personnel-experience";
 import {CustomerPortalAdminOverview} from "./customer-portal-admin-overview";
@@ -863,7 +865,13 @@ export function PrototypeOperationsHub(){
   if(path==="/marketing")return <MarketingWorkspaceExperience/>;
   if(path==="/marketing/campaigns")return <MarketingWorkspaceExperience key="marketing-campaigns" initialTab="campaigns"/>;
   if(path==="/reports/forecasts")return <ForecastsExperience/>;
-  if(path==="/reports/explorer")return <InsightsExplorerExperience/>;
+  if(path==="/reports"||path==="/reports/explorer")return <ReportsWorkspaceExperience initialTab={path==="/reports/explorer"?"explorer":undefined}/>;
+  if(path==="/admin")return <AdminOverviewExperience/>;
+  if(path==="/operations/field-schedule"||path==="/operations/legacy-dispatch")return <div className="prototype-domain">
+    <Heading title="Field Scheduling" description="Scheduled field appointments with the existing conflict, ownership and location controls."/>
+    <p role="note" className="prototype-note">This is field appointment scheduling, not an independently verified delivery route. Driver assignments and custody are handled in Delivery Operations.</p>
+    <DispatchPage/>
+  </div>;
   if(path==="/documents")return <DocumentsExperience/>;
   if(path==="/support/cases"||path.startsWith("/support/cases/"))return <SupportCasesExperience/>;
   if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<Empty>Marketing write administration is available in isolated local demo only. The redesign provides source-linked read and export access.</Empty>;

@@ -41,7 +41,9 @@ test("customer self-service is strictly separate from internal administration",(
 });
 
 test("Human Resources and Marketing menus do not cross departmental roles",()=>{
-  assert(canShowModuleInMenu(person("Administrator"),"/admin/employee-profiles"));
+  assert(canShowModuleInMenu(person("Administrator"),"/admin/employees"));
+  assert(!canShowModuleInMenu(person("Administrator"),"/admin/employee-profiles"));
+  assert(canVisitRoute(person("Administrator"),"/admin/employee-profiles"));
   assert(canShowModuleInMenu(person("Administrator"),"/people"));
   assert(canShowModuleInMenu(person("Marketing"),"/marketing"));
   assert(!canShowModuleInMenu(person("Marketing"),"/people"));
