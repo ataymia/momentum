@@ -71,3 +71,11 @@ test("customer Documents lists issued invoice records only from authorized finan
  assert.match(details,/customerPath\+"\/transactions"/);
  assert.match(details,/Connected financial documents require an authenticated, customer-scoped server read/);
 });
+
+test("R23/R76 customer history keeps sortable records usable on narrow screens",()=>{
+ const source=hub();
+ assert.match(source,/prototype-table-scroll"><table className="prototype-table"><thead><tr>\{transactionHeader\("number","Order"\)/);
+ assert.match(source,/prototype-table-scroll"><table className="prototype-table"><thead><tr>\{locationHeader\("location","Location"\)/);
+ assert.match(source,/transactionHeader\("payment","Order payment label"\)/);
+ assert.match(source,/Recorded on the order, not processor-verified/);
+});
