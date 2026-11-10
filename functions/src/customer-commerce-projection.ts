@@ -103,7 +103,19 @@ export function projectCustomerFinance(ids:readonly string[],docs:DocRows,limit=
    if(!payment||total>num(payment.amount)+0.005)disputedPayments.add(id);
  }
  const ambiguousInvoiceIds=new Set(docs.allocations.filter(a=>disputedPayments.has(txt(a.paymentId))).map(a=>txt(a.invoiceId)));
- const safeInvoices=unique.filter(i=>!ambiguousInvoiceIds.has(txt(i.id)));
+ // A replacement invoice is not safely payable while an older revision of the
+ // same order still holds applied credits or payment allocations. Do not
+ // silently discard those funds and show the replacement at its full balance.
+ const unreconciledRevisionOrders=new Set<string>();
+ for(const old of docs.invoices){
+   if(!txt(old.supersededByInvoiceId))continue;
+   const priorAllocations=docs.allocations.some(a=>txt(a.invoiceId)===txt(old.id)&&num(a.amount)>0);
+   const priorCredits=docs.credits.some(c=>txt(c.invoiceId)===txt(old.id)&&
+     txt(c.status)==="Applied"&&num(c.amount)>0);
+   if(priorAllocations||priorCredits)unreconciledRevisionOrders.add(txt(old.orderId));
+ }
+ const safeInvoices=unique.filter(i=>!ambiguousInvoiceIds.has(txt(i.id))&&
+   !unreconciledRevisionOrders.has(txt(i.orderId)));
  const selected=safeInvoices.slice(0,limit);
  const statements:CustomerFinanceSnapshot["statements"]=[];
  const payments:CustomerFinanceSnapshot["payments"]=[];
