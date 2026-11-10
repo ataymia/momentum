@@ -30,7 +30,7 @@ test("customer finance register excludes foreign invoices, payments and unfulfil
 test("customer finance register excludes all records when no authorized accounts exist",()=>{
  const empty:CommerceState={version:1,invoices:[invoice("a","a","owned")],payments:[],allocations:[],credits:[],refunds:[],notes:[]};
  const result=projectCustomerFinance(empty,[order("a","owned")],new Set(),new Map());
- assert.deepEqual(result,{invoices:[],payments:[],statement:[],openBalance:0});
+ assert.deepEqual(result,{invoices:[],payments:[],statement:[],openBalance:0,reconciliationRequired:0});
 });
 test("customer finance portal is disabled for connected data and exports only scoped projections",()=>{
  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
@@ -54,4 +54,42 @@ test("staff customer record statement uses only verified local demo and account-
  assert.match(record,/statementRows/);
  assert.match(record,/downloadCsv\("momentum-customer-statement-"/);
  assert.match(record,/No amount is estimated from order totals/);
+});
+
+test("R23 current revised invoices replace superseded versions without double billing",()=>{
+ const prior={...invoice("old","o","owned"),supersededByInvoiceId:"new"};
+ const current={...invoice("new","o","owned"),previousInvoiceId:"old"};
+ const state:CommerceState={version:1,invoices:[prior,current],payments:[],allocations:[],credits:[],refunds:[],notes:[]};
+ const result=projectCustomerFinance(state,[order("o","owned")],new Set(["owned"]),new Map([["owned","Store A"]]));
+ assert.deepEqual(result.invoices.map(i=>i.id),["new"]);
+ assert.equal(result.openBalance,20);
+ assert.equal(result.reconciliationRequired,0);
+ assert.deepEqual(result.statement.map(row=>row.reference),["INV-new"]);
+});
+
+test("R23 prior allocations hold the revised invoice for accounting review",()=>{
+ const prior={...invoice("old","o","owned"),supersededByInvoiceId:"new"};
+ const current={...invoice("new","o","owned"),previousInvoiceId:"old"};
+ const payment={id:"p",accountId:"owned",receivedAt:"2026-11-05",amount:5,method:"ACH" as const,
+   status:"Cleared" as const,settledAt:"2026-11-05",settledBy:"reviewer",createdBy:"reviewer",createdAt:"2026-11-05"};
+ const state:CommerceState={version:1,invoices:[prior,current],payments:[payment],
+   allocations:[{id:"a",invoiceId:"old",paymentId:"p",amount:5,createdAt:"2026-11-05",createdBy:"reviewer"}],
+   credits:[],refunds:[],notes:[]};
+ const result=projectCustomerFinance(state,[order("o","owned")],new Set(["owned"]),new Map());
+ assert.deepEqual(result.invoices,[]);
+ assert.deepEqual(result.payments,[]);
+ assert.deepEqual(result.statement,[]);
+ assert.equal(result.openBalance,0);
+ assert.equal(result.reconciliationRequired,1);
+});
+
+test("R23 two simultaneous current invoices for one order never become two receivables",()=>{
+ const state:CommerceState={version:1,invoices:[invoice("a","o","owned"),invoice("b","o","owned")],
+   payments:[],allocations:[],credits:[],refunds:[],notes:[]};
+ const result=projectCustomerFinance(state,[order("o","owned")],new Set(["owned"]),new Map());
+ assert.deepEqual(result.invoices,[]);
+ assert.equal(result.reconciliationRequired,2);
+ const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+ assert.match(hub,/finance\.reconciliationRequired>0/);
+ assert.match(hub,/Ask accounting to review the originals before collecting payment/);
 });
