@@ -1,4 +1,4 @@
-/* eslint-disable comma-spacing, key-spacing, keyword-spacing, curly, brace-style, space-before-blocks, max-len, indent, arrow-parens, valid-jsdoc */
+/* eslint-disable comma-spacing, key-spacing, keyword-spacing, curly, brace-style, space-before-blocks, max-len, indent, arrow-parens */
 /** Only the server owns submitted/approval states, user ID and timestamps. */
 export type TrustedLeaveInput={
  startDate:string;endDate:string;requestedHours:number;reason:string;
@@ -11,7 +11,11 @@ const date=(value:string)=>{
  const d=new Date(value+"T00:00:00.000Z");
  return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===value;
 };
-/** @param {unknown} input Untrusted form payload. @return {ValidLeave} Validated leaves only. */
+/**
+ * Validate a time-off request without trusting identity or approval fields.
+ * @param {unknown} input Untrusted form payload.
+ * @return {ValidLeave} Validated request or safe refusal.
+ */
 export function validateTrustedLeaveRequest(input:unknown):ValidLeave{
  if(!safeRecord(input))return{ok:false,message:"Time-off request details are required."};
  const permitted=new Set(["startDate","endDate","requestedHours","reason"]);
@@ -30,7 +34,11 @@ export function validateTrustedLeaveRequest(input:unknown):ValidLeave{
    return{ok:false,message:"Provide a reason of 3 to 1500 characters."};
  return{ok:true,value:{startDate,endDate,requestedHours,reason:reason.trim()}};
 }
-/** @param {unknown} id Client request ID. @return {boolean} Safe idempotency key. */
+/**
+ * Validate a bounded idempotency key.
+ * @param {unknown} id Client request ID.
+ * @return {boolean} Whether the ID is safe.
+ */
 export function validLeaveRequestId(id:unknown):id is string{
  return typeof id==="string"&&/^[A-Za-z0-9_-]{16,80}$/.test(id);
 }
