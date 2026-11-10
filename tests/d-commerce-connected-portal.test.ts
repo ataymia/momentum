@@ -11,3 +11,11 @@ test("D17 portal orders, invoices, deliveries and account are routed through aut
  assert.match(page,/cache:"no-store"/);
  assert.doesNotMatch(page,/useCommerce\(/);
 });
+
+test("R33/R37 customer deliveries exclude unfulfilled and cancelled sales orders",()=>{
+ const page=readFileSync("components/prototype/customer-connected-portal.tsx","utf8");
+ assert.match(page,/section==="deliveries"\?view\.data\.orders\.filter\(order=>deliveryStates\.has\(order\.status\)\)/);
+ assert.match(page,/\["Out for delivery","Delivered","Paid"\]/);
+ assert.match(page,/Pending and cancelled orders remain in My Orders/);
+ assert.match(page,/not a verified route ETA, recipient signature, or proof of delivery/);
+});
