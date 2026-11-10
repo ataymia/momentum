@@ -12,7 +12,7 @@ const groups={};let groupName="";
 for(const line of menu.split("\n")){
   const group=line.match(/^\s*\{ label: "([^"]+)", entries: \[$/);
   if(group){groupName=group[1];groups[groupName]=[];continue;}
-  const item=line.match(/^\s*\{ label: "([^"]+)", path: "(\/[^"]+)", permission: "([^"]+)", state: "([^"]+)" \},?$/);
+  const item=line.match(/^\s*\{ label: "([^"]+)", path: "(\/[^"]*)", permission: "([^"]+)", state: "([^"]+)" \},?$/);
   if(item&&groupName)groups[groupName].push({label:item[1],path:item[2],permission:item[3],state:item[4]});
 }
 const pages=Object.entries(groups).flatMap(([group,entries])=>entries.map(e=>({...e,group})));
