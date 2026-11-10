@@ -33,7 +33,7 @@ test("R27/R34/R60/R65: duplicate menu destinations are removed but deep links ar
 test("R34/R35 office scheduling is preserved with a modern route and actual shipment actions",()=>{
  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
  const fulfillment=readFileSync("components/prototype/fulfillment-experience.tsx","utf8");
- assert.match(hub,/path==="/operations\/field-schedule"/);
+ assert(hub.includes('if(path==="/operations/field-schedule"||path==="/operations/legacy-dispatch")'));
  assert.match(hub,/<DispatchPage\/>/);
  assert.match(fulfillment,/tab==="scheduling"/);
  assert.match(fulfillment,/Review shipment workflow/);
