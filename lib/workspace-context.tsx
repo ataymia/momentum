@@ -457,11 +457,16 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const claimUnassignedProspect=(accountId:string)=>{
+    // Claiming changes assigned ownership. In connected mode it needs a trusted
+    // server transaction and audit receipt, not a browser-authored patch.
+    if(!demoMode || momentumStorage.mode()!=="local")return false;
     if(!currentUser||currentUser.role!=="Sales Representative")return false;const account=data.accounts.find((item)=>item.id===accountId);
     if(!account||account.stage!=="Prospect"||account.ownerId)return false;
     setCommercial((state)=>({...state,accountPatches:{...state.accountPatches,[accountId]:{...(state.accountPatches[accountId]??{}),ownerId:currentUser.id,accountManagerId:currentUser.id,responsibilityStartedAt:now(),lastActivity:`Prospect claimed by ${currentUser.name}`}},activities:[{id:uid("act-claim"),accountId,type:"note",title:"Unassigned prospect claimed",detail:`${currentUser.name} claimed the existing prospect record. No duplicate was created.`,at:now(),userId:currentUser.id},...state.activities]}));return true;
   };
   const releaseProspectOwnership=(accountId:string,reason:string)=>{
+    // Do not automatically release live assignments from local CRM observations.
+    if(!demoMode || momentumStorage.mode()!=="local")return false;
     if(!currentUser||reason.trim().length<3)return false;const account=data.accounts.find((item)=>item.id===accountId);
     if(!account||account.stage!=="Prospect"||!account.ownerId)return false;
     const allowed=currentUser.role==="Administrator"||currentUser.role==="Sales Manager"||account.ownerId===currentUser.id;if(!allowed)return false;
