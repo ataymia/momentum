@@ -52,7 +52,9 @@ export function validateCaseCommand(raw:unknown):Validation{
   const orderId=txt(d.orderId)||undefined;
   if(title.length<4||title.length>160||description.length<12||description.length>4000)
    return{ok:false,message:"Provide a title and issue detail within the allowed lengths."};
-  if(!priorities.includes(txt(d.priority))||!categories.includes(txt(d.category))||
+  if((d.accountId!==undefined&&typeof d.accountId!=="string")||
+    (d.orderId!==undefined&&typeof d.orderId!=="string")||
+    !priorities.includes(txt(d.priority))||!categories.includes(txt(d.category))||
     (accountId&&!id(accountId))||(orderId&&!id(orderId))||(orderId&&!accountId))
    return{ok:false,message:"Choose a valid category, priority, customer and matching order."};
   return{ok:true,command:{kind:"create",draft:{title,description,accountId,orderId,

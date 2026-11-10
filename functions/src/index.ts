@@ -1821,6 +1821,9 @@ export {
   emailRefundSettlements,
 } from "./commercial-email-producers";
 export {customerCommerceSnapshot} from "./customer-commerce-read";
+// R62: authenticated, scoped support cases. Production activation requires
+// real-user staging acceptance and explicit release authorization.
+export {supportCasesApi} from "./support-case-service";
 export {
   sendProgramPricingWarnings,
   sendInventoryReorderWarnings,

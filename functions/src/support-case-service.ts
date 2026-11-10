@@ -98,9 +98,12 @@ async function readCases(actor:CaseAccess,caseId?:string){
   id:str(a.id),ownerId:str(a.ownerId)||undefined,stage:str(a.stage)||undefined,
  })).filter(a=>a.id);
  const accounts=new Map(accountsList.map(a=>[a.id,a]));
- const owners=await fetchOwners(accountsList);
  const documents=caseId?[result as FirebaseFirestore.DocumentSnapshot]:
    (result as FirebaseFirestore.QuerySnapshot).docs;
+ const relevant=new Set(documents.flatMap(doc=>{
+   const raw=doc.data();return typeof raw?.accountId==="string"?[raw.accountId]:[];
+ }));
+ const owners=await fetchOwners(accountsList.filter(a=>relevant.has(a.id)));
  const bounded=documents.slice(0,200);
  const cases=bounded.map(doc=>doc.data() as CaseRecord|undefined)
    .filter((item):item is CaseRecord=>Boolean(item))

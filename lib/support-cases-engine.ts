@@ -5,7 +5,7 @@ export type CaseStatus="Open"|"Investigating"|"Waiting"|"Resolved"|"Closed";
 export type CasePriority="Low"|"Normal"|"High"|"Critical";
 export type CaseCategory="Delivery"|"Billing"|"Product"|"Account"|"Other";
 export type CaseEvent={id:string;at:string;actorId:string;action:"Created"|"Note"|"Status"|"Owner";detail:string};
-export type SupportCase={id:string;title:string;description:string;accountId?:string;orderId?:string;category:CaseCategory;priority:CasePriority;status:CaseStatus;createdBy:string;ownerId:string;createdAt:string;updatedAt:string;history:CaseEvent[]};
+export type SupportCase={revision?:number;id:string;title:string;description:string;accountId?:string;orderId?:string;category:CaseCategory;priority:CasePriority;status:CaseStatus;createdBy:string;ownerId:string;createdAt:string;updatedAt:string;history:CaseEvent[]};
 export type CaseDraft=Pick<SupportCase,"title"|"description"|"category"|"priority"> & {accountId?:string;orderId?:string};
 const statuses:Record<CaseStatus,CaseStatus[]>={Open:["Investigating"],Investigating:["Waiting","Resolved"],Waiting:["Investigating"],Resolved:["Closed","Investigating"],Closed:["Investigating"]};
 /** Keep the UI state machine and server-validation candidate list in sync. */
