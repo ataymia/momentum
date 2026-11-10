@@ -58,6 +58,7 @@ test("R23 revised invoices replace superseded receivables without hiding the cur
  const revised={...data.invoices[0],id:"i4",number:"INV-1-R2",total:230};
  const result=projection.projectCustomerFinance(["store-a"],{
    ...data,invoices:[old,revised,...data.invoices.slice(1)],
+   allocations:[],credits:[],refunds:[],
  });
  assert.deepEqual(result.statements.map(row=>row.id),["i4"]);
  assert.equal(result.statements[0].amount,230);
@@ -83,4 +84,15 @@ test("R23 unrecognized invoice states never become customer receivables",()=>{
    ...data,invoices:[forged,...data.invoices.slice(1)],
  });
  assert.deepEqual(result.statements,[]);
+});
+
+test("R23 prior payments or applied credits block a replacement balance until reconciled",()=>{
+ const old={...data.invoices[0],supersededByInvoiceId:"i4"};
+ const revised={...data.invoices[0],id:"i4",number:"INV-1-R2",total:230};
+ const result=projection.projectCustomerFinance(["store-a"],{
+   ...data,invoices:[old,revised,...data.invoices.slice(1)],
+ });
+ assert.deepEqual(result.statements,[]);
+ assert.deepEqual(result.payments,[]);
+ assert.equal(result.truncated,true);
 });
