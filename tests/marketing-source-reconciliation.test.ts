@@ -69,5 +69,5 @@ test("R56 Marketing has one campaign workstream and preserves authorized bookmar
  assert.equal(canVisitRoute(admin,"/marketing/campaigns"),true);
  assert.equal(canVisitRoute({...admin,role:"Sales Representative"},"/marketing/campaigns"),false);
  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
- assert.match(hub,/if\(path==="/marketing\/campaigns"\)return <MarketingWorkspaceExperience key="marketing-campaigns" initialTab="campaigns"\/>/);
+ assert(hub.includes('if(path==="/marketing/campaigns")return <MarketingWorkspaceExperience key="marketing-campaigns" initialTab="campaigns"/>;'));
 });
