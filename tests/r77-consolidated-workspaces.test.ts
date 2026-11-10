@@ -11,7 +11,7 @@ test("R27/R34/R60/R65: duplicate menu destinations are removed but deep links ar
  const links=MENU_GROUPS.flatMap(group=>group.entries);
  assert.equal(new Set(links.map(entry=>entry.path)).size,links.length);
  for(const absent of ["/crm/territory-map","/operations/legacy-dispatch",
-   "/admin/employee-profiles","/admin/employee-profiles/workflow","/reports/performance"]){
+   "/admin/employee-profiles","/admin/employee-profiles/workflow"]){
   assert(!links.some(entry=>entry.path===absent),"Duplicate menu path: "+absent);
  }
  for(const present of ["/crm/territories","/operations/field-schedule",

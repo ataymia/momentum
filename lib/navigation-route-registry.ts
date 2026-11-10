@@ -29,6 +29,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Meetings", path: "/calendar/meetings", permission: "work", state: "prototype" },
     { label: "My Invitations", path: "/calendar/invitations", permission: "work", state: "prototype" },
     { label: "My Agenda", path: "/calendar/agenda", permission: "work", state: "prototype" },
+    { label: "Work Reports", path: "/reports/center", permission: "reportingCenter", state: "existing" },
   ] },
   { label: "Account", entries: [
     { label: "My Account", path: "/my-account", permission: "timekeeping", state: "prototype" },
@@ -37,7 +38,6 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "My Pay History", path: "/my-account/pay", permission: "timekeeping", state: "prototype" },
     { label: "My Training", path: "/my-account/training", permission: "timekeeping", state: "prototype" },
     { label: "Completed Work", path: "/my-account/completed", permission: "work", state: "prototype" },
-    { label: "My Work Reports", path: "/reports/center", permission: "reportingCenter", state: "existing" },
   ] },
   { label: "Sales & CRM", entries: [
     { label: "Leads", path: "/crm/leads", permission: "accounts", state: "prototype" },

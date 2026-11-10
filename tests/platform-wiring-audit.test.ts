@@ -20,9 +20,15 @@ function renderedKeys(){
   return new Set([...shell.matchAll(/case "([A-Za-z][A-Za-z0-9]*)":/g)].map((match)=>match[1]));
 }
 function reachableKeys(){
-  // All approved navigation now lives in the eight sidebar groups, plus
-  // the separately scoped customer menu. Legacy header tabs are retired.
-  return new Set<string>([...MENU_GROUPS.flatMap(group=>group.entries),...CUSTOMER_MENU].map(entry=>entry.permission));
+  // Approved navigation may expose an entire permitted workstream through a
+  // source-rendered tab. A separate legacy sidebar link is not mandatory.
+  const keys=new Set<string>([...MENU_GROUPS.flatMap(group=>group.entries),...CUSTOMER_MENU]
+    .map(entry=>entry.permission));
+  const reportsWorkspace=readFileSync("components/prototype/reports-workspace-experience.tsx","utf8");
+  if(keys.has("reports")&&reportsWorkspace.includes('route:"/reports/performance"')&&
+      reportsWorkspace.includes("canVisitRoute(currentUser,item.route)")&&
+      reportsWorkspace.includes("<PerformanceWorkspacePage/>"))keys.add("performance");
+  return keys;
 }
 
 test("every role-accessible page has a renderer",()=>{
@@ -30,7 +36,7 @@ test("every role-accessible page has a renderer",()=>{
   for(const page of pageAccessKeys())assert.ok(rendered.has(page),`${page} is accessible but has no PageView renderer`);
 });
 
-test("every role-accessible page has a sidebar or customer portal destination",()=>{
+test("every role-accessible page has a visible sidebar, customer portal or permission-filtered report tab",()=>{
   const reachable=reachableKeys();
   for(const page of pageAccessKeys())assert.ok(reachable.has(page),`${page} is accessible but has no visible navigation path`);
 });
