@@ -334,6 +334,8 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
+  // Preserve campaign bookmarks after removing the duplicate sidebar entry.
+  if(clean==="/marketing/campaigns")return true;
   // Historical copied links and work-queue entry points retain the redesigned views
   // after personal information moves out of the Workspace sidebar.
   if(["/self-service","/self-service/leave","/self-service/pay","/work/approvals","/work/exceptions","/work/completed"].includes(clean))return true;
