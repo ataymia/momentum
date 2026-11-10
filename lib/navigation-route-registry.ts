@@ -63,7 +63,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Credit Notes", path: "/sales/credit-notes", permission: "orderCash", state: "prototype" },
     { label: "Customer Portal", path: "/commerce/customer-portal", permission: "orders", state: "prototype" },
     { label: "Finance Overview", path: "/finance", permission: "finance", state: "existing" },
-    { label: "Accounting", path: "/finance/accounting", permission: "accounting", state: "existing" },
+    { label: "Accounting", path: "/finance/accounting", permission: "accounting", state: "prototype" },
   ] },
   { label: "Operations", entries: [
     { label: "Inventory", path: "/inventory", permission: "inventory", state: "prototype" },
@@ -90,7 +90,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Onboarding Workflow", path: "/people/onboarding/workflow", permission: "onboarding", state: "existing" },
     { label: "Payroll", path: "/people/payroll", permission: "payroll", state: "prototype" },
     { label: "Payroll Processing & Settings", path: "/people/payroll/workflow", permission: "payroll", state: "existing" },
-    { label: "Training", path: "/people/training", permission: "trainingAdmin", state: "existing" },
+    { label: "Training", path: "/people/training", permission: "trainingAdmin", state: "prototype" },
     { label: "Time Off & Leave", path: "/people/leave", permission: "people", state: "prototype" },
     { label: "Attendance & Timecards", path: "/people/attendance", permission: "timekeeping", state: "prototype" },
     { label: "Performance & Development", path: "/people/performance", permission: "people", state: "prototype" },
@@ -112,10 +112,10 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Administration", path: "/admin", permission: "settings", state: "prototype" },
     { label: "Employee Directory & Profiles", path: "/admin/employees", permission: "settings", state: "prototype" },
     { label: "Users & Roles", path: "/admin/access", permission: "settings", state: "existing" },
-    { label: "Workforce Live", path: "/admin/workforce", permission: "workforceLive", state: "existing" },
+    { label: "Workforce Live", path: "/admin/workforce", permission: "workforceLive", state: "prototype" },
     { label: "Audit Center", path: "/admin/audit", permission: "audit", state: "existing" },
     { label: "Account Consolidation", path: "/admin/accounts", permission: "settings", state: "prototype" },
-    { label: "Data Exchange", path: "/admin/data-exchange", permission: "dataExchange", state: "existing" },
+    { label: "Data Exchange", path: "/admin/data-exchange", permission: "dataExchange", state: "prototype" },
   ] },
 ];
 

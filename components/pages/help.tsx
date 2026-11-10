@@ -146,10 +146,13 @@ export function HelpPage() {
     {label:"Delivery Operations",path:"/operations/deliveries"},
     {label:"Orders",path:"/sales/orders"},
     {label:"Human Resources",path:"/people"},
+    {label:"Training",path:"/people/training"},
     {label:"My Account",path:"/my-account"},
     {label:"Brand Ambassadors",path:"/marketing/ambassadors"},
     {label:"Reports",path:"/reports"},
     {label:"Employee Directory",path:"/admin/employees"},
+    {label:"Accounting",path:"/finance/accounting"},
+    {label:"Data Exchange",path:"/admin/data-exchange"},
     {label:"Administration",path:"/admin"},
   ];
   const quickLinks=allQuickLinks.filter(item=>canVisitRoute(currentUser,item.path));

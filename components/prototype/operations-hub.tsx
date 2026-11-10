@@ -46,6 +46,7 @@ import {HrComplianceReadinessExperience} from "./hr-compliance-readiness-experie
 import {HrAttendanceExperience} from "./hr-attendance-experience";
 import {HrPerformanceExperience} from "./hr-performance-experience";
 import {ReportsWorkspaceExperience} from "./reports-workspace-experience";
+import {TrainingWorkspaceExperience,WorkforceWorkspaceExperience,DataExchangeWorkspaceExperience,AccountingWorkspaceExperience} from "./department-workspaces";
 import {AdminOverviewExperience} from "./admin-overview-experience";
 import {DispatchPage} from "../pages/dispatch";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
@@ -861,12 +862,16 @@ export function PrototypeOperationsHub(){
   if(path==="/my-account/training")return <EmployeeAccountExperience section="training"/>;
   if(path==="/my-account/completed"||path==="/work/completed")return <CompletedWorkExperience personalOnly/>;
   if(path==="/people")return <PeopleExperience/>;
+  if(path==="/people/training")return <TrainingWorkspaceExperience/>;
   if(path==="/people/directory")return <HrPersonnelDirectory/>;
   if(path==="/marketing")return <MarketingWorkspaceExperience/>;
   if(path==="/marketing/campaigns")return <MarketingWorkspaceExperience key="marketing-campaigns" initialTab="campaigns"/>;
   if(path==="/reports/forecasts")return <ForecastsExperience/>;
   if(path==="/reports"||path==="/reports/explorer")return <ReportsWorkspaceExperience initialTab={path==="/reports/explorer"?"explorer":undefined}/>;
   if(path==="/admin")return <AdminOverviewExperience/>;
+  if(path==="/admin/workforce")return <WorkforceWorkspaceExperience/>;
+  if(path==="/admin/data-exchange")return <DataExchangeWorkspaceExperience/>;
+  if(path==="/finance/accounting")return <AccountingWorkspaceExperience/>;
   if(path==="/operations/field-schedule"||path==="/operations/legacy-dispatch")return <div className="prototype-domain">
     <Heading title="Field Scheduling" description="Scheduled field appointments with the existing conflict, ownership and location controls."/>
     <p role="note" className="prototype-note">This is field appointment scheduling, not an independently verified delivery route. Driver assignments and custody are handled in Delivery Operations.</p>
