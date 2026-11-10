@@ -98,7 +98,6 @@ export const MENU_GROUPS: MenuGroup[] = [
   { label: "Marketing", entries: [
     { label: "Marketing Overview", path: "/marketing", permission: "marketing", state: "prototype" },
     { label: "Marketing Administration", path: "/marketing/workflow", permission: "settings", state: "prototype" },
-    { label: "Campaigns", path: "/marketing/campaigns", permission: "marketing", state: "prototype" },
     { label: "Brand Ambassadors", path: "/marketing/ambassadors", permission: "brandAmbassadors", state: "existing" },
   ] },
   { label: "Insights & Support", entries: [
@@ -168,6 +167,7 @@ export const LEGACY_PATHS: Record<PageKey, string> = {
 };
 
 const ROUTE_OVERRIDES: Record<string, PageKey> = {
+  "/marketing/campaigns": "marketing", // Existing deep links open the Campaigns tab in Marketing Overview.
   "/sales/payments": "orderCash",
   "/sales/orders/workflow": "orders",
   "/inventory/workflow": "inventory",
@@ -230,6 +230,7 @@ export function routeLabel(path: string): string {
   if(clean.startsWith("/calendar/meetings/"))return "Meeting details";
   if (clean.startsWith("/items/")) return "Item details";
   if (clean.startsWith("/commerce/price-books/")) return "Price book details";
+  if(clean==="/marketing/campaigns")return "Marketing · Campaigns";
   if(clean==="/inventory/workflow")return "Inventory operations";
   if (clean.startsWith("/inventory/lots/")) return "Lot details";
   if (clean.startsWith("/inventory/shipments/")) return "Shipment details";
