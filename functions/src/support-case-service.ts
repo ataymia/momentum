@@ -87,7 +87,7 @@ async function fetchOwners(accounts:CaseAccount[]):Promise<Map<string,CaseOwnerA
  * @param {string|undefined} caseId Optional exact case reference.
  * @return {Promise<object>} Bounded, server-filtered case results.
  */
-async function readCases(actor:CaseAccess,caseId?:string){
+export async function readCases(actor:CaseAccess,caseId?:string){
  const db=getFirestore();
  const [accountsDoc,result]=await Promise.all([
   db.doc(accountCollectionPath).get(),
@@ -118,7 +118,7 @@ async function readCases(actor:CaseAccess,caseId?:string){
  * @param {string} requestId Idempotent client key.
  * @return {Promise<object>} Canonical server receipt.
  */
-async function writeCase(actor:CaseAccess,command:CaseCommand,requestId:string){
+export async function writeCase(actor:CaseAccess,command:CaseCommand,requestId:string){
  const db=getFirestore();
  const fingerprint=createHash("sha256").update(JSON.stringify(command)).digest("hex");
  const accessRef=db.doc("userAccess/"+actor.uid);
