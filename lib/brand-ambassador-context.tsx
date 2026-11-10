@@ -3,6 +3,7 @@
 import { ReactNode, createContext, useContext, useMemo, useState } from "react";
 import { useWorkspace } from "./workspace-context";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
+import {useRuntimeMode} from "./runtime-mode";
 import {
   BRAND_AMBASSADOR_STORAGE_KEY,
   BrandAmbassadorEventDraft,
@@ -38,16 +39,20 @@ const Context = createContext<BrandAmbassadorContextValue | null>(null);
 
 export function BrandAmbassadorProvider({ children }: { children: ReactNode }) {
   const { data, currentUser } = useWorkspace();
+  const runtime=useRuntimeMode();
+  const localDemoWrite=runtime.isDemo&&momentumStorage.mode()==="local";
   const [state, setState] = useState<BrandAmbassadorState>(() => readState(data));
   useRemoteStorageSync(BRAND_AMBASSADOR_STORAGE_KEY, () => setState(readState(data)));
 
   const commit = (next: BrandAmbassadorState) => {
+    if(!localDemoWrite)return;
     const normalized = normalizeBrandAmbassadorState(next, data);
     setState(normalized);
     momentumStorage.setItem(BRAND_AMBASSADOR_STORAGE_KEY, JSON.stringify(normalized));
   };
 
   const scheduleEvent = (draft: BrandAmbassadorEventDraft) => {
+    if(!localDemoWrite)return {ok:false as const,message:"Connected event scheduling requires a trusted server workflow."};
     const problem = validateBrandAmbassadorEvent(data, currentUser, draft);
     if (problem) return { ok: false as const, message: problem };
     const now = new Date().toISOString();
@@ -69,6 +74,7 @@ export function BrandAmbassadorProvider({ children }: { children: ReactNode }) {
   };
 
   const updateEvent = (eventGroupId: string, draft: BrandAmbassadorEventDraft) => {
+    if(!localDemoWrite)return {ok:false as const,message:"Connected event editing requires a trusted server workflow."};
     const existing = state.assignments.filter((assignment) => assignment.eventGroupId === eventGroupId);
     if (!existing.length) return { ok: false as const, message: "That Brand Ambassador event no longer exists." };
     if (!currentUser || existing.some((assignment) => !canSuperviseBrandAmbassador(data, currentUser, assignment.ambassadorId))) return { ok: false as const, message: "You do not have permission to edit this event." };
@@ -89,6 +95,7 @@ export function BrandAmbassadorProvider({ children }: { children: ReactNode }) {
   };
 
   const setEventStatus = (eventGroupId: string, status: "Scheduled" | "Completed" | "Cancelled") => {
+    if(!localDemoWrite)return false;
     const existing = state.assignments.filter((assignment) => assignment.eventGroupId === eventGroupId);
     if (!existing.length || !currentUser || existing.some((assignment) => !canSuperviseBrandAmbassador(data, currentUser, assignment.ambassadorId))) return false;
     const at = new Date().toISOString();

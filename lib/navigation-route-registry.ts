@@ -46,11 +46,10 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Account Setup", path: "/crm/account-setup", permission: "accountSetup", state: "prototype" },
     { label: "Account Health", path: "/crm/account-health", permission: "accountHealth", state: "prototype" },
     { label: "Account Map", path: "/crm/account-map", permission: "salesMap", state: "prototype" },
-    { label: "Territory Map", path: "/crm/territory-map", permission: "salesMap", state: "prototype" },
     { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "prototype" },
     { label: "Sales Incentives", path: "/crm/incentives", permission: "accounts", state: "prototype" },
     { label: "Commission-only Readiness", path: "/crm/commission-only", permission: "audit", state: "prototype" },
-    { label: "Territories & Routes", path: "/crm/territories", permission: "salesMap", state: "existing" },
+    { label: "Territories & Map", path: "/crm/territories", permission: "salesMap", state: "prototype" },
   ] },
   { label: "Commerce", entries: [
     { label: "Items / Products", path: "/items", permission: "products", state: "prototype" },
@@ -79,7 +78,6 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Payments Made", path: "/purchases/payments", permission: "accounting", state: "prototype" },
     { label: "Vendor Credits", path: "/purchases/credits", permission: "accounting", state: "prototype" },
     { label: "Delivery Operations", path: "/operations/deliveries", permission: "orders", state: "prototype" },
-    { label: "Legacy Dispatch (retained)", path: "/operations/legacy-dispatch", permission: "dispatch", state: "existing" },
   ] },
   { label: "Human Resources", entries: [
     { label: "HR Overview", path: "/people", permission: "people", state: "prototype" },
@@ -108,13 +106,10 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Cases", path: "/support/cases", permission: "work", state: "prototype" },
     { label: "Documents", path: "/documents", permission: "materials", state: "prototype" },
     { label: "Help", path: "/help", permission: "help", state: "existing" },
-    { label: "Reporting Center", path: "/reports/center", permission: "reportingCenter", state: "existing" },
   ] },
   { label: "Administration", entries: [
     { label: "Administration", path: "/admin", permission: "settings", state: "existing" },
-    { label: "Employee Profiles", path: "/admin/employee-profiles", permission: "settings", state: "prototype" },
-    { label: "Personnel Editor", path: "/admin/employee-profiles/workflow", permission: "settings", state: "prototype" },
-    { label: "Employee Directory", path: "/admin/employees", permission: "settings", state: "prototype" },
+    { label: "Employee Directory & Profiles", path: "/admin/employees", permission: "settings", state: "prototype" },
     { label: "Users & Roles", path: "/admin/access", permission: "settings", state: "existing" },
     { label: "Workforce Live", path: "/admin/workforce", permission: "workforceLive", state: "existing" },
     { label: "Audit Center", path: "/admin/audit", permission: "audit", state: "existing" },
@@ -168,6 +163,8 @@ export const LEGACY_PATHS: Record<PageKey, string> = {
 
 const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/marketing/campaigns": "marketing", // Existing deep links open the Campaigns tab in Marketing Overview.
+  "/crm/territory-map": "salesMap", // Historical map URL opens the unified territory workspace.
+  "/admin/employee-profiles": "settings", // Profiles retain their deep links inside the unified directory.
   "/sales/payments": "orderCash",
   "/sales/orders/workflow": "orders",
   "/inventory/workflow": "inventory",
@@ -231,6 +228,10 @@ export function routeLabel(path: string): string {
   if (clean.startsWith("/items/")) return "Item details";
   if (clean.startsWith("/commerce/price-books/")) return "Price book details";
   if(clean==="/marketing/campaigns")return "Marketing · Campaigns";
+  if(clean==="/crm/territory-map")return "Territories & Map";
+  if(clean==="/admin/employee-profiles")return "Employee Directory & Profiles";
+  if(clean==="/reports/center")return "Reporting Center archive";
+  if(clean==="/operations/legacy-dispatch")return "Field scheduling (compatibility)";
   if(clean==="/inventory/workflow")return "Inventory operations";
   if (clean.startsWith("/inventory/lots/")) return "Lot details";
   if (clean.startsWith("/inventory/shipments/")) return "Shipment details";
@@ -335,7 +336,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   // Preserve campaign bookmarks after removing the duplicate sidebar entry.
-  if(clean==="/marketing/campaigns")return true;
+  if(clean==="/marketing/campaigns"||clean==="/crm/territory-map"||clean==="/admin/employee-profiles")return true;
   // Historical copied links and work-queue entry points retain the redesigned views
   // after personal information moves out of the Workspace sidebar.
   if(["/self-service","/self-service/leave","/self-service/pay","/work/approvals","/work/exceptions","/work/completed"].includes(clean))return true;

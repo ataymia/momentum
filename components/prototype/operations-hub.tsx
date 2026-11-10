@@ -834,10 +834,12 @@ function CustomerOrderRecord({id,section}:{id:string;section:"orders"|"deliverie
 }
 
 function TerritoryMapPreview(){
-  return <div><Heading title="Territories & Map" description="Existing ZIP assignments and geographic controls retained."/>
-    <section className="prototype-panel"><h2>Territory management</h2><TerritoryPanel/>
-    <p className="prototype-note">Map overlay, geocoded ZIP boundaries and routing require verified mapping data/provider. Do not mistake a ZIP listing for a plotted geographic boundary.</p>
-    <OpenLink to="/crm/account-map">Account map</OpenLink></section></div>;
+  return <div><Heading title="Territories & Map" description="One workspace for ZIP-based territory recommendations, assignment controls and recorded customer locations."/>
+    <section className="prototype-panel"><h2>Territory management & exceptions</h2><TerritoryPanel/>
+      <p className="prototype-note">Territory ZIP coverage is a suggestion, not a transfer of customer ownership. No street routing or ZIP boundary geometry is inferred.</p>
+    </section>
+    <CrmAccountMap/>
+  </div>;
 }
 
 export function PrototypeOperationsHub(){
@@ -878,8 +880,8 @@ export function PrototypeOperationsHub(){
   if(path==="/admin/employee-profiles")return <HrPersonnelDirectory/>;
   if(path==="/admin/employee-profiles/workflow")return writeEnabled?<div><Heading title="Secure personnel editor" description="Existing audited editing controls retained during redesign." back="/admin/employee-profiles"/><AdminEmployeeProfiles/></div>:<Empty>Read-only redesign prototype. Personnel editing is disabled against connected records.</Empty>;
   if(segments[0]==="admin"&&segments[1]==="employee-profiles"&&segments[2])return <HrPersonnelRecord id={decodeURIComponent(segments[2])} section={segments[3]}/>
-  if(path==="/admin/employees")return <div><Heading title="Employee Directory" description="Administrator view of active staff."/><EmployeeDirectory/></div>;
-  if(path==="/crm/territory-map")return <TerritoryMapPreview/>;
+  if(path==="/admin/employees")return <HrPersonnelDirectory/>;
+  if(path==="/crm/territories"||path==="/crm/territory-map")return <TerritoryMapPreview/>;
   if(path==="/crm/account-health")return <CrmAccountHealth/>;
   if(path==="/crm/account-setup")return <CrmAccountSetup/>;
   if(path==="/crm/account-map")return <CrmAccountMap/>;

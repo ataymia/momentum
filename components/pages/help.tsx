@@ -1,8 +1,9 @@
 "use client";
 
 import { BookOpenCheck, CircleHelp, ClipboardCheck, Search, ShieldCheck } from "lucide-react";
-import { canAccessPage } from "../../lib/access";
-import type { PageKey, Role } from "../../lib/types";
+import type {Role} from "../../lib/types";
+import {canVisitRoute} from "../../lib/navigation-route-registry";
+import {navigateToRoute} from "../../lib/navigation-store";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, PageHeader, Section, StatusPill } from "../ui";
 
@@ -128,27 +129,30 @@ const faq = [
 
 const platformBasics = [
   { label: "Start", title: "Home", detail: "Your current work, updates, goals, and exceptions." },
-  { label: "Act", title: "My Work", detail: "Approvals, exceptions, and items waiting on you." },
+  { label: "Act", title: "Action Center", detail: "Approvals, exceptions, and items waiting on you." },
   { label: "Find", title: "Search", detail: "Command K / Control K searches the records in your scope.", icon: true },
   { label: "Verify", title: "History", detail: "Check the audit trail before guessing who changed something." },
 ];
 
 export function HelpPage() {
-  const { currentUser, navigate } = useWorkspace();
+  const { currentUser } = useWorkspace();
   if (!currentUser) return null;
   const guide = roleGuides[currentUser.role];
-  const allQuickLinks: Array<{ label: string; page: PageKey }> = [
-    { label: "Home", page: "home" },
-    { label: "My Work", page: "work" },
-    { label: "CRM & Sales", page: "accounts" },
-    { label: "Dispatch", page: "dispatch" },
-    { label: "Orders", page: "orders" },
-    { label: "Human Resources", page: "people" },
-    { label: "Brand Ambassadors", page: "brandAmbassadors" },
-    { label: "Reports", page: "reports" },
-    { label: "Administration", page: "settings" },
+  const allQuickLinks: Array<{ label: string; path: string }> = [
+    {label:"Home",path:"/"},{label:"Action Center",path:"/work/actions"},
+    {label:"CRM & Sales",path:"/sales/customers"},
+    {label:"Territories & Map",path:"/crm/territories"},
+    {label:"Field scheduling",path:"/operations/legacy-dispatch"},
+    {label:"Delivery Operations",path:"/operations/deliveries"},
+    {label:"Orders",path:"/sales/orders"},
+    {label:"Human Resources",path:"/people"},
+    {label:"My Account",path:"/my-account"},
+    {label:"Brand Ambassadors",path:"/marketing/ambassadors"},
+    {label:"Reports",path:"/reports"},
+    {label:"Employee Directory",path:"/admin/employees"},
+    {label:"Administration",path:"/admin"},
   ];
-  const quickLinks = allQuickLinks.filter((item) => canAccessPage(currentUser, item.page));
+  const quickLinks=allQuickLinks.filter(item=>canVisitRoute(currentUser,item.path));
 
   return <div className="page page--help">
     <PageHeader
@@ -179,7 +183,7 @@ export function HelpPage() {
     </Section>
 
     <Section title="Quick links" className="help-section help-quick-links-section">
-      <div className="help-quick-links">{quickLinks.map((item) => <Button key={item.page} size="sm" variant="secondary" onClick={() => navigate(item.page)}>{item.label}</Button>)}</div>
+      <div className="help-quick-links">{quickLinks.map(item=><Button key={item.path} size="sm" variant="secondary" onClick={()=>navigateToRoute(item.path)}>{item.label}</Button>)}</div>
     </Section>
 
     <div className="help-lower-grid">

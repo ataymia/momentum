@@ -22,6 +22,7 @@ import type {InventoryLedgerState} from "../../lib/inventory-ledger";
 import type {InventoryLot} from "../../lib/types";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {ShipmentWorkflowControls} from "./fulfillment-controls";
+import {DispatchPage} from "../pages/dispatch";
 import type {Order} from "../../lib/types";
 
 const showDate=(s?:string)=>s?s.slice(0,10):"Not recorded";
@@ -239,9 +240,17 @@ export function DeliveryOperationsDirectory(){
   const [filter,setFilter]=useState("all");
   const [from,setFrom]=useState(""),[through,setThrough]=useState("");
   const [exceptionsOnly,setExceptionsOnly]=useState(false);
+  const [tab,setTab]=useState<"queue"|"scheduling">("queue");
   const sort=useTableSort("placedAt");
   if(!currentUser||!["Administrator","Operations","Warehouse"].includes(currentUser.role))
     return <p className="prototype-empty">Use your assigned delivery workspace. Company-wide delivery operations are restricted.</p>;
+  if(tab==="scheduling"&&["Administrator","Operations"].includes(currentUser.role))
+    return <div><Title heading="Delivery Operations / Field scheduling"
+      subtitle="Existing scheduling board for field appointments. This is not a delivery-task assignment or route-optimization service."/>
+      <button type="button" className="prototype-link" onClick={()=>setTab("queue")}>Back to delivery work queue</button>
+      <p className="prototype-note" role="status">Appointment scheduling retains its existing conflict and permission controls. Assign actual delivery drivers and record inventory custody through the shipment workflow.</p>
+      <DispatchPage/>
+    </div>;
   const summary=orders.map(order=>{
     const task=indexed.get(order.id);const delivered=orderDeliveryQuantity(ledger,order.id);
     const override=state.overrides.some(x=>x.orderId===order.id);
@@ -271,6 +280,10 @@ export function DeliveryOperationsDirectory(){
     });
   const col=(key:string,label:string)=><Column key={key} keyName={key} name={label} sort={sort}/>;
   return <div><Title heading="Delivery Operations" subtitle="Traceable orders, driver assignment, proof of delivery and inventory posting exceptions from existing records."/>
+    {["Administrator","Operations"].includes(currentUser.role)&&<div className="prototype-controls">
+      <button type="button" onClick={()=>setTab("scheduling")}>Open field scheduling board</button>
+      <button type="button" className="prototype-link" onClick={()=>navigateToRoute("/inventory/shipments")}>Shipment workflow & assignments</button>
+    </div>}
     <Summary stats={[{label:"Orders in workflow",value:summary.length},{label:"Unassigned orders",value:summary.filter(x=>!x.task).length},{label:"Reconciliation exceptions",value:summary.filter(x=>Boolean(x.issue)).length},{label:"Delivered with recorded proof",value:summary.filter(x=>x.complete&&x.proof).length}]}/>
     <section className="prototype-panel"><div className="prototype-commerce-filters">
       <SearchInput value={query} onChange={setQuery} placeholder="Search orders, accounts, drivers or reconciliation issues"/>
@@ -279,13 +292,13 @@ export function DeliveryOperationsDirectory(){
       <DateFilter start={from} setStart={setFrom} end={through} setEnd={setThrough}/>
       <label className="prototype-driver-completed"><input type="checkbox" checked={exceptionsOnly} onChange={e=>setExceptionsOnly(e.target.checked)}/> Show exceptions only</label>
     </div><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
-      {col("order","Order")}{col("customer","Customer")}{col("placedAt","Placed")}{col("cases","Cases")}{col("driver","Assigned driver")}{col("status","Delivery status")}{col("delivered","Posted cases")}{col("proof","Recipient proof")}{col("issue","Reconciliation")}</tr></thead><tbody>
+      {col("order","Order")}{col("customer","Customer")}{col("placedAt","Placed")}{col("cases","Cases")}{col("driver","Assigned driver")}{col("status","Delivery status")}{col("delivered","Posted cases")}{col("proof","Recipient proof")}{col("issue","Reconciliation")}<th>Next action</th></tr></thead><tbody>
       {rows.map(x=><tr key={x.order.id}><td><RecordLink path={"/inventory/shipments/"+encodeURIComponent(x.order.id)}>{x.order.number}</RecordLink></td>
         <td>{accounts.get(x.order.accountId)?.name??"Restricted"}</td><td>{showDate(x.order.placedAt)}</td><td>{x.order.cases}</td>
         <td>{x.task?users.get(x.task.driverId)??"Recorded driver ID":"Unassigned"}</td><td>{x.status}</td>
-        <td>{x.delivered}</td><td>{x.proof?"Signature recorded":"Not verified"}</td><td>{x.issue??"No detected discrepancy"}</td></tr>)}</tbody></table></div>
+        <td>{x.delivered}</td><td>{x.proof?"Signature recorded":"Not verified"}</td><td>{x.issue??"No detected discrepancy"}</td><td><RecordLink path={"/inventory/shipments/"+encodeURIComponent(x.order.id)}>Review shipment workflow</RecordLink></td></tr>)}</tbody></table></div>
       {!rows.length&&<p className="prototype-empty">No recorded delivery orders match these filters.</p>}
       <Note/>
-      <p className="prototype-note">An administrator override is not a substitute for missing stock posting. Assignments, field signatures and stock movement changes remain in their authorized workflows. Legacy office Dispatch must stay available until route planning and exception parity pass acceptance testing.</p>
+      <p className="prototype-note">An administrator override is not a substitute for missing stock posting. Assignments, field signatures and stock movement changes remain in their authorized workflows. Field appointment scheduling is available above. Delivery-driver assignment, signed custody, and inventory movements remain in the shipment workflow. Connected dispatch mutation and route optimization still require separate authorization.</p>
     </section></div>;
 }
