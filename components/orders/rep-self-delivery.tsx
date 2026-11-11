@@ -26,7 +26,7 @@ export function RepSelfDelivery(){
   const firebase=useFirebaseSessionOptional();
   const orders=useMemo(()=>currentUser?.role==="Sales Representative"?
     scope.orders.filter(order=>order.ownerId===currentUser.id&&
-      ["Approved","Allocated","Out for delivery","Delivered"].includes(order.status)):[],
+      ["Awaiting approval","Approved","Allocated","Out for delivery"].includes(order.status)):[],
   [scope.orders,currentUser]);
   const [selectedId,setSelectedId]=useState("");
   const [query,setQuery]=useState("");
@@ -108,33 +108,33 @@ export function RepSelfDelivery(){
     else if(status==="In transit"&&orderStatus==="Out for delivery")step="complete";
   }
   const listed=orders.filter(order=>[order.number,scope.accounts.find(a=>a.id===order.accountId)?.name??"",order.status].join(" ").toLowerCase().includes(query.toLowerCase()));
-  const readyOrders=orders.filter(order=>order.status==="Approved").length;
-  const deliveredOrders=orders.filter(order=>order.status==="Delivered").length;
+  const readyOrders=orders.filter(order=>["Approved","Allocated","Out for delivery"].includes(order.status)).length;
+  const pendingApproval=orders.filter(order=>order.status==="Awaiting approval").length;
   return <div className="prototype-self-delivery">
-    <header className="prototype-heading"><h1>My Self-Deliveries</h1><p>Pick up and deliver your own approved orders through the existing Momentum server-verified fulfillment process.</p></header>
+    <header className="prototype-heading"><h1>My Undelivered Orders</h1><p>Every order assigned to you that is awaiting approval or still needs delivery. Choose an eligible order below to begin self-delivery with cloud verification.</p></header>
     <div className="prototype-metrics">
-      <div><small>Eligible assigned orders</small><strong>{orders.length}</strong></div>
-      <div><small>Approved, not yet completed</small><strong>{readyOrders}</strong></div>
-      <div><small>Marked delivered</small><strong>{deliveredOrders}</strong></div>
+      <div><small>Undelivered assigned orders</small><strong>{orders.length}</strong></div>
+      <div><small>Ready to deliver or in progress</small><strong>{readyOrders}</strong></div>
+      <div><small>Awaiting order approval</small><strong>{pendingApproval}</strong></div>
     </div>
     <section className="prototype-panel">
-      <h2>My approved orders</h2>
-      <p className="prototype-note">Only orders credited to your employee identity are eligible. A completed order cannot be reclaimed. This list does not authorize a delivery until the server confirms each step.</p>
+      <h2>My orders to deliver</h2>
+      <p className="prototype-note">Only orders assigned to your verified employee identity appear. Awaiting-approval orders cannot be claimed until approved. Delivered, paid and cancelled orders are excluded; each eligible delivery step requires server confirmation.</p>
       <label className="prototype-search"><input aria-label="Search my self-delivery orders" placeholder="Find order number, customer or status" value={query} onChange={event=>setQuery(event.target.value)}/></label>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Customer location</th><th>Cases</th><th>Order status</th><th>Action</th></tr></thead><tbody>
         {listed.map(order=><tr key={order.id}>
           <td>{order.number}</td><td>{scope.accounts.find(a=>a.id===order.accountId)?.name??"Restricted"}</td>
           <td>{order.cases}</td><td>{order.status}</td>
-          <td><button type="button" className="prototype-link" aria-current={selectedId===order.id?"true":undefined} disabled={busy} onClick={()=>selectOrder(order.id)}>{selectedId===order.id?"Selected":"Review delivery"}</button></td>
+          <td>{order.status==="Awaiting approval"?<span className="prototype-note">Awaiting approval</span>:<button type="button" className="prototype-link" aria-current={selectedId===order.id?"true":undefined} disabled={busy} onClick={()=>selectOrder(order.id)}>{selectedId===order.id?"Selected":"Deliver this order"}</button>}</td>
         </tr>)}
       </tbody></table></div>
-      {!listed.length&&<p className="prototype-empty">No eligible orders match this search. Approved orders appear after Administrator approval.</p>}
+      {!listed.length&&<p className="prototype-empty">No undelivered orders match this search. New orders appear here when recorded against your assigned employee identity.</p>}
     </section>
     <section className="prototype-panel">
       <h2>Verified delivery workflow</h2>
       <p className="prototype-note">Required sequence: claim → reserve exact SKU mix → load into your custody → depart → recipient signature → reconcile inventory and order in cloud.</p>
       {!firebase?.session?.idToken&&<p className="prototype-note" role="alert">A signed-in Firebase session is required for real self-delivery. No offline or browser-only delivery can be completed here.</p>}
-      {!selected&&<p className="prototype-empty">Select one of your approved orders above to see its server-confirmed delivery state.</p>}
+      {!selected&&<p className="prototype-empty">Choose an approved, undelivered order above to verify its eligibility and start the delivery steps.</p>}
       {selected&&<div className="rep-self-delivery">
         <div className="rep-self-delivery__status">
           <strong>{selected.number}</strong>

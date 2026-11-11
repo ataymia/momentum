@@ -65,11 +65,15 @@ export function ActionCenterExperience(){
   const categories=[...new Set(actions.map(item=>item.category))].sort();
   return <div className="prototype-domain">
     <header className="prototype-heading"><h1>Action Center</h1><p>Open work requiring follow-up. Each entry comes from an existing approval, assignment, or operational source record.</p></header>
-    <div className="prototype-page-actionbar">
-      {canVisitRoute(currentUser,"/work/exceptions")&&<button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/work/exceptions")}>Review exceptions & risks</button>}
-      {canVisitRoute(currentUser,"/work/approvals")&&<button type="button" onClick={()=>navigateToRoute("/work/approvals")}>Open approval queue</button>}
-      <span className="prototype-note">Action Center summarizes outstanding work; decisions happen in the authorized source workflow.</span>
-    </div>
+    <section className="prototype-panel" aria-label="Action Center quick review">
+      <h2>Start with work waiting on you</h2>
+      <p>Open the approval queue or investigate unresolved exceptions. Every decision opens its authorized source record.</p>
+      <div className="prototype-controls">
+        {canVisitRoute(currentUser,"/work/approvals")&&<button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/work/approvals")}>Open approval queue</button>}
+        {canVisitRoute(currentUser,"/work/exceptions")&&<button type="button" onClick={()=>navigateToRoute("/work/exceptions")}>Review exceptions & risks</button>}
+      </div>
+      <p className="prototype-note">Actions are not auto-approved by opening this screen. Each source workflow is responsible for validating the final decision.</p>
+    </section>
     <div className="prototype-domain-statbar">
       <article><small>Open action notices</small><strong>{actions.length}</strong></article>
       <article><small>Blocking</small><strong>{actions.filter(item=>item.urgency==="Blocking").length}</strong></article>

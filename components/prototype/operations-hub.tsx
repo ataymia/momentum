@@ -112,12 +112,11 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
   const [stageFilter,setStageFilter]=useState("all");
   const [fromDate,setFromDate]=useState("");
   const [throughDate,setThroughDate]=useState("");
-  const [leadView,setLeadView]=useState<"pipeline"|"table"|"followups">("pipeline");
+  const [leadView,setLeadView]=useState<"table"|"followups">("table");
   const [followupAsOf,setFollowupAsOf]=useState(()=>new Date().toLocaleDateString("en-CA"));
   const [followupBucket,setFollowupBucket]=useState<"all"|"overdue"|"today"|"upcoming"|"unscheduled">("all");
   const names=useMemo(()=>new Map(data.users.map(u=>[u.id,u.name])),[data.users]);
   const records=useMemo(()=>sortAccountsDirectory(scope.accounts
-    .filter(a=>!leadMode||["Prospect","Qualified","Sampled"].includes(a.stage))
     .filter(a=>repFilter==="all"||a.ownerId===repFilter)
     .filter(a=>stageFilter==="all"||a.stage===stageFilter)
     .filter(a=>(!fromDate||a.nextActionDate>=fromDate)&&(!throughDate||a.nextActionDate<=throughDate))
@@ -127,36 +126,23 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
   const header=(field:AccountsSortField,label:string)=><button type="button" aria-label={"Sort by "+label} aria-pressed={sort===field} onClick={()=>selectSort(field)}>{label} <ArrowUpDown size={14}/>{sort===field?<span className="prototype-sort-indicator" aria-hidden="true">{ascending?" ↑":" ↓"}</span>:null}</button>;
   const repIds=[...new Set(scope.accounts.map(a=>a.ownerId).filter(Boolean))].sort((a,b)=>(names.get(a)??"").localeCompare(names.get(b)??""));
   const stages=[...new Set(scope.accounts.map(a=>a.stage))].sort();
-  return <div><Heading title={leadMode?"Leads":"Accounts & Customers"} description="Searchable, filtered and sortable business locations. Open any record for its linked customer profile."/>
+  return <div><Heading title={leadMode?"Leads":"Accounts & Customers"} description={leadMode?"All accessible leads in one list. Open any lead to see its current stage, next step and full history.":"Searchable, filtered and sortable business locations. Open any record for its linked customer profile."}/>
   {leadMode&&<CrmLeadCreator/>}
   <section className="prototype-panel">
     <div className="prototype-controls">
       <label className="prototype-search"><Search size={16}/><input aria-label="Search businesses" placeholder="Business, location, contact, ZIP, rep" value={query} onChange={e=>setQuery(e.target.value)}/></label>
       <label>Representative <select aria-label="Filter accounts by representative" value={repFilter} onChange={e=>setRepFilter(e.target.value)}>
         <option value="all">All visible representatives</option>{repIds.map(id=><option key={id} value={id}>{names.get(id)??id}</option>)}</select></label>
-      <label>Stage <select aria-label="Filter account stage" value={stageFilter} onChange={e=>setStageFilter(e.target.value)}>
-        <option value="all">All stages</option>{stages.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+      {!leadMode&&<label>Stage <select aria-label="Filter account stage" value={stageFilter} onChange={e=>setStageFilter(e.target.value)}>
+        <option value="all">All stages</option>{stages.map(v=><option key={v} value={v}>{v}</option>)}</select></label>}
       <label>Next action from <input type="date" aria-label="Next action from date" value={fromDate} onChange={e=>setFromDate(e.target.value)}/></label>
       <label>Through <input type="date" aria-label="Next action through date" value={throughDate} onChange={e=>setThroughDate(e.target.value)}/></label>
       <button type="button" disabled={!records.length} onClick={()=>downloadCsv(leadMode?"momentum-visible-leads.csv":"momentum-visible-accounts.csv",accountExportRows(records,names),accountExportColumns)}>Download filtered {leadMode?"leads":"accounts"} CSV</button>
     </div>
     {leadMode&&<nav className="prototype-controls" aria-label="Lead views">
-      <button type="button" aria-pressed={leadView==="pipeline"} onClick={()=>setLeadView("pipeline")}>Pipeline</button>
       <button type="button" aria-pressed={leadView==="table"} onClick={()=>setLeadView("table")}>All leads</button>
       <button type="button" aria-pressed={leadView==="followups"} onClick={()=>setLeadView("followups")}>Follow-up queue</button>
     </nav>}
-    {leadMode&&leadView==="pipeline"&&<div className="prototype-columns" aria-label="Lead pipeline">
-      {(["Prospect","Qualified","Sampled"] as const).map(stage=><section className="prototype-panel" key={stage}>
-        <h2>{stage} <small>({records.filter(a=>a.stage===stage).length})</small></h2>
-        {records.filter(a=>a.stage===stage).map(a=><div className="prototype-activity" key={a.id}>
-          <strong><OpenLink to={"/crm/leads/"+encodeURIComponent(a.id)}>{a.name}</OpenLink></strong>
-          <span>{a.location} · {names.get(a.ownerId)??"Unassigned"}</span>
-          <span>{a.contactName?<OpenLink to={"/crm/contacts/"+encodeURIComponent(a.id)}>{a.contactName}</OpenLink>:"Contact not recorded"}</span>
-          <span>Next action: {a.nextActionDate||"Not scheduled"}</span>
-        </div>)}
-        {!records.some(a=>a.stage===stage)&&<Empty>No visible leads at this stage.</Empty>}
-      </section>)}
-    </div>}
     {leadMode&&leadView==="followups"&&<section className="prototype-panel">
       <h2>Follow-up work queue</h2>
       <div className="prototype-controls">
@@ -190,9 +176,9 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
     </section>}
     {(!leadMode||leadView==="table")&&<>
     <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
-      <th aria-sort={sort==="name"?(ascending?"ascending":"descending"):"none"}>{header("name","Business")}</th><th aria-sort={sort==="location"?(ascending?"ascending":"descending"):"none"}>{header("location","Location")}</th><th aria-sort={sort==="contactName"?(ascending?"ascending":"descending"):"none"}>{header("contactName","Contact")}</th><th aria-sort={sort==="stage"?(ascending?"ascending":"descending"):"none"}>{header("stage","Stage")}</th><th aria-sort={sort==="postalCode"?(ascending?"ascending":"descending"):"none"}>{header("postalCode","ZIP")}</th><th aria-sort={sort==="ownerId"?(ascending?"ascending":"descending"):"none"}>{header("ownerId","Assigned rep")}</th><th aria-sort={sort==="nextActionDate"?(ascending?"ascending":"descending"):"none"}>{header("nextActionDate","Next action")}</th>
+      <th aria-sort={sort==="name"?(ascending?"ascending":"descending"):"none"}>{header("name","Business")}</th><th aria-sort={sort==="location"?(ascending?"ascending":"descending"):"none"}>{header("location","Location")}</th><th aria-sort={sort==="contactName"?(ascending?"ascending":"descending"):"none"}>{header("contactName","Contact")}</th>{!leadMode&&<th aria-sort={sort==="stage"?(ascending?"ascending":"descending"):"none"}>{header("stage","Stage")}</th>}<th aria-sort={sort==="postalCode"?(ascending?"ascending":"descending"):"none"}>{header("postalCode","ZIP")}</th><th aria-sort={sort==="ownerId"?(ascending?"ascending":"descending"):"none"}>{header("ownerId","Assigned rep")}</th><th aria-sort={sort==="nextActionDate"?(ascending?"ascending":"descending"):"none"}>{header("nextActionDate","Next action")}</th>
     </tr></thead><tbody>{records.map(a=><tr key={a.id}>
-      <td><OpenLink to={(leadMode?"/crm/leads/":"/sales/customers/")+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.location}</td><td>{a.contactName||"Unrecorded"}</td><td>{a.stage}</td><td>{a.postalCode||"Unrecorded"}</td><td>{names.get(a.ownerId)??"Unassigned"}</td><td>{a.nextActionDate||"None"}</td>
+      <td><OpenLink to={(leadMode?"/crm/leads/":"/sales/customers/")+encodeURIComponent(a.id)}>{a.name}</OpenLink></td><td>{a.location}</td><td>{a.contactName||"Unrecorded"}</td>{!leadMode&&<td>{a.stage}</td>}<td>{a.postalCode||"Unrecorded"}</td><td>{names.get(a.ownerId)??"Unassigned"}</td><td>{a.nextActionDate||"None"}</td>
     </tr>)}</tbody></table></div>{!records.length&&<Empty>No matching business records.</Empty>}
     </>}
     <p className="prototype-note">{records.length} matching records. Sorting and filters affect your view only, not account ownership or history.</p>
@@ -898,10 +884,9 @@ export function PrototypeOperationsHub(){
   if(path==="/admin/employee-profiles/workflow")return writeEnabled?<div><Heading title="Secure personnel editor" description="Existing audited editing controls retained during redesign." back="/admin/employee-profiles"/><AdminEmployeeProfiles/></div>:<Empty>Read-only redesign prototype. Personnel editing is disabled against connected records.</Empty>;
   if(segments[0]==="admin"&&segments[1]==="employee-profiles"&&segments[2])return <HrPersonnelRecord id={decodeURIComponent(segments[2])} section={segments[3]}/>
   if(path==="/admin/employees")return <HrPersonnelDirectory/>;
-  if(path==="/crm/territories"||path==="/crm/territory-map")return <TerritoryMapPreview/>;
   if(path==="/crm/account-health")return <CrmAccountHealth/>;
   if(path==="/crm/account-setup")return <CrmAccountSetup/>;
-  if(path==="/crm/account-map")return <CrmAccountMap/>;
+  if(path==="/crm/account-map"||path==="/crm/territories"||path==="/crm/territory-map")return <TerritoryMapPreview/>;
   if(path==="/crm/quick-visit")return <CrmQuickVisit/>;
   if(path==="/crm/self-delivery")return currentUser?.role==="Sales Representative"
     ?<RepSelfDelivery/>
@@ -964,7 +949,7 @@ export function PrototypeOperationsHub(){
     return <MeetingWorkspaceExperience view="record" id={decodeURIComponent(segments[2])}/>;
   if(path==="/calendar/meetings")return <MeetingWorkspaceExperience view="meetings"/>;
   if(path==="/crm/incentives")return <IncentivePreview/>;
-  if(path==="/crm/commission-only")return <CrmCommissionOnlyReview/>;
+  if(path==="/crm/commission-only"||path==="/admin/commission-readiness")return <CrmCommissionOnlyReview/>;
   const item=routeEntry(path);
   return <div><Heading title={routeLabel(path)} description="Planned module • navigation prototype only"/><section className="prototype-panel">
     <h2>{item?.label??"Module"} workflow</h2>
