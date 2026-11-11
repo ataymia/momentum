@@ -39,6 +39,7 @@ import {invoiceBalance,computedInvoiceStatus} from "../../lib/commerce-engine";
 import {projectCustomerFinance,customerPaymentColumns,customerStatementColumns} from "../../lib/customer-finance-registers";
 import {useCommerce} from "../../lib/commerce-context";
 import {MarketingWorkspaceExperience} from "./marketing-workspace-experience";
+import {FinanceWorkspaceExperience} from "./finance-workspace-experience";
 import {ForecastsExperience} from "./forecasts-experience";
 import {DocumentsExperience} from "./documents-experience";
 import {SupportCasesExperience} from "./support-cases-experience";
@@ -873,6 +874,7 @@ export function PrototypeOperationsHub(){
   if(path==="/admin/access")return <UsersRolesExperience/>;
   if(path==="/admin/workforce")return <WorkforceWorkspaceExperience/>;
   if(path==="/admin/data-exchange")return <DataExchangeWorkspaceExperience/>;
+  if(path==="/finance")return <FinanceWorkspaceExperience/>;
   if(path==="/finance/accounting")return <AccountingWorkspaceExperience/>;
   if(path==="/operations/field-schedule"||path==="/operations/legacy-dispatch")return <div className="prototype-domain">
     <Heading title="Field Scheduling" description="Scheduled field appointments with the existing conflict, ownership and location controls."/>

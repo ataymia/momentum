@@ -25,6 +25,7 @@ const FinanceContext = createContext<FinanceContextValue | null>(null);
 export function FinanceProvider({ children }: { children: ReactNode }) {
   const { data, currentUser } = useWorkspace();
   const runtime = useRuntimeMode();
+  const localDemoWrite = runtime.isDemo && momentumStorage.mode() === "local";
   const read = () => {
     if (typeof window === "undefined") return createFinanceSeed();
     try {
@@ -36,11 +37,12 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [finance, setFinance] = useState<FinanceState>(() => read());
 
   useEffect(() => {
-    if (typeof window !== "undefined") momentumStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(finance));
-  }, [finance]);
+    if (localDemoWrite && typeof window !== "undefined") momentumStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(finance));
+  }, [finance, localDemoWrite]);
   useRemoteStorageSync(FINANCE_STORAGE_KEY, () => setFinance(read()));
 
   const submitExpense = (input: NewExpense) => {
+    if (!localDemoWrite) return null;
     if (!currentUser || currentUser.role === "Customer" || !input.merchant.trim() || !input.category.trim() || !input.businessPurpose.trim() || !Number.isFinite(input.amount) || input.amount <= 0) return null;
     if (input.accountId) {
       const account = data.accounts.find((item) => item.id === input.accountId);
@@ -60,6 +62,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   };
 
   const managerDecision = (id: string, status: "Manager approved" | "Returned", reason?: string) => {
+    if (!localDemoWrite) return false;
     const expense = finance.expenses.find((item) => item.id === id && item.status === "Submitted");
     if (!expense || !canManagerReview(expense) || (status === "Returned" && !reason?.trim())) return false;
     setFinance((state) => ({ ...state, expenses: state.expenses.map((item) => item.id === id ? { ...item, status, managerDecisionAt: now(), managerReviewerId: currentUser?.id, returnReason: status === "Returned" ? reason?.trim() : undefined } : item) }));
@@ -67,6 +70,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   };
 
   const financeDecision = (id: string, status: "Finance approved" | "Returned", reason?: string) => {
+    if (!localDemoWrite) return false;
     if (currentUser?.role !== "Administrator") return false;
     const expense = finance.expenses.find((item) => item.id === id && item.status === "Manager approved");
     if (!expense || (status === "Returned" && !reason?.trim())) return false;
@@ -75,6 +79,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   };
 
   const markExpensePaid = (id: string, paymentReference: string) => {
+    if (!localDemoWrite) return false;
     if (currentUser?.role !== "Administrator" || !paymentReference.trim()) return false;
     const expense = finance.expenses.find((item) => item.id === id && item.status === "Finance approved");
     if (!expense) return false;
@@ -82,7 +87,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const resetFinance = () => { if (runtime.isDemo && currentUser?.role === "Administrator") setFinance(createFinanceSeed()); };
+  const resetFinance = () => { if (localDemoWrite && currentUser?.role === "Administrator") setFinance(createFinanceSeed()); };
   const value: FinanceContextValue = { finance, submitExpense, managerDecision, financeDecision, markExpensePaid, resetFinance };
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 }

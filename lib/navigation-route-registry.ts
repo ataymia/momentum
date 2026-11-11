@@ -62,7 +62,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Sales Returns", path: "/sales/returns", permission: "orders", state: "prototype" },
     { label: "Credit Notes", path: "/sales/credit-notes", permission: "orderCash", state: "prototype" },
     { label: "Customer Portal", path: "/commerce/customer-portal", permission: "orders", state: "prototype" },
-    { label: "Finance Overview", path: "/finance", permission: "finance", state: "existing" },
+    { label: "Finance Overview", path: "/finance", permission: "finance", state: "prototype" },
     { label: "Accounting", path: "/finance/accounting", permission: "accounting", state: "prototype" },
   ] },
   { label: "Operations", entries: [
@@ -97,7 +97,6 @@ export const MENU_GROUPS: MenuGroup[] = [
   ] },
   { label: "Marketing", entries: [
     { label: "Marketing Overview", path: "/marketing", permission: "marketing", state: "prototype" },
-    { label: "Marketing Administration", path: "/marketing/workflow", permission: "settings", state: "prototype" },
     { label: "Brand Ambassadors", path: "/marketing/ambassadors", permission: "brandAmbassadors", state: "existing" },
   ] },
   { label: "Insights & Support", entries: [
@@ -164,6 +163,7 @@ export const LEGACY_PATHS: Record<PageKey, string> = {
 
 const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/marketing/campaigns": "marketing", // Existing deep links open the Campaigns tab in Marketing Overview.
+  "/marketing/workflow": "settings", // Authorized legacy admin editor remains reachable from Marketing.
   "/crm/territory-map": "salesMap", // Historical map URL opens the unified territory workspace.
   "/admin/employee-profiles": "settings", // Profiles retain their deep links inside the unified directory.
   "/operations/legacy-dispatch": "dispatch", // Older copied field-appointment links remain valid.
@@ -340,7 +340,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   // Preserve campaign bookmarks after removing the duplicate sidebar entry.
-  if(["/marketing/campaigns","/crm/territory-map","/admin/employee-profiles","/operations/legacy-dispatch"].includes(clean))return true;
+  if(["/marketing/campaigns","/marketing/workflow","/crm/territory-map","/admin/employee-profiles","/operations/legacy-dispatch"].includes(clean))return true;
   // Historical copied links and work-queue entry points retain the redesigned views
   // after personal information moves out of the Workspace sidebar.
   if(["/self-service","/self-service/leave","/self-service/pay","/work/approvals","/work/exceptions","/work/completed"].includes(clean))return true;
