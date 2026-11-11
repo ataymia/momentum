@@ -69,3 +69,17 @@ test("Owner review R63: Help routes to consolidated work, reports and week revie
  assert(hub.includes('if(path==="/help")return'));
  assert(!help.includes('label:"Territories & Map",path:"/crm/territories"'));
 });
+
+test("R29/R75 connected accounting cannot mutate browser-managed ledger or claim settlement",()=>{
+ const provider=readFileSync("lib/accounting-context-v2.tsx","utf8");
+ const screen=readFileSync("components/prototype/department-workspaces.tsx","utf8");
+ assert(provider.includes('const localDemoWrite=runtime.isDemo&&momentumStorage.mode()==="local"'));
+ assert(provider.includes('const canManageAccounting=currentUser?.role==="Administrator"&&localDemoWrite'));
+ assert(provider.includes('if(localDemoWrite&&typeof window!=="undefined")momentumStorage.setItem'));
+ assert(screen.includes("Connected accounting is read-only"));
+ assert(screen.includes("unprocessedSourceEvents(accounting,events)"));
+ assert(screen.includes("Recorded journals"));
+ assert(screen.includes("Accounting exceptions & unposted sources"));
+ assert(screen.includes('demo&&tab==="controls"&&'));
+ assert(screen.includes("<AccountingWorkspacePage/>"));
+});
