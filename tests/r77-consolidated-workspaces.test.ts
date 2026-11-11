@@ -14,7 +14,7 @@ test("R27/R34/R60/R65: duplicate menu destinations are removed but deep links ar
    "/admin/employee-profiles","/admin/employee-profiles/workflow"]){
   assert(!links.some(entry=>entry.path===absent),"Duplicate menu path: "+absent);
  }
- for(const present of ["/crm/territories","/operations/field-schedule",
+ for(const present of ["/crm/account-map","/operations/field-schedule",
    "/operations/deliveries","/admin/employees","/reports","/reports/center"]){
   assert(links.some(entry=>entry.path===present),"Missing consolidated route: "+present);
  }
@@ -34,7 +34,9 @@ test("R34/R35 office scheduling is preserved with a modern route and actual ship
  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
  const fulfillment=readFileSync("components/prototype/fulfillment-experience.tsx","utf8");
  assert(hub.includes('if(path==="/operations/field-schedule"||path==="/operations/legacy-dispatch")'));
- assert.match(hub,/<DispatchPage\/>/);
+ const redesigned=readFileSync("components/prototype/field-scheduling-experience.tsx","utf8");
+ assert.match(redesigned,/<DispatchPage\/>/);
+ assert.match(redesigned,/Schedule overview/);
  assert.match(fulfillment,/tab==="scheduling"/);
  assert.match(fulfillment,/Review shipment workflow/);
  assert.match(fulfillment,/ShipmentWorkflowControls/);

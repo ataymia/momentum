@@ -60,8 +60,9 @@ test("admin-only route and read-only review have no pay execution control",()=>{
  const registry=readFileSync("lib/navigation-route-registry.ts","utf8");
  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
  const page=readFileSync("components/prototype/crm-commission-only-review.tsx","utf8");
- assert.match(registry,/path: "\/crm\/commission-only", permission: "audit"/);
- assert.match(hub,/if\(path==="\/crm\/commission-only"\)return <CrmCommissionOnlyReview\/>/);
+ assert.match(registry,/path: "\/admin\/commission-readiness", permission: "audit"/);
+ assert.match(registry,/"\/admin\/commission-readiness": "audit"/);
+ assert.match(hub,/if\(path==="\/crm\/commission-only"\|\|path==="\/admin\/commission-readiness"\)return <CrmCommissionOnlyReview\/>/);
  assert.match(page,/currentUser\?\.role!=="Administrator"/);
  assert.match(page,/automaticPaymentEnabled:"No"/);
  assert.doesNotMatch(page,/buildBonusRun\(|setRunStatus\(|createDisbursement\(/);

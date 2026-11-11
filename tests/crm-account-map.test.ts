@@ -22,7 +22,10 @@ test("Account Map route is independent, role-scoped, deep-linked, and provider n
  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
  const page=readFileSync("components/prototype/crm-account-map.tsx","utf8");
  assert.match(registry,/path: "\/crm\/account-map", permission: "salesMap", state: "prototype"/);
- assert.match(hub,/if\(path==="\/crm\/account-map"\)return <CrmAccountMap\/>/);
+ assert.match(hub,/if\(path==="\/crm\/account-map"\|\|path==="\/crm\/territories"\|\|path==="\/crm\/territory-map"\)return <TerritoryMapPreview\/>/);
+ const territory=hub.slice(hub.indexOf("function TerritoryMapPreview"),hub.indexOf("export function PrototypeOperationsHub"));
+ assert.match(territory,/<CrmAccountMap\/>/);
+ assert.match(territory,/<TerritoryPanel\/>/);
  assert.match(page,/scope\.accounts\.filter/);
  assert.match(page,/currentUser\.role==="Customer"/);
  assert.match(page,/projectAccounts\(rows\)/);

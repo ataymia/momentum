@@ -21,7 +21,10 @@ test("R62 server refuses actor/ledger forgery and malformed support drafts",()=>
   assert.equal(validateCaseCommand({...draft,draft:{...draft.draft,[field]:"forged"}}).ok,false,field);
  }
  assert.equal(validateCaseCommand({...draft,draft:{...draft.draft,accountId:123}}).ok,false);
- assert.equal(validateCaseCommand({...draft,draft:{...draft.draft,orderId:"foreign"}}).ok,false);
+ assert.equal(validateCaseCommand({...draft,draft:{...draft.draft,orderId:"foreign"}}).ok,true,
+  "A syntactically valid order ID is checked against the actual canonical account transactionally");
+ assert.equal(validateCaseCommand({...draft,draft:{...draft.draft,orderId:"../foreign"}}).ok,false);
+ assert(readFileSync("functions/src/support-case-service.ts","utf8").includes('str(linked.accountId)!==accountId'));
  assert.equal(validSupportRequestId("x".repeat(36)),true);
  assert.equal(validSupportRequestId("../invalid"),false);
  assert.equal(validSupportRequestId("short"),false);

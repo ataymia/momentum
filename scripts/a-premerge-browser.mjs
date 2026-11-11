@@ -24,36 +24,36 @@ page.on("pageerror",error=>pageErrors.push(error.message));
 const path=()=>new URL(page.url()).pathname;
 const nav=()=>page.getByRole("navigation",{name:"Primary navigation"});
 const entry=label=>nav().getByRole("link",{name:label,exact:true});
-const awaitActiveDeals=async(viewport)=>{
+const awaitActiveLeads=async(viewport)=>{
   try{
-    await entry("Deals").waitFor({state:"visible",timeout:12000});
+    await entry("Leads").waitFor({state:"visible",timeout:12000});
   }catch(error){
     const diagnostics=await nav().evaluate(node=>({
       sidebarClass:node.closest("aside")?.className,
-      matchingLinks:[...node.querySelectorAll("a")].filter(a=>a.textContent?.includes("Deals"))
+      matchingLinks:[...node.querySelectorAll("a")].filter(a=>a.textContent?.includes("Leads"))
         .map(a=>({text:a.textContent,display:getComputedStyle(a).display,visibility:getComputedStyle(a).visibility})),
       salesGroup:[...node.querySelectorAll("button")].filter(b=>b.textContent?.includes("Sales & CRM"))
         .map(b=>({expanded:b.getAttribute("aria-expanded"),text:b.textContent})),
       location:window.location.pathname,
     }));
-    console.error("Active Deals navigation failed at "+viewport,diagnostics);
+    console.error("Active Leads navigation failed at "+viewport,diagnostics);
     throw error;
   }
 };
 const screenshot=async name=>page.screenshot({path:"artifacts/a-browser/"+name+".png",fullPage:true,animations:"disabled"});
 
 try{
-  await page.goto(base+"/crm/deals",{waitUntil:"domcontentloaded"});
+  await page.goto(base+"/crm/leads",{waitUntil:"domcontentloaded"});
   await page.getByRole("heading",{name:"Sign in"}).waitFor();
   await page.getByLabel("Username or work email").fill("odemo");
   await page.getByLabel("Password",{exact:true}).fill("admin");
   await page.getByRole("button",{name:"Sign in",exact:true}).click();
   await nav().waitFor({timeout:40000});
-  assert.equal(path(),"/crm/deals","Login must preserve the copied route");
-  assert.equal(await entry("Deals").getAttribute("aria-current"),"page");
+  assert.equal(path(),"/crm/leads","Login must preserve the copied route");
+  assert.equal(await entry("Leads").getAttribute("aria-current"),"page");
   // Do not capture the Suspense loading state as if it were the rendered UI.
-  await page.getByRole("heading",{name:"Deals",exact:true}).first().waitFor({timeout:20000});
-  await screenshot("desktop-deals");
+  await page.getByRole("heading",{name:"Leads",exact:true}).first().waitFor({timeout:20000});
+  await screenshot("desktop-leads");
 
   // The sidebar now defaults unrelated departments closed. Open Workspace
   // explicitly rather than assuming its Meetings link is already mounted.
@@ -104,17 +104,17 @@ try{
 
   await page.locator(".user-button").click();
   await page.locator(".user-popover button").filter({hasText:"Customer Demo"}).click();
-  await page.goto(base+"/crm/deals",{waitUntil:"domcontentloaded"});
+  await page.goto(base+"/crm/leads",{waitUntil:"domcontentloaded"});
   await page.getByRole("heading",{name:"Page unavailable"}).waitFor({timeout:20000});
   await page.getByRole("navigation",{name:"Customer portal navigation"}).waitFor();
-  assert.equal(await page.getByRole("link",{name:"Deals"}).count(),0);
+  assert.equal(await page.getByRole("link",{name:"Leads"}).count(),0);
   await page.goto(base+"/portal/orders",{waitUntil:"domcontentloaded"});
   await page.getByRole("navigation",{name:"Customer portal navigation"}).waitFor();
   await screenshot("customer-portal");
 
   await page.locator(".user-button").click();
   await page.locator(".user-popover button").filter({hasText:"Owner Demo"}).click();
-  await page.goto(base+"/crm/deals",{waitUntil:"domcontentloaded"});
+  await page.goto(base+"/crm/leads",{waitUntil:"domcontentloaded"});
   await nav().waitFor();
   // HR administration stays private; employee self-service is now in Account.
   await page.locator(".user-button").click();
@@ -148,28 +148,28 @@ try{
   assert.equal(await page.getByText("Compensation").count(),0);
   await page.locator(".user-button").click();
   await page.locator(".user-popover button").filter({hasText:"Owner Demo"}).click();
-  await page.goto(base+"/crm/deals",{waitUntil:"domcontentloaded"});
+  await page.goto(base+"/crm/leads",{waitUntil:"domcontentloaded"});
   await nav().waitFor();
   // Keep only the active department open before measuring phone visibility.
   const workspaceAfterSwitch=nav().getByRole("button",{name:"Workspace",exact:true});
   if(await workspaceAfterSwitch.getAttribute("aria-expanded")==="true")await workspaceAfterSwitch.click();
-  await page.getByRole("heading",{name:"Deals",exact:true}).first().waitFor({timeout:20000});
+  await page.getByRole("heading",{name:"Leads",exact:true}).first().waitFor({timeout:20000});
 
   await page.locator(".sidebar__collapse").click();
   await page.setViewportSize({width:768,height:1024});
   await page.getByRole("button",{name:"Open menu"}).click();
   await page.locator("aside.sidebar.is-open").waitFor();
-  await awaitActiveDeals("tablet");
-  assert(await entry("Deals").locator("span").isVisible(),"Collapsed desktop state may not hide tablet labels");
+  await awaitActiveLeads("tablet");
+  assert(await entry("Leads").locator("span").isVisible(),"Collapsed desktop state may not hide tablet labels");
   await screenshot("tablet-menu");
   await page.keyboard.press("Escape");
   await page.locator("aside.sidebar.is-open").waitFor({state:"detached"});
   await page.setViewportSize({width:390,height:844});
   await page.getByRole("button",{name:"Open menu"}).click();
   await page.locator("aside.sidebar.is-open").waitFor();
-  await awaitActiveDeals("phone");
-  const activeDealsBox=await entry("Deals").boundingBox();
-  assert(activeDealsBox && activeDealsBox.y+activeDealsBox.height<=844,
+  await awaitActiveLeads("phone");
+  const activeLeadsBox=await entry("Leads").boundingBox();
+  assert(activeLeadsBox && activeLeadsBox.y+activeLeadsBox.height<=844,
     "The active section should be within the initial phone viewport without scrolling past unrelated groups");
   await screenshot("phone-menu");
   await page.keyboard.press("Escape");

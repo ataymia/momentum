@@ -51,6 +51,7 @@ import {TrainingWorkspaceExperience,WorkforceWorkspaceExperience,DataExchangeWor
 import {AdminOverviewExperience} from "./admin-overview-experience";
 import {UsersRolesExperience} from "./users-roles-experience";
 import {DispatchPage} from "../pages/dispatch";
+import {HelpPage} from "../pages/help";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
 import {HrPersonnelDirectory,HrPersonnelRecord} from "./hr-personnel-experience";
 import {CustomerPortalAdminOverview} from "./customer-portal-admin-overview";
@@ -867,6 +868,7 @@ export function PrototypeOperationsHub(){
   if(path==="/operations/field-schedule"||path==="/operations/legacy-dispatch")return <FieldSchedulingExperience/>;
   if(path==="/reports/center")return <WorkReportsExperience/>;
   if(path==="/documents")return <DocumentsExperience/>;
+  if(path==="/help")return <div className="prototype-domain"><HelpPage/></div>;
   if(path==="/support/cases"||path.startsWith("/support/cases/"))return <SupportCasesExperience/>;
   if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<Empty>Marketing write administration is available in isolated local demo only. The redesign provides source-linked read and export access.</Empty>;
   if(path==="/people/payroll")return <PayrollWorkflowExperience/>;

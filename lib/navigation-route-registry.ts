@@ -163,6 +163,7 @@ const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/marketing/workflow": "settings", // Authorized legacy admin editor remains reachable from Marketing.
   "/crm/territory-map": "salesMap", // Historical map URL opens the unified territory workspace.
   "/crm/territories": "salesMap", // Old territory URL opens the canonical account map.
+  "/reports/explorer": "reports", // Consolidated Insights Explorer remains an authorized report tab.
   "/crm/deals": "accounts", // Archived deep links remain accessible, but Deals is retired from navigation.
   "/admin/commission-readiness": "audit", // Administrative-only policy gate.
   "/admin/employee-profiles": "settings", // Profiles retain their deep links inside the unified directory.
@@ -231,6 +232,7 @@ export function routeLabel(path: string): string {
   if (clean.startsWith("/commerce/price-books/")) return "Price book details";
   if(clean==="/marketing/campaigns")return "Marketing · Campaigns";
   if(clean==="/crm/territory-map"||clean==="/crm/territories")return "Account Map & Territories";
+  if(clean==="/reports/explorer")return "Reports & Insights · Explorer";
   if(clean==="/admin/commission-readiness")return "Commission Policy Readiness";
   if(clean==="/admin/employee-profiles")return "Employee Directory & Profiles";
   if(clean==="/reports/center")return "Reporting Center archive";
@@ -341,7 +343,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   // Preserve campaign bookmarks after removing the duplicate sidebar entry.
-  if(["/marketing/campaigns","/marketing/workflow","/crm/territory-map","/crm/territories","/crm/deals","/admin/commission-readiness","/admin/employee-profiles","/operations/legacy-dispatch","/reports/center"].includes(clean))return true;
+  if(["/marketing/campaigns","/marketing/workflow","/crm/territory-map","/crm/territories","/crm/deals","/admin/commission-readiness","/admin/employee-profiles","/operations/legacy-dispatch","/reports/center","/reports/explorer"].includes(clean))return true;
   // Historical copied links and work-queue entry points retain the redesigned views
   // after personal information moves out of the Workspace sidebar.
   if(["/self-service","/self-service/leave","/self-service/pay","/work/approvals","/work/exceptions","/work/completed"].includes(clean))return true;
