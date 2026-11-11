@@ -116,7 +116,7 @@ export function WorkspaceHome(){
   if(canVisitRoute(currentUser,"/marketing"))portalLinks.push(["Marketing","/marketing"]);
   const openAction=(item:ActionNotice)=>{
     if(!item.page)return;
-    const path=item.category==="Approvals"?"/work/approvals":item.page==="orders"&&item.focus&&scope.orders.some(o=>o.id===item.focus)?"/sales/orders/"+encodeURIComponent(item.focus):item.page==="accounts"&&item.focus&&scope.accounts.some(a=>a.id===item.focus)?"/sales/customers/"+encodeURIComponent(item.focus):"/work/actions";
+    const path=item.category==="Timecards"?"/people/attendance":item.category==="Approvals"?"/work/approvals":item.page==="orders"&&item.focus&&scope.orders.some(o=>o.id===item.focus)?"/sales/orders/"+encodeURIComponent(item.focus):item.page==="accounts"&&item.focus&&scope.accounts.some(a=>a.id===item.focus)?"/sales/customers/"+encodeURIComponent(item.focus):"/work/actions";
     if(typeof window!=="undefined"){
       if(item.focus)window.sessionStorage.setItem("momentum-focus-record",item.focus);
       if(item.peopleTab)window.sessionStorage.setItem("momentum-people-tab",item.peopleTab);

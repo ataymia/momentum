@@ -9,6 +9,7 @@ import type { MarketingState } from "./marketing-engine";
 import { programPricingDaysRemaining } from "./notification-engine";
 import { notificationActionCenterEnabled } from "./notification-policy-registry";
 import { weeklyReportingObligations, type PerformanceState } from "./performance-engine";
+import {weeklyTimecardReview} from "./weekly-timecard-review";
 import type { PageKey, WorkspaceData, WorkspaceUser } from "./types";
 
 export type ActionUrgency="Blocking"|"Due"|"Review"|"Watch";
@@ -25,6 +26,17 @@ export function buildActionNotices(input:ActionNoticeInputs):ActionNotice[]{
   const today=input.today??arizonaDateKey();
   const admin=currentUser.role==="Administrator",manager=currentUser.role==="Sales Manager",warehouse=currentUser.role==="Warehouse",operations=currentUser.role==="Operations";
   const actions:ActionNotice[]=[];
+  const ownWeekly=weeklyTimecardReview(data.timecards.filter(card=>card.userId===currentUser.id),
+    data.timeEntries.filter(entry=>entry.userId===currentUser.id),today);
+  for(const card of ownWeekly.due){
+    const late=card.weekEnd<today;
+    actions.push({id:"timecard:"+card.id,policyId:late?"timecard.weekly_overdue":"timecard.weekly_due",
+      title:late?"Weekly timecard overdue":"Weekly timecard due",
+      detail:"Week "+card.weekStart+" through "+card.weekEnd+
+        (card.status==="Returned"?" · Returned for correction":" · Employee attestation required"),
+      category:"Timecards",page:"timekeeping",focus:card.id,
+      urgency:late?"Blocking":"Due",occurredAt:card.weekEnd});
+  }
   for(const approval of data.approvals.filter(item=>item.status==="Pending"&&canReviewApproval(data,currentUser,item)))actions.push({id:`approval:${approval.id}`,policyId:["Order","Low stock sale"].includes(approval.type)?"order.submitted_for_approval":"workflow.approval_required",title:["Order","Low stock sale"].includes(approval.type)?"Order approval required":`${approval.type} approval required`,detail:approval.detail||approval.title,category:"Approvals",page:"work",focus:approval.id,urgency:approval.priority==="Urgent"?"Blocking":"Review",occurredAt:approval.submittedAt});
   for(const approval of data.approvals.filter(item=>item.status==="Returned"&&(item.requesterId===currentUser.id||item.requestedBy===currentUser.id)))actions.push({id:`approval-returned:${approval.id}`,policyId:["Order","Low stock sale"].includes(approval.type)?"order.returned_for_correction":"workflow.returned_for_correction",title:"Item returned for correction",detail:approval.returnReason?`${approval.title} · ${approval.returnReason}`:approval.title,category:"Approvals",page:["Order","Low stock sale"].includes(approval.type)?"orders":"work",focus:approval.recordId??approval.id,urgency:"Due",occurredAt:approval.decidedAt??approval.submittedAt});
   const sundayReminderWindow=new Date(`${today}T12:00:00Z`).getUTCDay()===0&&arizonaHour()>=19;

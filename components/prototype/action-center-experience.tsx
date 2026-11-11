@@ -47,6 +47,7 @@ export function ActionCenterExperience(){
     });
   const linkFor=(item:ActionNotice):string|undefined=>{
     if(!item.page)return;
+    if(item.category==="Timecards")return "/people/attendance";
     if(item.category==="Approvals"&&item.id.startsWith("approval:"))return "/work/approvals";
     if(item.page==="orders"&&item.focus&&scope.orders.some(o=>o.id===item.focus))return "/sales/orders/"+encodeURIComponent(item.focus);
     if(item.page==="accounts"&&item.focus&&scope.accounts.some(a=>a.id===item.focus))return "/sales/customers/"+encodeURIComponent(item.focus);

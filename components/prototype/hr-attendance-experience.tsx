@@ -16,7 +16,7 @@ export function HrAttendanceExperience(){
  const [query,setQuery]=useState(""),[from,setFrom]=useState(""),[to,setTo]=useState("");
  const [userFilter,setUserFilter]=useState("all"),[stateFilter,setStateFilter]=useState("all");
  const [sort,setSort]=useState<SortField>("date"),[desc,setDesc]=useState(true);
- const [activeCardId,setActiveCardId]=useState("");
+ const [activeCardId,setActiveCardId]=useState(()=>typeof window==="undefined"?"":window.sessionStorage.getItem("momentum-focus-record")??"");
  const [returnReason,setReturnReason]=useState("");
  const [notice,setNotice]=useState("");
  const nameFor=(id:string)=>data.users.find(u=>u.id===id)?.name??"Employee";
