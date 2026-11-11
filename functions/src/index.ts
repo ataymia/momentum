@@ -22,6 +22,7 @@ import {submitDeliveryCorrection,approveDeliveryCorrection,closeDeliveryCorrecti
 import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
 import {commitTrustedCrmFieldVisit,TrustedCrmVisitError} from "./trusted-crm-field-visit";
 import {submitTrustedHrLeave,TrustedHrLeaveError} from "./trusted-hr-leave-request";
+import {commitTrustedLeaveDecision,TrustedLeaveDecisionError} from "./trusted-hr-leave-decision";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
 import {operateLocationPermissionRequest,LocationPermissionRequestError} from "./location-permission-request";
 
@@ -1757,6 +1758,35 @@ export const submitHrLeaveRequest=onRequest({
     console.error("submitHrLeaveRequest failed",error);
     json(response,502,{ok:false,message:
       "Leave save not confirmed. Check request history before retrying."});
+  }
+});
+
+/** Authenticated manager time-off decision. PTO is deducted at most once in a
+ * transaction, with original employee request and decision provenance retained.
+ */
+export const decideHrLeaveRequest=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+  if(request.method!=="POST"){
+    json(response,405,{ok:false,message:"POST required."});return;
+  }
+  if(!request.body||typeof request.body!=="object"||
+    Object.keys(request.body).some(k=>!["decision","requestId"].includes(k))){
+    json(response,400,{ok:false,message:"Invalid decision envelope."});return;
+  }
+  const auth=request.headers.authorization??"";
+  const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await commitTrustedLeaveDecision(actor,request.body.decision,request.body.requestId);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof TrustedLeaveDecisionError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("decideHrLeaveRequest failed",error);
+    json(response,503,{ok:false,message:"Leave decision not confirmed. Review the original record before retrying."});
   }
 });
 
