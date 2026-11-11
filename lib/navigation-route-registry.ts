@@ -29,7 +29,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Meetings", path: "/calendar/meetings", permission: "work", state: "prototype" },
     { label: "My Invitations", path: "/calendar/invitations", permission: "work", state: "prototype" },
     { label: "My Agenda", path: "/calendar/agenda", permission: "work", state: "prototype" },
-    { label: "Work Reports", path: "/reports/center", permission: "reportingCenter", state: "existing" },
+    { label: "Work Reports", path: "/reports/center", permission: "reportingCenter", state: "prototype" },
   ] },
   { label: "Account", entries: [
     { label: "My Account", path: "/my-account", permission: "timekeeping", state: "prototype" },
@@ -341,7 +341,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   // Preserve campaign bookmarks after removing the duplicate sidebar entry.
-  if(["/marketing/campaigns","/marketing/workflow","/crm/territory-map","/crm/territories","/crm/deals","/admin/commission-readiness","/admin/employee-profiles","/operations/legacy-dispatch"].includes(clean))return true;
+  if(["/marketing/campaigns","/marketing/workflow","/crm/territory-map","/crm/territories","/crm/deals","/admin/commission-readiness","/admin/employee-profiles","/operations/legacy-dispatch","/reports/center"].includes(clean))return true;
   // Historical copied links and work-queue entry points retain the redesigned views
   // after personal information moves out of the Workspace sidebar.
   if(["/self-service","/self-service/leave","/self-service/pay","/work/approvals","/work/exceptions","/work/completed"].includes(clean))return true;

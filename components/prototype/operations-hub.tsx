@@ -68,6 +68,8 @@ import {RepSelfDelivery} from "../orders/rep-self-delivery";
 import {PurchasingExperience} from "./purchasing-experience";
 import {OrderEditor,OrderApprovalDirectory} from "./order-actions";
 import {ActionCenterExperience} from "./action-center-experience";
+import {FieldSchedulingExperience} from "./field-scheduling-experience";
+import {WorkReportsExperience} from "./work-reports-experience";
 import {WorkspaceHome} from "./workspace-home";
 import {SharedCalendarExperience,MeetingWorkspaceExperience} from "./workspace-meetings-experience";
 import {SalesReturnsDirectory,SalesReturnDetail,CreditNotesDirectory,CreditNoteDetail} from "./returns-credits-experience";
@@ -862,11 +864,8 @@ export function PrototypeOperationsHub(){
   if(path==="/admin/data-exchange")return <DataExchangeWorkspaceExperience/>;
   if(path==="/finance")return <FinanceWorkspaceExperience/>;
   if(path==="/finance/accounting")return <AccountingWorkspaceExperience/>;
-  if(path==="/operations/field-schedule"||path==="/operations/legacy-dispatch")return <div className="prototype-domain">
-    <Heading title="Field Scheduling" description="Scheduled field appointments with the existing conflict, ownership and location controls."/>
-    <p role="note" className="prototype-note">This is field appointment scheduling, not an independently verified delivery route. Driver assignments and custody are handled in Delivery Operations.</p>
-    <DispatchPage/>
-  </div>;
+  if(path==="/operations/field-schedule"||path==="/operations/legacy-dispatch")return <FieldSchedulingExperience/>;
+  if(path==="/reports/center")return <WorkReportsExperience/>;
   if(path==="/documents")return <DocumentsExperience/>;
   if(path==="/support/cases"||path.startsWith("/support/cases/"))return <SupportCasesExperience/>;
   if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<Empty>Marketing write administration is available in isolated local demo only. The redesign provides source-linked read and export access.</Empty>;
