@@ -7,6 +7,11 @@
 import {useState} from "react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useHcm} from "../../lib/hcm-context";
+import {useAccounting} from "../../lib/accounting-context";
+import {unprocessedSourceEvents} from "../../lib/accounting-engine";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {momentumStorage} from "../../lib/persistence";
+
 import {arizonaDateKey} from "../../lib/date-time";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {TrainingAdminPage} from "../hcm/training-admin";
@@ -86,16 +91,84 @@ export function DataExchangeWorkspaceExperience(){
 
 export function AccountingWorkspaceExperience(){
  const {currentUser}=useWorkspace();
- if(currentUser?.role!=="Administrator")return <div className="prototype-empty">Administrator accounting access required.</div>;
+ const {accounting,events}=useAccounting();
+ const runtime=useRuntimeMode();
+ const demo=runtime.isDemo&&momentumStorage.mode()==="local";
+ const [tab,setTab]=useState<"review"|"controls">("review");
+ const [search,setSearch]=useState("");
+ const [status,setStatus]=useState("all");
+ if(currentUser?.role!=="Administrator")
+  return <div className="prototype-empty">Administrator accounting access required.</div>;
+ const pending=unprocessedSourceEvents(accounting,events);
+ const blocked=pending.filter(event=>Boolean(event.blockedReason));
+ const journals=accounting.journals.filter(entry=>
+  (status==="all"||entry.status===status)&&
+  [entry.number,entry.memo,entry.sourceType,entry.sourceId].join(" ").toLowerCase().includes(search.toLowerCase()))
+  .sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt)||a.id.localeCompare(b.id))
+  .slice(0,100);
+ const money=(amount:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(amount);
  return <div className="prototype-domain prototype-domain--finance">
   <header className="prototype-heading"><h1>Accounting & Reconciliation</h1>
-   <p>Existing journal, chart-of-accounts, rule and reconciliation workflows remain in place. Source postings and bank/provider evidence are separate requirements.</p></header>
+   <p>Review the recorded chart of accounts, journals and reconciliation exceptions. Financial postings are not proof of an external bank deposit, card settlement or a completed refund.</p></header>
+  <div className="prototype-domain-statbar">
+    <article><small>Posted journals</small><strong>{accounting.journals.filter(j=>j.status==="Posted").length}</strong></article>
+    <article><small>Draft journals</small><strong>{accounting.journals.filter(j=>j.status==="Draft").length}</strong></article>
+    <article><small>Unprocessed source events</small><strong>{pending.length}</strong></article>
+    <article><small>Blocked source events</small><strong>{blocked.length}</strong></article>
+    <article><small>Open reconciliations</small><strong>{accounting.reconciliations.filter(r=>r.status==="Open").length}</strong></article>
+  </div>
   <div className="prototype-controls">
    <button type="button" onClick={()=>navigateToRoute("/finance")}>Finance Overview</button>
    <button type="button" onClick={()=>navigateToRoute("/sales/invoices")}>Invoice register</button>
    <button type="button" onClick={()=>navigateToRoute("/sales/payments")}>Payment register</button>
+   <button type="button" onClick={()=>navigateToRoute("/admin/audit")}>Audit Center</button>
   </div>
-  <p className="prototype-note">Posted journal entries are accounting records. They do not independently verify an external bank deposit, refund transfer, or processor settlement.</p>
-  <AccountingWorkspacePage/>
+  {!demo&&<p className="prototype-note" role="status">Connected accounting is read-only until journal posting, approvals and reconciliation are handled by trusted server transactions with external settlement evidence. This screen never silently posts an entry from browser state.</p>}
+  <nav className="prototype-tabs" aria-label="Accounting workspaces">
+   <button type="button" className={tab==="review"?"is-active":""} aria-current={tab==="review"?"page":undefined} onClick={()=>setTab("review")}>Accounting overview</button>
+   {demo&&<button type="button" className={tab==="controls"?"is-active":""} aria-current={tab==="controls"?"page":undefined} onClick={()=>setTab("controls")}>Journal and reconciliation controls</button>}
+  </nav>
+  {tab==="review"&&<>
+   <section className="prototype-panel"><h2>Recorded journals</h2>
+    <div className="prototype-controls">
+     <label>Find journal <input type="search" aria-label="Find accounting journals" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Number, memo, event or source ID"/></label>
+     <label>Status <select aria-label="Filter accounting journal status" value={status} onChange={e=>setStatus(e.target.value)}>
+      <option value="all">All statuses</option><option>Draft</option><option>Posted</option><option>Voided</option>
+     </select></label>
+    </div>
+    <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
+     <th>Journal</th><th>Posting date</th><th>Source</th><th>Memo</th><th>Total debits</th><th>Status</th>
+    </tr></thead><tbody>{journals.map(entry=><tr key={entry.id}>
+     <td>{entry.number}</td><td>{entry.date}</td><td>{entry.sourceType}</td><td>{entry.memo}</td>
+     <td>{money(entry.lines.reduce((total,line)=>total+line.debit,0))}</td><td>{entry.status}</td>
+    </tr>)}</tbody></table></div>
+    {!journals.length&&<p className="prototype-note">No journals match these filters. A blank register does not establish that all financial source events were posted.</p>}
+    {journals.length===100&&<p className="prototype-note">Only the first 100 sorted journals are displayed. Historical reconciliation requires the original ledger.</p>}
+   </section>
+   <section className="prototype-panel"><h2>Accounting exceptions & unposted sources</h2>
+    <p className="prototype-note">These are source records that do not have a matching non-voided journal. Some are blocked by missing policy or incomplete provenance; do not auto-post.</p>
+    <div className="prototype-table-scroll"><table className="prototype-table"><thead>
+     <tr><th>Event</th><th>Date</th><th>Source ID</th><th>Amount</th><th>Review state</th></tr></thead>
+     <tbody>{pending.slice(0,100).map(event=><tr key={event.id}>
+      <td>{event.type}</td><td>{event.date}</td><td>{event.sourceId}</td>
+      <td>{event.amount===undefined?"Unverified":money(event.amount)}</td>
+      <td>{event.blockedReason??"Requires accounting rule and source review"}</td>
+     </tr>)}</tbody>
+    </table></div>
+    {!pending.length&&<p className="prototype-note">No unprocessed events were found in the loaded source snapshot. This is not a complete general-ledger reconciliation.</p>}
+   </section>
+   <section className="prototype-panel"><h2>Chart and reconciliations</h2>
+    <p className="prototype-note">{accounting.accounts.filter(a=>a.active).length} active chart accounts · {accounting.rules.filter(r=>r.active).length} active source rules · {accounting.reconciliations.length} recorded reconciliations. These are configuration and book records, not external bank evidence.</p>
+    <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
+     <th>Account</th><th>Type</th><th>State</th><th>Designated role</th></tr></thead>
+     <tbody>{accounting.accounts.map(a=><tr key={a.id}>
+      <td>{a.code} · {a.name}</td><td>{a.type}</td><td>{a.active?"Active":"Inactive"}</td><td>{a.systemRole??"No designated role"}</td>
+     </tr>)}</tbody></table></div>
+   </section>
+  </>}
+  {demo&&tab==="controls"&&<section className="prototype-panel">
+    <p className="prototype-note">Local demonstration only. Journal posting, account setup and reconciliation below are not production financial actions.</p>
+    <AccountingWorkspacePage/>
+  </section>}
  </div>;
 }
