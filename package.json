@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postinstall": "next build",
     "start": "npx serve out",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

@@ -58,7 +58,7 @@ export function UsersRolesExperience(){
      <option value="all">All roles</option>{roles.map(r=><option key={r}>{r}</option>)}</select></label>
     <label>Account state <select value={stateFilter} onChange={e=>setStateFilter(e.target.value)}>
      <option value="all">All states</option>{states.map(r=><option key={r}>{r}</option>)}</select></label>
-    <label>Sort <select value={sort} onChange={e=>setSort(e.target.value)}>
+    <label>Sort <select value={sort} onChange={e=>setSort(e.target.value as "name"|"role"|"status")}>
      <option value="name">Name</option><option value="role">Role</option>
      <option value="status">Account state</option></select></label>
    </div>
