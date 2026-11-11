@@ -48,3 +48,24 @@ test("Owner review: approval queue has direct interactive entry point",()=>{
  assert(ui.includes('onClick={()=>navigateToRoute("/work/approvals")}'));
  assert(ui.includes("Open approval queue"));
 });
+
+test("Owner review R85: Audit Center supports actor, action, period and departmental investigation",()=>{
+ const audit=readFileSync("components/audit/audit-center.tsx","utf8");
+ assert(audit.includes("Audit Center"));
+ for(const field of ["Filter audit actor","Filter audit action","Audit start date","Audit end date",
+   "Filter record history by area","Search audit history"]){
+  assert(audit.includes(field),field);
+ }
+ assert(audit.includes("auditWriteBlocked"),"Unsafe audit source must remain protected");
+ assert(audit.includes("auditRecoveryArchive"),"Legacy evidence recovery must remain available");
+ assert(audit.includes("up to 250 events")||audit.includes("limited to 250 events"),
+  "History pagination limitation must be disclosed, not claimed complete");
+});
+test("Owner review R63: Help routes to consolidated work, reports and week review destinations",()=>{
+ const help=readFileSync("components/pages/help.tsx","utf8");
+ const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+ for(const path of ["/work/actions","/crm/account-map","/operations/field-schedule",
+   "/reports/center","/people/attendance"])assert(help.includes(path),path);
+ assert(hub.includes('if(path==="/help")return'));
+ assert(!help.includes('label:"Territories & Map",path:"/crm/territories"'));
+});
