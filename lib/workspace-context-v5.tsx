@@ -148,7 +148,7 @@ type WorkspaceContextValue = {
   endMeal: () => void;
   correctTimeEntry: (id: string, values: TimeEntryCorrectionInput, reason: string) => boolean;
   submitTimecard: (id: string) => void;
-  decideTimecard: (id: string, decision: "Manager approved" | "Returned") => void;
+  decideTimecard: (id: string, decision: "Manager approved" | "Returned", returnReason?: string) => void;
   createBulletin: (bulletin: NewBulletin) => boolean;
   acknowledgeBulletin: (id: string) => void;
   markNotificationsRead: () => void;
@@ -536,14 +536,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     });
   }, [currentUser]);
 
-  const decideTimecard = useCallback((id: string, decision: "Manager approved" | "Returned") => {
-    if (!currentUser) return;
+  const decideTimecard = useCallback((id: string, decision: "Manager approved" | "Returned", returnReason?: string) => {
+    if (!currentUser || (decision === "Returned" && (returnReason?.trim().length ?? 0) < 8)) return;
     setData((current) => {
       const card = current.timecards.find((item) => item.id === id);
       const approval = current.approvals.find((item) => item.type === "Timecard" && item.recordId === id && item.status === "Pending");
       if (!card || card.userId === currentUser.id || !approval || !canReviewApproval(current, currentUser, approval)) return current;
       const stamp = nowStamp();
-      return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: decision, attested: decision === "Returned" ? false : item.attested, approvedAt: decision === "Manager approved" ? stamp : undefined, approverId: decision === "Manager approved" ? currentUser.id : undefined, returnedAt: decision === "Returned" ? stamp : item.returnedAt, returnedBy: decision === "Returned" ? currentUser.id : item.returnedBy } : item), approvals: current.approvals.map((item) => item.id === approval.id ? { ...item, status: decision === "Manager approved" ? "Approved" : "Returned" } : item), notifications: [{ id: `note-${Date.now()}`, title: `Timecard ${decision === "Manager approved" ? "approved" : "returned"}`, detail: `${card.weekStart} through ${card.weekEnd}`, at: stamp, readBy: [], tone: decision === "Manager approved" ? "success" : "warning", audienceUserIds: [card.userId] }, ...current.notifications] };
+      return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: decision, attested: decision === "Returned" ? false : item.attested, approvedAt: decision === "Manager approved" ? stamp : undefined, approverId: decision === "Manager approved" ? currentUser.id : undefined, returnedAt: decision === "Returned" ? stamp : item.returnedAt, returnedBy: decision === "Returned" ? currentUser.id : item.returnedBy, returnReason: decision === "Returned" ? returnReason?.trim() : undefined } : item), approvals: current.approvals.map((item) => item.id === approval.id ? { ...item, status: decision === "Manager approved" ? "Approved" : "Returned" } : item), notifications: [{ id: `note-${Date.now()}`, title: `Timecard ${decision === "Manager approved" ? "approved" : "returned"}`, detail: `${card.weekStart} through ${card.weekEnd}${decision === "Returned" ? " · Correction required: "+returnReason?.trim() : ""}`, at: stamp, readBy: [], tone: decision === "Manager approved" ? "success" : "warning", audienceUserIds: [card.userId] }, ...current.notifications] };
     });
   }, [currentUser]);
 
