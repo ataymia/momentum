@@ -9,6 +9,15 @@ on:
       - scripts/platform-exhaustive-browser-audit.mjs
       - app/momentum-workspace-system.css
       - components/app-shell-v4.tsx
+      - components/prototype/**
+      - components/pages/**
+      - components/hcm/**
+      - components/orders/**
+      - components/audit/**
+      - app/**
+      - lib/navigation-route-registry.ts
+      - lib/employee-directory-visibility.ts
+      - lib/action-center-policy-v2.ts
       - components/prototype/hr-time-off-experience.tsx
       - components/prototype/crm-quick-visit.tsx
       - components/prototype/operations-hub.tsx

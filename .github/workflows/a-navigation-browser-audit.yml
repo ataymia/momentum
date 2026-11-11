@@ -11,6 +11,15 @@ on:
       - components/prototype/operations-hub.tsx
       - lib/navigation-route-registry.ts
       - components/app-shell-v4.tsx
+      - components/prototype/**
+      - components/pages/**
+      - components/hcm/**
+      - components/orders/**
+      - components/audit/**
+      - app/**
+      - lib/navigation-route-registry.ts
+      - lib/employee-directory-visibility.ts
+      - lib/action-center-policy-v2.ts
   workflow_dispatch:
 
 permissions:
