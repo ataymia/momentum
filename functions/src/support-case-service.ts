@@ -175,7 +175,7 @@ export async function writeCase(actor:CaseAccess,command:CaseCommand,requestId:s
    if(!caseSnap.exists)
     throw new SupportCasesError(404,"Case not found or access denied.");
    const before=caseSnap.data() as CaseRecord;
-   if(!visible(before,live,new Map(account?[ [account.id,account] ]:[]),
+   if(!visible(before,live,new Map(account?[[account.id,account]]:[]),
       new Map(owner?[[owner.uid,owner]]:[])))
     throw new SupportCasesError(404,"Case not found or access denied.");
   }

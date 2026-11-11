@@ -48,7 +48,9 @@ export function validateCaseCommand(raw:unknown):Validation{
   if(!valid(raw,["kind","draft"])||!valid(raw.draft,["title","description","accountId","orderId","priority","category"]))
    return{ok:false,message:"Case request contains unauthorized fields."};
   const d=raw.draft as Record<string,unknown>;
-  const title=txt(d.title),description=txt(d.description),accountId=txt(d.accountId)||undefined;
+  const title=txt(d.title);
+  const description=txt(d.description);
+  const accountId=txt(d.accountId)||undefined;
   const orderId=txt(d.orderId)||undefined;
   if(title.length<4||title.length>160||description.length<12||description.length>4000)
    return{ok:false,message:"Provide a title and issue detail within the allowed lengths."};
@@ -64,7 +66,8 @@ export function validateCaseCommand(raw:unknown):Validation{
    !valid(raw,["kind","caseId","value","reason","revision"])||
    !id(raw.caseId)||typeof raw.revision!=="number"||!Number.isSafeInteger(raw.revision)||raw.revision<1)
    return{ok:false,message:"Invalid case action or revision."};
- const value=txt(raw.value),reason=txt(raw.reason);
+ const value=txt(raw.value);
+ const reason=txt(raw.reason);
  if(raw.kind==="note"&&(value.length<4||value.length>4000)||
    raw.kind==="status"&&(!Object.keys(transitions).includes(value)||reason.length<5||reason.length>1000)||
    raw.kind==="assign"&&(!id(value)||reason.length<5||reason.length>1000))
@@ -118,7 +121,9 @@ export function applyCaseCommand(item:CaseRecord,command:CaseCommand,actor:CaseA
  eventId:string,at:string,assigneeLabel?:string):CaseRecord|null{
  if(command.kind==="create"||command.revision!==item.revision||
    item.history.some(event=>event.id===eventId)||item.history.length>=200)return null;
- let status=item.status,ownerId=item.ownerId,detail="";
+ let status=item.status;
+ let ownerId=item.ownerId;
+ let detail="";
  if(command.kind==="note")detail=command.value;
  else{
   if(!["Administrator","Operations"].includes(actor.role)&&

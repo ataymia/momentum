@@ -13,6 +13,7 @@ const asRow=(value:unknown):value is Row=>
 const items=(data:Row|undefined):Row[]=>Array.isArray(data?.items)?data.items.filter(asRow):[];
 const text=(value:unknown)=>typeof value==="string"?value.trim():"";
 const key=(s:string)=>s.replace(/[^A-Za-z0-9]+/g,"_");
+/** Refusal carrying a sanitized HTTP status. */
 export class TrustedLeaveDecisionError extends Error{
  /**
   * @param {number} status Safe HTTP status.
@@ -41,7 +42,8 @@ export async function commitTrustedLeaveDecision(
    throw new TrustedLeaveDecisionError(400,"Invalid reviewer or request identifier.");
  const input:LeaveDecisionInput=checked.value;
  const fingerprint=createHash("sha256").update(JSON.stringify(input)).digest("hex");
- const db=getFirestore(),employeeUid=input.employeeUid;
+ const db=getFirestore();
+ const employeeUid=input.employeeUid;
  const reviewerRef=db.doc("userAccess/"+reviewerUid);
  const employeeRef=db.doc("userAccess/"+employeeUid);
  const leaveRef=db.doc("userDomains/"+employeeUid+"/hcm/leaveRequests");
@@ -88,7 +90,8 @@ export async function commitTrustedLeaveDecision(
   }
   if(found.status!=="Submitted"||found.reviewerId||found.decidedAt)
    throw new TrustedLeaveDecisionError(409,"This leave request was already decided. Refresh the employee record.");
-  const now=new Date().toISOString(),changes:Record<string,string>={};
+  const now=new Date().toISOString();
+  const changes:Record<string,string>={};
   let ptoEntryId:string|undefined;
   if(input.status==="Approved"){
    const policyId=text(found.policyId);
