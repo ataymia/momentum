@@ -19,6 +19,7 @@ import {
   getWorkspaceScope,
 } from "./access";
 import { addCalendarDays, arizonaDateKey, arizonaTimeKey, startOfLocalWeek } from "./date-time";
+import {canSubmitWeeklyTimecard} from "./weekly-timecard-review";
 import { createDemoData } from "./demo-data";
 import { useFirebaseSessionOptional } from "./firebase-session-context";
 import { normalizeUsername } from "./username";
@@ -530,7 +531,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData((current) => {
       const card = current.timecards.find((item) => item.id === id && item.userId === currentUser.id && (item.status === "Open" || item.status === "Returned"));
       if (!card) return current;
-      if (current.timeEntries.some((item) => item.userId === currentUser.id && item.date >= card.weekStart && item.date <= card.weekEnd && (!item.clockOut || Boolean(item.mealStart && !item.mealEnd) || Boolean(item.note?.includes("Automatically closed at Arizona midnight") && item.source !== "Manual correction")))) return current;
+      // A forged call must not bypass the week-end and punch-completeness gate.
+      if (!canSubmitWeeklyTimecard(card, current.timeEntries, todayKey())) return current;
       const exists = current.approvals.some((item) => item.type === "Timecard" && item.recordId === id && item.status === "Pending");
       return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: "Submitted", submittedAt: nowStamp(), attested: true, approvedAt: undefined, approverId: undefined } : item), approvals: exists ? current.approvals : [{ id: `apr-${Date.now()}`, type: "Timecard", title: `${currentUser.name} · weekly timecard`, detail: `${card.weekStart} through ${card.weekEnd} · employee attested`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.team, submittedAt: nowStamp(), dueAt: plusHours(24), priority: "Normal", status: "Pending" }, ...current.approvals] };
     });
@@ -541,7 +543,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData((current) => {
       const card = current.timecards.find((item) => item.id === id);
       const approval = current.approvals.find((item) => item.type === "Timecard" && item.recordId === id && item.status === "Pending");
-      if (!card || card.userId === currentUser.id || !approval || !canReviewApproval(current, currentUser, approval)) return current;
+      // Stale approval records may not authorize an unsubmitted or returned card.
+      if (!card || card.status !== "Submitted" || !card.attested || card.userId === currentUser.id || !approval || !canReviewApproval(current, currentUser, approval)) return current;
       const stamp = nowStamp();
       return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: decision, attested: decision === "Returned" ? false : item.attested, approvedAt: decision === "Manager approved" ? stamp : undefined, approverId: decision === "Manager approved" ? currentUser.id : undefined, returnedAt: decision === "Returned" ? stamp : item.returnedAt, returnedBy: decision === "Returned" ? currentUser.id : item.returnedBy, returnReason: decision === "Returned" ? returnReason?.trim() : undefined } : item), approvals: current.approvals.map((item) => item.id === approval.id ? { ...item, status: decision === "Manager approved" ? "Approved" : "Returned" } : item), notifications: [{ id: `note-${Date.now()}`, title: `Timecard ${decision === "Manager approved" ? "approved" : "returned"}`, detail: `${card.weekStart} through ${card.weekEnd}${decision === "Returned" ? " · Correction required: "+returnReason?.trim() : ""}`, at: stamp, readBy: [], tone: decision === "Manager approved" ? "success" : "warning", audienceUserIds: [card.userId] }, ...current.notifications] };
     });

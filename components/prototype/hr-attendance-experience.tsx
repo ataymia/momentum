@@ -36,7 +36,7 @@ export function HrAttendanceExperience(){
  const weekly=weeklyTimecardReview(visibleTimecards,scope.timeEntries,arizonaDateKey());
  const activeCard=visibleTimecards.find(t=>t.id===activeCardId);
  const activeApproval=activeCard?data.approvals.find(a=>a.type==="Timecard"&&a.recordId===activeCard.id&&a.status==="Pending"):undefined;
- const canReview=Boolean(currentUser&&activeCard&&activeApproval&&canReviewApproval(data,currentUser,activeApproval));
+ const canReview=Boolean(currentUser&&activeCard&&activeCard.status==="Submitted"&&activeCard.attested&&activeApproval&&canReviewApproval(data,currentUser,activeApproval));
  const submitCard=(card:typeof visibleTimecards[number])=>{
   if(!currentUser||card.userId!==currentUser.id||card.weekEnd>arizonaDateKey()||
     !canSubmitWeeklyTimecard(card,scope.timeEntries))return;
@@ -76,6 +76,11 @@ export function HrAttendanceExperience(){
   <p className="prototype-note">Employees must attest and submit each recorded weekly timecard at week end. Unsubmitted and returned weeks remain outstanding. Do not prevent an employee from recording hours solely because a previous week is late.</p>
   {weekly.overdue.length>0&&<p role="alert" className="prototype-note">{weekly.overdue.length} employee timecard(s) are past their recorded week end without a completed submission. These require follow-up, not automatic approval.</p>}
   {weekly.unmatchedPunches.length>0&&<p role="alert" className="prototype-note">{weekly.unmatchedPunches.length} recorded punch(es) do not match any accessible weekly card. HR must reconcile coverage before treating the timecard register as complete.</p>}
+  {weekly.uncoveredWeeks.length>0&&<div role="alert" className="prototype-note" aria-label="Missing weekly timecard coverage">
+    <strong>{weekly.uncoveredWeeks.length} ended week(s) contain punches but no matching weekly card.</strong>
+    <p>Missing source records require HR reconciliation. This does not create an employee submission or payroll approval.</p>
+    <ul>{weekly.uncoveredWeeks.map(period=><li key={period.userId+":"+period.weekStart}>{nameFor(period.userId)} · {period.weekStart} to {period.weekEnd} · {period.entryIds.length} uncovered punch(es)</li>)}</ul>
+  </div>
   {notice&&<p role="status" className="prototype-note">{notice}</p>}
   <div className="prototype-table-scroll"><table className="prototype-table">
    <thead><tr><th>Employee</th><th>Week</th><th>Workflow</th><th>Attestation</th><th>Submitted</th><th>Approval</th><th>Open record</th></tr></thead>
@@ -98,7 +103,7 @@ export function HrAttendanceExperience(){
       <button type="button" className="prototype-primary-action" disabled={activeCard.weekEnd>arizonaDateKey()||
         !canSubmitWeeklyTimecard(activeCard,scope.timeEntries)} onClick={()=>submitCard(activeCard)}>Attest & submit this week</button>
       {activeCard.weekEnd>arizonaDateKey()&&<p className="prototype-note">Weekly submission opens at the recorded week end ({activeCard.weekEnd}).</p>}
-      {!canSubmitWeeklyTimecard(activeCard,scope.timeEntries)&&<p className="prototype-note">Resolve open punches or incomplete meals before submitting.</p>}
+      {activeCard.weekEnd<=arizonaDateKey()&&!canSubmitWeeklyTimecard(activeCard,scope.timeEntries)&&<p className="prototype-note">Resolve open punches or incomplete meals before submitting.</p>}
     </div>}
    {canReview&&<div className="prototype-controls">
      <button type="button" className="prototype-primary-action" onClick={()=>decideCard("Manager approved")}>Approve submitted card</button>

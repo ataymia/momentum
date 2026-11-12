@@ -1,4 +1,5 @@
 import type {Timecard,TimeEntry} from "./types";
+import {addCalendarDays,arizonaDateKey,startOfLocalWeek} from "./date-time";
 
 /** Outstanding weekly timecards remain due until attested and submitted.
  * Unmatched punches require manual coverage reconciliation rather than an
@@ -15,10 +16,26 @@ export function weeklyTimecardReview(
  const covered=(entry:TimeEntry)=>timecards.some(card=>card.userId===entry.userId&&
    entry.date>=card.weekStart&&entry.date<=card.weekEnd);
  const unmatchedPunches=timeEntries.filter(entry=>entry.date<=asOf&&!covered(entry));
- return{pending,due,overdue,submitted,approved,unmatchedPunches};
+ // Missing weekly records are explicit reconciliation exceptions, never fabricated submissions.
+ const missingByWeek=new Map<string,{
+  userId:string;weekStart:string;weekEnd:string;entryIds:string[];
+ }>();
+ for(const entry of unmatchedPunches){
+  const weekStart=startOfLocalWeek(entry.date);
+  const weekEnd=addCalendarDays(weekStart,6);
+  const key=entry.userId+":"+weekStart;
+  const period=missingByWeek.get(key)??{userId:entry.userId,weekStart,weekEnd,entryIds:[]};
+  period.entryIds.push(entry.id);
+  missingByWeek.set(key,period);
+ }
+ const uncoveredWeeks=[...missingByWeek.values()]
+  .filter(period=>period.weekEnd<=asOf)
+  .sort((a,b)=>a.weekStart.localeCompare(b.weekStart)||a.userId.localeCompare(b.userId));
+ return{pending,due,overdue,submitted,approved,unmatchedPunches,uncoveredWeeks};
 }
-export function canSubmitWeeklyTimecard(card:Timecard,entries:readonly TimeEntry[]):boolean{
- if(!["Open","Returned"].includes(card.status))return false;
+export function canSubmitWeeklyTimecard(card:Timecard,entries:readonly TimeEntry[],asOf=arizonaDateKey()):boolean{
+ if(!["Open","Returned"].includes(card.status)||
+  card.weekStart>card.weekEnd||card.weekEnd>asOf)return false;
  const scoped=entries.filter(e=>e.userId===card.userId&&e.date>=card.weekStart&&e.date<=card.weekEnd);
  return !scoped.some(e=>!e.clockOut||Boolean(e.mealStart&&!e.mealEnd)||
    Boolean(e.note?.includes("Automatically closed at Arizona midnight")&&e.source!=="Manual correction"));
