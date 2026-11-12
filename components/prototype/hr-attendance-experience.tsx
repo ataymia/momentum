@@ -80,7 +80,7 @@ export function HrAttendanceExperience(){
     <strong>{weekly.uncoveredWeeks.length} ended week(s) contain punches but no matching weekly card.</strong>
     <p>Missing source records require HR reconciliation. This does not create an employee submission or payroll approval.</p>
     <ul>{weekly.uncoveredWeeks.map(period=><li key={period.userId+":"+period.weekStart}>{nameFor(period.userId)} · {period.weekStart} to {period.weekEnd} · {period.entryIds.length} uncovered punch(es)</li>)}</ul>
-  </div>
+  </div>}
   {notice&&<p role="status" className="prototype-note">{notice}</p>}
   <div className="prototype-table-scroll"><table className="prototype-table">
    <thead><tr><th>Employee</th><th>Week</th><th>Workflow</th><th>Attestation</th><th>Submitted</th><th>Approval</th><th>Open record</th></tr></thead>
