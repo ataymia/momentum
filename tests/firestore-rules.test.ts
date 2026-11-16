@@ -1358,3 +1358,15 @@ describe("connected CRM contacts require trusted server mutations",()=>{
   }
  });
 });
+
+describe("connected CRM opportunities require trusted server mutations",()=>{
+ test("no client can directly overwrite deal stages, revenue or owner",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(setDoc(doc(dbFor(uid),"domains/crm/fields/opportunities"),{
+    items:[{id:"forged-won",status:"Won",estimatedCases:99999,ownerId:uid}],
+   }));
+   await assertFails(setDoc(doc(dbFor(uid),"crmDealRequestKeys/forged"),{actorUid:uid}));
+   await assertFails(setDoc(doc(dbFor(uid),"crmDealAudit/forged"),{actorUid:uid}));
+  }
+ });
+});
