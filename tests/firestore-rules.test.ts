@@ -1317,3 +1317,32 @@ describe("B09 employee meetings are server-owned and client writes fail closed",
     }
   });
 });
+
+
+describe("P0 commercial order and approval integrity: no browser can post finance states",()=>{
+  test("legacy shared order, approval and commercial-root snapshots require trusted server writes",async()=>{
+    const paths=[
+      "domains/workspace/fields/orders",
+      "domains/workspace/fields/approvals",
+      "domains/commercial/fields/orders",
+      "domains/commercial/fields/approvals",
+      "domains/workspace/fields/_root",
+      "domains/commercial/fields/_root",
+    ];
+    for(const path of paths){
+      const forged={
+        items:[{id:"forged-payment",status:"Paid",paymentStatus:"Paid",
+          pricePerCase:0,approvedBy:REP,settlementReference:"forged"}],
+        data:{accountPatches:{"account-1":{currentPricePerCase:0,creditStatus:"Approved"}}},
+      };
+      await env.withSecurityRulesDisabled(async ctx=>{
+        await setDoc(doc(ctx.firestore(),path),{items:[],data:{}});
+      });
+      for(const actor of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,ONBOARDING,null]){
+        const resource=doc(dbFor(actor),path);
+        await assertFails(setDoc(resource,forged));
+        await assertFails(deleteDoc(resource));
+      }
+    }
+  });
+});
