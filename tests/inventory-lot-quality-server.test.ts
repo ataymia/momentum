@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {lotEligibleForAutomaticDelivery,phoenixDateKey} from "../functions/src/inventory-lot-quality";
+import * as source from "../functions/src/inventory-lot-quality";
+const commonJsCompatible=source as typeof source & {default?:typeof source};
+const lotEligibleForAutomaticDelivery=commonJsCompatible.default?.lotEligibleForAutomaticDelivery
+ ?? commonJsCompatible.lotEligibleForAutomaticDelivery;
+const phoenixDateKey=commonJsCompatible.default?.phoenixDateKey
+ ?? commonJsCompatible.phoenixDateKey;
 test("trusted allocation rejects past or unverifiable best-by, uses Phoenix business date",()=>{
  const day="2026-11-15";
  assert.equal(lotEligibleForAutomaticDelivery({status:"Available",bestBy:day},day),true);
