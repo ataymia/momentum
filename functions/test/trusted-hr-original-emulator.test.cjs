@@ -91,10 +91,8 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  await deny(archiveTrustedHrSignedOriginal(admin,{...original,reference:"DIFFERENT-SOURCE"} ,archiveKey),409);
  const adminView=await listTrustedHrSignedOriginals(admin,worker);
  assert(adminView.some(item=>item.id===receipt.recordId&&item.hasCertificate));
- const workerView=await listTrustedHrSignedOriginals(worker,undefined);
- assert(workerView.some(item=>item.id===receipt.recordId));
- assert(workerView.every(item=>item.employeeUid===worker));
- assert(workerView.every(item=>!("originalPath" in item)&&!("reference" in item)));
+ await deny(listTrustedHrSignedOriginals(worker,undefined),403);
+ // Pending originals are not released to the worker before lawful review.
  await deny(listTrustedHrSignedOriginals(other,worker),403);
  await deny(listTrustedHrSignedOriginals(customer,worker),403);
  await deny(listTrustedHrSignedOriginals(suspended,worker),403);
@@ -103,8 +101,13 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  assert.equal(retrieved.sha256,checksum(pdf));
  assert.equal(retrieved.pdfBase64,pdf.toString("base64"));
  assert.equal(retrieved.status,"Pending independent HR review");
- const ownerOriginal=await readTrustedHrOriginal(worker,{recordId:receipt.recordId,artifact:"Original"});
- assert.equal(ownerOriginal.sha256,checksum(pdf));
+ await deny(readTrustedHrOriginal(worker,{recordId:receipt.recordId,artifact:"Original"}),403);
+ const forgedWorkerAuditId=randomUUID();
+ await db.doc("hrOriginalIntakeReadAudit/"+forgedWorkerAuditId).create({
+  auditId:forgedWorkerAuditId,recordId:receipt.recordId,
+  employeeUid:worker,actorUid:worker,artifact:"Original",
+  sha256:checksum(pdf),viewedAt:new Date().toISOString(),
+ });
  const proof=await readTrustedHrOriginal(admin,{recordId:receipt.recordId,artifact:"Certificate"});
  assert.equal(proof.sha256,checksum(cert));
  await deny(readTrustedHrOriginal(other,{recordId:receipt.recordId,artifact:"Original"}),403);
@@ -126,7 +129,7 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  await deny(decideTrustedHrOriginalReview(worker,pendingIntent,"worker"+reviewKey),403);
  await deny(decideTrustedHrOriginalReview(suspended,pendingIntent,"suspended"+reviewKey),403);
  await deny(decideTrustedHrOriginalReview(admin,{
-  ...pendingIntent,readAuditId:ownerOriginal.readAuditId,
+  ...pendingIntent,readAuditId:forgedWorkerAuditId,
  },"wrongInspector"+reviewKey),409);
  await deny(decideTrustedHrOriginalReview(admin,{
   ...pendingIntent,decision:"Approve legal signature",
@@ -187,8 +190,7 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  assert.equal(quarantinedSource.status,"Quarantined; access revoked");
  assert.equal(quarantinedSource.complianceApproved,false);
  await deny(readTrustedHrOriginal(worker,{recordId:receipt.recordId,artifact:"Original"}),403);
- const afterQuarantineWorker=await listTrustedHrSignedOriginals(worker);
- assert(!afterQuarantineWorker.some(item=>item.id===receipt.recordId));
+ await deny(listTrustedHrSignedOriginals(worker),403);
  const afterQuarantineAdmin=await listTrustedHrSignedOriginals(admin,worker);
  assert(afterQuarantineAdmin.some(item=>item.id===receipt.recordId&&
   item.status==="Quarantined; access revoked"));
