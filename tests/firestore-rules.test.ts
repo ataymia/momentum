@@ -1132,6 +1132,36 @@ describe("private HR original-intake queue is not legally verified e-sign",()=>{
  });
 });
 
+describe("HR original evidence inspection decisions stay backend-authored",()=>{
+ test("Administrator can inspect immutable review audit but no browser can forge a legal signoff",async()=>{
+  const path="hrOriginalReviewAudit/synthetic-review";
+  const keyPath="hrOriginalReviewKeys/admin-dup-1";
+  await env.withSecurityRulesDisabled(async context=>{
+   await setDoc(doc(context.firestore(),path),{
+    recordId:"source-pending-1",actorUid:ADMIN,
+    previousStatus:"Pending independent HR review",
+    status:"Evidence inspected; compliance verification pending",
+    legalApproved:false,signatureVerified:false,at,
+   });
+   await setDoc(doc(context.firestore(),keyPath),{
+    actorUid:ADMIN,recordId:"source-pending-1",fingerprint:"server-only",
+   });
+  });
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+  for(const who of [MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(getDoc(doc(dbFor(who),path)));
+  }
+  for(const who of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(setDoc(doc(dbFor(who),path),{
+    status:"Approved",legalApproved:true,signatureVerified:true,
+   }));
+   await assertFails(deleteDoc(doc(dbFor(who),path)));
+   await assertFails(getDoc(doc(dbFor(who),keyPath)));
+   await assertFails(setDoc(doc(dbFor(who),keyPath),{status:"Approved"}));
+  }
+ });
+});
+
 describe("server-projected admin notification events",()=>{
  test("only Administrators can read and no browser role can write",async()=>{
   await env.withSecurityRulesDisabled(async(context)=>{
