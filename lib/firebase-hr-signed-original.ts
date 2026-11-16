@@ -7,6 +7,10 @@ export type HrOriginalArchiveReceipt={
  recordId:string;employeeUid:string;kind:HrTemplateKind;sha256:string;
  status:"Pending independent HR review";createdAt:string;replayed:boolean;
 };
+export type HrOriginalReviewStatus=
+ "Pending independent HR review"|"Requires correction"|
+ "Evidence inspected; compliance verification pending";
+export type HrOriginalReviewDecision="Return for correction"|"Record evidence inspection";
 export type HrOriginalRecord={
  id:string;employeeUid:string;kind:HrTemplateKind;sha256:string;
  status:string;createdAt:string;sourceType:HrOriginalSource;hasCertificate:boolean;
@@ -88,7 +92,7 @@ export async function downloadHrOriginalBytes(
  session:FirebaseAuthSession,
  recordId:string,
  artifact:"Original"|"Certificate",
-):Promise<{bytes:Uint8Array<ArrayBuffer>;fileName:string;sha256:string}>{
+):Promise<{bytes:Uint8Array<ArrayBuffer>;fileName:string;sha256:string;readAuditId:string}>{
  if(!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(recordId))
   throw new Error("Invalid private original identifier.");
  const response=await fetch(firebaseFunctionUrl("hrSignedOriginalArchive"),{
@@ -99,11 +103,12 @@ export async function downloadHrOriginalBytes(
  if(!response)throw new Error("Secure HR document retrieval unavailable.");
  const data=await response.json().catch(()=>null) as
   {ok?:boolean;message?:string;recordId?:string;artifact?:string;
-   pdfBase64?:string;fileName?:string;sha256?:string}|null;
+   pdfBase64?:string;fileName?:string;sha256?:string;readAuditId?:string}|null;
  if(!response.ok||data?.ok!==true||data.recordId!==recordId||
   data.artifact!==artifact||!data.pdfBase64||
   !/^[A-Za-z0-9_-]+-[0-9a-f-]+-(signed|certificate)\.pdf$/.test(data.fileName??"")||
-  !/^[a-f0-9]{64}$/.test(data.sha256??""))
+  !/^[a-f0-9]{64}$/.test(data.sha256??"")||
+  !/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(data.readAuditId??""))
   throw new Error(data?.message||"Private HR original could not be verified.");
  if(data.pdfBase64.length>Math.ceil(LIMIT/3)*4+4||
   !/^[A-Za-z0-9+/]+={0,2}$/.test(data.pdfBase64))
@@ -118,5 +123,34 @@ export async function downloadHrOriginalBytes(
   .map(v=>v.toString(16).padStart(2,"0")).join("");
  if(actual!==data.sha256)
   throw new Error("Downloaded HR original failed integrity verification.");
- return {bytes,fileName:data.fileName!,sha256:actual};
+ return {bytes,fileName:data.fileName!,sha256:actual,
+  readAuditId:data.readAuditId!};
+}
+
+
+/** Only a source-inspection record or correction request; NOT form signature approval. */
+export async function reviewHrOriginal(
+ session:FirebaseAuthSession,
+ input:{
+  recordId:string;expectedStatus:HrOriginalReviewStatus;
+  decision:HrOriginalReviewDecision;reason:string;
+  readAuditId:string;sha256:string;
+ },
+ requestId:string,
+):Promise<{recordId:string;status:HrOriginalReviewStatus;reviewedAt:string;replayed:boolean}>{
+ const response=await fetch(firebaseFunctionUrl("hrSignedOriginalArchive"),{
+  method:"POST",cache:"no-store",
+  headers:{authorization:"Bearer "+session.idToken,"content-type":"application/json"},
+  body:JSON.stringify({action:"Review",review:input,requestId}),
+ }).catch(()=>null);
+ if(!response)throw new Error("HR review service unavailable. Check source before retrying.");
+ const data=await response.json().catch(()=>null) as
+  {ok?:boolean;message?:string;recordId?:string;status?:HrOriginalReviewStatus;
+   reviewedAt?:string;replayed?:boolean}|null;
+ if(!response.ok||data?.ok!==true||data.recordId!==input.recordId||
+  !["Requires correction","Evidence inspected; compliance verification pending"].includes(data.status??"")||
+  !data.reviewedAt)
+  throw new Error(data?.message||"HR review was not confirmed. Refresh source and retry with the same request ID.");
+ return{recordId:input.recordId,status:data.status!,reviewedAt:data.reviewedAt,
+  replayed:Boolean(data.replayed)};
 }
