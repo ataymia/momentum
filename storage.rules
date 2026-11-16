@@ -73,13 +73,8 @@ service firebase.storage {
     match /hr-templates/{formKind}/{artifactId}/source.pdf {
       allow get: if isAdmin()
         && formKind in ['W9','I9','W4','AZ_A4','CONTRACTOR_AGREEMENT','EMPLOYEE_AGREEMENT','OTHER'];
-      allow create: if isAdmin()
-        && resource == null
-        && formKind in ['W9','I9','W4','AZ_A4','CONTRACTOR_AGREEMENT','EMPLOYEE_AGREEMENT','OTHER']
-        && request.resource.size > 7
-        && request.resource.size < 12 * 1024 * 1024
-        && request.resource.contentType == 'application/pdf';
-      allow list, update, delete: if false;
+      // Only a trusted Firebase Admin writer may create immutable blank templates.
+      allow create, list, update, delete: if false;
     }
 
     // Confidential employment forms are written only by trusted backend service identities.

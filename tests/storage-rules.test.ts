@@ -70,7 +70,10 @@ test("blank HR template uploads are admin-only, PDF-only, immutable and not shar
  await assertFails(uploadBytes(ref(env.unauthenticatedContext().storage(),path),pdf,{contentType:"application/pdf"}));
  await assertFails(uploadBytes(ref(storage("admin"),path),pdf,{contentType:"text/plain"}));
  await assertFails(uploadBytes(ref(storage("admin"),"hr-templates/UNKNOWN/12345678-1234-4abc-a123-123456789abc/source.pdf"),pdf,{contentType:"application/pdf"}));
- await assertSucceeds(uploadBytes(ref(storage("admin"),path),pdf,{contentType:"application/pdf"}));
+ await assertFails(uploadBytes(ref(storage("admin"),path),pdf,{contentType:"application/pdf"}));
+ await env.withSecurityRulesDisabled(async context=>{
+  await uploadBytes(ref(context.storage(),path),pdf,{contentType:"application/pdf"});
+ });
  await assertSucceeds(getBytes(ref(storage("admin"),path)));
  await assertFails(getBytes(ref(storage("rep"),path)));
  await assertFails(getBytes(ref(storage("customer"),path)));

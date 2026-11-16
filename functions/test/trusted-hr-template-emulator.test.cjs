@@ -16,17 +16,17 @@ const db=getFirestore(app),bucket=getStorage(app).bucket();
 const {
  registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError,
 }=require("../lib/trusted-hr-template.js");
+const {uploadTrustedBlankHrTemplate}=require("../lib/trusted-hr-template-upload.js");
 const suffix=randomUUID().replaceAll("-","").slice(0,12);
 const admin="hr-template-admin-"+suffix;
 const rep="hr-template-rep-"+suffix;
 const suspended="hr-template-suspended-"+suffix;
-const path="hr-templates/W9/"+randomUUID()+"/source.pdf";
 const pdf=Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n");
 const sha256=createHash("sha256").update(pdf).digest("hex");
 const key="hrTemplate"+suffix+"abcdefghijklmnop";
 const draft={
  kind:"W9",title:"IRS Form W-9 blank revision",edition:"Rev. 2024",
- storagePath:path,sha256,blankTemplateConfirmed:true,
+ storagePath:"",sha256,blankTemplateConfirmed:true,
  fields:[
   {id:"taxpayer-name",label:"Name of taxpayer",type:"Text",
    required:true,pdfFieldName:"Name",signer:"Worker"},
@@ -44,7 +44,22 @@ test("HR blank PDFs: actual object hash, server registration, role denial, immut
   db.doc("userAccess/"+rep).set({role:"Sales Representative",accountState:"Active"}),
   db.doc("userAccess/"+suspended).set({role:"Administrator",accountState:"Suspended"}),
  ]);
- await bucket.file(path).save(pdf,{contentType:"application/pdf"});
+ const uploadPayload={kind:"W9",pdfBase64:pdf.toString("base64"),
+  sha256,blankTemplateConfirmed:true};
+ await deny(uploadTrustedBlankHrTemplate(rep,uploadPayload,"repUpload"+key),403);
+ await deny(uploadTrustedBlankHrTemplate(suspended,uploadPayload,"suspendedUpload"+key),403);
+ const uploaded=await uploadTrustedBlankHrTemplate(admin,uploadPayload,"upload"+key);
+ assert.equal(uploaded.sha256,sha256);
+ assert.equal(uploaded.size,pdf.length);
+ assert(uploaded.storagePath.startsWith("hr-templates/W9/"));
+ assert.equal(uploaded.status,"Uploaded blank PDF; pending form and signer review");
+ draft.storagePath=uploaded.storagePath;
+ const again=await uploadTrustedBlankHrTemplate(admin,uploadPayload,"upload"+key);
+ assert.equal(again.storagePath,uploaded.storagePath);
+ assert.equal(again.replayed,true);
+ await deny(uploadTrustedBlankHrTemplate(admin,{...uploadPayload,sha256:"0".repeat(64)},"badUploadHash"+key),409);
+ await deny(uploadTrustedBlankHrTemplate(admin,{...uploadPayload,kind:"I9"},"wrongUploadKind"+key),400);
+ await deny(uploadTrustedBlankHrTemplate(admin,{...uploadPayload,price:24},"forgedUpload"+key),400);
  await deny(registerTrustedHrTemplate(rep,draft,"rep"+key),403);
  await deny(registerTrustedHrTemplate(suspended,draft,"suspended"+key),403);
  const receipt=await registerTrustedHrTemplate(admin,draft,key);
@@ -62,7 +77,7 @@ test("HR blank PDFs: actual object hash, server registration, role denial, immut
  const audit=(await db.doc("hrTemplateAudit/"+receipt.templateId).get()).data();
  assert.equal(audit.actorUid,admin);
  assert.equal(audit.sha256,sha256);
- const prior=(await bucket.file(path).download())[0];
+ const prior=(await bucket.file(uploaded.storagePath).download())[0];
  assert.equal(createHash("sha256").update(prior).digest("hex"),sha256);
  const replay=await registerTrustedHrTemplate(admin,draft,key);
  assert.equal(replay.templateId,receipt.templateId);

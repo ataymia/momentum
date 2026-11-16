@@ -28,6 +28,7 @@ test("template upload never writes signed originals or implicitly approves e-sig
  const screen=readFileSync("components/hcm/hr-template-upload-panel.tsx","utf8");
  const session=readFileSync("lib/firebase-hr-template-library.ts","utf8");
  const storage=readFileSync("storage.rules","utf8");
+ const uploader=readFileSync("functions/src/trusted-hr-template-upload.ts","utf8");
  assert(server.includes("getStorage().bucket().file(storagePath)"));
  assert(server.includes('createHash("sha256").update(bytes)'));
  assert(server.includes('status:"Pending HR form and signer review"'));
@@ -38,6 +39,11 @@ test("template upload never writes signed originals or implicitly approves e-sig
  assert(screen.includes("registerHrTemplate"));
  assert(screen.includes("Pending HR form and signer review"));
  assert(session.includes('String.fromCharCode(...new Uint8Array(buffer.slice(0,5)))!=="%PDF-"'));
- assert(storage.includes("allow list, update, delete: if false;"));
- assert(storage.includes("allow create: if isAdmin()"));
+ assert(storage.includes("allow create, list, update, delete: if false;"));
+ assert(!session.includes("firebasestorage.googleapis.com"));
+ assert(session.includes('firebaseFunctionUrl("uploadHrBlankTemplate")'));
+ assert(uploader.includes("preconditionOpts:{ifGenerationMatch:0}"));
+ assert(uploader.includes("file.download()"));
+ assert(uploader.includes("hrTemplateUploadRequests"));
+ assert(!uploader.includes("hrSignedFormRecords"));
 });

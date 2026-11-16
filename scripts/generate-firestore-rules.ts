@@ -503,6 +503,9 @@ service cloud.firestore {
     match /hrTemplateRegistrationKeys/{requestId} {
       allow read, write: if false;
     }
+    match /hrTemplateUploadRequests/{requestId} {
+      allow read, write: if false;
+    }
 
     // HR e-form receipt metadata never contains tax identifiers or document field values.
     // Only the trusted server can create/update it after verifying the signing provider.
