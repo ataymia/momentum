@@ -66,7 +66,7 @@ export async function readTrustedHrOriginal(
   const actualHash=createHash("sha256").update(bytes).digest("hex");
   if(metadata.contentType!=="application/pdf"||
    bytes.length<16||bytes.length>=8*1024*1024||
-   metadata.size!==String(bytes.length)||
+   Number(metadata.size)!==bytes.length||
    bytes.subarray(0,5).toString("ascii")!=="%PDF-"||
    !bytes.subarray(Math.max(0,bytes.length-2048))
     .toString("latin1").includes("%%EOF")||
