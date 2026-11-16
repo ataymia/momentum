@@ -25,6 +25,7 @@ import {createTrustedCrmAccount,TrustedAccountCreationError} from "./trusted-acc
 import {commitTrustedCrmLead,TrustedCrmLeadError} from "./trusted-crm-lead";
 import {submitTrustedOrderIntake,getTrustedOrderIntake,listTrustedOrderIntakes,OrderIntakeError} from "./trusted-order-intake";
 import {registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError} from "./trusted-hr-template";
+import {uploadTrustedBlankHrTemplate} from "./trusted-hr-template-upload";
 import {submitTrustedHrLeave,TrustedHrLeaveError} from "./trusted-hr-leave-request";
 import {commitTrustedLeaveDecision,TrustedLeaveDecisionError} from "./trusted-hr-leave-decision";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
@@ -1821,6 +1822,34 @@ export const createCrmAccount=onRequest({cors:true,region:"us-central1"},async(r
     json(response,503,{ok:false,message:
       "Account save unconfirmed. Check the source before retrying with the same request."});
   }
+});
+
+/** Upload blank HR PDFs with a trusted Admin Storage writer, no client Storage POST.
+ * A successful upload is not a signature, completed W-9, or I-9 examination.
+ */
+export const uploadHrBlankTemplate=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const input=request.body;
+ if(!input||typeof input!=="object"||Array.isArray(input)||
+  Object.keys(input).some(k=>!["upload","requestId"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid HR blank-upload request."});return;
+ }
+ const authorization=request.headers.authorization??"";
+ const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  const receipt=await uploadTrustedBlankHrTemplate(actor,input.upload,input.requestId);
+  json(response,200,{ok:true,...receipt});
+ }catch(error){
+  if(error instanceof TrustedHrTemplateError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("uploadHrBlankTemplate failed",error);
+  json(response,503,{ok:false,message:"Blank PDF upload not confirmed. Retry the same request ID."});
+ }
 });
 
 /** Register/read administrator-uploaded *blank* HR PDFs. Never an e-sign API. */
