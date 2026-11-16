@@ -1087,7 +1087,7 @@ describe("confidential HR signed-form receipt metadata",()=>{
 });
 
 describe("private HR original-intake queue is not legally verified e-sign",()=>{
- test("worker may read only own pending original while all client mutations are denied",async()=>{
+ test("unverified original and its audit are Administrator-only; all client mutations denied",async()=>{
   const path="hrOriginalIntakeRecords/source-pending-1";
   const auditPath="hrOriginalIntakeAudit/source-pending-1";
   const readAuditPath="hrOriginalIntakeReadAudit/read-pending-1";
@@ -1107,9 +1107,9 @@ describe("private HR original-intake queue is not legally verified e-sign",()=>{
     id:pending.id,actorUid:ADMIN,createdAt:at,
    });
   });
-  await assertSucceeds(getDoc(doc(dbFor(REP),path)));
+  await assertFails(getDoc(doc(dbFor(REP),path)));
   await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
-  await assertSucceeds(getDocs(query(collection(dbFor(REP),
+  await assertFails(getDocs(query(collection(dbFor(REP),
    "hrOriginalIntakeRecords"),where("employeeUid","==",REP))));
   for(const who of [OTHER_REP,MANAGER,OPS,MARKETING,null]){
    await assertFails(getDoc(doc(dbFor(who),path)));
