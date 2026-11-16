@@ -185,3 +185,44 @@ export async function listTrustedOrderIntakes(actorUid:string):Promise<OrderInta
   .orderBy("createdAt","desc").limit(40).get();
  return results.docs.map(doc=>doc.data() as OrderIntakeRecord);
 }
+
+
+/** Page through ALL source intakes without leaking a shared customer ledger.
+ * Cursor is the trusted last source document ID, not a client-chosen timestamp.
+ * Firestore snapshots preserve the timestamp + document-id ordering tie-break.
+ * @param {string} actorUid Verified active Administrator.
+ * @param {unknown} rawCursor Previous page cursor or null.
+ * @return {Promise<{records:OrderIntakeRecord[],limit:number,nextCursor:string|null}>}
+ * Latest contiguous window and exact continuation point.
+ */
+export async function pageTrustedOrderIntakes(
+ actorUid:string,rawCursor:unknown,
+):Promise<{records:OrderIntakeRecord[];limit:number;nextCursor:string|null}>{
+ if(!actorIdPattern.test(actorUid))
+  throw new OrderIntakeError(400,"Invalid requester.");
+ const cursor=rawCursor===undefined||rawCursor===null?"":text(rawCursor);
+ if(rawCursor!==undefined&&rawCursor!==null&&typeof rawCursor!=="string")
+  throw new OrderIntakeError(400,"Invalid intake page cursor.");
+ if(cursor&&!/^intake-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(cursor))
+  throw new OrderIntakeError(400,"Invalid intake page cursor.");
+ const db=getFirestore();
+ const actor=(await db.doc("userAccess/"+actorUid).get()).data();
+ if(text(actor?.accountState)!=="Active"||text(actor?.role)!=="Administrator")
+  throw new OrderIntakeError(403,"Administrator review required.");
+ let query=db.collection("commerceOrderIntakes").orderBy("createdAt","desc");
+ if(cursor){
+  const position=await db.doc("commerceOrderIntakes/"+cursor).get();
+  if(!position.exists||!text(position.data()?.createdAt))
+   throw new OrderIntakeError(409,"Intake page cursor no longer resolves. Refresh the queue.");
+  query=query.startAfter(position);
+ }
+ const limit=40;
+ const results=await query.limit(limit+1).get();
+ const visible=results.docs.slice(0,limit);
+ return{
+  records:visible.map(doc=>doc.data() as OrderIntakeRecord),
+  limit,
+  nextCursor:results.docs.length>limit?
+   visible[visible.length-1].id:null,
+ };
+}
