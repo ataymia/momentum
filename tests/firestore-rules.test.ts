@@ -310,13 +310,14 @@ describe("Administrator employee provisioning", () => {
 });
 
 describe("a hire who must still change their password", () => {
-  test("can read what onboarding needs and write their own onboarding shards", async () => {
+  test("can read onboarding data and update self-profile but not self-certify HR documents", async () => {
     const db = dbFor(PASSWORD_CHANGE);
     await assertSucceeds(getDoc(doc(db, USER_ACCESS_COLLECTION, PASSWORD_CHANGE)));
     await assertSucceeds(getDoc(doc(db, EMPLOYEE_DIRECTORY_COLLECTION, MANAGER)));
     await assertSucceeds(getDoc(doc(db, "domains/hcm/fields/policies")));
     await assertSucceeds(setDoc(doc(db, `userDomains/${PASSWORD_CHANGE}/identity/records`), { items: [] }));
-    await assertSucceeds(setDoc(doc(db, `userDomains/${PASSWORD_CHANGE}/hcm/documents`), { items: [] }));
+    await assertSucceeds(setDoc(doc(db, `userDomains/${PASSWORD_CHANGE}/hcm/privateProfiles`), { items: [] }));
+    await assertFails(setDoc(doc(db, `userDomains/${PASSWORD_CHANGE}/hcm/documents`), { items: [] }));
   });
 
   test("cannot activate themselves, elevate themselves, or reach the live workspace", async () => {
