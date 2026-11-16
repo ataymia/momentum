@@ -26,7 +26,7 @@ test("Storage enforces draft/approved access, immutable versions, and revoked id
  await assertFails(getBytes(ref(storage("rep"),path)));
 });
 
-test("signed employment PDFs are employee-private, admin-readable, immutable and never client-uploaded",async()=>{
+test("signed employment PDFs require audited backend reads; no browser may fetch or alter them",async()=>{
  const path="hr-private/rep/W4/signed-001/signed.pdf";
  const certificate="hr-private/rep/W4/signed-001/certificate.pdf";
  const bytes=new Uint8Array([37,80,68,70,45,49,46,55]);
@@ -35,9 +35,9 @@ test("signed employment PDFs are employee-private, admin-readable, immutable and
   await uploadBytes(ref(context.storage(),certificate),bytes,{contentType:"application/pdf"});
  });
  const storage=(uid:string)=>env.authenticatedContext(uid).storage();
- await assertSucceeds(getBytes(ref(storage("rep"),path)));
- await assertSucceeds(getBytes(ref(storage("rep"),certificate)));
- await assertSucceeds(getBytes(ref(storage("admin"),path)));
+ await assertFails(getBytes(ref(storage("rep"),path)));
+ await assertFails(getBytes(ref(storage("rep"),certificate)));
+ await assertFails(getBytes(ref(storage("admin"),path)));
  await assertFails(getBytes(ref(storage("rep2"),path)));
  await assertFails(getBytes(ref(storage("marketing"),path)));
  await assertFails(getBytes(ref(storage("customer"),path)));
@@ -50,8 +50,8 @@ test("signed employment PDFs are employee-private, admin-readable, immutable and
  await env.withSecurityRulesDisabled(async context=>{
   await uploadBytes(ref(context.storage(),w9Path),bytes,{contentType:"application/pdf"});
  });
- await assertSucceeds(getBytes(ref(storage("rep"),w9Path)));
- await assertSucceeds(getBytes(ref(storage("admin"),w9Path)));
+ await assertFails(getBytes(ref(storage("rep"),w9Path)));
+ await assertFails(getBytes(ref(storage("admin"),w9Path)));
  await assertFails(getBytes(ref(storage("rep2"),w9Path)));
  await assertFails(getBytes(ref(storage("customer"),w9Path)));
  await assertFails(getBytes(ref(storage("separated"),w9Path)));
@@ -59,7 +59,7 @@ test("signed employment PDFs are employee-private, admin-readable, immutable and
  await assertFails(uploadBytes(ref(storage("admin"),w9Path),bytes,{contentType:"application/pdf"}));
 });
 
-test("contractor, employment and other archived originals are worker-private and immutable",async()=>{
+test("contractor, employment and other originals deny direct Storage browser access",async()=>{
  const paths=[
   "hr-private/rep/CONTRACTOR_AGREEMENT/intake-contract/signed.pdf",
   "hr-private/rep/EMPLOYEE_AGREEMENT/intake-employee/signed.pdf",
@@ -72,8 +72,8 @@ test("contractor, employment and other archived originals are worker-private and
  });
  const storage=(uid:string)=>env.authenticatedContext(uid).storage();
  for(const path of paths){
-  await assertSucceeds(getBytes(ref(storage("rep"),path)));
-  await assertSucceeds(getBytes(ref(storage("admin"),path)));
+  await assertFails(getBytes(ref(storage("rep"),path)));
+  await assertFails(getBytes(ref(storage("admin"),path)));
   for(const who of ["rep2","marketing","customer","separated"]){
    await assertFails(getBytes(ref(storage(who),path)));
   }
