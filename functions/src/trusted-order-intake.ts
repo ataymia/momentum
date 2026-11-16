@@ -192,8 +192,7 @@ export async function listTrustedOrderIntakes(actorUid:string):Promise<OrderInta
  * Firestore snapshots preserve the timestamp + document-id ordering tie-break.
  * @param {string} actorUid Verified active Administrator.
  * @param {unknown} rawCursor Previous page cursor or null.
- * @return {Promise<{records:OrderIntakeRecord[],limit:number,nextCursor:string|null}>}
- * Latest contiguous window and exact continuation point.
+ * @return {Promise<object>} Latest source intake page and cursor.
  */
 export async function pageTrustedOrderIntakes(
  actorUid:string,rawCursor:unknown,
