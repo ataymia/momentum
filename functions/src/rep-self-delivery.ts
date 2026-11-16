@@ -307,7 +307,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
         if(balance(movements,txt(movement.lotId),staffNode)<num(movement.quantity))
           fail(409,"Insufficient rep custody balance for the full order.");
       }
-      if(loaded.some(movement=>!lotEligibleForAutomaticDelivery(lots.get(txt(movement.lotId))??{},localDay)))
+      if(loaded.some((movement)=>!lotEligibleForAutomaticDelivery(lots.get(txt(movement.lotId))??{},localDay)))
         fail(409,"A loaded lot lacks current best-by or quality clearance. Refer to Operations.");
       const posted=loaded.map((movement):Row=>({
         id:uid("rep-delivered"),lotId:txt(movement.lotId),product:txt(movement.product),
