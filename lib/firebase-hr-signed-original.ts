@@ -2,7 +2,7 @@ import type {FirebaseAuthSession} from "./firebase-auth-rest";
 import {firebaseFunctionUrl} from "./firebase-functions";
 import type {HrTemplateKind} from "./firebase-hr-template-library";
 
-export type HrOriginalSource="Paper signed scan"|"External e-sign result";
+export type HrOriginalSource="Paper signed scan"|"External e-sign result"|"In-app prepared PDF (unverified)";
 export type HrOriginalArchiveReceipt={
  recordId:string;employeeUid:string;kind:HrTemplateKind;sha256:string;
  status:"Pending independent HR review";createdAt:string;replayed:boolean;

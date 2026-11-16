@@ -4,6 +4,7 @@ import {useWorkspace} from "../../lib/workspace-context";
 import {useHcm} from "../../lib/hcm-context";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {HR_TEMPLATE_CHOICES,type HrTemplateKind} from "../../lib/firebase-hr-template-library";
+import {HrPdfEditor} from "./hr-pdf-editor";
 import {
  archiveHrOriginal,listHrOriginals,downloadHrOriginalBytes,reviewHrOriginal,
  type HrOriginalRecord,type HrOriginalSource,type HrOriginalReviewDecision,type HrOriginalReviewStatus,
@@ -138,7 +139,7 @@ export function HrSignedOriginalArchivePanel(){
  };
  return <section className="prototype-panel" aria-label="Private completed HR document intake">
   <h2>Signed-original archive: restricted HR intake</h2>
-  <p className="prototype-note">Upload a completed original only after the paper signing or approved external provider ceremony took place. The server archives immutable PDF bytes, independently rechecks their SHA-256 and links them to the selected worker. New records start as <strong>Pending independent HR review</strong> and may be returned for correction or inspected without being legally approved. This form cannot create e-signatures or complete employer I-9 review.</p>
+  <p className="prototype-note">Upload an existing signed PDF from paper or an approved provider, or fill and prepare a PDF below for independent HR verification. In-app drawn marks are not provider-verified signatures. Every submission is stored as immutable PDF bytes, SHA-256 verified and marked <strong>Pending independent HR review</strong>. HR must separately verify the actual signer, tax form, classification and I-9 examination.</p>
   <form className="prototype-order-form" onSubmit={event=>void submit(event)}>
    <div className="form-grid">
     <label>Worker
@@ -160,6 +161,7 @@ export function HrSignedOriginalArchivePanel(){
        if(certRef.current)certRef.current.value="";resetRetry();}}>
       <option value="External e-sign result">External e-sign result</option>
       <option value="Paper signed scan">Paper signed scan</option>
+      <option value="In-app prepared PDF (unverified)">Prepared with in-app PDF editor (unverified)</option>
      </select>
     </label>
     <label>Source evidence reference (not a tax ID)
@@ -186,6 +188,16 @@ export function HrSignedOriginalArchivePanel(){
     {busy?"Archiving and verifying original…":"Archive completed original for HR review"}
    </button>
   </form>
+  {pdf&&<details>
+   <summary>Edit selected PDF before sending to HR</summary>
+   <p className="prototype-note">Use this editor for blank or unfinished PDFs, not an already signed provider original. Fill supported fields and add typed or drawn marks. Every mark requires independent identity and consent review; editing does not issue an e-sign certificate.</p>
+   <HrPdfEditor source={pdf} onPrepared={completed=>{
+    setPdf(completed);setSourceType("In-app prepared PDF (unverified)");
+    setCertificate(null);setConfirmed(false);requestId.current=null;
+    setReference("Prepared using Momentum PDF editor");
+    setMessage("Completed PDF is selected for private HR archival. Verify the output and confirm the independent review restriction before submitting.");
+   }}/>
+  </details>}
   {message&&<p role="status" className="prototype-note">{message}</p>}
   <div className="prototype-controls">
    <h3>{"Worker's protected original register"}</h3>

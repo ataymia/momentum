@@ -5,7 +5,7 @@ import {getStorage} from "firebase-admin/storage";
 import {HR_TEMPLATE_KINDS, type HrTemplateKind} from "./trusted-hr-template";
 
 type Row=Record<string,unknown>;
-type SourceType="Paper signed scan"|"External e-sign result";
+type SourceType="Paper signed scan"|"External e-sign result"|"In-app prepared PDF (unverified)";
 type Incoming={
  employeeUid:string;kind:HrTemplateKind;sourceType:SourceType;
  reference:string;pdf:Buffer;sha256:string;
@@ -71,7 +71,7 @@ function parseRequest(raw:unknown):Incoming {
  const reference=txt(raw.reference);
  if(!uid.test(employeeUid)||
   !Object.prototype.hasOwnProperty.call(HR_TEMPLATE_KINDS,kind)||
-  !["Paper signed scan","External e-sign result"].includes(sourceType)||
+  !["Paper signed scan","External e-sign result","In-app prepared PDF (unverified)"].includes(sourceType)||
   reference.length<5||reference.length>160||
   (sourceType==="External e-sign result"&&!reference))
   throw new HrOriginalArchiveError(400,"Worker, form kind or external evidence reference invalid.");
