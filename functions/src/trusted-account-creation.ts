@@ -1,4 +1,4 @@
-import {createHash,randomUUID} from "node:crypto";
+import {createHash, randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {
   object,
@@ -53,14 +53,16 @@ export async function createTrustedCrmAccount(
   if (!validation.ok) {
     throw new TrustedAccountCreationError(400, validation.message);
   }
-  // New-account creation may not write private tax IDs into shared customer arrays.
+  // New-account creation may not write private tax identifiers into
+  // shared customer arrays.
   if (!object(raw)||str(raw.ein)||str(raw.azTptLicenseNumber)||
     !["", "Undetermined"].includes(str(raw.taxDocumentType))) {
     throw new TrustedAccountCreationError(400,
       "Sensitive tax identity requires separate authorized review.");
   }
   const fingerprint=createHash("sha256").update(JSON.stringify({
-    record:validation.record,legalBusinessName:validation.legalBusinessName,
+    record: validation.record,
+    legalBusinessName: validation.legalBusinessName,
   })).digest("hex");
   const db=getFirestore();
   const accessRef=db.doc("userAccess/"+actorUid);
@@ -157,7 +159,8 @@ export async function createTrustedCrmAccount(
           "Independent":"Chain / franchise",
         billingContactName: str(validation.record.contactName),
         billingEmail: str(validation.record.email),
-        billingPhone: str(validation.record.phone)||str(validation.record.mobilePhone),
+        billingPhone: str(validation.record.phone)||
+          str(validation.record.mobilePhone),
         createdAt,
       }, ...list(customers.data())]});
     }
