@@ -116,4 +116,20 @@ test("R18 contact updates: full source revision, strict group scope, clean audit
  const stable=(await customersRef.get()).data().items.find(c=>c.id===groupId);
  assert.equal(stable.billingPhone,"6025550100");
  assert.equal(stable.contactRevision,2);
+ // A contact-only edit cannot change a source package that has already
+ // reached an externally reviewed state, even when an Administrator calls it.
+ await customersRef.set({items:(await customersRef.get()).data().items.map(c=>
+  c.id===groupId?{...c,onboardingPackageStatus:"Complete"}:c)});
+ await rejected(updateTrustedCustomerContacts(admin,{
+  ...payload,expectedRevision:2,
+  patch:{onboardingPackageStatus:"Prepared"},
+ },"downgrade"+key),409);
+ const contactAfterVerification=await updateTrustedCustomerContacts(admin,{
+  ...payload,expectedRevision:2,
+  patch:{billingEmail:"verified-contacts@example.test"},
+ },"safeEdit"+key);
+ assert.equal(contactAfterVerification.revision,3);
+ const verified=(await customersRef.get()).data().items.find(c=>c.id===groupId);
+ assert.equal(verified.onboardingPackageStatus,"Complete");
+ assert.equal(verified.billingEmail,"verified-contacts@example.test");
 });
