@@ -27,6 +27,7 @@ import {submitTrustedOrderIntake,getTrustedOrderIntake,listTrustedOrderIntakes,O
 import {decideTrustedOrderIntake} from "./trusted-order-intake-review";
 import {registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError} from "./trusted-hr-template";
 import {uploadTrustedBlankHrTemplate} from "./trusted-hr-template-upload";
+import {archiveTrustedHrSignedOriginal,listTrustedHrSignedOriginals,HrOriginalArchiveError} from "./trusted-hr-signed-original";
 import {submitTrustedHrLeave,TrustedHrLeaveError} from "./trusted-hr-leave-request";
 import {commitTrustedLeaveDecision,TrustedLeaveDecisionError} from "./trusted-hr-leave-decision";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
@@ -1881,6 +1882,47 @@ export const hrFormTemplateLibrary=onRequest({cors:true,region:"us-central1"},as
   }
   console.error("hrFormTemplateLibrary failed",error);
   json(response,503,{ok:false,message:"HR template status unconfirmed. Check the private archive before retrying."});
+ }
+});
+
+/** Archive completed HR PDFs as immutable, pending-review originals only.
+ * A PDF upload is never evidence of an authorized e-sign ceremony, I-9 Section 2,
+ * or completed tax compliance. Neither browser nor server can assert that here.
+ */
+export const hrSignedOriginalArchive=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const body=request.body;
+ if(!body||typeof body!=="object"||Array.isArray(body)||
+  Object.keys(body).some(k=>!["action","original","requestId","employeeUid"].includes(k))||
+  !["Archive","List"].includes(body.action)){
+  json(response,400,{ok:false,message:"Invalid HR original archive request."});return;
+ }
+ if(body.action==="Archive"&&body.employeeUid!==undefined){
+  json(response,400,{ok:false,message:"Worker identity must be inside the archived document request."});return;
+ }
+ if(body.action==="List"&&(body.original!==undefined||body.requestId!==undefined)){
+  json(response,400,{ok:false,message:"Invalid HR original list envelope."});return;
+ }
+ const authorization=request.headers.authorization??"";
+ const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  if(body.action==="List"){
+   const records=await listTrustedHrSignedOriginals(actor,body.employeeUid);
+   json(response,200,{ok:true,records});return;
+  }
+  const receipt=await archiveTrustedHrSignedOriginal(actor,body.original,body.requestId);
+  json(response,200,{ok:true,...receipt});
+ }catch(error){
+  if(error instanceof HrOriginalArchiveError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("hrSignedOriginalArchive unavailable",error);
+  json(response,503,{ok:false,message:
+   "HR source archive unconfirmed. Preserve the SAME request ID and retry."});
  }
 });
 
