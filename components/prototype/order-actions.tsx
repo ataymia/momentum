@@ -21,6 +21,9 @@ import {useInventoryLedger} from "../../lib/inventory-ledger-context";
 import {momentumStorage} from "../../lib/persistence";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {useWorkspace} from "../../lib/workspace-context";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
+import {ConnectedOrderIntakeForm} from "../commerce/connected-order-intake-form";
+import {ConnectedOrderIntakeQueue} from "../commerce/connected-order-intake-queue";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {canVisitRoute} from "../../lib/navigation-route-registry";
 import type {Approval,Order} from "../../lib/types";
@@ -47,7 +50,12 @@ function DemoGuard({isDemo}:{isDemo:boolean}){
   </div>;
 }
 export function OrderEditor({orderId}:{orderId?:string}){
-  const {scope}=useWorkspace();
+  const {scope,currentUser}=useWorkspace();
+  const runtime=useRuntimeMode();
+  const firebase=useFirebaseSessionOptional();
+  if(!orderId&&!runtime.isDemo&&firebase?.session&&currentUser&&
+    ["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role))
+    return <ConnectedOrderIntakeForm/>;
   const order=orderId?scope.orders.find(o=>o.id===orderId&&!o.testOnly):undefined;
   // Mount the form only when the deep-linked record is loaded. Otherwise its
   // initial fields would silently retain the blank state from an earlier render.
@@ -217,6 +225,7 @@ export function OrderApprovalDirectory(){
   return <div>
     <header className="prototype-heading"><h1>Approvals</h1><p>Order decisions, team requests, priority and status history. Order approval remains Administrator-governed.</p></header>
     <DemoGuard isDemo={runtime.isDemo}/>
+    {!runtime.isDemo&&currentUser?.role==="Administrator"&&<ConnectedOrderIntakeQueue/>}
     <div className="prototype-metrics"><div><small>Open order approval requests</small><strong>{pending}</strong></div><div><small>Matching approvals</small><strong>{records.length}</strong></div><div><small>Authority</small><strong>{currentUser?.role==="Administrator"?"Administrator":"View only"}</strong></div></div>
     <section className="prototype-panel"><h2>Sales order approvals</h2>
       <div className="prototype-commerce-filters">
