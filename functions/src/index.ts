@@ -2154,7 +2154,7 @@ export const saveCrmDeal=onRequest({cors:true,region:"us-central1"},async(reques
  const body=request.body;
  if(!body||typeof body!=="object"||Array.isArray(body)||
    Object.keys(body).some(k=>!["intent","requestId"].includes(k))){
-  json(response,400,{ok:false,message:"Invalid opportunity request.");return;
+  json(response,400,{ok:false,message:"Invalid opportunity request."});return;
  }
  const header=request.headers.authorization??"";
  const token=header.startsWith("Bearer ")?header.slice(7).trim():"";
