@@ -23,6 +23,7 @@ import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
 import {commitTrustedCrmFieldVisit,TrustedCrmVisitError} from "./trusted-crm-field-visit";
 import {createTrustedCrmAccount,TrustedAccountCreationError} from "./trusted-account-creation";
 import {commitTrustedCrmLead,TrustedCrmLeadError} from "./trusted-crm-lead";
+import {submitTrustedOrderIntake,getTrustedOrderIntake,listTrustedOrderIntakes,OrderIntakeError} from "./trusted-order-intake";
 import {submitTrustedHrLeave,TrustedHrLeaveError} from "./trusted-hr-leave-request";
 import {commitTrustedLeaveDecision,TrustedLeaveDecisionError} from "./trusted-hr-leave-decision";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
@@ -1848,6 +1849,63 @@ export const changeCrmLead=onRequest({cors:true,region:"us-central1"},async(requ
     json(response,503,{ok:false,message:
       "Lead change unconfirmed. Review account history before retrying with the same request."});
   }
+});
+
+/** Nonbinding commercial intake: writes no order, price, inventory, commission or payment. */
+export const submitOrderIntake=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const payload=request.body;
+ if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+  Object.keys(payload).some(k=>!["draft","requestId"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid intake envelope."});return;
+ }
+ const auth=request.headers.authorization??"";
+ const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  const receipt=await submitTrustedOrderIntake(actor,payload.draft,payload.requestId);
+  json(response,200,{ok:true,...receipt});
+ }catch(error){
+  if(error instanceof OrderIntakeError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("submitOrderIntake failed",error);
+  json(response,503,{ok:false,message:"Intake not confirmed. Check the source before retrying with the same request ID."});
+ }
+});
+
+/** Admin-only bounded queue or own receipt inspection, never payment or order approval. */
+export const reviewOrderIntake=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const payload=request.body;
+ if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+  Object.keys(payload).some(k=>!["intakeId"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid review request."});return;
+ }
+ const auth=request.headers.authorization??"";
+ const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  if(payload.intakeId){
+   const record=await getTrustedOrderIntake(actor,payload.intakeId);
+   json(response,200,{ok:true,record});
+  }else{
+   const records=await listTrustedOrderIntakes(actor);
+   json(response,200,{ok:true,records,limit:40});
+  }
+ }catch(error){
+  if(error instanceof OrderIntakeError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("reviewOrderIntake failed",error);
+  json(response,503,{ok:false,message:"Intake register temporarily unavailable. Do not infer no orders."});
+ }
 });
 
 /** Store one physical field visit and optional sample in a single server transaction.
