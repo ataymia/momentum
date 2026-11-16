@@ -22,6 +22,7 @@ import {submitDeliveryCorrection,approveDeliveryCorrection,closeDeliveryCorrecti
 import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
 import {commitTrustedCrmFieldVisit,TrustedCrmVisitError} from "./trusted-crm-field-visit";
 import {createTrustedCrmAccount,TrustedAccountCreationError} from "./trusted-account-creation";
+import {updateTrustedCustomerContacts,CustomerContactUpdateError} from "./trusted-customer-contact";
 import {commitTrustedCrmLead,TrustedCrmLeadError} from "./trusted-crm-lead";
 import {submitTrustedOrderIntake,getTrustedOrderIntake,listTrustedOrderIntakes,OrderIntakeError} from "./trusted-order-intake";
 import {decideTrustedOrderIntake} from "./trusted-order-intake-review";
@@ -1799,6 +1800,38 @@ export const decideHrLeaveRequest=onRequest({cors:true,region:"us-central1"},asy
 });
 
 /** Transactional Prospect creation: no tax, credit or pricing approvals. */
+/** Connected customer account setup writes only nonbinding billing/AP contacts.
+ * Tax IDs, signed legal status, payment terms, financial postings and account
+ * ownership are expressly excluded; server verifies active manager group scope.
+ */
+export const updateCustomerContacts=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){
+  json(response,405,{ok:false,message:"POST required."});return;
+ }
+ const body=request.body;
+ if(!body||typeof body!=="object"||Array.isArray(body)||
+  Object.keys(body).some(key=>!["update","requestId"].includes(key))){
+  json(response,400,{ok:false,message:"Invalid connected contact request."});return;
+ }
+ const authorization=request.headers.authorization??"";
+ const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  const receipt=await updateTrustedCustomerContacts(actor,body.update,body.requestId);
+  json(response,200,{ok:true,...receipt});
+ }catch(error){
+  if(error instanceof CustomerContactUpdateError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("updateCustomerContacts failed",error);
+  json(response,503,{ok:false,message:
+   "Connected contact save unconfirmed. Check the source before retrying."});
+ }
+});
+
 export const createCrmAccount=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
   if(request.method!=="POST"){
     json(response,405,{ok:false,message:"POST required."});return;
