@@ -12,7 +12,8 @@ const txt=(value:unknown)=>typeof value==="string"?value.trim():"";
 const uidPattern=/^[A-Za-z0-9_-]{3,128}$/;
 const recordIdPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** Readback is restricted to the owning active worker or a current Administrator.
+/** Unverified intake readback requires an active HR Administrator. Worker
+ * self-service must wait for separately authenticated and legally reviewed release.
  * No bearer download URLs, PDF public links, tax field values or disclosure in
  * read-audit metadata. A download is still not signature/legal review approval.
  * @param {string} actorUid Authenticated and non-revoked Firebase UID.
@@ -48,8 +49,7 @@ export async function readTrustedHrOriginal(
  if(!uidPattern.test(employeeUid)||
   !Object.prototype.hasOwnProperty.call(HR_TEMPLATE_KINDS,kind))
   throw new HrOriginalArchiveError(403,"Worker document scope denied.");
- if(role!=="Administrator"&&txt(entry.status)==="Quarantined; access revoked")
-  throw new HrOriginalArchiveError(403,"Private original is held for HR quarantine review.");
+
  const path=txt(artifact==="Original"?entry.originalPath:entry.certificatePath);
  const sha256=txt(artifact==="Original"?entry.sha256:entry.certificateSha256);
  const expectedGeneration=txt(artifact==="Original"?entry.generation:entry.certificateGeneration);
