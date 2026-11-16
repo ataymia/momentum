@@ -855,8 +855,6 @@ describe("trusted account profile audit records are immutable to browser clients
       });
     });
     await assertSucceeds(getDoc(doc(dbFor(ADMIN),auditPath)));
-  await assertSucceeds(getDoc(doc(dbFor(ADMIN),readAuditPath)));
-  await assertFails(getDoc(doc(dbFor(REP),readAuditPath)));
     for(const uid of [REP,OTHER_REP,MANAGER,OPS,DRIVER]){
       await assertFails(getDoc(doc(dbFor(uid),auditPath)));
       await assertFails(setDoc(doc(dbFor(uid),auditPath),{accountId:"forged"}));
@@ -1098,6 +1096,8 @@ describe("private HR original-intake queue is not legally verified e-sign",()=>{
    await assertFails(setDoc(doc(dbFor(who),retryPath),{actorUid:who}));
   }
   await assertSucceeds(getDoc(doc(dbFor(ADMIN),auditPath)));
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),readAuditPath)));
+  await assertFails(getDoc(doc(dbFor(REP),readAuditPath)));
   await assertFails(getDoc(doc(dbFor(REP),auditPath)));
  });
 });
