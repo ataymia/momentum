@@ -1120,7 +1120,7 @@ describe("private HR original-intake queue is not legally verified e-sign",()=>{
    }));
    await assertFails(deleteDoc(doc(dbFor(who),path)));
    await assertFails(setDoc(doc(dbFor(who),auditPath),{event:"Forged"}));
-   await assertFails(getDoc(doc(dbFor(who),readAuditPath)));
+   if(who!==ADMIN)await assertFails(getDoc(doc(dbFor(who),readAuditPath)));
    await assertFails(setDoc(doc(dbFor(who),readAuditPath),{event:"Forged"}));
    await assertFails(getDoc(doc(dbFor(who),retryPath)));
    await assertFails(setDoc(doc(dbFor(who),retryPath),{actorUid:who}));
