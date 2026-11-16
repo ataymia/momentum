@@ -29,7 +29,7 @@ function parse(raw:unknown):Intent{
   (action==="Update"&&!idPattern.test(contactId))||
   (action==="Create"&&contactId!==""))
   throw new TrustedCrmContactError(400,"Invalid contact request.");
- if(action==="Update"&&(!Number.isSafeInteger(raw.expectedRevision)||Number(raw.expectedRevision)<0))
+ if(action==="Update"&&(typeof raw.expectedRevision!=="number"||!Number.isSafeInteger(raw.expectedRevision)||raw.expectedRevision<0))
   throw new TrustedCrmContactError(400,"Contact revision is missing.");
  if(!object(raw.contact)||Object.keys(raw.contact).some(k=>!["name","role","email","phone","decisionRole","active"].includes(k)))
   throw new TrustedCrmContactError(400,"Unrecognized contact details.");
@@ -99,7 +99,7 @@ export async function saveTrustedCrmContact(
     txt(previous.customerId)!==txt(account.customerId)||
     txt(previous.createdBy)==="system"||previous.primary===true))
    throw new TrustedCrmContactError(404,"Editable contact not found.");
-  const priorRevision=previous?(Number.isSafeInteger(previous.revision)?Number(previous.revision):0):0;
+  const priorRevision=previous?(typeof previous.revision==="number"&&Number.isSafeInteger(previous.revision)?previous.revision:0):0;
   if(previous&&priorRevision!==intent.expectedRevision)
    throw new TrustedCrmContactError(409,"Contact changed. Refresh before updating.");
   if(current.some(c=>txt(c.locationId)===intent.locationId&&

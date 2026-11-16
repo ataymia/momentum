@@ -28,7 +28,7 @@ export async function saveConnectedCrmContact(
   {ok?:boolean;message?:string;contactId?:string;revision?:number;
    updatedAt?:string;replayed?:boolean}|null;
  if(!response.ok||result?.ok!==true||!result.contactId||
-   !Number.isSafeInteger(result.revision)||!result.updatedAt)
+   typeof result.revision!=="number"||!Number.isSafeInteger(result.revision)||!result.updatedAt)
   throw new Error(result?.message||"Contact change was not confirmed by the server.");
  let readbackVerified=false;
  try{
