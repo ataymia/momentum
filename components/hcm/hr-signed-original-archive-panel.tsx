@@ -123,7 +123,7 @@ export function HrSignedOriginalArchivePanel(){
   </form>
   {message&&<p role="status" className="prototype-note">{message}</p>}
   <div className="prototype-controls">
-   <h3>Worker's protected original register</h3>
+   <h3>{"Worker's protected original register"}</h3>
    <button type="button" disabled={!employeeUid||busy}
     onClick={()=>void reload(employeeUid).catch(e=>setMessage(e instanceof Error?e.message:"Unable to load originals."))}>
     Load worker archive
@@ -137,7 +137,7 @@ export function HrSignedOriginalArchivePanel(){
     <td>{item.status}</td>
    </tr>)}</tbody>
   </table></div>}
-  {lastWorker&&records.length===0&&<p className="prototype-note">No verified source records in this worker's latest archive window.</p>}
-  <p className="prototype-note">Files are private and never published as bearer download links. This intake creates evidence records for HR to evaluate; it does not change a worker's onboarding or compliance status or disburse payroll.</p>
+  {lastWorker&&records.length===0&&<p className="prototype-note">{"No verified source records in this worker's latest archive window."}</p>}
+  <p className="prototype-note">{"Files are private and never published as bearer download links. This intake creates evidence records for HR to evaluate; it does not change a worker's onboarding or compliance status or disburse payroll."}</p>
  </section>;
 }
