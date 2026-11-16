@@ -144,7 +144,7 @@ export async function archiveTrustedHrSignedOriginal(
   return {id,path,createdAt,replayed:false};
  });
  const bucket=getStorage().bucket();
- const writeAndVerify=async(path:string,pdf:Buffer,sha256:string)=>{
+ const writeAndVerify=async (path:string,pdf:Buffer,sha256:string)=>{
   const file=bucket.file(path);
   try{
    await file.save(pdf,{
