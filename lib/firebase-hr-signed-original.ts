@@ -9,8 +9,8 @@ export type HrOriginalArchiveReceipt={
 };
 export type HrOriginalReviewStatus=
  "Pending independent HR review"|"Requires correction"|
- "Evidence inspected; compliance verification pending";
-export type HrOriginalReviewDecision="Return for correction"|"Record evidence inspection";
+ "Evidence inspected; compliance verification pending"|"Quarantined; access revoked";
+export type HrOriginalReviewDecision="Return for correction"|"Record evidence inspection"|"Quarantine misfiled original";
 export type HrOriginalRecord={
  id:string;employeeUid:string;kind:HrTemplateKind;sha256:string;
  status:string;createdAt:string;sourceType:HrOriginalSource;hasCertificate:boolean;
@@ -148,7 +148,7 @@ export async function reviewHrOriginal(
   {ok?:boolean;message?:string;recordId?:string;status?:HrOriginalReviewStatus;
    reviewedAt?:string;replayed?:boolean}|null;
  if(!response.ok||data?.ok!==true||data.recordId!==input.recordId||
-  !["Requires correction","Evidence inspected; compliance verification pending"].includes(data.status??"")||
+  !["Requires correction","Evidence inspected; compliance verification pending","Quarantined; access revoked"].includes(data.status??"")||
   !data.reviewedAt)
   throw new Error(data?.message||"HR review was not confirmed. Refresh source and retry with the same request ID.");
  return{recordId:input.recordId,status:data.status!,reviewedAt:data.reviewedAt,
