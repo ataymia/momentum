@@ -1,6 +1,7 @@
 /* eslint-disable max-len, comma-spacing, key-spacing, indent, object-curly-spacing, curly, brace-style, keyword-spacing, arrow-parens, space-before-blocks */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
+import {customerAccountIds} from "./customer-commerce-projection";
 
 type Row=Record<string,unknown>;
 type OrderLine={skuId:string;description:string;casePack:number;cases:number};
@@ -88,17 +89,21 @@ export async function submitTrustedOrderIntake(
  const fingerprint=createHash("sha256").update(JSON.stringify(draft)).digest("hex");
  const db=getFirestore();
  const actorRef=db.doc("userAccess/"+actorUid);
+ const directoryRef=db.doc("employeeDirectory/"+actorUid);
  const accountsRef=db.doc("domains/workspace/fields/accounts");
  const keyRef=db.doc("commerceOrderIntakeKeys/"+actorUid+"_"+rawRequestId);
  return db.runTransaction(async tx=>{
-  const [actorSnap,accountsSnap,keySnap]=await Promise.all([
-   tx.get(actorRef),tx.get(accountsRef),tx.get(keyRef),
+  const [actorSnap,directorySnap,accountsSnap,keySnap]=await Promise.all([
+   tx.get(actorRef),tx.get(directoryRef),tx.get(accountsRef),tx.get(keyRef),
   ]);
   const actor=actorSnap.data();
   const role=text(actor?.role);
   if(text(actor?.accountState)!=="Active"||
-   !["Administrator","Sales Manager","Sales Representative"].includes(role))
-   throw new OrderIntakeError(403,"An active sales identity is required.");
+   !["Administrator","Sales Manager","Sales Representative","Customer"].includes(role))
+   throw new OrderIntakeError(403,"An active authorized account identity is required.");
+  if(role==="Customer"&&
+   !customerAccountIds(actor,directorySnap.data()).includes(draft.accountId))
+   throw new OrderIntakeError(403,"This location is not assigned to your customer account.");
   if(keySnap.exists){
    const saved=keySnap.data();
    if(text(saved?.actorUid)!==actorUid||
@@ -161,7 +166,7 @@ export async function getTrustedOrderIntake(
  ]);
  const access=accessSnap.data();
  if(text(access?.accountState)!=="Active")
-  throw new OrderIntakeError(403,"Active employee access is required.");
+  throw new OrderIntakeError(403,"An active account is required.");
  const record=intakeSnap.data() as OrderIntakeRecord|undefined;
  if(!record)throw new OrderIntakeError(404,"Order intake not found.");
  if(text(access?.role)!=="Administrator"&&record.requestedByUid!==actorUid)

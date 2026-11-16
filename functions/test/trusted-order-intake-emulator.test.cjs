@@ -76,6 +76,21 @@ test("R33 source-bound nonbinding intake, role isolation, idempotency and no fin
  await deny(submitTrustedOrderIntake(ids.rep,{...draft,accountId:ids.otherAccount},"other"+key),403);
  await deny(submitTrustedOrderIntake(ids.mgr,{...draft,accountId:ids.otherAccount},"otherMgr"+key),403);
  await deny(submitTrustedOrderIntake(ids.customer,draft,"customer"+key),403);
+ await db.doc("userAccess/"+ids.customer).update({email:"buyer-"+suffix+"@example.test"});
+ await db.doc("employeeDirectory/"+ids.customer).set({
+  role:"Customer",email:"buyer-"+suffix+"@example.test",accountIds:[ids.account],
+ });
+ const customerReceipt=await submitTrustedOrderIntake(ids.customer,draft,"verifiedCustomer"+key);
+ assert.equal(customerReceipt.status,"Needs commercial review");
+ const customerRecord=await getTrustedOrderIntake(ids.customer,customerReceipt.intakeId);
+ assert.equal(customerRecord.accountId,ids.account);
+ assert.equal(customerRecord.requestedByUid,ids.customer);
+ assert.equal(customerRecord.totalCases,14);
+ assert.equal((await submitTrustedOrderIntake(ids.customer,draft,"verifiedCustomer"+key)).replayed,true);
+ await deny(submitTrustedOrderIntake(ids.customer,{...draft,accountId:ids.otherAccount},"crossAccount"+key),403);
+ await db.doc("employeeDirectory/"+ids.customer).update({email:"forged-"+suffix+"@example.test"});
+ await deny(submitTrustedOrderIntake(ids.customer,draft,"staleCustomer"+key),403);
+ await db.doc("employeeDirectory/"+ids.customer).update({email:"buyer-"+suffix+"@example.test"});
  await deny(submitTrustedOrderIntake(ids.suspended,draft,"suspended"+key),403);
  await deny(getTrustedOrderIntake(ids.repOther,receipt.intakeId),403);
  await deny(listTrustedOrderIntakes(ids.rep),403);

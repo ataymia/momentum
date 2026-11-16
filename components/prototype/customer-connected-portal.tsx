@@ -4,6 +4,7 @@ import {Search,RefreshCw,ArrowUpDown} from "lucide-react";
 import {currentFirebaseSession} from "../../lib/firebase-auth-rest";
 import {firebaseFunctionUrl} from "../../lib/firebase-functions";
 import {downloadCsv} from "../../lib/browser-export";
+import {CustomerOrderRequest} from "./customer-order-request";
 import type {CustomerFinanceSnapshot} from "../../functions/src/customer-commerce-projection";
 
 type Section="orders"|"invoices"|"account"|"deliveries";
@@ -64,6 +65,7 @@ export function CustomerConnectedPortal({section}:{section:Section}){
      {view.kind==="loading"&&<p role="status">Loading authorized records…</p>}
      {view.kind==="error"&&<p role="alert">{view.message}</p>}
      {view.kind==="ready"&&view.data&&<>
+       {section==="orders"&&<CustomerOrderRequest accounts={view.data.accounts}/> }
        {section==="account"?<>
         <h2>Authorized retail locations</h2>
         {view.data.accounts.map(account=><dl key={account.id} className="prototype-facts">
