@@ -1,4 +1,4 @@
-/* eslint-disable max-len, comma-spacing, key-spacing, indent, object-curly-spacing, curly, brace-style, keyword-spacing, arrow-parens, space-before-blocks */
+/* eslint-disable max-len, comma-spacing, key-spacing, indent, object-curly-spacing, curly, brace-style, keyword-spacing, arrow-parens, space-before-blocks, no-control-regex */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 
@@ -44,7 +44,8 @@ function parse(raw:unknown):UpdateRequest{
   "accountId","customerId","expectedRevision","patch",
  ].includes(key))||!values(raw.patch))
   throw new CustomerContactUpdateError(400,"Invalid contact profile request.");
- const accountId=str(raw.accountId),customerId=str(raw.customerId);
+ const accountId=str(raw.accountId);
+ const customerId=str(raw.customerId);
  const expectedRevision=raw.expectedRevision;
  if(!uid.test(accountId)||!uid.test(customerId)||
   typeof expectedRevision!=="number"||
