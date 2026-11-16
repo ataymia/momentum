@@ -3,7 +3,7 @@
 import { ReactNode, createContext, useContext, useEffect, useRef, useState } from "react";
 import { arizonaDateKey } from "./date-time";
 import { orderLinesFor, productsEquivalent } from "./order-lines";
-import { INVENTORY_LEDGER_STORAGE_KEY, InventoryCount, InventoryLedgerState, InventoryMovement, InventoryReservation, MovementType, activeReservedForOrder, activeReservedForOrderProduct, createInventoryLedgerSeed, holdNodeId, movementCanPost, nodeLotBalance, normalizeInventoryLedger, orderCanAdvanceInventory, orderDeliveryQuantity, orderLotWarehouseNetOutbound, orderOutboundQuantity, planDriverDeliveryPosting, reservationCanCreate, warehouseAvailable, warehouseNodeId } from "./inventory-ledger";
+import { INVENTORY_LEDGER_STORAGE_KEY, InventoryCount, InventoryLedgerState, InventoryMovement, InventoryReservation, MovementType, activeReservedForOrder, activeReservedForOrderProduct, createInventoryLedgerSeed, holdNodeId, movementCanPost, nodeLotBalance, normalizeInventoryLedger, orderCanAdvanceInventory, orderDeliveryQuantity, orderLotWarehouseNetOutbound, orderOutboundQuantity, planDriverDeliveryPosting, reservationCanCreate, warehouseAvailable, warehouseNodeId, lotEligibleForAutomaticAllocation } from "./inventory-ledger";
 import { usePeriodLocks } from "./period-lock-context";
 import {releaseEditableOrderReservations,reconcileInventoryCount} from "./inventory-transaction-guards";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
@@ -45,7 +45,7 @@ export function InventoryLedgerProvider({children}:{children:ReactNode}){const{d
     if(!currentUser||!["Delivery Driver","Administrator","Operations","Warehouse"].includes(currentUser.role)||locked())return false;
     const order=data.orders.find((item)=>item.id===orderId);if(!order||order.status!=="Approved")return false;
     let working=ledger;const additions:InventoryReservation[]=[];
-    const lots=[...data.inventory].filter((lot)=>lot.status!=="Quality hold").sort((a,b)=>a.bestBy.localeCompare(b.bestBy)||a.receivedAt.localeCompare(b.receivedAt));
+    const lots=[...data.inventory].filter((lot)=>lotEligibleForAutomaticAllocation(lot)).sort((a,b)=>a.bestBy.localeCompare(b.bestBy)||a.receivedAt.localeCompare(b.receivedAt));
     for(const line of orderLinesFor(order)){
       let needed=line.cases-activeReservedForOrderProduct(working,data,orderId,line.product);
       if(needed<=0)continue;
