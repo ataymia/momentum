@@ -855,6 +855,8 @@ describe("trusted account profile audit records are immutable to browser clients
       });
     });
     await assertSucceeds(getDoc(doc(dbFor(ADMIN),auditPath)));
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),readAuditPath)));
+  await assertFails(getDoc(doc(dbFor(REP),readAuditPath)));
     for(const uid of [REP,OTHER_REP,MANAGER,OPS,DRIVER]){
       await assertFails(getDoc(doc(dbFor(uid),auditPath)));
       await assertFails(setDoc(doc(dbFor(uid),auditPath),{accountId:"forged"}));
@@ -1060,6 +1062,7 @@ describe("private HR original-intake queue is not legally verified e-sign",()=>{
  test("worker may read only own pending original while all client mutations are denied",async()=>{
   const path="hrOriginalIntakeRecords/source-pending-1";
   const auditPath="hrOriginalIntakeAudit/source-pending-1";
+  const readAuditPath="hrOriginalIntakeReadAudit/read-pending-1";
   const retryPath="hrOriginalArchiveRequests/admin-request-1";
   const pending={
    id:"source-pending-1",employeeUid:REP,kind:"W9",
@@ -1071,6 +1074,7 @@ describe("private HR original-intake queue is not legally verified e-sign",()=>{
    await setDoc(doc(context.firestore(),auditPath),{
     recordId:pending.id,employeeUid:REP,actorUid:ADMIN,at,
    });
+   await setDoc(doc(context.firestore(),readAuditPath),{recordId:pending.id,employeeUid:REP,actorUid:ADMIN,at});
    await setDoc(doc(context.firestore(),retryPath),{
     id:pending.id,actorUid:ADMIN,createdAt:at,
    });
@@ -1088,6 +1092,8 @@ describe("private HR original-intake queue is not legally verified e-sign",()=>{
    }));
    await assertFails(deleteDoc(doc(dbFor(who),path)));
    await assertFails(setDoc(doc(dbFor(who),auditPath),{event:"Forged"}));
+   await assertFails(getDoc(doc(dbFor(who),readAuditPath)));
+   await assertFails(setDoc(doc(dbFor(who),readAuditPath),{event:"Forged"}));
    await assertFails(getDoc(doc(dbFor(who),retryPath)));
    await assertFails(setDoc(doc(dbFor(who),retryPath),{actorUid:who}));
   }
