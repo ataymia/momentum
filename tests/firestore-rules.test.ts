@@ -894,8 +894,9 @@ describe("HR blank-form registry and audit cannot be forged by a browser",()=>{
   const path="hrTemplateCatalog/admin-upload-attempt";
   const audit="hrTemplateAudit/admin-upload-attempt";
   const key="hrTemplateRegistrationKeys/forged";
+  const upload="hrTemplateUploadRequests/forged";
   for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
-   for(const p of [path,audit,key])
+   for(const p of [path,audit,key,upload])
     await assertFails(setDoc(doc(dbFor(uid),p),{
      status:"Approved",signedOriginal:true,createdBy:uid,
     }));
