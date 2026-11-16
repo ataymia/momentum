@@ -1,9 +1,11 @@
 "use client";
-import {useMemo,useState} from "react";
+import {useMemo,useRef,useState} from "react";
 import type {FormEvent} from "react";
 import {ArrowUpDown} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
+import {saveConnectedCrmDeal,type DealIntent} from "../../lib/firebase-crm-deal";
 import {useCrm} from "../../lib/crm-context";
 import type {Opportunity,OpportunityStage} from "../../lib/crm-engine";
 import {visibleDeals,type DealSort} from "../../lib/crm-deals-view";
@@ -19,8 +21,8 @@ const go=(path:string,label:string)=><button type="button" className="prototype-
 export function DealsDirectory(){
   const {scope,data,currentUser}=useWorkspace();
   const {crm}=useCrm();
-  const runtime=useRuntimeMode();
-  const canWrite=runtime.isDemo&&momentumStorage.mode()==="local"&&selectableRole(currentUser?.role);
+  const runtime=useRuntimeMode(),firebase=useFirebaseSessionOptional();
+  const canWrite=(runtime.isDemo&&momentumStorage.mode()==="local"||!runtime.isDemo&&Boolean(firebase?.session))&&selectableRole(currentUser?.role);
   const ids=useMemo(()=>new Set(scope.accounts.map(account=>account.id)),[scope.accounts]);
   const [query,setQuery]=useState("");
   const [stage,setStage]=useState("all");
@@ -67,10 +69,12 @@ export function DealsDirectory(){
 
 export function DealEditor({id}:{id?:string}){
   const {scope,data,currentUser}=useWorkspace();
-  const runtime=useRuntimeMode();
+  const runtime=useRuntimeMode(),firebase=useFirebaseSessionOptional();
   const {crm,addOpportunity,updateOpportunity}=useCrm();
+  const request=useRef<{fingerprint:string;id:string}|null>(null);
+  const [busy,setBusy]=useState(false);
   const deal=id?crm.opportunities.find(item=>item.id===id&&scope.accounts.some(account=>account.id===item.locationId)):undefined;
-  const canWrite=runtime.isDemo&&momentumStorage.mode()==="local"&&selectableRole(currentUser?.role);
+  const canWrite=(runtime.isDemo&&momentumStorage.mode()==="local"||!runtime.isDemo&&Boolean(firebase?.session))&&selectableRole(currentUser?.role);
   const available=scope.accounts.filter(account=>Boolean(account.customerId));
   const [locationId,setLocationId]=useState(deal?.locationId??"");
   const [name,setName]=useState(deal?.name??"");
@@ -85,9 +89,9 @@ export function DealEditor({id}:{id?:string}){
   const relatedOrders=deal?scope.orders.filter(order=>!order.testOnly&&order.accountId===deal.locationId).sort((a,b)=>b.placedAt.localeCompare(a.placedAt)):[];
 
   if(id&&!deal)return <main><header className="prototype-heading"><h1>Deal unavailable</h1></header><div className="prototype-empty">The deal does not exist or is outside your authorized CRM scope.</div>{go("/crm/deals","Back to deals")}</main>;
-  const submit=(event:FormEvent<HTMLFormElement>)=>{
+  const submit=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
-    if(!canWrite){setFeedback("Editing is unavailable outside isolated local demonstration mode.");return;}
+    if(!canWrite||busy){setFeedback("A signed-in authorized sales identity is required.");return;}
     if(!account||!account.customerId||(!deal&&!available.some(item=>item.id===locationId))){setFeedback("Select an authorized customer location with a verified account ID.");return;}
     if(!name.trim()||name.trim().length>160||(!nextAction.trim()&&stage!=="Won"&&stage!=="Lost")){setFeedback("Enter a deal name and next action before saving an open deal.");return;}
     const estimatedCases=cases.trim()?Number(cases):undefined;
@@ -96,14 +100,36 @@ export function DealEditor({id}:{id?:string}){
     if(closeDate&&!/^\d{4}-\d{2}-\d{2}$/.test(closeDate)){setFeedback("Enter a valid expected close date.");return;}
     if(nextActionDate&&!/^\d{4}-\d{2}-\d{2}$/.test(nextActionDate)){setFeedback("Enter a valid next-action date.");return;}
     const status:Opportunity["status"]=stage==="Won"?"Won":stage==="Lost"?"Lost":"Open";
-    if(deal){
-      const result=updateOpportunity(deal.id,{name:name.trim(),stage,status,estimatedCases,expectedCloseDate:closeDate,nextAction:nextAction.trim(),nextActionDate,lossReason:stage==="Lost"?lossReason.trim():""});
-      setFeedback(result.ok?"Changes saved in the isolated CRM demonstration workspace. No order or invoice was generated.":(result.message??"Update rejected by CRM validation."));
-    }else{
-      const created=addOpportunity({customerId:account.customerId,locationId:account.id,ownerId:account.ownerId,name:name.trim(),stage,estimatedCases,expectedCloseDate:closeDate||undefined,nextAction:nextAction.trim(),nextActionDate,status:"Open"});
-      if(!created){setFeedback("Deal creation rejected. Check the account relationship, current representative and CRM permissions.");return;}
-      navigateToRoute(url(created));
+    if(runtime.isDemo&&momentumStorage.mode()==="local"){
+      if(deal){
+        const result=updateOpportunity(deal.id,{name:name.trim(),stage,status,estimatedCases,expectedCloseDate:closeDate,nextAction:nextAction.trim(),nextActionDate,lossReason:stage==="Lost"?lossReason.trim():""});
+        setFeedback(result.ok?"CRM opportunity updated. No order or invoice was generated.":result.message??"Update rejected.");
+      }else{
+        const created=addOpportunity({customerId:account.customerId,locationId:account.id,ownerId:account.ownerId,name:name.trim(),stage,estimatedCases,expectedCloseDate:closeDate||undefined,nextAction:nextAction.trim(),nextActionDate,status:"Open"});
+        if(!created){setFeedback("Deal creation rejected. Check the account assignment and CRM access.");return;}
+        navigateToRoute(url(created));
+      }
+      return;
     }
+    if(!firebase?.session){setFeedback("Sign in to save a connected opportunity.");return;}
+    const intent:DealIntent={action:deal?"Update":"Create",locationId:account.id,
+      dealId:deal?.id??"",expectedRevision:(deal as (Opportunity&{revision?:number})|undefined)?.revision??0,
+      details:{name:name.trim(),stage,estimatedCases,expectedCloseDate:closeDate,
+       nextAction:nextAction.trim(),nextActionDate,lossReason:stage==="Lost"?lossReason.trim():""}};
+    const fingerprint=JSON.stringify(intent);
+    if(!request.current||request.current.fingerprint!==fingerprint)
+      request.current={fingerprint,id:crypto.randomUUID().replaceAll("-","")};
+    setBusy(true);setFeedback("");
+    try{
+      const receipt=await saveConnectedCrmDeal(firebase.session,intent,request.current.id);
+      if(!receipt.readbackVerified){setFeedback("CRM received the change but the source readback is unconfirmed. Check records before retrying.");return;}
+      const refresh=await momentumStorage.refreshKeys(["momentum-crm-v1"]);
+      if(!refresh.ok){setFeedback("Deal saved but the workspace has not synchronized. Refresh records before retrying.");return;}
+      request.current=null;
+      if(!deal)navigateToRoute(url(receipt.dealId));
+      else setFeedback("Opportunity saved in connected CRM. No order or payment was created.");
+    }catch(error){setFeedback(error instanceof Error?error.message:"Opportunity save was not verified.");}
+    finally{setBusy(false);}
   };
   return <main className="prototype-workspace">
     <header className="prototype-heading">{go("/crm/deals","Back to deals")}<h1>{deal?deal.name:"New deal"}</h1>
@@ -116,8 +142,8 @@ export function DealEditor({id}:{id?:string}){
       <p className="prototype-note">Opportunity ID: {deal.id}. Owner and customer IDs are inherited from canonical records, not editable on this form. Closing a deal is a CRM outcome only.</p>
     </section>}
     <section className="prototype-panel"><h2>{deal?"Edit deal":"Deal details"}</h2>
-      {!canWrite&&<p role="status" className="prototype-note">Read-only. Updates are disabled for connected sessions and outside isolated local demo mode.</p>}
-      <form onSubmit={submit} aria-label={deal?"Edit deal":"Create deal"}>
+      {!canWrite&&<p role="status" className="prototype-note">Read-only. Sign in with assigned sales permissions to create or edit opportunities.</p>}
+      <form onSubmit={event=>void submit(event)} aria-label={deal?"Edit deal":"Create deal"}>
         <div className="prototype-controls"><label>Customer location <select aria-label="Deal customer location" value={deal?.locationId??locationId} disabled={Boolean(deal)||!canWrite} required onChange={event=>setLocationId(event.target.value)}>
           <option value="">Select customer location</option>{available.map(item=><option key={item.id} value={item.id}>{item.name} · {item.location}</option>)}</select></label>
           <label>Deal name <input required maxLength={160} value={name} disabled={!canWrite} onChange={event=>setName(event.target.value)}/></label>
@@ -128,7 +154,7 @@ export function DealEditor({id}:{id?:string}){
           <label>Next action <input maxLength={240} value={nextAction} disabled={!canWrite} required={stage!=="Won"&&stage!=="Lost"} onChange={event=>setNextAction(event.target.value)}/></label>
           <label>Next action date <input type="date" value={nextActionDate} disabled={!canWrite} onChange={event=>setNextActionDate(event.target.value)}/></label>
           {stage==="Lost"&&<label>Loss reason <textarea minLength={3} required value={lossReason} disabled={!canWrite} onChange={event=>setLossReason(event.target.value)}/></label>}</div>
-        {canWrite&&<div className="prototype-controls"><button type="submit">{deal?"Save changes":"Create deal"}</button>{go("/crm/deals","Cancel")}</div>}
+        {canWrite&&<div className="prototype-controls"><button type="submit" disabled={busy}>{busy?"Saving…":deal?"Save changes":"Create deal"}</button>{go("/crm/deals","Cancel")}</div>}
         {feedback&&<p role="status">{feedback}</p>}
       </form>
     </section>

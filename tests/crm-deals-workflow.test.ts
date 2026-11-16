@@ -71,3 +71,15 @@ test("every Deals register data column can sort by its visible representation",(
  assert.match(ui,/Deals updated from/);
  assert.match(ui,/Deals updated through/);
 });
+
+test("connected deals use scoped trusted backend and source-readback workflow",()=>{
+ const ui=readFileSync("components/prototype/crm-deals-experience.tsx","utf8");
+ const client=readFileSync("lib/firebase-crm-deal.ts","utf8");
+ const server=readFileSync("functions/src/trusted-crm-deal.ts","utf8");
+ assert.match(ui,/saveConnectedCrmDeal\(firebase\.session,intent,request\.current\.id\)/);
+ assert.match(ui,/receipt\.readbackVerified/);
+ assert.match(ui,/momentumStorage\.refreshKeys\(\["momentum-crm-v1"\]\)/);
+ assert.match(client,/getFirestoreSnapshot/);
+ assert.match(server,/role==="Sales Representative"&&ownerId!==actorUid/);
+ assert.match(server,/financialPosting:false,inventoryPosting:false/);
+});
