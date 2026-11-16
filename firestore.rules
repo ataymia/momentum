@@ -390,6 +390,16 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Idempotency receipts for reviewer decisions are server-only.
+    match /commerceOrderIntakeReviewKeys/{requestId} {
+      allow read, write: if false;
+    }
+    // Immutable source decision audit. Only active Administrators may inspect.
+    match /commerceOrderIntakeReviewAudit/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     // HR e-form receipt metadata never contains tax identifiers or document field values.
     // Only the trusted server can create/update it after verifying the signing provider.
     // Employees can query their own records using employeeUid == auth.uid; HR Administrators

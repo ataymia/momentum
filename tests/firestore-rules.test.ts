@@ -864,6 +864,18 @@ describe("trusted account profile audit records are immutable to browser clients
   });
 });
 
+describe("commercial intake reviews are never browser-writable",()=>{
+ test("even Administrators cannot forge review outcomes or retry receipts",async()=>{
+  for(const role of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   for(const path of ["commerceOrderIntakeReviewKeys/forged",
+     "commerceOrderIntakeReviewAudit/forged"]){
+    await assertFails(setDoc(doc(dbFor(role),path),
+      {status:"Pricing and inventory verification",actorUid:role,financialPosting:true}));
+   }
+  }
+ });
+});
+
 describe("connected money ledger cannot be forged by a browser",()=>{
  test("all client identities including Administrator are denied posting invoices, payments, allocations, credits, refunds and notes",async()=>{
   for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
