@@ -1,7 +1,7 @@
 "use client";
 import {contactExportRows,contactExportColumns} from "../../lib/saturday-scoped-workflows";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ArrowLeft, ArrowUpDown, ExternalLink, Search } from "lucide-react";
 import { canVisitRoute, routeEntry, routeLabel } from "../../lib/navigation-route-registry";
@@ -16,6 +16,8 @@ import {accountBonusProgress,type BonusProgressSort,type BonusProgressDirection}
 import {acquisitionBonusHeldAccountIds} from "../../lib/acquisition-bonus-consolidation";
 import { useWorkspace } from "../../lib/workspace-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
+import {changeConnectedCrmLead,type ConnectedLeadIntent} from "../../lib/firebase-crm-lead";
 import {momentumStorage} from "../../lib/persistence";
 import { TerritoryPanel } from "../crm/territory-panel";
 import {SalesUserPicker} from "../crm/sales-user-picker";
@@ -191,22 +193,59 @@ function AccountsDirectory({leadMode=false}:{leadMode?:boolean}){
 function LeadRecord({id}:{id:string}){
   const {scope,data,currentUser,transferAccountResponsibility,qualifyLead}=useWorkspace();
   const {isDemo}=useRuntimeMode();
+  const firebase=useFirebaseSessionOptional();
+  const pendingLeadRequest=useRef<{fingerprint:string;requestId:string}|null>(null);
+  const [savingLead,setSavingLead]=useState(false);
   const account=scope.accounts.find(a=>a.id===id&&["Prospect","Qualified","Sampled"].includes(a.stage));
   const [qualificationReason,setQualificationReason]=useState("");
   const [qualificationFeedback,setQualificationFeedback]=useState("");
   const [newOwner,setNewOwner]=useState("");
   const [handoffReason,setHandoffReason]=useState("");
   const [handoffFeedback,setHandoffFeedback]=useState("");
-  const canQualify=isDemo&&momentumStorage.mode()==="local"&&!!currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role);
-  const canHandoff=isDemo&&momentumStorage.mode()==="local"&&!!currentUser&&["Administrator","Sales Manager"].includes(currentUser.role);
+  const demoLeadWrite=isDemo&&momentumStorage.mode()==="local";
+  const connectedLeadWrite=!isDemo&&Boolean(firebase?.session);
+  const canQualify=(demoLeadWrite||connectedLeadWrite)&&!!currentUser&&
+    ["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role);
+  const canHandoff=(demoLeadWrite||connectedLeadWrite)&&!!currentUser&&
+    ["Administrator","Sales Manager"].includes(currentUser.role);
+  const changeLead=async(intent:ConnectedLeadIntent)=>{
+    if(!firebase?.session)throw new Error("An authenticated CRM session is required.");
+    const fingerprint=JSON.stringify(intent);
+    if(!pendingLeadRequest.current||pendingLeadRequest.current.fingerprint!==fingerprint)
+      pendingLeadRequest.current={
+        fingerprint,requestId:crypto.randomUUID().replaceAll("-",""),
+      };
+    return changeConnectedCrmLead(firebase.session,intent,pendingLeadRequest.current.requestId);
+  };
   const eligibleReps=data.users.filter(u=>u.role==="Sales Representative"&&u.employmentStatus!=="Separated"&&u.id!==account?.ownerId);
-  const handoff=(event:React.FormEvent<HTMLFormElement>)=>{
+  const handoff=async(event:React.FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
-    if(!canHandoff||!account||!eligibleReps.some(u=>u.id===newOwner)||handoffReason.trim().length<3){setHandoffFeedback("Choose an eligible representative and provide a reason of at least three characters.");return;}
-    const accepted=transferAccountResponsibility(account.id,newOwner,handoffReason.trim());
-    if(!accepted){setHandoffFeedback("Assignment rejected. Verify your role, representative eligibility, territory and account access.");return;}
-    setHandoffFeedback("Responsibility updated in this demonstration workspace. Historical order credit is unchanged.");
-    setNewOwner("");setHandoffReason("");
+    if(savingLead||!canHandoff||!account||
+      !eligibleReps.some(u=>u.id===newOwner)||handoffReason.trim().length<8){
+      setHandoffFeedback("Select an eligible representative and provide at least 8 characters of assignment evidence.");return;
+    }
+    if(demoLeadWrite){
+      const accepted=transferAccountResponsibility(account.id,newOwner,handoffReason.trim());
+      if(!accepted){setHandoffFeedback("Assignment rejected. Check role and account scope.");return;}
+      setHandoffFeedback("Responsibility updated only in the isolated demonstration. Historical credit is unchanged.");
+      setNewOwner("");setHandoffReason("");return;
+    }
+    setSavingLead(true);setHandoffFeedback("");
+    try{
+      const receipt=await changeLead({
+        action:"Transfer",accountId:account.id,
+        expectedOwnerId:account.ownerId,targetUid:newOwner,
+        reason:handoffReason.trim(),
+      });
+      if(!receipt.readbackVerified){
+        setHandoffFeedback("Server receipt exists, but account ownership readback is not confirmed. Check the account before retrying with this form unchanged.");return;
+      }
+      pendingLeadRequest.current=null;
+      setHandoffFeedback("Assignment verified in CRM source. Reloading account.");
+      window.location.reload();
+    }catch(error){
+      setHandoffFeedback(error instanceof Error?error.message:"Assignment not confirmed. Check account history before retrying.");
+    }finally{setSavingLead(false);}
   };
   const [activityQuery,setActivityQuery]=useState("");
   const [orderQuery,setOrderQuery]=useState("");
@@ -223,30 +262,49 @@ function LeadRecord({id}:{id:string}){
       <div className="prototype-controls"><OpenLink to={"/sales/customers/"+encodeURIComponent(id)}>Customer account</OpenLink>{account.contactName&&<OpenLink to={"/crm/contacts/"+encodeURIComponent(id)}>Contact detail</OpenLink>}</div>
       <div className="prototype-controls"><OpenLink to="/crm/deals">Sales opportunities</OpenLink><OpenLink to="/crm/deals/new">Create a deal</OpenLink></div>
 
-      {canQualify&&<form className="prototype-panel" aria-label="Update lead qualification" onSubmit={event=>{
-        event.preventDefault();
-        const target=account.stage==="Prospect"?"Qualified":account.stage==="Qualified"?"Sampled":"Qualified";
-        const result=qualifyLead(account.id,target,qualificationReason);
-        setQualificationFeedback(result.ok?"Lead stage updated in the isolated CRM demonstration workspace.":(result.message??"Qualification rejected."));
-        if(result.ok)setQualificationReason("");
-      }}>
+      {canQualify&&<form className="prototype-panel" aria-label="Update lead qualification" onSubmit={async event=>{
+         event.preventDefault();
+         if(savingLead)return;
+         const target=account.stage==="Prospect"?"Qualified":account.stage==="Qualified"?"Sampled":"Qualified";
+         if(demoLeadWrite){
+           const result=qualifyLead(account.id,target,qualificationReason);
+           setQualificationFeedback(result.ok?"Lead stage changed in isolated demo only.":(result.message??"Qualification rejected."));
+           if(result.ok)setQualificationReason("");
+           return;
+         }
+         setSavingLead(true);setQualificationFeedback("");
+         try{
+           const receipt=await changeLead({
+             action:"Qualify",accountId:account.id,expectedStage:account.stage,
+             nextStage:target,reason:qualificationReason.trim(),
+           });
+           if(!receipt.readbackVerified){
+             setQualificationFeedback("Server receipt exists but the updated source has not been verified. Check CRM before retrying with the same form.");return;
+           }
+           pendingLeadRequest.current=null;
+           setQualificationFeedback("Stage verified in connected CRM. Reloading account.");
+           window.location.reload();
+         }catch(error){
+           setQualificationFeedback(error instanceof Error?error.message:"Qualification not confirmed. Check account history first.");
+         }finally{setSavingLead(false);}
+       }}>
         <h3>Qualify lead</h3>
         <label>Next stage <select aria-label="Next lead qualification stage" value={account.stage==="Prospect"?"Qualified":account.stage==="Qualified"?"Sampled":"Qualified"} disabled>
           {account.stage==="Prospect"?<option value="Qualified">Qualified</option>:account.stage==="Qualified"?<option value="Sampled">Sampled</option>:<option value="Qualified">Qualified (manager correction only)</option>}
         </select></label>
         <label>Qualification reason <textarea required minLength={5} maxLength={500} value={qualificationReason} onChange={event=>setQualificationReason(event.target.value)} placeholder="Evidence supporting this stage change"/></label>
-        <button type="submit" disabled={qualificationReason.trim().length<5}>Save stage</button>
+        <button type="submit" disabled={savingLead||qualificationReason.trim().length<5}>{savingLead?"Saving & verifying…":"Save stage"}</button>
         {qualificationFeedback&&<p role="status">{qualificationFeedback}</p>}
       </form>}
 
-      <p className="prototype-note">Lead stage is sourced from the existing account record. Stage editing remains disabled pending audited server authorization.</p>
+      <p className="prototype-note">Stage changes are source-verified. Connected sessions use authenticated server transactions; no pricing, paid orders or compensation is modified.</p>
       {canHandoff&&<form className="prototype-panel" aria-label="Transfer lead responsibility" onSubmit={handoff}>
         <h3>Reassign lead</h3>
         <div className="prototype-controls"><SalesUserPicker label="New lead representative" users={eligibleReps} value={newOwner} onChange={id=>{setNewOwner(id);setHandoffFeedback("");}} allowUnassigned={false}/></div>
-        <label>Reason for reassignment <textarea required minLength={3} maxLength={500} value={handoffReason} onChange={e=>setHandoffReason(e.target.value)} /></label>
-        <button type="submit" disabled={!newOwner||handoffReason.trim().length<3}>Transfer responsibility</button>
+        <label>Reason for reassignment <textarea required minLength={8} maxLength={500} value={handoffReason} onChange={e=>setHandoffReason(e.target.value)} /></label>
+        <button type="submit" disabled={savingLead||!newOwner||handoffReason.trim().length<8}>{savingLead?"Saving & verifying…":"Transfer responsibility"}</button>
         {handoffFeedback&&<p role="status">{handoffFeedback}</p>}
-        <p className="prototype-note">Manager-only demonstration action. The existing authority engine validates eligibility and records the handoff in account activity. This does not alter historical sales credit.</p>
+        <p className="prototype-note">Connected reassignment verifies the manager, current owner, and active representative on the server. Territory rights and historical sales credit remain unchanged; the recipient must still confirm the assignment.</p>
       </form>}
     </section><section className="prototype-panel"><h2>Next visit</h2><p>Schedule a visit using the existing territory, role and calendar conflict checks.</p><LeadFollowupScheduler accountId={id} defaultDate={account.nextActionDate}/></section></div>
     <section className="prototype-panel"><h2>Activity history</h2><label className="prototype-search">Search activities <input aria-label="Search lead activity" value={activityQuery} onChange={e=>setActivityQuery(e.target.value)}/></label>
