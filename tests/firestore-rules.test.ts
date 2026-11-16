@@ -863,6 +863,20 @@ describe("trusted account profile audit records are immutable to browser clients
   });
 });
 
+describe("HR blank-form registry and audit cannot be forged by a browser",()=>{
+ test("Administrator may read templates but no browser may write or edit them",async()=>{
+  const path="hrTemplateCatalog/admin-upload-attempt";
+  const audit="hrTemplateAudit/admin-upload-attempt";
+  const key="hrTemplateRegistrationKeys/forged";
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   for(const p of [path,audit,key])
+    await assertFails(setDoc(doc(dbFor(uid),p),{
+     status:"Approved",signedOriginal:true,createdBy:uid,
+    }));
+  }
+ });
+});
+
 describe("connected order intake sources are never client-writable",()=>{
  test("all client roles are refused on intake, replay and server audit documents",async()=>{
   for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){

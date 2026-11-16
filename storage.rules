@@ -66,6 +66,22 @@ service firebase.storage {
       allow update: if false;
     }
 
+    // Administrator-uploaded BLANK form templates are distinct from signed worker originals.
+    // Immutable after creation, PDF only, and never downloadable by an ordinary worker.
+    // Registering a template still requires independent server byte/hash verification
+    // and a separate authorized HR/official-edition review.
+    match /hr-templates/{formKind}/{artifactId}/source.pdf {
+      allow get: if isAdmin()
+        && formKind in ['W9','I9','W4','AZ_A4','CONTRACTOR_AGREEMENT','EMPLOYEE_AGREEMENT','OTHER'];
+      allow create: if isAdmin()
+        && resource == null
+        && formKind in ['W9','I9','W4','AZ_A4','CONTRACTOR_AGREEMENT','EMPLOYEE_AGREEMENT','OTHER']
+        && request.resource.size > 7
+        && request.resource.size < 12 * 1024 * 1024
+        && request.resource.contentType == 'application/pdf';
+      allow list, update, delete: if false;
+    }
+
     // Confidential employment forms are written only by trusted backend service identities.
     // Signed PDFs and signing certificates are NEVER uploaded from a browser, even by an Administrator.
     // Allow individual document fetches for the employee or an active Administrator; disallow listing
