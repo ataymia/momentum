@@ -7,6 +7,7 @@ import {validateLeadCreateDraft,type LeadCreateDraft} from "../../lib/crm-lead-c
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {createConnectedCrmAccount} from "../../lib/firebase-crm-account-creation";
+import {saveConnectedCustomerContacts,type ConnectedCustomerContactPatch} from "../../lib/firebase-customer-contact";
 import {momentumStorage} from "../../lib/persistence";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {useWorkspace} from "../../lib/workspace-context";
@@ -21,6 +22,8 @@ export function CrmAccountSetup(){
   const runtime=useRuntimeMode();
   const firebase=useFirebaseSessionOptional();
   const pendingRequest=useRef<{payload:string;id:string}|null>(null);
+  const pendingContactRequest=useRef<{payload:string;id:string}|null>(null);
+  const [savingExisting,setSavingExisting]=useState(false);
   const [savingNew,setSavingNew]=useState(false);
   const [mode,setMode]=useState<"new"|"existing">("new");
   const [draft,setDraft]=useState<LeadCreateDraft>({...initialDraft});
@@ -39,6 +42,9 @@ export function CrmAccountSetup(){
   const canEdit=Boolean(currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role)&&runtime.isDemo&&momentumStorage.mode()==="local");
   const connectedCreate=Boolean(!runtime.isDemo&&firebase?.session&&currentUser&&
     ["Administrator","Sales Manager"].includes(currentUser.role));
+  const connectedContactEdit=Boolean(!runtime.isDemo&&firebase?.session&&currentUser&&
+    ["Administrator","Sales Manager"].includes(currentUser.role));
+  const canEditContacts=canEdit||connectedContactEdit;
   const canCreateNew=canEdit||connectedCreate;
   if(!currentUser||currentUser.role==="Customer")return <div className="prototype-empty">Employee account setup access is required.</div>;
   const createNew=async(event:FormEvent<HTMLFormElement>)=>{
@@ -86,10 +92,50 @@ export function CrmAccountSetup(){
       setCreationMessage(error instanceof Error?error.message:"Account creation not confirmed. Check CRM before retrying.");
     }finally{setSavingNew(false);}
   };
-  const submit=(event:FormEvent<HTMLFormElement>)=>{
+  const submit=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();setMessage("");setErrors({});
-    if(!canEdit||!customer||!account){setMessage("Setup is read-only until authenticated server edit authorization is available.");return;}
+    if(!canEditContacts||!customer||!account||savingExisting){setMessage("Authenticated contact editing is not available for this customer.");return;}
     const dataForm=new FormData(event.currentTarget);
+    if(connectedContactEdit&&firebase?.session){
+      const draft:ConnectedCustomerContactPatch={
+        billingContactName:String(dataForm.get("billingContactName")||"").trim(),
+        billingEmail:String(dataForm.get("billingEmail")||"").trim(),
+        billingPhone:String(dataForm.get("billingPhone")||"").trim(),
+        accountsPayableContactName:String(dataForm.get("accountsPayableContactName")||"").trim(),
+        accountsPayableEmail:String(dataForm.get("accountsPayableEmail")||"").trim(),
+        accountsPayablePhone:String(dataForm.get("accountsPayablePhone")||"").trim(),
+      };
+      const proposed=String(dataForm.get("onboardingPackageStatus")||"");
+      if(["Not started","Prepared"].includes(proposed)&&proposed!==customer.onboardingPackageStatus)
+        draft.onboardingPackageStatus=proposed as "Not started"|"Prepared";
+      const patch=Object.fromEntries(Object.entries(draft).filter(([key,value])=>
+        value!==customer[key as keyof typeof customer])) as ConnectedCustomerContactPatch;
+      if(!Object.keys(patch).length){setMessage("No new billing/AP contact changes to save.");return;}
+      const payload={accountId:account.id,customerId:customer.id,
+        expectedRevision:customer.contactRevision??0,patch};
+      const fingerprint=JSON.stringify(payload);
+      if(!pendingContactRequest.current||pendingContactRequest.current.payload!==fingerprint)
+        pendingContactRequest.current={payload:fingerprint,id:crypto.randomUUID().replaceAll("-","")};
+      setSavingExisting(true);
+      try{
+        const receipt=await saveConnectedCustomerContacts(firebase.session,payload,pendingContactRequest.current.id);
+        if(!receipt.readbackVerified){
+          setMessage("Contact update was accepted by the server but current source readback is incomplete. Confirm the record before retrying.");
+          return;
+        }
+        const refresh=await momentumStorage.refreshKeys(["momentum-demo-workspace-v5"]);
+        if(!refresh.ok){
+          setMessage("Customer contacts changed in the verified source, but workspace hydration is incomplete. Refresh before another edit.");
+          return;
+        }
+        pendingContactRequest.current=null;
+        setMessage("Connected billing and A/P contact details saved and source-verified. Revision "+receipt.revision+". Tax forms, e-signatures, credit and order terms are still unverified.");
+      }catch(error){
+        setMessage(error instanceof Error?error.message:"Contact save unconfirmed. Verify the customer source before retry.");
+      }finally{setSavingExisting(false);}
+      return;
+    }
+    if(!canEdit){setMessage("Only the isolated demo supports editing sensitive tax and credit fields here.");return;}
     const identity={
       legalBusinessName:String(dataForm.get("legalBusinessName")||"").trim(),
       ein:String(dataForm.get("ein")||"").trim(),
@@ -162,26 +208,26 @@ export function CrmAccountSetup(){
       </div>
       {!customer||!account?<div className="prototype-empty">Select an account that is linked to an existing customer. No billing identity will be invented.</div>:<>
         <div className="prototype-metrics"><div><small>Parent business</small><strong>{customer.name}</strong></div><div><small>Account stage</small><strong>{account.stage}</strong></div><div><small>Payment terms</small><strong>{customer.paymentTerms??"COD"}</strong></div></div>
-        {!canEdit&&<p role="status" className="prototype-note">Connected account setup is read-only until creator/Administrator access and trusted account-profile writes are enforced by the backend.</p>}
+        {!canEditContacts&&<p role="status" className="prototype-note">Connected account setup requires authorized customer leadership access. Tax, credit and verified-document changes remain protected.</p>}
         <form key={customer.id+"-"+account.id} aria-label="Customer account setup" onSubmit={submit}>
           <div className="prototype-columns">
             <label>Legal business name <input required name="legalBusinessName" disabled={!canEdit} defaultValue={customer.legalBusinessName??""}/>{errors.legalBusinessName&&<small role="alert">{errors.legalBusinessName}</small>}</label>
             <label>Tax document route <select name="taxDocumentType" disabled={!canEdit} defaultValue={customer.taxDocumentType??"Undetermined"}><option>Undetermined</option><option>Taxable</option><option value="Resale 5000A">Resale 5000A</option><option value="Exemption 5000">Exemption 5000</option></select>{errors.taxDocumentType&&<small role="alert">{errors.taxDocumentType}</small>}</label>
             <label>Arizona TPT license <input name="azTptLicenseNumber" disabled={!canEdit} defaultValue={customer.azTptLicenseNumber??""}/>{errors.azTptLicenseNumber&&<small role="alert">{errors.azTptLicenseNumber}</small>}</label>
             <label>Federal EIN <input name="ein" disabled={!canEdit} defaultValue={customer.ein??""}/>{errors.ein&&<small role="alert">{errors.ein}</small>}</label>
-            <label>Billing contact <input name="billingContactName" disabled={!canEdit} defaultValue={customer.billingContactName??""}/></label>
-            <label>Billing email <input type="email" name="billingEmail" disabled={!canEdit} defaultValue={customer.billingEmail??""}/></label>
-            <label>Billing phone <input name="billingPhone" disabled={!canEdit} defaultValue={customer.billingPhone??""}/></label>
-            <label>Accounts payable contact <input name="accountsPayableContactName" disabled={!canEdit} defaultValue={customer.accountsPayableContactName??""}/></label>
-            <label>A/P email <input type="email" name="accountsPayableEmail" disabled={!canEdit} defaultValue={customer.accountsPayableEmail??""}/></label>
-            <label>A/P phone <input name="accountsPayablePhone" disabled={!canEdit} defaultValue={customer.accountsPayablePhone??""}/></label>
-            <label>Onboarding package <select name="onboardingPackageStatus" disabled={!canEdit} defaultValue={customer.onboardingPackageStatus??"Not started"}><option>Not started</option><option>Prepared</option>{customer.onboardingPackageStatus&&!["Not started","Prepared"].includes(customer.onboardingPackageStatus)&&<option value={customer.onboardingPackageStatus}>{customer.onboardingPackageStatus} (existing verification required)</option>}</select></label>
+            <label>Billing contact <input name="billingContactName" disabled={!canEditContacts||savingExisting} defaultValue={customer.billingContactName??""}/></label>
+            <label>Billing email <input type="email" name="billingEmail" disabled={!canEditContacts||savingExisting} defaultValue={customer.billingEmail??""}/></label>
+            <label>Billing phone <input name="billingPhone" disabled={!canEditContacts||savingExisting} defaultValue={customer.billingPhone??""}/></label>
+            <label>Accounts payable contact <input name="accountsPayableContactName" disabled={!canEditContacts||savingExisting} defaultValue={customer.accountsPayableContactName??""}/></label>
+            <label>A/P email <input type="email" name="accountsPayableEmail" disabled={!canEditContacts||savingExisting} defaultValue={customer.accountsPayableEmail??""}/></label>
+            <label>A/P phone <input name="accountsPayablePhone" disabled={!canEditContacts||savingExisting} defaultValue={customer.accountsPayablePhone??""}/></label>
+            <label>Onboarding package <select name="onboardingPackageStatus" disabled={!canEditContacts||savingExisting} defaultValue={customer.onboardingPackageStatus??"Not started"}><option>Not started</option><option>Prepared</option>{customer.onboardingPackageStatus&&!["Not started","Prepared"].includes(customer.onboardingPackageStatus)&&<option value={customer.onboardingPackageStatus}>{customer.onboardingPackageStatus} (existing verification required)</option>}</select></label>
             {isManager?<label>Credit status <select name="creditStatus" disabled={!canEdit} defaultValue={customer.creditStatus??"COD"}><option>COD</option><option>Credit Requested</option><option>Credit Under Review</option><option>Net 30 Approved</option><option>Credit Declined</option><option>Personal Guaranty Required</option></select></label>
              :<label>Credit review <select name="requestCredit" disabled={!canEdit} defaultValue="no"><option value="no">No new request</option><option value="yes">Request manager review</option></select></label>}
           </div>
-          <p className="prototype-note">Tax-document route is informational, not verified legal e-signature. Managers control credit status; representatives may request review only. Any commercial terms remain subject to approved records and company authority.</p>
+          <p className="prototype-note">Tax-document route is informational, not verified legal e-signature. Managers control credit status; representatives may request review only. Any commercial terms remain subject to approved records and company authority. In connected mode only ordinary billing and A/P contacts and the unverified package-preparation state may be saved; EIN, TPT, legal identity, tax verification and credit are never submitted here.</p>
           {message&&<p role="status">{message}</p>}
-          {canEdit&&<div className="prototype-controls"><button type="submit">Save account setup</button></div>}
+          {canEditContacts&&<div className="prototype-controls"><button type="submit" disabled={savingExisting}>{savingExisting?"Verifying saved contacts…":connectedContactEdit?"Save connected billing/A-P contacts":"Save account setup"}</button></div>}
         </form>
       </>}
     </section>}
