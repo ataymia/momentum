@@ -71,15 +71,30 @@ export async function submitConnectedOrderIntake(
  };
 }
 
-/** Administrator-only read of the most recent source requests, not an order ledger. */
+/** Administrator-only paged source register, with an opaque continuation cursor. */
 export async function listConnectedOrderIntakes(
- session:FirebaseAuthSession,
-):Promise<{records:OrderIntakeRecord[];limit:number}>{
- const response=await call(session,"reviewOrderIntake",{}) as
-  {records?:OrderIntakeRecord[];limit?:number};
- if(!Array.isArray(response.records))
-  throw new Error("Commercial intake register could not be verified.");
- return{records:response.records,limit:response.limit??40};
+ session:FirebaseAuthSession,cursor?:string|null,
+):Promise<{records:OrderIntakeRecord[];limit:number;nextCursor:string|null}>{
+ const response=await call(session,"reviewOrderIntake",
+  cursor?{cursor}:{}) as
+  {records?:OrderIntakeRecord[];limit?:number;nextCursor?:string|null};
+ if(!Array.isArray(response.records)||response.records.some(record=>!record.id)||
+  (response.nextCursor!==null&&response.nextCursor!==undefined&&
+   !/^intake-[0-9a-f-]{36}$/.test(response.nextCursor)))
+  throw new Error("Commercial intake page could not be verified.");
+ return{records:response.records,limit:response.limit??40,
+  nextCursor:response.nextCursor??null};
+}
+
+/** Exact source verification still works after the request has left page one. */
+export async function getConnectedOrderIntake(
+ session:FirebaseAuthSession,intakeId:string,
+):Promise<OrderIntakeRecord>{
+ const response=await call(session,"reviewOrderIntake",{intakeId}) as
+  {record?:OrderIntakeRecord};
+ if(!response.record||response.record.id!==intakeId)
+  throw new Error("Order-intake review source readback failed.");
+ return response.record;
 }
 
 /** Verified Administrator decision; does not issue an order or charge money. */
