@@ -864,6 +864,19 @@ describe("trusted account profile audit records are immutable to browser clients
   });
 });
 
+describe("connected money ledger cannot be forged by a browser",()=>{
+ test("all client identities including Administrator are denied posting invoices, payments, allocations, credits, refunds and notes",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   for(const field of ["_root","invoices","payments","allocations","credits","refunds","notes"]){
+    const path="domains/commerce/fields/"+field;
+    await assertFails(setDoc(doc(dbFor(uid),path),
+     field==="_root"?{data:{status:"Paid"}}:{items:[{status:"Cleared",settledAt:"2026-11-15"}]}));
+   }
+  }
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),"domains/commerce/fields/payments")));
+ });
+});
+
 describe("HR signed packets and identity-sensitive shards cannot be forged",()=>{
  test("Managers cannot read private profiles, dependent details or signed HR metadata",async()=>{
   for(const field of ["privateProfiles","profileChangeRequests","dependents",

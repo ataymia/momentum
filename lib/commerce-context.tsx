@@ -35,6 +35,7 @@ import { isValidCalendarDateKey } from "./date-time";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
+import {mayMutateCommerceInBrowser} from "./connected-commerce-policy";
 
 const now = () => new Date().toISOString();
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -65,10 +66,11 @@ const CommerceContext = createContext<CommerceContextValue | null>(null);
 export function CommerceProvider({ children }: { children: ReactNode }) {
   const { data, currentUser, reconcileOrderPayment } = useWorkspace();
   const runtime = useRuntimeMode();
-  const canManageCash = currentUser?.role === "Administrator";
-  // Client-held payment states are never authoritative settlement evidence in
-  // a connected session. Provider verification must be implemented server-side.
+  // No client-side connected Finance mutation is a valid payment or bank event.
   const localSettlementSandbox=runtime.isDemo&&momentumStorage.mode()==="local";
+  const canManageCash=mayMutateCommerceInBrowser({
+    role:currentUser?.role,isDemo:runtime.isDemo,storageMode:momentumStorage.mode(),
+  });
   const read = () => {
     if (typeof window === "undefined") return createCommerceSeed(data,localSettlementSandbox);
     try {
@@ -111,8 +113,10 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   }, [canManageCash, data.orders]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") momentumStorage.setItem(COMMERCE_STORAGE_KEY, JSON.stringify(commerce));
-  }, [commerce]);
+    // Connected Finance is read-only until trusted backend posting is implemented.
+    if (typeof window !== "undefined" && localSettlementSandbox)
+      momentumStorage.setItem(COMMERCE_STORAGE_KEY, JSON.stringify(commerce));
+  }, [commerce,localSettlementSandbox]);
   useRemoteStorageSync(COMMERCE_STORAGE_KEY, () => setCommerce((current) => {
     const next=read();
     return JSON.stringify(next)===JSON.stringify(current)?current:next;
@@ -270,7 +274,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   };
 
   const addNote = (invoiceId: string, note: string) => {
-    if (!currentUser || currentUser.role === "Customer" || !note.trim()) return;
+    if (!localSettlementSandbox || !currentUser || currentUser.role === "Customer" || !note.trim()) return;
     const invoice = commerce.invoices.find((item) => item.id === invoiceId);
     const account = invoice ? data.accounts.find((item) => item.id === invoice.accountId) : undefined;
     if (!invoice || !account || !accountIsVisible(data, currentUser, account)) return;

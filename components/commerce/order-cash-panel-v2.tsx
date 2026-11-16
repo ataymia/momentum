@@ -5,6 +5,9 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {recordPerformanceSample} from "../../lib/performance-diagnostics";
 import { InvoiceTerms, PaymentMethod, arAgingBucket, computedInvoiceStatus, creditCanApprove, invoiceBalance, invoicePaidAmount, invoicePendingAmount, invoiceRecordableAmount, openReceivables, paymentSettlementDate, refundCanApprove, refundRemainingAmount } from "../../lib/commerce-engine";
 import { useCommerce } from "../../lib/commerce-context";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {momentumStorage} from "../../lib/persistence";
+import {mayMutateCommerceInBrowser} from "../../lib/connected-commerce-policy";
 import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
 import { addCalendarDays, arizonaDateKey, isValidCalendarDateKey } from "../../lib/date-time";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -19,6 +22,7 @@ const businessDateKey = (value: string) => isValidCalendarDateKey(value) ? value
 
 export function OrderCashPanel() {
   const { data, scope, currentUser } = useWorkspace();
+  const runtime=useRuntimeMode();
   const { commerce, setInvoiceTerms, recordPayment, setPaymentStatus, failPayment, reversePayment, createCredit, approveCredit, applyCredit, requestRefund, approveRefund, markRefundSent, settleRefund, failRefund, addNote, voidInvoice } = useCommerce();
   const orderIds=useMemo(()=>new Set(scope.orders.map((order)=>order.id)),[scope.orders]);
   const invoices=useMemo(()=>commerce.invoices.filter((invoice)=>orderIds.has(invoice.orderId)).sort((a,b)=>b.issuedAt.localeCompare(a.issuedAt)),[commerce.invoices,orderIds]);
@@ -92,7 +96,10 @@ export function OrderCashPanel() {
   const paid = selected ? invoicePaidAmount(commerce, selected.id) : 0;
   const pending = selected ? invoicePendingAmount(commerce, selected.id) : 0;
   const recordable = selected ? invoiceRecordableAmount(commerce, selected) : 0;
-  const canFinance = currentUser.role === "Administrator";
+  const canFinance=mayMutateCommerceInBrowser({
+    role:currentUser.role,isDemo:runtime.isDemo,storageMode:momentumStorage.mode(),
+  });
+  const demoFinance=runtime.isDemo&&momentumStorage.mode()==="local";
   const arTotal = receivables.reduce((sum, item) => sum + item.balance, 0);
   const pastDue = receivables.filter((item) => ["1–30", "31–60", "61–90", "90+"].includes(arAgingBucket(item.invoice, item.balance))).reduce((sum, item) => sum + item.balance, 0);
   const userName = (id?: string) => id ? data.users.find((user) => user.id === id)?.name ?? id : undefined;
@@ -173,6 +180,7 @@ export function OrderCashPanel() {
   return (
     <div className="page commerce-depth-panel">
       <Section title="Order-to-cash control" description="Orders, invoices, payments, credits, quality-refund exceptions, reversals, and reconciliation remain separate records with one traceable chain.">
+        {!demoFinance&&<p className="prototype-note" role="status">Connected finance is a non-posting review of previously recorded records. Browser-created receipts, invoice status changes, payment clearance, credit approvals and refunds are disabled pending authenticated provider reconciliation. A displayed Paid or Cleared label is not independent bank-settlement proof.</p>}
         <div className="company-rule-facts"><div><span>Open receivables</span><strong>{formatMoney(arTotal)}</strong><small>{receivables.length} open invoice{receivables.length === 1 ? "" : "s"}</small></div><div><span>Past due</span><strong>{formatMoney(pastDue)}</strong><small>Based on configured due dates</small></div><div><span>Cleared payments</span><strong>{commerce.payments.filter((payment) => payment.status === "Cleared").length}</strong><small>Settlement records</small></div><div><span>Credits / refunds</span><strong>{commerce.credits.length} / {commerce.refunds.length}</strong><small>Separate control records</small></div></div>
       </Section>
 
@@ -217,7 +225,7 @@ export function OrderCashPanel() {
             })}
           </div>
 
-          <div className="form-grid"><Field label="Receivable / reconciliation note" className="field--full"><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Collection note, discrepancy, customer promise, or reconciliation evidence" /></Field><div className="field--full"><Button size="sm" variant="secondary" onClick={submitNote}>Add note</Button></div></div>
+          {demoFinance&&<div className="form-grid"><Field label="Receivable / reconciliation note" className="field--full"><textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Collection note, discrepancy, customer promise, or reconciliation evidence" /></Field><div className="field--full"><Button size="sm" variant="secondary" onClick={submitNote}>Add note</Button></div></div>}
           {notes.length > 0 && <div className="hcm-audit-list">{notes.map((entry) => <article key={entry.id}><span><ShieldCheck size={16} /></span><div><strong>{data.users.find((user) => user.id === entry.authorId)?.name ?? "User"}</strong><p>{entry.note}</p><small>{formatDate(entry.createdAt, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</small></div></article>)}</div>}
         </Section>}
       </div>
