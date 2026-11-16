@@ -54,3 +54,9 @@ test("connected manager creation is guarded and existing-account editing stays d
  assert.match(src,/receipt\.readbackVerified/);
  assert.match(src,/if\(!canEdit\|\|!customer\|\|!account\)/);
 });
+
+test("new connected accounts hydrate the source before opening existing-account setup",()=>{
+ const src=source();
+ assert.match(src,/momentumStorage\.refreshKeys\(\["momentum-demo-workspace-v5"\]\)/);
+ assert.match(src,/if\(!refreshed\.ok\)/);
+});

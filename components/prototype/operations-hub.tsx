@@ -240,9 +240,15 @@ function LeadRecord({id}:{id:string}){
       if(!receipt.readbackVerified){
         setHandoffFeedback("Server receipt exists, but account ownership readback is not confirmed. Check the account before retrying with this form unchanged.");return;
       }
+      const refreshed=await momentumStorage.refreshKeys(["momentum-demo-workspace-v5","momentum-crm-v1"]);
+      if(!refreshed.ok){
+        setHandoffFeedback("Assignment is saved and source-verified, but CRM workspace sync is incomplete: "+
+          (refreshed.message??"Review sync status before continuing."));
+        return;
+      }
       pendingLeadRequest.current=null;
-      setHandoffFeedback("Assignment verified in CRM source. Reloading account.");
-      window.location.reload();
+      setNewOwner("");setHandoffReason("");
+      setHandoffFeedback("Assignment saved and verified in the connected CRM views.");
     }catch(error){
       setHandoffFeedback(error instanceof Error?error.message:"Assignment not confirmed. Check account history before retrying.");
     }finally{setSavingLead(false);}
@@ -281,9 +287,15 @@ function LeadRecord({id}:{id:string}){
            if(!receipt.readbackVerified){
              setQualificationFeedback("Server receipt exists but the updated source has not been verified. Check CRM before retrying with the same form.");return;
            }
+           const refreshed=await momentumStorage.refreshKeys(["momentum-demo-workspace-v5","momentum-crm-v1"]);
+           if(!refreshed.ok){
+             setQualificationFeedback("Lead stage is source-verified but CRM workspace sync is incomplete: "+
+               (refreshed.message??"Review sync status before continuing."));
+             return;
+           }
            pendingLeadRequest.current=null;
-           setQualificationFeedback("Stage verified in connected CRM. Reloading account.");
-           window.location.reload();
+           setQualificationReason("");
+           setQualificationFeedback("Lead stage saved and verified in connected CRM views.");
          }catch(error){
            setQualificationFeedback(error instanceof Error?error.message:"Qualification not confirmed. Check account history first.");
          }finally{setSavingLead(false);}

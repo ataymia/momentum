@@ -65,7 +65,7 @@ test("R21/R22/R79 connected lead state and assignment: authorized, atomic and re
  assert.equal((await commitTrustedCrmLead(rep,qualify(a,"Qualified","Sampled"),"sample"+key)).stage,"Sampled");
  await denied(commitTrustedCrmLead(rep,qualify(a,"Sampled","Qualified"),"reverse"+key),409);
  assert.equal((await commitTrustedCrmLead(mgr,qualify(a,"Sampled","Qualified"),"correct"+key)).stage,"Qualified");
- await denied(commitTrustedCrmLead(admin,qualify(c,"Opening order","Qualified"),"paid"+key),409);
+ await denied(commitTrustedCrmLead(admin,qualify(c,"Prospect","Qualified"),"paid"+key),409);
  await denied(commitTrustedCrmLead(admin,transfer(a,rep,"no-such-user"),"fake"+key),403);
  await db.doc("userAccess/"+mgr).update({accountState:"Suspended"});
  await denied(commitTrustedCrmLead(mgr,qualify(a,"Qualified","Sampled"),"suspend"+key),403);

@@ -72,6 +72,13 @@ export function CrmAccountSetup(){
         setCreationMessage("Server receipt received, but connected source readback is not confirmed. Leave this form unchanged and retry the same request after checking CRM.");
         return;
       }
+      // Verify the read snapshot is hydrated before selecting the new account.
+      const refreshed=await momentumStorage.refreshKeys(["momentum-demo-workspace-v5"]);
+      if(!refreshed.ok){
+        setCreationMessage("Account saved and source-verified, but workspace sync is incomplete: "+
+          (refreshed.message??"Refresh connected records before proceeding."));
+        return;
+      }
       pendingRequest.current=null;
       setDraft({...initialDraft});setAccountId(receipt.accountId);setMode("existing");
       setMessage("Account "+receipt.accountId+" confirmed in the connected source. Territory, tax documents, credit and payment terms are NOT approved. Existing-account edits remain read-only.");

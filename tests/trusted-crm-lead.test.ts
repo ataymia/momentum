@@ -15,6 +15,6 @@ test("connected lead workflows require server decisions, provenance and readback
  assert(client.includes("getFirestoreSnapshot"));
  assert(client.includes("readbackVerified"));
  assert(screen.includes("changeConnectedCrmLead"));
- assert(screen.includes("window.location.reload()"));
+ assert(screen.includes('momentumStorage.refreshKeys(["momentum-demo-workspace-v5","momentum-crm-v1"])'));
  assert(screen.includes("demoLeadWrite"));
 });
