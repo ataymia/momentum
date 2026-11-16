@@ -33,7 +33,7 @@ test("R43-R49: secured signed originals are separate from blank templates and ca
  assert(read.includes("readAuditId:auditId"));
  assert(review.includes("Quarantine misfiled original"));
  assert(review.includes("Quarantined; access revoked"));
- assert(read.includes("Private original is held for HR quarantine review."));
+ assert(read.includes("Unverified original intake is restricted to active HR Administrators."));
  assert(server.includes('if(!administrator)'));
  assert(read.includes('if(!active||role!=="Administrator")'));
  assert(firestore.includes('allow get, list: if isAdmin();'));
