@@ -64,7 +64,7 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  const [certBytes]=(await bucket.file(receipt.certificatePath).download());
  assert.equal(checksum(originalBytes),checksum(pdf));
  assert.equal(checksum(certBytes),checksum(cert));
- const saved=(await db.doc("hrSignedFormRecords/"+receipt.recordId).get()).data();
+ const saved=(await db.doc("hrOriginalIntakeRecords/"+receipt.recordId).get()).data();
  assert.equal(saved.employeeUid,worker);
  assert.equal(saved.complianceApproved,false);
  assert.equal(saved.independentlyVerified,false);
@@ -72,7 +72,7 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  assert.equal(saved.status,"Pending independent HR review");
  assert(!("tin" in saved));
  assert(!("pdfBase64" in saved));
- const audit=(await db.doc("hrSignedFormAudit/"+receipt.recordId).get()).data();
+ const audit=(await db.doc("hrOriginalIntakeAudit/"+receipt.recordId).get()).data();
  assert.equal(audit.actorUid,admin);
  assert.equal(audit.sha256,checksum(pdf));
  const replay=await archiveTrustedHrSignedOriginal(admin,original,archiveKey);
