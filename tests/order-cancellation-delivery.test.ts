@@ -23,7 +23,7 @@ test("sales users can cancel only their own pre-fulfillment orders while admins 
   assert.equal(canCancelOrder(rep,{...own,status:"Allocated"}),false);
 });
 
-test("delivery driver reads live commercial orders and current inventory lots",()=>{const source=readFileSync("lib/firestore-domains.ts","utf8");assert.match(source,/orders:\{read:\[\.\.\.OPERATIONAL,"Delivery Driver"\],write:\[\.\.\.OPERATIONAL,"Delivery Driver"\]\}/);assert.match(source,/inventoryLots:\{read:\[\.\.\.OPERATIONAL,"Delivery Driver"\]\}/)});
+test("delivery driver reads live commercial orders while clients cannot forge order statuses",()=>{const source=readFileSync("lib/firestore-domains.ts","utf8");assert.match(source,/orders:\{read:\[\.\.\.OPERATIONAL,"Delivery Driver"\],write:\[\]\}/);assert.match(source,/inventoryLots:\{read:\[\.\.\.OPERATIONAL,"Delivery Driver"\]\}/)});
 
 test("order cancellation is evidence-preserving, self-service for the creator, and cloud-confirmed",()=>{
   const workspace=readFileSync("lib/workspace-context.tsx","utf8");
