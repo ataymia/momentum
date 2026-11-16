@@ -5,12 +5,14 @@ import {getFirestore} from "firebase-admin/firestore";
 type Row=Record<string,unknown>;
 type OrderLine={skuId:string;description:string;casePack:number;cases:number};
 type IntakeDraft={accountId:string;lines:OrderLine[];note:string};
+export type OrderIntakeStage="Needs commercial review"|"Needs clarification"|"Pricing and inventory verification"|"Declined";
 export type OrderIntakeRecord={
  id:string;accountId:string;customerId:string;requestedByUid:string;
- ownerAtSubmission:string;createdAt:string;status:"Needs commercial review";
+ ownerAtSubmission:string;createdAt:string;status:OrderIntakeStage;
+ reviewedAt?:string;reviewedBy?:string;reviewReason?:string;
  lines:OrderLine[];totalCases:number;note:string;source:string;
 };
-type IntakeReceipt={intakeId:string;createdAt:string;status:"Needs commercial review";replayed:boolean};
+type IntakeReceipt={intakeId:string;createdAt:string;status:OrderIntakeStage;replayed:boolean};
 const catalog=[
  {skuId:"ge-original-250ml-24",description:"0.25L (8.4oz) Golden Eagle Energy Drink (24pack)",casePack:24},
  {skuId:"ge-sugarfree-250ml-24",description:"0.25L (8.4oz) Golden Eagle SugarFree (24pack)",casePack:24},
@@ -107,7 +109,7 @@ export async function submitTrustedOrderIntake(
    if(!proof?.exists||text(proof.data()?.requestedByUid)!==actorUid)
     throw new OrderIntakeError(409,"Previous intake needs source reconciliation.");
    return{intakeId,createdAt:text(saved?.createdAt),
-    status:"Needs commercial review" as const,replayed:true};
+    status:proof.data()?.status as OrderIntakeStage,replayed:true};
   }
   const account=records(accountsSnap.data()).find(row=>text(row.id)===draft.accountId);
   if(!account)throw new OrderIntakeError(404,"Customer account is not available.");
@@ -141,7 +143,7 @@ export async function submitTrustedOrderIntake(
  });
 }
 
-/** Read one immutable submission, never the mutable approval/settlement ledger.
+/** Read one source submission plus nonbinding review stage, never an order or settlement ledger.
  * @param {string} actorUid Verified session.
  * @param {unknown} rawIntakeId Opaque intake identifier.
  * @return {Promise<OrderIntakeRecord>} Record from source.

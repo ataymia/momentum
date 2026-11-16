@@ -24,6 +24,7 @@ import {commitTrustedCrmFieldVisit,TrustedCrmVisitError} from "./trusted-crm-fie
 import {createTrustedCrmAccount,TrustedAccountCreationError} from "./trusted-account-creation";
 import {commitTrustedCrmLead,TrustedCrmLeadError} from "./trusted-crm-lead";
 import {submitTrustedOrderIntake,getTrustedOrderIntake,listTrustedOrderIntakes,OrderIntakeError} from "./trusted-order-intake";
+import {decideTrustedOrderIntake} from "./trusted-order-intake-review";
 import {registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError} from "./trusted-hr-template";
 import {uploadTrustedBlankHrTemplate} from "./trusted-hr-template-upload";
 import {submitTrustedHrLeave,TrustedHrLeaveError} from "./trusted-hr-leave-request";
@@ -1966,6 +1967,32 @@ export const reviewOrderIntake=onRequest({cors:true,region:"us-central1"},async(
   }
   console.error("reviewOrderIntake failed",error);
   json(response,503,{ok:false,message:"Intake register temporarily unavailable. Do not infer no orders."});
+ }
+});
+
+/** Administrator-only nonbinding commercial-intake decision. */
+export const decideOrderIntake=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const payload=request.body;
+ if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+  Object.keys(payload).some(k=>!["decision","requestId"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid review request."});return;
+ }
+ const authorization=request.headers.authorization??"";
+ const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  const receipt=await decideTrustedOrderIntake(actor,payload.decision,payload.requestId);
+  json(response,200,{ok:true,...receipt});
+ }catch(error){
+  if(error instanceof OrderIntakeError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("decideOrderIntake failed",error);
+  json(response,503,{ok:false,message:"Review not confirmed. Reload source before retrying."});
  }
 });
 
