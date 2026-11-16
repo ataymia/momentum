@@ -249,7 +249,8 @@ export async function listTrustedHrSignedOriginals(actorUid:string,targetUid:unk
   throw new HrOriginalArchiveError(403,"HR document scope is not authorized.");
  const items=await db.collection("hrOriginalIntakeRecords")
   .where("employeeUid","==",employeeUid).limit(40).get();
- return items.docs.map(snapshot=>{
+ return items.docs.filter(snapshot=>administrator||
+  txt(snapshot.data().status)!=="Quarantined; access revoked").map(snapshot=>{
   const v=snapshot.data();
   return {id:snapshot.id,employeeUid,
    kind:txt(v.kind),status:txt(v.status),createdAt:txt(v.createdAt),
