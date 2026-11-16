@@ -81,10 +81,10 @@ export async function readTrustedHrOriginal(
    action:"Private original retrieved after storage integrity readback",
   });
   return {
-   recordId,artifact,sha256,
+   recordId,artifact,sha256,readAuditId:auditId,
    fileName:kind+"-"+recordId+"-"+requiredName,
    pdfBase64:bytes.toString("base64"),
-   status:"Pending independent HR review",
+   status:txt(entry.status)||"Pending independent HR review",
   };
  }catch(error){
   if(error instanceof HrOriginalArchiveError)throw error;
