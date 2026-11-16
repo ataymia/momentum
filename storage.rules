@@ -82,7 +82,7 @@ service firebase.storage {
     // Allow individual document fetches for the employee or an active Administrator; disallow listing
     // the bucket prefix and modifying the immutable signed originals from all client accounts.
     match /hr-private/{employeeUid}/{formKey}/{artifactId}/{fileName} {
-      allow get: if (formKey in ['I9', 'W4', 'AZ_A4', 'W9'])
+      allow get: if (formKey in ['I9', 'W4', 'AZ_A4', 'W9', 'CONTRACTOR_AGREEMENT', 'EMPLOYEE_AGREEMENT', 'OTHER'])
         && (fileName in ['signed.pdf', 'certificate.pdf'])
         && (isAdmin() || (isEmployee() && request.auth.uid == employeeUid));
       allow list, create, update, delete: if false;
