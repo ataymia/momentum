@@ -274,7 +274,18 @@ export function hourlyWagesForApprovedTimecards(data:WorkspaceData,hcm:HCMState,
   return {regularHours,overtimeHours,regularPay,overtimePay};
 }
 
+/** Worker-specific tax route: contractors must never use employee withholding.
+ * Unclassified legacy records require a separate migration/compliance check.
+ */
+export function payrollTaxRoute(hcm:HCMState,userId:string):"W-2 candidate"|"Contractor payable"|"Classification review"{
+ const employee=hcm.employees?.find(row=>row.userId===userId);
+ if(!employee||employee.classification==="Not configured")return "Classification review";
+ if(employee.classification==="Contractor")return "Contractor payable";
+ return "W-2 candidate";
+}
+
 export function calculateRegularLine(state: PayrollState, data: WorkspaceData, hcm: HCMState, employeeId: string, periodStart: string, periodEnd: string, sourceTimecardIds: string[]): PayLine | null {
+  if (hcm.employees?.some(row=>row.userId===employeeId)&&payrollTaxRoute(hcm,employeeId)!=="W-2 candidate")return null;
   if (!isValidCalendarDateKey(periodStart) || !isValidCalendarDateKey(periodEnd) || periodEnd < periodStart || !activeEmployerTaxConfigurationValid(state, periodEnd)) return null;
   const employee = activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, periodEnd);
@@ -298,7 +309,7 @@ export function calculateRegularLine(state: PayrollState, data: WorkspaceData, h
 }
 
 export function calculateBonusLine(state: PayrollState, hcm: HCMState, employeeId: string, payDate: string, bonusAmount: number, bonusIds: string[]): PayLine | null {
-  void hcm;
+  if (hcm.employees?.some(row=>row.userId===employeeId)&&payrollTaxRoute(hcm,employeeId)!=="W-2 candidate")return null;
   if (!isValidCalendarDateKey(payDate) || !bonusIds.length || new Set(bonusIds).size !== bonusIds.length || !activeEmployerTaxConfigurationValid(state, payDate)) return null;
   const employee = activePayrollEmployee(state, employeeId);
   const withholding = activeWithholding(state, employeeId, payDate);
