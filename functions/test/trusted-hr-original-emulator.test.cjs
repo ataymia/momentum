@@ -66,6 +66,8 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  const [certBytes]=(await bucket.file(receipt.certificatePath).download());
  assert.equal(checksum(originalBytes),checksum(pdf));
  assert.equal(checksum(certBytes),checksum(cert));
+ assert(receipt.certificateGeneration,
+  "Certificate generation is authoritative evidence and must be persisted");
  const saved=(await db.doc("hrOriginalIntakeRecords/"+receipt.recordId).get()).data();
  assert.equal(saved.employeeUid,worker);
  assert.equal(saved.complianceApproved,false);
@@ -86,8 +88,9 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
   "An idempotent retry must not rewrite the signed original");
  assert.equal(checksum((await bucket.file(receipt.originalPath).download())[0]),checksum(pdf));
  assert.equal(checksum((await bucket.file(receipt.certificatePath).download())[0]),checksum(cert));
- assert(afterReplayCertificateMetadata.generation,
-  "Completion certificate must remain available after replay");
+ assert.equal(String(afterReplayCertificateMetadata.generation),
+  receipt.certificateGeneration,
+  "Idempotent retries must never rewrite signed completion certificates");
  await deny(archiveTrustedHrSignedOriginal(admin,{...original,reference:"DIFFERENT-SOURCE"} ,archiveKey),409);
  const adminView=await listTrustedHrSignedOriginals(admin,worker);
  assert(adminView.some(item=>item.id===receipt.recordId&&item.hasCertificate));
@@ -203,5 +206,9 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
   "%PDF-1.7\n1 0 obj\n<< /Type /Tampered >>\nendobj\n%%EOF\n"
  ),{contentType:"application/pdf",resumable:false});
  await deny(readTrustedHrOriginal(admin,{recordId:receipt.recordId,artifact:"Original"}),409);
+ await bucket.file(receipt.certificatePath).save(cert,
+  {contentType:"application/pdf",resumable:false});
+ await deny(readTrustedHrOriginal(admin,
+  {recordId:receipt.recordId,artifact:"Certificate"}),409);
 });
 
