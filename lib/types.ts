@@ -124,6 +124,10 @@ export type CustomerAccount = {
   onboardingPackageStatus?: OnboardingPackageStatus;
   onboardingPackagePreparedAt?: string;
   onboardingPackagePreparedBy?: string;
+  /** Server-owned compare-and-set revision for connected nonbinding contact edits. */
+  contactRevision?: number;
+  contactUpdatedAt?: string;
+  contactUpdatedBy?: string;
   onboardingProviderStatus?: "Provider not selected" | "Ready to connect" | "Connected";
   notes?: string;
   createdAt: string;
