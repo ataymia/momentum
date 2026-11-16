@@ -1,4 +1,4 @@
-/* eslint-disable max-len, comma-spacing, key-spacing, indent, object-curly-spacing, curly, brace-style, keyword-spacing, arrow-parens, space-before-blocks */
+/* eslint-disable max-len, comma-spacing, key-spacing, indent, object-curly-spacing, curly, brace-style, keyword-spacing, arrow-parens, space-before-blocks, no-control-regex */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {HrOriginalArchiveError} from "./trusted-hr-signed-original";
@@ -34,9 +34,12 @@ function parseIntent(value:unknown):Intent{
   "recordId","expectedStatus","decision","reason","readAuditId","sha256",
  ].includes(k)))
   throw new HrOriginalArchiveError(400,"Invalid HR review fields.");
- const recordId=txt(value.recordId),expectedStatus=txt(value.expectedStatus);
- const decision=txt(value.decision),reason=txt(value.reason);
- const readAuditId=txt(value.readAuditId),sha256=txt(value.sha256).toLowerCase();
+ const recordId=txt(value.recordId);
+ const expectedStatus=txt(value.expectedStatus);
+ const decision=txt(value.decision);
+ const reason=txt(value.reason);
+ const readAuditId=txt(value.readAuditId);
+ const sha256=txt(value.sha256).toLowerCase();
  if(!uuid.test(recordId)||!uuid.test(readAuditId)||
   !Object.prototype.hasOwnProperty.call(transitions,expectedStatus)||
   !transitions[expectedStatus as ReviewStatus].includes(decision as ReviewDecision)||
