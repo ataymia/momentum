@@ -526,6 +526,21 @@ service cloud.firestore {
         && resource.data.employeeUid == request.auth.uid);
       allow create, update, delete: if false;
     }
+    // Completed-document intake never writes the provider-attested signed form register.
+    // Originals await separate signature, I-9, tax and classification review.
+    match /hrOriginalIntakeRecords/{recordId} {
+      allow get, list: if isAdmin() || (isEmployee()
+        && resource.data.employeeUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+    match /hrOriginalIntakeAudit/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    // Untrusted clients cannot create or inspect signed-original retry reservations.
+    match /hrOriginalArchiveRequests/{requestId} {
+      allow read, write: if false;
+    }
     // Server-owned, append-only audit events; no browser impersonation or deletion.
     match /hrSignedFormAudit/{auditId} {
       allow get, list: if isAdmin();
