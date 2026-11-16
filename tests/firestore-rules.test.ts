@@ -1346,3 +1346,15 @@ describe("P0 commercial order and approval integrity: no browser can post financ
     }
   });
 });
+
+describe("connected CRM contacts require trusted server mutations",()=>{
+ test("no client, including Administrator, may directly replace shared contacts",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(setDoc(doc(dbFor(uid),"domains/crm/fields/contacts"),{
+    items:[{id:"forged-contact",createdBy:uid,name:"Forged"}],
+   }));
+   await assertFails(setDoc(doc(dbFor(uid),"crmContactRequestKeys/forged"),{actorUid:uid}));
+   await assertFails(setDoc(doc(dbFor(uid),"crmContactAudit/forged"),{actorUid:uid}));
+  }
+ });
+});
