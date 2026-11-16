@@ -27,3 +27,9 @@
 
 ## Suggested smallest next staging walkthrough
 On an authorized staging setup, sign in as a Sales Representative; submit one Quick Visit against a known assigned location; verify the server receipt, CRM record, provenance, and permitted role readback; retry the exact request ID and verify only one visit and optional sample are stored. Then attempt the same request against an unauthorized customer and confirm a 403 and zero writes. Record source IDs, exact timestamps, negative-case evidence, and the Firebase function version in the acceptance register.
+
+## November 15 connected-workflow source guards (NOT owner-accepted)
+- **R18:** `createCrmAccount` supports verified Administrator/Sales Manager only. A transaction stores Prospect, customer grouping, provenance and retry fingerprint; browser verifies its source readback. Representative territory scope, customer invitations, tax forms and credit approvals remain unimplemented.
+- **R75:** Shared workspace account and customer registers reject all direct browser writes. Legacy browser-created account, assignment, pricing, tax, territory and geographic patches are disabled in connected mode pending trusted endpoints. Historical sensitive fields require separate privacy/migration review.
+- **R23/R30/R36:** Browser switches cannot mark invoices collected or import authoritative inventory lots in connected mode. Processor settlement, warehouse receiving and cross-ledger reconciliation remain open; isolated demo behavior is preserved.
+- **CI:** Playwright 1.55.1 Chromium installation failed on GitHub's Ubuntu 26.04 runner. Browser QA workflows were pinned to Ubuntu 24.04 for exact-head reruns; this does not replace real-user staging.

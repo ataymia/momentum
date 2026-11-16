@@ -351,6 +351,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const createAccount = (account: NewAccountInput, territoryExceptionReason?: string) => {
+    // Connected creation belongs to the server transaction, not browser arrays.
+    if(!demoMode||momentumStorage.mode()!=="local")return null;
     if (!validateNewAccountContact(account).ok) return null;
     const postalCode=normalizePostalCode(account.postalCode);
     if(!postalCode)return null;
@@ -376,6 +378,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
 
   /** Geocode/territory results only. Never touches ownership, stage, or any attribution field. */
   const patchAccountLocation = (accountId: string, patch: AccountLocationPatch) => {
+    if(!demoMode||momentumStorage.mode()!=="local")return false;
     if (!currentUser || currentUser.role === "Customer") return false;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return false;
@@ -386,6 +389,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const updateAccountCommercial = (accountId: string, patch: CommercialAccountInput) => {
+    // Pricing and geographic changes need an authenticated, audited backend.
+    if(!demoMode||momentumStorage.mode()!=="local")return false;
     if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative"].includes(currentUser.role)) return false;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return false;
@@ -430,6 +435,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const updateCustomerCommercial=(customerId:string,patch:CommercialCustomerPatch)=>{
+    // Client patches cannot be authoritative tax, credit or billing records.
+    if(!demoMode||momentumStorage.mode()!=="local")return false;
     if(!currentUser)return false;
     const customer=(data.customers??[]).find((item)=>item.id===customerId);if(!customer)return false;
     const management=["Administrator","Sales Manager"].includes(currentUser.role);
@@ -474,6 +481,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const saveTerritory=(input:TerritoryInput):TerritoryMutationResult=>{
+    if(!demoMode||momentumStorage.mode()!=="local")return{ok:false,message:"Connected territory changes need a trusted server workflow."};
     if(!currentUser||!["Administrator","Sales Manager"].includes(currentUser.role))return{ok:false,message:"Territory administration is restricted."};
     const existing=input.id?commercial.territories.find((territory)=>territory.id===input.id):undefined;
     if(input.id&&!existing)return{ok:false,message:"Territory not found."};
@@ -504,6 +512,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const transferAccountResponsibility = (accountId: string, toUserId: string, reason: string) => {
+    // Ownership and compensation attribution must never be browser-authored.
+    if(!demoMode||momentumStorage.mode()!=="local")return false;
     if (!currentUser || !["Administrator", "Sales Manager"].includes(currentUser.role) || reason.trim().length < 3) return false;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !canTransferSalesResponsibility(data, currentUser, account, toUserId)) return false;
@@ -778,6 +788,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
 
   // Stable across navigation so Commerce does not re-reconcile every invoice on every click.
   const reconcileOrderPayment = useCallback((id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => {
+    // Bank-collected revenue requires a verified payment source.
+    if(!demoMode||momentumStorage.mode()!=="local")return;
     if (!canReconcileOrderPayment(currentUser)) return;
     if (status === "Paid" && paidAt !== undefined && !isValidCalendarDateKey(paidAt)) return;
     const order = commercial.orders.find((item) => item.id === id);
@@ -801,6 +813,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   }, [base.reconcileOrderPayment, commercial, currentUser, data]);
 
   const importInventoryLots = (lots: InventoryLot[]) => {
+    // Quantity and lot provenance need a trusted warehouse receiving workflow.
+    if(!demoMode||momentumStorage.mode()!=="local")return 0;
     if (!currentUser || !["Administrator", "Operations", "Warehouse"].includes(currentUser.role)) return 0;
     const existingCodes = new Set(data.inventory.map((lot) => lot.lotCode.trim().toLowerCase()));
     const seenCodes = new Set(existingCodes);

@@ -88,3 +88,17 @@ test("connected creation checks authenticated source readback",()=>{
  assert.match(screen,/createConnectedCrmAccount\(firebase.session,result.payload/);
  assert.match(screen,/pendingRequest\.current/);
 });
+
+test("connected accounts, ownership, tax, paid revenue and stock cannot use legacy client writes",()=>{
+ const source=readFileSync("lib/workspace-context.tsx","utf8");
+ for(const action of [
+  "const createAccount =", "const updateAccountCommercial =",
+  "const updateCustomerCommercial=", "const transferAccountResponsibility =",
+  "const reconcileOrderPayment =", "const importInventoryLots =",
+ ]){
+  const at=source.indexOf(action);
+  assert.notEqual(at,-1,action);
+  assert.match(source.slice(at,at+400),
+    /!demoMode\|\|momentumStorage\.mode\(\)!=="local"/,action);
+ }
+});
