@@ -10,7 +10,7 @@ if(!process.env.FIRESTORE_EMULATOR_HOST)
 const app=initializeApp({projectId:"momentum-rules-test"});
 const db=getFirestore(app);
 const {submitTrustedOrderIntake,getTrustedOrderIntake,listTrustedOrderIntakes,
- OrderIntakeError}=require("../lib/trusted-order-intake.js");
+ pageTrustedOrderIntakes,OrderIntakeError}=require("../lib/trusted-order-intake.js");
 const {decideTrustedOrderIntake}=require("../lib/trusted-order-intake-review.js");
 const suffix=randomUUID().replaceAll("-","").slice(0,14);
 const ids={
@@ -145,4 +145,48 @@ test("R33 reviewer transitions require an active Admin, verified source, replay 
  ]){
   assert.equal((await db.doc(path).get()).data().items[0].id,originalId);
  }
+});
+
+
+test("R33 Administrator source intake pagination does not silently omit older requests",async()=>{
+ const recordIds=new Set();
+ const batch=db.batch();
+ for(let i=0;i<47;i++){
+  const id="intake-"+randomUUID();
+  recordIds.add(id);
+  batch.create(db.doc("commerceOrderIntakes/"+id),{
+   id,accountId:ids.account,customerId:"customer-"+suffix,
+   requestedByUid:ids.rep,ownerAtSubmission:ids.rep,
+   createdAt:new Date(Date.UTC(2026,9,1,0,0,i)).toISOString(),
+   status:"Needs commercial review",lines:[],totalCases:1,
+   note:"Synthetic pagination test",source:"Isolated emulator seed",
+  });
+ }
+ await batch.commit();
+ await deny(pageTrustedOrderIntakes(ids.rep,null),403);
+ await deny(pageTrustedOrderIntakes(ids.suspended,null),403);
+ await deny(pageTrustedOrderIntakes(ids.admin,"not-valid"),400);
+ await deny(pageTrustedOrderIntakes(ids.admin,"intake-"+randomUUID()),409);
+ const seen=new Set(),pages=[];
+ let cursor=null;
+ let count=0;
+ do{
+  const page=await pageTrustedOrderIntakes(ids.admin,cursor);
+  count++;
+  assert.equal(page.limit,40);
+  assert(page.records.length<=40);
+  assert(page.records.every(entry=>!seen.has(entry.id)),
+   "Cursor pages must not contain earlier source records");
+  for(const entry of page.records)seen.add(entry.id);
+  pages.push(page);
+  cursor=page.nextCursor;
+  assert(count<=10,"Pagination must terminate rather than cycle");
+ }while(cursor);
+ assert(count>=2);
+ assert(pages.at(-1).nextCursor===null);
+ for(const id of recordIds)assert(seen.has(id),"Original source request omitted: "+id);
+ const first=await pageTrustedOrderIntakes(ids.admin,null);
+ const repeated=await pageTrustedOrderIntakes(ids.admin,null);
+ assert.deepEqual(repeated.records.map(row=>row.id),first.records.map(row=>row.id));
+ assert.equal(repeated.nextCursor,first.nextCursor);
 });
