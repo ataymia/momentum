@@ -144,6 +144,13 @@ export async function updateTrustedCustomerContacts(
    customer.contactRevision:0;
   if(!Number.isSafeInteger(revision)||revision<0||revision!==input.expectedRevision)
    throw new CustomerContactUpdateError(409,"Customer profile changed. Refresh before editing.");
+  // A contact update may not reset or downgrade any externally reviewed
+  // onboarding package. Such a transition needs a dedicated HR/legal reviewer.
+  if(input.patch.onboardingPackageStatus!==undefined&&
+   !["Not started","Prepared"].includes(
+    str(customer.onboardingPackageStatus)||"Not started"))
+   throw new CustomerContactUpdateError(409,
+    "Existing reviewed package cannot be changed from contact setup.");
   const changed=(Object.keys(input.patch) as ContactField[])
    .filter(key=>str(customer[key])!==input.patch[key]);
   if(!changed.length)
@@ -156,6 +163,10 @@ export async function updateTrustedCustomerContacts(
   if(input.patch.onboardingPackageStatus==="Prepared"){
    updated.onboardingPackagePreparedAt=now;
    updated.onboardingPackagePreparedBy=actorUid;
+  }
+  if(input.patch.onboardingPackageStatus==="Not started"){
+   delete updated.onboardingPackagePreparedAt;
+   delete updated.onboardingPackagePreparedBy;
   }
   const nextCustomers=customers.map(row=>
    str(row.id)===input.customerId?updated:row);
