@@ -4,9 +4,11 @@ import {firebaseFunctionUrl} from "./firebase-functions";
 export type OrderIntakeDraft={
  accountId:string;lines:Array<{skuId:string;cases:number}>;note:string;
 };
+export type OrderIntakeStage="Needs commercial review"|"Needs clarification"|"Pricing and inventory verification"|"Declined";
 export type OrderIntakeRecord={
  id:string;accountId:string;customerId:string;requestedByUid:string;
- ownerAtSubmission:string;createdAt:string;status:"Needs commercial review";
+ ownerAtSubmission:string;createdAt:string;status:OrderIntakeStage;
+ reviewedAt?:string;reviewedBy?:string;reviewReason?:string;
  totalCases:number;note:string;
  lines:Array<{skuId:string;description:string;casePack:number;cases:number}>;
  source:string;
@@ -21,7 +23,7 @@ export type OrderIntakeReceipt={
  * @return {Promise<unknown>} Validated response envelope.
  */
 async function call(
- session:FirebaseAuthSession,endpoint:"submitOrderIntake"|"reviewOrderIntake",
+ session:FirebaseAuthSession,endpoint:"submitOrderIntake"|"reviewOrderIntake"|"decideOrderIntake",
  payload:Record<string,unknown>,
 ):Promise<unknown>{
  let response:Response;
@@ -57,7 +59,7 @@ export async function submitConnectedOrderIntake(
   const record=evidence.record;
   readbackVerified=Boolean(record&&record.id===response.intakeId&&
    record.accountId===draft.accountId&&record.requestedByUid===session.uid&&
-   record.status==="Needs commercial review"&&record.lines.length===draft.lines.length&&
+   ["Needs commercial review","Needs clarification","Pricing and inventory verification","Declined"].includes(record.status)&&record.lines.length===draft.lines.length&&
    draft.lines.every(line=>record.lines.some(item=>
     item.skuId===line.skuId&&item.cases===line.cases)));
  }catch{
@@ -78,4 +80,19 @@ export async function listConnectedOrderIntakes(
  if(!Array.isArray(response.records))
   throw new Error("Commercial intake register could not be verified.");
  return{records:response.records,limit:response.limit??40};
+}
+
+/** Verified Administrator decision; does not issue an order or charge money. */
+export async function decideConnectedOrderIntake(
+ session:FirebaseAuthSession,decision:{
+  intakeId:string;expectedStatus:OrderIntakeStage;nextStatus:OrderIntakeStage;reason:string;
+ },requestId:string,
+):Promise<{intakeId:string;status:OrderIntakeStage;reviewedAt:string;replayed:boolean}>{
+ const record=await call(session,"decideOrderIntake",{decision,requestId}) as
+  {intakeId?:string;status?:OrderIntakeStage;reviewedAt?:string;replayed?:boolean};
+ if(!record.reviewedAt||record.intakeId!==decision.intakeId||
+  record.status!==decision.nextStatus)
+  throw new Error("Review receipt is incomplete. Read source before retrying.");
+ return{intakeId:record.intakeId,status:record.status,
+  reviewedAt:record.reviewedAt,replayed:Boolean(record.replayed)};
 }
