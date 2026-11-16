@@ -46,3 +46,11 @@ test("new-account hydration cannot fall back to editing an unrelated existing cu
   assert.match(src,/const account=accountId\?scope\.accounts\.find\(a=>a\.id===accountId\):scope\.accounts\[0\]/);
   assert.doesNotMatch(src,/scope\.accounts\.find\(a=>a\.id===accountId\)\|\|scope\.accounts\[0\]/);
 });
+
+test("connected manager creation is guarded and existing-account editing stays demo-only",()=>{
+ const src=source();
+ assert.match(src,/connectedCreate=Boolean/);
+ assert.match(src,/canCreateNew=canEdit\|\|connectedCreate/);
+ assert.match(src,/receipt\.readbackVerified/);
+ assert.match(src,/if\(!canEdit\|\|!customer\|\|!account\)/);
+});
