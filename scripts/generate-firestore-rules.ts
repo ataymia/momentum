@@ -487,6 +487,19 @@ service cloud.firestore {
         && request.resource.data.updatedBy == request.auth.uid;
       allow delete: if false;
     }
+    // Administrator-readable blank-PDF template catalog; trusted function is the only writer.
+    match /hrTemplateCatalog/{templateId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /hrTemplateAudit/{auditId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /hrTemplateRegistrationKeys/{requestId} {
+      allow read, write: if false;
+    }
+
     // HR e-form receipt metadata never contains tax identifiers or document field values.
     // Only the trusted server can create/update it after verifying the signing provider.
     // Employees can query their own records using employeeUid == auth.uid; HR Administrators
