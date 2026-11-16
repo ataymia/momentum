@@ -25,6 +25,7 @@ import {createTrustedCrmAccount,TrustedAccountCreationError} from "./trusted-acc
 import {updateTrustedCustomerContacts,CustomerContactUpdateError} from "./trusted-customer-contact";
 import {commitTrustedCrmLead,TrustedCrmLeadError} from "./trusted-crm-lead";
 import {saveTrustedCrmContact,TrustedCrmContactError} from "./trusted-crm-contact";
+import {saveTrustedCrmDeal,TrustedCrmDealError} from "./trusted-crm-deal";
 import {submitTrustedOrderIntake,getTrustedOrderIntake,pageTrustedOrderIntakes,OrderIntakeError} from "./trusted-order-intake";
 import {decideTrustedOrderIntake} from "./trusted-order-intake-review";
 import {registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError} from "./trusted-hr-template";
@@ -2143,6 +2144,33 @@ export const saveCrmContact=onRequest({cors:true,region:"us-central1"},async(req
   }
   console.error("saveCrmContact failed",error);
   json(response,503,{ok:false,message:"Contact save unconfirmed. Check CRM before retrying with the same request ID."});
+ }
+});
+
+
+/** Revocation-checked CRM opportunity write endpoint; no financial effects. */
+export const saveCrmDeal=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const body=request.body;
+ if(!body||typeof body!=="object"||Array.isArray(body)||
+   Object.keys(body).some(k=>!["intent","requestId"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid opportunity request.");return;
+ }
+ const header=request.headers.authorization??"";
+ const token=header.startsWith("Bearer ")?header.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  const result=await saveTrustedCrmDeal(actor,body.intent,body.requestId);
+  json(response,200,{ok:true,...result});
+ }catch(error){
+  if(error instanceof TrustedCrmDealError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("saveCrmDeal failed",error);
+  json(response,503,{ok:false,message:"Opportunity save unconfirmed. Check the source before retrying."});
  }
 });
 
