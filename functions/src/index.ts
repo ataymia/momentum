@@ -28,6 +28,7 @@ import {decideTrustedOrderIntake} from "./trusted-order-intake-review";
 import {registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError} from "./trusted-hr-template";
 import {uploadTrustedBlankHrTemplate} from "./trusted-hr-template-upload";
 import {archiveTrustedHrSignedOriginal,listTrustedHrSignedOriginals,HrOriginalArchiveError} from "./trusted-hr-signed-original";
+import {readTrustedHrOriginal} from "./trusted-hr-original-read";
 import {submitTrustedHrLeave,TrustedHrLeaveError} from "./trusted-hr-leave-request";
 import {commitTrustedLeaveDecision,TrustedLeaveDecisionError} from "./trusted-hr-leave-decision";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
@@ -1893,12 +1894,15 @@ export const hrSignedOriginalArchive=onRequest({cors:true,region:"us-central1"},
  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
  const body=request.body;
  if(!body||typeof body!=="object"||Array.isArray(body)||
-  Object.keys(body).some(k=>!["action","original","requestId","employeeUid"].includes(k))||
-  !["Archive","List"].includes(body.action)){
+  Object.keys(body).some(k=>!["action","original","requestId","employeeUid","recordId","artifact"].includes(k))||
+  !["Archive","List","Read"].includes(body.action)){
   json(response,400,{ok:false,message:"Invalid HR original archive request."});return;
  }
  if(body.action==="Archive"&&body.employeeUid!==undefined){
   json(response,400,{ok:false,message:"Worker identity must be inside the archived document request."});return;
+ }
+ if(body.action==="Read"&&Object.keys(body).some(k=>!["action","recordId","artifact"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid private original read envelope."});return;
  }
  if(body.action==="List"&&(body.original!==undefined||body.requestId!==undefined)){
   json(response,400,{ok:false,message:"Invalid HR original list envelope."});return;
@@ -1913,6 +1917,11 @@ export const hrSignedOriginalArchive=onRequest({cors:true,region:"us-central1"},
   if(body.action==="List"){
    const records=await listTrustedHrSignedOriginals(actor,body.employeeUid);
    json(response,200,{ok:true,records});return;
+  }
+  if(body.action==="Read"){
+   const file=await readTrustedHrOriginal(actor,{recordId:body.recordId,artifact:body.artifact});
+   response.setHeader("Cache-Control","no-store, private");
+   json(response,200,{ok:true,...file});return;
   }
   const receipt=await archiveTrustedHrSignedOriginal(actor,body.original,body.requestId);
   json(response,200,{ok:true,...receipt});
