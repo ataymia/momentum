@@ -55,7 +55,10 @@ test("R43-R49: secured signed originals are separate from blank templates and ca
  assert(firestore.includes("match /hrOriginalArchiveRequests/{requestId}"));
  assert(firestore.includes("match /hrOriginalIntakeRecords/{recordId}"));
  assert(storage.includes("match /hr-private/{employeeUid}/{formKey}/{artifactId}/{fileName}"));
- assert(storage.includes("allow list, create, update, delete: if false;"));
+ assert(storage.includes("allow get, list, create, update, delete: if false;"));
+ assert(!storage.includes("request.auth.uid == employeeUid"));
+ assert(client.includes("downloadHrOriginalBytes"));
+ assert(index.includes("export const hrSignedOriginalArchive="));
 });
 
 test("Contractor and employee forms remain isolated, with no implied completed compliance",()=>{
