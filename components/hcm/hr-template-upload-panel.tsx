@@ -17,7 +17,7 @@ export function HrTemplateUploadPanel(){
  const firebase=useFirebaseSessionOptional();
  const [kind,setKind]=useState<HrTemplateKind>("W9");
  const [title,setTitle]=useState("IRS Form W-9");
- const [edition,setEdition]=useState("2026");
+ const [edition,setEdition]=useState("");
  const [selected,setSelected]=useState<File|null>(null);
  const [blankConfirmed,setBlankConfirmed]=useState(false);
  const [hints,setHints]=useState<HrTemplateFieldHint[]>([]);
@@ -108,7 +108,7 @@ export function HrTemplateUploadPanel(){
     <label>Template title <input aria-label="HR template title" required minLength={5} maxLength={120}
       value={title} onChange={event=>setTitle(event.target.value)} disabled={busy||Boolean(pending)}/></label>
     <label>Official edition or revision <input aria-label="HR form edition" required maxLength={64}
-      value={edition} onChange={event=>setEdition(event.target.value)} disabled={busy||Boolean(pending)}/></label>
+      value={edition} placeholder="Read exact revision from official PDF" onChange={event=>setEdition(event.target.value)} disabled={busy||Boolean(pending)}/></label>
     <label>Unsigned PDF <input ref={fileInput} aria-label="Upload blank HR PDF" type="file"
       accept=".pdf,application/pdf" disabled={busy||Boolean(pending)}
       onChange={event=>{setSelected(event.target.files?.[0]??null);setMessage("");uploadId.current=null;}}/></label>
