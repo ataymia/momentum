@@ -242,15 +242,14 @@ export async function listTrustedHrSignedOriginals(actorUid:string,targetUid:unk
  const access=(await db.doc("userAccess/"+actorUid).get()).data();
  const active=txt(access?.accountState)==="Active";
  const administrator=active&&txt(access?.role)==="Administrator";
- if(!active||txt(access?.role)==="Customer")
-  throw new HrOriginalArchiveError(403,"HR document access is not authorized.");
+ if(!administrator)
+  throw new HrOriginalArchiveError(403,"Unverified HR intake metadata is Administrator-only.");
  const employeeUid=txt(targetUid)||actorUid;
- if(!uid.test(employeeUid)||(!administrator&&employeeUid!==actorUid))
+ if(!uid.test(employeeUid))
   throw new HrOriginalArchiveError(403,"HR document scope is not authorized.");
  const items=await db.collection("hrOriginalIntakeRecords")
   .where("employeeUid","==",employeeUid).limit(40).get();
- return items.docs.filter(snapshot=>administrator||
-  txt(snapshot.data().status)!=="Quarantined; access revoked").map(snapshot=>{
+ return items.docs.map(snapshot=>{
   const v=snapshot.data();
   return {id:snapshot.id,employeeUid,
    kind:txt(v.kind),status:txt(v.status),createdAt:txt(v.createdAt),
