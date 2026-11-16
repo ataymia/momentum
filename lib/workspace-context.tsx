@@ -630,6 +630,9 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const createOrder = (input: EnhancedOrderInput) => {
+    // In connected mode only the trusted, nonbinding intake endpoint may
+    // accept buyer requests. A browser cannot create a priced/approved order.
+    if(!demoMode||momentumStorage.mode()!=="local")return null;
     const {accountId}=input;
     if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role)) return null;
     const account = data.accounts.find((item) => item.id === accountId);
@@ -680,6 +683,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const editOrder=(id:string,input:EnhancedOrderInput):OrderEditResult=>{
+    if(!demoMode||momentumStorage.mode()!=="local")return{ok:false,message:"Connected order amendments require an Administrator-authorized server workflow."};
     if(!currentUser)return{ok:false,message:"Sign in before editing an order."};
     const order=commercial.orders.find((item)=>item.id===id);
     if(!order)return{ok:false,message:"This order is not available in the shared order record."};
@@ -712,6 +716,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const decideApproval = (id: string, decision: "Approved" | "Returned", providedReason?: string) => {
+    if(!demoMode||momentumStorage.mode()!=="local")return;
     const approval = commercial.approvals.find((item) => item.id === id);
     if (!approval) {
       base.decideApproval(id, decision, providedReason);
@@ -751,6 +756,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const setOrderStatus = (id: string, status: OrderStatus) => {
+    if(!demoMode||momentumStorage.mode()!=="local")return;
     const order = commercial.orders.find((item) => item.id === id);
     if (!order) {
       base.setOrderStatus(id, status);
@@ -764,6 +770,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const cancelOrder = (id: string, reason: string) => {
+    if(!demoMode||momentumStorage.mode()!=="local")return{ok:false,message:"Connected order cancellation requires a trusted server decision and inventory reconciliation."};
     if (!currentUser) return { ok: false, message: "Sign in before cancelling an order." };
     const cleanReason = reason.trim();
     if (cleanReason.length < 3) return { ok: false, message: "Enter a cancellation reason." };
