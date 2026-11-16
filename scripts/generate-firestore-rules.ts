@@ -539,8 +539,9 @@ service cloud.firestore {
     // Completed-document intake never writes the provider-attested signed form register.
     // Originals await separate signature, I-9, tax and classification review.
     match /hrOriginalIntakeRecords/{recordId} {
-      allow get, list: if isAdmin() || (isEmployee()
-        && resource.data.employeeUid == request.auth.uid);
+      // Pending originals may be misfiled. No employee sees a file or metadata
+      // until a separate, legally validated release-to-worker workflow exists.
+      allow get, list: if isAdmin();
       allow create, update, delete: if false;
     }
     match /hrOriginalIntakeAudit/{eventId} {
