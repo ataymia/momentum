@@ -8,6 +8,8 @@ export type DomainFieldSpec={
   selfWrite?:boolean;
   managerWrite?:boolean;
   managerRead?:boolean;
+  /** Signed packets are server-owned, and no browser can write them. */
+  serverOwned?:boolean;
   /** Sales Representatives may read/write this field only for directly assigned Brand Ambassadors. */
   salesRepSupervise?:boolean;
   read?:RoleRule;
@@ -61,8 +63,8 @@ export const DOMAIN_SPECS:DomainSpec[]=[
       employees:{},policies:{},courses:{},shifts:{},reviewCycles:{},benefitPlans:{},ptoPolicies:{},
       requisitions:restricted(ADMIN_MANAGER,ADMIN),candidates:restricted(ADMIN_MANAGER,ADMIN),interviews:restricted(ADMIN_MANAGER,ADMIN),offers:restricted(ADMIN_MANAGER,ADMIN),lifecycleCases:restricted(ADMIN_MANAGER,ADMIN),
       audit:{...perUser("actorId",{managerRead:false,managerWrite:false}),read:ADMIN,write:ADMIN},
-      privateProfiles:perUser(),profileChangeRequests:perUser(),acknowledgments:perUser(),leaveRequests:perUser("userId",{selfWrite:false}),availability:perUser(),shiftRequests:perUser(),
-      dependents:perUser(),benefitEnrollments:perUser(),benefitEvents:perUser(),training:perUser(),goals:perUser(),reviews:perUser(),workflows:perUser(),tasks:perUser("ownerId"),documents:perUser(),
+      privateProfiles:perUser("userId",{managerRead:false,managerWrite:false}),profileChangeRequests:perUser("userId",{managerRead:false,managerWrite:false}),acknowledgments:perUser(),leaveRequests:perUser("userId",{selfWrite:false}),availability:perUser(),shiftRequests:perUser(),
+      dependents:perUser("userId",{managerRead:false,managerWrite:false}),benefitEnrollments:perUser("userId",{managerRead:false,managerWrite:false}),benefitEvents:perUser("userId",{managerRead:false,managerWrite:false}),training:perUser(),goals:perUser(),reviews:perUser(),workflows:perUser(),tasks:perUser("ownerId"),documents:adminOwned(),
       employmentChanges:perUser("userId",{selfWrite:false}),ptoAssignments:perUser("userId",{selfWrite:false}),ptoLedger:perUser("userId",{selfWrite:false}),
       compensation:adminOwned(),compensationChanges:perUser("userId",{selfWrite:false}),
     },
@@ -70,7 +72,7 @@ export const DOMAIN_SPECS:DomainSpec[]=[
   {key:"momentum-identity-provisioning-v1",id:"identity",read:ADMIN,write:ADMIN,fields:{drafts:{},records:perUser("userId",{selfWrite:true,managerWrite:false,managerRead:false})}},
   {key:"momentum-brand-ambassador-v1",id:"brandAmbassador",read:"hasAccess",write:ADMIN,fields:{assignments:perUser("ambassadorId",{selfWrite:false,managerWrite:false,managerRead:false,salesRepSupervise:true,read:ADMIN,write:ADMIN})}},
   {key:"momentum-training-library-v1",id:"trainingLibrary",read:"hasAccess",write:ADMIN,fields:{materials:{},audiences:{}}},
-  {key:"momentum-document-templates-v1",id:"documentTemplates",read:"hasAccess",write:ADMIN,fields:{templates:{},packets:perUser()}},
+  {key:"momentum-document-templates-v1",id:"documentTemplates",read:"hasAccess",write:ADMIN,fields:{templates:{},packets:perUser("userId",{managerRead:false,managerWrite:false,selfWrite:false,serverOwned:true,write:[]})}},
   {key:"momentum-performance-v1",id:"performance",read:"activeEmployee",write:ADMIN_MANAGER,fields:{goals:perUser(),reports:perUser(),notes:perUser("authorId"),weeklyDrafts:perUser()}},
   {key:"momentum-commerce-v1",id:"commerce",read:["Administrator","Sales Manager","Sales Representative","Operations","Delivery Driver"],write:ADMIN,fields:{invoices:{},payments:{},allocations:{},credits:{},refunds:{},notes:{}}},
   {key:"momentum-inventory-ledger-v1",id:"inventoryLedger",read:OPERATIONAL,write:OPERATIONS,fields:{nodes:{read:[...OPERATIONAL,"Delivery Driver"]},movements:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},reservations:{read:[...OPERATIONAL,"Delivery Driver"],write:DELIVERY_LEDGER_WRITE},counts:{read:[...OPERATIONAL,"Delivery Driver"]}}},
@@ -201,7 +203,7 @@ export function domainDocuments(spec:DomainSpec,scope:PersistenceScope):DomainDo
   return documents;
 }
 
-export function userShardWritable(_spec:DomainSpec,fieldSpec:DomainFieldSpec,uid:string,scope:PersistenceScope){if(scope.role==="Customer"||["Suspended","Separated"].includes(scope.accountState))return false;if(scope.role==="Administrator")return true;if(uid===scope.uid)return fieldSpec.selfWrite!==false;if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative"&&scope.supervisedBrandAmbassadorIds.has(uid))return scope.accountState==="Active";if(scope.managedUserIds.has(uid))return fieldSpec.managerWrite!==false&&scope.accountState==="Active";return false;}
+export function userShardWritable(_spec:DomainSpec,fieldSpec:DomainFieldSpec,uid:string,scope:PersistenceScope){if(fieldSpec.serverOwned)return false;if(scope.role==="Customer"||["Suspended","Separated"].includes(scope.accountState))return false;if(scope.role==="Administrator")return true;if(uid===scope.uid)return fieldSpec.selfWrite!==false;if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative"&&scope.supervisedBrandAmbassadorIds.has(uid))return scope.accountState==="Active";if(scope.managedUserIds.has(uid))return fieldSpec.managerWrite!==false&&scope.accountState==="Active";return false;}
 export function documentWritable(path:string,scope:PersistenceScope){const parsed=parseDocPath(path);if(!parsed)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)return false;if(parsed.uid){const resolved=resolveUserPhysicalField(spec,parsed.field);return Boolean(resolved?.fieldSpec.userIdField)&&userShardWritable(spec,resolved!.fieldSpec,parsed.uid,scope);}const fieldSpec=parsed.field===ROOT_FIELD?undefined:spec.fields[parsed.field];if(fieldSpec?.userIdField&&scope.role!=="Administrator")return false;return roleAllows(fieldSpec?.write??spec.write,scope);}
 export function documentReplacesOnWrite(path:string){
   const parsed=parseDocPath(path);if(!parsed||parsed.field===ROOT_FIELD)return false;

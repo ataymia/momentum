@@ -80,6 +80,7 @@ function userBlock(spec: DomainSpec): string {
   if (perUser.length === 0) return "";
   const fields = perUser.map(([field]) => field).sort();
   const noSelfWrite = perUser.filter(([, f]) => f.selfWrite === false).map(([field]) => field).sort();
+  const serverOwned = perUser.filter(([, f]) => f.serverOwned === true).map(([field]) => field).sort();
   const noManagerWrite = perUser.filter(([, f]) => f.managerWrite === false).map(([field]) => field).sort();
   const noManagerRead = perUser.filter(([, f]) => f.managerRead === false).map(([field]) => field).sort();
   const salesRepSupervise = perUser.filter(([, f]) => f.salesRepSupervise === true).map(([field]) => field).sort();
@@ -98,6 +99,9 @@ function userBlock(spec: DomainSpec): string {
     ? `(${physicalFieldCondition(spec, salesRepSupervise)} && supervisesBrandAmbassador(uid) && activeEmployee())`
     : "false";
 
+  const serverOwnedWriteGate = serverOwned.length
+    ? `\n        && !(${physicalFieldCondition(spec, serverOwned)})`
+    : "";
   const ownerReadable = "uid == request.auth.uid ? isEmployee()";
   const ownerWritable = noSelfWrite.length
     ? `uid == request.auth.uid ? (!(${physicalFieldCondition(spec, noSelfWrite)}) && isEmployee())`
@@ -107,7 +111,7 @@ function userBlock(spec: DomainSpec): string {
     match /{uid}/${spec.id}/{field} {
       allow get, list: if ${allowedFields}
         && (${ownerReadable} : (isAdmin() || ${managerReadable} || ${supervisorReadable}));
-      allow write: if ${allowedFields}
+      allow write: if ${allowedFields}${serverOwnedWriteGate}
         && (isAdmin() || (${ownerWritable} : (${managerWritable} || ${supervisorWritable})));
     }`;
 }

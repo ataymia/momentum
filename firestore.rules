@@ -374,8 +374,7 @@ service cloud.firestore {
         && request.resource.data.updatedBy == request.auth.uid;
       allow delete: if false;
     }
-    // Admin-readable blank PDF template registry. Every record is created only
-    // by a trusted function after checking actual immutable Storage PDF bytes.
+    // Administrator-readable blank-PDF template catalog; trusted function is the only writer.
     match /hrTemplateCatalog/{templateId} {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;
@@ -505,7 +504,7 @@ service cloud.firestore {
     // momentum-document-templates-v1
     match /documentTemplates/fields/{field} {
       allow get, list: if field in ['_root', 'packets', 'templates'] && ((hasAccess())) && (!(field in ['packets']) || isAdmin());
-      allow write: if field in ['_root', 'packets', 'templates'] && ((isActiveRole('Administrator'))) && (!(field in ['packets']) || isAdmin());
+      allow write: if field in ['_root', 'packets', 'templates'] && (field in ['packets'] ? (activeEmployee() && role() in []) : (isActiveRole('Administrator'))) && (!(field in ['packets']) || isAdmin());
     }
 
     // momentum-performance-v1
@@ -604,9 +603,9 @@ service cloud.firestore {
     // momentum-hcm-v4
     match /{uid}/hcm/{field} {
       allow get, list: if field in ['acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'compensation', 'compensationChanges', 'dependents', 'documents', 'employmentChanges', 'goals', 'leaveRequests', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'reviews', 'shiftRequests', 'tasks', 'training', 'workflows']
-        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || (!(field in ['audit', 'compensation']) && manages(uid)) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || (!(field in ['audit', 'benefitEnrollments', 'benefitEvents', 'compensation', 'dependents', 'documents', 'privateProfiles', 'profileChangeRequests']) && manages(uid)) || false));
       allow write: if field in ['acknowledgments', 'audit', 'availability', 'benefitEnrollments', 'benefitEvents', 'compensation', 'compensationChanges', 'dependents', 'documents', 'employmentChanges', 'goals', 'leaveRequests', 'privateProfiles', 'profileChangeRequests', 'ptoAssignments', 'ptoLedger', 'reviews', 'shiftRequests', 'tasks', 'training', 'workflows']
-        && (isAdmin() || (uid == request.auth.uid ? (!(field in ['compensation', 'compensationChanges', 'employmentChanges', 'leaveRequests', 'ptoAssignments', 'ptoLedger']) && isEmployee()) : ((!(field in ['audit', 'compensation']) && manages(uid) && activeEmployee()) || false)));
+        && (isAdmin() || (uid == request.auth.uid ? (!(field in ['compensation', 'compensationChanges', 'documents', 'employmentChanges', 'leaveRequests', 'ptoAssignments', 'ptoLedger']) && isEmployee()) : ((!(field in ['audit', 'benefitEnrollments', 'benefitEvents', 'compensation', 'dependents', 'documents', 'privateProfiles', 'profileChangeRequests']) && manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-identity-provisioning-v1
@@ -628,9 +627,10 @@ service cloud.firestore {
     // momentum-document-templates-v1
     match /{uid}/documentTemplates/{field} {
       allow get, list: if field in ['packets']
-        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || manages(uid) || false));
+        && (uid == request.auth.uid ? isEmployee() : (isAdmin() || (!(field in ['packets']) && manages(uid)) || false));
       allow write: if field in ['packets']
-        && (isAdmin() || (uid == request.auth.uid ? isEmployee() : ((manages(uid) && activeEmployee()) || false)));
+        && !(field in ['packets'])
+        && (isAdmin() || (uid == request.auth.uid ? (!(field in ['packets']) && isEmployee()) : ((!(field in ['packets']) && manages(uid) && activeEmployee()) || false)));
     }
 
     // momentum-performance-v1

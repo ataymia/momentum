@@ -863,6 +863,31 @@ describe("trusted account profile audit records are immutable to browser clients
   });
 });
 
+describe("HR signed packets and identity-sensitive shards cannot be forged",()=>{
+ test("Managers cannot read private profiles, dependent details or signed HR metadata",async()=>{
+  for(const field of ["privateProfiles","profileChangeRequests","dependents",
+    "benefitEnrollments","benefitEvents","documents"]){
+   const path="userDomains/"+REP+"/hcm/"+field;
+   await assertFails(getDoc(doc(dbFor(MANAGER),path)));
+   await assertFails(setDoc(doc(dbFor(MANAGER),path),{items:[{userId:REP}]}));
+   await assertSucceeds(getDoc(doc(dbFor(REP),path)));
+   await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+  }
+ });
+ test("Employees cannot forge verified external originals",async()=>{
+  await assertFails(setDoc(doc(dbFor(REP),"userDomains/"+REP+"/hcm/documents"),
+   {items:[{userId:REP,title:"Form W-9",status:"Available",verification:{recordReference:"forged"}}]}));
+ });
+ test("No browser role can write a completed signed form packet",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(setDoc(doc(dbFor(uid),"userDomains/"+REP+"/documentTemplates/packets"),{items:[{userId:REP,signature:"forged"}]}));
+   await assertFails(setDoc(doc(dbFor(uid),"domains/documentTemplates/fields/packets"),{items:[{userId:REP,status:"Completed"}]}));
+  }
+  await assertFails(getDoc(doc(dbFor(MANAGER),"userDomains/"+REP+"/documentTemplates/packets")));
+  await assertSucceeds(getDoc(doc(dbFor(REP),"userDomains/"+REP+"/documentTemplates/packets")));
+ });
+});
+
 describe("HR blank-form registry and audit cannot be forged by a browser",()=>{
  test("Administrator may read templates but no browser may write or edit them",async()=>{
   const path="hrTemplateCatalog/admin-upload-attempt";
