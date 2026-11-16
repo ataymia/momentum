@@ -430,6 +430,15 @@ service cloud.firestore {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;
     }
+    // A downloaded source PDF is necessary but not sufficient legal e-sign evidence.
+    // Review decisions are trusted-server-only, including Administrator clients.
+    match /hrOriginalReviewKeys/{requestId} {
+      allow read, write: if false;
+    }
+    match /hrOriginalReviewAudit/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
     // Private document read evidence is server-only, with Administrator audit access.
     match /hrOriginalIntakeReadAudit/{eventId} {
       allow get, list: if isAdmin();
