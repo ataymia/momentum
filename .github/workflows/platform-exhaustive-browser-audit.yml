@@ -18,6 +18,10 @@ on:
       - lib/navigation-route-registry.ts
       - lib/employee-directory-visibility.ts
       - lib/action-center-policy-v2.ts
+      - lib/workspace-context.tsx
+      - lib/workspace-context-v5.tsx
+      - lib/firebase-crm-account-creation.ts
+      - lib/firestore-domains.ts
       - components/prototype/hr-time-off-experience.tsx
       - components/prototype/crm-quick-visit.tsx
       - components/prototype/operations-hub.tsx
