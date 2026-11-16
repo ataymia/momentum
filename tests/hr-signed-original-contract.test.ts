@@ -20,6 +20,11 @@ test("R43-R49: secured signed originals are separate from blank templates and ca
  assert(server.includes("hrOriginalArchiveRequests"));
  assert(server.includes("hrOriginalIntakeAudit/"));
  assert(server.includes("hrOriginalIntakeRecords/"));
+ assert(index.includes("readTrustedHrOriginal"));
+ assert(client.includes("downloadHrOriginalBytes"));
+ assert(ui.includes("Download original"));
+ assert(ui.includes("Certificate"));
+ assert(firestore.includes("match /hrOriginalIntakeReadAudit/{eventId}"));
  assert(server.includes('txt(adminSnap.data()?.role)!=="Administrator"'));
  assert(server.includes('txt(adminSnap.data()?.accountState)!=="Active"'));
  assert(server.includes('txt(workerSnap.data()?.role)==="Customer"'));
