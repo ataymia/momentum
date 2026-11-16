@@ -57,10 +57,12 @@ function sharedBlock(spec: DomainSpec): string {
   const ownerFields = Object.entries(spec.fields).filter(([, field]) => Boolean(field.userIdField))
     .map(([name]) => name).sort();
   const gate = ownerFields.length ? ` && (!(field in ${list(ownerFields)}) || isAdmin())` : "";
+  // High-risk shared roots may contain unverified pricing and customer patches.
+  const protectedRoot = ["workspace","commercial"].includes(spec.id) ? " && field != '_root'" : "";
   return `    // ${spec.key}
     match /${spec.id}/fields/{field} {
       allow get, list: if field in ${list(fields)} && (${fieldSwitch(spec, "read")})${gate};
-      allow write: if field in ${list(fields)} && (${fieldSwitch(spec, "write")})${gate};
+      allow write: if field in ${list(fields)} && (${fieldSwitch(spec, "write")})${gate}${protectedRoot};
     }`;
 }
 
