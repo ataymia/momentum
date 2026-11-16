@@ -1,6 +1,5 @@
 import type {FirebaseAuthSession} from "./firebase-auth-rest";
 import {currentFirebaseSession} from "./firebase-auth-rest";
-import {firebaseWebConfig} from "./firebase-config";
 import {firebaseFunctionUrl} from "./firebase-functions";
 
 export type HrTemplateKind=
@@ -39,7 +38,6 @@ export type HrTemplateRecord=HrTemplateRegistration&{
 export type UploadedHrTemplate={
  storagePath:string;sha256:string;size:number;kind:HrTemplateKind;
 };
-const STORAGE_ORIGIN="https://firebasestorage.googleapis.com";
 const MAX_UPLOAD=12*1024*1024;
 
 async function activeSession():Promise<FirebaseAuthSession>{
@@ -47,21 +45,25 @@ async function activeSession():Promise<FirebaseAuthSession>{
  if(!session)throw new Error("Sign in to the connected HR workspace again.");
  return session;
 }
-function storageUrl(bucket:string,storagePath:string,params:string){
- return STORAGE_ORIGIN+"/v0/b/"+encodeURIComponent(bucket)+"/o/"+
-  encodeURIComponent(storagePath)+params;
-}
 function digestHex(buffer:ArrayBuffer):Promise<string>{
- if(!crypto?.subtle)throw new Error("The secure browser cryptography API is unavailable.");
+ if(!crypto?.subtle)throw new Error("Secure browser cryptography is unavailable.");
  return crypto.subtle.digest("SHA-256",buffer).then(result=>
   Array.from(new Uint8Array(result)).map(value=>value.toString(16).padStart(2,"0")).join(""));
 }
-
-/** Upload an immutable PDF template to the Administrator-only Storage location.
- * Does NOT upload a completed W-9, an identity scan or a signed worker file.
- * The second authenticated download verifies that the uploaded bytes match.
+function pdfBase64(buffer:ArrayBuffer):string{
+ const bytes=new Uint8Array(buffer);
+ let binary="";
+ for(let offset=0;offset<bytes.length;offset+=32768)
+  binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
+ return btoa(binary);
+}
+/** Upload only an unsigned blank source through authenticated server verification.
+ * No undocumented direct-browser Storage REST routes, no signed-status mutation.
+ * Retries must preserve requestId even when the browser loses the first receipt.
  */
-export async function uploadBlankHrTemplate(file:File,kind:HrTemplateKind):Promise<UploadedHrTemplate>{
+export async function uploadBlankHrTemplate(
+ file:File,kind:HrTemplateKind,requestId:string,
+):Promise<UploadedHrTemplate>{
  if(!HR_TEMPLATE_CHOICES.some(choice=>choice.kind===kind))
   throw new Error("Unsupported HR template category.");
  if(file.size<8||file.size>=MAX_UPLOAD||
@@ -69,39 +71,30 @@ export async function uploadBlankHrTemplate(file:File,kind:HrTemplateKind):Promi
   throw new Error("Choose an unsigned PDF template under 12 MB.");
  const buffer=await file.arrayBuffer();
  if(String.fromCharCode(...new Uint8Array(buffer.slice(0,5)))!=="%PDF-")
-  throw new Error("This file is not a PDF. Convert the unsigned form to PDF first.");
+  throw new Error("This file is not a PDF.");
  const sha256=await digestHex(buffer);
- const config=firebaseWebConfig();
- if(!config?.storageBucket)throw new Error("Firebase Storage is not configured.");
- const id=crypto.randomUUID();
- const storagePath="hr-templates/"+kind+"/"+id+"/source.pdf";
  const session=await activeSession();
- let response:Response;
- try{
-  response=await fetch(storageUrl(config.storageBucket,storagePath,
-   "?uploadType=media&name="+encodeURIComponent(storagePath)),{
-    method:"POST",headers:{authorization:"Firebase "+session.idToken,
-     "content-type":"application/pdf"},
-    body:file,
-  });
- }catch{
-  throw new Error("Template upload connection failed. Check the private archive before retrying.");
- }
- if(!response.ok)
-  throw new Error(response.status===401||response.status===403?
-   "Storage refused the form. Active Administrator access is required.":
-   "Template upload was not confirmed (Storage "+response.status+").");
- const fresh=await activeSession();
- const stored=await fetch(storageUrl(config.storageBucket,storagePath,"?alt=media"),{
-  headers:{authorization:"Firebase "+fresh.idToken},
+ const response=await fetch(firebaseFunctionUrl("uploadHrBlankTemplate"),{
+  method:"POST",headers:{
+   authorization:"Bearer "+session.idToken,"content-type":"application/json",
+  },body:JSON.stringify({
+   requestId,upload:{
+    kind,pdfBase64:pdfBase64(buffer),sha256,blankTemplateConfirmed:true,
+   },
+  }),
  }).catch(()=>null);
- if(!stored?.ok)throw new Error(
-  "File upload returned success, but authenticated byte readback failed. Check Storage before re-upload.");
- const storedBytes=await stored.arrayBuffer();
- if(storedBytes.byteLength!==buffer.byteLength||
-  await digestHex(storedBytes)!==sha256)
-  throw new Error("Uploaded PDF readback does not match the selected original.");
- return{storagePath,sha256,size:buffer.byteLength,kind};
+ if(!response)throw new Error(
+  "HR template upload service is unreachable. Retry with the SAME request ID.");
+ const result=await response.json().catch(()=>null) as
+  {ok?:boolean;message?:string;kind?:HrTemplateKind;storagePath?:string;
+   sha256?:string;size?:number;generation?:string}|null;
+ if(!response.ok||result?.ok!==true)
+  throw new Error(result?.message||"Upload not confirmed. Retry with the SAME request ID.");
+ if(result.kind!==kind||result.sha256!==sha256||result.size!==buffer.byteLength||
+  !result.generation||!result.storagePath?.startsWith("hr-templates/"+kind+"/")||
+  !result.storagePath.endsWith("/source.pdf"))
+  throw new Error("The server's saved-PDF receipt differs from the selected original.");
+ return{kind,storagePath:result.storagePath,sha256,size:result.size};
 }
 
 /** Only the server can register a blank upload as pending HR/legal review. */
