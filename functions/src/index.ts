@@ -30,6 +30,7 @@ import {registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError}
 import {uploadTrustedBlankHrTemplate} from "./trusted-hr-template-upload";
 import {archiveTrustedHrSignedOriginal,listTrustedHrSignedOriginals,HrOriginalArchiveError} from "./trusted-hr-signed-original";
 import {readTrustedHrOriginal} from "./trusted-hr-original-read";
+import {decideTrustedHrOriginalReview} from "./trusted-hr-original-review";
 import {submitTrustedHrLeave,TrustedHrLeaveError} from "./trusted-hr-leave-request";
 import {commitTrustedLeaveDecision,TrustedLeaveDecisionError} from "./trusted-hr-leave-decision";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
@@ -1927,12 +1928,15 @@ export const hrSignedOriginalArchive=onRequest({cors:true,region:"us-central1"},
  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
  const body=request.body;
  if(!body||typeof body!=="object"||Array.isArray(body)||
-  Object.keys(body).some(k=>!["action","original","requestId","employeeUid","recordId","artifact"].includes(k))||
-  !["Archive","List","Read"].includes(body.action)){
+  Object.keys(body).some(k=>!["action","original","requestId","employeeUid","recordId","artifact","review"].includes(k))||
+  !["Archive","List","Read","Review"].includes(body.action)){
   json(response,400,{ok:false,message:"Invalid HR original archive request."});return;
  }
  if(body.action==="Archive"&&body.employeeUid!==undefined){
   json(response,400,{ok:false,message:"Worker identity must be inside the archived document request."});return;
+ }
+ if(body.action==="Review"&&Object.keys(body).some(k=>!["action","review","requestId"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid original review envelope."});return;
  }
  if(body.action==="Read"&&Object.keys(body).some(k=>!["action","recordId","artifact"].includes(k))){
   json(response,400,{ok:false,message:"Invalid private original read envelope."});return;
@@ -1955,6 +1959,10 @@ export const hrSignedOriginalArchive=onRequest({cors:true,region:"us-central1"},
    const file=await readTrustedHrOriginal(actor,{recordId:body.recordId,artifact:body.artifact});
    response.setHeader("Cache-Control","no-store, private");
    json(response,200,{ok:true,...file});return;
+  }
+  if(body.action==="Review"){
+   const result=await decideTrustedHrOriginalReview(actor,body.review,body.requestId);
+   json(response,200,{ok:true,...result});return;
   }
   const receipt=await archiveTrustedHrSignedOriginal(actor,body.original,body.requestId);
   json(response,200,{ok:true,...receipt});
