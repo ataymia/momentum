@@ -5,7 +5,7 @@ import {useHcm} from "../../lib/hcm-context";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {HR_TEMPLATE_CHOICES,type HrTemplateKind} from "../../lib/firebase-hr-template-library";
 import {
- archiveHrOriginal,listHrOriginals,type HrOriginalRecord,
+ archiveHrOriginal,listHrOriginals,downloadHrOriginalBytes,type HrOriginalRecord,
  type HrOriginalSource,
 } from "../../lib/firebase-hr-signed-original";
 
@@ -24,6 +24,7 @@ export function HrSignedOriginalArchivePanel(){
  const [certificate,setCertificate]=useState<File|null>(null);
  const [confirmed,setConfirmed]=useState(false);
  const [busy,setBusy]=useState(false);
+ const [downloadBusy,setDownloadBusy]=useState<string|null>(null);
  const [message,setMessage]=useState("");
  const [records,setRecords]=useState<HrOriginalRecord[]>([]);
  const [lastWorker,setLastWorker]=useState("");
@@ -43,6 +44,22 @@ export function HrSignedOriginalArchivePanel(){
   if(!id){setMessage("Select a worker to view their private document register.");return;}
   const result=await listHrOriginals(session,id);
   setRecords(result);setLastWorker(id);
+ };
+ const download=async(artifact:"Original"|"Certificate",recordId:string)=>{
+  if(!session||downloadBusy||busy)return;
+  setDownloadBusy(recordId+"-"+artifact);setMessage("");
+  try{
+   const file=await downloadHrOriginalBytes(session,recordId,artifact);
+   const blob=new Blob([file.bytes.buffer],{type:"application/pdf"});
+   const url=URL.createObjectURL(blob);
+   const a=document.createElement("a");
+   a.href=url;a.download=file.fileName;a.style.display="none";
+   document.body.append(a);a.click();a.remove();
+   window.setTimeout(()=>URL.revokeObjectURL(url),30_000);
+   setMessage("Private "+artifact.toLowerCase()+" retrieved with verified SHA-256 and an access-audit event. Document compliance still requires independent HR review.");
+  }catch(error){
+   setMessage(error instanceof Error?error.message:"Private PDF could not be retrieved.");
+  }finally{setDownloadBusy(null);}
  };
  const submit=async(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();
@@ -78,7 +95,7 @@ export function HrSignedOriginalArchivePanel(){
    <div className="form-grid">
     <label>Worker
      <select aria-label="Worker for signed original" value={employeeUid} required disabled={busy}
-      onChange={e=>{setEmployeeUid(e.target.value);resetRetry();}}>
+      onChange={e=>{setEmployeeUid(e.target.value);setRecords([]);setLastWorker("");resetRetry();}}>
       <option value="">Choose provisioned worker</option>
       {workers.map(worker=><option key={worker.id} value={worker.id}>{worker.label}</option>)}
      </select>
@@ -130,11 +147,13 @@ export function HrSignedOriginalArchivePanel(){
    </button>
   </div>
   {lastWorker&&<div className="prototype-table-scroll"><table className="prototype-table">
-   <thead><tr><th>Form</th><th>Archived</th><th>Hash prefix</th><th>Source</th><th>Independent HR review</th></tr></thead>
+   <thead><tr><th>Form</th><th>Archived</th><th>Hash prefix</th><th>Source</th><th>Independent HR review</th><th>Restricted PDF</th></tr></thead>
    <tbody>{records.map(item=><tr key={item.id}>
     <td>{item.kind}</td><td>{item.createdAt.slice(0,10)}</td>
     <td><code>{item.sha256.slice(0,14)}…</code></td><td>{item.sourceType}{item.hasCertificate?" + certificate":""}</td>
     <td>{item.status}</td>
+    <td><button type="button" disabled={downloadBusy!==null||busy} onClick={()=>void download("Original",item.id)}>Download original</button>
+     {item.hasCertificate&&<button type="button" disabled={downloadBusy!==null||busy} onClick={()=>void download("Certificate",item.id)}>Certificate</button>}</td>
    </tr>)}</tbody>
   </table></div>}
   {lastWorker&&records.length===0&&<p className="prototype-note">{"No verified source records in this worker's latest archive window."}</p>}
