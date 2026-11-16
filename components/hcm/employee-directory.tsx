@@ -54,8 +54,8 @@ export function EmployeeDirectory() {
   const [contactMessage, setContactMessage] = useState("");
   const focusId = typeof window !== "undefined" ? window.sessionStorage.getItem("momentum-focus-record") : null;
   const employees = useMemo(
-    () => visibleActiveEmployees(data.users, firebase?.accessRecords).sort((a, b) => a.name.localeCompare(b.name)),
-    [data.users, firebase?.accessRecords],
+    () => visibleActiveEmployees(data.users, firebase?.accessRecords,hcm.employees).sort((a, b) => a.name.localeCompare(b.name)),
+    [data.users, firebase?.accessRecords,hcm.employees],
   );
   const focusedEmployee = focusId ? employees.find((user) => user.id === focusId) : undefined;
   const [selectedId, setSelectedId] = useState(focusedEmployee?.id ?? currentUser?.id ?? "");
