@@ -2,7 +2,7 @@
 
 **Started:** November 7, 2026
 **Branch:** `integration/a-g-unified-2026-11-07`
-**Ledger:** 77 stable IDs R01–R77, separate from original A01–G10 (98 requirements).
+**Ledger:** 87 stable IDs R01–R87, separate from original A01–G10 (98 requirements). Historical file path is retained to avoid breaking existing links.
 **Owner:** Mia confirms acceptance; engineering updates are evidence, not final acceptance.
 
 ## November 9 latest control corrections (NOT owner-accepted)
@@ -135,6 +135,29 @@
 - [ ] R75 — Enforce department/role/employee/customer data boundaries
 - [ ] R76 — Check mobile/tablet/desktop forms, tables, navigation and accessibility
 - [ ] R77 — Preserve A01–G10's original 98 features; distinguish demo from live functionality; regression-test each update
+
+## Additional owner corrections and release acceptance (R78–R87)
+These ten additions extend the same original correction register, not a parallel checklist.
+Engineering CI and source changes are not owner acceptance. All entries remain unchecked.
+
+- [ ] R78 — Finish usable Workspace Work Reports with verified record source, appropriate editing and role scope
+- [ ] R79 — Make Leads visible to intended authorized Sales users by default without leaking other departments or customers
+- [ ] R80 — Remove unused Deals from primary Sales navigation while preserving required working functions and deep links
+- [ ] R81 — Clarify commission-only representative readiness in Administrator setup and onboarding
+- [ ] R82 — Require complete, attested weekly timecard submission; show due, overdue, missing-week and exception states
+- [ ] R83 — Enable manager timecard review, approval and return with valid authorization, audit trail and payroll handoff
+- [ ] R84 — Complete Customer Portal configuration oversight and verify customer identity isolation
+- [ ] R85 — Redesign Audit Center around actionable, deduplicated, attributable source events
+- [ ] R86 — Reconcile inactive, suspended and separated staff across HR and access systems; count active workers accurately
+- [ ] R87 — Complete reliable payroll provider integration, tax/classification handling, approved earnings, disbursements and reconciliation
+
+## November 15 engineering hardening evidence (not owner-accepted)
+- **R40–R49:** Contractor W-9 is separate from W-2 I-9/W-4/A-4. Administrator-only blank-form upload and immutable template hash checks were added. Signed originals, legally accepted provider e-sign evidence, I-9 employer examination, corrections and provider/staging acceptance remain release blockers.
+- **R18/R23/R30/R33:** Nonbinding buyer-intake review is authenticated, audit-logged and retry-safe. Connected Finance browser postings are blocked pending trusted payment-provider settlement; historical account/customer transactions still require source reconciliation.
+- **R24/R36/R37:** Inventory editing and cycle-count approval use current-ledger controls. Automatic allocation reviews past, missing or malformed lot best-by dates. Normal driver completion still requires atomic connected-workflow verification.
+- **R82/R83/R86/R87:** Weekly timecard guards and missing-week detection improved. Active workforce views now compare HCM separation and Firebase access. Contractor payroll tax routing separated from employee withholding. Connected payroll is still gated pending approved external processing.
+- **R55–R57:** Marketing redesign items remain deferred, not silently completed.
+- **Release authority:** No owner acceptance, production deployment, or merge to main is implied. Check latest branch-head CI, real role/session staging, data-source accuracy, provider evidence and named owner approval per item.
 
 ## Verification and change-control rules
 - Only check an item after its actual workflow is functional, correctly scoped and confirmed in code/tests and user review.
