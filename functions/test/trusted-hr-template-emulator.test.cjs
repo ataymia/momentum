@@ -58,7 +58,7 @@ test("HR blank PDFs: actual object hash, server registration, role denial, immut
  assert.equal(again.storagePath,uploaded.storagePath);
  assert.equal(again.replayed,true);
  await deny(uploadTrustedBlankHrTemplate(admin,{...uploadPayload,sha256:"0".repeat(64)},"badUploadHash"+key),409);
- await deny(uploadTrustedBlankHrTemplate(admin,{...uploadPayload,kind:"I9"},"wrongUploadKind"+key),400);
+ await deny(uploadTrustedBlankHrTemplate(admin,{...uploadPayload,kind:"UNSUPPORTED"},"wrongUploadKind"+key),400);
  await deny(uploadTrustedBlankHrTemplate(admin,{...uploadPayload,price:24},"forgedUpload"+key),400);
  await deny(registerTrustedHrTemplate(rep,draft,"rep"+key),403);
  await deny(registerTrustedHrTemplate(suspended,draft,"suspended"+key),403);
