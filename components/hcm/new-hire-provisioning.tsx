@@ -5,8 +5,11 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { arizonaDateKey } from "../../lib/date-time";
 import { generateTemporaryPassword, validateTemporaryPassword } from "../../lib/firebase-admin-provisioning";
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {momentumStorage} from "../../lib/persistence";
+import {classificationForWorkerType,type WorkerType} from "../../lib/hr-worker-classification";
 import { useHcm } from "../../lib/hcm-context";
-import { appendAudit, type PayBasis, type WorkerClassification } from "../../lib/hcm-engine";
+import { appendAudit, type PayBasis } from "../../lib/hcm-engine";
 import { useIdentityProvisioning, type NewProvisioningDraftInput } from "../../lib/identity-provisioning-context";
 import type { ProvisionableRole, ProvisioningDraft } from "../../lib/identity-provisioning";
 import { isFailClosedPlaceholder } from "../../lib/identity-provisioning";
@@ -19,7 +22,6 @@ import { buildProvisionedWorkspaceUser, managerOptionsForProvisioning, validateI
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, PageHeader, Section, StatusPill, formatMoney } from "../ui";
 
-type WorkerType = "Employee" | "Contractor";
 type NewHireView = "create" | "queue";
 type FormState = {
   source: ProvisioningDraft["source"];
@@ -51,7 +53,6 @@ const teamForRole = (role: ProvisionableRole): "Sales" | "Operations" | "Marketi
 const roleOptions: ProvisionableRole[] = ["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver", "Marketing"];
 const defaultTitles = new Set<string>(["Sales Representative", "Sales Manager", "Brand Ambassador", "Operations", "Warehouse", "Delivery Driver", "Marketing"]);
 const payBasisOptions: PayBasis[] = ["Hourly", "Salary per pay period"];
-const classificationFor = (workerType: WorkerType, payBasis: PayBasis): WorkerClassification => workerType === "Contractor" ? "Contractor" : payBasis === "Hourly" ? "Hourly" : payBasis === "Salary per pay period" ? "Salary" : "Not configured";
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const RESCUE_LABELS: Record<OnboardingRescueAction, string> = {
@@ -142,6 +143,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const provisioning = useIdentityProvisioning();
   const trainingLibrary = useTrainingLibrary();
   const firebase = useFirebaseSessionOptional();
+  const runtime=useRuntimeMode();
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [step, setStep] = useState(1);
@@ -165,7 +167,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
     role: "Sales Representative",
     managerId: "",
     workLocation: "",
-    workerType: "Employee",
+    workerType: "Not selected",
     payBasis: "Not configured",
     payRate: "",
     payGroup: "",
@@ -244,6 +246,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
       if (form.workLocation.trim().length < 2) return "Enter the work location.";
     }
     if (targetStep >= 3) {
+      if (form.workerType === "Not selected") return "Select Employee or Contractor based on reviewed worker classification. A 1099 label alone is insufficient.";
       if (form.payBasis === "Not configured") return "Choose the approved pay basis before issuing credentials.";
       const payRate = Number(form.payRate);
       if (!Number.isFinite(payRate) || payRate <= 0) return "Enter the approved pay rate before issuing credentials.";
@@ -350,7 +353,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
       team,
       managerId: form.managerId,
       workLocation: form.workLocation,
-      classification: classificationFor(form.workerType, form.payBasis),
+      classification: classificationForWorkerType(form.workerType, form.payBasis),
       payBasis: form.payBasis,
       payRate,
       payGroup: form.payGroup,
@@ -383,6 +386,10 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const verifyDocumentExternally = (documentId: string) => {
     const document = hcm.documents.find((item) => item.id === documentId);
     if (!document || currentUser.role !== "Administrator") return;
+    if(!runtime.isDemo||momentumStorage.mode()!=="local"){
+      setNotice("Connected HR cannot verify a legal form from a typed reference. Use independently verified signer and signed-original evidence.");
+      return;
+    }
     const reference = window.prompt("Confirm you reviewed the completed, signed original. Enter its secure HR record reference (no SSN, tax values, or public file link).");
     if (reference === null) return;
     if (reference.trim().length < 5) { setNotice("A secure record reference is required to record verification."); return; }
@@ -430,13 +437,13 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
           <Field label="Standard weekly hours"><input type="number" min="0" max="168" step="0.25" value={form.standardWeeklyHours} onChange={(event)=>setForm((current)=>({...current,standardWeeklyHours:event.target.value}))} placeholder="If applicable"/></Field>
         </div></div>}
         {step===3&&<div className="provisioning-section"><div className="form-grid">
-          <Field label="Worker type"><select value={form.workerType} onChange={(event)=>setForm((current)=>({...current,workerType:event.target.value as WorkerType}))}><option>Employee</option><option>Contractor</option></select></Field>
+          <Field label="Worker type"><select value={form.workerType} onChange={(event)=>setForm((current)=>({...current,workerType:event.target.value as WorkerType}))}><option value="Not selected" disabled>Choose worker classification</option><option>Employee</option><option>Contractor</option></select></Field>
           <Field label="Pay basis"><select value={form.payBasis} onChange={(event)=>setForm((current)=>({...current,payBasis:event.target.value as PayBasis}))}><option value="Not configured" disabled>Choose pay basis</option>{payBasisOptions.map((item)=><option key={item}>{item}</option>)}</select></Field>
           <Field label={form.payBasis==="Hourly"?"Hourly rate":form.payBasis==="Salary per pay period"?"Salary per pay period":"Pay rate"}><input type="number" min="0.01" step="0.01" required value={form.payRate} onChange={(event)=>setForm((current)=>({...current,payRate:event.target.value}))}/></Field>
           <Field label="Pay group"><input required value={form.payGroup} onChange={(event)=>setForm((current)=>({...current,payGroup:event.target.value}))} placeholder="Weekly, biweekly, etc."/></Field>
         </div><div className="provisioning-banner"><ShieldCheck size={20}/><div><strong>Worker classification requires a real legal review.</strong><p>{form.workerType==="Contractor"
         ?"Contractors generally complete a W-9 and a contractor agreement. A 1099 is a tax reporting form, not an employment classification. Do not assign employee I-9, W-4 or Arizona A-4 forms merely because a contractor has a Momentum login."
-        :"Employees generally complete I-9, federal W-4 and applicable state withholding paperwork. Review employment eligibility, pay rules and Arizona requirements before treating onboarding as compliant."}</p>
+        :form.workerType==="Employee"?"Employees generally complete I-9, federal W-4 and applicable state withholding paperwork. Review employment eligibility, pay rules and Arizona requirements before treating onboarding as compliant.":"Choose the worker type after reviewing the actual working relationship."}</p>
         <p>Selecting Contractor or Employee does not verify classification, taxes, signed originals, or payment readiness. Login access and compliance approval remain separate.</p></div></div></div>}
         {step===4&&<div className="provisioning-section"><div className="training-picker">{activeCourses.map((course)=><label key={course.id}><input type="checkbox" checked={form.courseIds.includes(course.id)} onChange={()=>toggleCourse(course.id)}/><span><strong>{course.title}</strong><small>{course.description}</small></span></label>)}</div><div className="new-hire-review-grid"><div><small>Employee</small><strong>{form.preferredName.trim()||legalName}</strong><span>{form.workEmail}</span></div><div><small>Position</small><strong>{form.jobTitle}</strong><span>{form.role} · {team}</span></div><div><small>Manager</small><strong>{data.users.find((user)=>user.id===form.managerId)?.name??"Not selected"}</strong><span>{form.workLocation||"Work location missing"}</span></div><div><small>Pay</small><strong>{form.payRate?formatMoney(Number(form.payRate)):"Missing"}</strong><span>{form.payBasis} · {form.payGroup||"pay group missing"}</span></div><div><small>Start</small><strong>{form.startDate}</strong><span>{form.courseIds.length} training assignment{form.courseIds.length===1?"":"s"}</span></div></div></div>}
         {error&&<p className="form-error" role="alert">{error}</p>}

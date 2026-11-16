@@ -43,6 +43,7 @@ const keyPattern=/^[A-Za-z0-9_-]{16,80}$/;
 const pathPattern=/^hr-templates\/(W9|I9|W4|AZ_A4|CONTRACTOR_AGREEMENT|EMPLOYEE_AGREEMENT|OTHER)\/([0-9a-f]{8}-[0-9a-f-]{27,36})\/source\.pdf$/;
 const maxFile=12*1024*1024;
 
+/** Client-safe rejection from trusted HR form verification. */
 export class TrustedHrTemplateError extends Error{
  /** @param {number} status Safe HTTP response status.
   * @param {string} message Client-safe refusal.
@@ -60,8 +61,10 @@ function parseDraft(raw:unknown):Draft{
   throw new TrustedHrTemplateError(400,"Unexpected form-template fields.");
  const kind=str(raw.kind) as HrTemplateKind;
  const source=HR_TEMPLATE_KINDS[kind];
- const title=str(raw.title),edition=str(raw.edition);
- const storagePath=str(raw.storagePath),sha256=str(raw.sha256).toLowerCase();
+ const title=str(raw.title);
+ const edition=str(raw.edition);
+ const storagePath=str(raw.storagePath);
+ const sha256=str(raw.sha256).toLowerCase();
  if(!source||!/^.{5,120}$/.test(title)||!/^.{1,64}$/.test(edition)||
   !/^[a-f0-9]{64}$/.test(sha256)||raw.blankTemplateConfirmed!==true)
   throw new TrustedHrTemplateError(400,"Form type, edition, checksum or blank-form confirmation is missing.");
@@ -75,8 +78,11 @@ function parseDraft(raw:unknown):Draft{
   if(!obj(field)||Object.keys(field).some(k=>![
    "id","label","type","required","pdfFieldName","signer"].includes(k)))
    throw new TrustedHrTemplateError(400,"Unrecognized form field mapping.");
-  const id=str(field.id),label=str(field.label),type=str(field.type);
-  const signer=str(field.signer),pdfFieldName=str(field.pdfFieldName);
+  const id=str(field.id);
+  const label=str(field.label);
+  const type=str(field.type);
+  const signer=str(field.signer);
+  const pdfFieldName=str(field.pdfFieldName);
   if(!/^[A-Za-z0-9_-]{1,60}$/.test(id)||ids.has(id)||
    label.length<2||label.length>100||
    !["Text","Date","Checkbox","Signature","Initials"].includes(type)||
@@ -153,7 +159,8 @@ export async function registerTrustedHrTemplate(
    return{templateId,createdAt:str(prior.data()?.createdAt),
     status:"Pending HR form and signer review" as const,replayed:true};
   }
-  const templateId="hrtemplate-"+randomUUID(),createdAt=new Date().toISOString();
+  const templateId="hrtemplate-"+randomUUID();
+  const createdAt=new Date().toISOString();
   const policy=HR_TEMPLATE_KINDS[draft.kind];
   const record:HrTemplateRecord={
    id:templateId,kind:draft.kind,title:draft.title,edition:draft.edition,
