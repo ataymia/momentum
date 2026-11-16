@@ -7,6 +7,7 @@ import {HR_FORM_SOURCES} from "../../lib/hr-document-controls";
 import {hiringReadiness} from "../../lib/hr-compliance-readiness";
 import {downloadCsv} from "../../lib/browser-export";
 import {navigateToRoute} from "../../lib/navigation-store";
+import {HrSignedOriginalArchivePanel} from "../hcm/hr-signed-original-archive-panel";
 
 const sources=[
  ...HR_FORM_SOURCES,
@@ -35,5 +36,7 @@ export function HrComplianceReadinessExperience(){
   <p className="prototype-note">Federal I-9 Section 1 is due no later than the first paid work day, and employer Section 2 normally within three business days. Arizona A-4 is required for applicable new employees within five days; without a form Arizona generally requires 2.0% withholding. Arizona new-hire reports are generally due within 20 days. Confirm exceptions, work location, employer operating days and employee classification.</p>
   <p className="prototype-note">Even a verified uploaded PDF does not establish compliant identity examination, IRS form substitution, secure e-sign rules, employer state reporting, payroll setup, or retention. No automatic green status is permitted.</p>
   <h3>Authoritative form and employer sources</h3>{sources.map(s=><p className="prototype-activity" key={s.url}><a href={s.url} target="_blank" rel="noopener noreferrer">{s.title} <ExternalLink size={12}/></a><span>{s.detail}</span></p>)}
-  </section></div>;
+  </section>
+  <HrSignedOriginalArchivePanel/>
+ </div>;
 }
