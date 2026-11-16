@@ -47,6 +47,8 @@ test("R18 customer and location creation is atomic, replay-safe and manager-only
  const groups=(await customers.get()).data().items;
  assert.equal(groups.length,1);
  assert.equal(groups[0].taxDocumentType,"Undetermined");
+ assert.equal(groups[0].billingEmail,"","optional email must not become undefined in Firestore");
+ assert.equal(groups[0].billingPhone,"6025550100");
  assert.equal(groups[0].ein,"");
  assert.equal(groups[0].azTptLicenseNumber,"");
  assert.equal((await activities.get()).data().items.length,1);

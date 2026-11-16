@@ -155,9 +155,9 @@ export async function createTrustedCrmAccount(
         taxDocumentType: validation.taxDocumentType||"Undetermined",
         accountType: customerName===str(validation.record.name)?
           "Independent":"Chain / franchise",
-        billingContactName: validation.record.contactName,
-        billingEmail: validation.record.email,
-        billingPhone: validation.record.phone,
+        billingContactName: str(validation.record.contactName),
+        billingEmail: str(validation.record.email),
+        billingPhone: str(validation.record.phone)||str(validation.record.mobilePhone),
         createdAt,
       }, ...list(customers.data())]});
     }
