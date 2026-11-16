@@ -5,8 +5,8 @@ import {useHcm} from "../../lib/hcm-context";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {HR_TEMPLATE_CHOICES,type HrTemplateKind} from "../../lib/firebase-hr-template-library";
 import {
- archiveHrOriginal,listHrOriginals,downloadHrOriginalBytes,type HrOriginalRecord,
- type HrOriginalSource,
+ archiveHrOriginal,listHrOriginals,downloadHrOriginalBytes,reviewHrOriginal,
+ type HrOriginalRecord,type HrOriginalSource,type HrOriginalReviewDecision,
 } from "../../lib/firebase-hr-signed-original";
 
 /** Restricted, independently reviewed archive of signed worker originals.
@@ -25,6 +25,13 @@ export function HrSignedOriginalArchivePanel(){
  const [confirmed,setConfirmed]=useState(false);
  const [busy,setBusy]=useState(false);
  const [downloadBusy,setDownloadBusy]=useState<string|null>(null);
+ const [inspectionProof,setInspectionProof]=useState<{recordId:string;readAuditId:string;sha256:string}|null>(null);
+ const [reviewRow,setReviewRow]=useState<string|null>(null);
+ const [reviewDecision,setReviewDecision]=useState<HrOriginalReviewDecision>("Return for correction");
+ const [reviewReason,setReviewReason]=useState("");
+ const [reviewConfirmed,setReviewConfirmed]=useState(false);
+ const [reviewBusy,setReviewBusy]=useState(false);
+ const reviewRequest=useRef<{fingerprint:string;id:string}|null>(null);
  const [message,setMessage]=useState("");
  const [records,setRecords]=useState<HrOriginalRecord[]>([]);
  const [lastWorker,setLastWorker]=useState("");
@@ -40,6 +47,10 @@ export function HrSignedOriginalArchivePanel(){
   })).sort((a,b)=>a.label.localeCompare(b.label));
  if(currentUser?.role!=="Administrator"||!session)return null;
  const resetRetry=()=>{requestId.current=null;setMessage("");};
+ const selectedReview=records.find(item=>item.id===reviewRow);
+ const matchingInspection=Boolean(selectedReview&&inspectionProof&&
+  inspectionProof.recordId===selectedReview.id&&inspectionProof.sha256===selectedReview.sha256);
+
  const reload=async(id:string)=>{
   if(!id){setMessage("Select a worker to view their private document register.");return;}
   const result=await listHrOriginals(session,id);
@@ -50,6 +61,11 @@ export function HrSignedOriginalArchivePanel(){
   setDownloadBusy(recordId+"-"+artifact);setMessage("");
   try{
    const file=await downloadHrOriginalBytes(session,recordId,artifact);
+   if(artifact==="Original"){
+    setInspectionProof({recordId,readAuditId:file.readAuditId,sha256:file.sha256});
+    setReviewConfirmed(false);
+    reviewRequest.current=null;
+   }
    const blob=new Blob([file.bytes.buffer],{type:"application/pdf"});
    const url=URL.createObjectURL(blob);
    const a=document.createElement("a");
@@ -60,6 +76,38 @@ export function HrSignedOriginalArchivePanel(){
   }catch(error){
    setMessage(error instanceof Error?error.message:"Private PDF could not be retrieved.");
   }finally{setDownloadBusy(null);}
+ };
+ const submitReview=async()=>{
+  if(!session||reviewBusy||busy||!selectedReview||!matchingInspection||
+   !inspectionProof||!reviewConfirmed||reviewReason.trim().length<12){
+   setMessage("Download and inspect this original, confirm the review, and record a reason of at least 12 characters without private tax identifiers.");
+   return;
+  }
+  const intent={
+   recordId:selectedReview.id,
+   expectedStatus:selectedReview.status as "Pending independent HR review"|"Evidence inspected; compliance verification pending",
+   decision:reviewDecision,reason:reviewReason.trim(),
+   readAuditId:inspectionProof.readAuditId,sha256:inspectionProof.sha256,
+  };
+  const fingerprint=JSON.stringify(intent);
+  if(!reviewRequest.current||reviewRequest.current.fingerprint!==fingerprint)
+   reviewRequest.current={fingerprint,id:crypto.randomUUID().replaceAll("-","")};
+  setReviewBusy(true);setMessage("");
+  try{
+   const receipt=await reviewHrOriginal(session,intent,reviewRequest.current.id);
+   const latest=await listHrOriginals(session,selectedReview.employeeUid);
+   const updated=latest.find(row=>row.id===receipt.recordId);
+   if(!updated||updated.status!==receipt.status)
+    throw new Error("Review receipt received but record readback is incomplete. Check the worker register before retrying.");
+   setRecords(latest);
+   setReviewRow(null);setReviewConfirmed(false);setInspectionProof(null);setReviewReason("");
+   reviewRequest.current=null;
+   setMessage("HR source review recorded: "+receipt.status+
+    ". No e-signature, tax compliance, I-9 employer examination, classification or payroll authorization was granted.");
+  }catch(error){
+   setMessage((error instanceof Error?error.message:"HR review not confirmed.")+
+    " Check the source before retrying with the same review ID.");
+  }finally{setReviewBusy(false);}
  };
  const submit=async(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();
@@ -90,12 +138,12 @@ export function HrSignedOriginalArchivePanel(){
  };
  return <section className="prototype-panel" aria-label="Private completed HR document intake">
   <h2>Signed-original archive: restricted HR intake</h2>
-  <p className="prototype-note">Upload a completed original only after the paper signing or approved external provider ceremony took place. The server archives immutable PDF bytes, independently rechecks their SHA-256 and links them to the selected worker. Every record remains <strong>Pending independent HR review</strong>. This form cannot create e-signatures or complete employer I-9 review.</p>
+  <p className="prototype-note">Upload a completed original only after the paper signing or approved external provider ceremony took place. The server archives immutable PDF bytes, independently rechecks their SHA-256 and links them to the selected worker. New records start as <strong>Pending independent HR review</strong> and may be returned for correction or inspected without being legally approved. This form cannot create e-signatures or complete employer I-9 review.</p>
   <form className="prototype-order-form" onSubmit={event=>void submit(event)}>
    <div className="form-grid">
     <label>Worker
      <select aria-label="Worker for signed original" value={employeeUid} required disabled={busy}
-      onChange={e=>{setEmployeeUid(e.target.value);setRecords([]);setLastWorker("");resetRetry();}}>
+      onChange={e=>{setEmployeeUid(e.target.value);setRecords([]);setLastWorker("");setInspectionProof(null);setReviewRow(null);setReviewConfirmed(false);reviewRequest.current=null;resetRetry();}}>
       <option value="">Choose provisioned worker</option>
       {workers.map(worker=><option key={worker.id} value={worker.id}>{worker.label}</option>)}
      </select>
@@ -152,11 +200,37 @@ export function HrSignedOriginalArchivePanel(){
     <td>{item.kind}</td><td>{item.createdAt.slice(0,10)}</td>
     <td><code>{item.sha256.slice(0,14)}…</code></td><td>{item.sourceType}{item.hasCertificate?" + certificate":""}</td>
     <td>{item.status}</td>
-    <td><button type="button" disabled={downloadBusy!==null||busy} onClick={()=>void download("Original",item.id)}>Download original</button>
-     {item.hasCertificate&&<button type="button" disabled={downloadBusy!==null||busy} onClick={()=>void download("Certificate",item.id)}>Certificate</button>}</td>
+    <td><button type="button" disabled={downloadBusy!==null||busy||reviewBusy} onClick={()=>void download("Original",item.id)}>Download original</button>
+     {item.hasCertificate&&<button type="button" disabled={downloadBusy!==null||busy||reviewBusy} onClick={()=>void download("Certificate",item.id)}>Certificate</button>}
+     {item.status!=="Requires correction"&&<button type="button" disabled={reviewBusy||busy} onClick={()=>{setReviewRow(item.id);setReviewReason("");setReviewDecision("Return for correction");setReviewConfirmed(false);reviewRequest.current=null;}}>Review evidence</button>}</td>
    </tr>)}</tbody>
   </table></div>}
   {lastWorker&&records.length===0&&<p className="prototype-note">{"No verified source records in this worker's latest archive window."}</p>}
+  {selectedReview&&<div className="prototype-panel" aria-label="HR original source inspection">
+   <h3>Inspection decision: {selectedReview.kind}</h3>
+   <p className="prototype-note">Status: {selectedReview.status}. Download the original for this exact record before recording an inspection or returning it for correction. A source inspection never verifies a legal signature.</p>
+   {!matchingInspection&&<p role="alert" className="prototype-note">No matching server-audited original download for this record. Select Download original in the row above first.</p>}
+   <label>Review action
+    <select value={reviewDecision} disabled={reviewBusy} onChange={event=>{setReviewDecision(event.target.value as HrOriginalReviewDecision);setReviewConfirmed(false);reviewRequest.current=null;}}>
+     <option value="Return for correction">Return for correction (new PDF submission required)</option>
+     {selectedReview.status==="Pending independent HR review"&&<option value="Record evidence inspection">Document inspected; legal verification remains pending</option>}
+    </select>
+   </label>
+   <label>Specific HR review note (no SSNs, taxpayer IDs or financial details)
+    <textarea value={reviewReason} minLength={12} maxLength={800} rows={3} disabled={reviewBusy}
+     onChange={event=>{setReviewReason(event.target.value);setReviewConfirmed(false);reviewRequest.current=null;}}
+     placeholder="Record the evidence checked or the exact correction required."/>
+   </label>
+   <label><input type="checkbox" checked={reviewConfirmed} disabled={reviewBusy||!matchingInspection}
+    onChange={event=>setReviewConfirmed(event.target.checked)}/>
+    I inspected the original corresponding to this checksum. This action does not approve a legal signature or fulfill employee or contractor compliance requirements.</label>
+   <div className="prototype-controls">
+    <button type="button" disabled={reviewBusy||busy||!matchingInspection||!reviewConfirmed||reviewReason.trim().length<12}
+     onClick={()=>void submitReview()}>{reviewBusy?"Recording source review…":"Record restricted HR review"}</button>
+    <button type="button" disabled={reviewBusy} onClick={()=>{setReviewRow(null);setReviewConfirmed(false);setReviewReason("");reviewRequest.current=null;}}>Close review</button>
+   </div>
+  </div>}
+
   <p className="prototype-note">{"Files are private and never published as bearer download links. This intake creates evidence records for HR to evaluate; it does not change a worker's onboarding or compliance status or disburse payroll."}</p>
  </section>;
 }
