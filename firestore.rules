@@ -339,6 +339,16 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Server-authored billing/A-P contact updates: Administrator audit only.
+    // The browser cannot mint revisions, approval claims, or retry receipts.
+    match /customerContactUpdateAudit/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /customerContactUpdateKeys/{requestId} {
+      allow read, write: if false;
+    }
+
     // Server-only idempotency receipts prevent replayed account creation.
     match /accountCreationRequests/{requestId} {
       allow get, list, create, update, delete: if false;
