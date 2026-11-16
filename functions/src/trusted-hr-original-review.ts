@@ -4,9 +4,10 @@ import {getFirestore} from "firebase-admin/firestore";
 import {HrOriginalArchiveError} from "./trusted-hr-signed-original";
 
 type Row=Record<string,unknown>;
-type ReviewDecision="Return for correction"|"Record evidence inspection";
+type ReviewDecision="Return for correction"|"Record evidence inspection"|"Quarantine misfiled original";
 type ReviewStatus="Pending independent HR review"|
- "Requires correction"|"Evidence inspected; compliance verification pending";
+ "Requires correction"|"Evidence inspected; compliance verification pending"|
+ "Quarantined; access revoked";
 type Intent={
  recordId:string;expectedStatus:ReviewStatus;decision:ReviewDecision;
  reason:string;readAuditId:string;sha256:string;
@@ -17,9 +18,10 @@ const segment=/^[A-Za-z0-9_-]{3,128}$/;
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const key=/^[A-Za-z0-9_-]{16,80}$/;
 const transitions:Record<ReviewStatus,ReviewDecision[]>={
- "Pending independent HR review":["Return for correction","Record evidence inspection"],
- "Requires correction":[],
- "Evidence inspected; compliance verification pending":["Return for correction"],
+ "Pending independent HR review":["Return for correction","Record evidence inspection","Quarantine misfiled original"],
+ "Requires correction":["Quarantine misfiled original"],
+ "Evidence inspected; compliance verification pending":["Return for correction","Quarantine misfiled original"],
+ "Quarantined; access revoked":[],
 };
 
 /** An HR inspection or return for correction is not signature, IRS, DHS/I-9,
@@ -108,7 +110,8 @@ export async function decideTrustedHrOriginalReview(
    throw new HrOriginalArchiveError(409,
     "No valid Administrator original inspection evidence. Download the original first.");
   const nextStatus:ReviewStatus=input.decision==="Return for correction"?
-   "Requires correction":"Evidence inspected; compliance verification pending";
+   "Requires correction":input.decision==="Quarantine misfiled original"?
+    "Quarantined; access revoked":"Evidence inspected; compliance verification pending";
   const reviewedAt=new Date().toISOString();
   const auditId=randomUUID();
   tx.update(recordRef,{
