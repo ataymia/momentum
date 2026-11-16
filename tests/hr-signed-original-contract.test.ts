@@ -31,6 +31,12 @@ test("R43-R49: secured signed originals are separate from blank templates and ca
  assert(review.includes("hrOriginalReviewAudit/"));
  assert(review.includes("signatureVerified:false,legalApproved:false,i9Examined:false"));
  assert(read.includes("readAuditId:auditId"));
+ assert(review.includes("Quarantine misfiled original"));
+ assert(review.includes("Quarantined; access revoked"));
+ assert(read.includes("Private original is held for HR quarantine review."));
+ assert(server.includes('txt(snapshot.data().status)!=="Quarantined; access revoked"'));
+ assert(ui.includes("Quarantine misfiled or incorrectly assigned original"));
+
  assert(client.includes("reviewHrOriginal"));
  assert(ui.includes("Record restricted HR review"));
  assert(ui.includes("matchingInspection"));
