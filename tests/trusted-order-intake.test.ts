@@ -38,7 +38,13 @@ test("R33 authenticated only, readback-safe and no financial or inventory mutati
  assert(form.includes("submitConnectedOrderIntake"));
  assert(form.includes("nonbinding review request"));
  assert(queue.includes("listConnectedOrderIntakes"));
- assert(queue.includes("most recent requests"));
+ assert(queue.includes("Load older source requests"));
+ assert(queue.includes("getConnectedOrderIntake"));
+ assert(src.includes("pageTrustedOrderIntakes"));
+ assert(endpoints.includes("pageTrustedOrderIntakes(actor,payload.cursor)"));
+ assert(client.includes("nextCursor"));
+ assert(queue.includes("setNextCursor"));
+ assert(queue.includes("setRecords(current=>current.map(row=>row.id===selected.id?readback:row))"));
  assert(orderActions.includes("<ConnectedOrderIntakeForm/>"));
  assert(orderActions.includes("<ConnectedOrderIntakeQueue/>"));
 });
