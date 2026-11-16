@@ -145,6 +145,6 @@ export function PayrollExperience(){
       <div className="prototype-domain-card prototype-domain-card--static"><strong>Review and release</strong><span>Timecards, commissions, exceptions, approval, release and settlement</span><span>Pending workflow migration</span></div>
       <div className="prototype-domain-card prototype-domain-card--static"><strong>Corrections</strong><span>Void and reissue, liability register and payment failures</span><span>Requires audited permissions</span></div>
     </div>}
-    <p className="prototype-note"><ShieldCheck size={14}/> Preview only. A released pay run does not prove funds settled. No payroll calculations, filings or payments execute from this screen.</p>
+    <p className="prototype-note"><ShieldCheck size={14}/> Preview only. A released pay run does not prove funds settled. No payroll calculations, filings or payments execute from this screen. Independent contractors are excluded from the W-2 withholding calculator. Contractor invoice approval, W-9 review, payment authorization, 1099 reporting and reconciliation require a separate verified accounts-payable process.</p>
   </div>;
 }
