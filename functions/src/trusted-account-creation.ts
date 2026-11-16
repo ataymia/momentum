@@ -1,4 +1,4 @@
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {
   object,
@@ -53,6 +53,15 @@ export async function createTrustedCrmAccount(
   if (!validation.ok) {
     throw new TrustedAccountCreationError(400, validation.message);
   }
+  // New-account creation may not write private tax IDs into shared customer arrays.
+  if (!object(raw)||str(raw.ein)||str(raw.azTptLicenseNumber)||
+    !["", "Undetermined"].includes(str(raw.taxDocumentType))) {
+    throw new TrustedAccountCreationError(400,
+      "Sensitive tax identity requires separate authorized review.");
+  }
+  const fingerprint=createHash("sha256").update(JSON.stringify({
+    record:validation.record,legalBusinessName:validation.legalBusinessName,
+  })).digest("hex");
   const db=getFirestore();
   const accessRef=db.doc("userAccess/"+actorUid);
   const accountRef=db.doc("domains/workspace/fields/accounts");
@@ -70,14 +79,14 @@ export async function createTrustedCrmAccount(
       ]);
     const actor=access.data();
     if (actor?.accountState!=="Active"||
-      !["Administrator", "Sales Manager", "Sales Representative"].includes(
-        str(actor?.role))) {
+      !["Administrator", "Sales Manager"].includes(str(actor?.role))) {
       throw new TrustedAccountCreationError(403, "Not authorized to create.");
     }
 
     if (priorRequest.exists) {
       const existing=priorRequest.data();
-      if (str(existing?.actorUid)!==actorUid) {
+      if (str(existing?.actorUid)!==actorUid||
+        str(existing?.fingerprint)!==fingerprint) {
         throw new TrustedAccountCreationError(409, "Account request conflict.");
       }
       const previousId=str(existing?.accountId);
@@ -132,8 +141,9 @@ export async function createTrustedCrmAccount(
       accountManagerId: actorUid, responsibilityStartedAt: createdAt,
       stage: "Prospect", health: "New", lifetimeCases: 0, reorderCount: 0,
       lastActivity: "Location created",
-      nextAction: "Qualify the decision-maker and buying process",
-      nextActionDate: day, notes: "",
+      nextAction: "Verify territory authority, buyer and next steps",
+      nextActionDate: day,
+      notes: "Territory rights and tax documents have not been verified.",
     };
     tx.set(accountRef, {items: [account, ...priorAccounts]});
     if (!alreadyGrouped) {
@@ -160,7 +170,7 @@ export async function createTrustedCrmAccount(
       accountId, creatorUid: actorUid, createdAt,
       evidence: "Trusted server account-creation transaction",
     });
-    tx.create(requestRef, {actorUid, accountId, createdAt});
+    tx.create(requestRef, {actorUid, accountId, createdAt, fingerprint});
     const version=createdAt+"#"+randomUUID().slice(0, 6);
     const paths=[accountRef.path, activitiesRef.path];
     if (!alreadyGrouped)paths.push(customersRef.path);
