@@ -420,6 +420,11 @@ service cloud.firestore {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;
     }
+    // Private document read evidence is server-only, with Administrator audit access.
+    match /hrOriginalIntakeReadAudit/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
     // Untrusted clients cannot create or inspect signed-original retry reservations.
     match /hrOriginalArchiveRequests/{requestId} {
       allow read, write: if false;
