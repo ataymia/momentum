@@ -173,6 +173,30 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
   ...returnIntent,expectedStatus:"Requires correction",
  },"illegalReopen"+reviewKey),400);
 
+ const freshInspection=await readTrustedHrOriginal(admin,{
+  recordId:receipt.recordId,artifact:"Original",
+ });
+ const quarantine=await decideTrustedHrOriginalReview(admin,{
+  ...pendingIntent,expectedStatus:"Requires correction",
+  decision:"Quarantine misfiled original",
+  readAuditId:freshInspection.readAuditId,
+  reason:"Original may have been assigned to an incorrect worker. Revoke access pending HR investigation.",
+ },"quarantine"+reviewKey);
+ assert.equal(quarantine.status,"Quarantined; access revoked");
+ const quarantinedSource=(await db.doc("hrOriginalIntakeRecords/"+receipt.recordId).get()).data();
+ assert.equal(quarantinedSource.status,"Quarantined; access revoked");
+ assert.equal(quarantinedSource.complianceApproved,false);
+ await deny(readTrustedHrOriginal(worker,{recordId:receipt.recordId,artifact:"Original"}),403);
+ const afterQuarantineWorker=await listTrustedHrSignedOriginals(worker);
+ assert(!afterQuarantineWorker.some(item=>item.id===receipt.recordId));
+ const afterQuarantineAdmin=await listTrustedHrSignedOriginals(admin,worker);
+ assert(afterQuarantineAdmin.some(item=>item.id===receipt.recordId&&
+  item.status==="Quarantined; access revoked"));
+ const auditCount=(await db.collection("hrOriginalReviewAudit")
+  .where("recordId","==",receipt.recordId).get()).docs.length;
+ assert.equal(auditCount,3);
+
+
  await bucket.file(receipt.originalPath).save(Buffer.from(
   "%PDF-1.7\n1 0 obj\n<< /Type /Tampered >>\nendobj\n%%EOF\n"
  ),{contentType:"application/pdf",resumable:false});
