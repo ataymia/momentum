@@ -45,8 +45,8 @@ const adminOwned=(userIdField="userId"):DomainFieldSpec=>({userIdField,selfWrite
 const restricted=(read:RoleRule,write:RoleRule):DomainFieldSpec=>({read,write});
 
 export const DOMAIN_SPECS:DomainSpec[]=[
-  {key:"momentum-demo-workspace-v5",id:"workspace",read:OPERATIONAL,write:OPERATIONAL,omit:["users"],fields:{customers:{write:[]},accounts:{read:[...OPERATIONAL,"Delivery Driver"],write:[]},activities:{},appointments:{},orders:{read:[...OPERATIONAL,"Delivery Driver"],write:[...OPERATIONAL,"Delivery Driver"]},placements:{},inventory:{read:[...OPERATIONAL,"Delivery Driver"]},approvals:{},notifications:{},bulletins:{},territories:{},timeEntries:perUser("userId",{read:"hasAccess",write:"activeEmployee"}),timecards:perUser("userId",{read:"hasAccess",write:"activeEmployee"})}},
-  {key:"momentum-commercial-controls-v1",id:"commercial",read:OPERATIONAL,write:OPERATIONAL,fields:{orders:{read:[...OPERATIONAL,"Delivery Driver"],write:[...OPERATIONAL,"Delivery Driver"]},appointments:{},approvals:{},activities:{},inventoryLots:{read:[...OPERATIONAL,"Delivery Driver"]},territories:{}}},
+  {key:"momentum-demo-workspace-v5",id:"workspace",read:OPERATIONAL,write:OPERATIONAL,omit:["users"],fields:{customers:{write:[]},accounts:{read:[...OPERATIONAL,"Delivery Driver"],write:[]},activities:{},appointments:{},orders:{read:[...OPERATIONAL,"Delivery Driver"],write:[]},placements:{},inventory:{read:[...OPERATIONAL,"Delivery Driver"]},approvals:{write:[]},notifications:{},bulletins:{},territories:{},timeEntries:perUser("userId",{read:"hasAccess",write:"activeEmployee"}),timecards:perUser("userId",{read:"hasAccess",write:"activeEmployee"})}},
+  {key:"momentum-commercial-controls-v1",id:"commercial",read:OPERATIONAL,write:OPERATIONAL,fields:{orders:{read:[...OPERATIONAL,"Delivery Driver"],write:[]},appointments:{},approvals:{write:[]},activities:{},inventoryLots:{read:[...OPERATIONAL,"Delivery Driver"]},territories:{}}},
   {key:"momentum-crm-v1",id:"crm",read:SALES,write:SALES,fields:{contacts:{},interactions:{write:[]},opportunities:{},responsibilityHistory:{write:[]}}},
   /**
    * Territory management. Configuration and assignments are manager-owned; exception requests are sharded
@@ -185,7 +185,7 @@ export type DomainDocument={path:string;writable:boolean};
 
 export function domainDocuments(spec:DomainSpec,scope:PersistenceScope):DomainDocument[]{
   const documents:DomainDocument[]=[];const sharedReadable=roleAllows(spec.read,scope);const sharedWritable=roleAllows(spec.write,scope);
-  if(sharedReadable)documents.push({path:sharedDocPath(spec.id,ROOT_FIELD),writable:sharedWritable});
+  if(sharedReadable)documents.push({path:sharedDocPath(spec.id,ROOT_FIELD),writable:sharedWritable&&!["workspace","commercial"].includes(spec.id)});
   for(const [field,fieldSpec] of Object.entries(spec.fields)){
     const read=fieldSpec.read?roleAllows(fieldSpec.read,scope):sharedReadable;const write=fieldSpec.write?roleAllows(fieldSpec.write,scope):sharedWritable;
     // A legacy shared shard can contain other employees' records; only Administrators may hydrate it.
@@ -204,7 +204,7 @@ export function domainDocuments(spec:DomainSpec,scope:PersistenceScope):DomainDo
 }
 
 export function userShardWritable(_spec:DomainSpec,fieldSpec:DomainFieldSpec,uid:string,scope:PersistenceScope){if(fieldSpec.serverOwned)return false;if(scope.role==="Customer"||["Suspended","Separated"].includes(scope.accountState))return false;if(scope.role==="Administrator")return true;if(uid===scope.uid)return fieldSpec.selfWrite!==false;if(fieldSpec.salesRepSupervise&&scope.role==="Sales Representative"&&scope.supervisedBrandAmbassadorIds.has(uid))return scope.accountState==="Active";if(scope.managedUserIds.has(uid))return fieldSpec.managerWrite!==false&&scope.accountState==="Active";return false;}
-export function documentWritable(path:string,scope:PersistenceScope){const parsed=parseDocPath(path);if(!parsed)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)return false;if(parsed.uid){const resolved=resolveUserPhysicalField(spec,parsed.field);return Boolean(resolved?.fieldSpec.userIdField)&&userShardWritable(spec,resolved!.fieldSpec,parsed.uid,scope);}const fieldSpec=parsed.field===ROOT_FIELD?undefined:spec.fields[parsed.field];if(fieldSpec?.userIdField&&scope.role!=="Administrator")return false;return roleAllows(fieldSpec?.write??spec.write,scope);}
+export function documentWritable(path:string,scope:PersistenceScope){const parsed=parseDocPath(path);if(!parsed)return false;const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)return false;if(parsed.uid){const resolved=resolveUserPhysicalField(spec,parsed.field);return Boolean(resolved?.fieldSpec.userIdField)&&userShardWritable(spec,resolved!.fieldSpec,parsed.uid,scope);}if(parsed.field===ROOT_FIELD&&["workspace","commercial"].includes(spec.id))return false;const fieldSpec=parsed.field===ROOT_FIELD?undefined:spec.fields[parsed.field];if(fieldSpec?.userIdField&&scope.role!=="Administrator")return false;return roleAllows(fieldSpec?.write??spec.write,scope);}
 export function documentReplacesOnWrite(path:string){
   const parsed=parseDocPath(path);if(!parsed||parsed.field===ROOT_FIELD)return false;
   const spec=DOMAIN_SPECS.find((item)=>item.id===parsed.domainId);if(!spec)return false;
