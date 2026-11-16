@@ -1,10 +1,12 @@
 "use client";
-import {useMemo,useState} from "react";
+import {useMemo,useRef,useState} from "react";
 import type {FormEvent} from "react";
 import {ArrowUpDown} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useCrm} from "../../lib/crm-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
+import {saveConnectedCrmContact,type ConnectedContactIntent} from "../../lib/firebase-crm-contact";
 import {momentumStorage} from "../../lib/persistence";
 import {downloadCsv} from "../../lib/browser-export";
 import {visibleCrmContacts,type ContactSort} from "../../lib/crm-contacts-view";
@@ -16,7 +18,9 @@ const go=(to:string,label:string)=><button type="button" className="prototype-li
 const contactUrl=(id:string)=>"/crm/contacts/"+encodeURIComponent(id);
 function useContactWritePermission(){
   const {currentUser}=useWorkspace(),runtime=useRuntimeMode();
-  return runtime.isDemo&&momentumStorage.mode()==="local"&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser?.role??"");
+  const firebase=useFirebaseSessionOptional();
+  return (runtime.isDemo&&momentumStorage.mode()==="local"||!runtime.isDemo&&Boolean(firebase?.session))&&
+   ["Administrator","Sales Manager","Sales Representative"].includes(currentUser?.role??"");
 }
 
 export function CrmContactsDirectory(){
@@ -52,6 +56,9 @@ export function CrmContactsDirectory(){
 
 export function CrmContactEditor({id}:{id?:string}){
   const {scope,currentUser}=useWorkspace(),{crm,addContact,updateContact}=useCrm(),canWrite=useContactWritePermission();
+  const runtime=useRuntimeMode(),firebase=useFirebaseSessionOptional();
+  const request=useRef<{fingerprint:string;id:string}|null>(null);
+  const [busy,setBusy]=useState(false);
   const contact=id?crm.contacts.find(c=>c.id===id&&(c.locationId?scope.accounts.some(a=>a.id===c.locationId):scope.accounts.some(a=>a.customerId===c.customerId))):undefined;
   const locations=scope.accounts.filter(a=>Boolean(a.customerId));
   const [locationId,setLocationId]=useState(contact?.locationId??"");
@@ -65,20 +72,44 @@ export function CrmContactEditor({id}:{id?:string}){
   if(id&&!contact)return <main><header className="prototype-heading"><h1>Contact unavailable</h1></header><div className="prototype-empty">Contact not found or outside your authorized business scope.</div>{go("/crm/contacts","Back to contacts")}</main>;
   const location=scope.accounts.find(a=>a.id===(contact?.locationId??locationId));
   const editable=canWrite&&(!contact||contact.createdBy!=="system");
-  const submit=(event:FormEvent<HTMLFormElement>)=>{
+  const submit=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
-    if(!editable||!currentUser){setMessage("Editing is unavailable for this record or environment.");return;}
+    if(!editable||!currentUser||busy){setMessage("Editing is unavailable for this record or environment.");return;}
     if(!name.trim()||!role.trim()||name.trim().length>160||role.trim().length>100){setMessage("Name and role are required, within the maximum field lengths.");return;}
     if(email.trim()&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())){setMessage("Enter a valid email address or leave it blank.");return;}
-    if(!contact){
-      if(!location?.customerId||!locations.some(a=>a.id===location.id)){setMessage("Select a location with a canonical customer account.");return;}
-      const created=addContact({scope:"Location",locationId:location.id,customerId:location.customerId,name:name.trim(),role:role.trim(),email:email.trim()||undefined,phone:phone.trim()||undefined,decisionRole,primary:false,active:true});
-      if(!created){setMessage("Contact creation rejected. Verify your role, account and location relationship.");return;}
-      navigateToRoute(contactUrl(created));
-    }else{
-      const result=updateContact(contact.id,{name:name.trim(),role:role.trim(),email:email.trim()||undefined,phone:phone.trim()||undefined,decisionRole,active});
-      setMessage(result.ok?"Contact updated in this isolated CRM demonstration workspace.":result.message??"Contact update rejected.");
+    if(!location?.customerId||!locations.some(a=>a.id===location.id)){
+      setMessage("Select a location with a canonical customer account.");return;
     }
+    if(runtime.isDemo&&momentumStorage.mode()==="local"){
+      if(!contact){
+        const created=addContact({scope:"Location",locationId:location.id,customerId:location.customerId,name:name.trim(),role:role.trim(),email:email.trim()||undefined,phone:phone.trim()||undefined,decisionRole,primary:false,active:true});
+        if(!created){setMessage("Contact creation rejected. Verify your role and account assignment.");return;}
+        navigateToRoute(contactUrl(created));
+      }else{
+        const result=updateContact(contact.id,{name:name.trim(),role:role.trim(),email:email.trim()||undefined,phone:phone.trim()||undefined,decisionRole,active});
+        setMessage(result.ok?"Contact updated.":result.message??"Contact update rejected.");
+      }
+      return;
+    }
+    if(!firebase?.session){setMessage("Sign in to update connected contacts.");return;}
+    const intent:ConnectedContactIntent={action:contact?"Update":"Create",
+      locationId:location.id,contactId:contact?.id??"",
+      expectedRevision:(contact as (CrmContact&{revision?:number})|undefined)?.revision??0,
+      contact:{name:name.trim(),role:role.trim(),email:email.trim(),phone:phone.trim(),decisionRole,active:contact?active:true}};
+    const fingerprint=JSON.stringify(intent);
+    if(!request.current||request.current.fingerprint!==fingerprint)
+      request.current={fingerprint,id:crypto.randomUUID().replaceAll("-","")};
+    setBusy(true);setMessage("");
+    try{
+      const receipt=await saveConnectedCrmContact(firebase.session,intent,request.current.id);
+      if(!receipt.readbackVerified){setMessage("Server received this change but current CRM readback is not confirmed. Check the record before retrying.");return;}
+      const refresh=await momentumStorage.refreshKeys(["momentum-crm-v1"]);
+      if(!refresh.ok){setMessage("Contact saved but the CRM workspace has not synchronized. Refresh records before retrying.");return;}
+      request.current=null;
+      if(!contact)navigateToRoute(contactUrl(receipt.contactId));
+      else setMessage("Contact saved in connected CRM.");
+    }catch(error){setMessage(error instanceof Error?error.message:"Contact save could not be verified.");}
+    finally{setBusy(false);}
   };
   const relatedOrders=contact?.locationId?scope.orders.filter(o=>!o.testOnly&&o.accountId===contact.locationId).sort((a,b)=>b.placedAt.localeCompare(a.placedAt)):[];
   const relatedActivities=contact?.locationId?crm.interactions.filter(a=>a.locationId===contact.locationId&&(a.contactId===contact.id||!a.contactId)).sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).slice(0,20):[];
@@ -91,7 +122,7 @@ export function CrmContactEditor({id}:{id?:string}){
     </section>}
     <section className="prototype-panel"><h2>{contact?"Contact details":"New contact details"}</h2>
       {!editable&&<p className="prototype-note" role="status">{!canWrite?"Read-only in connected mode.":"Canonical account-sourced contacts must be edited through the separately authorized account workflow."}</p>}
-      <form aria-label={contact?"Edit CRM contact":"Create CRM contact"} onSubmit={submit}>
+      <form aria-label={contact?"Edit CRM contact":"Create CRM contact"} onSubmit={event=>void submit(event)}>
       <div className="prototype-controls">
         <label>Customer location <select aria-label="Contact customer location" required value={location?.id??locationId} disabled={Boolean(contact)||!editable} onChange={event=>setLocationId(event.target.value)}>
           <option value="">Choose location</option>{locations.map(a=><option key={a.id} value={a.id}>{a.name} · {a.location}</option>)}</select></label>
@@ -101,9 +132,9 @@ export function CrmContactEditor({id}:{id?:string}){
         <label>Phone <input type="tel" value={phone} maxLength={60} disabled={!editable} onChange={event=>setPhone(event.target.value)}/></label>
         <label>Decision role <select value={decisionRole} disabled={!editable} onChange={event=>setDecisionRole(event.target.value as CrmContact["decisionRole"])}>{decisionRoles.map(d=><option key={d}>{d}</option>)}</select></label>
         {contact?.createdBy!=="system"&&contact&&<label>Contact status <select value={active?"active":"inactive"} disabled={!editable} onChange={event=>setActive(event.target.value==="active")}><option value="active">Active</option><option value="inactive">Inactive</option></select></label>}
-      </div>{editable&&<div className="prototype-controls"><button type="submit">{contact?"Save contact":"Create contact"}</button>{go("/crm/contacts","Cancel")}</div>}
+      </div>{editable&&<div className="prototype-controls"><button type="submit" disabled={busy}>{busy?"Saving…":contact?"Save contact":"Create contact"}</button>{go("/crm/contacts","Cancel")}</div>}
       {message&&<p role="status">{message}</p>}</form>
-      <p className="prototype-note">Contact creation and changes are local-demo-only. Customer-wide and primary identity changes are intentionally excluded pending account-owner reconciliation and production authorization.</p>
+      <p className="prototype-note">Additional location contacts can be created or updated by authorized sales personnel. Canonical primary/billing identity changes require the separate account workflow.</p>
     </section>
     {contact&&<section className="prototype-panel"><h2>Related sales orders</h2>
       <p className="prototype-note">Customer-location orders are not attributed to this person without explicit evidence.</p>

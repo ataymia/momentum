@@ -52,3 +52,18 @@ test("contact sort supports every visible data field while keeping scope first",
  const ui=readFileSync("components/prototype/crm-contacts-experience.tsx","utf8");
  for(const k of ["name","business","role","decisionRole","email","phone","active","created"])assert.match(ui,new RegExp('heading\\("'+k+'"'));
 });
+
+test("connected contacts use verified server transactions, source readback and canonical CRM refresh",()=>{
+ const ui=readFileSync("components/prototype/crm-contacts-experience.tsx","utf8");
+ const client=readFileSync("lib/firebase-crm-contact.ts","utf8");
+ const server=readFileSync("functions/src/trusted-crm-contact.ts","utf8");
+ const api=readFileSync("functions/src/index.ts","utf8");
+ assert.match(ui,/saveConnectedCrmContact\(firebase\.session,intent,request\.current\.id\)/);
+ assert.match(ui,/receipt\.readbackVerified/);
+ assert.match(ui,/momentumStorage\.refreshKeys\(\["momentum-crm-v1"\]\)/);
+ assert.match(server,/role==="Sales Representative"&&ownerUid!==actorUid/);
+ assert.match(server,/owner\?\.managerId/);
+ assert.match(server,/expectedRevision/);
+ assert.match(client,/getFirestoreSnapshot/);
+ assert.match(api,/export const saveCrmContact=/);
+});
