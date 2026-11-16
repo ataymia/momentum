@@ -102,8 +102,9 @@ export async function decideTrustedHrOriginalReview(
    !Number.isFinite(Date.parse(txt(read?.viewedAt)))||
    Date.parse(txt(read?.viewedAt))>Date.now()+120000||
    Date.now()-Date.parse(txt(read?.viewedAt))>86400000||
+   txt(source.reviewReadAuditId)===input.readAuditId||
    (txt(source.reviewedAt)&&
-    Date.parse(txt(read?.viewedAt))<=Date.parse(txt(source.reviewedAt))))
+    Date.parse(txt(read?.viewedAt))<Date.parse(txt(source.reviewedAt))))
    throw new HrOriginalArchiveError(409,
     "No valid Administrator original inspection evidence. Download the original first.");
   const nextStatus:ReviewStatus=input.decision==="Return for correction"?
