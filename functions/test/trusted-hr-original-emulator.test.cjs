@@ -80,6 +80,14 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  const replay=await archiveTrustedHrSignedOriginal(admin,original,archiveKey);
  assert.equal(replay.recordId,receipt.recordId);
  assert.equal(replay.replayed,true);
+ const [afterReplayMetadata]=(await bucket.file(receipt.originalPath).getMetadata());
+ const [afterReplayCertificateMetadata]=(await bucket.file(receipt.certificatePath).getMetadata());
+ assert.equal(String(afterReplayMetadata.generation),receipt.generation,
+  "An idempotent retry must not rewrite the signed original");
+ assert.equal(checksum((await bucket.file(receipt.originalPath).download())[0]),checksum(pdf));
+ assert.equal(checksum((await bucket.file(receipt.certificatePath).download())[0]),checksum(cert));
+ assert(afterReplayCertificateMetadata.generation,
+  "Completion certificate must remain available after replay");
  await deny(archiveTrustedHrSignedOriginal(admin,{...original,reference:"DIFFERENT-SOURCE"} ,archiveKey),409);
  const adminView=await listTrustedHrSignedOriginals(admin,worker);
  assert(adminView.some(item=>item.id===receipt.recordId&&item.hasCertificate));
