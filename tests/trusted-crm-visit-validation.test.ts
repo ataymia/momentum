@@ -74,11 +74,12 @@ test("R75 Firestore denies direct browser CRM interaction edits, retaining sales
       readableUserIds:new Set(["active-id"]),managedUserIds:new Set(),
       supervisedBrandAmbassadorIds:new Set()};
     assert.equal(documentWritable("domains/crm/fields/interactions",scope),false,role);
+    assert.equal(documentWritable("domains/crm/fields/responsibilityHistory",scope),false,role);
     assert.equal(documentWritable("domains/crm/fields/contacts",scope),true,role);
   }
   const rules=readFileSync("firestore.rules","utf8");
   assert.match(rules,/match \/crm\/fields\/\{field\}/);
-  assert.match(rules,/field in \['interactions'\] \? \(activeEmployee\(\) && role\(\) in \[\]\)/);
+  assert.match(rules,/field in \['interactions', 'responsibilityHistory'\] \? \(activeEmployee\(\) && role\(\) in \[\]\)/);
   const index=readFileSync("functions/src/index.ts","utf8");
   const tx=readFileSync("functions/src/trusted-crm-field-visit.ts","utf8");
   const ui=readFileSync("components/prototype/crm-quick-visit.tsx","utf8");
