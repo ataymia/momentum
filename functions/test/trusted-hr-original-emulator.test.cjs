@@ -17,6 +17,7 @@ const db=getFirestore(app),bucket=getStorage(app).bucket();
 const {archiveTrustedHrSignedOriginal,listTrustedHrSignedOriginals,
  HrOriginalArchiveError}=require("../lib/trusted-hr-signed-original.js");
 const {readTrustedHrOriginal}=require("../lib/trusted-hr-original-read.js");
+const {decideTrustedHrOriginalReview}=require("../lib/trusted-hr-original-review.js");
 const suffix=randomUUID().replaceAll("-","").slice(0,12);
 const admin="hr-original-admin-"+suffix;
 const worker="hr-original-worker-"+suffix;
@@ -107,6 +108,63 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
   .where("recordId","==",receipt.recordId).get();
  assert.equal(reads.docs.length,3);
  assert(reads.docs.every(doc=>!doc.data().pdfBase64&&!doc.data().reference));
+
+ const reviewKey="sourceReview"+suffix+"abcdefghijklmnop";
+ const pendingIntent={
+  recordId:receipt.recordId,expectedStatus:"Pending independent HR review",
+  decision:"Record evidence inspection",readAuditId:retrieved.readAuditId,
+  sha256:checksum(pdf),reason:"Administrator inspected completed source PDF; legal verification remains outstanding.",
+ };
+ await deny(decideTrustedHrOriginalReview(worker,pendingIntent,"worker"+reviewKey),403);
+ await deny(decideTrustedHrOriginalReview(suspended,pendingIntent,"suspended"+reviewKey),403);
+ await deny(decideTrustedHrOriginalReview(admin,{
+  ...pendingIntent,readAuditId:ownerOriginal.readAuditId,
+ },"wrongInspector"+reviewKey),409);
+ await deny(decideTrustedHrOriginalReview(admin,{
+  ...pendingIntent,decision:"Approve legal signature",
+ },"fakeApproval"+reviewKey),400);
+ await deny(decideTrustedHrOriginalReview(admin,{
+  ...pendingIntent,sha256:"a".repeat(64),
+ },"fakeHash"+reviewKey),409);
+ const reviewed=await decideTrustedHrOriginalReview(admin,pendingIntent,reviewKey);
+ assert.equal(reviewed.status,"Evidence inspected; compliance verification pending");
+ assert.equal(reviewed.replayed,false);
+ assert.equal((await db.doc("hrOriginalIntakeRecords/"+receipt.recordId).get()).data().complianceApproved,false);
+ const repeated=await decideTrustedHrOriginalReview(admin,pendingIntent,reviewKey);
+ assert.equal(repeated.status,reviewed.status);
+ assert.equal(repeated.replayed,true);
+ await deny(decideTrustedHrOriginalReview(admin,{
+  ...pendingIntent,decision:"Return for correction",
+ },reviewKey),409);
+ await deny(decideTrustedHrOriginalReview(admin,pendingIntent,"stale"+reviewKey),409);
+ await deny(decideTrustedHrOriginalReview(admin,{
+  ...pendingIntent,expectedStatus:"Evidence inspected; compliance verification pending",
+  decision:"Return for correction",
+ },"reusedRead"+reviewKey),409);
+ const reread=await readTrustedHrOriginal(admin,{
+  recordId:receipt.recordId,artifact:"Original",
+ });
+ assert.equal(reread.status,"Evidence inspected; compliance verification pending");
+ const returnIntent={
+  ...pendingIntent,expectedStatus:"Evidence inspected; compliance verification pending",
+  decision:"Return for correction",readAuditId:reread.readAuditId,
+  reason:"Source PDF requires a corrected document; original remains archived.",
+ };
+ const returned=await decideTrustedHrOriginalReview(admin,returnIntent,"return"+reviewKey);
+ assert.equal(returned.status,"Requires correction");
+ const afterReview=(await db.doc("hrOriginalIntakeRecords/"+receipt.recordId).get()).data();
+ assert.equal(afterReview.status,"Requires correction");
+ assert.equal(afterReview.independentlyVerified,false);
+ assert.equal(afterReview.signedOriginalVerified,false);
+ assert.equal(afterReview.complianceApproved,false);
+ const decisions=(await db.collection("hrOriginalReviewAudit")
+  .where("recordId","==",receipt.recordId).get()).docs;
+ assert.equal(decisions.length,2);
+ assert(decisions.every(doc=>doc.data().legalApproved===false&&doc.data().signatureVerified===false));
+ await deny(decideTrustedHrOriginalReview(admin,{
+  ...returnIntent,expectedStatus:"Requires correction",
+ },"illegalReopen"+reviewKey),400);
+
  await bucket.file(receipt.originalPath).save(Buffer.from(
   "%PDF-1.7\n1 0 obj\n<< /Type /Tampered >>\nendobj\n%%EOF\n"
  ),{contentType:"application/pdf",resumable:false});
