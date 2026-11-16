@@ -864,6 +864,36 @@ describe("trusted account profile audit records are immutable to browser clients
   });
 });
 
+describe("connected customer billing contact audit and retry protection",()=>{
+ test("only Administrator can read source audit; no role can forge source edits or idempotency keys",async()=>{
+  const auditPath="customerContactUpdateAudit/source-1";
+  const keyPath="customerContactUpdateKeys/actor-retry-1";
+  await env.withSecurityRulesDisabled(async context=>{
+   await setDoc(doc(context.firestore(),auditPath),{
+    eventId:"source-1",actorUid:ADMIN,customerId:"cust-test",
+    changedFields:["billingContactName"],legalVerified:false,creditApproved:false,at,
+   });
+   await setDoc(doc(context.firestore(),keyPath),{
+    actorUid:ADMIN,eventId:"source-1",fingerprint:"trusted",
+   });
+  });
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),auditPath)));
+  for(const who of [MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(getDoc(doc(dbFor(who),auditPath)));
+  }
+  for(const who of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(getDoc(doc(dbFor(who),keyPath)));
+   await assertFails(setDoc(doc(dbFor(who),auditPath),{
+    actorUid:who,customerId:"cust-test",creditApproved:true,
+   }));
+   await assertFails(setDoc(doc(dbFor(who),keyPath),{
+    actorUid:who,fingerprint:"forged",
+   }));
+   await assertFails(deleteDoc(doc(dbFor(who),auditPath)));
+  }
+ });
+});
+
 describe("commercial intake reviews are never browser-writable",()=>{
  test("even Administrators cannot forge review outcomes or retry receipts",async()=>{
   for(const role of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
