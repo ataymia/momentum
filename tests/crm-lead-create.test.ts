@@ -59,3 +59,15 @@ test("lead record assignment uses searchable real-user picker, not arbitrary tex
   assert.match(source,/SalesUserPicker label="New lead representative"/);
   assert.match(source,/eligibleReps\.some\(u=>u\.id===newOwner\)/);
 });
+
+test("connected lead creation uses authenticated idempotent server writes and verified source hydration",()=>{
+  const source=readFileSync(new URL("../components/prototype/crm-lead-create.tsx",import.meta.url),"utf8");
+  assert.match(source,/connectedWrite=Boolean\(!runtime\.isDemo&&firebase\?\.session&&currentUser/);
+  assert.match(source,/\["Administrator","Sales Manager"\]\.includes\(currentUser\.role\)/);
+  assert.match(source,/createConnectedCrmAccount\(firebase\.session,validation\.payload,pendingRequest\.current\.id\)/);
+  assert.match(source,/if\(!receipt\.readbackVerified\)/);
+  assert.match(source,/momentumStorage\.refreshKeys\(\["momentum-demo-workspace-v5"\]\)/);
+  assert.match(source,/pendingRequest\.current=null;/);
+  assert.match(source,/disabled=\{saving\}/);
+  assert.doesNotMatch(source,/setFirestoreDocument|createPayment|mark.*Paid/);
+});
