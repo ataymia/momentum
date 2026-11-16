@@ -49,6 +49,8 @@ export async function readTrustedHrOriginal(
   !Object.prototype.hasOwnProperty.call(HR_TEMPLATE_KINDS,kind)||
   (role!=="Administrator"&&actorUid!==employeeUid))
   throw new HrOriginalArchiveError(403,"Worker document scope denied.");
+ if(role!=="Administrator"&&txt(entry.status)==="Quarantined; access revoked")
+  throw new HrOriginalArchiveError(403,"Private original is held for HR quarantine review.");
  const path=txt(artifact==="Original"?entry.originalPath:entry.certificatePath);
  const sha256=txt(artifact==="Original"?entry.sha256:entry.certificateSha256);
  const expectedGeneration=txt(artifact==="Original"?entry.generation:entry.certificateGeneration);
