@@ -59,6 +59,31 @@ test("signed employment PDFs are employee-private, admin-readable, immutable and
  await assertFails(uploadBytes(ref(storage("admin"),w9Path),bytes,{contentType:"application/pdf"}));
 });
 
+test("contractor, employment and other archived originals are worker-private and immutable",async()=>{
+ const paths=[
+  "hr-private/rep/CONTRACTOR_AGREEMENT/intake-contract/signed.pdf",
+  "hr-private/rep/EMPLOYEE_AGREEMENT/intake-employee/signed.pdf",
+  "hr-private/rep/OTHER/intake-other/signed.pdf",
+ ];
+ const bytes=new Uint8Array([37,80,68,70,45,49,46,55,10,37,37,69,79,70]);
+ await env.withSecurityRulesDisabled(async context=>{
+  for(const path of paths)await uploadBytes(ref(context.storage(),path),
+   bytes,{contentType:"application/pdf"});
+ });
+ const storage=(uid:string)=>env.authenticatedContext(uid).storage();
+ for(const path of paths){
+  await assertSucceeds(getBytes(ref(storage("rep"),path)));
+  await assertSucceeds(getBytes(ref(storage("admin"),path)));
+  for(const who of ["rep2","marketing","customer","separated"]){
+   await assertFails(getBytes(ref(storage(who),path)));
+  }
+  await assertFails(getBytes(ref(env.unauthenticatedContext().storage(),path)));
+  await assertFails(uploadBytes(ref(storage("rep"),path),bytes,{contentType:"application/pdf"}));
+  await assertFails(uploadBytes(ref(storage("admin"),path),bytes,{contentType:"application/pdf"}));
+  await assertFails(deleteObject(ref(storage("admin"),path)));
+ }
+});
+
 test("blank HR template uploads are admin-only, PDF-only, immutable and not shared with staff",async()=>{
  const path="hr-templates/W9/12345678-1234-4abc-a123-123456789abc/source.pdf";
  const pdf=new Uint8Array([37,80,68,70,45,49,46,55,10,37,37,69,79,70]);
