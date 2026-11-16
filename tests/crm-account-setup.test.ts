@@ -11,11 +11,16 @@ test("account setup is an independent route, not the legacy embedded form",()=>{
  assert.match(source(),/updateCustomerCommercial\(customer\.id,patch\)/);
  assert.match(source(),/validateTaxIdentity\(identity\)/);
 });
-test("account setup cannot write from connected mode or a customer login",()=>{
- assert.match(source(),/runtime\.isDemo&&momentumStorage\.mode\(\)==="local"/);
- assert.match(source(),/currentUser\.role==="Customer"/);
- assert.match(source(),/if\(!canEdit\|\|!customer\|\|!account\)/);
- assert.doesNotMatch(source(),/firebase\.deploy|sendEmail\(|createPayment\(/);
+test("account setup requires authorized manager or Administrator for connected contact writes and never allows customers",()=>{
+ const src=source();
+ assert.match(src,/runtime\.isDemo&&momentumStorage\.mode\(\)==="local"/);
+ assert.match(src,/currentUser\.role==="Customer"/);
+ assert.match(src,/connectedContactEdit=Boolean\(!runtime\.isDemo&&firebase\?\.session&&currentUser&&/);
+ assert.match(src,/\["Administrator","Sales Manager"\]\.includes\(currentUser\.role\)/);
+ assert.match(src,/if\(!canEditContacts\|\|!customer\|\|!account\|\|savingExisting\)/);
+ assert.match(src,/if\(!canEdit\)/);
+ assert.match(src,/saveConnectedCustomerContacts\(firebase\.session,payload,pendingContactRequest\.current\.id\)/);
+ assert.doesNotMatch(src,/firebase\.deploy|sendEmail\(|createPayment\(/);
 });
 test("representatives cannot set credit terms: only management has status edit",()=>{
  assert.match(source(),/\.\.\.\(isManager\?\{creditStatus:/);
@@ -47,12 +52,16 @@ test("new-account hydration cannot fall back to editing an unrelated existing cu
   assert.doesNotMatch(src,/scope\.accounts\.find\(a=>a\.id===accountId\)\|\|scope\.accounts\[0\]/);
 });
 
-test("connected manager creation is guarded and existing-account editing stays demo-only",()=>{
+test("connected manager creation and billing-contact editing are guarded; tax and credit edits remain demo-only",()=>{
  const src=source();
  assert.match(src,/connectedCreate=Boolean/);
  assert.match(src,/canCreateNew=canEdit\|\|connectedCreate/);
  assert.match(src,/receipt\.readbackVerified/);
- assert.match(src,/if\(!canEdit\|\|!customer\|\|!account\)/);
+ assert.match(src,/connectedContactEdit=Boolean/);
+ assert.match(src,/canEditContacts=canEdit\|\|connectedContactEdit/);
+ assert.match(src,/if\(!canEdit\)/);
+ assert.match(src,/const saved=updateCustomerCommercial\(customer\.id,patch\)/);
+ assert.match(src,/Contact update was accepted by the server but current source readback is incomplete/);
 });
 
 test("new connected accounts hydrate the source before opening existing-account setup",()=>{
