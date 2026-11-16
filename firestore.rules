@@ -409,6 +409,10 @@ service cloud.firestore {
         && resource.data.employeeUid == request.auth.uid);
       allow create, update, delete: if false;
     }
+    // Untrusted clients cannot create or inspect signed-original retry reservations.
+    match /hrOriginalArchiveRequests/{requestId} {
+      allow read, write: if false;
+    }
     // Server-owned, append-only audit events; no browser impersonation or deletion.
     match /hrSignedFormAudit/{auditId} {
       allow get, list: if isAdmin();
