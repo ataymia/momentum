@@ -60,7 +60,7 @@ function validateDraft(raw:unknown):IntakeDraft{
   if(!sku||seen.has(skuId)||typeof cases!=="number"||
    !Number.isSafeInteger(cases)||cases<1||cases>10000)
    throw new OrderIntakeError(400,"Product selection or case quantity is invalid.");
-  seen.add(skuId);totalCases+=cases;
+  seen.add(skuId); totalCases+=cases;
   return{skuId,description:sku.description,casePack:sku.casePack,cases};
  });
  if(totalCases>10000)
