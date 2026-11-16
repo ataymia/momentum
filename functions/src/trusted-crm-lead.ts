@@ -15,6 +15,7 @@ const items=(v:Row|undefined):Row[]=>Array.isArray(v?.items)?v.items.filter(isRo
 const version=(v:string)=>v.replace(/[^A-Za-z0-9]+/g,"_");
 const validReason=(v:unknown,minimum:number)=>typeof v==="string"&&v.trim().length>=minimum&&v.trim().length<=500;
 
+/** Client-safe refusal from a trusted CRM transaction. */
 export class TrustedCrmLeadError extends Error{
   /** @param {number} status HTTP error.
    * @param {string} message Client-safe rejection.
@@ -40,7 +41,8 @@ function parseIntent(raw:unknown):LeadAction{
     throw new TrustedCrmLeadError(400,"Account ID or evidence reason is invalid.");
   const reason=txt(raw.reason);
   if(action==="Qualify"){
-    const expectedStage=txt(raw.expectedStage),nextStage=txt(raw.nextStage);
+    const expectedStage=txt(raw.expectedStage);
+    const nextStage=txt(raw.nextStage);
     if(!["Prospect","Qualified","Sampled"].includes(expectedStage)||
       !["Qualified","Sampled"].includes(nextStage))
       throw new TrustedCrmLeadError(400,"Invalid lead stage request.");
