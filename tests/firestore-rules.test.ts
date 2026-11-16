@@ -1056,6 +1056,46 @@ describe("confidential HR signed-form receipt metadata",()=>{
  });
 });
 
+describe("private HR original-intake queue is not legally verified e-sign",()=>{
+ test("worker may read only own pending original while all client mutations are denied",async()=>{
+  const path="hrOriginalIntakeRecords/source-pending-1";
+  const auditPath="hrOriginalIntakeAudit/source-pending-1";
+  const retryPath="hrOriginalArchiveRequests/admin-request-1";
+  const pending={
+   id:"source-pending-1",employeeUid:REP,kind:"W9",
+   status:"Pending independent HR review",createdAt:at,
+   signedOriginalVerified:false,complianceApproved:false,
+  };
+  await env.withSecurityRulesDisabled(async context=>{
+   await setDoc(doc(context.firestore(),path),pending);
+   await setDoc(doc(context.firestore(),auditPath),{
+    recordId:pending.id,employeeUid:REP,actorUid:ADMIN,at,
+   });
+   await setDoc(doc(context.firestore(),retryPath),{
+    id:pending.id,actorUid:ADMIN,createdAt:at,
+   });
+  });
+  await assertSucceeds(getDoc(doc(dbFor(REP),path)));
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+  await assertSucceeds(getDocs(query(collection(dbFor(REP),
+   "hrOriginalIntakeRecords"),where("employeeUid","==",REP))));
+  for(const who of [OTHER_REP,MANAGER,OPS,MARKETING,null]){
+   await assertFails(getDoc(doc(dbFor(who),path)));
+  }
+  for(const who of [ADMIN,REP,OTHER_REP,MANAGER,OPS,MARKETING,null]){
+   await assertFails(setDoc(doc(dbFor(who),path),{
+    ...pending,status:"Archived",complianceApproved:true,
+   }));
+   await assertFails(deleteDoc(doc(dbFor(who),path)));
+   await assertFails(setDoc(doc(dbFor(who),auditPath),{event:"Forged"}));
+   await assertFails(getDoc(doc(dbFor(who),retryPath)));
+   await assertFails(setDoc(doc(dbFor(who),retryPath),{actorUid:who}));
+  }
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),auditPath)));
+  await assertFails(getDoc(doc(dbFor(REP),auditPath)));
+ });
+});
+
 describe("server-projected admin notification events",()=>{
  test("only Administrators can read and no browser role can write",async()=>{
   await env.withSecurityRulesDisabled(async(context)=>{
