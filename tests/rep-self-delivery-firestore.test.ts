@@ -58,6 +58,11 @@ test("server self-delivery atomically verifies rep, approval, exact custody, sig
     const claimed=await commit(rep,{action:"claim",orderId});
     assert.equal(claimed.taskStatus,"Accepted");
     await assert.rejects(()=>commit(rep,{action:"depart",orderId}),/Load the exact inventory/);
+    const lotRef=db.doc(prefix+"workspace/fields/inventory");
+    const originalLot=(await lotRef.get()).data()?.items[0];
+    await lotRef.set({items:[{...originalLot,bestBy:"2000-01-01"}]});
+    await assert.rejects(()=>commit(rep,{action:"pack",orderId}),/Not enough available sellable/);
+    await lotRef.set({items:[originalLot]});
     const packed=await commit(rep,{action:"pack",orderId});
     assert.equal(packed.orderStatus,"Allocated");
     const loaded=await commit(rep,{action:"load",orderId});
@@ -67,6 +72,9 @@ test("server self-delivery atomically verifies rep, approval, exact custody, sig
     assert.equal(departed.orderStatus,"Out for delivery");
     await assert.rejects(()=>commit(rep,{action:"complete",orderId,signature:{recipientName:"",strokes:[]}}),/Invalid recipient signature|handwritten signature|required/);
     const signature={recipientName:"Store Receiver",strokes:[[[50,60],[120,110],[210,65]]]};
+    await lotRef.set({items:[{...originalLot,bestBy:"2000-01-01"}]});
+    await assert.rejects(()=>commit(rep,{action:"complete",orderId,signature}),/quality clearance/);
+    await lotRef.set({items:[originalLot]});
     const delivered=await commit(rep,{action:"complete",orderId,signature});
     assert.equal(delivered.orderStatus,"Delivered");
     assert.equal(delivered.taskStatus,"Delivered");

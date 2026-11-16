@@ -124,8 +124,8 @@ test("auto posting splits entire order across lots without user choices",()=>{
   {id:"node-user-1",type:"Employee custody",active:true},
  ];
  const lots=[
-  {id:"original-1",product:"Original",status:"Available"},
-  {id:"original-2",product:"Original",status:"Available"},
+  {id:"original-1",product:"Original",status:"Available",bestBy:"2099-12-31"},
+  {id:"original-2",product:"Original",status:"Available",bestBy:"2099-12-31"},
  ];
  const movements=[
   {id:"receipt1",lotId:"original-1",quantity:4,fromNodeId:"external",toNodeId:"node-warehouse-main",type:"Receipt"},
@@ -142,7 +142,7 @@ test("automatic override consumes existing order custody first and protects othe
   {id:"node-warehouse-main",type:"Warehouse",active:true},
   {id:"node-user-1",type:"Employee custody",active:true},
  ];
- const lots=[{id:"lot-1",product:"Original",status:"Available"}];
+ const lots=[{id:"lot-1",product:"Original",status:"Available",bestBy:"2099-12-31"}];
  const movements=[
   {lotId:"lot-1",quantity:12,fromNodeId:"external",toNodeId:"node-warehouse-main",type:"Receipt"},
   {lotId:"lot-1",quantity:5,fromNodeId:"node-warehouse-main",toNodeId:"node-user-1",type:"Transfer",relatedOrderId:"order-1"},
@@ -158,9 +158,9 @@ test("automatic override consumes existing order custody first and protects othe
 test("no false inventory delivery with missing stock, held stock, or unmatched SKU",()=>{
  const nodes=[{id:"node-warehouse-main",type:"Warehouse",active:true}];
  const movements=[{lotId:"lot-1",quantity:3,fromNodeId:"external",toNodeId:"node-warehouse-main"}];
- assert.equal(planAutomaticDelivery([{product:"Original",cases:4}],[{id:"lot-1",product:"Original",status:"Available"}],nodes,movements,[],"order-1"),null);
+ assert.equal(planAutomaticDelivery([{product:"Original",cases:4}],[{id:"lot-1",product:"Original",status:"Available",bestBy:"2099-12-31"}],nodes,movements,[],"order-1"),null);
  assert.equal(planAutomaticDelivery([{product:"Original",cases:1}],[{id:"lot-1",product:"Original",status:"Quality hold"}],nodes,movements,[],"order-1"),null);
- assert.equal(planAutomaticDelivery([{product:"SugarFree",cases:1}],[{id:"lot-1",product:"Original",status:"Available"}],nodes,movements,[],"order-1"),null);
+ assert.equal(planAutomaticDelivery([{product:"SugarFree",cases:1}],[{id:"lot-1",product:"Original",status:"Available",bestBy:"2099-12-31"}],nodes,movements,[],"order-1"),null);
 });
 test("override is two fields and skips inventory reconciliation UI",()=>{
  const ui=readFileSync("components/orders/admin-delivery-override.tsx","utf8");
@@ -170,4 +170,14 @@ test("override is two fields and skips inventory reconciliation UI",()=>{
  assert.match(ui,/orderId:order.id,performedBy:performedBy.trim\(\),reason:note.trim\(\)/);
  const workspace=readFileSync("lib/workspace-context-v5.tsx","utf8");
  assert.match(workspace,/externalHydrationRef/);
+});
+
+test("admin override does not silently allocate lots with passed, unknown or malformed best-by",()=>{
+ const node=[{id:"node-warehouse-main",type:"Warehouse",active:true}];
+ const stock=[{lotId:"lot-review",quantity:8,fromNodeId:"outside",toNodeId:"node-warehouse-main"}];
+ for(const bestBy of ["2000-01-01","","2026-02-30"]){
+  assert.equal(planAutomaticDelivery([{product:"Original",cases:1}],
+   [{id:"lot-review",product:"Original",status:"Available",bestBy}],
+   node,stock,[],"order-review"),null);
+ }
 });
