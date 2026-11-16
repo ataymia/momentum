@@ -47,3 +47,25 @@ test("template upload never writes signed originals or implicitly approves e-sig
  assert(uploader.includes("hrTemplateUploadRequests"));
  assert(!uploader.includes("hrSignedFormRecords"));
 });
+
+import {discoverHrPdfFields} from "../lib/hr-pdf-field-discovery";
+
+test("local HR PDF field discovery suggests text, signature, initials, checkbox and company date",()=>{
+ const pdf="%PDF-1.7\n"+
+  "1 0 obj << /FT /Tx /T (EmployeeName) /Rect [0 0 100 20] >> endobj\n"+
+  "2 0 obj << /FT /Sig /T (Worker_Signature) >> endobj\n"+
+  "3 0 obj << /FT /Tx /T (Employee_Initials) >> endobj\n"+
+  "4 0 obj << /FT /Btn /T (Consent_Check) >> endobj\n"+
+  "5 0 obj << /FT /Tx /T (Employer_Date) >> endobj\n";
+ const fields=discoverHrPdfFields(new TextEncoder().encode(pdf));
+ assert.deepEqual(fields.map(row=>row.type),["Text","Signature","Initials","Checkbox","Date"]);
+ assert.deepEqual(fields.map(row=>row.signer),["Worker","Worker","Worker","Worker","Company"]);
+ assert.equal(fields[1].required,true);
+ assert.equal(fields[0].pdfFieldName,"EmployeeName");
+});
+test("PDF field discovery rejects non-PDF and deduplicates repeated form field names",()=>{
+ assert.throws(()=>discoverHrPdfFields(new TextEncoder().encode("not a pdf")));
+ const pdf="%PDF-1.7\n1 0 obj << /FT /Tx /T (FirstName) >> endobj\n"+
+ "2 0 obj << /FT /Tx /T (FirstName) >> endobj\n";
+ assert.equal(discoverHrPdfFields(new TextEncoder().encode(pdf)).length,1);
+});

@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState,type FormEvent} from "react";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {useWorkspace} from "../../lib/workspace-context";
+import {discoverHrPdfFields} from "../../lib/hr-pdf-field-discovery";
 import {
  HR_TEMPLATE_CHOICES,listHrTemplates,registerHrTemplate,uploadBlankHrTemplate,
  type HrTemplateKind,type HrTemplateFieldHint,
@@ -23,6 +24,7 @@ export function HrTemplateUploadPanel(){
  const [hints,setHints]=useState<HrTemplateFieldHint[]>([]);
  const [counter,setCounter]=useState(1);
  const [busy,setBusy]=useState(false);
+ const [detecting,setDetecting]=useState(false);
  const [message,setMessage]=useState("");
  const [listed,setListed]=useState(false);
  const [registered,setRegistered]=useState<HrTemplateRecord[]>([]);
@@ -118,8 +120,20 @@ export function HrTemplateUploadPanel(){
     {" "}<a href={HR_TEMPLATE_CHOICES.find(item=>item.kind===kind)!.source}
      target="_blank" rel="noopener noreferrer">Official agency form source</a>.
    </p>}
-   <details><summary>Optional fillable field / signer placeholders (not electronic signatures)</summary>
-    <p className="prototype-note">Map labels and PDF field names for a future approved e-sign provider. No tax IDs, completed field values, or drawn signatures are stored here. A placeholder does not automatically detect or modify a PDF field.</p>
+   <details><summary>Fillable PDF field discovery and signer mapping</summary>
+    <div className="prototype-controls"><button type="button" disabled={!selected||busy||detecting||Boolean(pending)}
+      onClick={async()=>{
+       if(!selected)return;
+       setDetecting(true);setMessage("");
+       try{
+        const detected=discoverHrPdfFields(new Uint8Array(await selected.arrayBuffer()));
+        if(detected.length){setHints(detected);setCounter(detected.length+1);
+         setMessage("Found "+detected.length+" existing PDF form fields. Verify names, signer and required flags before registration.");}
+        else setMessage("No readable AcroForm fields found. This PDF may have compressed fields or printed lines. Add fields manually.");
+       }catch(error){setMessage(error instanceof Error?error.message:"PDF field detection failed.");}
+       finally{setDetecting(false);}
+      }}>{detecting?"Reading PDF fields…":"Find existing PDF fields"}</button></div>
+    <p className="prototype-note">Existing uncompressed AcroForm fields can be suggested locally. Confirm each label, signer and requirement; compressed, scanned or graphics-only PDFs still require manual mapping. This tool does not modify or sign the PDF.</p>
     {hints.map(hint=><div className="prototype-controls" key={hint.id}>
      <label>Field label <input value={hint.label} aria-label={"HR field label "+hint.id}
        maxLength={100} onChange={e=>setHints(rows=>rows.map(r=>r.id===hint.id?{...r,label:e.target.value}:r))}/></label>
