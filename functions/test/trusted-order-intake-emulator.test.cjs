@@ -11,6 +11,7 @@ const app=initializeApp({projectId:"momentum-rules-test"});
 const db=getFirestore(app);
 const {submitTrustedOrderIntake,getTrustedOrderIntake,listTrustedOrderIntakes,
  OrderIntakeError}=require("../lib/trusted-order-intake.js");
+const {decideTrustedOrderIntake}=require("../lib/trusted-order-intake-review.js");
 const suffix=randomUUID().replaceAll("-","").slice(0,14);
 const ids={
  admin:"qa-intake-admin-"+suffix,mgr:"qa-intake-mgr-"+suffix,
@@ -89,4 +90,59 @@ test("R33 source-bound nonbinding intake, role isolation, idempotency and no fin
  assert.equal((await payments.get()).data().items[0].id,"preserve-payment-"+suffix);
  assert.equal((await inventory.get()).data().items[0].id,"preserve-inventory-"+suffix);
  assert.equal((await accounts.get()).data().items[0].stage,"Qualified");
+});
+
+test("R33 reviewer transitions require an active Admin, verified source, replay safety and no financial writes",async()=>{
+ const first=await submitTrustedOrderIntake(ids.rep,draft,"reviewSubmitted"+key);
+ const intakeId=first.intakeId;
+ const command={
+  intakeId,expectedStatus:"Needs commercial review",
+  nextStatus:"Pricing and inventory verification",
+  reason:"Confirm customer pricing, stock, tax setup and delivery capacity before a sale",
+ };
+ await deny(decideTrustedOrderIntake(ids.rep,command,"repReview"+key),403);
+ await deny(decideTrustedOrderIntake(ids.mgr,command,"mgrReview"+key),403);
+ await deny(decideTrustedOrderIntake(ids.suspended,command,"suspendedReview"+key),403);
+ await deny(decideTrustedOrderIntake(ids.admin,{...command,paid:true},"forgedReview"+key),400);
+ await deny(decideTrustedOrderIntake(ids.admin,{...command,reason:"short"},"shortReview"+key),400);
+ const done=await decideTrustedOrderIntake(ids.admin,command,"reviewDecision"+key);
+ assert.equal(done.status,"Pricing and inventory verification");
+ assert.equal(done.replayed,false);
+ const saved=await getTrustedOrderIntake(ids.rep,intakeId);
+ assert.equal(saved.status,done.status);
+ assert.equal(saved.reviewedBy,ids.admin);
+ assert.equal(saved.reviewReason,command.reason);
+ const replay=await decideTrustedOrderIntake(ids.admin,command,"reviewDecision"+key);
+ assert.equal(replay.replayed,true);
+ assert.equal(replay.reviewedAt,done.reviewedAt);
+ await deny(decideTrustedOrderIntake(ids.admin,{...command,reason:command.reason+" edited"},"reviewDecision"+key),409);
+ await deny(decideTrustedOrderIntake(ids.admin,command,"staleDecision"+key),409);
+ const intakeReplay=await submitTrustedOrderIntake(ids.rep,draft,"reviewSubmitted"+key);
+ assert.equal(intakeReplay.replayed,true);
+ assert.equal(intakeReplay.status,"Pricing and inventory verification");
+ const audit=await db.collection("commerceOrderIntakeReviewAudit").where("intakeId","==",intakeId).get();
+ assert.equal(audit.size,1);
+ assert.equal(audit.docs[0].data().financialPosting,false);
+ const returned=await decideTrustedOrderIntake(ids.admin,{
+  intakeId,expectedStatus:"Pricing and inventory verification",
+  nextStatus:"Needs clarification",reason:"Pricing and supplier stock require current, authorized verification",
+ },"returnReview"+key);
+ assert.equal(returned.status,"Needs clarification");
+ const declined=await decideTrustedOrderIntake(ids.admin,{
+  intakeId,expectedStatus:"Needs clarification",nextStatus:"Declined",
+  reason:"No binding sale occurred because the buyer did not approve valid terms",
+ },"declineReview"+key);
+ assert.equal(declined.status,"Declined");
+ await deny(decideTrustedOrderIntake(ids.admin,{
+  intakeId,expectedStatus:"Declined",nextStatus:"Needs commercial review",
+  reason:"Cannot silently reopen a declined intake without a fresh buyer request",
+ },"reopenReview"+key),400);
+ for(const [path,originalId] of [
+  ["domains/commerce/fields/invoices","preserve-invoice-"+suffix],
+  ["domains/commerce/fields/payments","preserve-payment-"+suffix],
+  ["domains/commercial/fields/orders","preserve-orders-"+suffix],
+  ["domains/workspace/fields/inventory","preserve-inventory-"+suffix],
+ ]){
+  assert.equal((await db.doc(path).get()).data().items[0].id,originalId);
+ }
 });
