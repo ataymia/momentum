@@ -16,6 +16,7 @@ const app=initializeApp({
 const db=getFirestore(app),bucket=getStorage(app).bucket();
 const {archiveTrustedHrSignedOriginal,listTrustedHrSignedOriginals,
  HrOriginalArchiveError}=require("../lib/trusted-hr-signed-original.js");
+const {readTrustedHrOriginal}=require("../lib/trusted-hr-original-read.js");
 const suffix=randomUUID().replaceAll("-","").slice(0,12);
 const admin="hr-original-admin-"+suffix;
 const worker="hr-original-worker-"+suffix;
@@ -89,4 +90,26 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  await deny(listTrustedHrSignedOriginals(customer,worker),403);
  await deny(listTrustedHrSignedOriginals(suspended,worker),403);
  await deny(listTrustedHrSignedOriginals(worker,customer),403);
+ const retrieved=await readTrustedHrOriginal(admin,{recordId:receipt.recordId,artifact:"Original"});
+ assert.equal(retrieved.sha256,checksum(pdf));
+ assert.equal(retrieved.pdfBase64,pdf.toString("base64"));
+ assert.equal(retrieved.status,"Pending independent HR review");
+ const ownerOriginal=await readTrustedHrOriginal(worker,{recordId:receipt.recordId,artifact:"Original"});
+ assert.equal(ownerOriginal.sha256,checksum(pdf));
+ const proof=await readTrustedHrOriginal(admin,{recordId:receipt.recordId,artifact:"Certificate"});
+ assert.equal(proof.sha256,checksum(cert));
+ await deny(readTrustedHrOriginal(other,{recordId:receipt.recordId,artifact:"Original"}),403);
+ await deny(readTrustedHrOriginal(customer,{recordId:receipt.recordId,artifact:"Original"}),403);
+ await deny(readTrustedHrOriginal(suspended,{recordId:receipt.recordId,artifact:"Original"}),403);
+ await deny(readTrustedHrOriginal(admin,{recordId:receipt.recordId,artifact:"Forged"}),400);
+ await deny(readTrustedHrOriginal(admin,{recordId:receipt.recordId,artifact:"Original",status:"Approved"}),400);
+ const reads=await db.collection("hrOriginalIntakeReadAudit")
+  .where("recordId","==",receipt.recordId).get();
+ assert.equal(reads.docs.length,3);
+ assert(reads.docs.every(doc=>!doc.data().pdfBase64&&!doc.data().reference));
+ await bucket.file(receipt.originalPath).save(Buffer.from(
+  "%PDF-1.7\n1 0 obj\n<< /Type /Tampered >>\nendobj\n%%EOF\n"
+ ),{contentType:"application/pdf",resumable:false});
+ await deny(readTrustedHrOriginal(admin,{recordId:receipt.recordId,artifact:"Original"}),409);
 });
+
