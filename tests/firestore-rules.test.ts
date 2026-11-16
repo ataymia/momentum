@@ -863,6 +863,17 @@ describe("trusted account profile audit records are immutable to browser clients
   });
 });
 
+describe("connected order intake sources are never client-writable",()=>{
+ test("all client roles are refused on intake, replay and server audit documents",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   for(const path of ["commerceOrderIntakes/forged",
+     "commerceOrderIntakeKeys/forged","commerceOrderIntakeAudit/forged"]){
+    await assertFails(setDoc(doc(dbFor(uid),path),{status:"Approved",pricePerCase:1}));
+   }
+  }
+ });
+});
+
 describe("connected lead provenance cannot be browser-forged",()=>{
  test("even an Administrator browser cannot author lead source or responsibility evidence",async()=>{
   for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
