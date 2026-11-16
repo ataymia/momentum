@@ -1,0 +1,51 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+
+const load=(path:string)=>readFileSync(path,"utf8");
+
+test("R43-R49: secured signed originals are separate from blank templates and cannot impersonate e-sign",()=>{
+ const server=load("functions/src/trusted-hr-signed-original.ts");
+ const index=load("functions/src/index.ts");
+ const client=load("lib/firebase-hr-signed-original.ts");
+ const ui=load("components/hcm/hr-signed-original-archive-panel.tsx");
+ const firestore=load("firestore.rules");
+ const storage=load("storage.rules");
+ assert(server.includes("archiveTrustedHrSignedOriginal"));
+ assert(server.includes('status:"Pending independent HR review"'));
+ assert(server.includes("independentlyVerified:false,complianceApproved:false"));
+ assert(server.includes("signedOriginalVerified:false"));
+ assert(server.includes("ifGenerationMatch:0"));
+ assert(server.includes('file.download()'));
+ assert(server.includes("hrOriginalArchiveRequests"));
+ assert(server.includes("hrSignedFormAudit/"));
+ assert(server.includes("hrSignedFormRecords/"));
+ assert(server.includes('txt(adminSnap.data()?.role)!=="Administrator"'));
+ assert(server.includes('txt(adminSnap.data()?.accountState)!=="Active"'));
+ assert(server.includes('txt(workerSnap.data()?.role)==="Customer"'));
+ assert(client.includes('firebaseFunctionUrl("hrSignedOriginalArchive")'));
+ assert(!client.includes("getDownloadURL"));
+ assert(!client.includes("localStorage"));
+ assert(ui.includes("HrSignedOriginalArchivePanel"));
+ assert(ui.includes("Pending independent HR review"));
+ assert(ui.includes("worker classification"));
+ assert(index.includes("export const hrSignedOriginalArchive="));
+ assert(index.includes("verifyIdToken(token,true)"));
+ assert(firestore.includes("match /hrOriginalArchiveRequests/{requestId}"));
+ assert(firestore.includes("match /hrSignedFormRecords/{recordId}"));
+ assert(storage.includes("match /hr-private/{employeeUid}/{formKey}/{artifactId}/{fileName}"));
+ assert(storage.includes("allow list, create, update, delete: if false;"));
+});
+
+test("Contractor and employee forms remain isolated, with no implied completed compliance",()=>{
+ const server=load("functions/src/trusted-hr-template.ts");
+ const packageUi=load("components/hcm/hr-signed-original-archive-panel.tsx");
+ const status=load("lib/hr-compliance-readiness.ts");
+ assert(server.includes('W9:{title:"IRS Form W-9",classification:"Contractor"'));
+ assert(server.includes('I9:{title:"USCIS Form I-9",classification:"Employee"'));
+ assert(status.includes('if(classification==="Contractor")return ["W-9"]'));
+ assert(status.includes('if(classification==="Hourly"||classification==="Salary")'));
+ assert(status.includes('productionReady:false'));
+ assert(packageUi.includes("This form cannot create e-signatures"));
+ assert(packageUi.includes("does not change a worker's onboarding or compliance status"));
+});
