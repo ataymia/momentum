@@ -24,7 +24,7 @@ import {commitTrustedCrmFieldVisit,TrustedCrmVisitError} from "./trusted-crm-fie
 import {createTrustedCrmAccount,TrustedAccountCreationError} from "./trusted-account-creation";
 import {updateTrustedCustomerContacts,CustomerContactUpdateError} from "./trusted-customer-contact";
 import {commitTrustedCrmLead,TrustedCrmLeadError} from "./trusted-crm-lead";
-import {submitTrustedOrderIntake,getTrustedOrderIntake,listTrustedOrderIntakes,OrderIntakeError} from "./trusted-order-intake";
+import {submitTrustedOrderIntake,getTrustedOrderIntake,listTrustedOrderIntakes,pageTrustedOrderIntakes,OrderIntakeError} from "./trusted-order-intake";
 import {decideTrustedOrderIntake} from "./trusted-order-intake-review";
 import {registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError} from "./trusted-hr-template";
 import {uploadTrustedBlankHrTemplate} from "./trusted-hr-template-upload";
@@ -2036,7 +2036,7 @@ export const reviewOrderIntake=onRequest({cors:true,region:"us-central1"},async(
  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
  const payload=request.body;
  if(!payload||typeof payload!=="object"||Array.isArray(payload)||
-  Object.keys(payload).some(k=>!["intakeId"].includes(k))){
+  Object.keys(payload).some(k=>!["intakeId","cursor"].includes(k))){
   json(response,400,{ok:false,message:"Invalid review request."});return;
  }
  const auth=request.headers.authorization??"";
@@ -2050,8 +2050,8 @@ export const reviewOrderIntake=onRequest({cors:true,region:"us-central1"},async(
    const record=await getTrustedOrderIntake(actor,payload.intakeId);
    json(response,200,{ok:true,record});
   }else{
-   const records=await listTrustedOrderIntakes(actor);
-   json(response,200,{ok:true,records,limit:40});
+   const page=await pageTrustedOrderIntakes(actor,payload.cursor);
+   json(response,200,{ok:true,...page});
   }
  }catch(error){
   if(error instanceof OrderIntakeError){
