@@ -15,7 +15,7 @@ type Reservation={id:string;path:string;createdAt:string;replayed:boolean};
 type Archived={
  recordId:string;employeeUid:string;kind:HrTemplateKind;
  originalPath:string;sha256:string;generation:string;
- certificatePath?:string;certificateSha256?:string;
+ certificatePath?:string;certificateSha256?:string;certificateGeneration?:string;
  status:"Pending independent HR review";createdAt:string;replayed:boolean;
 };
 const row=(value:unknown):value is Row=>Boolean(value&&typeof value==="object"&&!Array.isArray(value));
@@ -185,8 +185,8 @@ export async function archiveTrustedHrSignedOriginal(
  const generation=await writeAndVerify(reserved.path,incoming.pdf,incoming.sha256);
  const certificatePath=incoming.certificate?
   reserved.path.replace(/signed\.pdf$/,"certificate.pdf"):undefined;
- if(incoming.certificate&&certificatePath)
-  await writeAndVerify(certificatePath,incoming.certificate.pdf,incoming.certificate.sha256);
+ const certificateGeneration=incoming.certificate&&certificatePath?
+  await writeAndVerify(certificatePath,incoming.certificate.pdf,incoming.certificate.sha256):undefined;
  const recordRef=db.doc("hrOriginalIntakeRecords/"+reserved.id);
  const auditRef=db.doc("hrOriginalIntakeAudit/"+reserved.id);
  await db.runTransaction(async tx=>{
@@ -211,7 +211,8 @@ export async function archiveTrustedHrSignedOriginal(
    sourceType:incoming.sourceType,reference:incoming.reference,
    originalPath:reserved.path,sha256:incoming.sha256,generation,
    ...(certificatePath?{certificatePath,
-    certificateSha256:incoming.certificate?.sha256}:{}),
+    certificateSha256:incoming.certificate?.sha256,
+    certificateGeneration}:{}),
    uploadedBy:actorUid,createdAt:reserved.createdAt,
    status:"Pending independent HR review",
    independentlyVerified:false,complianceApproved:false,
@@ -226,7 +227,8 @@ export async function archiveTrustedHrSignedOriginal(
  return {recordId:reserved.id,employeeUid:incoming.employeeUid,
   kind:incoming.kind,originalPath:reserved.path,sha256:incoming.sha256,
   generation,...(certificatePath?{certificatePath,
-   certificateSha256:incoming.certificate?.sha256}:{}),
+   certificateSha256:incoming.certificate?.sha256,
+   certificateGeneration}:{}),
   createdAt:reserved.createdAt,status:"Pending independent HR review",
   replayed:reserved.replayed};
 }
