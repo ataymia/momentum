@@ -181,8 +181,8 @@ export async function archiveTrustedHrSignedOriginal(
   reserved.path.replace(/signed\.pdf$/,"certificate.pdf"):undefined;
  if(incoming.certificate&&certificatePath)
   await writeAndVerify(certificatePath,incoming.certificate.pdf,incoming.certificate.sha256);
- const recordRef=db.doc("hrSignedFormRecords/"+reserved.id);
- const auditRef=db.doc("hrSignedFormAudit/"+reserved.id);
+ const recordRef=db.doc("hrOriginalIntakeRecords/"+reserved.id);
+ const auditRef=db.doc("hrOriginalIntakeAudit/"+reserved.id);
  await db.runTransaction(async tx=>{
   const [actor,workerSnap,request,existing]=await Promise.all([
    tx.get(admin),tx.get(worker),tx.get(requestRef),tx.get(recordRef),
@@ -241,7 +241,7 @@ export async function listTrustedHrSignedOriginals(actorUid:string,targetUid:unk
  const employeeUid=txt(targetUid)||actorUid;
  if(!uid.test(employeeUid)||(!administrator&&employeeUid!==actorUid))
   throw new HrOriginalArchiveError(403,"HR document scope is not authorized.");
- const items=await db.collection("hrSignedFormRecords")
+ const items=await db.collection("hrOriginalIntakeRecords")
   .where("employeeUid","==",employeeUid).limit(40).get();
  return items.docs.map(snapshot=>{
   const v=snapshot.data();
