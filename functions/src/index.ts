@@ -602,7 +602,7 @@ const requireAdministrator = async (
   let uid = "";
 
   try {
-    const decoded = await getAuth().verifyIdToken(token);
+    const decoded = await getAuth().verifyIdToken(token, true);
     uid = decoded.uid;
   } catch {
     return {
@@ -674,7 +674,7 @@ export const updateAccountEmail = onRequest(
       ReturnType<ReturnType<typeof getAuth>["verifyIdToken"]>
     >;
     try {
-      decoded = await getAuth().verifyIdToken(token);
+      decoded = await getAuth().verifyIdToken(token, true);
     } catch {
       json(response, 401, {
         ok: false,
