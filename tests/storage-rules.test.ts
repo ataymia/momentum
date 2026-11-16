@@ -46,4 +46,15 @@ test("signed employment PDFs are employee-private, admin-readable, immutable and
  await assertFails(uploadBytes(ref(storage("rep"),path),bytes,{contentType:"application/pdf"}));
  await assertFails(uploadBytes(ref(storage("admin"),path),bytes,{contentType:"application/pdf"}));
  await assertFails(uploadBytes(ref(storage("admin"),"hr-private/rep/W4/other/signed.pdf"),bytes,{contentType:"application/pdf"}));
+ const w9Path="hr-private/rep/W9/contractor-001/signed.pdf";
+ await env.withSecurityRulesDisabled(async context=>{
+  await uploadBytes(ref(context.storage(),w9Path),bytes,{contentType:"application/pdf"});
+ });
+ await assertSucceeds(getBytes(ref(storage("rep"),w9Path)));
+ await assertSucceeds(getBytes(ref(storage("admin"),w9Path)));
+ await assertFails(getBytes(ref(storage("rep2"),w9Path)));
+ await assertFails(getBytes(ref(storage("customer"),w9Path)));
+ await assertFails(getBytes(ref(storage("separated"),w9Path)));
+ await assertFails(uploadBytes(ref(storage("rep"),w9Path),bytes,{contentType:"application/pdf"}));
+ await assertFails(uploadBytes(ref(storage("admin"),w9Path),bytes,{contentType:"application/pdf"}));
 });
