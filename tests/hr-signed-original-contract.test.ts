@@ -21,6 +21,22 @@ test("R43-R49: secured signed originals are separate from blank templates and ca
  assert(server.includes("hrOriginalIntakeAudit/"));
  assert(server.includes("hrOriginalIntakeRecords/"));
  assert(index.includes("readTrustedHrOriginal"));
+ assert(index.includes("decideTrustedHrOriginalReview"));
+ const review=load("functions/src/trusted-hr-original-review.ts");
+ const read=load("functions/src/trusted-hr-original-read.ts");
+ assert(review.includes("Record evidence inspection"));
+ assert(review.includes("Return for correction"));
+ assert(review.includes("hrOriginalIntakeReadAudit/"));
+ assert(review.includes("hrOriginalReviewKeys/"));
+ assert(review.includes("hrOriginalReviewAudit/"));
+ assert(review.includes("signatureVerified:false,legalApproved:false,i9Examined:false"));
+ assert(read.includes("readAuditId:auditId"));
+ assert(client.includes("reviewHrOriginal"));
+ assert(ui.includes("Record restricted HR review"));
+ assert(ui.includes("matchingInspection"));
+ assert(firestore.includes("match /hrOriginalReviewKeys/{requestId}"));
+ assert(firestore.includes("match /hrOriginalReviewAudit/{eventId}"));
+
  assert(client.includes("downloadHrOriginalBytes"));
  assert(ui.includes("Download original"));
  assert(ui.includes("Certificate"));
