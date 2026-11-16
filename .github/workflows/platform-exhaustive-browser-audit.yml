@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - integration/a-g-unified-2026-11-07
+      - release-candidate/2026-11-16-premerge-audit
     paths:
       - .github/workflows/platform-exhaustive-browser-audit.yml
       - scripts/platform-exhaustive-browser-audit.mjs
