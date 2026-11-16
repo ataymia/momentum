@@ -22,6 +22,7 @@ import {submitDeliveryCorrection,approveDeliveryCorrection,closeDeliveryCorrecti
 import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
 import {commitTrustedCrmFieldVisit,TrustedCrmVisitError} from "./trusted-crm-field-visit";
 import {createTrustedCrmAccount,TrustedAccountCreationError} from "./trusted-account-creation";
+import {commitTrustedCrmLead,TrustedCrmLeadError} from "./trusted-crm-lead";
 import {submitTrustedHrLeave,TrustedHrLeaveError} from "./trusted-hr-leave-request";
 import {commitTrustedLeaveDecision,TrustedLeaveDecisionError} from "./trusted-hr-leave-decision";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
@@ -1817,6 +1818,35 @@ export const createCrmAccount=onRequest({cors:true,region:"us-central1"},async(r
     console.error("createCrmAccount failed",error);
     json(response,503,{ok:false,message:
       "Account save unconfirmed. Check the source before retrying with the same request."});
+  }
+});
+
+/** Server-owned lead stage progression and management handoff. */
+export const changeCrmLead=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+  if(request.method!=="POST"){
+    json(response,405,{ok:false,message:"POST required."});return;
+  }
+  const body=request.body;
+  if(!body||typeof body!=="object"||Array.isArray(body)||
+    Object.keys(body).some(key=>!["intent","requestId"].includes(key))){
+    json(response,400,{ok:false,message:"Invalid CRM request envelope."});return;
+  }
+  const auth=request.headers.authorization??"";
+  const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const receipt=await commitTrustedCrmLead(actor,body.intent,body.requestId);
+    json(response,200,{ok:true,...receipt});
+  }catch(error){
+    if(error instanceof TrustedCrmLeadError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("changeCrmLead failed",error);
+    json(response,503,{ok:false,message:
+      "Lead change unconfirmed. Review account history before retrying with the same request."});
   }
 });
 
