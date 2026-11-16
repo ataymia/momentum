@@ -18,8 +18,8 @@ test("R43-R49: secured signed originals are separate from blank templates and ca
  assert(server.includes("ifGenerationMatch:0"));
  assert(server.includes('file.download()'));
  assert(server.includes("hrOriginalArchiveRequests"));
- assert(server.includes("hrSignedFormAudit/"));
- assert(server.includes("hrSignedFormRecords/"));
+ assert(server.includes("hrOriginalIntakeAudit/"));
+ assert(server.includes("hrOriginalIntakeRecords/"));
  assert(server.includes('txt(adminSnap.data()?.role)!=="Administrator"'));
  assert(server.includes('txt(adminSnap.data()?.accountState)!=="Active"'));
  assert(server.includes('txt(workerSnap.data()?.role)==="Customer"'));
@@ -32,7 +32,7 @@ test("R43-R49: secured signed originals are separate from blank templates and ca
  assert(index.includes("export const hrSignedOriginalArchive="));
  assert(index.includes("verifyIdToken(token,true)"));
  assert(firestore.includes("match /hrOriginalArchiveRequests/{requestId}"));
- assert(firestore.includes("match /hrSignedFormRecords/{recordId}"));
+ assert(firestore.includes("match /hrOriginalIntakeRecords/{recordId}"));
  assert(storage.includes("match /hr-private/{employeeUid}/{formKey}/{artifactId}/{fileName}"));
  assert(storage.includes("allow list, create, update, delete: if false;"));
 });
