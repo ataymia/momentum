@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import {PDFDocument} from "pdf-lib";
 import {inspectHrPdf,fillHrPdf} from "../lib/hr-pdf-editor-engine";
 
@@ -27,4 +28,11 @@ test("PDF editor refuses invented field names and off-page annotations",async()=
  await assert.rejects(fillHrPdf(pdf,{nonsense:"value"},[]),/field missing/);
  await assert.rejects(fillHrPdf(pdf,{},[{page:1,kind:"Text",x:190,y:50,width:100,height:20,text:"test"}]),/outside/);
  await assert.rejects(inspectHrPdf(new Uint8Array([1,2,3])),/valid PDF/);
+});
+
+test("PDF editor preview is permitted by Firebase Hosting CSP",()=>{
+ const hosting=JSON.parse(readFileSync("firebase.json","utf8"));
+ const headers=hosting.hosting.headers[0].headers;
+ const csp=headers.find((h:{key:string;value:string})=>h.key==="Content-Security-Policy")?.value;
+ assert.match(csp,/frame-src 'self' blob:/);
 });

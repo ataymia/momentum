@@ -22,7 +22,10 @@ export function HrPdfEditor({source,onPrepared}:Props){
  useEffect(()=>{
   let live=true;
   const url=URL.createObjectURL(source);
-  setSourceUrl(url);setInfo(null);setValues({});setOverlays([]);setGenerated(null);setMessage("");
+  void Promise.resolve().then(()=>{
+   if(!live)return;
+   setSourceUrl(url);setInfo(null);setValues({});setOverlays([]);setGenerated(null);setMessage("");
+  });
   void source.arrayBuffer().then(buffer=>inspectHrPdf(buffer)).then(result=>{
    if(live)setInfo(result);
   }).catch(error=>{if(live)setMessage(error instanceof Error?error.message:"Unable to read PDF.");});

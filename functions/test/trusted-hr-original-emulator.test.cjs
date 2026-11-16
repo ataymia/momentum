@@ -55,6 +55,20 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  await deny(archiveTrustedHrSignedOriginal(admin,{...original,reference:"x"},"shortEvidence"+archiveKey),400);
  await deny(archiveTrustedHrSignedOriginal(admin,{...original,
   sourceType:"Paper signed scan"},"incorrectCertificate"+archiveKey),400);
+ const {certificateBase64,certificateSha256,...withoutProviderCertificate}=original;
+ assert.equal(Boolean(certificateBase64&&certificateSha256),true);
+ const prepared=await archiveTrustedHrSignedOriginal(admin,{
+  ...withoutProviderCertificate,sourceType:"In-app prepared PDF (unverified)",
+  reference:"Prepared using Momentum PDF editor",
+ },"prepared"+archiveKey);
+ assert.equal(prepared.status,"Pending independent HR review");
+ const preparedRecord=(await db.doc("hrOriginalIntakeRecords/"+prepared.recordId).get()).data();
+ assert.equal(preparedRecord.sourceType,"In-app prepared PDF (unverified)");
+ assert.equal(preparedRecord.independentlyVerified,false);
+ assert.equal(preparedRecord.signedOriginalVerified,false);
+ await deny(archiveTrustedHrSignedOriginal(admin,{
+  ...original,sourceType:"In-app prepared PDF (unverified)",
+ },"preparedCertificate"+archiveKey),400);
  const receipt=await archiveTrustedHrSignedOriginal(admin,original,archiveKey);
  assert.equal(receipt.kind,"W9");
  assert.equal(receipt.employeeUid,worker);
