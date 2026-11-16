@@ -6,7 +6,7 @@ import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {HR_TEMPLATE_CHOICES,type HrTemplateKind} from "../../lib/firebase-hr-template-library";
 import {
  archiveHrOriginal,listHrOriginals,downloadHrOriginalBytes,reviewHrOriginal,
- type HrOriginalRecord,type HrOriginalSource,type HrOriginalReviewDecision,
+ type HrOriginalRecord,type HrOriginalSource,type HrOriginalReviewDecision,type HrOriginalReviewStatus,
 } from "../../lib/firebase-hr-signed-original";
 
 /** Restricted, independently reviewed archive of signed worker originals.
@@ -85,7 +85,7 @@ export function HrSignedOriginalArchivePanel(){
   }
   const intent={
    recordId:selectedReview.id,
-   expectedStatus:selectedReview.status as "Pending independent HR review"|"Evidence inspected; compliance verification pending",
+   expectedStatus:selectedReview.status as HrOriginalReviewStatus,
    decision:reviewDecision,reason:reviewReason.trim(),
    readAuditId:inspectionProof.readAuditId,sha256:inspectionProof.sha256,
   };
@@ -202,7 +202,7 @@ export function HrSignedOriginalArchivePanel(){
     <td>{item.status}</td>
     <td><button type="button" disabled={downloadBusy!==null||busy||reviewBusy} onClick={()=>void download("Original",item.id)}>Download original</button>
      {item.hasCertificate&&<button type="button" disabled={downloadBusy!==null||busy||reviewBusy} onClick={()=>void download("Certificate",item.id)}>Certificate</button>}
-     {item.status!=="Requires correction"&&<button type="button" disabled={reviewBusy||busy} onClick={()=>{setReviewRow(item.id);setReviewReason("");setReviewDecision("Return for correction");setReviewConfirmed(false);reviewRequest.current=null;}}>Review evidence</button>}</td>
+     {item.status!=="Quarantined; access revoked"&&<button type="button" disabled={reviewBusy||busy} onClick={()=>{setReviewRow(item.id);setReviewReason("");setReviewDecision(item.status==="Requires correction"?"Quarantine misfiled original":"Return for correction");setReviewConfirmed(false);reviewRequest.current=null;}}>Review evidence</button>}</td>
    </tr>)}</tbody>
   </table></div>}
   {lastWorker&&records.length===0&&<p className="prototype-note">{"No verified source records in this worker's latest archive window."}</p>}
@@ -212,8 +212,9 @@ export function HrSignedOriginalArchivePanel(){
    {!matchingInspection&&<p role="alert" className="prototype-note">No matching server-audited original download for this record. Select Download original in the row above first.</p>}
    <label>Review action
     <select value={reviewDecision} disabled={reviewBusy} onChange={event=>{setReviewDecision(event.target.value as HrOriginalReviewDecision);setReviewConfirmed(false);reviewRequest.current=null;}}>
-     <option value="Return for correction">Return for correction (new PDF submission required)</option>
+     {selectedReview.status!=="Requires correction"&&<option value="Return for correction">Return for correction (new PDF submission required)</option>}
      {selectedReview.status==="Pending independent HR review"&&<option value="Record evidence inspection">Document inspected; legal verification remains pending</option>}
+     <option value="Quarantine misfiled original">Quarantine misfiled or incorrectly assigned original (revoke worker access)</option>
     </select>
    </label>
    <label>Specific HR review note (no SSNs, taxpayer IDs or financial details)
