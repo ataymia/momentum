@@ -1,6 +1,7 @@
 /* eslint-disable max-len, comma-spacing, space-before-blocks, indent, keyword-spacing, curly, key-spacing, brace-style, semi-spacing, one-var, space-before-function-paren */
 import {randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
+import {lotEligibleForAutomaticDelivery} from "./inventory-lot-quality";
 
 type Row=Record<string,unknown>;
 type Action="status"|"claim"|"pack"|"load"|"depart"|"complete";
@@ -221,7 +222,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
       if(status==="Allocated"&&activeForOrder.length)return response("Allocated","Accepted",undefined,true);
       if(status!=="Approved"||activeForOrder.length||anyOrderTransfer.length||existingDelivery.length)
         fail(409,"Inventory has previous movements or reservations. Operations must reconcile it.");
-      const availableLots=[...lots.values()].filter((lot)=>txt(lot.status)!=="Quality hold")
+      const availableLots=[...lots.values()].filter((lot)=>lotEligibleForAutomaticDelivery(lot,localDay))
         .sort((a,b)=>(txt(a.bestBy)||"9999").localeCompare(txt(b.bestBy)||"9999")||
           txt(a.receivedAt).localeCompare(txt(b.receivedAt)));
       const additions:Row[]=[];
@@ -264,7 +265,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
         fail(409,"Reservations do not match the exact ordered SKUs and cases.");
       for(const reservation of activeForOrder){
         const lotId=txt(reservation.lotId),quantity=num(reservation.quantity),lot=lots.get(lotId);
-        if(!lot||txt(lot.status)==="Quality hold"||!Number.isInteger(quantity)||quantity<=0||
+        if(!lot||!lotEligibleForAutomaticDelivery(lot,localDay)||!Number.isInteger(quantity)||quantity<=0||
           balance(movements,lotId,warehouse)-activeReserved(reservations,lotId,orderId)<quantity)
           fail(409,"Warehouse cannot safely transfer the reserved cases.");
       }
@@ -306,6 +307,8 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
         if(balance(movements,txt(movement.lotId),staffNode)<num(movement.quantity))
           fail(409,"Insufficient rep custody balance for the full order.");
       }
+      if(loaded.some(movement=>!lotEligibleForAutomaticDelivery(lots.get(txt(movement.lotId))??{},localDay)))
+        fail(409,"A loaded lot lacks current best-by or quality clearance. Refer to Operations.");
       const posted=loaded.map((movement):Row=>({
         id:uid("rep-delivered"),lotId:txt(movement.lotId),product:txt(movement.product),
         quantity:num(movement.quantity),type:"Delivery",fromNodeId:staffNode,toNodeId:locationNode,
