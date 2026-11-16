@@ -128,4 +128,30 @@ test("CRM connected journey: create prospect, hand off to rep, qualify and recor
  assert(interactions.some(item=>item.type==="Sample"&&item.sampleInventoryLinked===false));
  assert.equal((await db.doc("domains/workspace/fields/customers").get()).data().items.length,1);
  assert.equal((await db.doc("domains/crm/fields/responsibilityHistory").get()).data().items.length,1);
+ const {submitTrustedOrderIntake,getTrustedOrderIntake}=require("../lib/trusted-order-intake.js");
+ const noPostPaths=["domains/commercial/fields/orders","domains/commerce/fields/invoices",
+  "domains/commerce/fields/payments","domains/workspace/fields/inventory"];
+ const before=(await Promise.all(noPostPaths.map(p=>db.doc(p).get())))
+  .map(doc=>doc.exists?doc.data():null);
+ const intakePayload={
+  accountId:created.accountId,
+  lines:[{skuId:"ge-original-250ml-24",cases:10}],
+  note:"Buyer requested a nonbinding ten-case commercial review",
+ };
+ const intake=await submitTrustedOrderIntake(seller,intakePayload,"journeyOrderIntake"+key);
+ assert.equal(intake.status,"Needs commercial review");
+ assert.equal(intake.replayed,false);
+ const sourceIntake=await getTrustedOrderIntake(seller,intake.intakeId);
+ assert.equal(sourceIntake.accountId,created.accountId);
+ assert.equal(sourceIntake.requestedByUid,seller);
+ assert.equal(sourceIntake.ownerAtSubmission,seller);
+ assert.equal(sourceIntake.totalCases,10);
+ assert.equal(sourceIntake.status,"Needs commercial review");
+ assert(!("amount" in sourceIntake));
+ const replayIntake=await submitTrustedOrderIntake(seller,intakePayload,"journeyOrderIntake"+key);
+ assert.equal(replayIntake.replayed,true);
+ assert.equal(replayIntake.intakeId,intake.intakeId);
+ const after=(await Promise.all(noPostPaths.map(p=>db.doc(p).get())))
+  .map(doc=>doc.exists?doc.data():null);
+ assert.deepEqual(after,before,"CRM demand may not post inventory, orders, invoices or payments");
 });
