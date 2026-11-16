@@ -146,16 +146,22 @@ export async function archiveTrustedHrSignedOriginal(
  const bucket=getStorage().bucket();
  const writeAndVerify=async (path:string,pdf:Buffer,sha256:string)=>{
   const file=bucket.file(path);
-  try{
-   await file.save(pdf,{
-    resumable:false,contentType:"application/pdf",
-    metadata:{cacheControl:"private, no-store"},
-    preconditionOpts:{ifGenerationMatch:0},
-   });
-  }catch{
-   const [exists]=await file.exists().catch(()=>[false]);
-   if(!exists)throw new HrOriginalArchiveError(503,
-    "Original archive storage unavailable. Retry with the SAME request ID.");
+  // An idempotent retry MUST NOT rewrite an existing immutable object. Some
+  // storage emulators do not enforce upload preconditions consistently; the
+  // existence check prevents changing generation on a valid replay.
+  const [alreadyExists]=await file.exists().catch(()=>[false]);
+  if(!alreadyExists){
+   try{
+    await file.save(pdf,{
+     resumable:false,contentType:"application/pdf",
+     metadata:{cacheControl:"private, no-store"},
+     preconditionOpts:{ifGenerationMatch:0},
+    });
+   }catch{
+    const [existsAfterRace]=await file.exists().catch(()=>[false]);
+    if(!existsAfterRace)throw new HrOriginalArchiveError(503,
+     "Original archive storage unavailable. Retry with the SAME request ID.");
+   }
   }
   try{
    const [metadataResult,downloadResult]=await Promise.all([
