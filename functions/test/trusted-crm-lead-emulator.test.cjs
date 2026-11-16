@@ -74,3 +74,58 @@ test("R21/R22/R79 connected lead state and assignment: authorized, atomic and re
  assert.equal((await history.get()).data().items.length,1);
  assert.equal((await activities.get()).data().items.length,4);
 });
+
+
+test("CRM connected journey: create prospect, hand off to rep, qualify and record field visit",async()=>{
+ const {createTrustedCrmAccount}=require("../lib/trusted-account-creation.js");
+ const {commitTrustedCrmFieldVisit}=require("../lib/trusted-crm-field-visit.js");
+ const manager="qa-journey-manager-"+suffix;
+ const seller="qa-journey-rep-"+suffix;
+ await Promise.all([
+  db.doc("userAccess/"+manager).set({role:"Sales Manager",team:"Sales",accountState:"Active"}),
+  db.doc("userAccess/"+seller).set({role:"Sales Representative",team:"Sales",managerId:manager,accountState:"Active"}),
+  db.doc("domains/workspace/fields/accounts").set({items:[]}),
+  db.doc("domains/workspace/fields/customers").set({items:[]}),
+  db.doc("domains/workspace/fields/activities").set({items:[]}),
+  db.doc("domains/crm/fields/responsibilityHistory").set({items:[]}),
+  db.doc("domains/crm/fields/interactions").set({items:[]}),
+ ]);
+ const created=await createTrustedCrmAccount(manager,{
+  name:"QA Journey Store "+suffix,legalBusinessName:"QA Journey Store "+suffix,
+  customerName:"QA Journey Store "+suffix,locationName:"Test outlet",
+  location:"Phoenix, AZ",channel:"Independent retail",
+  contactName:"Verified Buyer",contactRole:"Owner",
+  phone:"6025550199",postalCode:"85001",streetAddress:"245 Synthetic St",
+  deliveryAddressSameAsBusiness:true,taxDocumentType:"Undetermined",
+ },"journeyCreate"+key);
+ assert.equal(created.replayed,false);
+ const assigned=await commitTrustedCrmLead(manager,
+  transfer(created.accountId,manager,seller),"journeyTransfer"+key);
+ assert.equal(assigned.ownerId,seller);
+ const qualified=await commitTrustedCrmLead(seller,
+  qualify(created.accountId,"Prospect","Qualified"),"journeyQualify"+key);
+ assert.equal(qualified.stage,"Qualified");
+ const visit={
+  businessName:"QA Journey Store "+suffix,accountId:created.accountId,
+  physicallyVisited:true,unsuccessful:false,score:8,
+  summary:"Verified in-person shelf and buyer review",
+  nextAction:"Discuss opening order",nextActionDate:"2026-12-10",
+  sampleProduct:"Golden Eagle",sampleQuantity:1,
+ };
+ const visitKey="journeyVisit"+key;
+ const receipt=await commitTrustedCrmFieldVisit(seller,visit,visitKey);
+ assert(receipt.visitId.startsWith("interaction-"));
+ const replay=await commitTrustedCrmFieldVisit(seller,visit,visitKey);
+ assert.equal(replay.replayed,true);
+ assert.equal(replay.visitId,receipt.visitId);
+ const saved=(await db.doc("domains/workspace/fields/accounts").get()).data().items
+  .find(item=>item.id===created.accountId);
+ assert.equal(saved.ownerId,seller);assert.equal(saved.stage,"Qualified");
+ assert.equal(saved.lifetimeCases,0);
+ assert.equal(saved.reorderCount,0);
+ const interactions=(await db.doc("domains/crm/fields/interactions").get()).data().items;
+ assert(interactions.some(item=>item.id===receipt.visitId&&item.locationId===created.accountId&&item.userId===seller));
+ assert(interactions.some(item=>item.type==="Sample"&&item.sampleInventoryLinked===false));
+ assert.equal((await db.doc("domains/workspace/fields/customers").get()).data().items.length,1);
+ assert.equal((await db.doc("domains/crm/fields/responsibilityHistory").get()).data().items.length,1);
+});
