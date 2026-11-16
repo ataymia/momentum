@@ -863,6 +863,17 @@ describe("trusted account profile audit records are immutable to browser clients
   });
 });
 
+describe("connected lead provenance cannot be browser-forged",()=>{
+ test("even an Administrator browser cannot author lead source or responsibility evidence",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(setDoc(doc(dbFor(uid),"domains/crm/fields/responsibilityHistory"),
+    {items:[{changedBy:uid,toUserId:"forged"}]}));
+   await assertFails(setDoc(doc(dbFor(uid),"crmLeadEvents/forged"),{actorUid:uid}));
+   await assertFails(setDoc(doc(dbFor(uid),"crmLeadChangeRequests/forged"),{eventId:"forged"}));
+  }
+ });
+});
+
 describe("connected CRM customer/account identity is server-owned",()=>{
  test("no browser role may replace account and customer registries",async()=>{
    for(const field of ["accounts","customers"]){
