@@ -38,16 +38,15 @@ export async function readTrustedHrOriginal(
  const actor=actorSnap.data();
  const active=txt(actor?.accountState)==="Active";
  const role=txt(actor?.role);
- if(!active||role==="Customer"||!role)
-  throw new HrOriginalArchiveError(403,"Private HR original access denied.");
+ if(!active||role!=="Administrator")
+  throw new HrOriginalArchiveError(403,"Unverified original intake is restricted to active HR Administrators.");
  const entry=sourceSnap.data();
  if(!entry)
   throw new HrOriginalArchiveError(404,"Private HR source record not found.");
  const employeeUid=txt(entry.employeeUid);
  const kind=txt(entry.kind);
  if(!uidPattern.test(employeeUid)||
-  !Object.prototype.hasOwnProperty.call(HR_TEMPLATE_KINDS,kind)||
-  (role!=="Administrator"&&actorUid!==employeeUid))
+  !Object.prototype.hasOwnProperty.call(HR_TEMPLATE_KINDS,kind))
   throw new HrOriginalArchiveError(403,"Worker document scope denied.");
  if(role!=="Administrator"&&txt(entry.status)==="Quarantined; access revoked")
   throw new HrOriginalArchiveError(403,"Private original is held for HR quarantine review.");
