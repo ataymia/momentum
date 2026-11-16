@@ -9,9 +9,12 @@ import type { AccountAccessState } from "./identity-provisioning";
 export function visibleActiveEmployees(
  users:readonly WorkspaceUser[],
  firebaseStates?:Readonly<Record<string,{accountState:AccountAccessState}>>,
+ employment?:ReadonlyArray<{userId:string;status:"Prehire"|"Active"|"Leave"|"Separated"}>,
 ):WorkspaceUser[]{
  return users.filter(user=>{
   if(user.role==="Customer"||user.employmentStatus==="Separated")return false;
+  const hr=employment?.find(record=>record.userId===user.id);
+  if(hr&&(hr.status==="Separated"||hr.status==="Prehire"))return false;
   // An explicitly loaded Firebase directory is authoritative for active access.
   // Missing records must not be silently reclassified as Active.
   if(firebaseStates)return firebaseStates[user.id]?.accountState==="Active";
