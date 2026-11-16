@@ -109,7 +109,7 @@ export function CrmAccountSetup(){
       if(["Not started","Prepared"].includes(proposed)&&proposed!==customer.onboardingPackageStatus)
         draft.onboardingPackageStatus=proposed as "Not started"|"Prepared";
       const patch=Object.fromEntries(Object.entries(draft).filter(([key,value])=>
-        value!==customer[key as keyof typeof customer])) as ConnectedCustomerContactPatch;
+        value!==String(customer[key as keyof typeof customer]??""))) as ConnectedCustomerContactPatch;
       if(!Object.keys(patch).length){setMessage("No new billing/AP contact changes to save.");return;}
       const payload={accountId:account.id,customerId:customer.id,
         expectedRevision:customer.contactRevision??0,patch};
@@ -209,7 +209,7 @@ export function CrmAccountSetup(){
       {!customer||!account?<div className="prototype-empty">Select an account that is linked to an existing customer. No billing identity will be invented.</div>:<>
         <div className="prototype-metrics"><div><small>Parent business</small><strong>{customer.name}</strong></div><div><small>Account stage</small><strong>{account.stage}</strong></div><div><small>Payment terms</small><strong>{customer.paymentTerms??"COD"}</strong></div></div>
         {!canEditContacts&&<p role="status" className="prototype-note">Connected account setup requires authorized customer leadership access. Tax, credit and verified-document changes remain protected.</p>}
-        <form key={customer.id+"-"+account.id} aria-label="Customer account setup" onSubmit={submit}>
+        <form key={customer.id+"-"+account.id+"-"+(customer.contactRevision??0)} aria-label="Customer account setup" onSubmit={submit}>
           <div className="prototype-columns">
             <label>Legal business name <input required name="legalBusinessName" disabled={!canEdit} defaultValue={customer.legalBusinessName??""}/>{errors.legalBusinessName&&<small role="alert">{errors.legalBusinessName}</small>}</label>
             <label>Tax document route <select name="taxDocumentType" disabled={!canEdit} defaultValue={customer.taxDocumentType??"Undetermined"}><option>Undetermined</option><option>Taxable</option><option value="Resale 5000A">Resale 5000A</option><option value="Exemption 5000">Exemption 5000</option></select>{errors.taxDocumentType&&<small role="alert">{errors.taxDocumentType}</small>}</label>
