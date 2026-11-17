@@ -17,7 +17,9 @@ import {
   UserCheck,
   UserRound,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
+import {assignedDelivery,type AssignedDeliveryAction} from "../../lib/firebase-assigned-delivery";
 import { deliveryAddressLabel } from "../../lib/account-address";
 import { deliveryReconciliationIssue } from "../../lib/delivery-reconciliation";
 import type { PaymentMethod } from "../../lib/commerce-engine";
@@ -56,6 +58,8 @@ export function DeliveriesPage() {
     addDeliveryNote,
   } = useDelivery();
   const sync = useSyncStatus();
+  const firebase=useFirebaseSessionOptional();
+  const deliveryLock=useRef(false);
   const [driverByOrder, setDriverByOrder] = useState<Record<string, string>>({});
   const [collectionDrafts, setCollectionDrafts] = useState<Record<string, CollectionDraft>>({});
   const [notice, setNotice] = useState("");
@@ -87,6 +91,14 @@ export function DeliveriesPage() {
   const discrepancies = visible.filter((order)=>Boolean(issueForOrder(order)));
   const complete = visible.filter((order) => ["Delivered","Paid"].includes(order.status) && !issueForOrder(order) && (taskForOrder(order.id)?.status === "Delivered" || completedByOverride(order.id)));
   const run = async(result: { ok: boolean; message?: string }, success: string) => {if(!result.ok){setNotice(result.message??"The delivery update was not accepted.");return;}setNotice("Saving delivery change to Momentum cloud…");const checks=await Promise.all([momentumStorage.flushAndConfirm(DELIVERY_STORAGE_KEY),momentumStorage.flushAndConfirm(INVENTORY_LEDGER_STORAGE_KEY),momentumStorage.flushAndConfirm(COMMERCIAL_KEY)]);const failed=checks.find((item)=>!item.ok);setNotice(failed?`Change is still on this device but Momentum cloud has NOT confirmed every record. Do not repeat the action. ${failed.message??"Check the sync status."}`:success);};
+  const runStage=async(action:AssignedDeliveryAction,local:()=>{ok:boolean;message?:string},success:string)=>{
+    if(momentumStorage.mode()!=="firestore"){await run(local(),success);return;}
+    if(!firebase?.session||deliveryLock.current){setNotice("Wait for the pending action or sign in again.");return;}
+    deliveryLock.current=true;setNotice("Confirming delivery change with company server…");
+    try{const result=await assignedDelivery(firebase.session,action);setNotice(result.refreshed?success:"Server saved the change. Refresh the queue before repeating.");}
+    catch(error){setNotice(error instanceof Error?error.message:"Delivery update unconfirmed.");}
+    finally{deliveryLock.current=false;}
+  };
   const refreshQueue = async () => {
     if(refreshingQueue)return;
     setRefreshingQueue(true);
@@ -117,6 +129,17 @@ export function DeliveriesPage() {
     setSavingSignedDelivery(true);
     setSignatureError("");
     try {
+      if(momentumStorage.mode()==="firestore"){
+        if(!firebase?.session)throw new Error("Sign in again before recording recipient proof.");
+        if(deliveryLock.current)throw new Error("A delivery change is still in progress.");
+        deliveryLock.current=true;
+        try{
+          const receipt=await assignedDelivery(firebase.session,{orderId:signingOrderId,action:"complete",signature:{strokes,recipientName}});
+          if(!receipt.refreshed||receipt.orderStatus!=="Delivered"||receipt.taskStatus!=="Delivered"){setSignatureError("Server recorded the delivery but the queue has not refreshed. Verify the original signature again; do not sign twice.");return;}
+          closeSignature();setNotice("Recipient proof, inventory and Delivered status confirmed by server. Invoice delivery is a separate process.");
+        }finally{deliveryLock.current=false;}
+        return;
+      }
       const task = taskForOrder(signingOrderId);
       if (task?.status === "Delivered") {
         // A previous save attempt might still be pending. Never post duplicate
@@ -231,11 +254,11 @@ export function DeliveriesPage() {
       {needsReconciliation&&<div className="form-callout" role="alert"><strong>Delivery record discrepancy.</strong> Order: {order.status}; driver task: {task?.status??"Missing"}; posted inventory: {deliveryPosted}/{order.cases} cases. {reconciliationIssue} Do not collect another signature or post stock again. Operations must review the saved task, order, inventory and invoice before correcting.</div>}
       <div className="delivery-card__actions">
         <Button type="button" size="sm" variant="secondary" icon={<Eye size={15} />} onClick={() => setDetailOrderId(order.id)}>View details</Button>
-        {!task && isDriver && !needsReconciliation && <Button type="button" size="sm" icon={<UserCheck size={15} />} onClick={() => run(claimDelivery(order.id), `${order.number} claimed. You can now pack it.`)}>Claim delivery</Button>}
-        {!task && canManage && !needsReconciliation && <><select value={selectedDriver} onChange={(event) => setDriverByOrder((current) => ({ ...current, [order.id]: event.target.value }))}>{drivers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><Button type="button" size="sm" disabled={!selectedDriver} onClick={() => run(assignDelivery(order.id, selectedDriver), `${order.number} assigned.`)}>Assign driver</Button></>}
-        {task?.status === "Accepted" && (ownTask || canManage) && <>{order.status === "Approved" && <Button type="button" size="sm" icon={<PackageCheck size={15} />} onClick={() => run(prepareDelivery(order.id), `${order.number} packed and inventory reserved.`)}>Pack / reserve</Button>}{order.status === "Allocated" && <Button type="button" size="sm" icon={<PackageOpen size={15} />} onClick={() => run(markLoaded(order.id), `${order.number} loaded into driver custody.`)}>Mark loaded</Button>}<Button type="button" size="sm" variant="ghost" onClick={() => { const reason = window.prompt("Why is this delivery assignment being released?")?.trim() ?? ""; if (reason) run(cancelDelivery(order.id, reason), `${order.number} returned to the delivery queue.`); }}>{ownTask ? "Release assignment" : "Cancel assignment"}</Button></>}
-        {task?.status === "Loaded" && (ownTask || canManage) && <Button type="button" size="sm" icon={<Truck size={15} />} onClick={() => run(startDelivery(order.id), `${order.number} is now in transit.`)}>Start delivery</Button>}
-        {task?.status === "In transit" && !needsReconciliation && (ownTask || canManage) && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => openSignature(order.id)}>Complete delivery & sign</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) run(addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
+        {!task && isDriver && !needsReconciliation && <Button type="button" size="sm" icon={<UserCheck size={15} />} onClick={() => runStage({orderId:order.id,action:"claim"},()=>claimDelivery(order.id), `${order.number} claimed. You can now pack it.`)}>Claim delivery</Button>}
+        {!task && canManage && !needsReconciliation && <><select value={selectedDriver} onChange={(event) => setDriverByOrder((current) => ({ ...current, [order.id]: event.target.value }))}>{drivers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><Button type="button" size="sm" disabled={!selectedDriver} onClick={() => runStage({orderId:order.id,action:"assign",driverId:selectedDriver},()=>assignDelivery(order.id, selectedDriver), `${order.number} assigned.`)}>Assign driver</Button></>}
+        {task?.status === "Accepted" && (ownTask || canManage) && <>{order.status === "Approved" && <Button type="button" size="sm" icon={<PackageCheck size={15} />} onClick={() => runStage({orderId:order.id,action:"pack"},()=>prepareDelivery(order.id), `${order.number} packed and inventory reserved.`)}>Pack / reserve</Button>}{order.status === "Allocated" && <Button type="button" size="sm" icon={<PackageOpen size={15} />} onClick={() => runStage({orderId:order.id,action:"load"},()=>markLoaded(order.id), `${order.number} loaded into driver custody.`)}>Mark loaded</Button>}<Button type="button" size="sm" variant="ghost" onClick={() => { const reason = window.prompt("Why is this delivery assignment being released?")?.trim() ?? ""; if (reason&&reason.length>=8) runStage({orderId:order.id,action:"release",reason},()=>cancelDelivery(order.id, reason), `${order.number} returned to the delivery queue.`); }}>{ownTask ? "Release assignment" : "Cancel assignment"}</Button></>}
+        {task?.status === "Loaded" && (ownTask || canManage) && <Button type="button" size="sm" icon={<Truck size={15} />} onClick={() => runStage({orderId:order.id,action:"depart"},()=>startDelivery(order.id), `${order.number} is now in transit.`)}>Start delivery</Button>}
+        {task?.status === "In transit" && !needsReconciliation && (ownTask || canManage&&momentumStorage.mode()!=="firestore") && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => openSignature(order.id)}>Complete delivery & sign</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) runStage({orderId:order.id,action:"note",note},()=>addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
       </div>
 
       {canRecordCollection && <div className="delivery-payment-collection">
