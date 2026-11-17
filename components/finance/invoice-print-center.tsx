@@ -10,6 +10,7 @@ import { useCommerce } from "../../lib/commerce-context";
 import { useDelivery } from "../../lib/delivery-context";
 import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
 import { orderLinesFor } from "../../lib/order-lines";
+import {reconcileInvoicePdfLines} from "../../functions/src/invoice-line-reconciliation";
 import { invoicePrintPages } from "../../lib/invoice-print-pages";
 import {legalBillingName} from "../../lib/legal-billing-name";
 import {invoicePlacerLabel} from "../../lib/invoice-placer-name";
@@ -85,6 +86,10 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       setPrintNotice("Select at least one invoice to print.");
       return;
     }
+    if(invoiceIssueApproved){
+      const blocked=unique.map(id=>invoices.find(row=>row.id===id)!).map(invoice=>({invoice,check:reconcileInvoicePdfLines(invoice,data.orders.find(order=>order.id===invoice.orderId))})).find(row=>!row.check.ok);
+      if(blocked&&!blocked.check.ok){setPrintNotice("Invoice "+blocked.invoice.number+" requires reconciliation: "+blocked.check.reason);return;}
+    }
     if (typeof window.print !== "function") {
       setPrintNotice("This browser does not expose a print dialog. Open the invoice preview in a browser that supports printing.");
       return;
@@ -105,6 +110,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
     const location = data.accounts.find((item) => item.id === invoice.accountId);
     const customer = location ? customerForLocation(data, location) : undefined;
     const lines = invoice.linesSnapshot?.length ? invoice.linesSnapshot : order ? orderLinesFor(order) : [];
+    const lineReview=reconcileInvoicePdfLines(invoice,order);
     const deliveryTask = order ? taskForOrder(order.id) : undefined;
     const deliverySignature = deliveryTask?.signature;
     const adminConfirmedDelivery = !deliverySignature &&
@@ -127,7 +133,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
           <Image className="invoice-sheet__brand-logo" src={invoiceBrandSrc} width={1536} height={1024} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" priority unoptimized />
           <div className="invoice-sheet__issuer-copy"><strong>{company.name}</strong><span>Golden Eagle distribution</span><span>{company.street}</span><span>{company.cityStateZip}</span></div>
         </div>
-        <div className="invoice-sheet__title"><h1>{invoiceIssueApproved?"INVOICE":"INVOICE • INTERNAL REVIEW"}</h1>{!invoiceIssueApproved&&<strong>NOT FOR CUSTOMER ISSUANCE</strong>}</div>
+        <div className="invoice-sheet__title"><h1>{invoiceIssueApproved?"INVOICE":"INVOICE • INTERNAL REVIEW"}</h1>{!invoiceIssueApproved&&<strong>NOT FOR CUSTOMER ISSUANCE</strong>}{!lineReview.ok&&<strong>RECONCILIATION REQUIRED</strong>}</div>
       </header>
 
       <section className="invoice-sheet__legacy-grid">

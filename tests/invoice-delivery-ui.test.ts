@@ -158,3 +158,9 @@ test("manual internal invoice printing is available without customer issuance ap
   assert.match(handler,/invoices\.some/);
   assert.match(handler,/window\.print\(\)/);
 });
+
+test("approved manual print requires authoritative line reconciliation",()=>{
+ const handler=invoiceSource.slice(invoiceSource.indexOf("const startPrint ="),invoiceSource.indexOf("const invoiceSheet ="));
+ assert.match(handler,/reconcileInvoicePdfLines\(invoice,data.orders.find/);
+ assert.match(handler,/requires reconciliation/);
+});
