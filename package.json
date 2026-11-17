@@ -23,10 +23,10 @@
   },
   "dependencies": {
     "lucide-react": "0.468.0",
-    "next": "16.2.6",
+    "next": "16.4.6",
+    "pdf-lib": "1.17.1",
     "react": "19.2.6",
-    "react-dom": "19.2.6",
-    "pdf-lib": "1.17.1"
+    "react-dom": "19.2.6"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
@@ -35,9 +35,9 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.2.6",
+    "eslint-config-next": "16.4.6",
     "firebase": "^12.19.0",
-    "postcss": "8.5.14",
+    "postcss": "8.5.33",
     "tailwindcss": "4.2.1",
     "tsx": "^4.22.1",
     "typescript": "5.9.3",
@@ -51,5 +51,10 @@
     "sharp": true,
     "unrs-resolver": true,
     "workerd@1.20260911.1": true
+  },
+  "overrides": {
+    "@firebase/firestore": {
+      "@grpc/grpc-js": "1.13.7"
+    }
   }
 }
