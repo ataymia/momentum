@@ -4,7 +4,7 @@ import {getFirestore} from "firebase-admin/firestore";
 import {lotEligibleForAutomaticDelivery} from "./inventory-lot-quality";
 
 type Row=Record<string,unknown>;
-type Action="status"|"claim"|"assign"|"pack"|"load"|"depart"|"complete";
+type Action="status"|"claim"|"assign"|"pack"|"load"|"depart"|"complete"|"release"|"note";
 type Receipt={orderId:string;orderStatus:string;taskStatus:string;cloudConfirmed:boolean;replayed?:boolean;deliveredAt?:string};
 const obj=(value:unknown):value is Row=>Boolean(value&&typeof value==="object"&&!Array.isArray(value));
 const txt=(value:unknown)=>typeof value==="string"?value.trim():"";
@@ -106,7 +106,7 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
   if(!actor||!obj(body))return fail(400,"Invalid self-delivery request.");
   const action=txt(body.action) as Action;
   const orderId=txt(body.orderId);
-  if(!(assigned?["status","claim","assign","pack","load","depart","complete"]:["status","claim","pack","load","depart","complete"]).includes(action)||
+  if(!(assigned?["status","claim","assign","pack","load","depart","complete","release","note"]:["status","claim","pack","load","depart","complete"]).includes(action)||
      !/^[A-Za-z0-9_-]{5,120}$/.test(orderId))fail(400,"Invalid order or self-delivery step.");
   const proof=action==="complete"?signatureDraft(body.signature):undefined;
   const db=getFirestore();
@@ -132,6 +132,7 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
     const order=commercial.find((item)=>txt(item.id)===orderId)||
       workspace.find((item)=>txt(item.id)===orderId);
     if(!order)return fail(404,"Order not found.");
+    if(assigned&&order.testOnly===true)fail(403,"Test-only orders cannot enter the ordinary driver workflow.");
     if(!assigned&&txt(order.ownerId)!==actor)fail(403,"Only orders placed by you qualify for self-delivery.");
     const copy=commercial.find((item)=>txt(item.id)===orderId);
     const second=workspace.find((item)=>txt(item.id)===orderId);
@@ -165,6 +166,7 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
       if(txt(driverAccess?.accountState)!=="Active"||txt(driverAccess?.role)!=="Delivery Driver")fail(409,"Assigned delivery driver is not active; Operations must reconcile.");
     }
     if(assigned&&management&&!task&&!["status","assign"].includes(action))fail(409,"Assign a driver first.");
+    if(assigned&&driver&&!task&&!["status","claim"].includes(action))fail(409,"Claim this delivery before changing it.");
     const custodian=assigned?chosen:actor;
     const status=txt(order.status),taskStatus=txt(task?.status);
     const response=(oStatus=status,tStatus=taskStatus,stamp?:string,replayed?:boolean):Receipt=>({
@@ -231,7 +233,24 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
     const loadedCases=loaded.map((movement)=>({
       product:txt(lots.get(txt(movement.lotId))?.product),quantity:num(movement.quantity),
     }));
-    if(action==="claim"||action==="assign"){
+    if(action==="note"){
+      const note=txt(body.note);
+      if(!task||note.length<3||note.length>500)fail(400,"Enter a delivery note of 3–500 characters.");
+      const last=Array.isArray(task.history)?task.history[0]:undefined;
+      if(task.note===note&&obj(last)&&last.actorId===actor)return response(status,taskStatus,undefined,true);
+      newTask({...task,note,history:[event(actor,"Note",note),...(Array.isArray(task.history)?task.history:[])]});
+    }else if(action==="release"){
+      const reason=txt(body.reason);
+      if(reason.length<8||reason.length>500)fail(400,"Enter a release reason of 8–500 characters.");
+      if(!task||taskStatus!=="Accepted"||!["Approved","Allocated"].includes(status)||anyOrderTransfer.length||existingDelivery.length)fail(409,"Only an unloaded assignment can be released.");
+      if(status==="Allocated"){
+        const planned=activeForOrder.map(r=>({product:txt(lots.get(txt(r.lotId))?.product),quantity:num(r.quantity)}));
+        if(!matchExpected(expected,planned))fail(409,"Reservations require reconciliation before release.");
+        set(paths.reservations,reservations.map(r=>txt(r.orderId)===orderId&&txt(r.status)==="Active"?{...r,status:"Released",releasedAt:stamp}:r));
+        changedOrder("Approved");
+      }else if(activeForOrder.length)fail(409,"Unexpected reservation requires reconciliation.");
+      newTask({...task,status:"Cancelled",cancelledAt:stamp,cancelledBy:actor,history:[event(actor,"Cancelled",reason),...(Array.isArray(task.history)?task.history:[])]});
+    }else if(action==="claim"||action==="assign"){
       if(task&&txt(task.driverId)===custodian&&taskStatus==="Accepted"&&status==="Approved")return response(status,"Accepted",undefined,true);
       if(task||status!=="Approved"||activeForOrder.length||anyOrderTransfer.length||existingDelivery.length)
         fail(409,"This order is already assigned or in fulfillment. Ask Operations to review it.");
@@ -310,8 +329,13 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
       changedOrder("Out for delivery");
       updateTask("In transit","Departed",{departedAt:stamp});
     }else if(action==="complete"){
-      if(taskStatus==="Delivered"&&status==="Delivered"&&existingDelivery.length)
+      if(taskStatus==="Delivered"&&status==="Delivered"){
+        const savedSignature=task?.signature;
+        const sameProof=obj(savedSignature)&&savedSignature.strokesJson===JSON.stringify(proof!.strokes)&&txt(savedSignature.recipientName)===proof!.name&&txt(savedSignature.capturedBy)===actor;
+        const posted=matchExpected(expected,existingDelivery.map(m=>({product:txt(m.product),quantity:num(m.quantity)})))&&existingDelivery.every(m=>txt(m.fromNodeId)===staffNode&&txt(m.toNodeId)===locationNode);
+        if(!sameProof||!posted)fail(409,"Existing signed delivery evidence differs or requires reconciliation; do not sign again.");
         return response("Delivered","Delivered",txt(task?.deliveredAt),true);
+      }
       if(taskStatus!=="In transit"||status!=="Out for delivery"||!task?.loadedAt||!task?.departedAt)
         fail(409,"Only an in-transit, fully loaded self-delivery can be completed.");
       if(existingDelivery.length||conflictingTransfers||!matchExpected(expected,loadedCases))
@@ -355,8 +379,8 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
     for(const path of touched.keys())versions[path.replace(/[^A-Za-z0-9]+/g,"_")]=version;
     tx.set(meta,{versions},{merge:true});
     return response(
-      action==="pack"?"Allocated":action==="depart"?"Out for delivery":action==="complete"?"Delivered":status,
-      action==="claim"||action==="assign"||action==="pack"?"Accepted":action==="load"?"Loaded":action==="depart"?"In transit":"Delivered",
+      action==="pack"?"Allocated":action==="depart"?"Out for delivery":action==="complete"?"Delivered":action==="release"?"Approved":status,
+      action==="claim"||action==="assign"||action==="pack"?"Accepted":action==="load"?"Loaded":action==="depart"?"In transit":action==="release"?"Cancelled":action==="note"?taskStatus:"Delivered",
       action==="complete"?stamp:undefined,
     );
   });
