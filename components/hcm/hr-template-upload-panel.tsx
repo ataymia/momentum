@@ -2,7 +2,8 @@
 import {useEffect,useRef,useState,type FormEvent} from "react";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {useWorkspace} from "../../lib/workspace-context";
-import {discoverHrPdfFields} from "../../lib/hr-pdf-field-discovery";
+import {inspectHrPdf} from "../../lib/hr-pdf-editor-engine";
+import {mapHrPdfFields} from "../../lib/hr-pdf-mapping";
 import {
  HR_TEMPLATE_CHOICES,listHrTemplates,registerHrTemplate,uploadBlankHrTemplate,
  type HrTemplateKind,type HrTemplateFieldHint,
@@ -126,14 +127,18 @@ export function HrTemplateUploadPanel(){
        if(!selected)return;
        setDetecting(true);setMessage("");
        try{
-        const detected=discoverHrPdfFields(new Uint8Array(await selected.arrayBuffer()));
-        if(detected.length){setHints(detected);setCounter(detected.length+1);
-         setMessage("Found "+detected.length+" existing PDF form fields. Verify names, signer and required flags before registration.");}
-        else setMessage("No readable AcroForm fields found. This PDF may have compressed fields or printed lines. Add fields manually.");
+        const inspected=await inspectHrPdf(new Uint8Array(await selected.arrayBuffer()));
+        const mapped=mapHrPdfFields(inspected);
+        if(mapped.hints.length){
+         setHints(mapped.hints);setCounter(mapped.hints.length+1);
+         setMessage("Found "+mapped.total+" PDF fields across "+inspected.pages.length+
+          " page(s). "+mapped.hints.length+" mapped for review."+
+          (mapped.omitted?" "+mapped.omitted+" omitted due to limits or invalid names.":""));
+        }else setMessage("No embedded PDF form fields found. Add locations manually in the PDF editor.");
        }catch(error){setMessage(error instanceof Error?error.message:"PDF field detection failed.");}
        finally{setDetecting(false);}
       }}>{detecting?"Reading PDF fields…":"Find existing PDF fields"}</button></div>
-    <p className="prototype-note">Existing uncompressed AcroForm fields can be suggested locally. Confirm each label, signer and requirement; compressed, scanned or graphics-only PDFs still require manual mapping. This tool does not modify or sign the PDF.</p>
+    <p className="prototype-note">Existing fillable fields, including compressed AcroForms, are detected locally. Review signer assignments and required fields. Printed lines and scanned forms require manual placement in the PDF editor.</p>
     {hints.map(hint=><div className="prototype-controls" key={hint.id}>
      <label>Field label <input value={hint.label} aria-label={"HR field label "+hint.id}
        maxLength={100} onChange={e=>setHints(rows=>rows.map(r=>r.id===hint.id?{...r,label:e.target.value}:r))}/></label>

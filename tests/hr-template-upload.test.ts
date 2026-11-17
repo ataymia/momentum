@@ -69,3 +69,28 @@ test("PDF field discovery rejects non-PDF and deduplicates repeated form field n
  "2 0 obj << /FT /Tx /T (FirstName) >> endobj\n";
  assert.equal(discoverHrPdfFields(new TextEncoder().encode(pdf)).length,1);
 });
+
+import {PDFDocument} from "pdf-lib";
+import {inspectHrPdf} from "../lib/hr-pdf-editor-engine";
+import {mapHrPdfFields} from "../lib/hr-pdf-mapping";
+
+test("compressed PDF field discovery becomes editable signer hints",async()=>{
+ const document=await PDFDocument.create();
+ const page=document.addPage([500,680]);
+ const form=document.getForm();
+ form.createTextField("Employee_FullName").addToPage(page,{x:20,y:600,width:240,height:24});
+ form.createTextField("Worker_Initials").addToPage(page,{x:20,y:555,width:50,height:24});
+ form.createTextField("Employer_Date").addToPage(page,{x:20,y:515,width:90,height:24});
+ form.createCheckBox("Worker_Consent").addToPage(page,{x:20,y:485,width:12,height:12});
+ const pdf=await document.save();
+ const inspection=await inspectHrPdf(pdf);
+ const result=mapHrPdfFields(inspection);
+ assert.equal(result.omitted,0);
+ assert.deepEqual(result.hints.map(h=>h.type),["Text","Initials","Date","Checkbox"]);
+ assert.equal(result.hints[1].required,true);
+ assert.equal(result.hints[2].signer,"Company");
+ assert.equal(result.hints[0].pdfFieldName,"Employee_FullName");
+ const ui=readFileSync("components/hcm/hr-template-upload-panel.tsx","utf8");
+ assert.match(ui,/inspectHrPdf\(/);
+ assert.match(ui,/mapHrPdfFields\(/);
+});
