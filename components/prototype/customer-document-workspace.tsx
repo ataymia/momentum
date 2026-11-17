@@ -21,10 +21,10 @@ export function CustomerDocumentWorkspace({allowedIds}:{allowedIds?:readonly str
  const [locations,setLocations]=useState<Location[]>([]),[accountId,setAccountId]=useState("");
  const [records,setRecords]=useState<RecordRow[]>([]),[query,setQuery]=useState(""),[title,setTitle]=useState(""),[category,setCategory]=useState(categories[0]);
  const [file,setFile]=useState<File|null>(null),[attested,setAttested]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState(""),[error,setError]=useState(""),[revision,setRevision]=useState(0),[partial,setPartial]=useState(false);
- const scopeKey=allowedIds?.join("|")??"";
+ const scopeKey=allowedIds===undefined?"*":allowedIds.join("|");
  useEffect(()=>{
   if(demo)return;let live=true;
-  void call({action:"locations"}).then(r=>{if(!live)return;const items=(r.locations as Location[]).filter(x=>!scopeKey||scopeKey.split("|").includes(x.id));setLocations(items);setAccountId(old=>items.some(x=>x.id===old)?old:items[0]?.id??"");}).catch(e=>{if(live)setError(String(e.message??e));});
+  void call({action:"locations"}).then(r=>{if(!live)return;const items=(r.locations as Location[]).filter(x=>scopeKey==="*"||scopeKey.split("|").includes(x.id));setLocations(items);setAccountId(old=>items.some(x=>x.id===old)?old:items[0]?.id??"");}).catch(e=>{if(live)setError(String(e.message??e));});
   return()=>{live=false;};
  },[demo,scopeKey,revision]);
  useEffect(()=>{
@@ -36,9 +36,9 @@ export function CustomerDocumentWorkspace({allowedIds}:{allowedIds?:readonly str
  const visible=records.filter(r=>[r.title,r.category,r.status].join(" ").toLowerCase().includes(query.toLowerCase()));
  if(demo)return <section className="prototype-panel"><h2>Business documents</h2><p>Private PDF intake and review use authenticated company storage. No real documents are stored in the isolated demonstration.</p></section>;
  return <section className="prototype-panel"><h2>Business documents</h2><p>Upload company documents for review, track their status and download the original PDF. Review does not certify a signature, tax exemption or legal compliance.</p>
- <label>Business location <select aria-label="Document business location" value={accountId} onChange={e=>{setRecords([]);setAccountId(e.target.value);}}>{locations.map(x=><option key={x.id} value={x.id}>{x.name} · {x.location}</option>)}</select></label>
+ <label>Business location <select aria-label="Document business location" value={accountId} onChange={e=>{setRecords([]);setFile(null);setAttested(false);setTitle("");setAccountId(e.target.value);}}>{locations.map(x=><option key={x.id} value={x.id}>{x.name} · {x.location}</option>)}</select></label>
  <button type="button" disabled={busy} onClick={()=>setRevision(v=>v+1)}>Refresh documents</button>
- <form onSubmit={e=>{e.preventDefault();if(!file||!accountId||!attested)return;void run(async()=>{await call({action:"upload",accountId,title,category,attested,pdfBase64:encode(new Uint8Array(await file.arrayBuffer()))});setMessage("PDF archived. Submitted for review.");setTitle("");setFile(null);setAttested(false);setRevision(v=>v+1);});}}>
+ <form onSubmit={e=>{e.preventDefault();if(!file||!accountId||!attested)return;void run(async()=>{await call({action:"upload",accountId,title,category,attested,pdfBase64:encode(new Uint8Array(await file.arrayBuffer()))});setMessage("PDF archived. Current review status is available below.");setTitle("");setFile(null);setAttested(false);setRevision(v=>v+1);});}}>
  <label>Document title <input value={title} required maxLength={120} onChange={e=>setTitle(e.target.value)}/></label><label>Document category <select value={category} onChange={e=>setCategory(e.target.value)}>{categories.map(x=><option key={x}>{x}</option>)}</select></label>
  <label>PDF file (up to 5 MB) <input type="file" accept="application/pdf,.pdf" onChange={e=>{const f=e.target.files?.[0]??null;setFile(f&&f.size<=5*1024*1024?f:null);if(f&&f.size>5*1024*1024)setError("PDF exceeds 5 MB.");}}/></label>
  <label><input type="checkbox" checked={attested} onChange={e=>setAttested(e.target.checked)}/> This PDF is intended for the authorized business contacts and Momentum administrators.</label>

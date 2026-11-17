@@ -126,6 +126,9 @@ export function DeliveriesPage() {
       setSignatureError("Have the recipient sign in the box before completing the delivery.");
       return;
     }
+    if(momentumStorage.mode()==="firestore"&&!recipientName.trim()){
+      setSignatureError("Enter the recipient name before completing the delivery.");return;
+    }
     setSavingSignedDelivery(true);
     setSignatureError("");
     try {
@@ -333,7 +336,7 @@ export function DeliveriesPage() {
       <div className="delivery-signature-modal">
         <p className="delivery-signature-modal__order">{signingOrderId ? data.orders.find((item) => item.id === signingOrderId)?.number : ""} · {signingOrderId ? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.locationName ?? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.name : ""}</p>
         <DeliverySignaturePad strokes={signatureStrokes} onChange={(strokes) => { setSignatureStrokes(strokes); setSignatureError(""); }} />
-        <label className="delivery-signature-name"><span>Recipient name <small>optional</small></span><input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Name of person receiving delivery" autoComplete="name" /></label>
+        <label className="delivery-signature-name"><span>Recipient name <small>{momentumStorage.mode()==="firestore"?"required":"optional"}</small></span><input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Name of person receiving delivery" autoComplete="name" /></label>
         <p className="delivery-signature-note">This signature records delivery presence and is copied onto the Momentum invoice. It is not a separate contract or payment authorization.</p>
         {signatureError && <p className="form-error" role="alert">{signatureError}</p>}
       </div>

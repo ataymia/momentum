@@ -52,8 +52,8 @@ export async function customerDocumentAction(uid:string,raw:unknown){
   const storagePath="customer-private/"+accountId+"/"+id+".pdf";
   const prior=await db.runTransaction(async tx=>{
    const [current,actor,dir,source]=await Promise.all([tx.get(ref),tx.get(db.doc("userAccess/"+uid)),tx.get(db.doc("employeeDirectory/"+uid)),tx.get(db.doc("domains/workspace/fields/accounts"))]);
-   const a=actor.data(),locations=rows(source.data()).filter(r=>r.id===accountId&&r.customerId===customerId);
-   if(a?.accountState!=="Active"||locations.length!==1||(a.role!=="Administrator"&&!customerAccountIds(a,dir.data()).includes(accountId)))refuse(403,"Document access is unavailable.");
+   const a=actor.data(),locations=rows(source.data()).filter(r=>r.id===accountId);
+   if(a?.accountState!=="Active"||locations.length!==1||locations[0].customerId!==customerId||(a.role!=="Administrator"&&!customerAccountIds(a,dir.data()).includes(accountId)))refuse(403,"Document access is unavailable.");
    if(current.exists)return current.data()!;
    const r={id,accountId,customerId,title,category,sha256,storagePath,actorUid:uid,state:"Reserved",status:"Submitted for review",createdAt:new Date().toISOString()};
    tx.create(ref,r);return r;
@@ -66,19 +66,20 @@ export async function customerDocumentAction(uid:string,raw:unknown){
   if(hash(stored)!==sha256)refuse(409,"Archived document checksum mismatch.");
   await db.runTransaction(async tx=>{
    const [current,actor,dir,source]=await Promise.all([tx.get(ref),tx.get(db.doc("userAccess/"+uid)),tx.get(db.doc("employeeDirectory/"+uid)),tx.get(db.doc("domains/workspace/fields/accounts"))]);
-   const a=actor.data(),locations=rows(source.data()).filter(r=>r.id===accountId&&r.customerId===customerId);
-   if(a?.accountState!=="Active"||locations.length!==1||(a.role!=="Administrator"&&!customerAccountIds(a,dir.data()).includes(accountId)))refuse(403,"Document access is unavailable.");
+   const a=actor.data(),locations=rows(source.data()).filter(r=>r.id===accountId);
+   if(a?.accountState!=="Active"||locations.length!==1||locations[0].customerId!==customerId||(a.role!=="Administrator"&&!customerAccountIds(a,dir.data()).includes(accountId)))refuse(403,"Document access is unavailable.");
    if(current.data()?.state==="Reserved")tx.update(ref,{state:"Archived",archivedAt:new Date().toISOString()});
   });
-  return {id,status:"Submitted for review"};
+  const saved=await ref.get();
+  return {id,status:txt(saved.data()?.status)};
  }
  const id=txt(body.id);
  if(!/^[a-f0-9]{64}$/.test(id))refuse(400,"Invalid document reference.");
  const ref=collection.doc(id);
  const record=await db.runTransaction(async tx=>{
   const [snap,actor,dir,source]=await Promise.all([tx.get(ref),tx.get(db.doc("userAccess/"+uid)),tx.get(db.doc("employeeDirectory/"+uid)),tx.get(db.doc("domains/workspace/fields/accounts"))]);
-  const a=actor.data(),r=snap.data(),locations=rows(source.data()).filter(x=>x.id===accountId&&x.customerId===customerId);
-  if(!r||r.accountId!==accountId||r.customerId!==customerId||r.state!=="Archived"||locations.length!==1||a?.accountState!=="Active"||(a.role!=="Administrator"&&!customerAccountIds(a,dir.data()).includes(accountId)))refuse(403,"Document access is unavailable.");
+  const a=actor.data(),r=snap.data(),locations=rows(source.data()).filter(x=>x.id===accountId);
+  if(!r||r.accountId!==accountId||r.customerId!==customerId||r.state!=="Archived"||locations.length!==1||locations[0].customerId!==customerId||a?.accountState!=="Active"||(a.role!=="Administrator"&&!customerAccountIds(a,dir.data()).includes(accountId)))refuse(403,"Document access is unavailable.");
   if(body.action==="review"){
    const note=txt(body.note),status=txt(body.status);
    if(a.role!=="Administrator"||r.actorUid===uid)refuse(403,"Independent administrator review required.");
