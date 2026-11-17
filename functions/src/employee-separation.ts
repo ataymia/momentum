@@ -166,12 +166,14 @@ export async function separateEmployee(
       employmentStatus: "Separated",
       separatedAt: stamp,
     }, {merge: true});
-    const hrRows=rows(hr.data()?.items);
+    const rawHr=hr.data()?.items;
+    if(hr.exists&&(!Array.isArray(rawHr)||rawHr.some(item=>!record(item))))throw new EmployeeSeparationError(409,"HR register format requires reconciliation.");
+    const hrRows=rows(rawHr);
     const hrMatches=hrRows.filter(item=>item.userId===targetUid);
     if(hrMatches.length>1)throw new EmployeeSeparationError(409,"Duplicate HR employment records require reconciliation.");
     if(hrMatches.length===1){
       const hrDate=text(hrMatches[0].separationDate)||stamp.slice(0,10);
-      tx.set(hrRef,{items:hrRows.map(item=>item.userId===targetUid?{...item,status:"Separated",separationDate:hrDate}:item)});
+      tx.set(hrRef,{items:hrRows.map(item=>item.userId===targetUid?{...item,status:"Separated",separationDate:hrDate,updatedAt:new Date().toISOString()}:item)},{merge:true});
     }
     if (releasedAccountIds.length) {
       tx.set(commercialRef, {
