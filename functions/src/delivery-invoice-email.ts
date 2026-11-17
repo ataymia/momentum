@@ -185,6 +185,14 @@ const queueDeliveredInvoice=async (
     return;
   }
 
+  // Live email activation does not approve the legal invoice issuer or its details.
+  if(process.env.MOMENTUM_INVOICE_ISSUE_APPROVED!=="true"){
+    await adminEvent("Invoice "+text(invoice.number)+
+      " held: legal issuer identity and contact details require authorized approval.",
+      orderId,eventId);
+    return;
+  }
+
   const administrator=await activeAdministrator();
   if(!administrator){
     throw new Error("No active Administrator is available for invoice email.");

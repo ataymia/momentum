@@ -121,7 +121,8 @@ test("customer-facing invoice never exposes internal override terminology",()=>{
   }).toString("latin1");
   assert.doesNotMatch(pdf,/admin/i);
   assert.doesNotMatch(pdf,/override/i);
-  assert.match(pdf,/Delivery confirmed/);
+  assert.match(pdf,/No recipient signature on file/);
+  assert.doesNotMatch(pdf,/Delivery confirmed/);
 
   const producer=readFileSync(
     "functions/src/delivery-invoice-email.ts",
@@ -252,4 +253,30 @@ test("invoice browser and register use human-readable labels without leaking an 
   assert.doesNotMatch(register,/placedBy\?\.name\s*\?\?\s*order\?\.ownerId/);
   assert.equal(invoicePlacerLabel("  Jordan Williams "),"Jordan Williams");
   assert.equal(invoicePlacerLabel(null),"Name unavailable");
+});
+
+
+test("unverified remittance details are absent in both PDF and printed invoice",()=>{
+  const pdf=buildSignedInvoicePdf({
+    invoiceNumber:"INV-NO-PAYEE",orderNumber:"GE-NO-PAYEE",
+    customerName:"Test Customer",billingEmail:"billing@example.com",
+    deliveredAt:"2026-10-18T22:00:00.000Z",terms:"COD",total:24,
+    lines:[{product:"Test Product",cases:1,pricePerCase:24,amount:24}],
+  }).toString("latin1");
+  assert.match(pdf,/Payment instructions are supplied separately/);
+  assert.match(pdf,/Confirm the payee and payment instructions/);
+  assert.doesNotMatch(pdf,/Zelle:|momentumdistributioninc@gmail\.com/);
+  assert.match(pdf,/No recipient signature on file/);
+  const browser=readFileSync("components/finance/invoice-print-center.tsx","utf8");
+  assert.match(browser,/Confirm the payee before sending funds/);
+  assert.doesNotMatch(browser,/zelleEmail|NEXT_PUBLIC_INVOICE_BANK_|Account No\.|Routing No\.|momentumdistributioninc@gmail\.com/);
+});
+
+test("automatic customer invoice release requires a separate explicit issuer approval",()=>{
+  const source=readFileSync("functions/src/delivery-invoice-email.ts","utf8");
+  const gate=source.indexOf('process.env.MOMENTUM_INVOICE_ISSUE_APPROVED!=="true"');
+  const queue=source.indexOf('tx.create(outbox,{');
+  assert.ok(gate>0&&queue>gate,"approval must precede customer email outbox");
+  assert.match(source.slice(gate,queue),/await adminEvent/);
+  assert.match(source.slice(gate,queue),/return;/);
 });

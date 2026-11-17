@@ -25,17 +25,8 @@ const company = {
   cityStateZip: "Peoria, AZ 85345",
   phone: "602-500-6811",
   attention: "Florim Ymeri",
-  primaryEmail: "momentumdistributioninc@gmail.com",
   salesEmail: "sales@momentumdci.com",
-  zelleEmail: "momentumdistributioninc@gmail.com",
 };
-
-const bank = {
-  name: process.env.NEXT_PUBLIC_INVOICE_BANK_NAME?.trim() || "",
-  account: process.env.NEXT_PUBLIC_INVOICE_BANK_ACCOUNT?.trim() || "",
-  routing: process.env.NEXT_PUBLIC_INVOICE_BANK_ROUTING?.trim() || "",
-};
-const hasBankInstructions = Boolean(bank.name && bank.account && bank.routing);
 
 type Copies = 1 | 2;
 type PrintJob = { ids: string[]; copies: Copies } | null;
@@ -170,18 +161,17 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       </section>
 
       <section className="invoice-sheet__receipt">
-        <div className={deliverySignature ? "invoice-sheet__signature-cell is-signed" : "invoice-sheet__signature-cell"}><span>Customer signature</span>{deliverySignature ? <svg viewBox="0 0 1000 300" aria-label="Customer delivery signature">{deliverySignature.strokes.map((stroke, index) => <polyline key={index} points={stroke.map(([x,y]) => `${x},${y}`).join(" ")} />)}</svg> : adminConfirmedDelivery ? <strong>Delivery confirmed</strong> : <i />}</div>
+        <div className={deliverySignature ? "invoice-sheet__signature-cell is-signed" : "invoice-sheet__signature-cell"}><span>Customer signature</span>{deliverySignature ? <svg viewBox="0 0 1000 300" aria-label="Customer delivery signature">{deliverySignature.strokes.map((stroke, index) => <polyline key={index} points={stroke.map(([x,y]) => `${x},${y}`).join(" ")} />)}</svg> : adminConfirmedDelivery ? <strong>No recipient signature on file</strong> : <i />}</div>
         <div><span>Printed name</span>{deliverySignature?.recipientName ? <strong>{deliverySignature.recipientName}</strong> : <i />}</div>
-        <div><span>Date / time</span>{deliverySignature ? <strong>{formatDate(deliverySignature.signedAt, { month: "2-digit", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit" })}</strong> : adminConfirmedDelivery ? <strong>Confirmed delivered</strong> : <i />}</div>
+        <div><span>Date / time</span>{deliverySignature ? <strong>{formatDate(deliverySignature.signedAt, { month: "2-digit", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit" })}</strong> : <i />}</div>
         <div><span>Payment received</span><i /></div><div><span>Method</span><i /></div><div><span>Reference / check no.</span><i /></div>
       </section>
 
       <section className="invoice-sheet__terms">
         <h2>Terms & conditions</h2>
         <p><strong>{invoice.terms}</strong> · {dueLabel(invoice.terms, invoice.dueDate)}.</p>
-        <p>Zelle: {company.zelleEmail}</p>
-        {hasBankInstructions ? <p>{bank.name}: Account No. {bank.account}; Routing No. {bank.routing}</p> : <p>Bank transfer / wire: obtain the current remittance instructions from an authorized Momentum representative.</p>}
-        <p>Reference invoice {invoice.number} with every payment. Sales / order support: {company.salesEmail}. Receivables / documentation: {company.primaryEmail}.</p>
+        <p>Payment instructions are supplied separately by an authorized Momentum representative. Confirm the payee before sending funds.</p>
+        <p>Reference invoice {invoice.number} with every payment. Sales / order support: {company.salesEmail}.</p>
         {invoice.terms === "COD" && <p>COD orders are payable at delivery. The delivery representative may collect payment and document the method/reference below.</p>}
         {customer?.paymentTerms === "Net 30" && <p>Net terms apply only where Momentum has approved the customer account for credit.</p>}
       </section>

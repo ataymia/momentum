@@ -323,8 +323,8 @@ export function buildSignedInvoicePdf(input:InvoicePdfInput):Buffer{
         out+=tx(dateLabel(input.signature.signedAt,true),463,183,7.6,true);
       }else{
         out+=line(36,171,299,171,SLATE,.7);
-        out+=tx("Delivery confirmed",314,183,8,true);
-        out+=tx(dateLabel(input.deliveredAt,true),463,183,7.6,true);
+        out+=tx("No recipient signature on file",39,183,7.2,false,SLATE);
+        // Leave recipient-signature date blank when no signature is captured.
       }
       out+=subheading("PAYMENT RECEIVED",36,153);
       out+=subheading("METHOD",226,153);
@@ -335,9 +335,9 @@ export function buildSignedInvoicePdf(input:InvoicePdfInput):Buffer{
       out+=box(36,54,540,75,PALE,[.86,.89,.93]);
       out+=subheading("TERMS & CONDITIONS",46,116);
       out+=tx(limit(input.terms+" | "+dueLabel(input.terms,input.dueDate)+".",7.3,508),46,104,7.3);
-      out+=tx("Zelle: momentumdistributioninc@gmail.com",46,93,7.3);
-      out+=tx("Bank transfer / wire: obtain current remittance instructions from an authorized Momentum representative.",46,82,7.1);
-      out+=tx(limit("Reference invoice "+input.invoiceNumber+" with every payment. Sales: sales@momentumdci.com.",7.1,508),46,71,7.1);
+      out+=tx("Payment instructions are supplied separately by an authorized representative.",46,93,7.3);
+      out+=tx("Confirm the payee and payment instructions before sending funds.",46,82,7.1);
+      out+=tx(limit("Reference invoice "+input.invoiceNumber+" with every payment.",7.1,508),46,71,7.1);
       if(input.terms==="COD")out+=tx("COD orders are payable at delivery.",46,61,6.8);
     }else{
       out+=tx("Line items continue on the next page.",36,265,9,true,SLATE);
