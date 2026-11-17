@@ -14,7 +14,16 @@ export type ExternalDocumentVerification = {
   documentVersion: number;
 };
 
+/** Reject malformed or forged-looking browser metadata without throwing in HR pages.
+ * External references are an HR attestation, not independent signature or
+ * immutable archive evidence. The approved signing/archive process must verify
+ * the original record separately.
+ */
 export function validExternalVerification(value: ExternalDocumentVerification | undefined, version: number) {
-  return Boolean(value && value.method === "External signed original" && value.recordReference.trim().length >= 5
-    && value.verifiedBy.trim() && Number.isFinite(Date.parse(value.verifiedAt)) && value.documentVersion === version);
+  if (!value || typeof value !== "object" || value.method !== "External signed original") return false;
+  return Boolean(typeof value.recordReference === "string" && value.recordReference.trim().length >= 5
+    && typeof value.verifiedBy === "string" && value.verifiedBy.trim().length > 0
+    && typeof value.verifiedAt === "string" && Number.isFinite(Date.parse(value.verifiedAt))
+    && Number.isInteger(value.documentVersion) && Number.isInteger(version) && version > 0
+    && value.documentVersion === version);
 }

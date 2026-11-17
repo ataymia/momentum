@@ -26,7 +26,10 @@ module.exports = {
       "src/delivery-correction.ts", "src/delivery-correction-policy.ts",
       "src/delivery-inventory-revision.ts", "src/sandbox-workflow.ts",
       "src/correction-financial-plan.ts", "src/correction-accounting-plan.ts",
-      "src/live-test-product.ts", "src/location-permission-request.ts"],
+      "src/live-test-product.ts",
+      "src/staff-meetings.ts", "src/staff-meeting-policy.ts",
+      "src/payment-provider-port.ts", "src/trusted-crm-contact.ts",
+      "src/trusted-crm-deal.ts", "src/trusted-hr-template-assignment.ts"],
     rules: {"require-jsdoc": "off", "valid-jsdoc": "off"},
   }],
   plugins: [

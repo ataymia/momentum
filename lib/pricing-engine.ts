@@ -1,23 +1,23 @@
-import { ACCOUNT_PRICING_TIERS } from "./account-health";
-import { addCalendarDays, arizonaDateKey } from "./date-time";
+import { addCalendarDays, arizonaDateKey, isValidCalendarDateKey } from "./date-time";
+import { assessRetailPriceBook, quarterStart, RETAIL_PROGRAM_POLICY } from "./retail-price-book";
 import type { PricingTier, WorkspaceData } from "./types";
 
+/** The sales-bonus 90-day window does not govern retailer pricing. */
 export const PARTNER_PRICING_RULE = {
-  casePack: 24,
+  casePack: RETAIL_PROGRAM_POLICY.casePack,
   partnerPricePerCan: 1,
-  partnerPricePerCase: 24,
-  introDays: 60,
-  introQualificationCases: 20,
-  rollingWindowDays: 90,
-  rollingQualificationCases: 20,
-};
+  partnerPricePerCase: RETAIL_PROGRAM_POLICY.introPrice,
+  introDays: RETAIL_PROGRAM_POLICY.introDays,
+  introQualificationCases: RETAIL_PROGRAM_POLICY.launchExtensionCases,
+  reviewCadence: "calendar quarter",
+} as const;
 
 export type PartnerPricingStatus = "Not started" | "Intro partner pricing" | "Partner pricing" | "Standard pricing";
 export type PartnerPricingEvaluation = {
   accountId: string;
   status: PartnerPricingStatus;
   effectiveTier?: PricingTier;
-  outsidePartnerTier?: Exclude<PricingTier, "A">;
+  outsidePartnerTier?: Exclude<PricingTier,"A">;
   firstOrderDate?: string;
   currentWindowStart?: string;
   currentWindowEnd?: string;
@@ -30,150 +30,47 @@ export type PartnerPricingEvaluation = {
   evidenceOrderIds: string[];
 };
 
-const isPaid = (order: WorkspaceData["orders"][number]) => order.paymentStatus === "Paid";
-
-export function evaluatePartnerPricing(data: WorkspaceData, accountId: string, asOf = new Date()): PartnerPricingEvaluation {
-  const account = data.accounts.find((item) => item.id === accountId);
-  const orders = data.orders.filter(order=>!order.testOnly)
-    .filter((order) => order.accountId === accountId)
-    .sort((a, b) => a.placedAt.localeCompare(b.placedAt) || a.id.localeCompare(b.id));
-  const paidOrders = orders.filter(isPaid);
-  const firstOrder = orders[0];
-  const rule = PARTNER_PRICING_RULE;
-  const asOfKey = arizonaDateKey(asOf);
-  const outsidePartnerTier = account?.pricingTier === "B" || account?.pricingTier === "C" ? account.pricingTier : undefined;
-  const outsidePartnerPrice = outsidePartnerTier ? ACCOUNT_PRICING_TIERS[outsidePartnerTier].pricePerCase : undefined;
-  const paidBetween = (start: string, end: string, includeStart = false) => paidOrders.filter((order) => (includeStart ? order.placedAt >= start : order.placedAt > start) && order.placedAt <= end);
-  const cases = (items: typeof paidOrders) => items.reduce((sum, order) => sum + order.cases, 0);
-
-  if (!firstOrder) {
-    return {
-      accountId,
-      status: "Not started",
-      effectiveTier: "A",
-      outsidePartnerTier,
-      countedCases: 0,
-      thresholdCases: rule.introQualificationCases,
-      partnerPricePerCase: rule.partnerPricePerCase,
-      currentPricePerCase: rule.partnerPricePerCase,
-      reason: `The opening order starts at Tier A / Partner Pricing at $${rule.partnerPricePerCase.toFixed(2)} per case. The first order starts the ${rule.introDays}-day introductory window.`,
-      evidenceOrderIds: [],
+export function evaluatePartnerPricing(data: WorkspaceData,accountId: string,asOf=new Date()): PartnerPricingEvaluation {
+  const account=data.accounts.find(item=>item.id===accountId);
+  const outsidePartnerTier=account?.pricingTier==="B"||account?.pricingTier==="C"?account.pricingTier:undefined;
+  const asOfKey=arizonaDateKey(asOf);
+  const assessed=assessRetailPriceBook(accountId,data.orders,asOfKey);
+  const firstOrder=data.orders
+    .filter(order=>order.accountId===accountId&&!order.testOnly&&
+      ["Approved","Allocated","Out for delivery","Delivered","Paid"].includes(order.status)&&
+      isValidCalendarDateKey(order.placedAt.slice(0,10))&&order.placedAt.slice(0,10)<=asOfKey&&
+      Number.isSafeInteger(order.cases)&&order.cases>0)
+    .sort((a,b)=>a.placedAt.localeCompare(b.placedAt)||a.id.localeCompare(b.id))[0];
+  if(assessed.status==="Not started"){
+    return{
+      accountId,status:"Not started",effectiveTier:"A",outsidePartnerTier,
+      firstOrderDate:firstOrder?.placedAt.slice(0,10),
+      countedCases:0,thresholdCases:RETAIL_PROGRAM_POLICY.openingMinCases,
+      partnerPricePerCase:RETAIL_PROGRAM_POLICY.introPrice,
+      // Provisional price for an opening order; createOrder validates its 10-case minimum.
+      currentPricePerCase:RETAIL_PROGRAM_POLICY.introPrice,
+      reason:"Qualified new locations can request a minimum 10-case opening order at $24/case. The 60-day retailer window starts with an approved opening order.",
+      evidenceOrderIds:[],
     };
   }
-
-  const firstOrderDate = firstOrder.placedAt;
-  const introEnd = addCalendarDays(firstOrderDate, rule.introDays);
-  const introOrders = paidBetween(firstOrderDate, introEnd, true);
-  const introCases = cases(introOrders);
-
-  if (asOfKey <= introEnd) {
-    return {
-      accountId,
-      status: "Intro partner pricing",
-      effectiveTier: "A",
-      outsidePartnerTier,
-      firstOrderDate,
-      currentWindowStart: firstOrderDate,
-      currentWindowEnd: introEnd,
-      countedCases: introCases,
-      thresholdCases: rule.introQualificationCases,
-      partnerPricePerCase: rule.partnerPricePerCase,
-      currentPricePerCase: rule.partnerPricePerCase,
-      reason: `New accounts begin at Tier A / Partner Pricing for the first ${rule.introDays} days. ${rule.introQualificationCases} paid cases during this window retain Tier A into the next eligibility period.`,
-      nextReviewDate: introEnd,
-      evidenceOrderIds: introOrders.map((order) => order.id),
-    };
-  }
-
-  let partnerActive = introCases >= rule.introQualificationCases;
-  let periodStart = introEnd;
-
-  const findReentry = (inactiveSince: string, through: string) => {
-    const candidates = paidOrders.filter((order) => order.placedAt > inactiveSince && order.placedAt <= through);
-    for (const order of candidates) {
-      const trailingStart = addCalendarDays(order.placedAt, -rule.rollingWindowDays);
-      const trailing = paidOrders.filter((candidate) => candidate.placedAt > trailingStart && candidate.placedAt <= order.placedAt);
-      if (cases(trailing) >= rule.rollingQualificationCases) return { date: order.placedAt, evidence: trailing };
-    }
-    return null;
-  };
-
-  while (periodStart <= asOfKey) {
-    if (partnerActive) {
-      const periodEnd = addCalendarDays(periodStart, rule.rollingWindowDays);
-      const periodOrders = paidBetween(periodStart, periodEnd);
-      const periodCases = cases(periodOrders);
-      if (asOfKey <= periodEnd) {
-        return {
-          accountId,
-          status: "Partner pricing",
-          effectiveTier: "A",
-          outsidePartnerTier,
-          firstOrderDate,
-          currentWindowStart: periodStart,
-          currentWindowEnd: periodEnd,
-          countedCases: periodCases,
-          thresholdCases: rule.rollingQualificationCases,
-          partnerPricePerCase: rule.partnerPricePerCase,
-          currentPricePerCase: rule.partnerPricePerCase,
-          reason: `Tier A / Partner Pricing is active. ${rule.rollingQualificationCases} paid cases in this ${rule.rollingWindowDays}-day eligibility period retain the $${rule.partnerPricePerCase.toFixed(2)} case price for the next period.`,
-          nextReviewDate: periodEnd,
-          evidenceOrderIds: periodOrders.map((order) => order.id),
-        };
-      }
-      if (periodCases >= rule.rollingQualificationCases) {
-        periodStart = periodEnd;
-        continue;
-      }
-      partnerActive = false;
-      periodStart = periodEnd;
-      continue;
-    }
-
-    const reentry = findReentry(periodStart, asOfKey);
-    if (!reentry) {
-      const trailingStart = addCalendarDays(asOfKey, -rule.rollingWindowDays);
-      const trailingOrders = paidOrders.filter((order) => order.placedAt > trailingStart && order.placedAt <= asOfKey);
-      const trailingCases = cases(trailingOrders);
-      return {
-        accountId,
-        status: "Standard pricing",
-        effectiveTier: outsidePartnerTier,
-        outsidePartnerTier,
-        firstOrderDate,
-        currentWindowStart: trailingStart,
-        currentWindowEnd: asOfKey,
-        countedCases: trailingCases,
-        thresholdCases: rule.rollingQualificationCases,
-        partnerPricePerCase: rule.partnerPricePerCase,
-        currentPricePerCase: outsidePartnerPrice,
-        reason: outsidePartnerTier
-          ? `Partner Pricing is inactive. Tier ${outsidePartnerTier} is the current outside-Partner tier at $${outsidePartnerPrice?.toFixed(2)} per case. Restoring ${rule.rollingQualificationCases} paid cases inside a rolling ${rule.rollingWindowDays}-day window requalifies the account for Tier A.`
-          : `Partner Pricing is inactive. An authorized Tier B ($${ACCOUNT_PRICING_TIERS.B.pricePerCase.toFixed(2)}) or Tier C ($${ACCOUNT_PRICING_TIERS.C.pricePerCase.toFixed(2)}) must be assigned for outside-Partner pricing. The B-versus-C assignment criteria are not yet configured.`,
-        evidenceOrderIds: trailingOrders.map((order) => order.id),
-      };
-    }
-
-    partnerActive = true;
-    periodStart = reentry.date;
-  }
-
-  return {
-    accountId,
-    status: partnerActive ? "Partner pricing" : "Standard pricing",
-    effectiveTier: partnerActive ? "A" : outsidePartnerTier,
-    outsidePartnerTier,
-    firstOrderDate,
-    currentWindowStart: periodStart,
-    currentWindowEnd: partnerActive ? addCalendarDays(periodStart, rule.rollingWindowDays) : asOfKey,
-    countedCases: 0,
-    thresholdCases: rule.rollingQualificationCases,
-    partnerPricePerCase: rule.partnerPricePerCase,
-    currentPricePerCase: partnerActive ? rule.partnerPricePerCase : outsidePartnerPrice,
-    reason: partnerActive
-      ? `The account requalified for Tier A / Partner Pricing on ${periodStart}. The requalification order starts the new ${rule.rollingWindowDays}-day period and is not counted again toward the next continuation threshold.`
-      : "Partner Pricing is inactive.",
-    nextReviewDate: partnerActive ? addCalendarDays(periodStart, rule.rollingWindowDays) : undefined,
-    evidenceOrderIds: [],
+  const status:PartnerPricingStatus=assessed.status==="Introductory"?"Intro partner pricing":
+    assessed.status==="Launch extension"||assessed.tier==="A"?"Partner pricing":"Standard pricing";
+  const periodStart=assessed.status==="Introductory"?firstOrder?.placedAt.slice(0,10):
+    assessed.status==="Launch extension"&&firstOrder?
+    addCalendarDays(firstOrder.placedAt.slice(0,10),RETAIL_PROGRAM_POLICY.introDays):quarterStart(asOfKey);
+  const message=assessed.status==="Introductory"?"60-day introductory retailer pricing":
+    assessed.status==="Launch extension"?"20 qualifying launch cases preserve the $24 retailer price through the next full calendar quarter":
+    assessed.tier?"Retailer tier from average monthly purchases in the completed prior calendar quarter":
+    "No automatic price is documented for this review period; pricing requires approval.";
+  return{
+    accountId,status,effectiveTier:assessed.tier??undefined,outsidePartnerTier,
+    firstOrderDate:firstOrder?.placedAt.slice(0,10),
+    currentWindowStart:periodStart,currentWindowEnd:assessed.periodEnd??undefined,
+    countedCases:assessed.paidCases,thresholdCases:RETAIL_PROGRAM_POLICY.launchExtensionCases,
+    partnerPricePerCase:RETAIL_PROGRAM_POLICY.introPrice,
+    currentPricePerCase:assessed.pricePerCase??undefined,
+    reason:message+" "+assessed.basis,
+    nextReviewDate:assessed.nextReview??undefined,
+    evidenceOrderIds:assessed.evidenceOrderIds,
   };
 }

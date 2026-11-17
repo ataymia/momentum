@@ -50,15 +50,15 @@ const refundEvidenceValid=(refund:Refund)=>{
   return true;
 };
 
-export function createCommerceSeed(data:WorkspaceData):CommerceState{
-  const invoices:Invoice[]=data.orders.filter((order)=>!order.testOnly&&(eligibleForInvoice(order.status)||order.paymentStatus!=="Not invoiced")).filter((order)=>finiteNonNegative(order.amount)).map((order)=>{const createdAt=now();const account=data.accounts.find((item)=>item.id===order.accountId);const customer=(data.customers??[]).find((item)=>item.id===account?.customerId);const approvedNet30=customer?.creditStatus==="Net 30 Approved"&&customer.paymentTerms==="Net 30";const terms:InvoiceTerms=approvedNet30?"Net 30":customer?.paymentTerms==="Custom"&&customer.customPaymentTerms?.trim()?"Custom":"COD";const billToAddressSnapshot=account?businessAddressLabel(account)||undefined:undefined;const shipToAddressSnapshot=account?deliveryAddressLabel(account)||undefined:undefined;return{id:`invoice-${order.id}`,number:invoiceNumber(order.number),orderId:order.id,accountId:order.accountId,issuedAt:createdAt,terms,total:order.amount,status:order.paymentStatus==="Paid"?"Paid":order.paymentStatus==="Partially paid"?"Partially paid":"Open",createdAt,billToAddressSnapshot,shipToAddressSnapshot};});
+export function createCommerceSeed(data:WorkspaceData,includeSyntheticPayments=true):CommerceState{
+  const invoices:Invoice[]=data.orders.filter((order)=>!order.testOnly&&(eligibleForInvoice(order.status)||order.paymentStatus!=="Not invoiced")).filter((order)=>finiteNonNegative(order.amount)).map((order)=>{const createdAt=now();const account=data.accounts.find((item)=>item.id===order.accountId);const customer=(data.customers??[]).find((item)=>item.id===account?.customerId);const approvedNet30=customer?.creditStatus==="Net 30 Approved"&&customer.paymentTerms==="Net 30";const terms:InvoiceTerms=approvedNet30?"Net 30":customer?.paymentTerms==="Custom"&&customer.customPaymentTerms?.trim()?"Custom":"COD";const billToAddressSnapshot=account?businessAddressLabel(account)||undefined:undefined;const shipToAddressSnapshot=account?deliveryAddressLabel(account)||undefined:undefined;return{id:`invoice-${order.id}`,number:invoiceNumber(order.number),orderId:order.id,accountId:order.accountId,issuedAt:createdAt,terms,total:order.amount,status:includeSyntheticPayments&&order.paymentStatus==="Paid"?"Paid":includeSyntheticPayments&&order.paymentStatus==="Partially paid"?"Partially paid":"Open",createdAt,billToAddressSnapshot,shipToAddressSnapshot};});
   const payments:Payment[]=[];const allocations:PaymentAllocation[]=[];
-  for(const order of data.orders.filter((item)=>!item.testOnly&&item.paymentStatus==="Paid"&&finitePositive(item.amount))){const invoice=invoices.find((item)=>item.orderId===order.id);if(!invoice)continue;const paymentId=`payment-${order.id}-seed`;const settledAt=order.firstSettledAt??order.paidAt??order.placedAt;payments.push({id:paymentId,accountId:order.accountId,receivedAt:settledAt,settledAt,settledBy:"system",amount:order.amount,method:"Other",status:"Cleared",note:"Seeded from paid demo order",createdBy:"system",createdAt:now()});allocations.push({id:`allocation-${order.id}-seed`,paymentId,invoiceId:invoice.id,amount:order.amount,createdAt:now(),createdBy:"system"});}
+  for(const order of (includeSyntheticPayments?data.orders.filter((item)=>!item.testOnly&&item.paymentStatus==="Paid"&&finitePositive(item.amount)):[])){const invoice=invoices.find((item)=>item.orderId===order.id);if(!invoice)continue;const paymentId=`payment-${order.id}-seed`;const settledAt=order.firstSettledAt??order.paidAt??order.placedAt;payments.push({id:paymentId,accountId:order.accountId,receivedAt:settledAt,settledAt,settledBy:"system",amount:order.amount,method:"Other",status:"Cleared",note:"Seeded from paid demo order",createdBy:"system",createdAt:now()});allocations.push({id:`allocation-${order.id}-seed`,paymentId,invoiceId:invoice.id,amount:order.amount,createdAt:now(),createdBy:"system"});}
   return{version:1,invoices,payments,allocations,credits:[],refunds:[],notes:[]};
 }
 
-export function normalizeCommerceState(input:unknown,data:WorkspaceData):CommerceState{
-  const seed=createCommerceSeed(data);if(!input||typeof input!=="object")return seed;const state=input as Partial<CommerceState>;
+export function normalizeCommerceState(input:unknown,data:WorkspaceData,includeSyntheticPayments=true):CommerceState{
+  const seed=createCommerceSeed(data,includeSyntheticPayments);if(!input||typeof input!=="object")return seed;const state=input as Partial<CommerceState>;
   // A corrected invoice is authoritative. Never re-seed old demo payments or
   // original invoices into a revision lineage after server reconciliation.
   const revisedOrderIds=new Set((Array.isArray(state.invoices)?state.invoices:[])
@@ -77,7 +77,7 @@ export function normalizeCommerceState(input:unknown,data:WorkspaceData):Commerc
   const invoices=[...normalizedStoredInvoices];for(const invoice of seed.invoices)if(!invoiceIds.has(invoice.id)&&!invoices.some((item)=>item.orderId===invoice.orderId))invoices.push(invoice);
   const invoiceById=new Map(invoices.map((invoice)=>[invoice.id,invoice]));
 
-  const storedPayments=uniqueById((Array.isArray(state.payments)?state.payments:[]).filter((payment):payment is Payment=>Boolean(payment&&accountIds.has(payment.accountId)&&finitePositive(payment.amount)&&paymentMethods.has(payment.method)&&paymentStatuses.has(payment.status)&&payment.createdBy&&validDateOrInstant(payment.receivedAt)&&validDateOrInstant(payment.createdAt)&&paymentEvidenceValid(payment))));
+  const storedPayments=uniqueById((Array.isArray(state.payments)?state.payments:[]).filter((payment)=>includeSyntheticPayments||!(payment?.id?.startsWith("payment-")&&payment?.id?.endsWith("-seed")&&payment?.createdBy==="system"&&payment?.note==="Seeded from paid demo order")).filter((payment):payment is Payment=>Boolean(payment&&accountIds.has(payment.accountId)&&finitePositive(payment.amount)&&paymentMethods.has(payment.method)&&paymentStatuses.has(payment.status)&&payment.createdBy&&validDateOrInstant(payment.receivedAt)&&validDateOrInstant(payment.createdAt)&&paymentEvidenceValid(payment))));
   const paymentIds=new Set(storedPayments.map((payment)=>payment.id));
   const payments=[...storedPayments];for(const payment of seed.payments)if(!paymentIds.has(payment.id)){payments.push(payment);paymentIds.add(payment.id);}
   const paymentById=new Map(payments.map((payment)=>[payment.id,payment]));
@@ -90,7 +90,12 @@ export function normalizeCommerceState(input:unknown,data:WorkspaceData):Commerc
   const allocatedByPayment=new Map<string,number>();for(const allocation of allocations)allocatedByPayment.set(allocation.paymentId,(allocatedByPayment.get(allocation.paymentId)??0)+allocation.amount);
   const refunds=uniqueById((Array.isArray(state.refunds)?state.refunds:[]).filter((refund):refund is Refund=>{const payment=refund&&paymentById.get(refund.paymentId);const allocated=refund?allocatedByPayment.get(refund.paymentId)??0:0;return Boolean(payment&&payment.status!=="Pending"&&finitePositive(refund.amount)&&refund.amount<=Math.min(payment.amount,allocated)+0.005&&refund.reason?.trim()&&refund.createdBy&&refundStatuses.has(refund.status)&&validDateOrInstant(refund.createdAt)&&refundEvidenceValid(refund));})).map((refund)=>({...refund,evidence:refund.evidence!.trim()}));
   const notes=uniqueById((Array.isArray(state.notes)?state.notes:[]).filter((note):note is ReceivableNote=>Boolean(note&&invoiceById.has(note.invoiceId)&&note.authorId&&note.note?.trim()&&validDateOrInstant(note.createdAt))));
-  return{version:1,invoices,payments,allocations,credits,refunds,notes};
+  const record={version:1 as const,invoices,payments,allocations,credits,refunds,notes};
+  // Connected accounting never inherits a "Paid" invoice simply because
+  // the source order carried that label. Calculate it from surviving
+  // payment allocations/credits, and never invent a cleared payment.
+  if(!includeSyntheticPayments)return{...record,invoices:invoices.map(invoice=>({...invoice,status:computedInvoiceStatus(record,invoice)}))};
+  return record;
 }
 
 export function paymentSettlementDate(payment:Payment){return payment.settledAt&&validDateOrInstant(payment.settledAt)?businessDateKey(payment.settledAt):payment.status==="Cleared"&&validDateOrInstant(payment.receivedAt)?businessDateKey(payment.receivedAt):undefined;}
@@ -113,7 +118,22 @@ export function canRecordSettlementDate(value?:string){return Boolean(value&&isV
 export function paymentCanFail(payment:Payment,reason:string){return payment.status==="Pending"&&Boolean(reason.trim());}
 export function paymentCanReverse(state:CommerceState,payment:Payment,reason:string){return payment.status==="Cleared"&&Boolean(reason.trim())&&!state.refunds.some((refund)=>refund.paymentId===payment.id&&refund.status!=="Failed");}
 export function refundRemainingAmount(state:CommerceState,paymentId:string){const payment=state.payments.find((item)=>item.id===paymentId);if(!payment||!finitePositive(payment.amount))return 0;const allocated=Math.min(payment.amount,state.allocations.filter((allocation)=>allocation.paymentId===paymentId&&finitePositive(allocation.amount)).reduce((sum,item)=>sum+item.amount,0));const committed=state.refunds.filter((refund)=>refund.paymentId===paymentId&&refund.status!=="Failed"&&finitePositive(refund.amount)).reduce((sum,refund)=>sum+refund.amount,0);return Math.max(0,allocated-committed);}
-export function refundCanRequest(state:CommerceState,paymentId:string,amount:number,reason:string,evidence:string){const payment=state.payments.find((item)=>item.id===paymentId);return Boolean(payment&&payment.status==="Cleared"&&finitePositive(amount)&&amount<=refundRemainingAmount(state,paymentId)&&reason.trim()&&evidence.trim());}
+/** Refunds currently have paymentId but no invoiceId. A refund of a payment
+ * spanning multiple invoices cannot be assigned honestly to a sales order,
+ * account statement or salesperson. Freeze further transitions until Commerce
+ * can allocate refunds explicitly to invoices, with reviewed source evidence. */
+export function refundHasSingleInvoiceAllocation(state:CommerceState,paymentId:string):boolean{
+  const payment=state.payments.find(p=>p.id===paymentId);
+  if(!payment||!finitePositive(payment.amount))return false;
+  const allocations=state.allocations.filter(a=>a.paymentId===paymentId&&finitePositive(a.amount));
+  const invoiceIds=new Set(allocations.map(a=>a.invoiceId));
+  if(invoiceIds.size!==1)return false;
+  const invoice=state.invoices.find(i=>i.id===allocations[0].invoiceId);
+  if(!invoice||invoice.accountId!==payment.accountId||invoice.status==="Void"||invoice.supersededByInvoiceId)return false;
+  const total=allocations.reduce((sum,a)=>sum+a.amount,0);
+  return total<=payment.amount+0.005&&total>0;
+}
+export function refundCanRequest(state:CommerceState,paymentId:string,amount:number,reason:string,evidence:string){const payment=state.payments.find((item)=>item.id===paymentId);return Boolean(payment&&payment.status==="Cleared"&&refundHasSingleInvoiceAllocation(state,paymentId)&&finitePositive(amount)&&amount<=refundRemainingAmount(state,paymentId)&&reason.trim()&&evidence.trim());}
 export function creditCanApprove(credit:CreditMemo,actorId:string){return credit.status==="Draft"&&Boolean(actorId)&&credit.createdBy!==actorId;}
 export function creditCanApply(state:CommerceState,credit:CreditMemo){if(credit.status!=="Approved"||!finitePositive(credit.amount))return false;const invoice=state.invoices.find((item)=>item.id===credit.invoiceId);return Boolean(invoice&&computedInvoiceStatus(state,invoice)!=="Void"&&credit.amount<=invoiceRecordableAmount(state,invoice));}
 export function refundCanApprove(refund:Refund,actorId:string){return refund.status==="Requested"&&Boolean(actorId)&&refund.createdBy!==actorId;}

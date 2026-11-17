@@ -1,0 +1,288 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFileSync } from "node:fs";
+import type { Role, WorkspaceUser } from "../lib/types";
+import { activeMenuPath, isSafeInternalRoute, recordRouteMatch, routeHref } from "../lib/navigation-route-contract";
+import { canShowModuleInMenu, canVisitRoute, MENU_GROUPS, pageForPath, permissionForPath, requiresPrototypePage, routeLabel } from "../lib/navigation-route-registry";
+import { getNavigationRoute, navigateToRoute, startRouteNavigation, shouldResetNavigationOnIdentityChange } from "../lib/navigation-store";
+
+const user = (role: Role): WorkspaceUser => ({
+  id:"u",email:"u@example.invalid",name:"Person",firstName:"Person",
+  initials:"PP",title:"Tester",role,team:"Sales",accent:"#123456",
+});
+
+test("all nine approved groups, including personal Account, remain in the authenticated sidebar", () => {
+  assert.deepEqual(MENU_GROUPS.map(group => group.label), [
+    "Workspace","Account","Sales & CRM","Commerce","Operations","Human Resources",
+    "Marketing","Insights & Support","Administration",
+  ]);
+  const shell = readFileSync("components/app-shell-v4.tsx","utf8");
+  assert.match(shell, /<NavigationGroups\/>/);
+  assert.match(shell, /const PrototypeOperationsHub=lazy\(\(\)=>import\("\.\/prototype\/operations-hub"\)/);
+  assert.match(shell, /<SidebarRouteLink/);
+  assert.doesNotMatch(shell, /<DeviceNavigation/);
+  assert.match(shell, /if\(!canVisitRoute\(currentUser,route\)\)/);
+  assert.match(shell, /aria-controls="momentum-primary-sidebar"/);
+});
+
+test("record contract covers CRM, customer, order, SKU, HR and portal direct links", () => {
+  for (const [url, page] of [
+    ["/crm/deals/id-1","accounts"],["/crm/deals/id-1/edit","accounts"],
+    ["/crm/deals/new","accounts"],["/crm/contacts/id-1","accounts"],
+    ["/sales/customers/id-1/transactions","accounts"],
+    ["/sales/orders/id-1","orders"],["/sales/orders/id-1/edit","orders"],
+    ["/sales/invoices/id-1","orderCash"],["/sales/payments/id-1","orderCash"],
+    ["/sales/returns/id-1","orders"],["/sales/credit-notes/id-1","orderCash"],
+    ["/items/sku-id/history","products"],["/inventory/lots/lot-id","inventory"],
+    ["/inventory/shipments/ship-id","inventory"],
+    ["/admin/employee-profiles/uid-1/documents","settings"],
+    ["/portal/orders/id-1","orders"],["/portal/deliveries/id-1","orders"],
+  ] as const) {
+    assert.equal(recordRouteMatch(url)?.page,page,url);
+    assert.equal(pageForPath(url),page,url);
+    assert.equal(requiresPrototypePage(url),true,url);
+  }
+  assert.equal(routeLabel("/crm/deals/op-1"),"Deal details");
+  assert.equal(routeLabel("/crm/contacts/contact-1"),"Contact details");
+  assert.equal(routeLabel("/crm/deals/new"),"New deal");
+  assert.equal(routeLabel("/sales/orders/new"),"Create sales order");
+});
+
+test("no unregistered nested URL can show privileged or unrelated legacy workspace", () => {
+  for (const url of [
+    "/crm/deals/id-1/arbitrary/extra","/crm/contacts/id-1/edit",
+    "/items/sku-id/unknown","/sales/orders/order-1/not-real",
+    "/admin/employee-profiles/uid-1/private/extra",
+    "/portal/orders/id-1/edit","/portal/deliveries/id-1/other",
+    "/not-a-real-module",
+  ]) {
+    assert.equal(pageForPath(url),null,url);
+    assert.equal(canVisitRoute(user("Administrator"),url),false,url);
+    assert.equal(canVisitRoute(user("Customer"),url),false,url);
+  }
+});
+
+test("role restrictions apply to internal and customer deep links", () => {
+  assert(canVisitRoute(user("Sales Representative"),"/crm/deals/op-1"));
+  assert(canVisitRoute(user("Administrator"),"/admin/employee-profiles/u-1/documents"));
+  assert(!canVisitRoute(user("Sales Representative"),"/admin/employee-profiles/u-1/documents"));
+  assert(!canVisitRoute(user("Marketing"),"/crm/deals/op-1"));
+  assert(!canVisitRoute(user("Customer"),"/crm/deals/op-1"));
+  assert(canVisitRoute(user("Customer"),"/portal/orders/order-1"));
+  assert(!canVisitRoute(user("Sales Representative"),"/portal/orders/order-1"));
+  assert(!canVisitRoute(user("Customer"),"/sales/orders/new"));
+  assert(!canVisitRoute(user("Customer"),"/sales/orders/order-1/edit"));
+});
+
+test("most specific sidebar entry wins, notably Calendar versus Meetings", () => {
+  const paths=["/","/calendar","/calendar/meetings","/crm/deals","/sales/customers"];
+  assert.equal(activeMenuPath("/calendar",paths),"/calendar");
+  assert.equal(activeMenuPath("/calendar/meetings",paths),"/calendar/meetings");
+  assert.equal(activeMenuPath("/calendar/meetings/one",paths),"/calendar/meetings");
+  assert.equal(activeMenuPath("/crm/deals/one",paths),"/crm/deals");
+  assert.equal(activeMenuPath("/sales/customers/one",paths),"/sales/customers");
+  assert.equal(activeMenuPath("/unregistered",paths),null);
+});
+
+test("URL links remain native copyable anchors with an optional build basePath", () => {
+  assert.equal(routeHref("/crm/deals/id-1"),"/crm/deals/id-1");
+  assert.equal(routeHref("/crm/deals/id-1","/app/"),"/app/crm/deals/id-1");
+  assert.equal(routeHref("/","/app"),"/app/");
+  assert.equal(routeHref("//foreign.invalid"),"/");
+  const links=readFileSync("components/navigation/sidebar-route-link.tsx","utf8");
+  assert.match(links, /<a href=\{href\}/);
+  assert.match(links,/event\.metaKey \|\| event\.ctrlKey \|\| event\.shiftKey \|\| event\.altKey/);
+  assert.match(links,/navigateToRoute\(path\)/);
+  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+  assert.match(hub,/function OpenLink/);
+  assert.match(hub,/<SidebarRouteLink path=\{to\} active=\{false\}/);
+});
+
+test("history navigation adopts copied URLs, popstate and cleans its listener", () => {
+  const original = (globalThis as typeof globalThis & { window?: unknown }).window;
+  let path = "/calendar";
+  const listeners = new Map<string,() => void>();
+  const fake = {
+    location: {get pathname(){return path;}},
+    history: {
+      pushState: (_:unknown, _title:string, value:string) => { path=value; },
+      replaceState: (_:unknown, _title:string, value:string) => { path=value; },
+    },
+    addEventListener: (name:string,fn:()=>void) => {listeners.set(name,fn);},
+    removeEventListener: (name:string,fn:()=>void) => {if(listeners.get(name)===fn)listeners.delete(name);},
+  };
+  Object.defineProperty(globalThis,"window",{configurable:true,writable:true,value:fake});
+  try {
+    const stop = startRouteNavigation();
+    assert.equal(getNavigationRoute(),"/calendar");
+    navigateToRoute("/calendar/meetings");
+    assert.equal(path,"/calendar/meetings");
+    assert.equal(getNavigationRoute(),"/calendar/meetings");
+    path="/crm/deals/a-1";
+    listeners.get("popstate")?.();
+    assert.equal(getNavigationRoute(),"/crm/deals/a-1");
+    stop();
+    assert.equal(listeners.has("popstate"),false);
+  } finally {
+    Object.defineProperty(globalThis,"window",{configurable:true,writable:true,value:original});
+  }
+});
+
+test("static export and Firebase Hosting fallback preserve deep route entry points", () => {
+  const next=readFileSync("next.config.ts","utf8");
+  const hosting=JSON.parse(readFileSync("firebase.json","utf8")) as {hosting:{rewrites:{source:string;destination:string}[]}};
+  const css=readFileSync("app/architecture-navigation.css","utf8");
+  const layout=readFileSync("app/layout.tsx","utf8");
+  assert.match(next,/output: "export"/);
+  assert(hosting.hosting.rewrites.some(item=>item.source==="**"&&item.destination==="/index.html"));
+  assert.match(layout,/import "\.\/architecture-navigation\.css"/);
+  assert.match(css, /@media screen and \(max-width:1023px\)/);
+  assert.match(css,/\.app-layout>\.sidebar\.is-open/);
+  assert.match(css,/\.topbar \.menu-button/);
+  assert.match(css,/prefers-reduced-motion/);
+});
+
+test("record route IDs reject malformed encodings, traversal and encoded separators", () => {
+  for(const url of [
+    "/sales/orders/%E0%A4%A", "/sales/orders/%2Fadmin",
+    "/sales/customers/..", "/crm/deals/%5Cother",
+    "/items/%00invalid", "/admin/employee-profiles/%2fcompensation",
+  ]) {
+    assert.equal(recordRouteMatch(url),null,url);
+    assert.equal(canVisitRoute(user("Administrator"),url),false,url);
+  }
+  assert.equal(recordRouteMatch("/sales/orders/order%20one")?.page,"orders");
+});
+
+test("unsafe external and browser-normalized URL forms never become application links", () => {
+  for(const path of ["//outside.invalid","/\\\\outside.invalid","/orders\u0001other","https://outside.invalid","relative/path"]) {
+    assert.equal(isSafeInternalRoute(path),false,path);
+    assert.equal(routeHref(path),"/",path);
+  }
+  assert.equal(isSafeInternalRoute("/sales/orders/one"),true);
+  assert.equal(routeHref("/sales/orders/one","/app"),"/app/sales/orders/one");
+});
+
+test("employee self-service lives in personal Account; legacy URLs remain supported but out of Workspace navigation",()=>{
+  const rep=user("Sales Representative"),ambassador=user("Brand Ambassador"),admin=user("Administrator");
+  const workspace=MENU_GROUPS.find(group=>group.label==="Workspace");
+  const account=MENU_GROUPS.find(group=>group.label==="Account");
+  assert.deepEqual(workspace?.entries.slice(0,3).map(entry=>entry.path),
+    ["/","/people/timekeeping","/work/actions"]);
+  assert(account?.entries.some(entry=>entry.path==="/my-account/pay"));
+  for(const path of ["/my-account","/my-account/employee","/my-account/time-off","/my-account/pay","/my-account/training","/my-account/completed"]){
+    assert(canVisitRoute(rep,path),path);
+    assert(canShowModuleInMenu(rep,path),path);
+    assert(canVisitRoute(ambassador,path),path);
+    assert(canShowModuleInMenu(ambassador,path),path);
+  }
+  for(const path of ["/self-service","/self-service/leave","/self-service/pay","/work/completed"]){
+    assert(canVisitRoute(rep,path),path);
+    assert(!canShowModuleInMenu(rep,path),path+" is a compatibility URL, not a sidebar entry");
+  }
+  assert(!canShowModuleInMenu(rep,"/people"));
+  assert(!canShowModuleInMenu(user("Marketing"),"/people"));
+  assert(canShowModuleInMenu(user("Marketing"),"/marketing"));
+  for(const path of ["/people/directory","/people/new-hire","/people/onboarding","/people/onboarding/workflow","/people/payroll/workflow","/people/training"]){
+    assert(!canVisitRoute(rep,path),path);
+    assert(canVisitRoute(admin,path),path);
+    assert(!canShowModuleInMenu(rep,path),path);
+  }
+  assert.equal(permissionForPath("/crm/account-health"),"accounts");
+  assert(canVisitRoute(admin,"/crm/account-health"));
+  assert(canShowModuleInMenu(admin,"/crm/account-health"));
+  assert(MENU_GROUPS.find(g=>g.label==="Commerce")?.entries.some(e=>e.path==="/finance/accounting"));
+  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+  assert.match(hub,/if\(path==="\/my-account"\|\|path==="\/self-service"\)return <EmployeeAccountExperience\/>/);
+  assert.match(hub,/HrTimeOffExperience personalOnly/);
+});
+
+test("navigation readiness prevents unscoped Home flashing on copied URLs",()=>{
+  const store=readFileSync("lib/navigation-store.ts","utf8");
+  const shell=readFileSync("components/app-shell-v4.tsx","utf8");
+  assert.match(store,/export function useNavigationReady/);
+  assert.match(store,/bootstrapped = true;/);
+  assert.match(shell,/if\(!navigationReady\)return/);
+  assert.match(shell,/if\(!canVisitRoute\(currentUser,route\)\)/);
+});
+
+test("mobile sidebar restores collapsed labels and supports keyboard and focus dismissal",()=>{
+  const shell=readFileSync("components/app-shell-v4.tsx","utf8");
+  const css=readFileSync("app/architecture-navigation.css","utf8");
+  assert.match(shell,/sidebarRef=useRef/);
+  assert.match(shell,/menuTriggerRef=useRef/);
+  assert.match(shell,/event.key==="Escape"/);
+  assert.match(shell,/event.key!=="Tab"/);
+  assert.match(shell,/document.body.style.overflow="hidden"/);
+  assert.match(shell,/trigger\?\.focus\(\)/);
+  assert.match(css,/\.sidebar\.is-collapsed \.nav-item span\{display:block!important/);
+  assert.match(css,/\.sidebar\.is-collapsed \.brand\{display:inline-flex!important/);
+});
+
+function requireNavigationMenu(){
+  // Keep this lightweight helper typed, without dynamic imports or runtime module mocks.
+  return {canShowModuleInMenu};
+}
+
+test("first login preserves copied URLs for fail-closed route validation; role switching still resets",()=>{
+  const source=readFileSync("lib/workspace-context-v5.tsx","utf8");
+  const store=readFileSync("lib/navigation-store.ts","utf8");
+  assert.match(store,/export function getRequestedNavigationPath/);
+  assert.match(source,/previousIdentityRef=useRef/);
+  assert.match(source,/shouldResetNavigationOnIdentityChange\(previous,currentUserId\)/);
+  assert.equal(shouldResetNavigationOnIdentityChange(undefined,null),false);
+  assert.equal(shouldResetNavigationOnIdentityChange(null,"employee-loading"),false,"First-login route survives even before directory hydration");
+  assert.equal(shouldResetNavigationOnIdentityChange("employee-loading","employee-loading"),false);
+  assert.equal(shouldResetNavigationOnIdentityChange("employee-loading","other-employee"),true);
+  assert.equal(shouldResetNavigationOnIdentityChange("employee-loading",null),true);
+  assert.doesNotMatch(source,/previous===null&&currentUserId&&currentUser/);
+  assert.match(source,/const switchUser = useCallback[\s\S]*?setNavigationPage\("home"\)/);
+});
+
+test("C redesigned CRM workflows and F employee directory retain distinct working surfaces",()=>{
+  const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+  for(const [route,page,component] of [
+    ["/crm/quick-visit","quickVisit","CrmQuickVisit"],
+    ["/crm/account-setup","accountSetup","CrmAccountSetup"],
+    ["/crm/account-health","accounts","CrmAccountHealth"],
+  ] as const){
+    assert.equal(pageForPath(route),page,route);
+    assert.equal(requiresPrototypePage(route),true,route);
+    assert(hub.includes('<'+component+'/>'),route+" must render its redesigned workflow");
+  }
+  assert.equal(permissionForPath("/crm/account-health"),"accounts");
+  assert.equal(pageForPath("/people/directory"),"employees");
+  assert.match(hub,/if\(path==="\/people\/directory"\)return <HrPersonnelDirectory\/>/);
+  assert.equal(requiresPrototypePage("/people/directory"),true);
+  assert.equal(canVisitRoute(user("Administrator"),"/people/directory"),true);
+  assert.equal(canVisitRoute(user("Sales Representative"),"/people/directory"),false);
+});
+
+test("single route registry provides breadcrumb; legacy header menu duplicates are absent",()=>{
+  const shell=readFileSync("components/app-shell-v4.tsx","utf8");
+  assert.doesNotMatch(shell,/const primaryNav:/);
+  assert.doesNotMatch(shell,/const secondaryNav:/);
+  assert.doesNotMatch(shell,/const pageParent:/);
+  assert.doesNotMatch(shell,/const pageLabels:/);
+  assert.match(shell,/breadcrumbsForRoute\(activeRoute,customerMode\)/);
+  assert.match(shell,/breadcrumbSteps\.map/);
+  assert.match(shell,/aria-label="Primary navigation"/);
+  assert.match(shell,/aria-label="Breadcrumb"/);
+});
+
+test("role downgrade protects newly forbidden records without misclassifying recognized Account Health",()=>{
+  const source=readFileSync("lib/workspace-context-v5.tsx","utf8");
+  assert.match(source,/const previousRoleRef=useRef/);
+  assert.match(source,/if\(!canVisitRoute\(currentUser,getRequestedNavigationPath\(\)\)\)setNavigationPage\("home"\)/);
+  assert.doesNotMatch(source,/!canAccessPage\(currentUser,getNavigationPage\(\)\)/);
+  assert.equal(pageForPath("/crm/account-health"),"accounts");
+  assert.equal(permissionForPath("/crm/account-health"),"accounts");
+  assert.equal(canVisitRoute(user("Administrator"),"/crm/account-health"),true);
+});
+
+test("sidebar opens the active department first without showing three full unrelated groups",()=>{
+  const shell=readFileSync("components/app-shell-v4.tsx","utf8");
+  assert.match(shell,/const \[expanded,setExpanded\]=useState<Record<string,boolean>>\(\{\}\)/);
+  assert.match(shell,/matching\?\.label===group.label \? collapsedActivePath!==path : expanded\[group.label\]===true/);
+  assert.match(shell,/setExpanded\(current=>\(\{\.\.\.current,\[group.label\]:!current\[group.label\]\}\)\)/);
+});

@@ -15,6 +15,8 @@ import {listFirestoreCollection,getFirestoreDocument} from "../../lib/firebase-f
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
 import { firebaseFunctionUrl } from "../../lib/firebase-functions";
 import { momentumStorage } from "../../lib/persistence";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {navigateToRoute} from "../../lib/navigation-store";
 import { evaluatePartnerPricing } from "../../lib/pricing-engine";
 import type { Order, OrderStatus } from "../../lib/types";
 import { COMMERCIAL_KEY, useWorkspace } from "../../lib/workspace-context";
@@ -39,6 +41,8 @@ export function OrdersPage(){
  const{commerce}=useCommerce();
  const{state:deliveryState}=useDelivery();
  const firebase=useFirebaseSessionOptional();
+ const runtime=useRuntimeMode();
+ const demoOrderWrite=runtime.isDemo&&momentumStorage.mode()==="local";
  const[qaSkus,setQaSkus]=useState<Array<{id:string;description:string;shortName:string;casePack:number;active:boolean;testOnly:boolean;environment:string}>>([]);
  const[qaStock,setQaStock]=useState<number|null>(null);
  const[qaBusy,setQaBusy]=useState(false);
@@ -109,7 +113,7 @@ export function OrdersPage(){
   return()=>{active=false};
  },[selected?.id,selected?.status,selected?.testSkuId]);
  const requestCases=lines.reduce((s,l)=>s+(Number.isInteger(l.cases)&&l.cases>0?l.cases:0),0);
- const canEdit=(order:Order|undefined)=>Boolean(order&&currentUser&&["Draft","Awaiting approval","Approved"].includes(order.status)&&(currentUser.role==="Administrator"||(order.ownerId===currentUser.id&&["Sales Representative","Sales Manager","Customer"].includes(currentUser.role))));
+ const canEdit=(order:Order|undefined)=>Boolean(demoOrderWrite&&order&&currentUser&&["Draft","Awaiting approval","Approved"].includes(order.status)&&(currentUser.role==="Administrator"||(order.ownerId===currentUser.id&&["Sales Representative","Sales Manager","Customer"].includes(currentUser.role))));
  const canCancel=(order:Order|undefined)=>Boolean(order?.testOnly&&currentUser?.role==="Administrator"&&["Approved","Allocated","Out for delivery"].includes(order.status))||canCancelOrder(currentUser,order);
  const openInvoice=(orderId:string)=>{window.sessionStorage.setItem("momentum-focus-record",orderId);navigate("orderCash");};
  const selectedInvoice=selected?commerce.invoices.find((invoice)=>invoice.orderId===selected.id&&invoice.status!=="Void"):undefined;
@@ -117,6 +121,10 @@ export function OrdersPage(){
  const selectedHasFinancialActivity=Boolean(selectedInvoice&&(commerce.payments.some((payment)=>selectedInvoicePaymentIds.has(payment.id)&&["Pending","Cleared"].includes(payment.status))||commerce.credits.some((credit)=>credit.invoiceId===selectedInvoice.id&&credit.status!=="Void")));
 
  const openDraft=(order?:Order)=>{
+   if(!demoOrderWrite){
+    if(customerMode){setError("Connected customer ordering requires authorized commercial review.");return;}
+    navigateToRoute("/sales/orders/new");return;
+   }
    const nextId=order?.accountId??focusedAccount?.id??(customerMode?scope.accounts[0]?.id:undefined)??"";
    const nextAccount=scope.accounts.find((account)=>account.id===nextId);
    setEditingId(null);setAccountId(nextId);setAccountQuery(nextAccount?orderAccountLabel(nextAccount):"");
@@ -130,6 +138,7 @@ export function OrdersPage(){
 
  const submit=async(e:FormEvent)=>{
   e.preventDefault();if(submitting)return;
+  if(!demoOrderWrite){setError("A priced order cannot be created in the browser. Use the trusted commercial intake form.");return;}
   if(firebase&&currentUser?.role!=="Customer"&&firebase.access?.accountState!=="Active"){setError(`Your Momentum access is ${firebase.access?.accountState??"not active"}. The order was not submitted.`);return}
   if(!editingOrder&&!scope.accounts.some((account)=>account.id===accountId)){
     setError("Choose a matching CRM account from the suggestions before submitting an order.");return;
@@ -209,7 +218,7 @@ export function OrdersPage(){
  };
 
  return <div className="page page--orders">
- <PageHeader title={customerMode?"My orders":"Orders"} actions={canCreateOrder(currentUser)?<Button variant="gold" icon={<Plus size={17}/>} onClick={()=>openDraft()}>{customerMode?"Place order":"Create order"}</Button>:undefined}/>
+ <PageHeader title={customerMode?"My orders":"Orders"} actions={canCreateOrder(currentUser)?<Button variant="gold" icon={<Plus size={17}/>} onClick={()=>openDraft()}>{demoOrderWrite?(customerMode?"Place order":"Create order"):"Request commercial review"}</Button>:undefined}/>
  <div className="order-stats"><div><span><FileText size={18}/></span><div><small>Orders in scope</small><strong>{scope.orders.length}</strong></div></div><div><span><CircleDollarSign size={18}/></span><div><small>Open amount</small><strong>{formatMoney(scope.orders.filter(o=>o.paymentStatus!=="Paid"&&o.status!=="Cancelled").reduce((s,o)=>s+o.amount,0))}</strong></div></div><div><span><Truck size={18}/></span><div><small>Delivered cases</small><strong>{scope.orders.filter(o=>!o.testOnly&&["Delivered","Paid"].includes(displayStatus(o))).reduce((s,o)=>s+o.cases,0)}</strong></div></div><div><span><PackageSearch size={18}/></span><div><small>Canonical SKUs</small><strong>{skuOptions.length}</strong></div></div></div>
  <div className="order-workspace-controls">
   <div className="company-tabs" role="tablist" aria-label="Order status views">

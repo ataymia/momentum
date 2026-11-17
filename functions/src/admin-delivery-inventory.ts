@@ -1,4 +1,5 @@
 /* eslint-disable max-len, comma-spacing, key-spacing, keyword-spacing, curly, one-var */
+import {lotEligibleForAutomaticDelivery,phoenixDateKey} from "./inventory-lot-quality";
 type BusinessRecord = Record<string, unknown>;
 type SourceEntry = {lotId: string; fromNodeId: string; quantity: number};
 
@@ -77,6 +78,7 @@ export function planAutomaticDelivery(
   reservations:BusinessRecord[],
   orderId:string,
 ):AutoDeliveryAllocation[]|null {
+  const asOfDate=phoenixDateKey();
   const allocations:AutoDeliveryAllocation[]=[];
   const working=[...movements];
   const priorities:Record<string,number>={
@@ -96,10 +98,9 @@ export function planAutomaticDelivery(
   for(const [product,required] of grouped) {
     let needed=required;
     const candidates=lots.filter((lot)=>productKey(txt(lot.product))===product&&
-      txt(lot.status)!=="Quality hold"&&Boolean(txt(lot.id)))
+      lotEligibleForAutomaticDelivery(lot,asOfDate)&&Boolean(txt(lot.id)))
       .sort((a,b)=>
-        txt(a.expirationDate||a.expiresAt).localeCompare(
-          txt(b.expirationDate||b.expiresAt))||
+        txt(a.bestBy).localeCompare(txt(b.bestBy))||
         txt(a.id).localeCompare(txt(b.id)));
     for(const source of sources) {
       if(needed===0)break;

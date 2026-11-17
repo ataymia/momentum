@@ -54,8 +54,8 @@ export function EmployeeDirectory() {
   const [contactMessage, setContactMessage] = useState("");
   const focusId = typeof window !== "undefined" ? window.sessionStorage.getItem("momentum-focus-record") : null;
   const employees = useMemo(
-    () => visibleActiveEmployees(data.users, firebase?.accessRecords).sort((a, b) => a.name.localeCompare(b.name)),
-    [data.users, firebase?.accessRecords],
+    () => visibleActiveEmployees(data.users, firebase?.accessRecords,hcm.employees).sort((a, b) => a.name.localeCompare(b.name)),
+    [data.users, firebase?.accessRecords,hcm.employees],
   );
   const focusedEmployee = focusId ? employees.find((user) => user.id === focusId) : undefined;
   const [selectedId, setSelectedId] = useState(focusedEmployee?.id ?? currentUser?.id ?? "");
@@ -206,7 +206,7 @@ export function EmployeeDirectory() {
 
     <div className="employee-directory-layout">
       <aside className="employee-directory-list">
-        <label className="employee-search"><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, title, department…"/></label>
+        <label className="employee-search"><Search size={16}/><input aria-label="Search employee directory" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, title, department…"/></label>
         <div>{filtered.map((user) => {
           const record = hcm.employees.find((item) => item.userId === user.id);
           const status = employeePresence(data, user.id);

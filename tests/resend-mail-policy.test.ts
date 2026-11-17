@@ -122,3 +122,13 @@ test("Sunday weekly reminder skips an already submitted weekly report",()=>{
     false,
   );
 });
+
+
+test("transport holds already-queued customer invoices until independent issuer sign-off",()=>{
+  const queued={...base,kind:"delivered_invoice"};
+  const cutoff="2026-10-15T20:00:00Z";
+  assert.equal(validMailToSend(queued,cutoff,false),
+    "Customer invoice issuer approval is required.");
+  assert.equal(validMailToSend(queued,cutoff,true),null);
+  assert.equal(validMailToSend(base,cutoff,false),null);
+});

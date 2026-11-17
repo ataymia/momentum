@@ -9,6 +9,7 @@ export const HR_EFORM_DEFINITIONS={
   I9:{title:"Form I-9",officialSource:"https://www.uscis.gov/i-9",requiresEmployerSection:true},
   W4:{title:"Form W-4",officialSource:"https://www.irs.gov/forms-pubs/about-form-w-4",requiresEmployerSection:false},
   AZ_A4:{title:"Arizona Form A-4",officialSource:"https://azdor.gov/forms/withholding-forms/arizona-withholding-percentage-election",requiresEmployerSection:false},
+  W9:{title:"Form W-9 for independent contractors",officialSource:"https://www.irs.gov/forms-pubs/about-form-w-9",requiresEmployerSection:false},
 } as const;
 
 export type HrEFormKey=keyof typeof HR_EFORM_DEFINITIONS;
@@ -40,6 +41,9 @@ export type HrEFormServerEvidence={
   /** Confirmation that W-4 signature was the final form-submission entry. */
   w4FinalSignatureChecked?:boolean;
   w4PerjuryAcknowledged?:boolean;
+  /** Verified W-9 e-sign as final form entry and correct penalties-of-perjury attestation. */
+  w9FinalSignatureChecked?:boolean;
+  w9PerjuryAcknowledged?:boolean;
   employerExamination?:HrEFormEmployerExamination;
 };
 
@@ -102,6 +106,8 @@ export function hrArchiveBlockers(formKey:HrEFormKey,evidence:HrEFormServerEvide
   }
   if(formKey==="W4"&&(!evidence.w4FinalSignatureChecked||!evidence.w4PerjuryAcknowledged))
     blockers.push("W-4 final-signature and perjury-statement checks required.");
+  if(formKey==="W9"&&(!evidence.w9FinalSignatureChecked||!evidence.w9PerjuryAcknowledged))
+    blockers.push("Electronic W-9 must have a verified final signer authentication and paper-form penalties-of-perjury certification.");
   return blockers;
 }
 

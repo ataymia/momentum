@@ -11,12 +11,14 @@ import { findAccountDuplicate } from "./duplicate-engine";
 import { activeFieldAppointmentForUser } from "./field-work-session";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { evaluatePartnerPricing } from "./pricing-engine";
+import { RETAIL_PROGRAM_POLICY } from "./retail-price-book";
 import { useRuntimeModeValue } from "./runtime-mode-store";
 import { isTerritoryDeviation, normalizePostalCode, territoryForPostalCode, territorySystemEnabled, validateTerritoryDraft, type TerritoryDraft } from "./territory-engine";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import { skuForProductName } from "./product-catalog";
 import { productsEquivalent } from "./order-lines";
 import { canCancelOrder, orderCancellationAccessMessage } from "./order-cancellation";
+import {reviewLeadQualification,type LeadQualificationTarget} from "./lead-qualification";
 import { reconcileApprovals, reconcileOrders } from "./order-approval-engine";
 import type { Account, Activity, Appointment, AppointmentStatus, Approval, CustomerAccount, InventoryLot, Order, OrderStatus, PremiseType, PricingTier, SalesTerritory, WorkspaceData, WorkspaceUser } from "./types";
 import { WorkspaceProvider as BaseWorkspaceProvider, useWorkspace as useBaseWorkspace } from "./workspace-context-v5";
@@ -106,7 +108,7 @@ type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | 
   moveAppointment: (id: string, ownerId: string | undefined, date: string, startTime: string) => boolean;
   updatePlacement: BaseWorkspace["updatePlacement"];
   correctTimeEntry: BaseWorkspace["correctTimeEntry"];
-  decideApproval: (id: string, decision: "Approved" | "Returned") => void;
+  decideApproval: (id: string, decision: "Approved" | "Returned", reason?: string) => void;
   setOrderStatus: (id: string, status: OrderStatus) => void;
   reconcileOrderPayment: (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => void;
   cancelOrder: (id: string, reason: string) => { ok: boolean; message?: string };
@@ -117,6 +119,7 @@ type EnhancedWorkspace = Omit<BaseWorkspace, "data" | "scope" | "currentUser" | 
   /** Geocode and territory results only. Cannot touch ownership, stage, or any attribution field. */
   patchAccountLocation: (accountId: string, patch: AccountLocationPatch) => boolean;
   transferAccountResponsibility: (accountId: string, toUserId: string, reason: string) => boolean;
+  qualifyLead: (accountId:string,nextStage:LeadQualificationTarget,reason:string)=>{ok:boolean;message?:string};
   saveTerritory:(input:TerritoryInput)=>TerritoryMutationResult;
   importInventoryLots: (lots: InventoryLot[]) => number;
   resetDemo: () => void;
@@ -126,19 +129,14 @@ const EnhancedWorkspaceContext = createContext<EnhancedWorkspace | null>(null);
 const nextAppointment: Record<AppointmentStatus, AppointmentStatus> = { Scheduled: "Dispatched", Dispatched: "En route", "En route": "Arrived", Arrived: "Arrived", Completed: "Completed", "Needs follow-up": "Needs follow-up" };
 const nextFulfillment: Partial<Record<OrderStatus, OrderStatus>> = { Approved: "Allocated", Allocated: "Out for delivery", "Out for delivery": "Delivered" };
 
-function inferredTier(data: WorkspaceData, accountId: string): PricingTier | undefined {
-  const price = data.orders.filter((order) => order.accountId === accountId && order.status !== "Cancelled" && Number.isFinite(order.pricePerCase) && order.pricePerCase > 0).sort((a, b) => b.placedAt.localeCompare(a.placedAt))[0]?.pricePerCase;
-  return price === 24 ? "A" : price === 27 ? "B" : price === 30 ? "C" : undefined;
-}
-
 function seedCommercial(data: WorkspaceData): CommercialState {
   const accountPatches: Record<string, CommercialAccountPatch> = {};
   for (const account of data.accounts) {
     accountPatches[account.id] = {
-      premiseType: account.premiseType ?? "Unclassified",
-      businessType: account.businessType ?? account.channel,
-      categoryReviewDate: account.categoryReviewDate ?? plusDays(today(), 90),
-      pricingTier: account.pricingTier ?? inferredTier(data, account.id),
+      premiseType: account.premiseType,
+      businessType: account.businessType,
+      categoryReviewDate: account.categoryReviewDate,
+      pricingTier: account.pricingTier,
       postalCode: normalizePostalCode(account.postalCode) || undefined,
     };
   }
@@ -353,6 +351,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const createAccount = (account: NewAccountInput, territoryExceptionReason?: string) => {
+    // Connected creation belongs to the server transaction, not browser arrays.
+    if(!demoMode||momentumStorage.mode()!=="local")return null;
     if (!validateNewAccountContact(account).ok) return null;
     const postalCode=normalizePostalCode(account.postalCode);
     if(!postalCode)return null;
@@ -378,6 +378,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
 
   /** Geocode/territory results only. Never touches ownership, stage, or any attribution field. */
   const patchAccountLocation = (accountId: string, patch: AccountLocationPatch) => {
+    if(!demoMode||momentumStorage.mode()!=="local")return false;
     if (!currentUser || currentUser.role === "Customer") return false;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return false;
@@ -388,6 +389,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const updateAccountCommercial = (accountId: string, patch: CommercialAccountInput) => {
+    // Pricing and geographic changes need an authenticated, audited backend.
+    if(!demoMode||momentumStorage.mode()!=="local")return false;
     if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative"].includes(currentUser.role)) return false;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !accountIsVisible(data, currentUser, account)) return false;
@@ -432,6 +435,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const updateCustomerCommercial=(customerId:string,patch:CommercialCustomerPatch)=>{
+    // Client patches cannot be authoritative tax, credit or billing records.
+    if(!demoMode||momentumStorage.mode()!=="local")return false;
     if(!currentUser)return false;
     const customer=(data.customers??[]).find((item)=>item.id===customerId);if(!customer)return false;
     const management=["Administrator","Sales Manager"].includes(currentUser.role);
@@ -459,11 +464,16 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const claimUnassignedProspect=(accountId:string)=>{
+    // Claiming changes assigned ownership. In connected mode it needs a trusted
+    // server transaction and audit receipt, not a browser-authored patch.
+    if(!demoMode || momentumStorage.mode()!=="local")return false;
     if(!currentUser||currentUser.role!=="Sales Representative")return false;const account=data.accounts.find((item)=>item.id===accountId);
     if(!account||account.stage!=="Prospect"||account.ownerId)return false;
     setCommercial((state)=>({...state,accountPatches:{...state.accountPatches,[accountId]:{...(state.accountPatches[accountId]??{}),ownerId:currentUser.id,accountManagerId:currentUser.id,responsibilityStartedAt:now(),lastActivity:`Prospect claimed by ${currentUser.name}`}},activities:[{id:uid("act-claim"),accountId,type:"note",title:"Unassigned prospect claimed",detail:`${currentUser.name} claimed the existing prospect record. No duplicate was created.`,at:now(),userId:currentUser.id},...state.activities]}));return true;
   };
   const releaseProspectOwnership=(accountId:string,reason:string)=>{
+    // Do not automatically release live assignments from local CRM observations.
+    if(!demoMode || momentumStorage.mode()!=="local")return false;
     if(!currentUser||reason.trim().length<3)return false;const account=data.accounts.find((item)=>item.id===accountId);
     if(!account||account.stage!=="Prospect"||!account.ownerId)return false;
     const allowed=currentUser.role==="Administrator"||currentUser.role==="Sales Manager"||account.ownerId===currentUser.id;if(!allowed)return false;
@@ -471,6 +481,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const saveTerritory=(input:TerritoryInput):TerritoryMutationResult=>{
+    if(!demoMode||momentumStorage.mode()!=="local")return{ok:false,message:"Connected territory changes need a trusted server workflow."};
     if(!currentUser||!["Administrator","Sales Manager"].includes(currentUser.role))return{ok:false,message:"Territory administration is restricted."};
     const existing=input.id?commercial.territories.find((territory)=>territory.id===input.id):undefined;
     if(input.id&&!existing)return{ok:false,message:"Territory not found."};
@@ -484,7 +495,25 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     return{ok:true,id};
   };
 
+
+  const qualifyLead=(accountId:string,nextStage:LeadQualificationTarget,reason:string):{ok:boolean;message?:string}=>{
+    if(!demoMode||momentumStorage.mode()!=="local"||!currentUser)return{ok:false,message:"Lead editing is disabled for connected records."};
+    const account=data.accounts.find(item=>item.id===accountId);
+    if(!account||!accountIsVisible(data,currentUser,account))return{ok:false,message:"Lead outside your authorized workspace."};
+    const review=reviewLeadQualification(currentUser.role,currentUser.id,account.ownerId,account.stage,nextStage,reason);
+    if(!review.ok)return review;
+    const timestamp=now();
+    setCommercial(state=>({
+      ...state,
+      accountPatches:{...state.accountPatches,[accountId]:{...(state.accountPatches[accountId]??{}),stage:nextStage,lastActivity:"Lead qualified to "+nextStage}},
+      activities:[{id:uid("act-lead-stage"),accountId,type:"note",title:"Lead qualification updated",detail:account.stage+" → "+nextStage+". "+reason.trim(),at:timestamp,userId:currentUser.id},...state.activities],
+    }));
+    return{ok:true};
+  };
+
   const transferAccountResponsibility = (accountId: string, toUserId: string, reason: string) => {
+    // Ownership and compensation attribution must never be browser-authored.
+    if(!demoMode||momentumStorage.mode()!=="local")return false;
     if (!currentUser || !["Administrator", "Sales Manager"].includes(currentUser.role) || reason.trim().length < 3) return false;
     const account = data.accounts.find((item) => item.id === accountId);
     if (!account || !canTransferSalesResponsibility(data, currentUser, account, toUserId)) return false;
@@ -601,6 +630,9 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const createOrder = (input: EnhancedOrderInput) => {
+    // In connected mode only the trusted, nonbinding intake endpoint may
+    // accept buyer requests. A browser cannot create a priced/approved order.
+    if(!demoMode||momentumStorage.mode()!=="local")return null;
     const {accountId}=input;
     if (!currentUser || !["Administrator", "Sales Manager", "Sales Representative", "Customer"].includes(currentUser.role)) return null;
     const account = data.accounts.find((item) => item.id === accountId);
@@ -635,7 +667,10 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       const available=Number.isFinite(line.inventoryAvailableAtOrder)?Number(line.inventoryAvailableAtOrder):0;
       return{id:`${id}-line-${index+1}`,product:line.product,cases:line.cases,pricePerCase:price,amount:line.cases*price,inventoryAvailableAtOrder:available,sourcePlacementId:sourcePlacement?.id,lowStockApprovalRequired:!testOnly&&available<50};
     });
-    const cases=lines.reduce((sum,line)=>sum+line.cases,0);const amount=lines.reduce((sum,line)=>sum+line.amount,0);const lowStock=lines.some((line)=>line.lowStockApprovalRequired);const available=Math.min(...lines.map((line)=>line.inventoryAvailableAtOrder??0));
+    const cases=lines.reduce((sum,line)=>sum+line.cases,0);
+    // A first qualified opening order requires 10 cases. Internal QA stock is excluded.
+    if(!testOnly&&pricing.status==="Not started"&&cases<RETAIL_PROGRAM_POLICY.openingMinCases)return null;
+    const amount=lines.reduce((sum,line)=>sum+line.amount,0);const lowStock=lines.some((line)=>line.lowStockApprovalRequired);const available=Math.min(...lines.map((line)=>line.inventoryAvailableAtOrder??0));
     const product=lines.length===1?lines[0].product:"Multiple products";
     const order:Order={id,number,accountId,cases,pricePerCase:price,amount,status:"Awaiting approval",placedAt:today(),ownerId:currentUser.id,creditedRepId,testOnly:testOnly||undefined,testSkuId,sourcePlacementId:lines.length===1?lines[0].sourcePlacementId:undefined,product,inventoryAvailableAtOrder:available,lowStockApprovalRequired:lowStock,priceBasis,paymentStatus:"Not invoiced",lines};
     const lineSummary=lines.map((line)=>`${line.cases} ${line.product}`).join(" · ");
@@ -648,6 +683,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const editOrder=(id:string,input:EnhancedOrderInput):OrderEditResult=>{
+    if(!demoMode||momentumStorage.mode()!=="local")return{ok:false,message:"Connected order amendments require an Administrator-authorized server workflow."};
     if(!currentUser)return{ok:false,message:"Sign in before editing an order."};
     const order=commercial.orders.find((item)=>item.id===id);
     if(!order)return{ok:false,message:"This order is not available in the shared order record."};
@@ -679,10 +715,11 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     momentumStorage.setItem(COMMERCIAL_KEY,JSON.stringify(nextCommercial));setCommercial(nextCommercial);window.setTimeout(()=>void momentumStorage.flush(),0);return{ok:true,status:nextStatus};
   };
 
-  const decideApproval = (id: string, decision: "Approved" | "Returned") => {
+  const decideApproval = (id: string, decision: "Approved" | "Returned", providedReason?: string) => {
+    if(!demoMode||momentumStorage.mode()!=="local")return;
     const approval = commercial.approvals.find((item) => item.id === id);
     if (!approval) {
-      base.decideApproval(id, decision);
+      base.decideApproval(id, decision, providedReason);
       return;
     }
     if (!currentUser || approval.status !== "Pending" || !canReviewApproval(data, currentUser, approval)) return;
@@ -690,7 +727,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
       let returnReason="";
       if(decision==="Returned"){
         if(typeof window==="undefined")return;
-        returnReason=window.prompt("Why is this territory exception being returned? This note will be kept with the account history.")?.trim()??"";
+        returnReason=providedReason!==undefined?providedReason.trim():(window.prompt("Why is this territory exception being returned? This note will be kept with the account history.")?.trim()??"");
         if(returnReason.length<3)return;
       }
       const accountId=approval.recordId;
@@ -704,7 +741,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     let returnReason: string | undefined;
     if (decision === "Returned") {
       if (typeof window === "undefined") return;
-      returnReason = window.prompt("What needs to be corrected before this order can be approved?")?.trim();
+      returnReason = providedReason!==undefined?providedReason.trim():window.prompt("What needs to be corrected before this order can be approved?")?.trim();
       if (!returnReason || returnReason.length < 3) return;
     }
     const decidedAt = now();
@@ -719,6 +756,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const setOrderStatus = (id: string, status: OrderStatus) => {
+    if(!demoMode||momentumStorage.mode()!=="local")return;
     const order = commercial.orders.find((item) => item.id === id);
     if (!order) {
       base.setOrderStatus(id, status);
@@ -732,6 +770,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const cancelOrder = (id: string, reason: string) => {
+    if(!demoMode||momentumStorage.mode()!=="local")return{ok:false,message:"Connected order cancellation requires a trusted server decision and inventory reconciliation."};
     if (!currentUser) return { ok: false, message: "Sign in before cancelling an order." };
     const cleanReason = reason.trim();
     if (cleanReason.length < 3) return { ok: false, message: "Enter a cancellation reason." };
@@ -756,6 +795,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
 
   // Stable across navigation so Commerce does not re-reconcile every invoice on every click.
   const reconcileOrderPayment = useCallback((id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => {
+    // Bank-collected revenue requires a verified payment source.
+    if(!demoMode||momentumStorage.mode()!=="local")return;
     if (!canReconcileOrderPayment(currentUser)) return;
     if (status === "Paid" && paidAt !== undefined && !isValidCalendarDateKey(paidAt)) return;
     const order = commercial.orders.find((item) => item.id === id);
@@ -779,6 +820,8 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
   }, [base.reconcileOrderPayment, commercial, currentUser, data]);
 
   const importInventoryLots = (lots: InventoryLot[]) => {
+    // Quantity and lot provenance need a trusted warehouse receiving workflow.
+    if(!demoMode||momentumStorage.mode()!=="local")return 0;
     if (!currentUser || !["Administrator", "Operations", "Warehouse"].includes(currentUser.role)) return 0;
     const existingCodes = new Set(data.inventory.map((lot) => lot.lotCode.trim().toLowerCase()));
     const seenCodes = new Set(existingCodes);
@@ -806,7 +849,7 @@ function EnhancedWorkspaceProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, editOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, cancelOrder, updateAccountCommercial, updateCustomerCommercial, claimUnassignedProspect, releaseProspectOwnership, patchAccountLocation, transferAccountResponsibility, saveTerritory, importInventoryLots, resetDemo };
+  const value: EnhancedWorkspace = { ...base, data, scope, currentUser, login, logout, toggleClock, switchUser, createAccount, createOrder, editOrder, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, updatePlacement, correctTimeEntry, decideApproval, setOrderStatus, reconcileOrderPayment, cancelOrder, updateAccountCommercial, updateCustomerCommercial, claimUnassignedProspect, releaseProspectOwnership, patchAccountLocation, transferAccountResponsibility, qualifyLead, saveTerritory, importInventoryLots, resetDemo };
   return <EnhancedWorkspaceContext.Provider value={value}>{children}</EnhancedWorkspaceContext.Provider>;
 }
 

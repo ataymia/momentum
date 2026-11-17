@@ -1,4 +1,4 @@
-import { isValidCalendarDateKey } from "./date-time";
+import { arizonaDateKey, isValidCalendarDateKey } from "./date-time";
 import type { InventoryLot, Order, WorkspaceData } from "./types";
 import { orderAcceptsProduct, orderCasesForProduct, orderLinesFor, productsEquivalent } from "./order-lines";
 
@@ -102,8 +102,17 @@ export function lotSystemQuantity(state:InventoryLedgerState,lotId:string){retur
 export function reservedQuantity(state:InventoryLedgerState,lotId:string){return state.reservations.filter((reservation)=>reservation.lotId===lotId&&reservation.status==="Active"&&positiveFiniteQuantity(reservation.quantity)).reduce((sum,item)=>sum+item.quantity,0);}
 export function activeReservedForOrder(state:InventoryLedgerState,orderId:string,lotId?:string){return state.reservations.filter((reservation)=>reservation.orderId===orderId&&reservation.status==="Active"&&positiveFiniteQuantity(reservation.quantity)&&(!lotId||reservation.lotId===lotId)).reduce((sum,item)=>sum+item.quantity,0);}
 export function fulfilledForOrder(state:InventoryLedgerState,orderId:string){return state.reservations.filter((reservation)=>reservation.orderId===orderId&&reservation.status==="Fulfilled"&&positiveFiniteQuantity(reservation.quantity)).reduce((sum,item)=>sum+item.quantity,0);}
+/** Conservative sell-through gate. Best-by is not a legal expiration rule; undated,
+ * malformed or past-date lots need Operations quality review before automatic allocation.
+ */
+export function lotEligibleForAutomaticAllocation(
+ lot:Pick<InventoryLot,"status"|"bestBy">,dateKey=arizonaDateKey(),
+):boolean{
+ return lot.status!=="Quality hold"&&isValidCalendarDateKey(lot.bestBy)&&
+  isValidCalendarDateKey(dateKey)&&lot.bestBy>=dateKey;
+}
 export function warehouseAvailable(state:InventoryLedgerState,lotId:string){return Math.max(0,nodeLotBalance(state,warehouseNodeId,lotId)-reservedQuantity(state,lotId));}
-export function productAvailableSellableCases(state:InventoryLedgerState,data:WorkspaceData,product:string){return data.inventory.filter((lot)=>productsEquivalent(lot.product,product)&&lot.status!=="Quality hold").reduce((sum,lot)=>sum+warehouseAvailable(state,lot.id),0);}
+export function productAvailableSellableCases(state:InventoryLedgerState,data:WorkspaceData,product:string){return data.inventory.filter((lot)=>productsEquivalent(lot.product,product)&&lotEligibleForAutomaticAllocation(lot)).reduce((sum,lot)=>sum+warehouseAvailable(state,lot.id),0);}
 export function productInventoryStatus(state:InventoryLedgerState,data:WorkspaceData,product:string){const available=productAvailableSellableCases(state,data,product);return{product,available,requiresManagerApproval:available<LOW_STOCK_MANAGER_APPROVAL_THRESHOLD_CASES,reorderNeeded:available<WAREHOUSE_REORDER_THRESHOLD_CASES};}
 export function inventoryProductStatuses(state:InventoryLedgerState,data:WorkspaceData){return [...new Set(data.inventory.map((lot)=>lot.product))].sort().map((product)=>productInventoryStatus(state,data,product));}
 
@@ -114,7 +123,7 @@ export function activeReservedForOrderProduct(state:InventoryLedgerState,data:Wo
 export function reservationCanCreate(state:InventoryLedgerState,data:WorkspaceData,orderId:string,lotId:string,quantity:number){
   if(!positiveFiniteQuantity(quantity))return false;
   const order=data.orders.find((item)=>item.id===orderId);const lot=data.inventory.find((item)=>item.id===lotId);
-  if(!order||!lot||!["Approved","Allocated"].includes(order.status)||!positiveFiniteQuantity(order.cases)||lot.status==="Quality hold")return false;
+  if(!order||!lot||!["Approved","Allocated"].includes(order.status)||!positiveFiniteQuantity(order.cases)||!lotEligibleForAutomaticAllocation(lot))return false;
   const allowedForProduct=orderCasesForProduct(order,lot.product);if(allowedForProduct<=0)return false;
   if(activeReservedForOrderProduct(state,data,orderId,lot.product)+quantity>allowedForProduct)return false;
   if(quantity>warehouseAvailable(state,lotId))return false;

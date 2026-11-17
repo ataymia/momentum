@@ -31,6 +31,17 @@ test("W-4 requires final signature and penalty-of-perjury acknowledgment",()=>{
  assert.deepEqual(hrArchiveBlockers("W4",{...completed,w4FinalSignatureChecked:true,w4PerjuryAcknowledged:true}),[]);
 });
 
+test("W-9 signed originals require authenticated final e-sign and taxpayer perjury certification",()=>{
+ assert.ok(hrArchiveBlockers("W9",completed).some(reason=>reason.includes("W-9")));
+ const verified={...completed,w9FinalSignatureChecked:true,w9PerjuryAcknowledged:true};
+ assert.deepEqual(hrArchiveBlockers("W9",verified),[]);
+ assert.ok(hrArchiveBlockers("W9",{...verified,w9FinalSignatureChecked:false}).length>0);
+ assert.deepEqual(hrSignedArtifactPaths("uid-contractor","W9","envelope-123"),{
+  signedPdf:"hr-private/uid-contractor/W9/envelope-123/signed.pdf",
+  certificate:"hr-private/uid-contractor/W9/envelope-123/certificate.pdf",
+ });
+});
+
 test("HR artifact paths never accept traversals, arbitrary filenames or unsupported form kinds",()=>{
  assert.deepEqual(hrSignedArtifactPaths("uid-employee","W4","envelope-123"),{
   signedPdf:"hr-private/uid-employee/W4/envelope-123/signed.pdf",

@@ -7,18 +7,18 @@ import {validateTaxIdentity,taxIdentityMissing} from "../lib/account-tax-identit
 import {legalBillingName} from "../lib/legal-billing-name";
 
 const read=(file:string)=>readFileSync(new URL("../"+file,import.meta.url),"utf8");
-test("device navigation is wired to role-filtered menu with accessible mobile destinations",()=>{
+test("one sidebar is accessible through the mobile topbar instead of duplicate bottom navigation",()=>{
   const shell=read("components/app-shell-v4.tsx");
-  const component=read("components/navigation/device-navigation.tsx");
-  assert.match(shell,/DeviceNavigation items=\{\[\.\.\.allowedPrimary,\.\.\.allowedSecondary\]\}/);
-  assert.match(component,/aria-label="Mobile main navigation"/);
-  assert.match(component,/aria-current=\{active\?"page":undefined\}/);
-  assert.match(component,/aria-haspopup="dialog"/);
-  assert.match(component,/aria-expanded=\{expanded\}/);
-  assert.match(component,/event\.key==="Escape"/);
-  assert.match(component,/setSidebarOpen\(false\)/);
-  assert.match(component,/currentUser\.role==="Sales Representative"/);
-  assert.match(component,/currentUser\.role==="Customer"/);
+  const link=read("components/navigation/sidebar-route-link.tsx");
+  const css=read("app/architecture-navigation.css");
+  assert.match(shell,/<NavigationGroups\/>/);
+  assert.doesNotMatch(shell,/<DeviceNavigation/);
+  assert.match(shell,/aria-controls="momentum-primary-sidebar"/);
+  assert.match(shell,/aria-expanded=\{sidebarOpen\}/);
+  assert.match(link,/aria-current=\{active \? "page" : undefined\}/);
+  assert.match(css,/\.app-layout>\.sidebar\.is-open/);
+  assert.match(css,/\.topbar \.menu-button/);
+  assert.match(css,/\.device-bottom-nav,\.device-nav-layer\{display:none!important\}/);
 });
 test("adaptive CSS is strictly confined to touch breakpoints and preserves desktop/print",()=>{
   const css=read("app/device-adaptive.css");
@@ -84,13 +84,13 @@ test("navigation is isolated from the shared workspace data context",()=>{
   const base=read("lib/workspace-context-v5.tsx");
   const shell=read("components/app-shell-v4.tsx");
   const app=read("components/app-shell.tsx");
-  const mobile=read("components/navigation/device-navigation.tsx");
+  const sidebar=read("components/navigation/sidebar-route-link.tsx");
   assert.match(base,/setNavigationPage\(allowed\)/);
   assert.doesNotMatch(base,/const \[activePage, setActivePage\]/);
   assert.doesNotMatch(base,/activePage: PageKey/);
   assert.match(shell,/const activePage=useNavigationPage\(\)/);
   assert.match(app,/const activePage=useNavigationPage\(\)/);
-  assert.match(mobile,/const activePage=useNavigationPage\(\)/);
+  assert.match(sidebar,/navigateToRoute\(path\)/);
   assert.match(shell,/Suspense fallback=\{<div className="page"/);
   assert.match(shell,/lazy\(\(\)=>import\("\.\/pages\/focused-workspace-pages"\)/);
 });
@@ -120,8 +120,9 @@ test("global record search does not subscribe the main app shell to sales and co
   assert.match(dialog,/const \{crm\}=useCrm\(\)/);
   assert.match(dialog,/const \{commerce\}=useCommerce\(\)/);
   assert.match(dialog,/if \(normalized\) \{/);
-  assert.match(dialog,/const visibleSearchResults = searchResults\.slice\(0, 24\)/);
-  assert.match(dialog,/onClick=\{\(\) => openResult\(result\.page, result\.focus\)\}/);
+  assert.match(dialog,/const visibleSearchResults = searchResults\.filter\(result=>/);
+  assert.match(dialog,/canVisitRoute\(currentUser,target\)/);
+  assert.match(dialog,/onClick=\{\(\) => openResult\(result\)\}/);
 });
 
 test("business identity requires licensed name and validates EIN and AZ TPT formats",()=>{
@@ -205,14 +206,16 @@ test("private nicknames are scoped to the employee, are not queried per account,
   assert.doesNotMatch(delivery,/privateAccountNickname|nicknames\.get/);
 });
 
-test("invoice print uses stored customer identity without blocking printing; email requires licensed name",()=>{
+test("invoice email requires legal name while existing invoice printing remains accessible",()=>{
   assert.equal(legalBillingName({legalBusinessName:"  ABC Market LLC  "}),"ABC Market LLC");
   assert.equal(legalBillingName({legalBusinessName:""}),null);
   assert.equal(legalBillingName(null),null);
   const print=read("components/finance/invoice-print-center.tsx");
   const delivery=read("functions/src/delivery-invoice-email.ts");
+  // Preserve Nov 6 production P0: missing legal name may not block an existing print job.
   assert.match(print,/legalBillingName\(customer\) \?\? customer\?\.name \?\? location\?\.name/);
-  assert.doesNotMatch(print,/Add the licensed legal business name/);
+  assert.doesNotMatch(print,/Add the licensed legal business name before printing/);
+  // Delivery email remains subject to authoritative licensed identity checks.
   assert.match(delivery,/const legalName=text\(customer\?\.legalBusinessName\)/);
   assert.match(delivery,/customerName:legalName/);
   assert.match(delivery,/Invoice email held for account review/);

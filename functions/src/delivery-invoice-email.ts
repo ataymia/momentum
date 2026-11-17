@@ -4,6 +4,7 @@ import {getFirestore} from "firebase-admin/firestore";
 import {onDocumentCreated,onDocumentWritten} from "firebase-functions/v2/firestore";
 import {buildSignedInvoicePdf,type InvoicePdfSignature} from "./signed-invoice-pdf";
 import {invoicePlacedByName} from "./invoice-placer-name";
+import {reconcileInvoicePdfLines} from "./invoice-line-reconciliation";
 import {safeMail} from "./resend-mail-policy";
 
 type Row=Record<string,unknown>;
@@ -76,24 +77,6 @@ const signatureFrom=(value:unknown,history?:unknown):InvoicePdfSignature|undefin
   };
 };
 
-const orderLines=(order:Row)=>{
-  if(Array.isArray(order.lines)){
-    const lines=order.lines.filter(row).map((item)=>({
-      product:text(item.product)||"Golden Eagle Energy Drink",
-      cases:number(item.cases),
-      pricePerCase:number(item.pricePerCase),
-      amount:number(item.amount),
-    })).filter((item)=>item.cases>0&&item.amount>=0);
-    if(lines.length)return lines;
-  }
-  return [{
-    product:text(order.product)||"Golden Eagle Energy Drink",
-    cases:number(order.cases),
-    pricePerCase:number(order.pricePerCase),
-    amount:number(order.amount),
-  }];
-};
-
 const activeAdministrator=async ()=>{
   const db=getFirestore();
   const snapshot=await db.collection("userAccess").get();
@@ -161,6 +144,12 @@ const queueDeliveredInvoice=async (
       orderId,eventId);
     return;
   }
+  if(text(invoice.accountId)!==text(order.accountId)){
+    await adminEvent("Invoice "+text(invoice.number)+
+      " belongs to a different customer location than order "+text(order.number)+". Sending held.",
+      orderId,eventId);
+    return;
+  }
   const account=withPatch(
     findById(items(accountsDoc.data()),text(order.accountId)),
     accountPatches,
@@ -181,6 +170,22 @@ const queueDeliveredInvoice=async (
     await adminEvent("Order "+text(order.number)+
       " was delivered but the customer has no valid billing email. "+
       "Invoice "+text(invoice.number)+" was not sent.",
+      orderId,eventId);
+    return;
+  }
+
+  // Live email activation does not approve the legal invoice issuer or its details.
+  if(process.env.MOMENTUM_INVOICE_ISSUE_APPROVED!=="true"){
+    await adminEvent("Invoice "+text(invoice.number)+
+      " held: legal issuer identity and contact details require authorized approval.",
+      orderId,eventId);
+    return;
+  }
+
+  const proof=reconcileInvoicePdfLines(invoice,order);
+  if(!proof.ok){
+    await adminEvent("Invoice "+text(invoice.number)+
+      " line-item reconciliation failed: "+proof.reason,
       orderId,eventId);
     return;
   }
@@ -252,7 +257,7 @@ const queueDeliveredInvoice=async (
     paymentsReceived:paid,
     creditsApplied:credited,
     balanceDue:balance,
-    lines:orderLines(order),
+    lines:proof.lines,
     signature,
   });
 

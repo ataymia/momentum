@@ -1,5 +1,7 @@
 import { isValidCalendarDateKey } from "./date-time";
 import type { WorkspaceData } from "./types";
+import type {CommerceState} from "./commerce-engine";
+import {resolvedPaidOrderFacts} from "./commercial-source";
 
 export const MARKETING_STORAGE_KEY="momentum-marketing-v3";
 export type MarketingRequestType="Collateral"|"Samples / event"|"Creative"|"Partnership";
@@ -24,7 +26,12 @@ const finitePositive=(value:number)=>Number.isFinite(value)&&value>0;
 const validOptionalDate=(value?:string)=>value===undefined||isValidCalendarDateKey(value);
 const validInstant=(value?:string)=>value===undefined||!Number.isNaN(new Date(value).getTime());
 const validDateRange=(start?:string,end?:string)=>validOptionalDate(start)&&validOptionalDate(end)&&(!start||!end||end>=start);
-export function createMarketingSeed():MarketingState{return{version:3,requests:[],deliveryNotices:[],campaigns:[{id:"campaign-phoenix-support",name:"Phoenix account support",objective:"Support newly opened local accounts",audience:"Independent retail customers near active placements",startDate:"2026-09-01",endDate:"2026-09-30",requestedBudget:0,ownerId:"usr-mia",status:"Awaiting approval",successMeasure:"Qualified retailer interest and reorder-support activity tied to source accounts",createdAt:now()}],spend:[],assets:[{id:"asset-logo",name:"Momentum / Golden Eagle official logo",type:"Brand asset",version:1,status:"Approved",updatedAt:"2026-08-28",updatedBy:"system"},{id:"asset-retailer-sheet",name:"Golden Eagle retailer sales sheet",type:"Retail collateral",version:1,status:"Draft",updatedAt:"2026-08-28",updatedBy:"system"}],materials:[{id:"material-retailer-sheet",name:"Retailer sales sheets",unit:"sheet",active:true,reorderPoint:25,openingQty:0},{id:"material-samples",name:"Golden Eagle sample cases",unit:"case",active:true,reorderPoint:2,openingQty:0}],materialMovements:[],touches:[],attributions:[],partnerships:[]};}
+/** A new workspace has no campaigns, approved collateral, or stock until sourced records exist.
+ * Never synthesize an approved Golden Eagle asset, an owner, or account outcomes on hydration. */
+export function createMarketingSeed():MarketingState{
+ return {version:3,requests:[],deliveryNotices:[],campaigns:[],spend:[],assets:[],
+   materials:[],materialMovements:[],touches:[],attributions:[],partnerships:[]};
+}
 export function normalizeMarketingState(input:unknown):MarketingState{
   const seed=createMarketingSeed();if(!input||typeof input!=="object")return seed;const state=input as Partial<MarketingState>;
   const campaigns=Array.isArray(state.campaigns)?state.campaigns.filter((item)=>item&&item.id&&isValidCalendarDateKey(item.startDate)&&isValidCalendarDateKey(item.endDate)&&item.endDate>=item.startDate&&finiteNonnegative(item.requestedBudget)&&(item.approvedBudget===undefined||finiteNonnegative(item.approvedBudget))):seed.campaigns;
@@ -41,7 +48,42 @@ export function normalizeMarketingState(input:unknown):MarketingState{
   const partnerships=Array.isArray(state.partnerships)?state.partnerships.filter((item)=>item&&item.id&&item.name?.trim()&&item.type?.trim()&&item.notes?.trim()&&validDateRange(item.startDate,item.endDate)):[];
   return{version:3,requests,deliveryNotices,campaigns,spend,assets,materials,materialMovements,touches,attributions,partnerships};
 }
+/** Demo reconciliation requires a recorded receipt reference and prior approval.
+ * A filename is not evidence of funds settlement or a verified signed receipt. */
+export function marketingSpendReadyForReconciliation(spend:MarketingSpend):boolean{
+ return spend.status==="Approved"&&Boolean(spend.receiptName?.trim()&&spend.approvedAt&&spend.approvedBy);
+}
 export function campaignSpend(state:MarketingState,campaignId:string){return state.spend.filter((item)=>item.campaignId===campaignId&&["Approved","Reconciled"].includes(item.status)&&finitePositive(item.amount)).reduce((sum,item)=>sum+item.amount,0);}
 export function materialBalance(state:MarketingState,itemId:string){const item=state.materials.find((material)=>material.id===itemId);if(!item||!finiteNonnegative(item.openingQty))return 0;return item.openingQty+state.materialMovements.filter((movement)=>movement.itemId===itemId&&finitePositive(movement.quantity)).reduce((sum,movement)=>sum+(movement.type==="Receipt"||movement.type==="Return"?movement.quantity:-movement.quantity),0);}
-export function campaignCommercialActivity(state:MarketingState,data:WorkspaceData,campaignId:string){const campaign=state.campaigns.find((item)=>item.id===campaignId);if(!campaign)return{paidCases:0,paidRevenue:0,reorders:0,locations:0};const linkedAccountIds=new Set([...state.touches.filter((touch)=>touch.campaignId===campaignId&&touch.accountId).map((touch)=>touch.accountId!),...state.attributions.filter((item)=>item.campaignId===campaignId).map((item)=>item.accountId)]);const paid=data.orders.filter((order)=>linkedAccountIds.has(order.accountId)&&order.paymentStatus==="Paid"&&order.placedAt>=campaign.startDate&&order.placedAt<=campaign.endDate);return{paidCases:paid.reduce((sum,order)=>sum+(Number.isFinite(order.cases)?order.cases:0),0),paidRevenue:paid.reduce((sum,order)=>sum+(Number.isFinite(order.amount)?order.amount:0),0),reorders:data.accounts.filter((account)=>linkedAccountIds.has(account.id)&&account.reorderCount>0).length,locations:linkedAccountIds.size};}
-export function attributionSummary(state:MarketingState,data:WorkspaceData,campaignId:string){const records=state.attributions.filter((item)=>item.campaignId===campaignId&&item.reviewed);const orderIds=new Set(records.filter((item)=>item.sourceType==="Order"||item.sourceType==="Reorder").map((item)=>item.sourceId));const orders=data.orders.filter((order)=>orderIds.has(order.id)&&order.paymentStatus==="Paid");return{evidenceCount:records.length,paidCases:orders.reduce((sum,order)=>sum+(Number.isFinite(order.cases)?order.cases:0),0),paidRevenue:orders.reduce((sum,order)=>sum+(Number.isFinite(order.amount)?order.amount:0),0)};}
+/** Paid means an order marked Paid in legacy source state, not independently verified settlement. */
+/** Campaign overlap is not marketing credit. Cash metrics are only source
+ * ledger-supported when Commerce is provided, and still do not prove a bank
+ * deposit without independent provider reconciliation. */
+export function campaignCommercialActivity(state:MarketingState,data:WorkspaceData,campaignId:string,commerce?:CommerceState){
+ const campaign=state.campaigns.find(item=>item.id===campaignId);
+ if(!campaign)return{paidCases:0,paidRevenue:0,reorders:0,locations:0};
+ const linkedAccountIds=new Set([...state.touches.filter(touch=>touch.campaignId===campaignId&&touch.accountId).map(touch=>touch.accountId!),...state.attributions.filter(item=>item.campaignId===campaignId).map(item=>item.accountId)]);
+ const ordersById=new Map(data.orders.map(order=>[order.id,order]));
+ const paid=resolvedPaidOrderFacts(data,commerce).filter(fact=>{
+  const order=ordersById.get(fact.orderId);
+  return Boolean(order&&!order.testOnly&&linkedAccountIds.has(fact.accountId)
+    &&order.placedAt>=campaign.startDate&&order.placedAt<=campaign.endDate);
+ });
+ return{
+   paidCases:paid.reduce((sum,fact)=>sum+fact.cases,0),
+   paidRevenue:paid.reduce((sum,fact)=>sum+fact.amount,0),
+   reorders:data.accounts.filter(account=>linkedAccountIds.has(account.id)&&account.reorderCount>0).length,
+   locations:linkedAccountIds.size,
+ };
+}
+/** Only reviewed, same-location order attribution joins to paid order evidence. */
+export function attributionSummary(state:MarketingState,data:WorkspaceData,campaignId:string,commerce?:CommerceState){
+ const records=state.attributions.filter(item=>item.campaignId===campaignId&&item.reviewed);
+ const sourceByOrder=new Map(records.filter(item=>item.sourceType==="Order"||item.sourceType==="Reorder").map(item=>[item.sourceId,item.accountId]));
+ const facts=resolvedPaidOrderFacts(data,commerce).filter(fact=>sourceByOrder.get(fact.orderId)===fact.accountId);
+ return{
+  evidenceCount:records.length,
+  paidCases:facts.reduce((sum,fact)=>sum+fact.cases,0),
+  paidRevenue:facts.reduce((sum,fact)=>sum+fact.amount,0),
+ };
+}

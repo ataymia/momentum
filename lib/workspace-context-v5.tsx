@@ -1,6 +1,7 @@
 "use client";
 import {traceNavigationPaint} from "./performance-diagnostics";
-import {getNavigationPage,setNavigationPage} from "./navigation-store";
+import {getRequestedNavigationPath,setNavigationPage,shouldResetNavigationOnIdentityChange} from "./navigation-store";
+import {canVisitRoute} from "./navigation-route-registry";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -18,11 +19,15 @@ import {
   getWorkspaceScope,
 } from "./access";
 import { addCalendarDays, arizonaDateKey, arizonaTimeKey, startOfLocalWeek } from "./date-time";
+import {canSubmitWeeklyTimecard} from "./weekly-timecard-review";
 import { createDemoData } from "./demo-data";
 import { useFirebaseSessionOptional } from "./firebase-session-context";
 import { normalizeUsername } from "./username";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { normalizeWorkspaceData } from "./workspace-normalization";
+import { preserveExplicitCustomerHierarchy } from "./customer-hierarchy-preservation";
+import {applyAccountAssociation,type AccountAssociationResult,type AccountAssociationRequest} from "./account-association-engine";
+import {currentRuntimeMode} from "./runtime-mode-store";
 import { paidAccountRollupAfterPayment } from "./workspace-controls";
 import type {
   Account,
@@ -38,6 +43,9 @@ import type {
   WorkspaceUser,
 } from "./types";
 
+type DemoAssociationInput=Pick<AccountAssociationRequest,"accountIds"|"reason"|"verifiedCommonBillingOwner">&{
+  parent:{kind:"new";name:string}|{kind:"existing";id:string};
+};
 const DATA_KEY = "momentum-demo-workspace-v5";
 const SESSION_KEY = "momentum-demo-session-v2";
 const SIDEBAR_KEY = "momentum-sidebar-collapsed-v1";
@@ -52,9 +60,8 @@ const minutesBetween = (start: string, end: string) => {
 };
 const validTime = (value?: string) => !value || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 const minuteOfDay = (value: string) => { const [hours, minutes] = value.split(":").map(Number); return hours * 60 + minutes; };
+// Used only when an authorized new-account workflow explicitly creates a legal customer ID.
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-const parentCustomerName = (name: string) => name.replace(/\s+#\d+\s*$/, "").trim() || name;
-const customerIdFor = (name: string) => `cust-${slug(parentCustomerName(name))}`;
 
 const previousWeekRange = () => {
   const currentWeekStart = startOfLocalWeek(arizonaDateKey());
@@ -67,45 +74,7 @@ const previousWeekRange = () => {
   };
 };
 
-const normalizeCustomerHierarchy = (data: WorkspaceData): WorkspaceData => {
-  const customers = new Map((data.customers ?? []).map((customer) => [customer.id, customer]));
-  const accounts = data.accounts.map((account) => {
-    const customerId = account.customerId ?? customerIdFor(account.name);
-    const customerName = parentCustomerName(account.name);
-    if (!customers.has(customerId)) {
-      customers.set(customerId, {
-        id: customerId,
-        name: customerName,
-        accountType: customerName !== account.name ? "Chain / franchise" : "Independent",
-        billingContactName: account.contactName,
-        billingEmail: account.email,
-        billingPhone: account.phone,
-        createdAt: nowStamp(),
-      });
-    }
-    return {
-      ...account,
-      customerId,
-      locationName: account.locationName ?? account.name,
-      originatorId: account.originatorId ?? account.ownerId,
-      accountManagerId: account.accountManagerId ?? account.ownerId,
-      responsibilityStartedAt: account.responsibilityStartedAt ?? nowStamp(),
-    };
-  });
-  const customerByLocation = new Map(accounts.map((account) => [account.id, account.customerId]));
-  return {
-    ...data,
-    customers: [...customers.values()],
-    accounts,
-    appointments: data.appointments.map((appointment) => ({
-      ...appointment,
-      customerId: appointment.customerId ?? customerByLocation.get(appointment.accountId),
-      priority: appointment.priority ?? "Normal",
-      tags: appointment.tags ?? [],
-    })),
-  };
-};
-
+const normalizeCustomerHierarchy = preserveExplicitCustomerHierarchy;
 const createNormalizedDemoData = (): WorkspaceData => {
   const data = normalizeCustomerHierarchy(createDemoData());
   const previousWeek = previousWeekRange();
@@ -163,6 +132,7 @@ type WorkspaceContextValue = {
   logout: () => void;
   switchUser: (userId: string) => void;
   createAccount: (account: NewAccount) => string | null;
+  associateCustomerLocations:(input:DemoAssociationInput)=>AccountAssociationResult;
   createAppointment: (appointment: NewAppointment) => string | null;
   advanceAppointment: (id: string) => void;
   completeAppointment: (id: string, closeout: AppointmentCloseout) => boolean;
@@ -172,14 +142,14 @@ type WorkspaceContextValue = {
   reconcileOrderPayment: (id: string, status: "Open" | "Partially paid" | "Paid", paidAt?: string) => void;
   createOrder: (order: NewOrder) => string | null;
   updatePlacement: (id: string, stock: number, facings: number, cold: boolean, shelfPrice: number) => void;
-  decideApproval: (id: string, decision: "Approved" | "Returned") => void;
+  decideApproval: (id: string, decision: "Approved" | "Returned", reason?: string) => void;
   resolveInventoryHold: (id: string, decision: "Release" | "Retain", reason: string) => boolean;
   toggleClock: () => void;
   startMeal: () => void;
   endMeal: () => void;
   correctTimeEntry: (id: string, values: TimeEntryCorrectionInput, reason: string) => boolean;
   submitTimecard: (id: string) => void;
-  decideTimecard: (id: string, decision: "Manager approved" | "Returned") => void;
+  decideTimecard: (id: string, decision: "Manager approved" | "Returned", returnReason?: string) => void;
   createBulletin: (bulletin: NewBulletin) => boolean;
   acknowledgeBulletin: (id: string) => void;
   markNotificationsRead: () => void;
@@ -261,10 +231,28 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [data, ready]);
 
   const currentUser = useMemo(() => data.users.find((user) => user.id === currentUserId) ?? null, [currentUserId, data.users]);
-  // A new identity must not inherit the previous employee\'s open screen.
-  useEffect(()=>{setNavigationPage("home");},[currentUserId]);
-  // A role downgrade or separation cannot retain an administrative screen.
-  useEffect(()=>{if(currentUser&&!canAccessPage(currentUser,getNavigationPage()))setNavigationPage("home");},[currentUser]);
+  // Keep a copied record URL across the FIRST authenticated login only when
+  // that role may visit the route. Switching users/logging out still resets.
+  const previousIdentityRef=useRef<string|null|undefined>(undefined);
+  useEffect(()=>{
+    const previous=previousIdentityRef.current;
+    previousIdentityRef.current=currentUserId;
+    // Do not reset a copied URL while Firebase identity is present but its
+    // employee-directory record has not hydrated yet. PageView still denies
+    // unknown/unauthorized routes after login; switching identities resets.
+    if(shouldResetNavigationOnIdentityChange(previous,currentUserId))
+      setNavigationPage("home");
+  },[currentUserId,currentUser]);
+  // Reset a now-forbidden route on a real role change. Page permission aliases
+  // are NOT equivalent to registered route grants (e.g. Account Health).
+  // On first login the PageView gate must display denied deep links safely.
+  const previousRoleRef=useRef<WorkspaceUser["role"]|null|undefined>(undefined);
+  useEffect(()=>{
+    const previous=previousRoleRef.current;
+    previousRoleRef.current=currentUser?.role??null;
+    if(!currentUser||previous===undefined||previous===null||previous===currentUser.role)return;
+    if(!canVisitRoute(currentUser,getRequestedNavigationPath()))setNavigationPage("home");
+  },[currentUser]);
   const scope = useMemo(() => getWorkspaceScope(data, currentUser), [data, currentUser]);
   const setSidebarCollapsed = useCallback((collapsed: boolean) => { setSidebarCollapsedState(collapsed); momentumStorage.setItem(SIDEBAR_KEY, String(collapsed)); }, []);
   const navigate = useCallback((page: PageKey) => { const allowed=canAccessPage(currentUser,page)?page:"home";traceNavigationPaint(allowed);setNavigationPage(allowed); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: window.matchMedia("(max-width:1023px)").matches?"auto":"smooth" }); }, [currentUser]);
@@ -277,7 +265,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const user = data.users.find((item) => (item.username && item.username === asUsername) || item.email.toLowerCase() === typed);
     if (!user || password !== "admin") return { ok: false, message: "Use a demo username or e-mail and the password admin." };
     setDemoUserId(user.id);
-    setNavigationPage("home");
+    // Do not destroy an authorized copied URL before the authenticated shell
+    // mounts and validates its record scope. Denied paths go to Home.
+    // Authentication does not imply navigation permission. The post-login
+    // shell denies unknown and unauthorized URLs without rewriting them.
     momentumStorage.setItem(SESSION_KEY, user.id);
     return { ok: true };
   }, [data.users, firebase]);
@@ -315,6 +306,23 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }));
     return id;
   }, [currentUser,data.customers]);
+
+  const associateCustomerLocations=useCallback((input:DemoAssociationInput):AccountAssociationResult=>{
+    // Prototype-only. Real parent changes require an authenticated, audited
+    // backend transaction and approved bonus/financial reconciliation.
+    if(currentUser?.role!=="Administrator"||production||currentRuntimeMode()!=="demo"||momentumStorage.mode()!=="local")
+      return {ok:false,message:"Account association is disabled for connected and production workspaces."};
+    const operationId="local-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,12);
+    const parent:AccountAssociationRequest["parent"]=input.parent.kind==="new"
+      ?{kind:"new",id:"cust-demo-assoc-"+operationId,name:input.parent.name}
+      :input.parent;
+    const result=applyAccountAssociation(data,{
+      ...input,parent,operatorId:currentUser.id,recordedAt:new Date().toISOString(),operationId,
+    });
+    if(!result.ok)return result;
+    setData(result.data);
+    return result;
+  },[data,currentUser,production]);
 
   const createAppointment = useCallback((appointment: NewAppointment) => {
     if (!currentUser || !canCreateScheduleItem(currentUser)) return null;
@@ -442,20 +450,26 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData((current) => ({ ...current, placements: current.placements.map((item) => item.id === id ? { ...item, observedStock, facings, cold, shelfPrice, lastChecked: todayKey(), status: observedStock === 0 ? "Out of stock" : facings === 0 || !cold ? "Check soon" : "Healthy" } : item) }));
   }, [currentUser, data]);
 
-  const decideApproval = useCallback((id: string, decision: "Approved" | "Returned") => {
+  const decideApproval = useCallback((id: string, decision: "Approved" | "Returned", providedReason?: string) => {
     if (!currentUser) return;
+    const matching=data.approvals.find(item=>item.id===id);
+    const isOrder=Boolean(matching&&["Order","Low stock sale"].includes(matching.type));
+    const returnReason=decision==="Returned"
+      ?(providedReason!==undefined?providedReason.trim():isOrder&&typeof window!=="undefined"?window.prompt("What needs to be corrected before this order can be approved?")?.trim():undefined)
+      :undefined;
+    if(decision==="Returned"&&isOrder&&(!returnReason||returnReason.length<3))return;
     setData((current) => {
       const approval = current.approvals.find((item) => item.id === id);
       if (!approval || approval.status !== "Pending" || !canReviewApproval(current, currentUser, approval)) return current;
       const decidedAt = nowStamp();
       return {
         ...current,
-        approvals: current.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt } : item),
-        orders: current.orders.map((order) => ["Order", "Low stock sale"].includes(approval.type) && (order.id === approval.recordId || approval.title.includes(order.number)) ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
-        activities: approval.recordId ? [{ id: `act-${Date.now()}`, accountId: current.orders.find((order) => order.id === approval.recordId)?.accountId, type: "order", title: decision === "Approved" ? "Order approved" : "Order returned for edits", detail: `${approval.title} ${decision.toLowerCase()} by ${currentUser.name}.`, at: decidedAt, userId: currentUser.id }, ...current.activities] : current.activities,
+        approvals: current.approvals.map((item) => item.id === id ? { ...item, status: decision, decidedBy: currentUser.id, decidedAt, returnReason: returnReason||undefined } : item),
+        orders: current.orders.map((order) => ["Order", "Low stock sale"].includes(approval.type) && (approval.recordId ? order.id === approval.recordId : approval.title.includes(order.number)) ? { ...order, status: decision === "Approved" ? "Approved" : "Draft" } : order),
+        activities: approval.recordId ? [{ id: `act-${Date.now()}`, accountId: current.orders.find((order) => order.id === approval.recordId)?.accountId, type: "order", title: decision === "Approved" ? "Order approved" : "Order returned for edits", detail: `${approval.title} ${decision.toLowerCase()} by ${currentUser.name}.${returnReason?" Reason: "+returnReason:""}`, at: decidedAt, userId: currentUser.id }, ...current.activities] : current.activities,
       };
     });
-  }, [currentUser]);
+  }, [currentUser,data.approvals]);
 
   const resolveInventoryHold = useCallback((id: string, decision: "Release" | "Retain", reason: string) => {
     if (!currentUser || !["Administrator", "Operations"].includes(currentUser.role) || reason.trim().length < 8) return false;
@@ -517,20 +531,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setData((current) => {
       const card = current.timecards.find((item) => item.id === id && item.userId === currentUser.id && (item.status === "Open" || item.status === "Returned"));
       if (!card) return current;
-      if (current.timeEntries.some((item) => item.userId === currentUser.id && item.date >= card.weekStart && item.date <= card.weekEnd && (!item.clockOut || Boolean(item.mealStart && !item.mealEnd) || Boolean(item.note?.includes("Automatically closed at Arizona midnight") && item.source !== "Manual correction")))) return current;
+      // A forged call must not bypass the week-end and punch-completeness gate.
+      if (!canSubmitWeeklyTimecard(card, current.timeEntries, todayKey())) return current;
       const exists = current.approvals.some((item) => item.type === "Timecard" && item.recordId === id && item.status === "Pending");
       return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: "Submitted", submittedAt: nowStamp(), attested: true, approvedAt: undefined, approverId: undefined } : item), approvals: exists ? current.approvals : [{ id: `apr-${Date.now()}`, type: "Timecard", title: `${currentUser.name} · weekly timecard`, detail: `${card.weekStart} through ${card.weekEnd} · employee attested`, requestedBy: currentUser.name, requesterId: currentUser.id, recordId: id, team: currentUser.team, submittedAt: nowStamp(), dueAt: plusHours(24), priority: "Normal", status: "Pending" }, ...current.approvals] };
     });
   }, [currentUser]);
 
-  const decideTimecard = useCallback((id: string, decision: "Manager approved" | "Returned") => {
-    if (!currentUser) return;
+  const decideTimecard = useCallback((id: string, decision: "Manager approved" | "Returned", returnReason?: string) => {
+    if (!currentUser || (decision === "Returned" && (returnReason?.trim().length ?? 0) < 8)) return;
     setData((current) => {
       const card = current.timecards.find((item) => item.id === id);
       const approval = current.approvals.find((item) => item.type === "Timecard" && item.recordId === id && item.status === "Pending");
-      if (!card || card.userId === currentUser.id || !approval || !canReviewApproval(current, currentUser, approval)) return current;
+      // Stale approval records may not authorize an unsubmitted or returned card.
+      if (!card || card.status !== "Submitted" || !card.attested || card.userId === currentUser.id || !approval || !canReviewApproval(current, currentUser, approval)) return current;
       const stamp = nowStamp();
-      return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: decision, attested: decision === "Returned" ? false : item.attested, approvedAt: decision === "Manager approved" ? stamp : undefined, approverId: decision === "Manager approved" ? currentUser.id : undefined, returnedAt: decision === "Returned" ? stamp : item.returnedAt, returnedBy: decision === "Returned" ? currentUser.id : item.returnedBy } : item), approvals: current.approvals.map((item) => item.id === approval.id ? { ...item, status: decision === "Manager approved" ? "Approved" : "Returned" } : item), notifications: [{ id: `note-${Date.now()}`, title: `Timecard ${decision === "Manager approved" ? "approved" : "returned"}`, detail: `${card.weekStart} through ${card.weekEnd}`, at: stamp, readBy: [], tone: decision === "Manager approved" ? "success" : "warning", audienceUserIds: [card.userId] }, ...current.notifications] };
+      return { ...current, timecards: current.timecards.map((item) => item.id === id ? { ...item, status: decision, attested: decision === "Returned" ? false : item.attested, approvedAt: decision === "Manager approved" ? stamp : undefined, approverId: decision === "Manager approved" ? currentUser.id : undefined, returnedAt: decision === "Returned" ? stamp : item.returnedAt, returnedBy: decision === "Returned" ? currentUser.id : item.returnedBy, returnReason: decision === "Returned" ? returnReason?.trim() : undefined } : item), approvals: current.approvals.map((item) => item.id === approval.id ? { ...item, status: decision === "Manager approved" ? "Approved" : "Returned" } : item), notifications: [{ id: `note-${Date.now()}`, title: `Timecard ${decision === "Manager approved" ? "approved" : "returned"}`, detail: `${card.weekStart} through ${card.weekEnd}${decision === "Returned" ? " · Correction required: "+returnReason?.trim() : ""}`, at: stamp, readBy: [], tone: decision === "Manager approved" ? "success" : "warning", audienceUserIds: [card.userId] }, ...current.notifications] };
     });
   }, [currentUser]);
 
@@ -543,7 +559,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const markNotificationsRead = useCallback(() => { if (!currentUser) return; const ids = new Set(scope.notifications.map((item) => item.id)); setData((current) => ({ ...current, notifications: current.notifications.map((item) => ids.has(item.id) && !item.readBy.includes(currentUser.id) ? { ...item, readBy: [...item.readBy, currentUser.id] } : item) })); }, [currentUser, scope.notifications]);
   const resetDemo = useCallback(() => { if (production || currentUser?.role !== "Administrator") return; setData(createNormalizedDemoData()); setNavigationPage("home"); }, [currentUser, production]);
 
-  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
+  const value = useMemo<WorkspaceContextValue>(() => ({ data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarOpen, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, associateCustomerLocations, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo }), [data, scope, currentUser, ready, sidebarOpen, sidebarCollapsed, setSidebarCollapsed, navigate, login, logout, switchUser, createAccount, associateCustomerLocations, createAppointment, advanceAppointment, completeAppointment, reassignAppointment, moveAppointment, setOrderStatus, reconcileOrderPayment, createOrder, updatePlacement, decideApproval, resolveInventoryHold, toggleClock, startMeal, endMeal, correctTimeEntry, submitTimecard, decideTimecard, createBulletin, acknowledgeBulletin, markNotificationsRead, resetDemo]);
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
 

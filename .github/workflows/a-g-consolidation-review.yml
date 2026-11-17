@@ -1,0 +1,81 @@
+name: A-G Surgical Consolidation
+# Retry 6: publish merged candidate to isolated branch before full regression repairs
+
+on:
+  push:
+    branches:
+      - integration/a-g-unified-2026-11-07
+    paths:
+      - .github/workflows/a-g-consolidation-review.yml
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout protected integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Pin integration branch and merge all six independent workstreams
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout -B integration/a-g-unified-2026-11-07
+          node scripts/a-g-integrate.mjs
+
+      - name: Publish isolated integration candidate for direct repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "integration/a-g-unified-2026-11-07"
+          git push origin HEAD:refs/heads/integration/a-g-unified-2026-11-07
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.1"
+          cache: npm
+
+      - name: Set up Java for Firebase rules emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install app and Functions dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm --prefix functions ci
+
+      - name: Check TypeScript and ESLint
+        run: |
+          npm run typecheck
+          npm run lint
+
+      - name: Verify complete combined logic test suite
+        run: npm run test:logic
+
+      - name: Run Firestore and Storage security emulators
+        run: |
+          npm run test:rules
+          npm run test:storage
+
+      - name: Verify Firebase Functions and production builds
+        run: |
+          npm --prefix functions run build
+          npm --prefix functions run lint
+          npm run build
+
+      - name: Confirm no generated-rule drift or source mutation
+        shell: bash
+        run: |
+          git diff --check
+          git diff --exit-code
+          git status --short
+

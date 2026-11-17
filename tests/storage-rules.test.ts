@@ -2,7 +2,7 @@ import {readFileSync} from "node:fs";
 import test,{before,after} from "node:test";
 import {initializeTestEnvironment,assertFails,assertSucceeds,type RulesTestEnvironment} from "@firebase/rules-unit-testing";
 import {doc,setDoc} from "firebase/firestore";
-import {ref,uploadBytes,getBytes} from "firebase/storage";
+import {ref,uploadBytes,getBytes,deleteObject} from "firebase/storage";
 let env:RulesTestEnvironment;
 before(async()=>{
  env=await initializeTestEnvironment({projectId:"momentum-rules-test",firestore:{host:"127.0.0.1",port:8080,rules:readFileSync("firestore.rules","utf8")},storage:{host:"127.0.0.1",port:9199,rules:readFileSync("storage.rules","utf8")}});
@@ -26,7 +26,7 @@ test("Storage enforces draft/approved access, immutable versions, and revoked id
  await assertFails(getBytes(ref(storage("rep"),path)));
 });
 
-test("signed employment PDFs are employee-private, admin-readable, immutable and never client-uploaded",async()=>{
+test("signed employment PDFs require audited backend reads; no browser may fetch or alter them",async()=>{
  const path="hr-private/rep/W4/signed-001/signed.pdf";
  const certificate="hr-private/rep/W4/signed-001/certificate.pdf";
  const bytes=new Uint8Array([37,80,68,70,45,49,46,55]);
@@ -35,9 +35,9 @@ test("signed employment PDFs are employee-private, admin-readable, immutable and
   await uploadBytes(ref(context.storage(),certificate),bytes,{contentType:"application/pdf"});
  });
  const storage=(uid:string)=>env.authenticatedContext(uid).storage();
- await assertSucceeds(getBytes(ref(storage("rep"),path)));
- await assertSucceeds(getBytes(ref(storage("rep"),certificate)));
- await assertSucceeds(getBytes(ref(storage("admin"),path)));
+ await assertFails(getBytes(ref(storage("rep"),path)));
+ await assertFails(getBytes(ref(storage("rep"),certificate)));
+ await assertFails(getBytes(ref(storage("admin"),path)));
  await assertFails(getBytes(ref(storage("rep2"),path)));
  await assertFails(getBytes(ref(storage("marketing"),path)));
  await assertFails(getBytes(ref(storage("customer"),path)));
@@ -46,4 +46,62 @@ test("signed employment PDFs are employee-private, admin-readable, immutable and
  await assertFails(uploadBytes(ref(storage("rep"),path),bytes,{contentType:"application/pdf"}));
  await assertFails(uploadBytes(ref(storage("admin"),path),bytes,{contentType:"application/pdf"}));
  await assertFails(uploadBytes(ref(storage("admin"),"hr-private/rep/W4/other/signed.pdf"),bytes,{contentType:"application/pdf"}));
+ const w9Path="hr-private/rep/W9/contractor-001/signed.pdf";
+ await env.withSecurityRulesDisabled(async context=>{
+  await uploadBytes(ref(context.storage(),w9Path),bytes,{contentType:"application/pdf"});
+ });
+ await assertFails(getBytes(ref(storage("rep"),w9Path)));
+ await assertFails(getBytes(ref(storage("admin"),w9Path)));
+ await assertFails(getBytes(ref(storage("rep2"),w9Path)));
+ await assertFails(getBytes(ref(storage("customer"),w9Path)));
+ await assertFails(getBytes(ref(storage("separated"),w9Path)));
+ await assertFails(uploadBytes(ref(storage("rep"),w9Path),bytes,{contentType:"application/pdf"}));
+ await assertFails(uploadBytes(ref(storage("admin"),w9Path),bytes,{contentType:"application/pdf"}));
+});
+
+test("contractor, employment and other originals deny direct Storage browser access",async()=>{
+ const paths=[
+  "hr-private/rep/CONTRACTOR_AGREEMENT/intake-contract/signed.pdf",
+  "hr-private/rep/EMPLOYEE_AGREEMENT/intake-employee/signed.pdf",
+  "hr-private/rep/OTHER/intake-other/signed.pdf",
+ ];
+ const bytes=new Uint8Array([37,80,68,70,45,49,46,55,10,37,37,69,79,70]);
+ await env.withSecurityRulesDisabled(async context=>{
+  for(const path of paths)await uploadBytes(ref(context.storage(),path),
+   bytes,{contentType:"application/pdf"});
+ });
+ const storage=(uid:string)=>env.authenticatedContext(uid).storage();
+ for(const path of paths){
+  await assertFails(getBytes(ref(storage("rep"),path)));
+  await assertFails(getBytes(ref(storage("admin"),path)));
+  for(const who of ["rep2","marketing","customer","separated"]){
+   await assertFails(getBytes(ref(storage(who),path)));
+  }
+  await assertFails(getBytes(ref(env.unauthenticatedContext().storage(),path)));
+  await assertFails(uploadBytes(ref(storage("rep"),path),bytes,{contentType:"application/pdf"}));
+  await assertFails(uploadBytes(ref(storage("admin"),path),bytes,{contentType:"application/pdf"}));
+  await assertFails(deleteObject(ref(storage("admin"),path)));
+ }
+});
+
+test("blank HR template uploads are admin-only, PDF-only, immutable and not shared with staff",async()=>{
+ const path="hr-templates/W9/12345678-1234-4abc-a123-123456789abc/source.pdf";
+ const pdf=new Uint8Array([37,80,68,70,45,49,46,55,10,37,37,69,79,70]);
+ const storage=(uid:string)=>env.authenticatedContext(uid).storage();
+ await assertFails(uploadBytes(ref(storage("rep"),path),pdf,{contentType:"application/pdf"}));
+ await assertFails(uploadBytes(ref(storage("marketing"),path),pdf,{contentType:"application/pdf"}));
+ await assertFails(uploadBytes(ref(storage("customer"),path),pdf,{contentType:"application/pdf"}));
+ await assertFails(uploadBytes(ref(storage("separated"),path),pdf,{contentType:"application/pdf"}));
+ await assertFails(uploadBytes(ref(env.unauthenticatedContext().storage(),path),pdf,{contentType:"application/pdf"}));
+ await assertFails(uploadBytes(ref(storage("admin"),path),pdf,{contentType:"text/plain"}));
+ await assertFails(uploadBytes(ref(storage("admin"),"hr-templates/UNKNOWN/12345678-1234-4abc-a123-123456789abc/source.pdf"),pdf,{contentType:"application/pdf"}));
+ await assertFails(uploadBytes(ref(storage("admin"),path),pdf,{contentType:"application/pdf"}));
+ await env.withSecurityRulesDisabled(async context=>{
+  await uploadBytes(ref(context.storage(),path),pdf,{contentType:"application/pdf"});
+ });
+ await assertSucceeds(getBytes(ref(storage("admin"),path)));
+ await assertFails(getBytes(ref(storage("rep"),path)));
+ await assertFails(getBytes(ref(storage("customer"),path)));
+ await assertFails(uploadBytes(ref(storage("admin"),path),pdf,{contentType:"application/pdf"}));
+ await assertFails(deleteObject(ref(storage("admin"),path)));
 });

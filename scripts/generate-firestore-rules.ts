@@ -53,10 +53,16 @@ function fieldSwitch(spec: DomainSpec, pick: "read" | "write"): string {
 
 function sharedBlock(spec: DomainSpec): string {
   const fields = [ROOT_FIELD, ...Object.keys(spec.fields)].sort();
+  // Legacy shared arrays may contain different employees' data. Only Administrators may read or write them.
+  const ownerFields = Object.entries(spec.fields).filter(([, field]) => Boolean(field.userIdField))
+    .map(([name]) => name).sort();
+  const gate = ownerFields.length ? ` && (!(field in ${list(ownerFields)}) || isAdmin())` : "";
+  // High-risk shared roots may contain unverified pricing and customer patches.
+  const protectedRoot = ["workspace","commercial"].includes(spec.id) ? " && field != '_root'" : "";
   return `    // ${spec.key}
     match /${spec.id}/fields/{field} {
-      allow get, list: if field in ${list(fields)} && (${fieldSwitch(spec, "read")});
-      allow write: if field in ${list(fields)} && (${fieldSwitch(spec, "write")});
+      allow get, list: if field in ${list(fields)} && (${fieldSwitch(spec, "read")})${gate};
+      allow write: if field in ${list(fields)} && (${fieldSwitch(spec, "write")})${gate}${protectedRoot};
     }`;
 }
 
@@ -76,6 +82,7 @@ function userBlock(spec: DomainSpec): string {
   if (perUser.length === 0) return "";
   const fields = perUser.map(([field]) => field).sort();
   const noSelfWrite = perUser.filter(([, f]) => f.selfWrite === false).map(([field]) => field).sort();
+  const serverOwned = perUser.filter(([, f]) => f.serverOwned === true).map(([field]) => field).sort();
   const noManagerWrite = perUser.filter(([, f]) => f.managerWrite === false).map(([field]) => field).sort();
   const noManagerRead = perUser.filter(([, f]) => f.managerRead === false).map(([field]) => field).sort();
   const salesRepSupervise = perUser.filter(([, f]) => f.salesRepSupervise === true).map(([field]) => field).sort();
@@ -94,6 +101,9 @@ function userBlock(spec: DomainSpec): string {
     ? `(${physicalFieldCondition(spec, salesRepSupervise)} && supervisesBrandAmbassador(uid) && activeEmployee())`
     : "false";
 
+  const serverOwnedWriteGate = serverOwned.length
+    ? `\n        && !(${physicalFieldCondition(spec, serverOwned)})`
+    : "";
   const ownerReadable = "uid == request.auth.uid ? isEmployee()";
   const ownerWritable = noSelfWrite.length
     ? `uid == request.auth.uid ? (!(${physicalFieldCondition(spec, noSelfWrite)}) && isEmployee())`
@@ -103,7 +113,7 @@ function userBlock(spec: DomainSpec): string {
     match /{uid}/${spec.id}/{field} {
       allow get, list: if ${allowedFields}
         && (${ownerReadable} : (isAdmin() || ${managerReadable} || ${supervisorReadable}));
-      allow write: if ${allowedFields}
+      allow write: if ${allowedFields}${serverOwnedWriteGate}
         && (isAdmin() || (${ownerWritable} : (${managerWritable} || ${supervisorWritable})));
     }`;
 }
@@ -270,6 +280,15 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    // Employee meeting data is server-owned. Client callers must use the verified
+    // staffMeetingsApi function, which checks current userAccess for each action.
+    match /staffMeetings/{meetingId} {
+      allow read, write: if false;
+    }
+    match /staffMeetingSlots/{slotId} {
+      allow read, write: if false;
+    }
+
     match /employeeDirectory/{uid} {
       allow get, list: if isEmployee();
       allow create, update: if isAdmin()
@@ -319,6 +338,37 @@ service cloud.firestore {
         && request.resource.data.nickname.size() > 0
         && request.resource.data.nickname.size() <= 80;
       allow delete: if isEmployee() && request.auth.uid == uid;
+    }
+
+    // User-owned, append-only notification read receipts shared by signed-in devices.
+    // Receipts are presentation metadata, never proof of an operational action.
+    // Even Administrators cannot view or alter another employee's receipts.
+    match /notificationReadReceipts/{uid}/buckets/{bucket} {
+      allow get: if isEmployee()
+        && uid == request.auth.uid && bucket.matches('^[0-9a-f]$');
+      // Explicit document lookups only; collection enumeration is unnecessary.
+      allow list: if false;
+      allow create: if isEmployee()
+        && uid == request.auth.uid && bucket.matches('^[0-9a-f]$')
+        && request.resource.data.keys().hasOnly(['userId','bucket','ids'])
+        && request.resource.data.userId == uid
+        && request.resource.data.bucket == bucket
+        && request.resource.data.ids is list
+        && request.resource.data.ids.size() > 0
+        && request.resource.data.ids.size() <= 800;
+      allow update: if isEmployee()
+        && uid == request.auth.uid && bucket.matches('^[0-9a-f]$')
+        && request.resource.data.keys().hasOnly(['userId','bucket','ids'])
+        && request.resource.data.userId == uid
+        && request.resource.data.bucket == bucket
+        && request.resource.data.ids is list
+        && resource.data.userId == uid
+        && resource.data.bucket == bucket
+        && resource.data.ids is list
+        && request.resource.data.ids.size() <= 800
+        && request.resource.data.ids.size() >= resource.data.ids.size()
+        && request.resource.data.ids.hasAll(resource.data.ids);
+      allow delete: if false;
     }
 
     // Delivery corrections are evaluated and committed atomically by trusted Functions.
@@ -408,6 +458,16 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Server-authored billing/A-P contact updates: Administrator audit only.
+    // The browser cannot mint revisions, approval claims, or retry receipts.
+    match /customerContactUpdateAudit/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /customerContactUpdateKeys/{requestId} {
+      allow read, write: if false;
+    }
+
     // Server-only idempotency receipts prevent replayed account creation.
     match /accountCreationRequests/{requestId} {
       allow get, list, create, update, delete: if false;
@@ -443,6 +503,32 @@ service cloud.firestore {
         && request.resource.data.updatedBy == request.auth.uid;
       allow delete: if false;
     }
+    // Administrator-readable blank-PDF template catalog; trusted function is the only writer.
+    match /hrTemplateCatalog/{templateId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /hrTemplateAudit/{auditId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /hrTemplateRegistrationKeys/{requestId} {
+      allow read, write: if false;
+    }
+    match /hrTemplateUploadRequests/{requestId} {
+      allow read, write: if false;
+    }
+
+    // Idempotency receipts for reviewer decisions are server-only.
+    match /commerceOrderIntakeReviewKeys/{requestId} {
+      allow read, write: if false;
+    }
+    // Immutable source decision audit. Only active Administrators may inspect.
+    match /commerceOrderIntakeReviewAudit/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     // HR e-form receipt metadata never contains tax identifiers or document field values.
     // Only the trusted server can create/update it after verifying the signing provider.
     // Employees can query their own records using employeeUid == auth.uid; HR Administrators
@@ -451,6 +537,36 @@ service cloud.firestore {
       allow get, list: if isAdmin() || (isEmployee()
         && resource.data.employeeUid == request.auth.uid);
       allow create, update, delete: if false;
+    }
+    // Completed-document intake never writes the provider-attested signed form register.
+    // Originals await separate signature, I-9, tax and classification review.
+    match /hrOriginalIntakeRecords/{recordId} {
+      // Pending originals may be misfiled. No employee sees a file or metadata
+      // until a separate, legally validated release-to-worker workflow exists.
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /hrOriginalIntakeAudit/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    // A downloaded source PDF is necessary but not sufficient legal e-sign evidence.
+    // Review decisions are trusted-server-only, including Administrator clients.
+    match /hrOriginalReviewKeys/{requestId} {
+      allow read, write: if false;
+    }
+    match /hrOriginalReviewAudit/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    // Private document read evidence is server-only, with Administrator audit access.
+    match /hrOriginalIntakeReadAudit/{eventId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+    // Untrusted clients cannot create or inspect signed-original retry reservations.
+    match /hrOriginalArchiveRequests/{requestId} {
+      allow read, write: if false;
     }
     // Server-owned, append-only audit events; no browser impersonation or deletion.
     match /hrSignedFormAudit/{auditId} {

@@ -112,3 +112,14 @@ export const PRODUCT_CATALOG_INVENTORY_POLICY = "Product master only. Current on
 
 export const HISTORICAL_PURCHASE_ORDER_POLICY = "Historical purchase-order quantities are reference only. They must never populate current on-hand, available, reserved, or sellable inventory.";
 export const WHOLESALE_BARCODE_POLICY = "Momentum scans and stores verified case barcodes only. Can/unit barcodes are not used for wholesale inventory control.";
+
+/** Strict product identity for inventory valuation, order attribution and audit views. */
+export function skuForTraceableProduct(value:string):ProductSku|undefined {
+  const test=liveTestSkuByName(value);
+  if(test)return test;
+  const normalized=key(value);
+  const exact=GOLDEN_EAGLE_SKUS.find(s=>key(s.description)===normalized||key(s.shortName)===normalized);
+  if(exact)return exact;
+  const aliasId=aliases.get(normalized);
+  return aliasId?skuById(aliasId):undefined;
+}

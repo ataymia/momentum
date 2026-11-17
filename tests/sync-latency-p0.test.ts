@@ -67,7 +67,9 @@ test("payment reconciliation does not change identity on unrelated page navigati
   const commerce=source("lib/commerce-context.tsx");
   assert.match(wrapper,/const reconcileOrderPayment = useCallback\(/);
   assert.match(wrapper,/\[base\.reconcileOrderPayment, commercial, currentUser, data\]/);
-  assert.match(commerce,/\[commerce, data\.orders, reconcileOrderPayment\]/);
+  // Connected sessions must not promote local payment states to a Paid order.
+  assert.match(commerce,/if\(!localSettlementSandbox\)return;/);
+  assert.match(commerce,/\[commerce, data\.orders, localSettlementSandbox, reconcileOrderPayment\]/);
 });
 test("field tracking preserves route history without no-op session rewrites",()=>{
   const code=source("lib/location-tracking-context.tsx");

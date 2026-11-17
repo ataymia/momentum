@@ -42,6 +42,10 @@ test("HR evidence must identify a signed original, reviewer, time, and matching 
   assert.equal(validExternalVerification({...evidence,recordReference:""},2),false);
   assert.equal(validExternalVerification({...evidence,verifiedBy:""},2),false);
   assert.equal(validExternalVerification(undefined,2),false);
+  assert.equal(validExternalVerification({method:"External signed original"} as never,2),false);
+  assert.equal(validExternalVerification({method:"External signed original",recordReference:7} as never,2),false);
+  assert.equal(validExternalVerification({...evidence,verifiedAt:123} as never,2),false);
+  assert.equal(validExternalVerification({...evidence,documentVersion:"2"} as never,2),false);
 });
 
 test("weekly compliance does not flag roles without reporting access or prehires", () => {

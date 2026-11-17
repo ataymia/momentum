@@ -27,6 +27,7 @@ import {
   refundCanApprove,
   refundCanFail,
   refundCanRequest,
+  refundHasSingleInvoiceAllocation,
   refundCanSend,
   refundCanSettle,
 } from "./commerce-engine";
@@ -34,6 +35,7 @@ import { isValidCalendarDateKey } from "./date-time";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
 import { useRuntimeMode } from "./runtime-mode";
 import { useWorkspace } from "./workspace-context";
+import {mayMutateCommerceInBrowser} from "./connected-commerce-policy";
 
 const now = () => new Date().toISOString();
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -64,13 +66,17 @@ const CommerceContext = createContext<CommerceContextValue | null>(null);
 export function CommerceProvider({ children }: { children: ReactNode }) {
   const { data, currentUser, reconcileOrderPayment } = useWorkspace();
   const runtime = useRuntimeMode();
-  const canManageCash = currentUser?.role === "Administrator";
+  // No client-side connected Finance mutation is a valid payment or bank event.
+  const localSettlementSandbox=runtime.isDemo&&momentumStorage.mode()==="local";
+  const canManageCash=mayMutateCommerceInBrowser({
+    role:currentUser?.role,isDemo:runtime.isDemo,storageMode:momentumStorage.mode(),
+  });
   const read = () => {
-    if (typeof window === "undefined") return createCommerceSeed(data);
+    if (typeof window === "undefined") return createCommerceSeed(data,localSettlementSandbox);
     try {
-      return normalizeCommerceState(JSON.parse(momentumStorage.getItem(COMMERCE_STORAGE_KEY) ?? "null"), data);
+      return normalizeCommerceState(JSON.parse(momentumStorage.getItem(COMMERCE_STORAGE_KEY) ?? "null"), data,localSettlementSandbox);
     } catch {
-      return createCommerceSeed(data);
+      return createCommerceSeed(data,localSettlementSandbox);
     }
   };
   const [commerce, setCommerce] = useState<CommerceState>(() => read());
@@ -78,12 +84,12 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handle = window.setTimeout(() => {
       setCommerce((state) => {
-        const next=normalizeCommerceState(state,data);
+        const next=normalizeCommerceState(state,data,localSettlementSandbox);
         return JSON.stringify(next)===JSON.stringify(state)?state:next;
       });
     }, 0);
     return () => window.clearTimeout(handle);
-  }, [data]);
+  }, [data,localSettlementSandbox]);
 
   useEffect(() => {
     if (!canManageCash) return;
@@ -107,14 +113,17 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   }, [canManageCash, data.orders]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") momentumStorage.setItem(COMMERCE_STORAGE_KEY, JSON.stringify(commerce));
-  }, [commerce]);
+    // Connected Finance is read-only until trusted backend posting is implemented.
+    if (typeof window !== "undefined" && localSettlementSandbox)
+      momentumStorage.setItem(COMMERCE_STORAGE_KEY, JSON.stringify(commerce));
+  }, [commerce,localSettlementSandbox]);
   useRemoteStorageSync(COMMERCE_STORAGE_KEY, () => setCommerce((current) => {
     const next=read();
     return JSON.stringify(next)===JSON.stringify(current)?current:next;
   }));
 
   useEffect(() => {
+    if(!localSettlementSandbox)return;
     const handle = window.setTimeout(() => {
       for (const invoice of commerce.invoices) {
         const order = data.orders.find((item) => item.id === invoice.orderId);
@@ -133,7 +142,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
       }
     }, 0);
     return () => window.clearTimeout(handle);
-  }, [commerce, data.orders, reconcileOrderPayment]);
+  }, [commerce, data.orders, localSettlementSandbox, reconcileOrderPayment]);
 
   const setInvoiceTerms = (invoiceId: string, terms: InvoiceTerms, dueDate?: string) => {
     if (!canManageCash || (dueDate !== undefined && dueDate !== "" && !isValidCalendarDateKey(dueDate))) return;
@@ -152,7 +161,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
     if (!canManageCash || !currentUser || input.method === "Cash" || !Number.isFinite(input.amount)) return null;
     const invoice = commerce.invoices.find((item) => item.id === input.invoiceId);
     if (!invoice || computedInvoiceStatus(commerce, invoice) === "Void" || input.amount <= 0 || input.amount > invoiceRecordableAmount(commerce, invoice)) return null;
-    if (input.status === "Cleared" && !canRecordSettlementDate(input.settlementDate)) return null;
+    if (input.status === "Cleared" && (!localSettlementSandbox || !canRecordSettlementDate(input.settlementDate))) return null;
     const paymentId = uid("payment");
     const payment: Payment = { id: paymentId, accountId: invoice.accountId, receivedAt: now(), settledAt: input.status === "Cleared" ? input.settlementDate : undefined, settledBy: input.status === "Cleared" ? currentUser.id : undefined, amount: input.amount, method: input.method, status: input.status, processorReference: input.processorReference?.trim() || undefined, note: input.note?.trim() || undefined, createdBy: currentUser.id, createdAt: now() };
     const allocation: PaymentAllocation = { id: uid("allocation"), paymentId, invoiceId: invoice.id, amount: input.amount, createdAt: now(), createdBy: currentUser.id };
@@ -163,7 +172,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const setPaymentStatus = (paymentId: string, status: "Cleared", settlementDate?: string) => {
     if (!canManageCash || !currentUser || status !== "Cleared") return false;
     const payment = commerce.payments.find((item) => item.id === paymentId);
-    if (!payment || payment.status !== "Pending" || !canRecordSettlementDate(settlementDate)) return false;
+    if (!payment || payment.status !== "Pending" || !localSettlementSandbox || !canRecordSettlementDate(settlementDate)) return false;
     setCommerce((state) => ({
       ...state,
       payments: state.payments.map((item) => item.id === paymentId ? { ...item, status: "Cleared", settledAt: settlementDate, settledBy: currentUser.id } : item),
@@ -183,7 +192,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const reversePayment = (paymentId: string, reason: string, reference?: string) => {
     if (!canManageCash || !currentUser) return false;
     const payment = commerce.payments.find((item) => item.id === paymentId);
-    if (!payment || !paymentCanReverse(commerce, payment, reason)) return false;
+    if (!localSettlementSandbox || !payment || !paymentCanReverse(commerce, payment, reason)) return false;
     const reversedAt = now();
     setCommerce((state) => ({ ...state, payments: state.payments.map((item) => item.id === paymentId ? { ...item, status: "Reversed", reversedAt, reversedBy: currentUser.id, reversalReason: reason.trim(), reversalReference: reference?.trim() || undefined } : item) }));
     return true;
@@ -232,7 +241,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const approveRefund = (refundId: string) => {
     if (!canManageCash || !currentUser) return false;
     const refund = commerce.refunds.find((item) => item.id === refundId);
-    if (!refund || !refundCanApprove(refund, currentUser.id)) return false;
+    if (!refund || !refundHasSingleInvoiceAllocation(commerce,refund.paymentId) || !refundCanApprove(refund, currentUser.id)) return false;
     const approvedAt = now();
     setCommerce((state) => ({ ...state, refunds: state.refunds.map((item) => item.id === refundId ? { ...item, status: "Approved", approvedBy: currentUser.id, approvedAt } : item) }));
     return true;
@@ -241,7 +250,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const markRefundSent = (refundId: string, reference: string) => {
     if (!canManageCash || !currentUser) return false;
     const refund = commerce.refunds.find((item) => item.id === refundId);
-    if (!refund || !refundCanSend(refund, reference)) return false;
+    if (!localSettlementSandbox || !refund || !refundHasSingleInvoiceAllocation(commerce,refund.paymentId) || !refundCanSend(refund, reference)) return false;
     const sentAt = now();
     setCommerce((state) => ({ ...state, refunds: state.refunds.map((item) => item.id === refundId ? { ...item, status: "Sent", sentReference: reference.trim(), sentAt, sentBy: currentUser.id } : item) }));
     return true;
@@ -250,7 +259,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   const settleRefund = (refundId: string, settlementDate: string) => {
     if (!canManageCash || !currentUser) return false;
     const refund = commerce.refunds.find((item) => item.id === refundId);
-    if (!refund || !refundCanSettle(refund, settlementDate)) return false;
+    if (!localSettlementSandbox || !refund || !refundHasSingleInvoiceAllocation(commerce,refund.paymentId) || !refundCanSettle(refund, settlementDate)) return false;
     setCommerce((state) => ({ ...state, refunds: state.refunds.map((item) => item.id === refundId ? { ...item, status: "Settled", settledAt: settlementDate, settledBy: currentUser.id } : item) }));
     return true;
   };
@@ -265,7 +274,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   };
 
   const addNote = (invoiceId: string, note: string) => {
-    if (!currentUser || currentUser.role === "Customer" || !note.trim()) return;
+    if (!localSettlementSandbox || !currentUser || currentUser.role === "Customer" || !note.trim()) return;
     const invoice = commerce.invoices.find((item) => item.id === invoiceId);
     const account = invoice ? data.accounts.find((item) => item.id === invoice.accountId) : undefined;
     if (!invoice || !account || !accountIsVisible(data, currentUser, account)) return;
@@ -280,7 +289,7 @@ export function CommerceProvider({ children }: { children: ReactNode }) {
   };
 
   const resetCommerce = () => {
-    if (runtime.isDemo && currentUser?.role === "Administrator") setCommerce(createCommerceSeed(data));
+    if (localSettlementSandbox && currentUser?.role === "Administrator") setCommerce(createCommerceSeed(data));
   };
   const value: CommerceContextValue = { commerce, setInvoiceTerms, recordPayment, setPaymentStatus, failPayment, reversePayment, createCredit, approveCredit, applyCredit, requestRefund, approveRefund, markRefundSent, settleRefund, failRefund, addNote, voidInvoice, resetCommerce };
   return <CommerceContext.Provider value={value}>{children}</CommerceContext.Provider>;

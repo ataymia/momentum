@@ -1,0 +1,43 @@
+/* Sales orders: readable touch-first cards on narrow phones, retaining the
+   fully sortable desktop table and the same scoped underlying records. */
+.momentum-mobile-order-list{display:none}
+
+@media screen and (max-width:640px){
+  .momentum-order-desktop-table{display:none!important}
+  .momentum-mobile-order-list{display:grid;gap:12px;margin-top:14px}
+  .momentum-mobile-order-sort{
+    display:flex;align-items:end;justify-content:space-between;gap:10px;flex-wrap:wrap
+  }
+  .momentum-mobile-order-sort label{
+    display:flex;flex:1 1 145px;flex-direction:column;gap:5px;min-width:0;
+    font-size:12px;font-weight:600;color:#41516a
+  }
+  .momentum-mobile-order-sort select{
+    min-height:42px;width:100%;padding:8px 30px 8px 10px;border:1px solid #d9e2ed;
+    border-radius:9px;background:#fff;color:#17233b;font-size:14px
+  }
+  .momentum-mobile-order-sort button{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:42px;
+    border:1px solid #d9e2ed;border-radius:9px;padding:7px 11px;
+    color:#293a5b;background:#fff;font-size:13px;font-weight:600
+  }
+  .momentum-mobile-order-card{
+    display:grid;gap:11px;border:1px solid #dbe4ee;border-radius:13px;background:#fff;
+    padding:14px;box-shadow:0 1px 3px rgba(22,39,69,.035);min-width:0
+  }
+  .momentum-mobile-order-card__head{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:12px
+  }
+  .momentum-mobile-order-card__head>div{display:grid;gap:3px;min-width:0}
+  .momentum-mobile-order-card__head small,
+  .momentum-mobile-order-card__customer small{color:#617086;font-size:12px}
+  .momentum-mobile-order-card__head .prototype-link{font-size:17px;font-weight:700;text-align:left}
+  .momentum-mobile-order-card__head .prototype-status{flex-shrink:0}
+  .momentum-mobile-order-card__customer{display:grid;gap:4px;padding-bottom:10px;border-bottom:1px solid #edf1f6}
+  .momentum-mobile-order-card__customer strong{font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+  .momentum-mobile-order-card__facts{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .momentum-mobile-order-card__facts>div{display:grid;align-content:start;gap:4px;min-width:0}
+  .momentum-mobile-order-card__facts dt{color:#617086;font-size:12px;line-height:1.3}
+  .momentum-mobile-order-card__facts dd{margin:0;color:#17233b;font-size:14px;font-weight:600;overflow-wrap:anywhere}
+  .momentum-mobile-order-card__facts>div:nth-child(n+3){padding-top:9px;border-top:1px solid #edf1f6}
+}

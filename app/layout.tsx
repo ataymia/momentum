@@ -20,6 +20,17 @@ import "./invoice-print.css";
 import "./mobile-platform.css";
 import "./admin-audit.css";
 import "./device-adaptive.css";
+import "./prototype-navigation.css";
+import "./architecture-navigation.css";
+import "./mobile-sales-orders.css";
+import "./workspace-meetings.css";
+import "./personal-account.css";
+import "./crm-field-workflows.css";
+import "./interface-preferences.css";
+import "./timekeeping-modern.css";
+import "./employee-profile-modern.css";
+import "./momentum-workspace-system.css";
+import "./personnel-record-system.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 

@@ -66,15 +66,24 @@ service firebase.storage {
       allow update: if false;
     }
 
-    // Confidential employment forms are written only by trusted backend service identities.
-    // Signed PDFs and signing certificates are NEVER uploaded from a browser, even by an Administrator.
-    // Allow individual document fetches for the employee or an active Administrator; disallow listing
-    // the bucket prefix and modifying the immutable signed originals from all client accounts.
+    // Administrator-uploaded BLANK form templates are distinct from signed worker originals.
+    // Immutable after creation, PDF only, and never downloadable by an ordinary worker.
+    // Registering a template still requires independent server byte/hash verification
+    // and a separate authorized HR/official-edition review.
+    match /hr-templates/{formKind}/{artifactId}/source.pdf {
+      allow get: if isAdmin()
+        && formKind in ['W9','I9','W4','AZ_A4','CONTRACTOR_AGREEMENT','EMPLOYEE_AGREEMENT','OTHER'];
+      // Only a trusted Firebase Admin writer may create immutable blank templates.
+      allow create, list, update, delete: if false;
+    }
+
+    // Private signed originals are NEVER retrieved directly by browser Storage SDK.
+    // Even own-UID downloads must use a trusted, revocation-checked backend read that
+    // verifies a committed worker record, checksum, source status and access-audit event.
+    // This also prevents orphan/reserved uploads from becoming publicly reachable to a
+    // worker before the database source record exists. Admin SDK bypasses client rules.
     match /hr-private/{employeeUid}/{formKey}/{artifactId}/{fileName} {
-      allow get: if (formKey in ['I9', 'W4', 'AZ_A4'])
-        && (fileName in ['signed.pdf', 'certificate.pdf'])
-        && (isAdmin() || (isEmployee() && request.auth.uid == employeeUid));
-      allow list, create, update, delete: if false;
+      allow get, list, create, update, delete: if false;
     }
 
     // Anything not matched above is denied.

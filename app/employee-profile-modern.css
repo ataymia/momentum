@@ -1,0 +1,41 @@
+/* Administrator-only employee record: editorial hierarchy over dense dashboard tiles. */
+.admin-employee-profiles{gap:20px}
+.admin-employee-profiles .employee-directory-heading{background:linear-gradient(115deg,#061a37,#123b67);color:#fff;border-color:#1e4977;padding:24px;box-shadow:0 12px 28px rgba(7,24,54,.12)}
+.admin-employee-profiles .employee-directory-heading h2{font-size:26px;color:#fff;letter-spacing:-.03em}
+.admin-employee-profiles .employee-directory-heading p{font-size:13px;color:#d6e4f3;line-height:1.65}
+.admin-employee-profiles .employee-directory-heading small{color:#f0c94f;font-size:10px}
+.admin-employee-profiles .employee-directory-heading>div>span{background:rgba(255,255,255,.12);color:#f0c94f;border-radius:14px;width:47px;height:47px}
+.admin-employee-profiles .employee-directory-layout{grid-template-columns:minmax(230px,290px) minmax(0,1fr);gap:20px}
+.admin-employee-profiles .employee-directory-list{border-radius:16px;top:18px}
+.admin-employee-profiles .employee-search{padding:15px}
+.admin-employee-profiles .employee-search input{font-size:13px;padding:12px 13px}
+.admin-employee-profiles .employee-directory-list button{padding:15px;gap:11px}
+.admin-employee-profiles .employee-directory-list button.is-selected{background:#edf4ff;box-shadow:inset 3px 0 0 #2466ba}
+.admin-employee-profiles .employee-directory-list button strong{font-size:13px}
+.admin-employee-profiles .employee-directory-list button small{font-size:11px;line-height:1.5}
+.admin-employee-profiles .employee-profile-card{border-radius:18px;padding:clamp(16px,2.3vw,28px);gap:22px;min-width:0}
+.admin-employee-profiles .employee-profile-hero{background:linear-gradient(120deg,#f0f6ff,#ffffff 70%);border:1px solid #dce7f5;border-radius:15px;padding:22px;gap:18px}
+.admin-employee-profiles .employee-profile-hero .avatar{width:76px;height:76px;font-size:23px;border:3px solid #fff;box-shadow:0 4px 14px rgba(25,65,120,.14)}
+.admin-employee-profiles .employee-profile-hero h2{font-size:clamp(22px,2.5vw,31px);letter-spacing:-.03em}
+.admin-employee-profiles .employee-profile-hero p{font-size:13px;line-height:1.5}
+.admin-employee-profiles .company-tabs{display:flex;flex-wrap:wrap;gap:7px;padding:5px;border:1px solid #dbe5f1;background:#f5f8fc;border-radius:12px}
+.admin-employee-profiles .company-tabs button{flex:1 1 110px;border-radius:8px;min-height:38px;font-size:12px}
+.admin-employee-profiles .employee-profile-info-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.admin-employee-profiles .employee-profile-info-grid article{min-height:101px;padding:17px;background:#fff;border-radius:12px;border-color:#e0e8f2}
+.admin-employee-profiles .employee-profile-info-grid article>svg{width:19px;height:19px}
+.admin-employee-profiles .employee-profile-info-grid article>div{gap:6px}
+.admin-employee-profiles .employee-profile-info-grid small{font-size:10px;letter-spacing:.085em}
+.admin-employee-profiles .employee-profile-info-grid strong{font-size:14px;line-height:1.4}
+.admin-employee-profiles .employee-profile-info-grid span{font-size:11px;overflow-wrap:anywhere}
+.admin-employee-profiles .employee-manager-summary{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.admin-employee-profiles .employee-manager-summary article,.admin-employee-profiles .employee-profile-kpi-grid article{background:#f7faff;border-color:#dfe9f5;border-radius:12px;min-height:103px;padding:15px}
+.admin-employee-profiles .employee-manager-summary strong,.admin-employee-profiles .employee-profile-kpi-grid strong{font-size:23px}
+.admin-employee-profiles .employee-manager-summary small,.admin-employee-profiles .employee-profile-kpi-grid small{font-size:10px}
+.admin-employee-profiles .employee-manager-summary span,.admin-employee-profiles .employee-profile-kpi-grid span{font-size:11px;line-height:1.5}
+.admin-employee-profiles .admin-profile-record-list article,.admin-employee-profiles .admin-profile-current-activity article{padding:15px;border-radius:12px;background:#fff}
+.admin-employee-profiles .admin-profile-record-list strong,.admin-employee-profiles .admin-profile-current-activity strong{font-size:13px}
+.admin-employee-profiles .admin-profile-record-list p,.admin-employee-profiles .admin-profile-current-activity p{font-size:11px;line-height:1.5}
+.admin-employee-profiles .employee-directory-list :is(button,input):focus-visible,.admin-employee-profiles .company-tabs button:focus-visible{outline:3px solid #93bfff;outline-offset:2px}
+@media(max-width:1200px){.admin-employee-profiles .employee-manager-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:850px){.admin-employee-profiles .employee-directory-layout{grid-template-columns:1fr}.admin-employee-profiles .employee-directory-list{position:static}.admin-employee-profiles .employee-directory-list>div{max-height:230px;overflow-y:auto}.admin-employee-profiles .employee-directory-heading{flex-direction:column}}
+@media(max-width:620px){.admin-employee-profiles .employee-profile-info-grid,.admin-employee-profiles .employee-manager-summary,.admin-employee-profiles .employee-profile-kpi-grid{grid-template-columns:1fr}.admin-employee-profiles .employee-profile-hero{padding:16px;align-items:flex-start}.admin-employee-profiles .employee-profile-hero .avatar{width:60px;height:60px;font-size:19px}.admin-employee-profiles .employee-directory-heading{padding:18px}.admin-employee-profiles .employee-profile-card{padding:14px}}

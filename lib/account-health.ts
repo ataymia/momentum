@@ -1,4 +1,5 @@
 import { addCalendarDays, arizonaDateKey } from "./date-time";
+import {orderQualifyingPaidDate} from "./bonus-engine";
 import type { Account, PricingTier, WorkspaceData } from "./types";
 
 export const ACCOUNT_PRICING_TIERS: Record<PricingTier, { pricePerCase: number; label: string }> = {
@@ -30,16 +31,17 @@ export type AccountHealthSnapshot = {
 
 export function accountHealthSnapshot(data: WorkspaceData, account: Account, asOf = new Date()): AccountHealthSnapshot {
   const asOfKey = arizonaDateKey(asOf);
-  const orders = data.orders.filter((order) => order.accountId === account.id).sort((a, b) => a.placedAt.localeCompare(b.placedAt) || a.id.localeCompare(b.id));
-  const paid = orders.filter((order) => order.paymentStatus === "Paid");
-  const lastOrderDate = orders.at(-1)?.placedAt;
-  const lastPaidOrderDate = paid.at(-1)?.paidAt ?? paid.at(-1)?.placedAt;
-  const rollingStart = addCalendarDays(asOfKey, -90);
-  const rollingPaid = paid.filter((order) => {
-    const settled = order.paidAt ?? order.placedAt;
-    return settled > rollingStart && settled <= asOfKey;
-  });
-  const rolling90PaidCases = rollingPaid.reduce((sum, order) => sum + order.cases, 0);
+  const orders = data.orders.filter((order) => order.accountId === account.id && !order.testOnly && order.status !== "Cancelled")
+    .sort((a,b)=>a.placedAt.localeCompare(b.placedAt)||a.id.localeCompare(b.id));
+  // "Paid" is a UI/display status, not proof of collected cash. Settlement evidence is authoritative.
+  const paid = orders.map(order=>({order,settledAt:orderQualifyingPaidDate(data,order)}))
+    .filter((entry):entry is {order:typeof orders[number];settledAt:string}=>Boolean(entry.settledAt&&entry.settledAt<=asOfKey))
+    .sort((a,b)=>a.settledAt.localeCompare(b.settledAt)||a.order.id.localeCompare(b.order.id));
+  const lastOrderDate=orders.at(-1)?.placedAt.slice(0,10);
+  const lastPaidOrderDate=paid.at(-1)?.settledAt;
+  const rollingStart=addCalendarDays(asOfKey,-90);
+  const rollingPaid=paid.filter(entry=>entry.settledAt>rollingStart&&entry.settledAt<=asOfKey);
+  const rolling90PaidCases = rollingPaid.reduce((sum, entry) => sum + entry.order.cases, 0);
   const tier = account.pricingTier;
   return {
     accountId: account.id,

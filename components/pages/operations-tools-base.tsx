@@ -41,26 +41,64 @@ export function AccountSetupPage(){
 export function ProductsPage(){return <div className="page"><PageHeader eyebrow="Product master" title="Golden Eagle SKUs" description="Case-level wholesaler catalog. Case barcode fields are ready for verified barcode values. Can barcodes are intentionally out of scope."/><Section title="Active catalog" description={PRODUCT_CATALOG_INVENTORY_POLICY}><div className="company-request-list">{GOLDEN_EAGLE_SKUS.map(s=><article key={s.id}><span><PackageSearch size={17}/></span><div><strong>{s.description}</strong><p>{s.casePack} cans / case · Case barcode: {s.caseBarcode??"Pending verified barcode"}</p></div><StatusPill tone={s.caseBarcode?"success":"warning"}>{s.caseBarcode?"Scanner ready":"Barcode pending"}</StatusPill></article>)}</div></Section></div>}
 
 export function TimekeepingPage(){
-  const{data,currentUser,toggleClock,startMeal,endMeal}=useWorkspace();
+  const {data,currentUser,toggleClock,startMeal,endMeal}=useWorkspace();
   const tracking=useFieldTracking();
   if(!currentUser)return null;
-  const open=data.timeEntries.find((entry)=>entry.userId===currentUser.id&&!entry.clockOut);
-  const entries=data.timeEntries.filter((entry)=>entry.userId===currentUser.id).sort((a,b)=>`${b.date}T${b.clockIn}`.localeCompare(`${a.date}T${a.clockIn}`));
-  const hours=entries.slice(0,7).reduce((sum,entry)=>sum+hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes),0);
+  const open=data.timeEntries.find(entry=>entry.userId===currentUser.id&&!entry.clockOut);
+  const entries=data.timeEntries.filter(entry=>entry.userId===currentUser.id)
+    .sort((a,b)=>`${b.date}T${b.clockIn}`.localeCompare(`${a.date}T${a.clockIn}`));
+  const recent=entries.slice(0,7);
+  const recordedHours=recent.reduce((total,entry)=>total+hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes),0);
   const tracked=roleIsTracked(currentUser.role);
-  return <div className="page">
-    <PageHeader eyebrow="Timekeeping" title="Clock In & Time" description="Self-service timekeeping. Clock punches use Arizona time and sync into the same records used for timecards." actions={<Button variant={open?"secondary":"gold"} icon={<Clock3 size={17}/>} onClick={()=>{toggleClock();if(!open&&tracked)void tracking.requestLocationPermission();}}>{open?"Clock out":"Clock in"}</Button>}/>
-    <Section title="Current shift">
-      <div className="company-rule-facts">
-        <div><span>Status</span><strong>{open?`Clocked in · ${open.clockIn}`:"Off clock"}</strong><small>{open?.clockInAt?`Punch recorded ${new Date(open.clockInAt).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}`:""}</small></div>
-        <div><span>Recent recorded hours</span><strong>{hours.toFixed(2)}</strong></div>
-        {tracked&&<div><span>Field location</span><strong>{open?tracking.permission:"Stopped"}</strong><small>{open?`Route evidence is sampled about every ${ROUTE_PING_INTERVAL_MINUTES} minutes`:"No off-duty route collection"}</small></div>}
+  const onMeal=Boolean(open?.mealStart&&!open.mealEnd);
+  const punch=()=>{
+    toggleClock();
+    if(!open&&tracked)void tracking.requestLocationPermission();
+  };
+  return <div className="page momentum-timekeeping">
+    <PageHeader eyebrow="Employee workspace / Timekeeping" title="My timekeeping"
+      description="Record your working time and breaks. The existing timecard ledger remains the payroll source of truth."/>
+    <section className="timekeeping-hero" aria-label="Current timekeeping status">
+      <div className="timekeeping-hero-copy">
+        <p className="timekeeping-eyebrow"><Clock3 size={17}/> Current shift</p>
+        <div className="timekeeping-status-row">
+          <span className={open?"timekeeping-live-dot":"timekeeping-live-dot is-off"}/>
+          <h2>{open?"You are clocked in":"You are off the clock"}</h2>
+        </div>
+        <p>{open?`Started at ${open.clockIn} on ${open.date}`:"Ready to begin your next recorded shift?"}</p>
+        {open?.clockInAt&&<small>Source punch: {new Date(open.clockInAt).toLocaleString("en-US",{timeZone:"America/Phoenix",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})} Arizona time</small>}
+        <div className="timekeeping-hero-actions">
+          <Button variant={open?"secondary":"gold"} icon={<Clock3 size={18}/>} onClick={punch}>{open?"Clock out":"Clock in"}</Button>
+          {open&&!open.mealStart&&<Button size="sm" variant="secondary" onClick={startMeal}>Start meal</Button>}
+          {open&&onMeal&&<Button size="sm" variant="secondary" onClick={endMeal}>End meal</Button>}
+        </div>
+        {open?.mealStart&&<p className="timekeeping-meal-note" role="status">{onMeal?"Meal break in progress":`Meal break recorded ${open.mealStart} – ${open.mealEnd}`}</p>}
       </div>
-      <LocationPermissionHelp/>
-      {tracked&&<div className="form-callout"><MapPin size={17}/><p>{open?"While you are clocked in, this device may request location permission and record work-route pings for Administrator review. If the browser suspends location in the background, the system records a gap instead of guessing your location.":"Location route tracking is stopped because you are not clocked in."}</p></div>}
-      {open&&<div className="account-detail__actions">{!open.mealStart&&<Button size="sm" variant="secondary" onClick={startMeal}>Start meal</Button>}{open.mealStart&&!open.mealEnd&&<Button size="sm" variant="secondary" onClick={endMeal}>End meal</Button>}</div>}
-    </Section>
-    <Section title="Recent time entries"><div className="company-request-list">{entries.slice(0,10).map((entry)=><article key={entry.id}><span><Clock3 size={16}/></span><div><strong>{entry.date}</strong><p>{entry.clockIn} → {entry.clockOut??"Open"} · {entry.breakMinutes} break min · {entry.source}</p></div></article>)}</div></Section>
+      <div className="timekeeping-hero-summary">
+        <div><span>Recent recorded hours</span><strong>{recordedHours.toFixed(2)}<small> hr</small></strong><p>From the 7 most recent time entries</p></div>
+        <div><span>Time entries shown</span><strong>{Math.min(entries.length,10)}</strong><p>{entries.length} on record for your profile</p></div>
+        {tracked&&<div><span>Field tracking</span><strong className="timekeeping-tracking-value">{open?tracking.permission:"Off duty"}</strong><p>{open?`Evidence requested about every ${ROUTE_PING_INTERVAL_MINUTES} min`:"Off-duty tracking stopped"}</p></div>}
+      </div>
+    </section>
+    <div className="timekeeping-lower-grid">
+      <Section title="Recent punches" description="Recorded clock activity, never a reconstructed schedule.">
+        <div className="timekeeping-history">
+          {entries.slice(0,10).map(entry=><article key={entry.id}>
+            <div className="timekeeping-history-date"><strong>{entry.date}</strong><small>{entry.source}</small></div>
+            <div className="timekeeping-history-times"><span>{entry.clockIn}</span><span aria-hidden="true">→</span><span>{entry.clockOut??"Open shift"}</span></div>
+            <div className="timekeeping-history-hours"><strong>{hoursBetween(entry.clockIn,entry.clockOut,entry.breakMinutes).toFixed(2)} hr</strong><small>{entry.breakMinutes} min break</small></div>
+          </article>)}
+          {!entries.length&&<div className="timekeeping-empty">No time entries recorded yet. Your first punch will appear here.</div>}
+        </div>
+      </Section>
+      <Section title="Location & payroll safeguards" description="The timeclock records actual punches, not inferred movement or an automatically approved timesheet.">
+        <div className="timekeeping-explainer">
+          <p><Clock3 size={17}/> If a punch is missing or incorrect, request a timecard correction through the authorized workflow. Do not create a second shift to compensate.</p>
+          {tracked&&<p><MapPin size={17}/>{open?"Field evidence can have genuine gaps when the browser pauses location. Gaps are not guessed or backfilled.":"Field location collection is off while you are clocked out."}</p>}
+          <LocationPermissionHelp/>
+        </div>
+      </Section>
+    </div>
   </div>;
 }
 

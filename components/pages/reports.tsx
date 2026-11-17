@@ -13,6 +13,8 @@ import { nodeLotBalance, warehouseAvailable, warehouseNodeId } from "../../lib/i
 import { useInventoryLedger } from "../../lib/inventory-ledger-context";
 import { useFieldTracking } from "../../lib/location-tracking-context";
 import { useWorkspace } from "../../lib/workspace-context";
+import {reportEligibleOrders,reportSellableWarehouseCases} from "../../lib/reporting-visibility";
+import {ambiguousSettledRefundIds} from "../../lib/reporting-cash-reconciliation";
 import { ManagementKpiDashboard } from "../performance/management-kpi-dashboard";
 import { PageHeader, Section, StatusPill, formatMoney } from "../ui";
 
@@ -29,11 +31,26 @@ export function ReportsPage() {
   const [reportScope, setReportScope] = useState<ReportScope>("commercial");
   const today = arizonaDateKey();
 
-  const visibleOrderIds = new Set(records.orders.map((order) => order.id));
+  const eligibleOrders = reportEligibleOrders(records.orders);
+  const visibleOrderIds = new Set(eligibleOrders.map((order) => order.id));
+  const unresolvedRefundIds=ambiguousSettledRefundIds(commerce,visibleOrderIds);
+  const refundAllocationBlocked=unresolvedRefundIds.length>0;
+  const cashRoles = ["Administrator","Sales Manager","Sales Representative","Operations"];
+  const showCommercial = cashRoles.includes(currentUser?.role ?? "");
+  const showKpiCenter = ["Administrator","Sales Manager","Sales Representative"].includes(currentUser?.role ?? "");
+  const showOperations = ["Administrator","Operations","Warehouse","Delivery Driver"].includes(currentUser?.role ?? "");
+  // A source summary must count only the same records the signed-in user may inspect.
+  const visibleInvoiceIds = new Set(commerce.invoices.filter(invoice=>visibleOrderIds.has(invoice.orderId)).map(invoice=>invoice.id));
+  const visiblePaymentIds = new Set(commerce.allocations.filter(allocation=>visibleInvoiceIds.has(allocation.invoiceId)).map(allocation=>allocation.paymentId));
+  const visibleClearedPayments = commerce.payments.filter(payment=>payment.status==="Cleared"&&visiblePaymentIds.has(payment.id)).length;
+  const visibleAccountIds=new Set(records.accounts.map(account=>account.id));
+  const visibleVisits=crm.interactions.filter(interaction=>interaction.type==="Visit"&&interaction.physicalVisit&&visibleAccountIds.has(interaction.locationId)).length;
+  const teamIds=new Set((currentUser?.role==="Administrator"?data.users:currentUser?.role==="Sales Manager"?records.users:currentUser?[currentUser]:[]).map(user=>user.id));
+  const visibleFieldPings=tracking.state.samples.filter(sample=>teamIds.has(sample.userId)).length;
   const paidFacts = resolvedPaidOrderFacts(data, commerce).filter((fact) => visibleOrderIds.has(fact.orderId));
   const paid = collectedCashFacts(data, commerce).filter((fact) => visibleOrderIds.has(fact.orderId)).reduce((sum, fact) => sum + fact.amount, 0);
-  const delivered = records.orders.filter((order) => !order.testOnly && (["Delivered", "Paid"].includes(order.status) || taskForOrder(order.id)?.status === "Delivered")).reduce((sum, order) => sum + order.cases, 0);
-  const available = records.inventory.reduce((sum, lot) => sum + warehouseAvailable(ledger, lot.id), 0);
+  const delivered = eligibleOrders.filter((order) => ["Delivered", "Paid"].includes(order.status) || taskForOrder(order.id)?.status === "Delivered").reduce((sum, order) => sum + order.cases, 0);
+  const available = reportSellableWarehouseCases(records.inventory,lotId=>warehouseAvailable(ledger,lotId));
   const onHand = records.inventory.reduce((sum, lot) => sum + Math.max(0, nodeLotBalance(ledger, warehouseNodeId, lot.id)), 0);
   const paidByAccount = new Map<string, number>();
   paidFacts.forEach((fact) => paidByAccount.set(fact.accountId, (paidByAccount.get(fact.accountId) ?? 0) + 1));
@@ -47,12 +64,16 @@ export function ReportsPage() {
     openReviews: hcm.reviews.filter((review) => visibleEmployeeIds.has(review.userId) && review.status !== "Acknowledged").length,
     openRecruiting: hcm.requisitions.filter((requisition) => requisition.status === "Open" && (currentUser?.role === "Administrator" || requisition.hiringManagerId === currentUser?.id)).length,
   };
-  const reportScopes: ReportScope[] = currentUser?.role === "Administrator" ? ["commercial", "operations", "people"] : ["commercial", "people"];
-  const effectiveScope = reportScopes.includes(reportScope) ? reportScope : "commercial";
+  const reportScopes: ReportScope[] = [
+    ...(showCommercial?["commercial" as const]:[]),
+    ...(showOperations?["operations" as const]:[]),
+    "people",
+  ];
+  const effectiveScope = reportScopes.includes(reportScope) ? reportScope : reportScopes[0];
 
   const metrics = effectiveScope === "commercial"
     ? [
-        ["Net collected sales", formatMoney(paid), "Cleared payment allocations less settled refunds in permitted order scope"],
+        ["Net collected cash", refundAllocationBlocked?"Needs reconciliation":formatMoney(paid), "Cleared allocations less settled refunds in authorized order scope. Multi-order payment refunds must be assigned before net cash is certified."],
         ["Delivered cases", String(delivered), "Formula: sum cases where fulfillment status = Delivered or legacy Paid"],
         ["Active placements", String(records.placements.length), "Count of placement records in permitted scope"],
         ["Reordered accounts", String(reordered), "Distinct accounts with more than one fully paid order in the commerce-backed history"],
@@ -60,7 +81,7 @@ export function ReportsPage() {
     : effectiveScope === "operations"
       ? [
           ["Warehouse on hand", `${onHand} cs`, "Formula: custody ledger balance at the warehouse node"],
-          ["Warehouse available", `${available} cs`, "Formula: warehouse custody balance less active order reservations"],
+          ["Warehouse available", `${available} cs`, "Formula: sellable warehouse custody less order reservations; quality-held lots excluded"],
           ["Open field work", String(records.appointments.filter((item) => item.status !== "Completed").length), "Appointments whose status is not Completed"],
           ["Placement issues", String(records.placements.filter((item) => item.status !== "Healthy").length), "Placement records whose status is not Healthy"],
         ]
@@ -76,18 +97,25 @@ export function ReportsPage() {
   return <div className="page page--reports">
     <PageHeader eyebrow="Operational reporting" title="Reports"/>
 
-    <ManagementKpiDashboard/>
+    {showKpiCenter&&!refundAllocationBlocked&&<ManagementKpiDashboard/>}
+    {showKpiCenter&&refundAllocationBlocked&&<p role="alert" className="prototype-note">The management KPI center is withheld until multi-order refunds are allocated. Employee commission and revenue summaries must not rely on ambiguous settlement attribution.</p>}
 
-    <div className="report-integrity-banner"><Database size={20}/><div><strong>KPI sources are connected to Momentum records.</strong><p>Current calculations read order/payment, CRM visit, appointment, inventory, employee and field-location records. Source volume in your scope: {records.orders.length} orders · {commerce.payments.filter((payment)=>payment.status==="Cleared").length} cleared payments · {crm.interactions.filter((interaction)=>interaction.type==="Visit"&&interaction.physicalVisit).length} physical visits · {records.appointments.length} appointments · {tracking.state.samples.length} saved field pings.</p></div></div>
-
+    <div className="report-integrity-banner"><Database size={20}/><div><strong>{showCommercial?"KPI sources are connected to Momentum records.":"Role-scoped operational reporting"}</strong>
+      {showCommercial?<p>Evidence in your authorized scope: {eligibleOrders.length} orders · {visibleClearedPayments} cleared payments with visible invoice allocations · {visibleVisits} physical visits · {records.appointments.length} appointments · {visibleFieldPings} scoped field pings. Payments allocated to multiple invoices require separate reconciliation.</p>:
+      <p>Commercial cash, customer revenue and sales KPIs are excluded from this role. Operational and personal HR summaries remain subject to source permissions; this view does not expose company-wide financial events.</p>}
+    </div></div>
+    {showCommercial&&refundAllocationBlocked&&<p role="alert" className="prototype-note">
+      {unresolvedRefundIds.length} settled refund record(s) span multiple source orders and cannot be safely attributed by this view.
+      Net cash is withheld until the Commerce team reconciles the source allocation.
+    </p>}
     <div className="report-scope-tabs">{reportScopes.map((item) => <button key={item} className={effectiveScope === item ? "is-active" : ""} onClick={() => setReportScope(item)}>{item}</button>)}</div>
     <div className="report-metric-grid">{metrics.map(([label, value, detail]) => <article key={label}><div><span>{label}</span></div><strong>{value}</strong><p>{detail}</p></article>)}</div>
 
     {effectiveScope === "commercial" && <Section title="Commercial record flow" description="Each milestone is reported separately" className="reality-panel">
       <div className="reality-flow">{[
-        ["Orders", records.orders.length, "Entered"],
+        ["Orders", eligibleOrders.length, "Entered"],
         ["Paid", paidFacts.length, "Fully paid from commerce evidence"],
-        ["Delivered", records.orders.filter((item) => !item.testOnly && (["Delivered", "Paid"].includes(item.status) || taskForOrder(item.id)?.status === "Delivered")).length, "Received"],
+        ["Delivered", eligibleOrders.filter((item) => ["Delivered", "Paid"].includes(item.status) || taskForOrder(item.id)?.status === "Delivered").length, "Received"],
         ["Placed", records.placements.length, "Observed"],
         ["Reordered", reordered, "Bought again"],
       ].map(([title, value, detail], index) => <div key={title as string}><span>{index + 1}</span><div><small>{title as string}</small><strong>{value as number}</strong><p>{detail as string}</p></div></div>)}</div>

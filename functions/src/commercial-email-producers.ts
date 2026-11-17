@@ -247,6 +247,11 @@ const observe=(path:string,originRoles:string[])=>
             "Order "+orderNumber+" confirmed",
             "Your order "+orderNumber+" is confirmed and is moving into fulfillment. "+
             "We will provide delivery updates as the order progresses.");
+          await repMail(text(current.creditedRepId)||text(current.ownerId),
+            accountId,eventId,"order.confirmed.rep","order_confirmed_rep",
+            path,id,"Order "+orderNumber+" confirmed",
+            "Order "+orderNumber+" has been approved and can move into fulfillment. "+
+            "Review the account for delivery follow-up.");
         }
         if(policies.includes("order.cancelled.customer")){
           if(text(actor?.role)==="Sales Representative"&&
@@ -275,6 +280,13 @@ const observe=(path:string,originRoles:string[])=>
             "Your order "+text(linkedOrder.number)+
             " has been approved and is moving into fulfillment. "+
             "We will provide delivery updates as it progresses.");
+          await repMail(text(linkedOrder.creditedRepId)||text(linkedOrder.ownerId),
+            text(linkedOrder.accountId),eventId,
+            "order.confirmed.rep","order_confirmed_rep",
+            path,text(linkedOrder.id),
+            "Order "+text(linkedOrder.number)+" confirmed",
+            "Order "+text(linkedOrder.number)+
+            " has been approved. Review the account for fulfillment follow-up.");
           continue;
         }
         if(text(current.status)!=="Returned"||
@@ -300,6 +312,12 @@ const observe=(path:string,originRoles:string[])=>
           path,id,"Order "+text(order.number)+" is out for delivery",
           "Your order "+text(order.number)+
           " is out for delivery. Please be ready to receive it.");
+        await repMail(text(order.creditedRepId)||text(order.ownerId),
+          text(order.accountId),eventId,
+          "delivery.out_for_delivery.rep","order_out_for_delivery_rep",
+          path,id,"Order "+text(order.number)+" is out for delivery",
+          "Order "+text(order.number)+
+          " has left for delivery. Review the order for customer follow-up.");
       }else if(path===docs.payments||path===docs.refunds){
         if(text(actor?.role)!=="Administrator")continue;
         const payment=path===docs.payments?

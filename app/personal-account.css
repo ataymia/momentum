@@ -1,0 +1,71 @@
+/* Personal Account: clean employee self-service, separate from business CRM Accounts. */
+.momentum-personal-account-links{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr));
+  gap:14px;
+  margin-block:16px 24px;
+}
+.momentum-personal-account-tile{
+  display:grid!important;
+  grid-template-columns:24px minmax(0,1fr) 16px;
+  align-items:start;
+  gap:12px;
+  min-height:100px;
+  padding:17px!important;
+  text-align:left;
+  background:#fff;
+  border:1px solid #d8e3ef;
+  border-radius:13px;
+  color:#1a2b46;
+}
+.momentum-personal-account-tile:hover{border-color:#9bb7d9;background:#f8fbff}
+.momentum-personal-account-tile>span{display:grid;gap:5px;min-width:0}
+.momentum-personal-account-tile strong{font-size:15px;line-height:1.4}
+.momentum-personal-account-tile small{font-size:12px;font-weight:400;color:#64738a;line-height:1.55}
+.momentum-personal-account-tile>svg:last-child{justify-self:end;margin-top:2px;color:#657a9a}
+.momentum-personal-facts{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,225px),1fr));
+  gap:14px;margin:12px 0 0;
+}
+.momentum-personal-facts>div{min-width:0;padding:12px 14px;border:1px solid #e3e9f2;border-radius:10px}
+.momentum-personal-facts dt{font-size:12px;color:#62738a;margin-bottom:6px}
+.momentum-personal-facts dd{margin:0;font-weight:600;font-size:14px;color:#1b2b47;overflow-wrap:anywhere}
+
+/* Visible field affordances for HR forms. Inputs must never blend into labels. */
+.prototype-domain--people input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+.prototype-domain--people select,
+.prototype-domain--people textarea,
+.prototype-workspace input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+.prototype-workspace select,
+.prototype-workspace textarea{
+  background:#fff;
+  border:1.5px solid #9baec6;
+  border-radius:9px;
+  padding:10px 12px;
+  min-height:42px;
+  color:#1d2d47;
+  box-shadow:0 1px 2px rgba(16,37,66,.04);
+}
+.prototype-domain--people textarea,
+.prototype-workspace textarea{min-height:90px;resize:vertical}
+.prototype-domain--people input:focus-visible,
+.prototype-domain--people select:focus-visible,
+.prototype-domain--people textarea:focus-visible,
+.prototype-workspace input:focus-visible,
+.prototype-workspace select:focus-visible,
+.prototype-workspace textarea:focus-visible{
+  outline:3px solid rgba(38,99,183,.24);
+  outline-offset:1px;
+  border-color:#285fba;
+}
+.prototype-domain--people :is(input,select,textarea):disabled,
+.prototype-workspace :is(input,select,textarea):disabled{
+  background:#f0f3f8;
+  border-color:#c8d1dc;
+  color:#68788f;
+  box-shadow:none;
+}
+@media(max-width:640px){
+  .momentum-personal-account-links{grid-template-columns:1fr;gap:10px}
+  .momentum-personal-account-tile{min-height:84px}
+}

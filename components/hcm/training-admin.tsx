@@ -162,7 +162,7 @@ export function TrainingAdminPage() {
         </div>
       </aside>
 
-      <main className="training-editor-panel">
+      <section className="training-editor-panel">
         {mode==="create" ? <Section title="Create a training module" description="Start with the learning objective and audience. Add links, videos, or uploaded files after the module is created." className="training-editor-section">
           <form className="training-create-form" onSubmit={createCourse}>
             <div className="form-grid">
@@ -235,7 +235,7 @@ export function TrainingAdminPage() {
             <p className="training-editor-note">Uploaded files remain protected by Firebase Storage rules. Employees open them through their signed-in Momentum session.</p>
           </Section>}
         </> : <div className="training-editor-empty"><BookOpenCheck size={28}/><h2>Select a training module</h2><p>Choose a module from the library or create a new one.</p></div>}
-      </main>
+      </section>
     </div>
   </div>;
 }

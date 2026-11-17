@@ -1,0 +1,122 @@
+"use client";
+import {useEffect,useState} from "react";
+import {Search,RefreshCw,ArrowUpDown} from "lucide-react";
+import {currentFirebaseSession} from "../../lib/firebase-auth-rest";
+import {firebaseFunctionUrl} from "../../lib/firebase-functions";
+import {downloadCsv} from "../../lib/browser-export";
+import {CustomerOrderRequest} from "./customer-order-request";
+import type {CustomerFinanceSnapshot} from "../../functions/src/customer-commerce-projection";
+
+type Section="orders"|"invoices"|"account"|"deliveries";
+type ViewState={kind:"loading"|"ready"|"error";data:CustomerFinanceSnapshot|null;message:string};
+type Payload=Partial<CustomerFinanceSnapshot>&{ok?:boolean;error?:string};
+const cash=(amount:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(amount);
+export function CustomerConnectedPortal({section}:{section:Section}){
+ const [view,setView]=useState<ViewState>({kind:"loading",data:null,message:""});
+ const [version,setVersion]=useState(0);
+ const [query,setQuery]=useState(""),[location,setLocation]=useState("all");
+ const [sort,setSort]=useState<"number"|"date"|"status"|"amount">("date"),[asc,setAsc]=useState(false);
+ useEffect(()=>{
+  let mounted=true;
+  const load=async()=>{
+   try{
+    const session=await currentFirebaseSession();
+    if(!session)throw new Error("Sign in to access your business records.");
+    const response=await fetch(firebaseFunctionUrl("customerCommerceSnapshot"),{
+      method:"GET",headers:{authorization:"Bearer "+session.idToken},cache:"no-store",
+    });
+    const payload=await response.json().catch(()=>null) as Payload|null;
+    if(!response.ok||payload?.ok!==true)throw new Error(payload?.error||"Customer records are unavailable.");
+    if(!Array.isArray(payload.accounts)||!Array.isArray(payload.orders)||!Array.isArray(payload.statements)||!Array.isArray(payload.payments))
+      throw new Error("The server response could not be verified.");
+    if(mounted)setView({kind:"ready",data:{
+      accounts:payload.accounts,orders:payload.orders,statements:payload.statements,payments:payload.payments,requests:Array.isArray(payload.requests)?payload.requests:[],
+      requestHistoryAvailable:payload.requestHistoryAvailable===true&&Array.isArray(payload.requests),
+      requestHistoryPartial:payload.requestHistoryPartial===true,truncated:payload.truncated===true,
+    },message:""});
+   }catch(e){if(mounted)setView({kind:"error",data:null,message:e instanceof Error?e.message:"Customer records are unavailable."});}
+  };
+  void load();return()=>{mounted=false;};
+ },[version]);
+ const title={orders:"My Orders",invoices:"My Invoices",account:"My Account",deliveries:"My Deliveries"}[section];
+ // A delivery is not the same thing as a placed or cancelled sales order.
+ // Until server PODs are available, show only order states indicating dispatch
+ // or delivery and disclose that the status is not signature evidence.
+ const deliveryStates=new Set(["Out for delivery","Delivered","Paid"]);
+ const records=view.data?(section==="invoices"?view.data.statements:
+   section==="deliveries"?view.data.orders.filter(order=>deliveryStates.has(order.status)):
+   view.data.orders):[];
+ const rows=records.filter(item=>(location==="all"||item.accountId===location)&&
+  (query.trim()===""||[item.id,item.status,("invoice" in item?item.invoice:item.number)].join(" ").toLowerCase().includes(query.trim().toLowerCase())))
+  .sort((a,b)=>{
+    const value=(r:typeof records[number]):number|string=>{
+      if(sort==="number")return "invoice" in r?r.invoice:r.number;
+      if(sort==="date")return "date" in r?r.date:r.placedAt;
+      if(sort==="amount")return "amount" in r?r.amount:r.cases;
+      return r.status;
+    };
+    const x=value(a),y=value(b);
+    const n=typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y));
+    return (asc?1:-1)*(n||a.id.localeCompare(b.id));
+  });
+ const setSortColumn=(key:typeof sort)=>{if(sort===key)setAsc(x=>!x);else{setSort(key);setAsc(true);}};
+ const heading=(key:typeof sort,label:string)=><button type="button" aria-label={"Sort by "+label} onClick={()=>setSortColumn(key)}>{label}<ArrowUpDown size={14}/></button>;
+ return <div><header className="prototype-heading"><h1>{title}</h1><p>Authenticated business-location records, read only. Source status is not independent proof of payment or signed delivery.</p></header>
+   <section className="prototype-panel">
+     <button type="button" onClick={()=>{setView({kind:"loading",data:null,message:""});setVersion(v=>v+1);}}><RefreshCw size={14}/> Refresh records</button>
+     {view.kind==="loading"&&<p role="status">Loading authorized records…</p>}
+     {view.kind==="error"&&<p role="alert">{view.message}</p>}
+     {view.kind==="ready"&&view.data&&<>
+       {section==="orders"&&<CustomerOrderRequest accounts={view.data.accounts} onSubmitted={()=>setVersion(v=>v+1)}/> }
+       {section==="account"?<>
+        <h2>Authorized retail locations</h2>
+        {view.data.accounts.map(account=><dl key={account.id} className="prototype-facts">
+         <div><dt>Business</dt><dd>{account.name}</dd></div><div><dt>Location</dt><dd>{account.location}</dd></div>
+         <div><dt>Street address</dt><dd>{account.streetAddress||"Not recorded"}</dd></div>
+         <div><dt>Contact</dt><dd>{account.contactName||"Not recorded"}</dd></div>
+         <div><dt>Contact email</dt><dd>{account.email||"Not recorded"}</dd></div>
+         <div><dt>Phone</dt><dd>{account.phone||"Not recorded"}</dd></div>
+        </dl>)}
+        {!view.data.accounts.length&&<div className="prototype-empty">No approved retail location is assigned.</div>}
+        <p className="prototype-note">Tax status, payment terms, legal identity and account assignments require a verified administrative update. Editing is disabled here.</p>
+       </>:<>
+        <div className="prototype-commerce-filters">
+         <label className="prototype-search"><Search size={16}/><input aria-label="Search portal records" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search number or status"/></label>
+         <label>Business location<select aria-label="Select authorized location" value={location} onChange={e=>setLocation(e.target.value)}><option value="all">All my locations</option>{view.data.accounts.map(a=><option key={a.id} value={a.id}>{a.name} · {a.location}</option>)}</select></label>
+        </div>
+        <button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-"+section+".csv",rows,section==="invoices"?["invoice","date","status","amount","cleared","pending","credits","balance","due"]:["number","placedAt","status","cases"])}>Export visible records (CSV)</button>
+        <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>{heading("number",section==="invoices"?"Invoice":"Order")}</th><th>{heading("date","Date")}</th><th>{heading("status","Status")}</th><th>{heading("amount",section==="invoices"?"Amount":"Cases")}</th>{section==="invoices"&&<th>Balance</th>}</tr></thead>
+         <tbody>{rows.map(row=><tr key={row.id}>
+          <td>{"invoice" in row?row.invoice:row.number}</td>
+          <td>{"date" in row?row.date:row.placedAt}</td><td>{row.status}</td>
+          <td>{"invoice" in row?cash(row.amount):row.cases}</td>
+          {section==="invoices"&&<td>{"balance" in row?cash(row.balance):""}</td>}
+         </tr>)}</tbody></table></div>
+        {section==="orders"&&<section aria-label="Submitted product requests">
+         <h3>Submitted requests and review status</h3>
+         {!view.data.requestHistoryAvailable&&<p role="status">Request history is temporarily unavailable. Refresh records; do not assume no requests exist.</p>}
+         {view.data.requestHistoryAvailable&&!(view.data.requests??[]).filter(item=>location==="all"||item.accountId===location).length&&<p className="prototype-note">No verified requests in the recent records for this location.</p>}
+         {view.data.requestHistoryPartial&&<p role="status">History is limited to recent verified requests (up to 50 shown). Older requests may not be included.</p>}
+         {view.data.requestHistoryAvailable&&Boolean(view.data.requests?.length)&&<div className="prototype-table-scroll"><table className="prototype-table">
+          <thead><tr><th>Request</th><th>Submitted</th><th>Location</th><th>Cases requested</th><th>Products</th><th>Review stage</th></tr></thead>
+          <tbody>{(view.data.requests??[]).filter(item=>location==="all"||item.accountId===location).map(item=><tr key={item.id}>
+           <td>{item.id}</td><td>{item.createdAt.slice(0,10)}</td>
+           <td>{view.data?.accounts.find(a=>a.id===item.accountId)?.name??"Authorized location"}</td>
+           <td>{item.cases}</td>
+           <td>{item.lines?.length?<details>
+            <summary>View products ({item.lines.length})</summary>
+            <ul>{item.lines.map(line=><li key={line.skuId}>
+             {line.description}: {line.cases} cases
+            </li>)}</ul>
+           </details>:<span>Breakdown unavailable</span>}</td>
+           <td>{item.status}</td>
+          </tr>)}</tbody></table></div>}
+        </section>}
+        {!rows.length&&<div className="prototype-empty">{section==="deliveries"?"No dispatched or delivered orders match. Pending and cancelled orders remain in My Orders.":"No authorized records matched."}</div>}
+        {section==="invoices"&&<p className="prototype-note">Official PDF access and hosted payment links require server-verified document authorization and an approved payment provider.</p>}
+        {section==="deliveries"&&<p className="prototype-note">Only recorded order states are shown here, not a verified route ETA, recipient signature, or proof of delivery.</p>}
+       </>}
+       {view.data.truncated&&<p role="status" className="prototype-note">This register is partial because some duplicate or excess records were excluded. Ask billing for a complete reviewed register.</p>}
+     </>}
+   </section></div>;
+}

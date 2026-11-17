@@ -1,0 +1,34 @@
+name: Preserve Main in A-G Consolidation
+
+on:
+  push:
+    branches:
+      - integration/a-g-unified-2026-11-07
+    paths:
+      - .github/workflows/a-g-main-preservation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  preserve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout unified integration branch, including repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Merge pinned production main changes without touching main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout -B integration/a-g-unified-2026-11-07
+          node scripts/a-g-main-preservation.mjs
+      - name: Publish merge candidate only to integration branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "integration/a-g-unified-2026-11-07"
+          git push origin HEAD:refs/heads/integration/a-g-unified-2026-11-07

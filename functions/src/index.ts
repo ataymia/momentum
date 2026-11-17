@@ -20,6 +20,22 @@ import {
 } from "./rep-self-delivery";
 import {submitDeliveryCorrection,approveDeliveryCorrection,closeDeliveryCorrection,listDeliveryCorrections,DeliveryCorrectionError} from "./delivery-correction";
 import {commitSandboxAction,SandboxWorkflowError} from "./sandbox-workflow";
+import {commitTrustedCrmFieldVisit,TrustedCrmVisitError} from "./trusted-crm-field-visit";
+import {createTrustedCrmAccount,TrustedAccountCreationError} from "./trusted-account-creation";
+import {updateTrustedCustomerContacts,CustomerContactUpdateError} from "./trusted-customer-contact";
+import {commitTrustedCrmLead,TrustedCrmLeadError} from "./trusted-crm-lead";
+import {saveTrustedCrmContact,TrustedCrmContactError} from "./trusted-crm-contact";
+import {saveTrustedCrmDeal,TrustedCrmDealError} from "./trusted-crm-deal";
+import {submitTrustedOrderIntake,getTrustedOrderIntake,pageTrustedOrderIntakes,OrderIntakeError} from "./trusted-order-intake";
+import {decideTrustedOrderIntake} from "./trusted-order-intake-review";
+import {registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError} from "./trusted-hr-template";
+import {uploadTrustedBlankHrTemplate} from "./trusted-hr-template-upload";
+import {assignTrustedHrTemplate,listTrustedHrAssignments,readTrustedHrAssignedTemplate,HrAssignmentError} from "./trusted-hr-template-assignment";
+import {archiveTrustedHrSignedOriginal,listTrustedHrSignedOriginals,HrOriginalArchiveError} from "./trusted-hr-signed-original";
+import {readTrustedHrOriginal} from "./trusted-hr-original-read";
+import {decideTrustedHrOriginalReview} from "./trusted-hr-original-review";
+import {submitTrustedHrLeave,TrustedHrLeaveError} from "./trusted-hr-leave-request";
+import {commitTrustedLeaveDecision,TrustedLeaveDecisionError} from "./trusted-hr-leave-decision";
 import {operateLiveTestProduct,LiveTestProductError} from "./live-test-product";
 import {operateLocationPermissionRequest,LocationPermissionRequestError} from "./location-permission-request";
 
@@ -592,7 +608,7 @@ const requireAdministrator = async (
   let uid = "";
 
   try {
-    const decoded = await getAuth().verifyIdToken(token);
+    const decoded = await getAuth().verifyIdToken(token, true);
     uid = decoded.uid;
   } catch {
     return {
@@ -664,7 +680,7 @@ export const updateAccountEmail = onRequest(
       ReturnType<ReturnType<typeof getAuth>["verifyIdToken"]>
     >;
     try {
-      decoded = await getAuth().verifyIdToken(token);
+      decoded = await getAuth().verifyIdToken(token, true);
     } catch {
       json(response, 401, {
         ok: false,
@@ -1730,6 +1746,476 @@ export const sandboxWorkflow=onRequest({cors:true,region:"us-central1"},async(re
   }
 });
 
+/** Authenticated leave submission: the server owns status, actor and timestamp. */
+export const submitHrLeaveRequest=onRequest({
+  cors:true,region:"us-central1",
+},async(request,response)=>{
+  if(request.method!=="POST"){
+    json(response,405,{ok:false,message:"POST required."});return;
+  }
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?
+    authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const receipt=await submitTrustedHrLeave(actor,request.body?.request,
+      request.body?.requestId);
+    json(response,200,{ok:true,...receipt});
+  }catch(error){
+    if(error instanceof TrustedHrLeaveError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("submitHrLeaveRequest failed",error);
+    json(response,502,{ok:false,message:
+      "Leave save not confirmed. Check request history before retrying."});
+  }
+});
+
+/** Authenticated manager time-off decision. PTO is deducted at most once in a
+ * transaction, with original employee request and decision provenance retained.
+ */
+export const decideHrLeaveRequest=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+  if(request.method!=="POST"){
+    json(response,405,{ok:false,message:"POST required."});return;
+  }
+  if(!request.body||typeof request.body!=="object"||
+    Object.keys(request.body).some(k=>!["decision","requestId"].includes(k))){
+    json(response,400,{ok:false,message:"Invalid decision envelope."});return;
+  }
+  const auth=request.headers.authorization??"";
+  const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await commitTrustedLeaveDecision(actor,request.body.decision,request.body.requestId);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof TrustedLeaveDecisionError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("decideHrLeaveRequest failed",error);
+    json(response,503,{ok:false,message:"Leave decision not confirmed. Review the original record before retrying."});
+  }
+});
+
+/** Transactional Prospect creation: no tax, credit or pricing approvals. */
+/** Connected customer account setup writes only nonbinding billing/AP contacts.
+ * Tax IDs, signed legal status, payment terms, financial postings and account
+ * ownership are expressly excluded; server verifies active manager group scope.
+ */
+export const updateCustomerContacts=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){
+  json(response,405,{ok:false,message:"POST required."});return;
+ }
+ const body=request.body;
+ if(!body||typeof body!=="object"||Array.isArray(body)||
+  Object.keys(body).some(key=>!["update","requestId"].includes(key))){
+  json(response,400,{ok:false,message:"Invalid connected contact request."});return;
+ }
+ const authorization=request.headers.authorization??"";
+ const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  const receipt=await updateTrustedCustomerContacts(actor,body.update,body.requestId);
+  json(response,200,{ok:true,...receipt});
+ }catch(error){
+  if(error instanceof CustomerContactUpdateError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("updateCustomerContacts failed",error);
+  json(response,503,{ok:false,message:
+   "Connected contact save unconfirmed. Check the source before retrying."});
+ }
+});
+
+export const createCrmAccount=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+  if(request.method!=="POST"){
+    json(response,405,{ok:false,message:"POST required."});return;
+  }
+  const body=request.body;
+  if(!body||typeof body!=="object"||Array.isArray(body)||
+    Object.keys(body).some(key=>!["account","requestId"].includes(key))){
+    json(response,400,{ok:false,message:"Invalid account envelope."});return;
+  }
+  const auth=request.headers.authorization??"";
+  const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const receipt=await createTrustedCrmAccount(actor,body.account,body.requestId);
+    json(response,200,{ok:true,...receipt});
+  }catch(error){
+    if(error instanceof TrustedAccountCreationError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("createCrmAccount failed",error);
+    json(response,503,{ok:false,message:
+      "Account save unconfirmed. Check the source before retrying with the same request."});
+  }
+});
+
+/** Upload blank HR PDFs with a trusted Admin Storage writer, no client Storage POST.
+ * A successful upload is not a signature, completed W-9, or I-9 examination.
+ */
+export const uploadHrBlankTemplate=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const input=request.body;
+ if(!input||typeof input!=="object"||Array.isArray(input)||
+  Object.keys(input).some(k=>!["upload","requestId"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid HR blank-upload request."});return;
+ }
+ const authorization=request.headers.authorization??"";
+ const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  const receipt=await uploadTrustedBlankHrTemplate(actor,input.upload,input.requestId);
+  json(response,200,{ok:true,...receipt});
+ }catch(error){
+  if(error instanceof TrustedHrTemplateError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("uploadHrBlankTemplate failed",error);
+  json(response,503,{ok:false,message:"Blank PDF upload not confirmed. Retry the same request ID."});
+ }
+});
+
+/** Register/read administrator-uploaded *blank* HR PDFs. Never an e-sign API. */
+export const hrFormTemplateLibrary=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const input=request.body;
+ if(!input||typeof input!=="object"||Array.isArray(input)||
+  Object.keys(input).some(k=>!["action","template","requestId"].includes(k))||
+  !["Register","List"].includes(input.action)){
+  json(response,400,{ok:false,message:"Invalid HR template request."});return;
+ }
+ const authorization=request.headers.authorization??"";
+ const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  if(input.action==="List"){
+   const records=await listTrustedHrTemplates(actor);
+   json(response,200,{ok:true,records,limit:40});return;
+  }
+  const receipt=await registerTrustedHrTemplate(actor,input.template,input.requestId);
+  json(response,200,{ok:true,...receipt});
+ }catch(error){
+  if(error instanceof TrustedHrTemplateError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("hrFormTemplateLibrary failed",error);
+  json(response,503,{ok:false,message:"HR template status unconfirmed. Check the private archive before retrying."});
+ }
+});
+
+/** Archive completed HR PDFs as immutable, pending-review originals only.
+ * A PDF upload is never evidence of an authorized e-sign ceremony, I-9 Section 2,
+ * or completed tax compliance. Neither browser nor server can assert that here.
+ */
+/** Assigned source PDFs are delivered only over authenticated no-cache responses. */
+export const hrTemplateAssignmentApi=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const body=request.body;
+ if(!body||typeof body!=="object"||Array.isArray(body)||
+  Object.keys(body).some(k=>!["action","assignment","requestId","employeeUid","assignmentId"].includes(k))||
+  !["Assign","List","Download"].includes(body.action)){
+  json(response,400,{ok:false,message:"Invalid HR assignment request."});return;
+ }
+ const auth=request.headers.authorization??"";
+ const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  if(body.action==="Assign"){
+   if(Object.keys(body).some(k=>!["action","assignment","requestId"].includes(k)))
+    throw new HrAssignmentError(400,"Invalid assignment envelope.");
+   const result=await assignTrustedHrTemplate(actor,body.assignment,body.requestId);
+   json(response,200,{ok:true,...result});return;
+  }
+  if(body.action==="List"){
+   if(Object.keys(body).some(k=>!["action","employeeUid"].includes(k)))
+    throw new HrAssignmentError(400,"Invalid assignment list envelope.");
+   const records=await listTrustedHrAssignments(actor,body.employeeUid);
+   json(response,200,{ok:true,records});return;
+  }
+  if(Object.keys(body).some(k=>!["action","assignmentId"].includes(k)))
+   throw new HrAssignmentError(400,"Invalid assigned PDF request.");
+  const file=await readTrustedHrAssignedTemplate(actor,body.assignmentId);
+  json(response,200,{ok:true,...file});
+ }catch(error){
+  if(error instanceof HrAssignmentError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("hrTemplateAssignmentApi unavailable",error);
+  json(response,503,{ok:false,message:"HR assignment source unavailable."});
+ }
+});
+
+export const hrSignedOriginalArchive=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const body=request.body;
+ if(!body||typeof body!=="object"||Array.isArray(body)||
+  Object.keys(body).some(k=>!["action","original","requestId","employeeUid","recordId","artifact","review"].includes(k))||
+  !["Archive","List","Read","Review"].includes(body.action)){
+  json(response,400,{ok:false,message:"Invalid HR original archive request."});return;
+ }
+ if(body.action==="Archive"&&body.employeeUid!==undefined){
+  json(response,400,{ok:false,message:"Worker identity must be inside the archived document request."});return;
+ }
+ if(body.action==="Review"&&Object.keys(body).some(k=>!["action","review","requestId"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid original review envelope."});return;
+ }
+ if(body.action==="Read"&&Object.keys(body).some(k=>!["action","recordId","artifact"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid private original read envelope."});return;
+ }
+ if(body.action==="List"&&(body.original!==undefined||body.requestId!==undefined)){
+  json(response,400,{ok:false,message:"Invalid HR original list envelope."});return;
+ }
+ const authorization=request.headers.authorization??"";
+ const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  if(body.action==="List"){
+   const records=await listTrustedHrSignedOriginals(actor,body.employeeUid);
+   json(response,200,{ok:true,records});return;
+  }
+  if(body.action==="Read"){
+   const file=await readTrustedHrOriginal(actor,{recordId:body.recordId,artifact:body.artifact});
+   response.setHeader("Cache-Control","no-store, private");
+   json(response,200,{ok:true,...file});return;
+  }
+  if(body.action==="Review"){
+   const result=await decideTrustedHrOriginalReview(actor,body.review,body.requestId);
+   json(response,200,{ok:true,...result});return;
+  }
+  const receipt=await archiveTrustedHrSignedOriginal(actor,body.original,body.requestId);
+  json(response,200,{ok:true,...receipt});
+ }catch(error){
+  if(error instanceof HrOriginalArchiveError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("hrSignedOriginalArchive unavailable",error);
+  json(response,503,{ok:false,message:
+   "HR source archive unconfirmed. Preserve the SAME request ID and retry."});
+ }
+});
+
+/** Server-owned lead stage progression and management handoff. */
+export const changeCrmLead=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+  if(request.method!=="POST"){
+    json(response,405,{ok:false,message:"POST required."});return;
+  }
+  const body=request.body;
+  if(!body||typeof body!=="object"||Array.isArray(body)||
+    Object.keys(body).some(key=>!["intent","requestId"].includes(key))){
+    json(response,400,{ok:false,message:"Invalid CRM request envelope."});return;
+  }
+  const auth=request.headers.authorization??"";
+  const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const receipt=await commitTrustedCrmLead(actor,body.intent,body.requestId);
+    json(response,200,{ok:true,...receipt});
+  }catch(error){
+    if(error instanceof TrustedCrmLeadError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("changeCrmLead failed",error);
+    json(response,503,{ok:false,message:
+      "Lead change unconfirmed. Review account history before retrying with the same request."});
+  }
+});
+
+/** Nonbinding commercial intake: writes no order, price, inventory, commission or payment. */
+export const submitOrderIntake=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const payload=request.body;
+ if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+  Object.keys(payload).some(k=>!["draft","requestId"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid intake envelope."});return;
+ }
+ const auth=request.headers.authorization??"";
+ const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  const receipt=await submitTrustedOrderIntake(actor,payload.draft,payload.requestId);
+  json(response,200,{ok:true,...receipt});
+ }catch(error){
+  if(error instanceof OrderIntakeError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("submitOrderIntake failed",error);
+  json(response,503,{ok:false,message:"Intake not confirmed. Check the source before retrying with the same request ID."});
+ }
+});
+
+/** Admin-only bounded queue or own receipt inspection, never payment or order approval. */
+export const reviewOrderIntake=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const payload=request.body;
+ if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+  Object.keys(payload).some(k=>!["intakeId","cursor"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid review request."});return;
+ }
+ const auth=request.headers.authorization??"";
+ const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  if(payload.intakeId){
+   const record=await getTrustedOrderIntake(actor,payload.intakeId);
+   json(response,200,{ok:true,record});
+  }else{
+   const page=await pageTrustedOrderIntakes(actor,payload.cursor);
+   json(response,200,{ok:true,...page});
+  }
+ }catch(error){
+  if(error instanceof OrderIntakeError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("reviewOrderIntake failed",error);
+  json(response,503,{ok:false,message:"Intake register temporarily unavailable. Do not infer no orders."});
+ }
+});
+
+/** Administrator-only nonbinding commercial-intake decision. */
+export const decideOrderIntake=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const payload=request.body;
+ if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+  Object.keys(payload).some(k=>!["decision","requestId"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid review request."});return;
+ }
+ const authorization=request.headers.authorization??"";
+ const token=authorization.startsWith("Bearer ")?authorization.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  const receipt=await decideTrustedOrderIntake(actor,payload.decision,payload.requestId);
+  json(response,200,{ok:true,...receipt});
+ }catch(error){
+  if(error instanceof OrderIntakeError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("decideOrderIntake failed",error);
+  json(response,503,{ok:false,message:"Review not confirmed. Reload source before retrying."});
+ }
+});
+
+/** Store one physical field visit and optional sample in a single server transaction.
+ * Caller cannot submit actor identity, event timestamps, finance or inventory data.
+ */
+export const recordCrmFieldVisit=onRequest({
+  cors:true,region:"us-central1",
+},async(request,response)=>{
+  if(request.method!=="POST"){
+    json(response,405,{ok:false,message:"POST required."});return;
+  }
+  const authorization=request.headers.authorization??"";
+  const token=authorization.startsWith("Bearer ")?
+    authorization.slice(7).trim():"";
+  if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+  let actor="";
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{json(response,401,{ok:false,message:"Session expired."});return;}
+  try{
+    const result=await commitTrustedCrmFieldVisit(
+      actor,request.body?.visit,request.body?.requestId);
+    json(response,200,{ok:true,...result});
+  }catch(error){
+    if(error instanceof TrustedCrmVisitError){
+      json(response,error.status,{ok:false,message:error.message});return;
+    }
+    console.error("recordCrmFieldVisit failed",error);
+    json(response,502,{ok:false,message:
+      "Visit save not confirmed. Refresh the record before retrying."});
+  }
+});
+
+
+/** Authenticated contact creation and revision-checked editing; no browser-side ledger writes. */
+export const saveCrmContact=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const body=request.body;
+ if(!body||typeof body!=="object"||Array.isArray(body)||
+   Object.keys(body).some(key=>!["intent","requestId"].includes(key))){
+  json(response,400,{ok:false,message:"Invalid CRM contact envelope."});return;
+ }
+ const auth=request.headers.authorization??"";
+ const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  const result=await saveTrustedCrmContact(actor,body.intent,body.requestId);
+  json(response,200,{ok:true,...result});
+ }catch(error){
+  if(error instanceof TrustedCrmContactError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("saveCrmContact failed",error);
+  json(response,503,{ok:false,message:"Contact save unconfirmed. Check CRM before retrying with the same request ID."});
+ }
+});
+
+
+/** Revocation-checked CRM opportunity write endpoint; no financial effects. */
+export const saveCrmDeal=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const body=request.body;
+ if(!body||typeof body!=="object"||Array.isArray(body)||
+   Object.keys(body).some(k=>!["intent","requestId"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid opportunity request."});return;
+ }
+ const header=request.headers.authorization??"";
+ const token=header.startsWith("Bearer ")?header.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  const result=await saveTrustedCrmDeal(actor,body.intent,body.requestId);
+  json(response,200,{ok:true,...result});
+ }catch(error){
+  if(error instanceof TrustedCrmDealError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("saveCrmDeal failed",error);
+  json(response,503,{ok:false,message:"Opportunity save unconfirmed. Check the source before retrying."});
+ }
+});
+
 export {
   captureOrderNotifications,
   captureDeliveryNotifications,
@@ -1760,10 +2246,14 @@ export {
   emailPaymentTransitions,
   emailRefundSettlements,
 } from "./commercial-email-producers";
+export {customerCommerceSnapshot} from "./customer-commerce-read";
+// R62: authenticated, scoped support cases. Production activation requires
+// real-user staging acceptance and explicit release authorization.
+export {supportCasesApi} from "./support-case-service";
 export {
   sendProgramPricingWarnings,
   sendInventoryReorderWarnings,
 } from "./scheduled-commercial-emails";
 
-// Sales activity timekeeping is enforced on the server, independently of the tablet.
-export {salesCRMInactivityClockOut,salesCRMClockStatus} from "./sales-inactivity";
+// B workstream: verified employee meeting service. Deployment requires owner approval.
+export {staffMeetingsApi} from "./staff-meetings";

@@ -7,7 +7,16 @@ const epoch=(value:unknown):number=>{
   const time=Date.parse(value);
   return Number.isFinite(time)?time:0;
 };
-/** Return the latest valid saved CRM event or fresh sign-in after shift start. */
+/**
+ * Return the latest persisted CRM/work event or fresh sign-in after shift start.
+ * @param {string} userId Firebase UID of the employee being evaluated.
+ * @param {number} clockInMs Millisecond timestamp of the current shift start.
+ * @param {number} signInMs Millisecond timestamp of the last interactive sign-in.
+ * @param {SavedCRMEvent[]} crmEvents Saved CRM activity records.
+ * @param {SavedCRMEvent[]} workEvents Saved workspace activity records.
+ * @param {number} nowMs Millisecond timestamp of the server evaluation.
+ * @return {number} Most recent qualifying activity timestamp in milliseconds.
+ */
 export function lastSalesActivityAt(userId:string,clockInMs:number,signInMs:number,
   crmEvents:SavedCRMEvent[],workEvents:SavedCRMEvent[],nowMs:number):number{
   let latest=clockInMs;

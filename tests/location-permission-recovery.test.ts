@@ -16,7 +16,10 @@ test("location reminder is time-bounded, employee-specific and voluntary",()=>{
 test("both clock-in entry points punch independently and request GPS only when clocking in",()=>{
  const time=source("components/pages/operations-tools-base.tsx");
  const hr=source("components/pages/people-v2.tsx");
- assert.match(time,/toggleClock\(\);if\(!open&&tracked\)void tracking\.requestLocationPermission\(\)/);
+ assert.match(time,/const punch=\(\)=>\{/);
+ assert.match(time,/toggleClock\(\);/);
+ assert.match(time,/if\(!open&&tracked\)void tracking\.requestLocationPermission\(\);/);
+ assert.match(time,/onClick=\{punch\}/);
  assert.match(hr,/toggleClock\(\);if\(!activeEntry&&roleIsTracked\(currentUser\.role\)\)void tracking\.requestLocationPermission\(\)/);
  const tracking=source("lib/location-tracking-context.tsx");
  assert.match(tracking,/requestLocationPermission=useCallback/);

@@ -29,7 +29,18 @@ const crm={interactions:[
  {id:"visit-3",userId:"rep-1",locationId:"store-b",type:"Visit",physicalVisit:true,occurredAt:"2026-10-19T12:00:00-07:00"},
 ]} as unknown as CrmState;
 const gps={samples:[{id:"gps-1",userId:"rep-1",at:"2026-10-19T15:00:00-07:00",latitude:33.5,longitude:-112,accuracyMeters:20}]} as FieldTrackingState;
-const commerce={version:1 as const,invoices:[],payments:[],allocations:[],credits:[],refunds:[],notes:[]} as CommerceState;
+// The reporting source of truth is a linked invoice and cleared/recorded
+// payment. A legacy order.paymentStatus="Paid" is not sufficient evidence.
+const settledAt="2026-10-20T13:00:00-07:00";
+const commerce={version:1 as const,
+ invoices:[{id:"inv-1",number:"INV-1",orderId:"order-1",accountId:"store-a",
+   issuedAt:settledAt,terms:"COD",total:240,status:"Paid",createdAt:settledAt}],
+ payments:[{id:"payment-1",accountId:"store-a",receivedAt:settledAt,
+   settledAt,settledBy:"finance-user",amount:240,method:"ACH",
+   status:"Cleared",createdBy:"finance-user",createdAt:settledAt}],
+ allocations:[{id:"allocation-1",paymentId:"payment-1",invoiceId:"inv-1",
+   amount:240,createdAt:settledAt,createdBy:"finance-user"}],
+ credits:[],refunds:[],notes:[]} as CommerceState;
 const audit=()=>buildAdminAudit(baseData,crm,gps,commerce,from,to,["rep-1"]);
 
 test("flags scheduled Phoenix-midnight auto-close even with clockOut set",()=>{
@@ -83,7 +94,7 @@ test("net collected subtracts already-signed settled refunds exactly once",()=>{
    invoices:[{id:"inv-1",number:"INV-1",orderId:"order-1",accountId:"store-a",issuedAt:at,terms:"COD",total:240,status:"Paid",createdAt:at}],
    payments:[{id:"payment-1",accountId:"store-a",receivedAt:at,settledAt:at,settledBy:"system",amount:240,method:"ACH",status:"Cleared",createdBy:"system",createdAt:at}],
    allocations:[{id:"allocation-1",paymentId:"payment-1",invoiceId:"inv-1",amount:240,createdAt:at,createdBy:"system"}],
-   refunds:[{id:"refund-1",paymentId:"payment-1",amount:30,reason:"Approved credit",status:"Settled",settledAt:at,createdAt:at,createdBy:"system"}],
+   refunds:[{id:"refund-1",paymentId:"payment-1",amount:30,reason:"Approved credit",status:"Settled",settledAt:at,settledBy:"finance-user",createdAt:at,createdBy:"system"}],
  } as CommerceState;
  const result=buildAdminAudit(baseData,crm,gps,ledger,from,to,["rep-1"]);
  assert.equal(result.sales[0].netCollected,210);

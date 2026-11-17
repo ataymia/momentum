@@ -310,13 +310,14 @@ describe("Administrator employee provisioning", () => {
 });
 
 describe("a hire who must still change their password", () => {
-  test("can read what onboarding needs and write their own onboarding shards", async () => {
+  test("can read onboarding data and update self-profile but not self-certify HR documents", async () => {
     const db = dbFor(PASSWORD_CHANGE);
     await assertSucceeds(getDoc(doc(db, USER_ACCESS_COLLECTION, PASSWORD_CHANGE)));
     await assertSucceeds(getDoc(doc(db, EMPLOYEE_DIRECTORY_COLLECTION, MANAGER)));
     await assertSucceeds(getDoc(doc(db, "domains/hcm/fields/policies")));
     await assertSucceeds(setDoc(doc(db, `userDomains/${PASSWORD_CHANGE}/identity/records`), { items: [] }));
-    await assertSucceeds(setDoc(doc(db, `userDomains/${PASSWORD_CHANGE}/hcm/documents`), { items: [] }));
+    await assertSucceeds(setDoc(doc(db, `userDomains/${PASSWORD_CHANGE}/hcm/privateProfiles`), { items: [] }));
+    await assertFails(setDoc(doc(db, `userDomains/${PASSWORD_CHANGE}/hcm/documents`), { items: [] }));
   });
 
   test("cannot activate themselves, elevate themselves, or reach the live workspace", async () => {
@@ -671,6 +672,20 @@ describe("cross-employee isolation", () => {
     await assertFails(getDoc(doc(db, `userDomains/${MANAGER}/finance/expenses`)));
   });
 
+  test("F05: legacy shared employee-owned HR arrays cannot expose unrelated personnel records", async () => {
+    const paths = ["privateProfiles", "compensation", "documents", "leaveRequests", "ptoLedger", "training"];
+    for (const uid of [REP, MANAGER, OPS, ONBOARDING]) {
+      const db = dbFor(uid);
+      for (const field of paths) {
+        await assertFails(getDoc(doc(db, "domains/hcm/fields/" + field)));
+        await assertFails(setDoc(doc(db, "domains/hcm/fields/" + field), { items: [] }));
+      }
+    }
+    const administrator = dbFor(ADMIN);
+    await assertSucceeds(getDoc(doc(administrator, "domains/hcm/fields/privateProfiles")));
+    await assertSucceeds(getDoc(doc(administrator, "domains/hcm/fields/compensation")));
+  });
+
   test("a manager cannot read a report's compensation or HR audit trail", async () => {
     const db = dbFor(MANAGER);
     await assertSucceeds(getDoc(doc(db, `userDomains/${REP}/hcm/leaveRequests`)));
@@ -849,6 +864,135 @@ describe("trusted account profile audit records are immutable to browser clients
   });
 });
 
+describe("connected customer billing contact audit and retry protection",()=>{
+ test("only Administrator can read source audit; no role can forge source edits or idempotency keys",async()=>{
+  const auditPath="customerContactUpdateAudit/source-1";
+  const keyPath="customerContactUpdateKeys/actor-retry-1";
+  await env.withSecurityRulesDisabled(async context=>{
+   await setDoc(doc(context.firestore(),auditPath),{
+    eventId:"source-1",actorUid:ADMIN,customerId:"cust-test",
+    changedFields:["billingContactName"],legalVerified:false,creditApproved:false,at,
+   });
+   await setDoc(doc(context.firestore(),keyPath),{
+    actorUid:ADMIN,eventId:"source-1",fingerprint:"trusted",
+   });
+  });
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),auditPath)));
+  for(const who of [MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(getDoc(doc(dbFor(who),auditPath)));
+  }
+  for(const who of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(getDoc(doc(dbFor(who),keyPath)));
+   await assertFails(setDoc(doc(dbFor(who),auditPath),{
+    actorUid:who,customerId:"cust-test",creditApproved:true,
+   }));
+   await assertFails(setDoc(doc(dbFor(who),keyPath),{
+    actorUid:who,fingerprint:"forged",
+   }));
+   await assertFails(deleteDoc(doc(dbFor(who),auditPath)));
+  }
+ });
+});
+
+describe("commercial intake reviews are never browser-writable",()=>{
+ test("even Administrators cannot forge review outcomes or retry receipts",async()=>{
+  for(const role of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   for(const path of ["commerceOrderIntakeReviewKeys/forged",
+     "commerceOrderIntakeReviewAudit/forged"]){
+    await assertFails(setDoc(doc(dbFor(role),path),
+      {status:"Pricing and inventory verification",actorUid:role,financialPosting:true}));
+   }
+  }
+ });
+});
+
+describe("connected money ledger cannot be forged by a browser",()=>{
+ test("all client identities including Administrator are denied posting invoices, payments, allocations, credits, refunds and notes",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   for(const field of ["_root","invoices","payments","allocations","credits","refunds","notes"]){
+    const path="domains/commerce/fields/"+field;
+    await assertFails(setDoc(doc(dbFor(uid),path),
+     field==="_root"?{data:{status:"Paid"}}:{items:[{status:"Cleared",settledAt:"2026-11-15"}]}));
+   }
+  }
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),"domains/commerce/fields/payments")));
+ });
+});
+
+describe("HR signed packets and identity-sensitive shards cannot be forged",()=>{
+ test("Managers cannot read private profiles, dependent details or signed HR metadata",async()=>{
+  for(const field of ["privateProfiles","profileChangeRequests","dependents",
+    "benefitEnrollments","benefitEvents","documents"]){
+   const path="userDomains/"+REP+"/hcm/"+field;
+   await assertFails(getDoc(doc(dbFor(MANAGER),path)));
+   await assertFails(setDoc(doc(dbFor(MANAGER),path),{items:[{userId:REP}]}));
+   await assertSucceeds(getDoc(doc(dbFor(REP),path)));
+   await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+  }
+ });
+ test("Employees cannot forge verified external originals",async()=>{
+  await assertFails(setDoc(doc(dbFor(REP),"userDomains/"+REP+"/hcm/documents"),
+   {items:[{userId:REP,title:"Form W-9",status:"Available",verification:{recordReference:"forged"}}]}));
+ });
+ test("No browser role can write a completed signed form packet",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(setDoc(doc(dbFor(uid),"userDomains/"+REP+"/documentTemplates/packets"),{items:[{userId:REP,signature:"forged"}]}));
+   await assertFails(setDoc(doc(dbFor(uid),"domains/documentTemplates/fields/packets"),{items:[{userId:REP,status:"Completed"}]}));
+  }
+  await assertFails(getDoc(doc(dbFor(MANAGER),"userDomains/"+REP+"/documentTemplates/packets")));
+  await assertSucceeds(getDoc(doc(dbFor(REP),"userDomains/"+REP+"/documentTemplates/packets")));
+ });
+});
+
+describe("HR blank-form registry and audit cannot be forged by a browser",()=>{
+ test("Administrator may read templates but no browser may write or edit them",async()=>{
+  const path="hrTemplateCatalog/admin-upload-attempt";
+  const audit="hrTemplateAudit/admin-upload-attempt";
+  const key="hrTemplateRegistrationKeys/forged";
+  const upload="hrTemplateUploadRequests/forged";
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   for(const p of [path,audit,key,upload])
+    await assertFails(setDoc(doc(dbFor(uid),p),{
+     status:"Approved",signedOriginal:true,createdBy:uid,
+    }));
+  }
+ });
+});
+
+describe("connected order intake sources are never client-writable",()=>{
+ test("all client roles are refused on intake, replay and server audit documents",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   for(const path of ["commerceOrderIntakes/forged",
+     "commerceOrderIntakeKeys/forged","commerceOrderIntakeAudit/forged"]){
+    await assertFails(setDoc(doc(dbFor(uid),path),{status:"Approved",pricePerCase:1}));
+   }
+  }
+ });
+});
+
+describe("connected lead provenance cannot be browser-forged",()=>{
+ test("even an Administrator browser cannot author lead source or responsibility evidence",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(setDoc(doc(dbFor(uid),"domains/crm/fields/responsibilityHistory"),
+    {items:[{changedBy:uid,toUserId:"forged"}]}));
+   await assertFails(setDoc(doc(dbFor(uid),"crmLeadEvents/forged"),{actorUid:uid}));
+   await assertFails(setDoc(doc(dbFor(uid),"crmLeadChangeRequests/forged"),{eventId:"forged"}));
+  }
+ });
+});
+
+describe("connected CRM customer/account identity is server-owned",()=>{
+ test("no browser role may replace account and customer registries",async()=>{
+   for(const field of ["accounts","customers"]){
+     for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+       await assertFails(setDoc(doc(dbFor(uid),"domains/workspace/fields/"+field),{
+         items:[{id:"forged",ownerId:uid,stage:"Qualified"}],
+       }));
+     }
+   }
+ });
+});
+
 describe("trusted account creation receipts are server-owned",()=>{
   const receipt="accountCreationRequests/uid-admin_request-token-123456789";
   test("no Firebase client can create or claim an idempotency receipt",async()=>{
@@ -939,6 +1083,82 @@ describe("confidential HR signed-form receipt metadata",()=>{
   await assertSucceeds(getDoc(doc(dbFor(ADMIN),auditPath)));
   await assertFails(getDoc(doc(dbFor(REP),auditPath)));
   await assertFails(setDoc(doc(dbFor(ADMIN),auditPath),{employeeUid:REP,action:"Forged"}));
+ });
+});
+
+describe("private HR original-intake queue is not legally verified e-sign",()=>{
+ test("unverified original and its audit are Administrator-only; all client mutations denied",async()=>{
+  const path="hrOriginalIntakeRecords/source-pending-1";
+  const auditPath="hrOriginalIntakeAudit/source-pending-1";
+  const readAuditPath="hrOriginalIntakeReadAudit/read-pending-1";
+  const retryPath="hrOriginalArchiveRequests/admin-request-1";
+  const pending={
+   id:"source-pending-1",employeeUid:REP,kind:"W9",
+   status:"Pending independent HR review",createdAt:at,
+   signedOriginalVerified:false,complianceApproved:false,
+  };
+  await env.withSecurityRulesDisabled(async context=>{
+   await setDoc(doc(context.firestore(),path),pending);
+   await setDoc(doc(context.firestore(),auditPath),{
+    recordId:pending.id,employeeUid:REP,actorUid:ADMIN,at,
+   });
+   await setDoc(doc(context.firestore(),readAuditPath),{recordId:pending.id,employeeUid:REP,actorUid:ADMIN,at});
+   await setDoc(doc(context.firestore(),retryPath),{
+    id:pending.id,actorUid:ADMIN,createdAt:at,
+   });
+  });
+  await assertFails(getDoc(doc(dbFor(REP),path)));
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+  await assertFails(getDocs(query(collection(dbFor(REP),
+   "hrOriginalIntakeRecords"),where("employeeUid","==",REP))));
+  for(const who of [OTHER_REP,MANAGER,OPS,MARKETING,null]){
+   await assertFails(getDoc(doc(dbFor(who),path)));
+  }
+  for(const who of [ADMIN,REP,OTHER_REP,MANAGER,OPS,MARKETING,null]){
+   await assertFails(setDoc(doc(dbFor(who),path),{
+    ...pending,status:"Archived",complianceApproved:true,
+   }));
+   await assertFails(deleteDoc(doc(dbFor(who),path)));
+   await assertFails(setDoc(doc(dbFor(who),auditPath),{event:"Forged"}));
+   if(who!==ADMIN)await assertFails(getDoc(doc(dbFor(who),readAuditPath)));
+   await assertFails(setDoc(doc(dbFor(who),readAuditPath),{event:"Forged"}));
+   await assertFails(getDoc(doc(dbFor(who),retryPath)));
+   await assertFails(setDoc(doc(dbFor(who),retryPath),{actorUid:who}));
+  }
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),auditPath)));
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),readAuditPath)));
+  await assertFails(getDoc(doc(dbFor(REP),readAuditPath)));
+  await assertFails(getDoc(doc(dbFor(REP),auditPath)));
+ });
+});
+
+describe("HR original evidence inspection decisions stay backend-authored",()=>{
+ test("Administrator can inspect immutable review audit but no browser can forge a legal signoff",async()=>{
+  const path="hrOriginalReviewAudit/synthetic-review";
+  const keyPath="hrOriginalReviewKeys/admin-dup-1";
+  await env.withSecurityRulesDisabled(async context=>{
+   await setDoc(doc(context.firestore(),path),{
+    recordId:"source-pending-1",actorUid:ADMIN,
+    previousStatus:"Pending independent HR review",
+    status:"Evidence inspected; compliance verification pending",
+    legalApproved:false,signatureVerified:false,at,
+   });
+   await setDoc(doc(context.firestore(),keyPath),{
+    actorUid:ADMIN,recordId:"source-pending-1",fingerprint:"server-only",
+   });
+  });
+  await assertSucceeds(getDoc(doc(dbFor(ADMIN),path)));
+  for(const who of [MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(getDoc(doc(dbFor(who),path)));
+  }
+  for(const who of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(setDoc(doc(dbFor(who),path),{
+    status:"Approved",legalApproved:true,signatureVerified:true,
+   }));
+   await assertFails(deleteDoc(doc(dbFor(who),path)));
+   await assertFails(getDoc(doc(dbFor(who),keyPath)));
+   await assertFails(setDoc(doc(dbFor(who),keyPath),{status:"Approved"}));
+  }
  });
 });
 
@@ -1079,24 +1299,87 @@ describe("historical correction and isolated sandbox authority",()=>{
   });
 });
 
-describe("location permission reminder read isolation",()=>{
- test("recipient and Admin read targeted reminder, others cannot; nobody can forge consent",async()=>{
-  const value={targetUid:REP,requestId:"location-test-1",requestedBy:ADMIN,
-   requestedAt:"2026-11-03T10:00:00.000Z",expiresAt:"2026-11-10T10:00:00.000Z",status:"Pending"};
-  await env.withSecurityRulesDisabled(async context=>{
-   await setDoc(doc(context.firestore(),"locationPermissionRequests",REP),value);
+
+describe("B09 employee meetings are server-owned and client writes fail closed",()=>{
+  test("no browser role may get, list, alter or delete meeting records or slot locks",async()=>{
+    for(const [name,id] of [["staffMeetings","mtg-protected"],["staffMeetingSlots","uid-rep_2026-11-07_1200"]]){
+      const recordPath=name+"/"+id;
+      await env.withSecurityRulesDisabled(async ctx=>{
+        await setDoc(doc(ctx.firestore(),recordPath),{id,organizerId:ADMIN,attendeeIds:[REP],date:"2026-11-07"});
+      });
+      for(const uid of [ADMIN,MANAGER,REP,OPS,MARKETING,DRIVER,ONBOARDING,null]){
+        const db=dbFor(uid),target=doc(db,recordPath);
+        await assertFails(getDoc(target));
+        await assertFails(getDocs(collection(db,name)));
+        await assertFails(setDoc(target,{organizerId:uid??"anonymous",attendeeIds:[REP],date:"2026-11-07"}));
+        await assertFails(deleteDoc(target));
+      }
+    }
   });
-  await assertSucceeds(getDoc(doc(dbFor(REP),"locationPermissionRequests",REP)));
-  await assertSucceeds(getDoc(doc(dbFor(ADMIN),"locationPermissionRequests",REP)));
-  await assertSucceeds(getDocs(collection(dbFor(ADMIN),"locationPermissionRequests")));
-  for(const who of [OTHER_REP,MANAGER,OPS,MARKETING,ONBOARDING,null]){
-   await assertFails(getDoc(doc(dbFor(who),"locationPermissionRequests",REP)));
-   await assertFails(getDocs(collection(dbFor(who),"locationPermissionRequests")));
+});
+
+
+describe("P0 commercial order and approval integrity: no browser can post finance states",()=>{
+  test("legacy shared order, approval and commercial-root snapshots require trusted server writes",async()=>{
+    const paths=[
+      "domains/workspace/fields/orders",
+      "domains/workspace/fields/approvals",
+      "domains/commercial/fields/orders",
+      "domains/commercial/fields/approvals",
+      "domains/workspace/fields/_root",
+      "domains/commercial/fields/_root",
+    ];
+    for(const path of paths){
+      const forged={
+        items:[{id:"forged-payment",status:"Paid",paymentStatus:"Paid",
+          pricePerCase:0,approvedBy:REP,settlementReference:"forged"}],
+        data:{accountPatches:{"account-1":{currentPricePerCase:0,creditStatus:"Approved"}}},
+      };
+      await env.withSecurityRulesDisabled(async ctx=>{
+        await setDoc(doc(ctx.firestore(),path),{items:[],data:{}});
+      });
+      for(const actor of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,ONBOARDING,null]){
+        const resource=doc(dbFor(actor),path);
+        await assertFails(setDoc(resource,forged));
+        await assertFails(deleteDoc(resource));
+      }
+    }
+  });
+});
+
+describe("connected CRM contacts require trusted server mutations",()=>{
+ test("no client, including Administrator, may directly replace shared contacts",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(setDoc(doc(dbFor(uid),"domains/crm/fields/contacts"),{
+    items:[{id:"forged-contact",createdBy:uid,name:"Forged"}],
+   }));
+   await assertFails(setDoc(doc(dbFor(uid),"crmContactRequestKeys/forged"),{actorUid:uid}));
+   await assertFails(setDoc(doc(dbFor(uid),"crmContactAudit/forged"),{actorUid:uid}));
   }
-  for(const who of [ADMIN,REP,OTHER_REP,MANAGER,OPS,null]){
-   await assertFails(setDoc(doc(dbFor(who),"locationPermissionRequests",REP),
-    {...value,status:"Responded",outcome:"Enabled"}));
-   await assertFails(deleteDoc(doc(dbFor(who),"locationPermissionRequests",REP)));
+ });
+});
+
+describe("connected CRM opportunities require trusted server mutations",()=>{
+ test("no client can directly overwrite deal stages, revenue or owner",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   await assertFails(setDoc(doc(dbFor(uid),"domains/crm/fields/opportunities"),{
+    items:[{id:"forged-won",status:"Won",estimatedCases:99999,ownerId:uid}],
+   }));
+   await assertFails(setDoc(doc(dbFor(uid),"crmDealRequestKeys/forged"),{actorUid:uid}));
+   await assertFails(setDoc(doc(dbFor(uid),"crmDealAudit/forged"),{actorUid:uid}));
+  }
+ });
+});
+
+describe("HR assignments are exclusively server-owned",()=>{
+ test("no browser can mint an assignment or read private assignment ledger",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   for(const path of ["hrDocumentAssignments/forged",
+    "hrTemplateAssignmentKeys/forged","hrTemplateAssignmentIndex/forged",
+    "hrDocumentAssignmentAudit/forged"]){
+    await assertFails(setDoc(doc(dbFor(uid),path),{workerUid:uid,status:"Completed"}));
+    await assertFails(getDoc(doc(dbFor(uid),path)));
+   }
   }
  });
 });

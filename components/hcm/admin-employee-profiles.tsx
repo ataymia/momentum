@@ -185,7 +185,7 @@ export function AdminEmployeeProfiles() {
   const delivery = useDelivery();
   const tracking = useFieldTracking();
   const { visibleEvents } = useAudit();
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(()=>typeof window==="undefined"?"":window.sessionStorage.getItem("momentum-employee-profile-focus")??"");
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<ProfileTab>("overview");
   const [showFormer, setShowFormer] = useState(false);
@@ -260,7 +260,7 @@ export function AdminEmployeeProfiles() {
 
     <div className="employee-directory-layout">
       <aside className="employee-directory-list">
-        <label className="employee-search"><Search size={15}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employees..." /></label>
+        <label className="employee-search"><Search size={15}/><input aria-label="Search employee profiles" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employees..." /></label>
         <div>{filtered.map((user) => {
           const record = hcm.employees.find((item) => item.userId === user.id);
           const userEntries = data.timeEntries.filter((entry) => entry.userId === user.id);

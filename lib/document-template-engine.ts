@@ -2,7 +2,7 @@ import type { WorkerClassification } from "./hcm-engine";
 
 export const DOCUMENT_TEMPLATE_STORAGE_KEY = "momentum-document-templates-v1";
 
-export type DocumentTemplateKind = "Employment agreement" | "Compensation notice" | "Form I-9" | "Form W-4" | "Arizona Form A-4" | "Form W-9" | "Other";
+export type DocumentTemplateKind = "Employment agreement" | "Independent contractor agreement" | "Compensation notice" | "Form I-9" | "Form W-4" | "Arizona Form A-4" | "Form W-9" | "Other";
 export type DocumentApplicability = "All workers" | "Employees" | "Contractors";
 export type SignatureMethod = "Typed" | "Drawn";
 export type DocumentTemplateFieldType = "Text" | "Date" | "Checkbox" | "Signature" | "Initials";
@@ -62,7 +62,7 @@ export type DocumentTemplateState = {
 
 export const createDocumentTemplateSeed = (): DocumentTemplateState => ({ version: 1, templates: [], packets: [] });
 
-const kinds = new Set<DocumentTemplateKind>(["Employment agreement", "Compensation notice", "Form I-9", "Form W-4", "Arizona Form A-4", "Form W-9", "Other"]);
+const kinds = new Set<DocumentTemplateKind>(["Employment agreement", "Independent contractor agreement", "Compensation notice", "Form I-9", "Form W-4", "Arizona Form A-4", "Form W-9", "Other"]);
 const applicability = new Set<DocumentApplicability>(["All workers", "Employees", "Contractors"]);
 const fieldTypes = new Set<DocumentTemplateFieldType>(["Text", "Date", "Checkbox", "Signature", "Initials"]);
 const packetStatuses = new Set<EmployeeDocumentPacket["status"]>(["Assigned", "In progress", "Submitted", "Completed"]);
@@ -91,10 +91,14 @@ export function normalizeDocumentTemplateState(input: unknown): DocumentTemplate
 }
 
 export function requiredTemplateKinds(classification: WorkerClassification): DocumentTemplateKind[] {
-  const common: DocumentTemplateKind[] = ["Employment agreement", "Compensation notice"];
-  if (classification === "Contractor") return [...common, "Form W-9"];
-  if (classification === "Hourly" || classification === "Salary") return [...common, "Form I-9", "Form W-4", "Arizona Form A-4"];
-  return common;
+  if (classification === "Contractor") return [
+    "Independent contractor agreement", "Compensation notice", "Form W-9",
+  ];
+  if (classification === "Hourly" || classification === "Salary") return [
+    "Employment agreement", "Compensation notice", "Form I-9", "Form W-4", "Arizona Form A-4",
+  ];
+  // Unclassified workers cannot be automatically assigned legally binding tax forms.
+  return [];
 }
 
 export function templateApplies(template: DocumentTemplateRecord, classification: WorkerClassification) {

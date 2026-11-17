@@ -2,6 +2,7 @@
 
 import { AccountingPanel } from "../accounting/accounting-panel";
 import { AuditCenter } from "../audit/audit-center";
+import { CrossDomainIntegrityPanel } from "../audit/cross-domain-integrity-panel";
 import { OrderCashPanel } from "../commerce/order-cash-panel";
 import { AccountHealthHome } from "../crm/account-health-home";
 import { CrmDepthPanel } from "../crm/crm-depth-panel";
@@ -28,5 +29,5 @@ export function TrainingSetupPage(){return <TrainingAdminPage/>;}
 export function AccountingWorkspacePage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Finance & accounting" title="Accounting" description="Chart of accounts, journals, reconciliations, and accounting controls."/><AccountingPanel/></div>;}
 export function PerformanceWorkspacePage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Performance & reports" title="Performance" description="Operational performance signals and management scorecards."/><DashboardPerformance/></div>;}
 export function ReportingCenterPage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Performance & reports" title="Reporting center" description="Create, review, and trace recurring employee and management reports."/><WeeklyReportCenter/><ReportingCenter/></div>;}
-export function AuditWorkspacePage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Performance & reports" title="Audit trail" description="Review system actions and evidence without mixing audit history into performance reporting."/><AuditCenter/></div>;}
+export function AuditWorkspacePage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Performance & reports" title="Audit trail" description="Review system actions and evidence without mixing audit history into performance reporting."/><CrossDomainIntegrityPanel/><AuditCenter/></div>;}
 export function DataExchangePage(){return <div className="page page--focused-tool"><PageHeader eyebrow="Administration" title="Data exchange" description="Import, export, and move controlled data separately from system settings."/><DataExchangeCenter/></div>;}

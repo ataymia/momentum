@@ -23,7 +23,7 @@ test("sales users can cancel only their own pre-fulfillment orders while admins 
   assert.equal(canCancelOrder(rep,{...own,status:"Allocated"}),false);
 });
 
-test("delivery driver reads live commercial orders and current inventory lots",()=>{const source=readFileSync("lib/firestore-domains.ts","utf8");assert.match(source,/orders:\{read:\[\.\.\.OPERATIONAL,"Delivery Driver"\],write:\[\.\.\.OPERATIONAL,"Delivery Driver"\]\}/);assert.match(source,/inventoryLots:\{read:\[\.\.\.OPERATIONAL,"Delivery Driver"\]\}/)});
+test("delivery driver reads live commercial orders while clients cannot forge order statuses",()=>{const source=readFileSync("lib/firestore-domains.ts","utf8");assert.match(source,/orders:\{read:\[\.\.\.OPERATIONAL,"Delivery Driver"\],write:\[\]\}/);assert.match(source,/inventoryLots:\{read:\[\.\.\.OPERATIONAL,"Delivery Driver"\]\}/)});
 
 test("order cancellation is evidence-preserving, self-service for the creator, and cloud-confirmed",()=>{
   const workspace=readFileSync("lib/workspace-context.tsx","utf8");
@@ -38,7 +38,10 @@ test("order cancellation is evidence-preserving, self-service for the creator, a
   assert.match(page,/Confirm cancellation/);
   assert.match(page,/flushAndConfirm\(COMMERCIAL_KEY\)/);
   assert.match(page,/flushAndConfirm\(INVENTORY_LEDGER_STORAGE_KEY\)/);
-  assert.match(inventory,/status:"Released" as const/);
+  const guard=readFileSync("lib/inventory-transaction-guards.ts","utf8");
+  assert.match(inventory,/releaseEditableOrderReservations\(current,orderId,now\(\)\)/);
+  assert.match(guard,/status:"Released" as const/);
+  assert.match(guard,/orderOutboundQuantity\(state,orderId\)>0/);
   assert.match(commerce,/if \(!canManageCash\) return/);
   assert.match(commerce,/cancelled before fulfillment/);
   assert.match(commerce,/order.status === "Cancelled" \|\| invoice.status === "Void"/);

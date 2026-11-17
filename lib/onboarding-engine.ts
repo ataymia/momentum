@@ -1,4 +1,5 @@
 import { appendAudit, type EmployeeDocument, type EmploymentRecord, type HCMState, type LifecycleCase, type TrainingAssignment, type WorkerClassification } from "./hcm-engine";
+import { validExternalVerification } from "./hr-document-controls";
 import { isFailClosedPlaceholder, type AccountAccessState, type IdentityProvisioningRecord, type IdentityProvisioningState, type ProvisioningDraft } from "./identity-provisioning";
 import type { WorkspaceData, WorkspaceUser } from "./types";
 
@@ -175,8 +176,14 @@ export function onboardingReadiness(state: HCMState, record: IdentityProvisionin
   employeeChecks.push(lifecycleExists);
   if (!lifecycleExists) blockers.push("HR has not prepared the onboarding case yet.");
 
-  const documentsComplete = requiredTitles.size > 0 && documents.length === requiredTitles.size && documents.every((item) => item.status === "Available");
-  if (!documentsComplete) activationBlockers.push("Administrator must verify every required employment and tax document before activation.");
+  // "Available" only describes document availability, not authenticated
+  // completion. Even external references are HR attestations, not a provider
+  // webhook, immutable PDF or form-specific legal compliance certificate.
+  const documentsComplete = requiredTitles.size > 0 && documents.length === requiredTitles.size
+    && documents.every((item) => item.status === "Available"
+      && validExternalVerification(item.verification, item.version));
+  if (!documentsComplete) activationBlockers.push(
+    "Every required employment, compensation and tax document needs a current externally verified original reference. Available alone is not a signature.");
 
   const readyForEmployeeSubmission = passwordComplete && employmentConfigured && profileComplete && compensationConfigured && trainingComplete && lifecycleExists;
   if (!readyForEmployeeSubmission) activationBlockers.push("Employee onboarding has not been completed and submitted.");
@@ -201,8 +208,8 @@ export function activateEmploymentAfterOnboarding(state: HCMState, userId: strin
 
 /**
  * Explicit Administrator override. This changes access and employment state, but it never fabricates missing
- * documents, training completion, or employee profile data. The reason is preserved in the HCM audit and on
- * the completed lifecycle tasks so an override can be distinguished from ordinary onboarding later.
+ * documents, training completion, or employee profile data. Incomplete lifecycle
+ * tasks remain open; a separate completed override event records who granted access.
  */
 export function administratorOverrideEmploymentActivation(state: HCMState, data: WorkspaceData, userId: string, actorId: string, reason: string) {
   const target = data.users.find((user) => user.id === userId && user.role !== "Customer" && user.role !== "Administrator");
@@ -226,11 +233,16 @@ export function administratorOverrideEmploymentActivation(state: HCMState, data:
   const openCase = state.lifecycleCases.find((item) => item.type === "Onboarding" && item.userId === userId && item.status === "Open");
   const completedCase: LifecycleCase = openCase ? {
     ...openCase,
-    status: "Complete",
-    reason: `Administrator override: ${cleanReason}`,
-    tasks: openCase.tasks.map((task) => ({ ...task, status: "Complete", completedAt: task.completedAt ?? at, evidence: task.evidence ?? `Administrator override: ${cleanReason}` })),
+    // Access override is NOT completion of the onboarding case. Keep all
+    // unfinished tasks open and their original evidence untouched.
+    status: "Open",
+    reason: `Administrator access override (onboarding outstanding): ${cleanReason}`,
+    tasks: [
+      ...openCase.tasks,
+      { id: uid("task"), title: "Administrator override activation", status: "Complete", completedAt: at, evidence: cleanReason },
+    ],
   } : {
-    id: uid("onboarding-override"), type: "Onboarding", userId, effectiveDate: at.slice(0, 10), status: "Complete", reason: `Administrator override: ${cleanReason}`, createdAt: at, createdBy: actorId,
+    id: uid("onboarding-override"), type: "Onboarding", userId, effectiveDate: at.slice(0, 10), status: "Open", reason: `Administrator access override (onboarding outstanding): ${cleanReason}`, createdAt: at, createdBy: actorId,
     tasks: [{ id: uid("task"), title: "Administrator override activation", status: "Complete", completedAt: at, evidence: cleanReason }],
   };
   const next: HCMState = {

@@ -1,8 +1,9 @@
 "use client";
 
 import { BookOpenCheck, CircleHelp, ClipboardCheck, Search, ShieldCheck } from "lucide-react";
-import { canAccessPage } from "../../lib/access";
-import type { PageKey, Role } from "../../lib/types";
+import type {Role} from "../../lib/types";
+import {canVisitRoute} from "../../lib/navigation-route-registry";
+import {navigateToRoute} from "../../lib/navigation-store";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, PageHeader, Section, StatusPill } from "../ui";
 
@@ -18,7 +19,7 @@ const roleGuides: Partial<Record<Role, RoleGuide>> = {
     heading: "Administrator",
     summary: "Keep the company workspace accurate, resolve blocked workflows, maintain access, and use the source record before making an override.",
     priorities: [
-      "Start with My Work and Human Resources for anything waiting on a company decision.",
+      "Start with Action Center and Human Resources for anything waiting on a company decision.",
       "Use Administration for access, integrations, audit tools, and system controls.",
       "Use department pages to correct the source record instead of patching symptoms somewhere else.",
       "Use Audit trail when you need to confirm who changed a record and what changed.",
@@ -34,9 +35,9 @@ const roleGuides: Partial<Record<Role, RoleGuide>> = {
     summary: "Manage the sales team, keep field work moving, review submitted work, and keep sales and account health visible.",
     priorities: [
       "Start with My Work for approvals, returned items, and team exceptions.",
-      "Use CRM & Sales to review locations, ownership, notes, next actions, and order activity.",
-      "Use Dispatch to assign and monitor scheduled field work.",
-      "Use Performance & reports to review team output and submitted reports.",
+      "Use Sales & CRM to review locations, ownership, notes, next actions, and order activity.",
+      "Use Field Scheduling to assign and monitor scheduled customer visits. Delivery Operations separately handles shipment custody.",
+      "Use Work Reports and Performance & Development to review submitted work and source-backed employee progress.",
     ],
     guardrails: [
       "Open the source record before approving or returning work.",
@@ -48,10 +49,10 @@ const roleGuides: Partial<Record<Role, RoleGuide>> = {
     heading: "Sales Representative",
     summary: "Work assigned locations, document every customer touch, keep next actions current, complete appointments, and submit accurate orders and field records.",
     priorities: [
-      "Check Home and My Work at the start of the day.",
-      "Use Dispatch for assigned appointments and complete the visit closeout before moving on.",
+      "Check Home, Action Center and weekly timecard obligations at the start of your day.",
+      "Use Field Scheduling for assigned appointments, then document the visit closeout.",
       "Keep CRM notes, contacts, and location details current.",
-      "Use Orders for new orders and order status within your assigned accounts.",
+      "Use Sales Orders for new orders, and My Undelivered Orders for eligible self-delivery.",
     ],
     guardrails: [
       "You only see sales records in your scope.",
@@ -128,27 +129,34 @@ const faq = [
 
 const platformBasics = [
   { label: "Start", title: "Home", detail: "Your current work, updates, goals, and exceptions." },
-  { label: "Act", title: "My Work", detail: "Approvals, exceptions, and items waiting on you." },
+  { label: "Act", title: "Action Center", detail: "Approvals, exceptions, and items waiting on you." },
   { label: "Find", title: "Search", detail: "Command K / Control K searches the records in your scope.", icon: true },
   { label: "Verify", title: "History", detail: "Check the audit trail before guessing who changed something." },
 ];
 
 export function HelpPage() {
-  const { currentUser, navigate } = useWorkspace();
+  const { currentUser } = useWorkspace();
   if (!currentUser) return null;
   const guide = roleGuides[currentUser.role];
-  const allQuickLinks: Array<{ label: string; page: PageKey }> = [
-    { label: "Home", page: "home" },
-    { label: "My Work", page: "work" },
-    { label: "CRM & Sales", page: "accounts" },
-    { label: "Dispatch", page: "dispatch" },
-    { label: "Orders", page: "orders" },
-    { label: "Human Resources", page: "people" },
-    { label: "Brand Ambassadors", page: "brandAmbassadors" },
-    { label: "Reports", page: "reports" },
-    { label: "Administration", page: "settings" },
+  const allQuickLinks: Array<{ label: string; path: string }> = [
+    {label:"Home",path:"/"},{label:"Action Center",path:"/work/actions"},
+    {label:"Work Reports",path:"/reports/center"},{label:"Weekly Timecards",path:"/people/attendance"},
+    {label:"CRM & Sales",path:"/sales/customers"},
+    {label:"Account Map & Territories",path:"/crm/account-map"},
+    {label:"Field scheduling",path:"/operations/field-schedule"},
+    {label:"Delivery Operations",path:"/operations/deliveries"},
+    {label:"Orders",path:"/sales/orders"},
+    {label:"Human Resources",path:"/people"},
+    {label:"Training",path:"/people/training"},
+    {label:"My Account",path:"/my-account"},
+    {label:"Brand Ambassadors",path:"/marketing/ambassadors"},
+    {label:"Reports",path:"/reports"},
+    {label:"Employee Directory",path:"/admin/employees"},
+    {label:"Accounting",path:"/finance/accounting"},
+    {label:"Data Exchange",path:"/admin/data-exchange"},
+    {label:"Administration",path:"/admin"},
   ];
-  const quickLinks = allQuickLinks.filter((item) => canAccessPage(currentUser, item.page));
+  const quickLinks=allQuickLinks.filter(item=>canVisitRoute(currentUser,item.path));
 
   return <div className="page page--help">
     <PageHeader
@@ -179,7 +187,7 @@ export function HelpPage() {
     </Section>
 
     <Section title="Quick links" className="help-section help-quick-links-section">
-      <div className="help-quick-links">{quickLinks.map((item) => <Button key={item.page} size="sm" variant="secondary" onClick={() => navigate(item.page)}>{item.label}</Button>)}</div>
+      <div className="help-quick-links">{quickLinks.map(item=><Button key={item.path} size="sm" variant="secondary" onClick={()=>navigateToRoute(item.path)}>{item.label}</Button>)}</div>
     </Section>
 
     <div className="help-lower-grid">

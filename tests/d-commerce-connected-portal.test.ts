@@ -1,0 +1,42 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+test("D17 portal orders, invoices, deliveries and account are routed through authenticated server scope",()=>{
+ const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+ const page=readFileSync("components/prototype/customer-connected-portal.tsx","utf8");
+ assert.match(hub,/return <CustomerConnectedPortal section=\{section\}\/>/);
+ assert.match(hub,/if\(section==="orders"\)return/);
+ assert.match(page,/currentFirebaseSession\(\)/);
+ assert.match(page,/firebaseFunctionUrl\("customerCommerceSnapshot"\)/);
+ assert.match(page,/cache:"no-store"/);
+ assert.doesNotMatch(page,/useCommerce\(/);
+});
+
+test("R33/R37 customer deliveries exclude unfulfilled and cancelled sales orders",()=>{
+ const page=readFileSync("components/prototype/customer-connected-portal.tsx","utf8");
+ assert.match(page,/section==="deliveries"\?view\.data\.orders\.filter\(order=>deliveryStates\.has\(order\.status\)\)/);
+ assert.match(page,/\["Out for delivery","Delivered","Paid"\]/);
+ assert.match(page,/Pending and cancelled orders remain in My Orders/);
+ assert.match(page,/not a verified route ETA, recipient signature, or proof of delivery/);
+});
+
+test("customer portal displays only authenticated server-scoped order requests",()=>{
+ const server=readFileSync("functions/src/customer-commerce-read.ts","utf8");
+ const projection=readFileSync("functions/src/customer-commerce-projection.ts","utf8");
+ const client=readFileSync("components/prototype/customer-connected-portal.tsx","utf8");
+ assert.match(server,/where\("requestedByUid","==",uid\)/);
+ assert.match(server,/projectCustomerOrderRequests\(uid,ids/);
+ assert.match(projection,/assigned\.has\(txt\(item\.accountId\)\)/);
+ assert.match(client,/aria-label="Submitted product requests"/);
+ assert.match(client,/onSubmitted=\{\(\)=>setVersion/);
+ assert.match(projection,/requests\?:/);
+});
+
+
+test("customer request history distinguishes unavailable, empty and partial records",()=>{
+ const page=readFileSync("components/prototype/customer-connected-portal.tsx","utf8");
+ assert.match(page,/requestHistoryAvailable:payload\.requestHistoryAvailable===true/);
+ assert.match(page,/Request history is temporarily unavailable/);
+ assert.match(page,/No verified requests in the recent records/);
+ assert.match(page,/Older requests may not be included/);
+});

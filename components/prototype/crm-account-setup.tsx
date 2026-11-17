@@ -1,0 +1,235 @@
+"use client";
+
+import {useRef,useState} from "react";
+import type {FormEvent} from "react";
+import {validateTaxIdentity} from "../../lib/account-tax-identity";
+import {validateLeadCreateDraft,type LeadCreateDraft} from "../../lib/crm-lead-create";
+import {navigateToRoute} from "../../lib/navigation-store";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
+import {createConnectedCrmAccount} from "../../lib/firebase-crm-account-creation";
+import {saveConnectedCustomerContacts,type ConnectedCustomerContactPatch} from "../../lib/firebase-customer-contact";
+import {momentumStorage} from "../../lib/persistence";
+import {useRuntimeMode} from "../../lib/runtime-mode";
+import {useWorkspace} from "../../lib/workspace-context";
+
+const initialDraft:LeadCreateDraft={
+  legalBusinessName:"",locationName:"",city:"Phoenix, AZ",streetAddress:"",postalCode:"",
+  channel:"Independent retail",contactName:"",contactRole:"Owner / buyer",phone:"",email:"",territoryReason:"",
+};
+
+export function CrmAccountSetup(){
+  const {scope,data,currentUser,createAccount,updateCustomerCommercial}=useWorkspace();
+  const runtime=useRuntimeMode();
+  const firebase=useFirebaseSessionOptional();
+  const pendingRequest=useRef<{payload:string;id:string}|null>(null);
+  const pendingContactRequest=useRef<{payload:string;id:string}|null>(null);
+  const [savingExisting,setSavingExisting]=useState(false);
+  const [savingNew,setSavingNew]=useState(false);
+  const [mode,setMode]=useState<"new"|"existing">("new");
+  const [draft,setDraft]=useState<LeadCreateDraft>({...initialDraft});
+  const [creationMessage,setCreationMessage]=useState("");
+  const [duplicateId,setDuplicateId]=useState<string|null>(null);
+  const change=(field:keyof LeadCreateDraft,value:string)=>{
+    setDraft(current=>({...current,[field]:value}));
+    setCreationMessage("");setDuplicateId(null);pendingRequest.current=null;
+  };
+  const [accountId,setAccountId]=useState("");
+  const [message,setMessage]=useState("");
+  const [errors,setErrors]=useState<Record<string,string>>({});
+  const account=accountId?scope.accounts.find(a=>a.id===accountId):scope.accounts[0];
+  const customer=(data.customers??[]).find(c=>c.id===account?.customerId);
+  const isManager=Boolean(currentUser&&["Administrator","Sales Manager"].includes(currentUser.role));
+  const canEdit=Boolean(currentUser&&["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role)&&runtime.isDemo&&momentumStorage.mode()==="local");
+  const connectedCreate=Boolean(!runtime.isDemo&&firebase?.session&&currentUser&&
+    ["Administrator","Sales Manager"].includes(currentUser.role));
+  const connectedContactEdit=Boolean(!runtime.isDemo&&firebase?.session&&currentUser&&
+    ["Administrator","Sales Manager"].includes(currentUser.role));
+  const canEditContacts=canEdit||connectedContactEdit;
+  const canCreateNew=canEdit||connectedCreate;
+  if(!currentUser||currentUser.role==="Customer")return <div className="prototype-empty">Employee account setup access is required.</div>;
+  const createNew=async(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();setCreationMessage("");setDuplicateId(null);
+    if(!canCreateNew||savingNew){
+      setCreationMessage("Only an authorized manager or Administrator can create a connected account.");
+      return;
+    }
+    const result=validateLeadCreateDraft(draft,scope.accounts);
+    if(!result.ok){
+      setCreationMessage(result.message);
+      if(result.duplicateAccountId&&scope.accounts.some(a=>a.id===result.duplicateAccountId))
+        setDuplicateId(result.duplicateAccountId);
+      return;
+    }
+    if(canEdit){
+      const id=createAccount(result.payload,result.territoryReason);
+      if(!id){setCreationMessage("Creation rejected. Check duplicate and territory controls.");return;}
+      setDraft({...initialDraft});setAccountId(id);setMode("existing");
+      setMessage("New prospect account created in the isolated demo. Credit, tax and contracts remain unverified.");
+      return;
+    }
+    if(!firebase?.session||!connectedCreate)return;
+    const fingerprint=JSON.stringify(result.payload);
+    if(!pendingRequest.current||pendingRequest.current.payload!==fingerprint)
+      pendingRequest.current={payload:fingerprint,id:crypto.randomUUID().replaceAll("-","")};
+    setSavingNew(true);
+    try{
+      const receipt=await createConnectedCrmAccount(firebase.session,result.payload,pendingRequest.current.id);
+      if(!receipt.readbackVerified){
+        setCreationMessage("Server receipt received, but connected source readback is not confirmed. Leave this form unchanged and retry the same request after checking CRM.");
+        return;
+      }
+      // Verify the read snapshot is hydrated before selecting the new account.
+      const refreshed=await momentumStorage.refreshKeys(["momentum-demo-workspace-v5"]);
+      if(!refreshed.ok){
+        setCreationMessage("Account saved and source-verified, but workspace sync is incomplete: "+
+          (refreshed.message??"Refresh connected records before proceeding."));
+        return;
+      }
+      pendingRequest.current=null;
+      setDraft({...initialDraft});setAccountId(receipt.accountId);setMode("existing");
+      setMessage("Account "+receipt.accountId+" confirmed in the connected source. Territory, tax documents, credit and payment terms are NOT approved. Existing-account edits remain read-only.");
+    }catch(error){
+      setCreationMessage(error instanceof Error?error.message:"Account creation not confirmed. Check CRM before retrying.");
+    }finally{setSavingNew(false);}
+  };
+  const submit=async(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();setMessage("");setErrors({});
+    if(!canEditContacts||!customer||!account||savingExisting){setMessage("Authenticated contact editing is not available for this customer.");return;}
+    const dataForm=new FormData(event.currentTarget);
+    if(connectedContactEdit&&firebase?.session){
+      const draft:ConnectedCustomerContactPatch={
+        billingContactName:String(dataForm.get("billingContactName")||"").trim(),
+        billingEmail:String(dataForm.get("billingEmail")||"").trim(),
+        billingPhone:String(dataForm.get("billingPhone")||"").trim(),
+        accountsPayableContactName:String(dataForm.get("accountsPayableContactName")||"").trim(),
+        accountsPayableEmail:String(dataForm.get("accountsPayableEmail")||"").trim(),
+        accountsPayablePhone:String(dataForm.get("accountsPayablePhone")||"").trim(),
+      };
+      const proposed=String(dataForm.get("onboardingPackageStatus")||"");
+      if(["Not started","Prepared"].includes(proposed)&&proposed!==customer.onboardingPackageStatus)
+        draft.onboardingPackageStatus=proposed as "Not started"|"Prepared";
+      const patch=Object.fromEntries(Object.entries(draft).filter(([key,value])=>
+        value!==String(customer[key as keyof typeof customer]??""))) as ConnectedCustomerContactPatch;
+      if(!Object.keys(patch).length){setMessage("No new billing/AP contact changes to save.");return;}
+      const payload={accountId:account.id,customerId:customer.id,
+        expectedRevision:customer.contactRevision??0,patch};
+      const fingerprint=JSON.stringify(payload);
+      if(!pendingContactRequest.current||pendingContactRequest.current.payload!==fingerprint)
+        pendingContactRequest.current={payload:fingerprint,id:crypto.randomUUID().replaceAll("-","")};
+      setSavingExisting(true);
+      try{
+        const receipt=await saveConnectedCustomerContacts(firebase.session,payload,pendingContactRequest.current.id);
+        if(!receipt.readbackVerified){
+          setMessage("Contact update was accepted by the server but current source readback is incomplete. Confirm the record before retrying.");
+          return;
+        }
+        const refresh=await momentumStorage.refreshKeys(["momentum-demo-workspace-v5"]);
+        if(!refresh.ok){
+          setMessage("Customer contacts changed in the verified source, but workspace hydration is incomplete. Refresh before another edit.");
+          return;
+        }
+        pendingContactRequest.current=null;
+        setMessage("Connected billing and A/P contact details saved and source-verified. Revision "+receipt.revision+". Tax forms, e-signatures, credit and order terms are still unverified.");
+      }catch(error){
+        setMessage(error instanceof Error?error.message:"Contact save unconfirmed. Verify the customer source before retry.");
+      }finally{setSavingExisting(false);}
+      return;
+    }
+    if(!canEdit){setMessage("Only the isolated demo supports editing sensitive tax and credit fields here.");return;}
+    const identity={
+      legalBusinessName:String(dataForm.get("legalBusinessName")||"").trim(),
+      ein:String(dataForm.get("ein")||"").trim(),
+      azTptLicenseNumber:String(dataForm.get("azTptLicenseNumber")||"").trim(),
+      taxDocumentType:String(dataForm.get("taxDocumentType")||"Undetermined") as "Undetermined"|"Taxable"|"Resale 5000A"|"Exemption 5000",
+    };
+    const validation=validateTaxIdentity(identity);
+    if(Object.keys(validation).length){setErrors(validation);setMessage("Correct the flagged identity fields before saving.");return;}
+    const patch={
+      ...identity,
+      billingContactName:String(dataForm.get("billingContactName")||"").trim(),
+      billingEmail:String(dataForm.get("billingEmail")||"").trim(),
+      billingPhone:String(dataForm.get("billingPhone")||"").trim(),
+      accountsPayableContactName:String(dataForm.get("accountsPayableContactName")||"").trim(),
+      accountsPayableEmail:String(dataForm.get("accountsPayableEmail")||"").trim(),
+      accountsPayablePhone:String(dataForm.get("accountsPayablePhone")||"").trim(),
+      // Keep any previously reviewed external package state. This form can only submit unverified preparation states.\n      ...( ["Not started","Prepared"].includes(String(dataForm.get("onboardingPackageStatus")||""))\n        ?{onboardingPackageStatus:String(dataForm.get("onboardingPackageStatus")) as "Not started"|"Prepared"}:{}),
+      ...(isManager?{creditStatus:String(dataForm.get("creditStatus")||"COD") as "COD"|"Credit Requested"|"Credit Under Review"|"Net 30 Approved"|"Credit Declined"|"Personal Guaranty Required"}:
+        String(dataForm.get("requestCredit")||"no")==="yes"?{creditStatus:"Credit Requested" as const}:{}),
+    };
+    const saved=updateCustomerCommercial(customer.id,patch);
+    setMessage(saved?"Customer setup saved to local demonstration records. No external tax form, e-sign or credit approval was generated.":"Setup rejected. Verify your access and the existing customer record.");
+  };
+  return <main className="prototype-workspace">
+    <header className="prototype-heading"><h1>Account setup</h1><p>Create a new business/location first, then complete its billing identity, tax documentation status and accounts-payable contacts. Existing customers can be updated separately.</p></header>
+    <nav className="prototype-page-actionbar" aria-label="Account setup workflow">
+      <button type="button" className={mode==="new"?"prototype-primary-action":""} aria-pressed={mode==="new"} onClick={()=>{setMode("new");setCreationMessage("");}}>1. Create new account</button>
+      <button type="button" className={mode==="existing"?"prototype-primary-action":""} aria-pressed={mode==="existing"} onClick={()=>{setMode("existing");setCreationMessage("");}}>2. Complete existing account</button>
+    </nav>
+    {mode==="new"&&<section className="prototype-panel">
+      <h2>New customer and first store location</h2>
+      <p className="prototype-note">Create a new prospect using the same canonical customer/location records as Leads and Accounts. Account identity and territory checks run before a record is saved. No pricing, orders, bonuses, tax verification or external commitments are made here.</p>
+      {!canCreateNew&&<p role="status" className="prototype-note">Connected account creation currently requires an Administrator or Sales Manager. Representative territories need trusted backend verification first.</p>}
+      {connectedCreate&&<p className="prototype-note">Connected creation stores an unverified Prospect only. It does not create a signed tax document, credit approval, or contract.</p>}
+      <form aria-label="Create new customer account" onSubmit={createNew}>
+        <fieldset className="prototype-account-form-section"><legend>Business and location</legend>
+          <div className="prototype-columns">
+            <label>Legal business name <input required maxLength={160} disabled={!canCreateNew||savingNew} value={draft.legalBusinessName} onChange={event=>change("legalBusinessName",event.target.value)} placeholder="Registered legal business name"/></label>
+            <label>Store / location name <input maxLength={160} disabled={!canCreateNew||savingNew} value={draft.locationName} onChange={event=>change("locationName",event.target.value)} placeholder="Uses business name when blank"/></label>
+            <label>Street address <input required disabled={!canCreateNew||savingNew} value={draft.streetAddress} onChange={event=>change("streetAddress",event.target.value)} placeholder="Street and suite, if applicable"/></label>
+            <label>City / market <input required maxLength={120} disabled={!canCreateNew||savingNew} value={draft.city} onChange={event=>change("city",event.target.value)}/></label>
+            <label>ZIP code <input required inputMode="numeric" maxLength={10} pattern="[0-9]{5}(-[0-9]{4})?" disabled={!canCreateNew||savingNew} value={draft.postalCode} onChange={event=>change("postalCode",event.target.value)} placeholder="85001"/></label>
+            <label>Sales channel <select disabled={!canCreateNew||savingNew} value={draft.channel} onChange={event=>change("channel",event.target.value)}>
+              {["Independent retail","Convenience store","Restaurant","Hospitality","Gym / fitness","Other"].map(value=><option key={value}>{value}</option>)}
+            </select></label>
+          </div>
+        </fieldset>
+        <fieldset className="prototype-account-form-section"><legend>Primary contact</legend>
+          <div className="prototype-columns">
+            <label>Buyer / primary contact <input required disabled={!canCreateNew||savingNew} value={draft.contactName} onChange={event=>change("contactName",event.target.value)}/></label>
+            <label>Contact role <input required disabled={!canCreateNew||savingNew} value={draft.contactRole} onChange={event=>change("contactRole",event.target.value)}/></label>
+            <label>Business phone <input type="tel" disabled={!canCreateNew||savingNew} value={draft.phone} onChange={event=>change("phone",event.target.value)}/></label>
+            <label>Business email <input type="email" disabled={!canCreateNew||savingNew} value={draft.email} onChange={event=>change("email",event.target.value)}/></label>
+          </div>
+        </fieldset>
+        <fieldset className="prototype-account-form-section"><legend>Territory review</legend>
+          <label>Out-of-territory explanation, if needed <textarea disabled={!canCreateNew||savingNew} minLength={5} maxLength={500} value={draft.territoryReason} onChange={event=>change("territoryReason",event.target.value)} placeholder="Only required if this location is outside your assigned ZIP guidance"/></label>
+          <p className="prototype-note">A territory exception may need approval. An unassigned or conflicting location cannot silently bypass assignment controls.</p>
+        </fieldset>
+        {creationMessage&&<p role="alert" className="prototype-note">{creationMessage}</p>}
+        {duplicateId&&<button type="button" className="prototype-link" onClick={()=>navigateToRoute("/sales/customers/"+encodeURIComponent(duplicateId))}>Review potential duplicate</button>}
+        <div className="prototype-controls"><button type="submit" className="prototype-primary-action" disabled={!canCreateNew||savingNew}>{savingNew?"Verifying account…":"Create account & continue setup"}</button>
+          <button type="button" disabled={savingNew} onClick={()=>{pendingRequest.current=null;setDraft({...initialDraft});setCreationMessage("");setDuplicateId(null);}}>Clear form</button></div>
+      </form>
+    </section>}
+    {mode==="existing"&&<section className="prototype-panel">
+      <div className="prototype-controls"><label>Business location <select aria-label="Select account setup location" value={account?.id??""} onChange={e=>{setAccountId(e.target.value);setMessage("");setErrors({});}}>
+        {scope.accounts.map(a=><option value={a.id} key={a.id}>{a.name} · {a.location}</option>)}</select></label>
+        {account&&<button type="button" className="prototype-link" onClick={()=>navigateToRoute("/sales/customers/"+encodeURIComponent(account.id))}>Open customer profile</button>}
+      </div>
+      {!customer||!account?<div className="prototype-empty">Select an account that is linked to an existing customer. No billing identity will be invented.</div>:<>
+        <div className="prototype-metrics"><div><small>Parent business</small><strong>{customer.name}</strong></div><div><small>Account stage</small><strong>{account.stage}</strong></div><div><small>Payment terms</small><strong>{customer.paymentTerms??"COD"}</strong></div></div>
+        {!canEditContacts&&<p role="status" className="prototype-note">Connected account setup requires authorized customer leadership access. Tax, credit and verified-document changes remain protected.</p>}
+        <form key={customer.id+"-"+account.id+"-"+(customer.contactRevision??0)} aria-label="Customer account setup" onSubmit={submit}>
+          <div className="prototype-columns">
+            <label>Legal business name <input required name="legalBusinessName" disabled={!canEdit} defaultValue={customer.legalBusinessName??""}/>{errors.legalBusinessName&&<small role="alert">{errors.legalBusinessName}</small>}</label>
+            <label>Tax document route <select name="taxDocumentType" disabled={!canEdit} defaultValue={customer.taxDocumentType??"Undetermined"}><option>Undetermined</option><option>Taxable</option><option value="Resale 5000A">Resale 5000A</option><option value="Exemption 5000">Exemption 5000</option></select>{errors.taxDocumentType&&<small role="alert">{errors.taxDocumentType}</small>}</label>
+            <label>Arizona TPT license <input name="azTptLicenseNumber" disabled={!canEdit} defaultValue={customer.azTptLicenseNumber??""}/>{errors.azTptLicenseNumber&&<small role="alert">{errors.azTptLicenseNumber}</small>}</label>
+            <label>Federal EIN <input name="ein" disabled={!canEdit} defaultValue={customer.ein??""}/>{errors.ein&&<small role="alert">{errors.ein}</small>}</label>
+            <label>Billing contact <input name="billingContactName" disabled={!canEditContacts||savingExisting} defaultValue={customer.billingContactName??""}/></label>
+            <label>Billing email <input type="email" name="billingEmail" disabled={!canEditContacts||savingExisting} defaultValue={customer.billingEmail??""}/></label>
+            <label>Billing phone <input name="billingPhone" disabled={!canEditContacts||savingExisting} defaultValue={customer.billingPhone??""}/></label>
+            <label>Accounts payable contact <input name="accountsPayableContactName" disabled={!canEditContacts||savingExisting} defaultValue={customer.accountsPayableContactName??""}/></label>
+            <label>A/P email <input type="email" name="accountsPayableEmail" disabled={!canEditContacts||savingExisting} defaultValue={customer.accountsPayableEmail??""}/></label>
+            <label>A/P phone <input name="accountsPayablePhone" disabled={!canEditContacts||savingExisting} defaultValue={customer.accountsPayablePhone??""}/></label>
+            <label>Onboarding package <select name="onboardingPackageStatus" disabled={!canEditContacts||savingExisting} defaultValue={customer.onboardingPackageStatus??"Not started"}><option>Not started</option><option>Prepared</option>{customer.onboardingPackageStatus&&!["Not started","Prepared"].includes(customer.onboardingPackageStatus)&&<option value={customer.onboardingPackageStatus}>{customer.onboardingPackageStatus} (existing verification required)</option>}</select></label>
+            {isManager?<label>Credit status <select name="creditStatus" disabled={!canEdit} defaultValue={customer.creditStatus??"COD"}><option>COD</option><option>Credit Requested</option><option>Credit Under Review</option><option>Net 30 Approved</option><option>Credit Declined</option><option>Personal Guaranty Required</option></select></label>
+             :<label>Credit review <select name="requestCredit" disabled={!canEdit} defaultValue="no"><option value="no">No new request</option><option value="yes">Request manager review</option></select></label>}
+          </div>
+          <p className="prototype-note">Tax-document route is informational, not verified legal e-signature. Managers control credit status; representatives may request review only. Any commercial terms remain subject to approved records and company authority. In connected mode only ordinary billing and A/P contacts and the unverified package-preparation state may be saved; EIN, TPT, legal identity, tax verification and credit are never submitted here.</p>
+          {message&&<p role="status">{message}</p>}
+          {canEditContacts&&<div className="prototype-controls"><button type="submit" disabled={savingExisting}>{savingExisting?"Verifying saved contacts…":connectedContactEdit?"Save connected billing/A-P contacts":"Save account setup"}</button></div>}
+        </form>
+      </>}
+    </section>}
+  </main>;
+}

@@ -29,14 +29,14 @@ test("invoice ledger and detail use a responsive layout without offsets",()=>{
  assert.doesNotMatch(block,/translateX|margin-left:\s*-/);
 });
 
-test("administrator payments reuse original settlement engine and are not delivery-triggered",()=>{
+test("administrator payments require isolated demo context and are not delivery-triggered",()=>{
  const ui=readFileSync("components/commerce/order-cash-panel-v2.tsx","utf8");
  const context=readFileSync("lib/commerce-context.tsx","utf8");
  const access=readFileSync("lib/access.ts","utf8");
  const orders=readFileSync("components/pages/orders-v3.tsx","utf8");
- assert.match(ui,/const canFinance = currentUser\.role === "Administrator"/);
+ assert.match(ui,/const canFinance=mayMutateCommerceInBrowser\(/);
  assert.match(ui,/recordPayment\(\{ invoiceId: selected\.id/);
- assert.match(context,/const canManageCash = currentUser\?\.role === "Administrator"/);
+ assert.match(context,/const canManageCash=mayMutateCommerceInBrowser\(/);
  assert.match(context,/if \(!canManageCash \|\| !currentUser/);
  assert.match(access,/canReconcileOrderPayment[^\n]*Administrator/);
  assert.ok(orders.includes('currentUser?.role==="Administrator"&&selectedInvoice&&<Button'));

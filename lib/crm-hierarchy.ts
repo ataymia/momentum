@@ -1,18 +1,20 @@
 import type { Account, CustomerAccount, WorkspaceData } from "./types";
 
-const slug=(value:string)=>value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 const inferredParentName=(name:string)=>name.replace(/\s+#\d+\s*$/,"").trim()||name;
 
 export function customerForLocation(data:WorkspaceData,location:Account):CustomerAccount{
-  const id=location.customerId??`cust-${slug(inferredParentName(location.name))}`;
-  return data.customers?.find((customer)=>customer.id===id)??{
-    id,
+  const existing=location.customerId?data.customers?.find(customer=>customer.id===location.customerId):undefined;
+  if(existing)return existing;
+  // No unverified name-based link and no invented creation timestamp.
+  // A synthetic, view-only identity is deliberately unique to each location.
+  return {
+    id:"unlinked-location:"+location.id,
     name:inferredParentName(location.name),
-    accountType:inferredParentName(location.name)!==location.name?"Chain / franchise":"Independent",
+    accountType:"Other",
     billingContactName:location.contactName,
     billingEmail:location.email,
     billingPhone:location.phone,
-    createdAt:new Date().toISOString(),
+    createdAt:location.createdAt??"",
   };
 }
 
