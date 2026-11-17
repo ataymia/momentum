@@ -8,7 +8,7 @@ export type OrderIntakeStage="Needs commercial review"|"Needs clarification"|"Pr
 export type OrderIntakeRecord={
  id:string;accountId:string;customerId:string;requestedByUid:string;
  ownerAtSubmission:string;createdAt:string;status:OrderIntakeStage;
- reviewedAt?:string;reviewedBy?:string;reviewReason?:string;
+ reviewRevision?:number;reviewedAt?:string;reviewedBy?:string;reviewReason?:string;
  totalCases:number;note:string;
  lines:Array<{skuId:string;description:string;casePack:number;cases:number}>;
  source:string;
@@ -100,14 +100,14 @@ export async function getConnectedOrderIntake(
 /** Verified Administrator decision; does not issue an order or charge money. */
 export async function decideConnectedOrderIntake(
  session:FirebaseAuthSession,decision:{
-  intakeId:string;expectedStatus:OrderIntakeStage;nextStatus:OrderIntakeStage;reason:string;
+  intakeId:string;expectedStatus:OrderIntakeStage;expectedRevision:number;nextStatus:OrderIntakeStage;reason:string;
  },requestId:string,
-):Promise<{intakeId:string;status:OrderIntakeStage;reviewedAt:string;replayed:boolean}>{
+):Promise<{intakeId:string;status:OrderIntakeStage;reviewRevision:number;reviewedAt:string;replayed:boolean}>{
  const record=await call(session,"decideOrderIntake",{decision,requestId}) as
-  {intakeId?:string;status?:OrderIntakeStage;reviewedAt?:string;replayed?:boolean};
+  {intakeId?:string;status?:OrderIntakeStage;reviewRevision?:number;reviewedAt?:string;replayed?:boolean};
  if(!record.reviewedAt||record.intakeId!==decision.intakeId||
-  record.status!==decision.nextStatus)
+  record.status!==decision.nextStatus||record.reviewRevision!==decision.expectedRevision+1)
   throw new Error("Review receipt is incomplete. Read source before retrying.");
  return{intakeId:record.intakeId,status:record.status,
-  reviewedAt:record.reviewedAt,replayed:Boolean(record.replayed)};
+  reviewRevision:record.reviewRevision,reviewedAt:record.reviewedAt,replayed:Boolean(record.replayed)};
 }

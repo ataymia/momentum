@@ -81,17 +81,18 @@ export function ConnectedOrderIntakeQueue(){
   if(clean.length<10||clean.length>1000){
    setFeedback("Enter 10-1000 characters explaining the next step and evidence needed.");return;
   }
-  const draft={intakeId:selected.id,expectedStatus:selected.status,nextStatus:target,reason:clean};
+  const draft={intakeId:selected.id,expectedStatus:selected.status,
+   expectedRevision:selected.reviewRevision??0,nextStatus:target,reason:clean};
   const fingerprint=JSON.stringify(draft);
   const id=pending.current?.fingerprint===fingerprint?
    pending.current.requestId:crypto.randomUUID().replaceAll("-","");
   pending.current={fingerprint,requestId:id};
   setSaving(true);setFeedback("");
   try{
-   await decideConnectedOrderIntake(session,draft,id);
+   const receipt=await decideConnectedOrderIntake(session,draft,id);
    const readback=await getConnectedOrderIntake(session,selected.id);
-   if(readback.status!==target)
-    throw new Error("The decision receipt was saved, but the exact source stage was not confirmed.");
+   if(readback.status!==target||readback.reviewRevision!==receipt.reviewRevision)
+    throw new Error("The decision was recorded, but the source has changed. Refresh before reviewing again.");
    setRecords(current=>current.map(row=>row.id===selected.id?readback:row));setLoaded(true);
    setFeedback("Source-confirmed review: "+target+". No sale, cash, inventory or commission was posted.");
    setSelectedId("");setReason("");pending.current=null;

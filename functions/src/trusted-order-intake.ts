@@ -1,6 +1,6 @@
 /* eslint-disable max-len, comma-spacing, key-spacing, indent, object-curly-spacing, curly, brace-style, keyword-spacing, arrow-parens, space-before-blocks */
 import {createHash,randomUUID} from "node:crypto";
-import {getFirestore} from "firebase-admin/firestore";
+import {getFirestore,type Transaction} from "firebase-admin/firestore";
 import {customerAccountIds} from "./customer-commerce-projection";
 
 type Row=Record<string,unknown>;
@@ -10,10 +10,12 @@ export type OrderIntakeStage="Needs commercial review"|"Needs clarification"|"Pr
 export type OrderIntakeRecord={
  id:string;accountId:string;customerId:string;requestedByUid:string;
  ownerAtSubmission:string;createdAt:string;status:OrderIntakeStage;
- reviewedAt?:string;reviewedBy?:string;reviewReason?:string;
+ reviewRevision?:number;reviewedAt?:string;reviewedBy?:string;reviewReason?:string;
  lines:OrderLine[];totalCases:number;note:string;source:string;
 };
 type IntakeReceipt={intakeId:string;createdAt:string;status:OrderIntakeStage;replayed:boolean};
+export type CustomerIntakeReceiptRecord=Pick<OrderIntakeRecord,
+ "id"|"accountId"|"requestedByUid"|"createdAt"|"status"|"lines"|"totalCases">;
 const catalog=[
  {skuId:"ge-original-250ml-24",description:"0.25L (8.4oz) Golden Eagle Energy Drink (24pack)",casePack:24},
  {skuId:"ge-sugarfree-250ml-24",description:"0.25L (8.4oz) Golden Eagle SugarFree (24pack)",casePack:24},
@@ -71,6 +73,27 @@ function validateDraft(raw:unknown):IntakeDraft{
  return{accountId,lines,note};
 }
 
+
+/** Check current location ownership before any receipt replay or non-admin read.
+ * @param {Transaction} tx Current Firestore transaction.
+ * @param {string} actorUid Verified active identity.
+ * @param {string} role Current authoritative role.
+ * @param {Row} account Current source account.
+ * @return {Promise<void>} Denies off-scope sales access.
+ */
+async function assertCurrentSalesScope(tx:Transaction,actorUid:string,role:string,account:Row):Promise<void>{
+ const ownerId=text(account.ownerId);
+ if(role==="Sales Representative"&&ownerId!==actorUid)
+  throw new OrderIntakeError(403,"Only the assigned representative may access this account.");
+ if(role==="Sales Manager"&&ownerId!==actorUid){
+  const owner=actorIdPattern.test(ownerId)?
+   (await tx.get(getFirestore().doc("userAccess/"+ownerId))).data():undefined;
+  if(text(owner?.accountState)!=="Active"||text(owner?.role)!=="Sales Representative"||
+   text(owner?.managerId)!==actorUid||text(owner?.team)!=="Sales")
+   throw new OrderIntakeError(403,"The customer is outside your direct sales team.");
+ }
+}
+
 /** An active sales identity may submit only a source-authorized account.
  * Administrator can submit any account; Sales Manager can submit own
  * or directly supervised active rep's account; reps require ownership.
@@ -104,6 +127,10 @@ export async function submitTrustedOrderIntake(
   if(role==="Customer"&&
    !customerAccountIds(actor,directorySnap.data()).includes(draft.accountId))
    throw new OrderIntakeError(403,"This location is not assigned to your customer account.");
+  const account=records(accountsSnap.data()).find(row=>text(row.id)===draft.accountId);
+  if(!account)throw new OrderIntakeError(404,"Customer account is not available.");
+  const ownerId=text(account.ownerId);
+  await assertCurrentSalesScope(tx,actorUid,role,account);
   if(keySnap.exists){
    const saved=keySnap.data();
    if(text(saved?.actorUid)!==actorUid||
@@ -111,30 +138,19 @@ export async function submitTrustedOrderIntake(
     throw new OrderIntakeError(409,"That request ID belongs to different intake details.");
    const intakeId=text(saved?.intakeId);
    const proof=intakeId?await tx.get(db.doc("commerceOrderIntakes/"+intakeId)):null;
-   if(!proof?.exists||text(proof.data()?.requestedByUid)!==actorUid)
+   if(!proof?.exists||text(proof.data()?.requestedByUid)!==actorUid||
+    text(proof.data()?.accountId)!==draft.accountId||
+    text(proof.data()?.customerId)!==text(account.customerId))
     throw new OrderIntakeError(409,"Previous intake needs source reconciliation.");
    return{intakeId,createdAt:text(saved?.createdAt),
     status:proof.data()?.status as OrderIntakeStage,replayed:true};
-  }
-  const account=records(accountsSnap.data()).find(row=>text(row.id)===draft.accountId);
-  if(!account)throw new OrderIntakeError(404,"Customer account is not available.");
-  const ownerId=text(account.ownerId);
-  if(role==="Sales Representative"&&ownerId!==actorUid)
-   throw new OrderIntakeError(403,"Only the assigned representative may submit this account.");
-  if(role==="Sales Manager"&&ownerId!==actorUid){
-   const ownerSnap=ownerId?await tx.get(db.doc("userAccess/"+ownerId)):null;
-   const owner=ownerSnap?.data();
-   if(text(owner?.accountState)!=="Active"||
-    text(owner?.role)!=="Sales Representative"||
-    text(owner?.managerId)!==actorUid||text(owner?.team)!=="Sales")
-    throw new OrderIntakeError(403,"The customer is outside your direct sales team.");
   }
   const intakeId="intake-"+randomUUID();
   const createdAt=new Date().toISOString();
   const intake:OrderIntakeRecord={
    id:intakeId,accountId:draft.accountId,
    customerId:text(account.customerId),requestedByUid:actorUid,
-   ownerAtSubmission:ownerId,createdAt,status:"Needs commercial review",
+   ownerAtSubmission:ownerId,createdAt,status:"Needs commercial review",reviewRevision:0,
    lines:draft.lines,totalCases:draft.lines.reduce((sum,line)=>sum+line.cases,0),
    note:draft.note,source:"Authenticated nonbinding order-intake form",
   };
@@ -151,27 +167,47 @@ export async function submitTrustedOrderIntake(
 /** Read one source submission plus nonbinding review stage, never an order or settlement ledger.
  * @param {string} actorUid Verified session.
  * @param {unknown} rawIntakeId Opaque intake identifier.
- * @return {Promise<OrderIntakeRecord>} Record from source.
+ * @return {Promise<OrderIntakeRecord|CustomerIntakeReceiptRecord>} Role-scoped source record.
  */
 export async function getTrustedOrderIntake(
  actorUid:string,rawIntakeId:unknown,
-):Promise<OrderIntakeRecord>{
+):Promise<OrderIntakeRecord|CustomerIntakeReceiptRecord>{
  const intakeId=text(rawIntakeId);
  if(!actorIdPattern.test(actorUid)||!/^intake-[0-9a-f-]{36}$/.test(intakeId))
   throw new OrderIntakeError(400,"Invalid intake ID.");
  const db=getFirestore();
- const [accessSnap,intakeSnap]=await Promise.all([
-  db.doc("userAccess/"+actorUid).get(),
-  db.doc("commerceOrderIntakes/"+intakeId).get(),
- ]);
- const access=accessSnap.data();
- if(text(access?.accountState)!=="Active")
-  throw new OrderIntakeError(403,"An active account is required.");
- const record=intakeSnap.data() as OrderIntakeRecord|undefined;
- if(!record)throw new OrderIntakeError(404,"Order intake not found.");
- if(text(access?.role)!=="Administrator"&&record.requestedByUid!==actorUid)
-  throw new OrderIntakeError(403,"Order intake is outside your scope.");
- return record;
+ return db.runTransaction(async tx=>{
+  const [accessSnap,intakeSnap,directorySnap,accountsSnap]=await Promise.all([
+   tx.get(db.doc("userAccess/"+actorUid)),
+   tx.get(db.doc("commerceOrderIntakes/"+intakeId)),
+   tx.get(db.doc("employeeDirectory/"+actorUid)),
+   tx.get(db.doc("domains/workspace/fields/accounts")),
+  ]);
+  const access=accessSnap.data();
+  const role=text(access?.role);
+  if(text(access?.accountState)!=="Active"||
+   !["Administrator","Sales Manager","Sales Representative","Customer"].includes(role))
+   throw new OrderIntakeError(403,"An active authorized account identity is required.");
+  const record=intakeSnap.data() as OrderIntakeRecord|undefined;
+  if(!record)throw new OrderIntakeError(404,"Order intake not found.");
+  if(role==="Administrator")return record;
+  if(record.requestedByUid!==actorUid)
+   throw new OrderIntakeError(403,"Order intake is outside your scope.");
+  if(role==="Customer"&&!customerAccountIds(access,directorySnap.data()).includes(record.accountId))
+   throw new OrderIntakeError(403,"This location is no longer assigned to your customer account.");
+  const account=records(accountsSnap.data()).find(row=>text(row.id)===record.accountId);
+  if(!account||text(account.customerId)!==record.customerId)
+   throw new OrderIntakeError(403,"Order intake account is no longer in your scope.");
+  await assertCurrentSalesScope(tx,actorUid,role,account);
+  if(role==="Customer"){
+   // A customer's receipt is not the internal administrator review record.
+   return{id:record.id,accountId:record.accountId,requestedByUid:record.requestedByUid,
+    createdAt:record.createdAt,status:record.status,totalCases:record.totalCases,
+    lines:record.lines.map(line=>({skuId:line.skuId,description:line.description,
+     casePack:line.casePack,cases:line.cases}))};
+  }
+  return record;
+ });
 }
 
 /** Bounded Administrator-only read; no implicit financial approval or posting.

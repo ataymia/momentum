@@ -84,3 +84,19 @@ test("Customer portal composes a canonical multi-product request without creatin
  assert.match(ui,/reviewOrderIntake/);
  assert.doesNotMatch(ui,/paymentsReceived|pricePerCase|createOrder|cardNumber/);
 });
+
+
+test("R33 intake replay and customer receipt authorization require current role and account scope",()=>{
+ const server=readFileSync("functions/src/trusted-order-intake.ts","utf8");
+ const beforeReplay=server.indexOf("await assertCurrentSalesScope(tx,actorUid,role,account)");
+ const replay=server.indexOf("if(keySnap.exists)");
+ assert.ok(beforeReplay>0&&beforeReplay<replay);
+ assert.match(server,/customerAccountIds\(access,directorySnap\.data\(\)\)\.includes\(record\.accountId\)/);
+ assert.match(server,/role==="Customer"\)\{\s*\/\/ A customer's receipt/);
+ const review=readFileSync("functions/src/trusted-order-intake-review.ts","utf8");
+ assert.match(review,/storedRevision!==expectedRevision/);
+ assert.match(review,/tx\.update\(intakeRef,\{status,reviewRevision/);
+ const queue=readFileSync("components/commerce/connected-order-intake-queue.tsx","utf8");
+ assert.match(queue,/expectedRevision:selected\.reviewRevision\?\?0/);
+ assert.match(queue,/readback\.reviewRevision!==receipt\.reviewRevision/);
+});

@@ -111,7 +111,7 @@ test("R33 reviewer transitions require an active Admin, verified source, replay 
  const first=await submitTrustedOrderIntake(ids.rep,draft,"reviewSubmitted"+key);
  const intakeId=first.intakeId;
  const command={
-  intakeId,expectedStatus:"Needs commercial review",
+  intakeId,expectedStatus:"Needs commercial review",expectedRevision:0,
   nextStatus:"Pricing and inventory verification",
   reason:"Confirm customer pricing, stock, tax setup and delivery capacity before a sale",
  };
@@ -127,6 +127,8 @@ test("R33 reviewer transitions require an active Admin, verified source, replay 
  assert.equal(saved.status,done.status);
  assert.equal(saved.reviewedBy,ids.admin);
  assert.equal(saved.reviewReason,command.reason);
+ assert.equal(saved.reviewRevision,1);
+ assert.equal(done.reviewRevision,1);
  const replay=await decideTrustedOrderIntake(ids.admin,command,"reviewDecision"+key);
  assert.equal(replay.replayed,true);
  assert.equal(replay.reviewedAt,done.reviewedAt);
@@ -139,17 +141,17 @@ test("R33 reviewer transitions require an active Admin, verified source, replay 
  assert.equal(audit.size,1);
  assert.equal(audit.docs[0].data().financialPosting,false);
  const returned=await decideTrustedOrderIntake(ids.admin,{
-  intakeId,expectedStatus:"Pricing and inventory verification",
+  intakeId,expectedStatus:"Pricing and inventory verification",expectedRevision:1,
   nextStatus:"Needs clarification",reason:"Pricing and supplier stock require current, authorized verification",
  },"returnReview"+key);
  assert.equal(returned.status,"Needs clarification");
  const declined=await decideTrustedOrderIntake(ids.admin,{
-  intakeId,expectedStatus:"Needs clarification",nextStatus:"Declined",
+  intakeId,expectedStatus:"Needs clarification",expectedRevision:2,nextStatus:"Declined",
   reason:"No binding sale occurred because the buyer did not approve valid terms",
  },"declineReview"+key);
  assert.equal(declined.status,"Declined");
  await deny(decideTrustedOrderIntake(ids.admin,{
-  intakeId,expectedStatus:"Declined",nextStatus:"Needs commercial review",
+  intakeId,expectedStatus:"Declined",expectedRevision:3,nextStatus:"Needs commercial review",
   reason:"Cannot silently reopen a declined intake without a fresh buyer request",
  },"reopenReview"+key),400);
  for(const [path,originalId] of [
@@ -204,4 +206,58 @@ test("R33 Administrator source intake pagination does not silently omit older re
  const repeated=await pageTrustedOrderIntakes(ids.admin,null);
  assert.deepEqual(repeated.records.map(row=>row.id),first.records.map(row=>row.id));
  assert.equal(repeated.nextCursor,first.nextCursor);
+});
+
+
+test("R33 receipts and replays respect current ownership and customer assignment; customer sees no internal review",async()=>{
+ const customer=await submitTrustedOrderIntake(ids.customer,draft,"privacyCustomer"+key);
+ const rep=await submitTrustedOrderIntake(ids.rep,draft,"privacyRep"+key);
+ const manager=await submitTrustedOrderIntake(ids.mgr,draft,"privacyManager"+key);
+ await decideTrustedOrderIntake(ids.admin,{
+  intakeId:customer.intakeId,expectedStatus:"Needs commercial review",expectedRevision:0,
+  nextStatus:"Needs clarification",reason:"Private internal commercial review details for staff only",
+ },"privateReview"+key);
+ const privateReceipt=await getTrustedOrderIntake(ids.customer,customer.intakeId);
+ assert.deepEqual(Object.keys(privateReceipt).sort(),[
+  "accountId","createdAt","id","lines","requestedByUid","status","totalCases",
+ ].sort());
+ assert.equal(privateReceipt.status,"Needs clarification");
+ assert.equal((await getTrustedOrderIntake(ids.admin,customer.intakeId)).reviewRevision,1);
+ const profile=db.doc("employeeDirectory/"+ids.customer);
+ await profile.update({accountIds:[ids.otherAccount]});
+ try{
+  await deny(getTrustedOrderIntake(ids.customer,customer.intakeId),403);
+  await deny(submitTrustedOrderIntake(ids.customer,draft,"privacyCustomer"+key),403);
+ }finally{await profile.update({accountIds:[ids.account]});}
+ const accounts=db.doc("domains/workspace/fields/accounts");
+ const original=(await accounts.get()).data().items;
+ await accounts.set({items:original.map(a=>a.id===ids.account?{...a,ownerId:ids.repOther}:a)});
+ try{
+  await deny(getTrustedOrderIntake(ids.rep,rep.intakeId),403);
+  await deny(getTrustedOrderIntake(ids.mgr,manager.intakeId),403);
+  await deny(submitTrustedOrderIntake(ids.rep,draft,"privacyRep"+key),403);
+  await deny(submitTrustedOrderIntake(ids.mgr,draft,"privacyManager"+key),403);
+  assert.equal((await getTrustedOrderIntake(ids.admin,rep.intakeId)).id,rep.intakeId);
+ }finally{await accounts.set({items:original});}
+});
+
+test("R33 stale same-stage decisions cannot overwrite a review that changed away and back",async()=>{
+ const {intakeId}=await submitTrustedOrderIntake(ids.rep,draft,"revisionIntake"+key);
+ const first={intakeId,expectedStatus:"Needs commercial review",expectedRevision:0,
+  nextStatus:"Needs clarification",reason:"Review current inventory evidence before a decision"};
+ const result=await decideTrustedOrderIntake(ids.admin,first,"revisionFirst"+key);
+ assert.equal(result.reviewRevision,1);
+ const restored=await decideTrustedOrderIntake(ids.admin,{
+  intakeId,expectedStatus:"Needs clarification",expectedRevision:1,
+  nextStatus:"Needs commercial review",reason:"Clarification received and source stage has been restored",
+ },"revisionRestore"+key);
+ assert.equal(restored.reviewRevision,2);
+ await deny(decideTrustedOrderIntake(ids.admin,first,"revisionStale"+key),409);
+ await deny(decideTrustedOrderIntake(ids.admin,{...first,expectedRevision:undefined},"revisionMissing"+key),400);
+ const replay=await decideTrustedOrderIntake(ids.admin,first,"revisionFirst"+key);
+ assert.equal(replay.replayed,true);
+ assert.equal(replay.reviewRevision,1);
+ const source=await getTrustedOrderIntake(ids.admin,intakeId);
+ assert.equal(source.status,"Needs commercial review");
+ assert.equal(source.reviewRevision,2);
 });
