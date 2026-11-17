@@ -182,6 +182,7 @@ const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/self-service/pay": "timekeeping",
   "/work/approvals": "work",
   "/crm/self-delivery": "orders",
+  "/people/leave/review": "people",
   "/admin/access": "settings",
   "/portal/orders": "orders",
   "/crm/map": "salesMap",
@@ -291,7 +292,7 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
       && clean !== "/sales/orders/new" && clean !== "/sales/orders/workflow";
     const legacyCustomer = clean === "/sales/orders" || clean === "/sales/customers"
       || customerOrderDetail || /^\/sales\/customers\/[^/]+(?:\/(?:overview|comments|transactions|mails|statements|locations))?$/.test(clean);
-    const portalDetail = /^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean);
+    const portalDetail = /^\/portal\/(orders|deliveries|invoices)\/[^/]+$/.test(clean);
     return (clean === "/" || CUSTOMER_MENU.some(entry => entry.path === clean)
       || legacyCustomer || portalDetail)
       && canAccessPage(user, permissionForPath(clean) ?? "home");

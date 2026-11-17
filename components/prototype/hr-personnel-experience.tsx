@@ -10,6 +10,7 @@ import {activeCompensation} from "../../lib/hcm-engine";
 import {downloadCsv} from "../../lib/browser-export";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useRuntimeMode} from "../../lib/runtime-mode";
+import {canOpenHrProvisioning} from "../../lib/hr-provisioning-access";
 import {momentumStorage} from "../../lib/persistence";
 
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
@@ -76,7 +77,7 @@ export function HrPersonnelDirectory(){
 
 export function HrPersonnelRecord({id,section="overview"}:{id:string;section?:string}){
   const {data,currentUser}=useWorkspace();const {hcm}=useHcm();
-  const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
+  const runtime=useRuntimeMode();const firebase=useFirebaseSessionOptional();const writeEnabled=canOpenHrProvisioning({actor:currentUser,isDemo:runtime.isDemo,storageMode:momentumStorage.mode(),firebase});
   if(currentUser?.role!=="Administrator")return <div className="prototype-empty">Employee records require Administrator access.</div>;
   const user=data.users.find(u=>u.id===id&&u.role!=="Customer");
   if(!user)return <div className="prototype-empty">Employee not found.</div>;

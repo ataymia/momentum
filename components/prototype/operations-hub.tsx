@@ -915,8 +915,8 @@ export function PrototypeOperationsHub(){
   if(!canVisitRoute(currentUser,path))return <Empty>You do not have permission to view this module.</Empty>;
   const segments=path.split("/").filter(Boolean);
   if(path==="/")return <WorkspaceHome/>;
-  if(segments[0]==="portal"&&segments[1]==="invoices"&&segments.length===3)return <CustomerInvoiceRecord id={decodeURIComponent(segments[2])}/>;
-  if(segments[0]==="portal"&&["orders","deliveries"].includes(segments[1])&&segments.length===3)return <CustomerOrderRecord id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>;
+  if(segments[0]==="portal"&&segments[1]==="invoices"&&segments.length===3)return writeEnabled?<CustomerInvoiceRecord id={decodeURIComponent(segments[2])}/>:<CustomerConnectedPortal section="invoices" id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="portal"&&["orders","deliveries"].includes(segments[1])&&segments.length===3)return writeEnabled?<CustomerOrderRecord id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>:<CustomerConnectedPortal id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   // Personal employee records live in Account; old copied links remain compatible.
   if(path==="/my-account"||path==="/self-service")return <EmployeeAccountExperience/>;
@@ -956,7 +956,7 @@ export function PrototypeOperationsHub(){
   if(path==="/people/leave")return ["Administrator","Sales Manager"].includes(currentUser?.role??"")?<HrLeaveReviewExperience/>:<HrTimeOffExperience personalOnly/>;
   if(path==="/admin/accounts")return <AccountConsolidationReview/>;
   if(path==="/admin/employee-profiles")return <HrPersonnelDirectory/>;
-  if(path==="/admin/employee-profiles/workflow")return writeEnabled?<div><Heading title="Secure personnel editor" description="Existing audited editing controls retained during redesign." back="/admin/employee-profiles"/><AdminEmployeeProfiles/></div>:<Empty>Read-only redesign prototype. Personnel editing is disabled against connected records.</Empty>;
+  if(path==="/admin/employee-profiles/workflow")return provisioningEnabled?<div><Heading title="Secure personnel editor" description="Existing audited editing controls retained during redesign." back="/admin/employee-profiles"/><AdminEmployeeProfiles/></div>:<Empty>Personnel editing requires a verified active administrator session.</Empty>;
   if(segments[0]==="admin"&&segments[1]==="employee-profiles"&&segments[2])return <HrPersonnelRecord id={decodeURIComponent(segments[2])} section={segments[3]}/>
   if(path==="/admin/employees")return <HrPersonnelDirectory/>;
   if(path==="/crm/account-health")return <CrmAccountHealth/>;
@@ -998,6 +998,7 @@ export function PrototypeOperationsHub(){
   if(path==="/commerce/customer-portal")return <CustomerPortalAdminOverview/>;
   if(path==="/commerce/price-books")return <PriceBooksDirectory/>;
   if(path==="/sales/customers")return <AccountsDirectory/>;
+  if(path==="/crm/leads/new")return <CrmAccountSetup/>;
   if(segments[0]==="crm"&&segments[1]==="leads"&&segments[2])return <LeadRecord id={decodeURIComponent(segments[2])}/>;
   if(path==="/crm/leads")return <AccountsDirectory leadMode/>;
   if(path==="/crm/deals/new")return <DealEditor/>;
