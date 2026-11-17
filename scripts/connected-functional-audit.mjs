@@ -187,6 +187,89 @@ try{
  for(const path of ["/admin/access","/people/payroll","/inventory","/purchases/bills"])await inspectRoute("customer",path,false);
  for(const entry of routes.DRIVER_MENU)await inspectRoute("driver",entry.path);
  console.log("CONNECTED_ROLE_ROUTE_COUNT "+reports.routes.length);
+ await run("Customer catalog request creates intake only and preserves order records",async()=>{
+  const page=await open("customer");await goto(page,"/portal/products");
+  const before=(await getItems("domains/commercial/fields/orders")).map(x=>x.id).sort();
+  const form=page.getByRole("region",{name:"Customer order request"});
+  await form.getByLabel("Business location").selectOption(accountId);
+  await form.getByLabel("Requested product 1").selectOption("ge-original-250ml-24");
+  await form.getByLabel("Requested cases 1").fill("3");
+  await form.getByLabel("Notes").fill("QA catalog request only");
+  await form.getByRole("button",{name:"Submit request to sales"}).click();
+  const request=await waitDb(async()=>{
+   const docs=await db.collection("commerceOrderIntakes").get();
+   return docs.docs.map(d=>d.data()).find(x=>x.requestedByUid===uid("customer")&&x.accountId===accountId&&x.totalCases===3);
+  },"Customer intake missing");
+  assert.equal(request.status,"Needs commercial review");
+  assert.deepEqual((await getItems("domains/commercial/fields/orders")).map(x=>x.id).sort(),before);
+ });
+ await run("CRM prospect creation persists and links to its detail record",async()=>{
+  const page=await open("admin");await page.setViewportSize({width:1440,height:900});await goto(page,"/crm/leads");
+  await page.getByRole("button",{name:"Create lead",exact:true}).click();
+  const f=page.getByRole("form",{name:"Create sales lead"});
+  await f.getByLabel("Legal business name").fill("QA Connected Prospect");
+  await f.getByLabel("Store / location name").fill("QA Prospect Phoenix");
+  await f.getByLabel("City / market").fill("Phoenix, AZ");
+  await f.getByLabel("Street address").fill("12345 QA Test Avenue");
+  await f.getByLabel("ZIP code").fill("85001");
+  await f.getByLabel("Buyer / primary contact").fill("QA Buyer");
+  await f.getByLabel("Contact role").fill("Buyer");
+  await f.getByLabel("Email",{exact:true}).fill("prospect@example.invalid");
+  await f.getByRole("button",{name:"Save prospect"}).click();
+  const account=await waitDb(async()=>(await getItems("domains/workspace/fields/accounts")).find(x=>x.name==="QA Prospect Phoenix"||x.locationName==="QA Prospect Phoenix"||x.name==="QA Connected Prospect"),"Prospect missing");
+  assert.equal(account.stage,"Prospect");
+  await page.waitForURL("**/crm/leads/"+account.id,{timeout:30000});
+  await page.reload({waitUntil:"domcontentloaded"});await root(page).waitFor({timeout:60000});
+  assert.match(await root(page).innerText(),/QA (Connected Prospect|Prospect Phoenix)/);
+ });
+ await run("Staff support case creation, internal note and durable history",async()=>{
+  const page=await open("admin");await goto(page,"/support/cases");
+  await page.getByRole("button",{name:"Open new case"}).click();
+  const f=page.locator("form").filter({has:page.getByLabel("Issue description")});
+  await f.getByLabel("Title",{exact:true}).fill("QA internal support issue");
+  await f.getByLabel("Issue description").fill("Synthetic internal test; no customer messages.");
+  await f.getByRole("button",{name:"Submit support case"}).click();
+  const record=await waitDb(async()=>{
+   const docs=await db.collection("supportCases").where("title","==","QA internal support issue").get();
+   return docs.docs[0];
+  },"Support record missing");
+  await page.waitForURL("**/support/cases/"+record.id,{timeout:30000});
+  await page.getByLabel("Case note").fill("QA verified internal history");
+  await page.getByRole("button",{name:"Record note"}).click();
+  await waitDb(async()=>JSON.stringify((await record.ref.get()).data()?.history).includes("QA verified internal history"),"Support note missing");
+  await page.reload({waitUntil:"domcontentloaded"});await root(page).waitFor({timeout:60000});
+  await page.getByText(/QA verified internal history/).waitFor({timeout:30000});
+ });
+ await run("Employee leave request records submitted status without granting PTO",async()=>{
+  const page=await open("rep");await goto(page,"/my-account/time-off");
+  const future=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
+  await page.getByLabel("Start",{exact:true}).fill(future);
+  await page.getByLabel("End",{exact:true}).fill(future);
+  await page.getByLabel("Hours",{exact:true}).fill("2");
+  await page.getByLabel("Reason",{exact:true}).fill("QA synthetic leave review");
+  await page.getByRole("button",{name:"Submit request",exact:true}).click();
+  const request=await waitDb(async()=>(await getItems("userDomains/"+uid("rep")+"/hcm/leaveRequests")).find(r=>r.reason==="QA synthetic leave review"),"Leave record missing");
+  assert.equal(request.status,"Submitted");assert.equal(request.requestedHours,2);
+  await page.reload({waitUntil:"domcontentloaded"});await root(page).waitFor({timeout:60000});await goto(page,"/my-account/time-off");
+  await page.getByText("2 hours · Submitted",{exact:true}).waitFor({timeout:30000});
+ });
+ await run("Staff meeting creation, invitee response and persistence",async()=>{
+  const page=await open("admin");await goto(page,"/calendar/meetings/new");
+  const future=new Date(Date.now()+21*86400000).toISOString().slice(0,10);
+  await page.getByLabel("Meeting title").fill("QA connected staff meeting");
+  await page.getByLabel("Meeting date").fill(future);
+  await page.getByLabel("Meeting start time").fill("10:00");
+  await page.getByLabel("Meeting end time").fill("10:30");
+  await page.getByLabel("Meeting location").fill("QA internal meeting room");
+  await page.getByLabel("Meeting agenda").fill("Synthetic internal browser acceptance");
+  await page.getByLabel(/QA rep · Sales Representative/).check();
+  await page.getByRole("button",{name:"Create meeting for invitees"}).click();
+  const doc=await waitDb(async()=>(await db.collection("staffMeetings").where("title","==","QA connected staff meeting").get()).docs[0],"Meeting not saved");
+  assert(doc.data().attendeeIds.includes(uid("rep")));
+  const rep=await open("rep");await rep.reload({waitUntil:"domcontentloaded"});await root(rep).waitFor({timeout:60000});await goto(rep,"/calendar/meetings/"+doc.id);
+  await rep.getByRole("button",{name:"Accepted",exact:true}).click();
+  await waitDb(async()=>(await doc.ref.get()).data()?.rsvps?.[uid("rep")]==="Accepted","Invitation response not saved");
+ });
  await run("Customer PDF upload, reload, private download and independent review permission",async()=>{
   const page=await open("customer");await goto(page,"/portal/documents");
   const pdf=Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n");
