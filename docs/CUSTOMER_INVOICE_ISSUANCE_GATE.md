@@ -17,3 +17,7 @@
 **Manual browser printing:** The app hides print actions and blocks its print handler unless the static web build sets `NEXT_PUBLIC_INVOICE_ISSUE_APPROVED=true`. Unset means internal preview only. This is a user-interface hold, **not** a cryptographic or server-enforced authorization. A browser build flag alone never authorizes emailing. Configure both build and Functions flags only after written issuer/finance approval. Dedicated server-authorized manual issuance remains future work.
 
 **Recovery:** Approval later does not automatically send previously held events. Recent signed deliveries may retry when qualifying source records change, but older invoices require an authorized reconciliation/reissue process.
+
+## Invoice line-source and cross-customer protection
+
+The customer invoice email path now verifies that an invoice and underlying order belong to the **same customer location**. It uses saved `linesSnapshot` on amended/current invoices as the authority. Legacy invoices without that snapshot may use order lines only if quantities, prices and exact invoice totals reconcile. Broken lines, missing product identities, and amount mismatches write a review event and prevent customer emailing. A manual finance exception process for discounts, taxes or ancillary charges not represented as line items must be designed and approved instead of fabricating totals.

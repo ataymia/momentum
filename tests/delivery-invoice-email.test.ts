@@ -228,6 +228,9 @@ test("invoice sender reads receipts, credits and refunds from persisted ledgers"
   assert.match(source,/status\)==="Applied"/);
   assert.match(source,/status\)==="Settled"/);
   assert.match(source,/balanceDue:balance/);
+  assert.match(source,/reconcileInvoicePdfLines\(invoice,order\)/);
+  assert.match(source,/lines:proof\.lines/);
+  assert.match(source,/text\(invoice\.accountId\)!==text\(order\.accountId\)/);
   assert.match(source,/invoiceDate:text\(invoice\.issuedAt\)/);
 });
 
