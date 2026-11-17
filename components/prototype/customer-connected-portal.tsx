@@ -91,13 +91,20 @@ export function CustomerConnectedPortal({section}:{section:Section}){
           {section==="invoices"&&<td>{"balance" in row?cash(row.balance):""}</td>}
          </tr>)}</tbody></table></div>
         {section==="orders"&&Boolean(view.data.requests?.length)&&<section aria-label="Submitted product requests">
-         <h3>Requests awaiting sales review</h3>
+         <h3>Submitted requests and review status</h3>
          <div className="prototype-table-scroll"><table className="prototype-table">
-          <thead><tr><th>Request</th><th>Submitted</th><th>Location</th><th>Cases requested</th><th>Review stage</th></tr></thead>
+          <thead><tr><th>Request</th><th>Submitted</th><th>Location</th><th>Cases requested</th><th>Products</th><th>Review stage</th></tr></thead>
           <tbody>{(view.data.requests??[]).filter(item=>location==="all"||item.accountId===location).map(item=><tr key={item.id}>
            <td>{item.id}</td><td>{item.createdAt.slice(0,10)}</td>
            <td>{view.data?.accounts.find(a=>a.id===item.accountId)?.name??"Authorized location"}</td>
-           <td>{item.cases}</td><td>{item.status}</td>
+           <td>{item.cases}</td>
+           <td>{item.lines?.length?<details>
+            <summary>View products ({item.lines.length})</summary>
+            <ul>{item.lines.map(line=><li key={line.skuId}>
+             {line.description}: {line.cases} cases
+            </li>)}</ul>
+           </details>:<span>Breakdown unavailable</span>}</td>
+           <td>{item.status}</td>
           </tr>)}</tbody></table></div>
         </section>}
         {!rows.length&&<div className="prototype-empty">{section==="deliveries"?"No dispatched or delivered orders match. Pending and cancelled orders remain in My Orders.":"No authorized records matched."}</div>}

@@ -25,7 +25,8 @@ test("customer portal displays only authenticated server-scoped order requests",
  const projection=readFileSync("functions/src/customer-commerce-projection.ts","utf8");
  const client=readFileSync("components/prototype/customer-connected-portal.tsx","utf8");
  assert.match(server,/where\("requestedByUid","==",uid\)/);
- assert.match(server,/assigned\.has\(String\(item\.accountId/);
+ assert.match(server,/projectCustomerOrderRequests\(uid,ids/);
+ assert.match(projection,/assigned\.has\(txt\(item\.accountId\)\)/);
  assert.match(client,/aria-label="Submitted product requests"/);
  assert.match(client,/onSubmitted=\{\(\)=>setVersion/);
  assert.match(projection,/requests\?:/);

@@ -7,9 +7,62 @@ export type CustomerFinanceSnapshot={
  orders:{id:string;accountId:string;number:string;placedAt:string;status:string;cases:number}[];
  statements:{id:string;accountId:string;invoice:string;date:string;due:string;status:string;amount:number;cleared:number;pending:number;credits:number;balance:number}[];
  payments:{id:string;accountId:string;invoice:string;date:string;settled:string;status:string;method:string;amount:number}[];
- requests?:{id:string;accountId:string;createdAt:string;status:string;cases:number}[];
+ requests?:CustomerRequestSummary[];
  truncated:boolean;
 };
+
+export type CustomerRequestSummary={
+ id:string;accountId:string;createdAt:string;status:string;cases:number;
+ lines:{skuId:string;description:string;cases:number}[];
+};
+
+/** Publish only the verified customer's own request metadata and safe product
+ * breakdown, even if the upstream Firestore query or historical data is wrong.
+ * No buyer notes, payment data, internal owner or untrusted HTML are returned.
+ * @param {string} uid Verified Firebase actor.
+ * @param {readonly string[]} ids Authorized customer location IDs.
+ * @param {Row[]} source Source intake records.
+ * @param {number} limit Maximum recent entries.
+ * @return {CustomerRequestSummary[]} Privacy-scoped summary.
+ */
+export function projectCustomerOrderRequests(
+ uid:string,ids:readonly string[],source:Row[],limit=50,
+):CustomerRequestSummary[]{
+ if(!/^[A-Za-z0-9_-]{1,128}$/.test(uid))return[];
+ const assigned=new Set(ids.filter(id=>/^[A-Za-z0-9_-]{1,128}$/.test(id)));
+ const allowedStatus=new Set(["Needs commercial review","Needs clarification",
+  "Pricing and inventory verification","Declined"]);
+ return source.filter(item=>txt(item.requestedByUid)===uid&&
+    assigned.has(txt(item.accountId))&&
+    /^intake-[0-9a-f-]{36}$/.test(txt(item.id))&&
+    Number.isSafeInteger(item.totalCases)&&num(item.totalCases)>0&&num(item.totalCases)<=10000)
+  .map(item=>{
+   const cases=num(item.totalCases);
+   const lines:Array<{skuId:string;description:string;cases:number}>=[];
+   const seen=new Set<string>();
+   const rawLines=Array.isArray(item.lines)?item.lines:[];
+   for(const raw of rawLines.slice(0,12)){
+    if(!raw||typeof raw!=="object"||Array.isArray(raw))continue;
+    const line=raw as Row;
+    const skuId=txt(line.skuId);
+    const quantity=num(line.cases);
+    if(!/^[A-Za-z0-9_-]{1,80}$/.test(skuId)||seen.has(skuId)||
+      !Number.isSafeInteger(line.cases)||quantity<1||quantity>10000)continue;
+    seen.add(skuId);
+    lines.push({skuId,description:txt(line.description).slice(0,120)||skuId,cases:quantity});
+   }
+   const total=lines.reduce((sum,line)=>sum+line.cases,0);
+   return{
+    id:txt(item.id),accountId:txt(item.accountId),
+    createdAt:txt(item.createdAt).slice(0,35),
+    status:allowedStatus.has(txt(item.status))?txt(item.status):"Review status unavailable",
+    cases,lines:lines.length===rawLines.length&&total===cases?lines:[],
+   };
+  })
+  .sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||a.id.localeCompare(b.id))
+  .slice(0,Math.max(0,Math.min(50,limit)));
+}
+
 export const txt=(value:unknown)=>typeof value==="string"?value.trim():"";
 export const num=(value:unknown)=>typeof value==="number"&&Number.isFinite(value)&&value>=0?value:0;
 export const rows=(value:unknown):Row[]=>{

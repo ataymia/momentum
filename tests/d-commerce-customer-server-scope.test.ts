@@ -96,3 +96,34 @@ test("R23 prior payments or applied credits block a replacement balance until re
  assert.deepEqual(result.payments,[]);
  assert.equal(result.truncated,true);
 });
+
+
+test("customer product-request detail projection isolates customer identity and source location",()=>{
+ const good={
+  id:"intake-11111111-1111-4111-8111-111111111111",accountId:"store-a",
+  requestedByUid:"buyer-a",createdAt:"2026-11-16T18:00:00.000Z",
+  status:"Needs commercial review",totalCases:14,
+  lines:[
+   {skuId:"ge-original-250ml-24",description:"Golden Eagle Original 24-pack",cases:10},
+   {skuId:"ge-tropical-250ml-24",description:"Golden Eagle Tropical 24-pack",cases:4},
+  ],note:"Private buyer narrative must not leak",ownerAtSubmission:"private-rep",
+ };
+ const records=[good,
+  {...good,id:"intake-22222222-2222-4222-8222-222222222222",accountId:"store-b"},
+  {...good,id:"intake-33333333-3333-4333-8333-333333333333",requestedByUid:"buyer-b"},
+ ];
+ const visible=projection.projectCustomerOrderRequests("buyer-a",["store-a"],records);
+ assert.equal(visible.length,1);
+ assert.deepEqual(visible[0].lines.map(line=>line.cases),[10,4]);
+ assert.equal(visible[0].cases,14);
+ assert(!JSON.stringify(visible).includes("Private buyer narrative"));
+ assert(!JSON.stringify(visible).includes("private-rep"));
+ assert.deepEqual(projection.projectCustomerOrderRequests("buyer-a",[],records),[]);
+ assert.deepEqual(projection.projectCustomerOrderRequests("buyer-b",["store-a"],records),[
+  {...visible[0],id:"intake-33333333-3333-4333-8333-333333333333"},
+ ]);
+ const corrupt={...good,lines:[{skuId:"ge-original-250ml-24",description:"Original",cases:10}]};
+ const hidden=projection.projectCustomerOrderRequests("buyer-a",["store-a"],[corrupt]);
+ assert.equal(hidden[0].cases,14);
+ assert.deepEqual(hidden[0].lines,[],"Inconsistent source details are not presented as verified");
+});
