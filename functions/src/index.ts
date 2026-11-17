@@ -2276,3 +2276,5 @@ export const assignedDeliveryApi=onRequest({
     json(res,503,{ok:false,message:"Delivery change unconfirmed. Refresh the order before retrying."});
   }
 });
+
+export {customerDocumentsApi} from "./customer-documents";

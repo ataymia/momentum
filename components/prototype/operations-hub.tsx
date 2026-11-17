@@ -1,4 +1,5 @@
 "use client";
+import {CustomerDocumentWorkspace} from "./customer-document-workspace";
 import {contactExportRows,contactExportColumns} from "../../lib/saturday-scoped-workflows";
 
 import { useMemo, useRef, useState } from "react";
@@ -723,6 +724,7 @@ function CustomerPortalContent({section}:{section:string}){
   const [deliveryAccount,setDeliveryAccount]=useState("all");const [deliveryFrom,setDeliveryFrom]=useState("");
   const [deliveryThrough,setDeliveryThrough]=useState("");const [deliverySort,setDeliverySort]=useState<"newest"|"oldest"|"order"|"cases">("newest");
   if(currentUser?.role!=="Customer") return <Empty>Customer access only.</Empty>;
+  if(section==="documents")return <div><Heading title="My Documents" description="Private business document intake and review."/><CustomerDocumentWorkspace/></div>;
   if(section==="payments"||section==="statements")return <CustomerCommerceLedgers section={section}/>;
   if((!runtime.isDemo||momentumStorage.mode()!=="local")&&
     (section==="orders"||section==="invoices"||section==="account"||section==="deliveries"))
