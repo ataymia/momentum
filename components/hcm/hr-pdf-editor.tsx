@@ -2,9 +2,9 @@
 import {useEffect,useRef,useState,type FormEvent,type PointerEvent} from "react";
 import {inspectHrPdf,fillHrPdf,type PdfInfo,type PdfOverlay,type HrPdfFields} from "../../lib/hr-pdf-editor-engine";
 
-type Props={source:File;onPrepared?:(file:File)=>void};
+type Props={source:File;onPrepared?:(file:File)=>void;onInvalidated?:()=>void};
 /** Client-only PDF editing. No values or drawn marks are sent to third parties. */
-export function HrPdfEditor({source,onPrepared}:Props){
+export function HrPdfEditor({source,onPrepared,onInvalidated}:Props){
  const [info,setInfo]=useState<PdfInfo|null>(null);
  const [sourceUrl,setSourceUrl]=useState("");
  const [values,setValues]=useState<HrPdfFields>({});
@@ -32,7 +32,7 @@ export function HrPdfEditor({source,onPrepared}:Props){
   return()=>{live=false;URL.revokeObjectURL(url);};
  },[source]);
  const updateValue=(name:string,value:string|boolean)=>{
-  setValues(current=>({...current,[name]:value}));setGenerated(null);
+  setValues(current=>({...current,[name]:value}));setGenerated(null);onInvalidated?.();
  };
  const draw=(event:PointerEvent<HTMLCanvasElement>)=>{
   const element=canvas.current,ctx=element?.getContext("2d");
@@ -68,7 +68,7 @@ export function HrPdfEditor({source,onPrepared}:Props){
   }
   setOverlays(current=>[...current,{...n,kind,
    ...(drawn?{pngDataUrl:canvas.current!.toDataURL("image/png")}:{text:manualText.trim()})}]);
-  setGenerated(null);setMessage("");setManualText("");
+  setGenerated(null);onInvalidated?.();setMessage("");setManualText("");
   const ctx=canvas.current?.getContext("2d");ctx?.clearRect(0,0,320,100);
   hasInk.current=false;
  };
@@ -146,9 +146,9 @@ export function HrPdfEditor({source,onPrepared}:Props){
     <button type="button" onClick={addOverlay}>Add to PDF</button>
     {overlays.length>0&&<div><h4>Placed entries</h4>
      {overlays.map((overlay,index)=><p key={index}>{index+1}. {overlay.kind} · page {overlay.page} · ({overlay.x}, {overlay.y})
-      <button type="button" onClick={()=>{setOverlays(list=>list.filter((_,i)=>i!==index));setGenerated(null);}}>Remove</button></p>)}
+      <button type="button" onClick={()=>{setOverlays(list=>list.filter((_,i)=>i!==index));setGenerated(null);onInvalidated?.();}}>Remove</button></p>)}
     </div>}
-    <p><label><input type="checkbox" checked={flatten} onChange={e=>setFlatten(e.target.checked)}/> Flatten filled form fields into output</label></p>
+    <p><label><input type="checkbox" checked={flatten} onChange={e=>{setFlatten(e.target.checked);setGenerated(null);onInvalidated?.();}}/> Flatten filled form fields into output</label></p>
     <button type="submit" disabled={busy}>{busy?"Creating PDF…":"Create completed PDF"}</button>
    </form>
    {generated&&<button type="button" onClick={download}>Download {generated.name}</button>}

@@ -130,6 +130,9 @@ export async function archiveTrustedHrSignedOriginal(
    Boolean(role)&&role!=="Customer"&&
    incoming.sourceType==="Employee-submitted PDF (unverified)"&&
    incoming.attestedByWorker===true;
+  if(incoming.sourceType==="Employee-submitted PDF (unverified)"&&
+   actorUid!==incoming.employeeUid)
+   throw new HrOriginalArchiveError(403,"Worker attestation cannot be submitted on behalf of another worker.");
   if(!administrator&&!ownWorker)
    throw new HrOriginalArchiveError(403,"Active HR authorization or authenticated worker self-submission required.");
   if(!workerSnap.exists||txt(workerSnap.data()?.role)==="Customer"||
@@ -213,6 +216,9 @@ export async function archiveTrustedHrSignedOriginal(
    Boolean(finalRole)&&finalRole!=="Customer"&&
    incoming.sourceType==="Employee-submitted PDF (unverified)"&&
    incoming.attestedByWorker===true;
+  if(incoming.sourceType==="Employee-submitted PDF (unverified)"&&
+   actorUid!==incoming.employeeUid)
+   throw new HrOriginalArchiveError(403,"Worker attestation must originate from the worker.");
   if(!adminStillAuthorized&&!workerStillAuthorized)
    throw new HrOriginalArchiveError(403,"HR archive authorization was revoked.");
   if(!workerSnap.exists||txt(workerSnap.data()?.role)==="Customer")

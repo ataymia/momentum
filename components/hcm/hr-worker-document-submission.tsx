@@ -59,7 +59,7 @@ export function HrWorkerDocumentSubmission(){
  return <section aria-label="Worker HR PDF submission" className="onboarding-panel">
   <h3>Complete and submit a PDF</h3>
   <p>Upload your employment form, fill available PDF fields, and submit it privately for HR review. Only HR can approve the completed paperwork.</p>
-  <form onSubmit={event=>void submit(event)}>
+  <div>
    <div className="prototype-controls">
     <label>Document type<select value={kind} disabled={busy} onChange={event=>{
      setKind(event.target.value as HrTemplateKind);reset();
@@ -67,10 +67,12 @@ export function HrWorkerDocumentSubmission(){
     <label>PDF to complete<input type="file" accept="application/pdf,.pdf" disabled={busy}
      onChange={event=>{setFile(event.target.files?.[0]??null);setCompleted(null);reset();}}/></label>
    </div>
-   {file&&<HrPdfEditor source={file} onPrepared={edited=>{
-    setCompleted(edited);reset();
-   }}/>}
-   {completed&&<p role="status">Completed file ready: {completed.name}</p>}
+  </div>
+  {file&&<HrPdfEditor source={file} onInvalidated={()=>setCompleted(null)} onPrepared={edited=>{
+   setCompleted(edited);reset();
+  }}/>}
+  {completed&&<p role="status">Completed file ready: {completed.name}</p>}
+  <form onSubmit={event=>void submit(event)}>
    {file&&<label><input type="checkbox" checked={attested} disabled={busy}
     onChange={event=>setAttested(event.target.checked)}/>
     I am submitting my own document. Any signature or initials I added are mine and

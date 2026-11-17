@@ -84,6 +84,7 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  await deny(archiveTrustedHrSignedOriginal(worker,{
   ...original,sourceType:"Employee-submitted PDF (unverified)",attestedByWorker:true,
  },"selfCertificate"+archiveKey),400);
+ await deny(archiveTrustedHrSignedOriginal(admin,selfSource,"adminImpersonation"+archiveKey),403);
  const selfReceipt=await archiveTrustedHrSignedOriginal(worker,selfSource,"selfValid"+archiveKey);
  assert.equal(selfReceipt.employeeUid,worker);
  assert.equal(selfReceipt.status,"Pending independent HR review");
