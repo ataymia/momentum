@@ -56,3 +56,9 @@ test("ST-04 defaults personnel to active and preserves separated history",()=>{
  assert.match(ui,/Separated employee history/);
  assert.match(ui,/employeeRosterTruth/);
 });
+
+test("ST-03 HR overview uses reconciled status instead of raw employment status",()=>{
+ const source=readFileSync("components/prototype/hr-payroll-experiences.tsx","utf8");
+ assert.match(source,/employeeRosterTruth\(user,employment/);
+ assert.match(source,/row\.effective\.status==="Active"/);
+});

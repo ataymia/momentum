@@ -58,6 +58,7 @@ import {HelpPage} from "../pages/help";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
 import {HrPersonnelDirectory,HrPersonnelRecord} from "./hr-personnel-experience";
 import {CustomerPortalAdminOverview} from "./customer-portal-admin-overview";
+import {HrLeaveReviewExperience} from "./hr-leave-review-experience";
 import {HrTimeOffExperience} from "./hr-time-off-experience";
 import {HrNewHireExperience} from "./hr-new-hire-experience";
 import {NewHireProvisioning} from "../hcm/new-hire-provisioning";
@@ -951,7 +952,8 @@ export function PrototypeOperationsHub(){
   if(path==="/people/compliance")return <HrComplianceReadinessExperience/>;
   if(path==="/people/attendance"||path.startsWith("/people/attendance/"))return <HrAttendanceExperience/>;
   if(path==="/people/performance"||path.startsWith("/people/performance/"))return <HrPerformanceExperience/>;
-  if(path==="/people/leave")return <HrTimeOffExperience/>;
+  if(path==="/people/leave/review")return <HrLeaveReviewExperience/>;
+  if(path==="/people/leave")return ["Administrator","Sales Manager"].includes(currentUser?.role??"")?<HrLeaveReviewExperience/>:<HrTimeOffExperience personalOnly/>;
   if(path==="/admin/accounts")return <AccountConsolidationReview/>;
   if(path==="/admin/employee-profiles")return <HrPersonnelDirectory/>;
   if(path==="/admin/employee-profiles/workflow")return writeEnabled?<div><Heading title="Secure personnel editor" description="Existing audited editing controls retained during redesign." back="/admin/employee-profiles"/><AdminEmployeeProfiles/></div>:<Empty>Read-only redesign prototype. Personnel editing is disabled against connected records.</Empty>;
@@ -961,13 +963,8 @@ export function PrototypeOperationsHub(){
   if(path==="/crm/account-setup")return <CrmAccountSetup/>;
   if(path==="/crm/account-map"||path==="/crm/territories"||path==="/crm/territory-map")return <TerritoryMapPreview/>;
   if(path==="/crm/quick-visit")return <CrmQuickVisit/>;
-  if(path==="/crm/self-delivery")return currentUser?.role==="Sales Representative"
-    ?<RepSelfDelivery/>
-    :<div><Heading title="Rep Self-Delivery" description="This fulfillment action belongs to the sales representative assigned to the order."/>
-      <section className="prototype-panel"><h2>Administrator delivery oversight</h2>
-        <p>Self-delivery pickup, custody and recipient signature must be performed by the authorized representative. Administrators can review warehouse and delivery exceptions in Delivery Operations; this page does not impersonate a representative or complete a delivery.</p>
-        <OpenLink to="/operations/deliveries">Open Delivery Operations</OpenLink>
-      </section></div>;
+  // Compatibility bookmark: the same role-scoped delivery workspace, not a second menu.
+  if(path==="/crm/self-delivery")return currentUser?.role==="Sales Representative"?<RepSelfDelivery/>:<DeliveryOperationsDirectory/>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
   if(segments[0]==="commerce"&&segments[1]==="price-books"&&segments[2])return <PriceBookDetail id={decodeURIComponent(segments[2])}/>;
@@ -986,7 +983,7 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="purchases"&&segments[1])return <PurchasingExperience section={segments[1]} id={segments[2]?decodeURIComponent(segments[2]):undefined}/>;
   if(path==="/inventory/packages")return <PackagesDirectory/>;
   if(path==="/inventory/shipments")return <ShipmentsDirectory/>;
-  if(path==="/operations/deliveries")return <DeliveryOperationsDirectory/>;
+  if(path==="/operations/deliveries")return currentUser?.role==="Sales Representative"?<RepSelfDelivery/>:<DeliveryOperationsDirectory/>;
   if(path==="/inventory")return <InventoryDirectory/>;
   if(path==="/inventory/ledger")return <InventoryLedgerDirectory/>;
   if(path==="/inventory/adjustments")return <InventoryAdjustmentDirectory/>;

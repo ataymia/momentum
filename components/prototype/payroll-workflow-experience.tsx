@@ -91,7 +91,7 @@ export function PayrollWorkflowExperience(){
       </div>
       <p className="prototype-note">Bonus payroll, pay-group setup, withholding, controlled release, payment evidence, liabilities, and corrections remain operational in the existing engine.</p>
       <button type="button" disabled={!writeEnabled} onClick={()=>navigateToRoute("/people/payroll/workflow")}>Open full payroll processing &amp; settings</button>
-      {!writeEnabled&&<p className="prototype-note">Connected environments are read-only in this redesign prototype. Use isolated local demo mode for payroll write testing.</p>}
+      {!writeEnabled&&<p className="prototype-note">Live payroll calculations, settings changes, release and settlement are not certified. Use isolated local demo for write testing only; do not enter real pay or tax records there.</p>}
     </section>}
     <section className="prototype-panel">
       <h2>{admin?"2. Pay-run register":"Pay history"}</h2>

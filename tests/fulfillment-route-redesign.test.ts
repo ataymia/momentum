@@ -19,8 +19,8 @@ test("fulfillment areas have separate addressable routes and inventory-linked sh
   assert.equal(pageForPath("/inventory/shipments/order-123"),"inventory");
   assert.equal(routeLabel("/inventory/shipments/order-123"),"Shipment details");
 });
-test("company-wide delivery operations are hidden from ordinary sales reps",()=>{
-  assert.equal(canVisitRoute(user("Sales Representative"),"/operations/deliveries"),false);
+test("delivery operations gives ordinary sales reps only their assigned workflow",()=>{
+  assert.equal(canVisitRoute(user("Sales Representative"),"/operations/deliveries"),true);
   assert.equal(canVisitRoute(user("Marketing"),"/operations/deliveries"),false);
   assert.equal(canVisitRoute(user("Administrator"),"/operations/deliveries"),true);
 });
@@ -40,4 +40,13 @@ test("route registry renders all fulfillment pages from the prototype hub",()=>{
   for(const component of ["PackagesDirectory","ShipmentsDirectory","ShipmentDetail","DeliveryOperationsDirectory"]){
     assert.match(source,new RegExp("<"+component+"\\b"));
   }
+});
+
+test("ST-10 to ST-12 unified delivery menu preserves legacy links and rep custody",()=>{
+ const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
+ const registry=readFileSync("lib/navigation-route-registry.ts","utf8");
+ const delivery=readFileSync("components/prototype/fulfillment-experience.tsx","utf8");
+ assert.doesNotMatch(registry,/label: "Rep Self-Delivery", path:/);
+ assert.match(hub,/path==="\/operations\/deliveries"\)return currentUser\?\.role==="Sales Representative"\?<RepSelfDelivery\/>/);
+ assert.doesNotMatch(delivery,/Shipment workflow & assignments<\/button>/);
 });
