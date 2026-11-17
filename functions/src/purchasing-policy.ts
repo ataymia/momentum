@@ -7,10 +7,10 @@
 const approvedSkuIds=new Set(["ge-original-250ml-24","ge-sugarfree-250ml-24","ge-tropical-250ml-24","ge-red-250ml-24","ge-blue-zero-250ml-24","ge-strawberry-250ml-24"]);
 
 export type PurchaseRole = "Administrator"|"Operations"|"Warehouse"|"Other";
-export type PurchaseActor = {id:string;role:PurchaseRole;canVerifySettlement?:boolean};
+export type PurchaseActor = {id:string;role:PurchaseRole;canVerifySettlement?:boolean;canPostInventory?:boolean};
 export type VendorRecord = {id:string;name:string;contact:string;active:boolean;createdAt:string;createdBy:string};
 export type PurchaseOrderRecord = {id:string;vendorId:string;sku:string;cases:number;unitCostCents:number;warehouse:string;expectedDate:string;createdAt:string;createdBy:string;submittedAt?:string;approvedAt?:string;approvedBy?:string;cancelledAt?:string};
-export type PurchaseReceiptRecord = {id:string;poId:string;cases:number;lotCode:string;bestBy:string;warehouse:string;recordedAt:string;recordedBy:string;inventoryPosted:false};
+export type PurchaseReceiptRecord = {id:string;poId:string;cases:number;lotCode:string;bestBy:string;warehouse:string;recordedAt:string;recordedBy:string;inventoryPosted:boolean;postedAt?:string;postedBy?:string;inventoryLotId?:string;inspectionReference?:string};
 export type VendorBillRecord = {id:string;poId:string;invoiceNumber:string;cases:number;amountCents:number;recordedAt:string;recordedBy:string;approvedAt?:string;approvedBy?:string};
 export type VendorPaymentRecord = {id:string;billId:string;reference:string;amountCents:number;recordedAt:string;recordedBy:string;externalSettlementVerified:boolean;verifiedAt?:string;verifiedBy?:string;settlementEvidence?:string};
 export type VendorCreditRecord = {id:string;billId:string;reference:string;reason:string;amountCents:number;recordedAt:string;recordedBy:string;approvedAt?:string;approvedBy?:string};
@@ -38,7 +38,7 @@ export function normalizePurchasingDemoState(raw:unknown):PurchasingState{
     switch(key){
       case "vendors": return str(item.name)&&typeof item.contact==="string"&&typeof item.active==="boolean"&&str(item.createdAt)&&str(item.createdBy);
       case "orders": return str(item.vendorId)&&str(item.sku)&&integer(item.cases)&&integer(item.unitCostCents)&&str(item.warehouse)&&str(item.expectedDate)&&str(item.createdAt)&&str(item.createdBy);
-      case "receipts": return str(item.poId)&&integer(item.cases)&&str(item.lotCode)&&str(item.bestBy)&&str(item.warehouse)&&str(item.recordedAt)&&str(item.recordedBy)&&item.inventoryPosted===false;
+      case "receipts": return str(item.poId)&&integer(item.cases)&&str(item.lotCode)&&str(item.bestBy)&&str(item.warehouse)&&str(item.recordedAt)&&str(item.recordedBy)&&(item.inventoryPosted===false||(item.inventoryPosted===true&&str(item.postedAt)&&str(item.postedBy)&&str(item.inventoryLotId)&&str(item.inspectionReference)));
       case "bills": return str(item.poId)&&str(item.invoiceNumber)&&integer(item.cases)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy);
       case "payments": return str(item.billId)&&str(item.reference)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy)&&(item.externalSettlementVerified===false||(item.externalSettlementVerified===true&&str(item.verifiedAt)&&str(item.verifiedBy)&&str(item.settlementEvidence)));
       case "credits": return str(item.billId)&&str(item.reference)&&str(item.reason)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy);
@@ -98,6 +98,7 @@ export type PurchaseAction=
  |{kind:"po.approve";id:string}
  |{kind:"po.cancel";id:string}
  |{kind:"receipt.record";poId:string;cases:number;lotCode:string;bestBy:string;warehouse:string}
+ |{kind:"receipt.post";id:string;inspectionReference:string}
  |{kind:"bill.record";poId:string;invoiceNumber:string;cases:number;amountCents:number}
  |{kind:"bill.approve";id:string}
  |{kind:"payment.record";billId:string;reference:string;amountCents:number}
@@ -155,6 +156,16 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       if(action.warehouse.trim()!==p.warehouse)return reject("Receipt warehouse must match the approved purchase order.");
       recordId=newId(s,"receipt");s.receipts.push({id:recordId,poId:p.id,cases:action.cases,lotCode:action.lotCode.trim(),bestBy:action.bestBy,warehouse:action.warehouse.trim(),recordedAt:at,recordedBy:actor.id,inventoryPosted:false});
       detail="Physical receipt evidence recorded; inventory posting remains a separate step.";break;
+    }
+    case "receipt.post": {
+      if(!isAdmin(actor)||!actor.canPostInventory)return reject("Connected administrator approval is required.");
+      const r=s.receipts.find(row=>row.id===action.id);
+      if(!r||r.inventoryPosted||r.recordedBy===actor.id||!label(action.inspectionReference)||action.inspectionReference.trim().length<8)return reject("Unposted receipt, independent reviewer and physical inspection reference required.");
+      const po=s.orders.find(row=>row.id===r.poId);
+      if(!po?.approvedAt||po.cancelledAt)return reject("Approved purchase order required.");
+      recordId=r.id;
+      s.receipts=s.receipts.map(row=>row.id===r.id?{...row,inventoryPosted:true,postedAt:at,postedBy:actor.id,inventoryLotId:"purchase-lot-"+r.id,inspectionReference:action.inspectionReference.trim()}:row);
+      detail="Physical receipt independently inspected and submitted for atomic inventory posting.";break;
     }
     case "bill.record": {
       if(!canProcure(actor))return reject("Only purchasing staff may register supplier bills.");

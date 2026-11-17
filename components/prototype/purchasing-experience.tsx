@@ -118,7 +118,7 @@ function buildRows(s:PurchasingState,section:Section):Row[]{
   switch(section){
     case "vendors":return s.vendors.map(v=>({id:v.id,date:date(v.createdAt),status:v.active?"Active":"Inactive",values:{name:v.name,contact:v.contact||"Not provided",created:date(v.createdAt)}}));
     case "orders":return s.orders.map(p=>({id:p.id,date:date(p.createdAt),status:poStatus(s,p),values:{vendor:vendorName(s,p.vendorId),sku:skuById(p.sku)?.shortName??p.sku,cases:p.cases,received:receivedCases(s,p.id),cost:p.cases*p.unitCostCents,status:poStatus(s,p)}}));
-    case "receipts":return s.receipts.map(r=>({id:r.id,date:date(r.recordedAt),status:"Not posted",values:{po:poName(s,r.poId),cases:r.cases,lot:r.lotCode,bestBy:r.bestBy,warehouse:r.warehouse,status:"Pending inventory posting"}}));
+    case "receipts":return s.receipts.map(r=>({id:r.id,date:date(r.recordedAt),status:r.inventoryPosted?"Posted":"Not posted",values:{po:poName(s,r.poId),cases:r.cases,lot:r.lotCode,bestBy:r.bestBy,warehouse:r.warehouse,status:r.inventoryPosted?"Posted to inventory":"Pending inspection"}}));
     case "bills":return s.bills.map(b=>{const m=threeWayMatch(s,b);const st=b.approvedAt?"Approved":m.matched?"Matched · review needed":"Mismatch / awaiting receipt";return {id:b.id,date:date(b.recordedAt),status:st,values:{invoice:b.invoiceNumber,po:poName(s,b.poId),cases:b.cases,total:b.amountCents,variance:m.varianceCents,status:st,due:billDueCents(s,b)}};});
     case "payments":return s.payments.map(p=>({id:p.id,date:date(p.recordedAt),status:p.externalSettlementVerified?"Evidence reviewed":"Unverified",values:{bill:s.bills.find(b=>b.id===p.billId)?.invoiceNumber??p.billId,reference:p.reference,total:p.amountCents,status:p.externalSettlementVerified?"Evidence reviewed":"Pending settlement review"}}));
     case "credits":return s.credits.map(c=>({id:c.id,date:date(c.recordedAt),status:c.approvedAt?"Reviewed":"Pending review",values:{bill:s.bills.find(b=>b.id===c.billId)?.invoiceNumber??c.billId,reference:c.reference,reason:c.reason,total:c.amountCents,status:c.approvedAt?"Reviewed":"Pending review"}}));
@@ -131,6 +131,10 @@ function RowAction({section,id,state,role,actorId,run,connected,busy}:{section:S
     const po=state.orders.find(p=>p.id===id)!;if(!po.submittedAt&&!po.cancelledAt&&["Administrator","Operations"].includes(role))return <button type="button" disabled={busy} onClick={()=>void run({kind:"po.submit",id})}>Submit</button>;
     if(admin&&po.submittedAt&&!po.approvedAt&&!po.cancelledAt&&po.createdBy!==actorId)return <button type="button" disabled={busy} onClick={()=>void run({kind:"po.approve",id})}>Approve PO</button>;
     return <span>{po.createdBy===actorId&&!po.approvedAt?"Independent reviewer required":"Review only"}</span>;
+  }
+  if(section==="receipts"&&connected&&admin){
+    const r=state.receipts.find(row=>row.id===id);
+    if(r&&!r.inventoryPosted&&r.recordedBy!==actorId)return <button type="button" disabled={busy} onClick={()=>{const inspectionReference=window.prompt("Confirm physical count, product, batch and best-by date. Enter the inspection evidence reference.");if(inspectionReference&&inspectionReference.trim().length>=8)void run({kind:"receipt.post",id,inspectionReference:inspectionReference.trim()});}}>Inspect &amp; post stock</button>;
   }
   if(section==="bills"){
     const b=state.bills.find(b=>b.id===id)!;
@@ -162,11 +166,11 @@ function PurchasingRecordDetail({section,id,state}:{section:Section;id:string;st
   }else if(section==="orders"){
     const p=state.orders.find(x=>x.id===id);if(!p)return <p className="prototype-empty">Purchase order not found in this local review.</p>;
     facts.push({label:"Vendor",value:vendorName(state,p.vendorId)},{label:"Product",value:skuById(p.sku)?.description??p.sku},{label:"Ordered cases",value:String(p.cases)},{label:"Quoted cost per case",value:money(p.unitCostCents)},{label:"Order total",value:money(p.unitCostCents*p.cases)},{label:"Receiving warehouse",value:p.warehouse},{label:"Expected date",value:p.expectedDate},{label:"Stage",value:poStatus(state,p)},{label:"Created by",value:p.createdBy},{label:"Submitted",value:p.submittedAt??"Not submitted"},{label:"Approved by",value:p.approvedBy??"Not approved"});
-    state.receipts.filter(x=>x.poId===id).forEach(r=>related.push({id:r.id,type:"Physical receipt note",detail:r.cases+" cases · "+r.lotCode+" · inventory NOT posted"}));
+    state.receipts.filter(x=>x.poId===id).forEach(r=>related.push({id:r.id,type:"Physical receipt note",detail:r.cases+" cases · "+r.lotCode+(r.inventoryPosted?" · inventory posted":" · inventory NOT posted")}));
     state.bills.filter(x=>x.poId===id).forEach(b=>related.push({id:b.id,type:"Supplier invoice",detail:b.invoiceNumber+" · "+money(b.amountCents)+" · "+(b.approvedAt?"Review approved":"Pending review")}));
   }else if(section==="receipts"){
     const r=state.receipts.find(x=>x.id===id);if(!r)return <p className="prototype-empty">Receipt record not found.</p>;
-    facts.push({label:"Approved PO",value:poName(state,r.poId)},{label:"Cases physically reported",value:String(r.cases)},{label:"Lot code",value:r.lotCode},{label:"Best-by date",value:r.bestBy},{label:"Warehouse",value:r.warehouse},{label:"Recorded by",value:r.recordedBy},{label:"Recorded at",value:r.recordedAt},{label:"Inventory posting",value:"Not posted to stock"});
+    facts.push({label:"Approved PO",value:poName(state,r.poId)},{label:"Cases physically reported",value:String(r.cases)},{label:"Lot code",value:r.lotCode},{label:"Best-by date",value:r.bestBy},{label:"Warehouse",value:r.warehouse},{label:"Recorded by",value:r.recordedBy},{label:"Recorded at",value:r.recordedAt},{label:"Inventory posting",value:r.inventoryPosted?"Posted · "+r.inventoryLotId:"Not posted to stock"},{label:"Inspection reference",value:r.inspectionReference??"Awaiting inspection"});
   }else if(section==="bills"){
     const b=state.bills.find(x=>x.id===id);if(!b)return <p className="prototype-empty">Supplier bill record not found.</p>;
     const match=threeWayMatch(state,b);
@@ -274,11 +278,11 @@ function LocalPurchasingExperience({section,id,connected}:{section:string;id?:st
         <th><button type="button" onClick={()=>{setDescending(sort==="date"?!descending:true);setSort("date");}}>Recorded <ArrowUpDown size={13}/></button></th>
         <th><button type="button" onClick={()=>{setDescending(sort==="id"?!descending:false);setSort("id");}}>ID <ArrowUpDown size={13}/></button></th>
         {columns[selected].map(col=><th key={col.key}><button type="button" onClick={()=>{setDescending(sort===col.key?!descending:false);setSort(col.key);}}>{col.label} <ArrowUpDown size={13}/></button></th>)}
-        {["orders","bills","credits","expenses","payments"].includes(selected)&&<th>Control</th>}
+        {["orders","receipts","bills","credits","expenses","payments"].includes(selected)&&<th>Control</th>}
       </tr></thead><tbody>{filtered.map(row=><tr key={row.id}>
         <td>{row.date}</td><td><button className="prototype-link" type="button" onClick={()=>navigateToRoute("/purchases/"+selected+"/"+encodeURIComponent(row.id))}>{row.id}</button></td>
         {columns[selected].map(col=><td key={col.key}>{monetaryColumns.has(col.key)?money(Number(row.values[col.key]??0)):String(row.values[col.key]??"")}</td>)}
-        {["orders","bills","credits","expenses","payments"].includes(selected)&&<td><RowAction section={selected} id={row.id} state={state} run={run} role={currentUser.role} actorId={currentUser.id} connected={connected} busy={busy||!ready}/></td>}
+        {["orders","receipts","bills","credits","expenses","payments"].includes(selected)&&<td><RowAction section={selected} id={row.id} state={state} run={run} role={currentUser.role} actorId={currentUser.id} connected={connected} busy={busy||!ready}/></td>}
       </tr>)}</tbody></table></div>
       {!filtered.length&&<p className="prototype-empty">No purchasing records match the current register and filters.</p>}
     </section>
