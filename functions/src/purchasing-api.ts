@@ -45,19 +45,14 @@ function projectState(state:PurchasingState,role:string):PurchasingState{
  if(role==="Administrator")return state;
  return {...state,payments:state.payments.map(p=>({...p,reference:"Restricted",settlementEvidence:undefined})),audit:state.audit.map(e=>({...e,detail:""}))};
 }
-export const purchasingApi=onRequest({cors:true,region:"us-central1"},async(req,res)=>{
- if(req.method!=="POST"){res.status(405).json({ok:false,message:"POST required."});return;}
- const token=(req.headers.authorization??"").replace(/^Bearer /,"");
- let uid:string;
- try{uid=(await getAuth().verifyIdToken(token,true)).uid;}catch{res.status(401).json({ok:false,message:"Sign in again."});return;}
- try{
-  const body=req.body;
-  if(!isRow(body)||!["read","write"].includes(String(body.mode))||Object.keys(body).some(k=>!["mode","action","requestId"].includes(k)))throw new PurchaseApiError(400,"Invalid request.");
+/** Verified UID is supplied by the HTTPS handler; the transaction checks role and account state. */
+export async function commitPurchasingRequest(uid:string,body:unknown){
+  if(!isRow(body)||(body.mode!=="read"&&body.mode!=="write")||Object.keys(body).some(k=>!["mode","action","requestId"].includes(k)))throw new PurchaseApiError(400,"Invalid request.");
   const action=body.mode==="write"?validatePurchasingAction(body.action):null;
   const requestId=body.requestId;
   if(action&&(typeof requestId!=="string"||!/^[A-Za-z0-9_-]{16,80}$/.test(requestId)))throw new PurchaseApiError(400,"Invalid request key.");
   const db=getFirestore(),stateRef=db.doc("purchasingRegisters/current");
-  const result=await db.runTransaction(async tx=>{
+  return db.runTransaction(async tx=>{
    const access=(await tx.get(db.doc("userAccess/"+uid))).data();
    if(access?.accountState!=="Active"||!["Administrator","Operations"].includes(access.role))throw new PurchaseApiError(403,"Active purchasing staff access required.");
    const stateDoc=await tx.get(stateRef);
@@ -79,6 +74,15 @@ export const purchasingApi=onRequest({cors:true,region:"us-central1"},async(req,
    tx.create(receiptRef,{digest,actorUid:uid,recordId:next.audit[next.audit.length-1].recordId,recordedAt:new Date().toISOString()});
    return {state:projectState(next,access.role),message:"Saved to company purchasing register. No payment was initiated or stock posted."};
   });
+}
+export const purchasingApi=onRequest({cors:true,region:"us-central1"},async(req,res)=>{
+ if(req.method!=="POST"){res.status(405).json({ok:false,message:"POST required."});return;}
+ const token=(req.headers.authorization??"").replace(/^Bearer /,"");
+ let uid:string;
+ try{uid=(await getAuth().verifyIdToken(token,true)).uid;}catch{res.status(401).json({ok:false,message:"Sign in again."});return;}
+ try{
+  const body=req.body;
+  const result=await commitPurchasingRequest(uid,body);
   res.status(200).json({ok:true,...result});
  }catch(error){
   if(error instanceof PurchaseApiError){res.status(error.status).json({ok:false,message:error.message});return;}
