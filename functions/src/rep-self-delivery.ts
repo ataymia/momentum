@@ -4,7 +4,7 @@ import {getFirestore} from "firebase-admin/firestore";
 import {lotEligibleForAutomaticDelivery} from "./inventory-lot-quality";
 
 type Row=Record<string,unknown>;
-type Action="status"|"claim"|"pack"|"load"|"depart"|"complete";
+type Action="status"|"claim"|"assign"|"pack"|"load"|"depart"|"complete";
 type Receipt={orderId:string;orderStatus:string;taskStatus:string;cloudConfirmed:boolean;replayed?:boolean;deliveredAt?:string};
 const obj=(value:unknown):value is Row=>Boolean(value&&typeof value==="object"&&!Array.isArray(value));
 const txt=(value:unknown)=>typeof value==="string"?value.trim():"";
@@ -96,10 +96,17 @@ const signatureDraft=(value:unknown)=>{
  * @return {Promise<Receipt>} Confirmed server state.
  */
 export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<Receipt>{
+  return commitDelivery(actor,body,false);
+}
+/** Assigned driver workflow, with authorization distinct from rep self-delivery. */
+export async function commitAssignedDelivery(actor:string,body:unknown):Promise<Receipt>{
+  return commitDelivery(actor,body,true);
+}
+async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promise<Receipt>{
   if(!actor||!obj(body))return fail(400,"Invalid self-delivery request.");
   const action=txt(body.action) as Action;
   const orderId=txt(body.orderId);
-  if(!["status","claim","pack","load","depart","complete"].includes(action)||
+  if(!(assigned?["status","claim","assign","pack","load","depart","complete"]:["status","claim","pack","load","depart","complete"]).includes(action)||
      !/^[A-Za-z0-9_-]{5,120}$/.test(orderId))fail(400,"Invalid order or self-delivery step.");
   const proof=action==="complete"?signatureDraft(body.signature):undefined;
   const db=getFirestore();
@@ -113,14 +120,19 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     const saved=new Map(allPaths.map((path,index)=>[path,snapshots[index].data() as Row|undefined]));
     const rows=(path:string)=>items(saved.get(path));
     const access=saved.get(paths.access(actor));
-    if(txt(access?.role)!=="Sales Representative"||txt(access?.accountState)!=="Active")
-      fail(403,"Only active Sales Representatives can self-deliver orders.");
+    const role=txt(access?.role);
+    const management=assigned&&["Administrator","Operations"].includes(role);
+    const driver=assigned&&role==="Delivery Driver";
+    if(txt(access?.accountState)!=="Active"||!(assigned?(management||driver):role==="Sales Representative"))fail(403,"An active authorized delivery role is required.");
+    if(assigned&&action==="assign"&&!management)fail(403,"Only Operations or Administrator may assign a driver.");
+    if(assigned&&action==="claim"&&!driver)fail(403,"Only a driver may claim a delivery.");
+    if(assigned&&action==="complete"&&!driver)fail(403,"Recipient proof must be captured by the assigned driver.");
 
     const commercial=rows(paths.commercial),workspace=rows(paths.workspace);
     const order=commercial.find((item)=>txt(item.id)===orderId)||
       workspace.find((item)=>txt(item.id)===orderId);
     if(!order)return fail(404,"Order not found.");
-    if(txt(order.ownerId)!==actor)fail(403,"Only orders placed by you qualify for self-delivery.");
+    if(!assigned&&txt(order.ownerId)!==actor)fail(403,"Only orders placed by you qualify for self-delivery.");
     const copy=commercial.find((item)=>txt(item.id)===orderId);
     const second=workspace.find((item)=>txt(item.id)===orderId);
     if(copy&&second&&(txt(copy.status)!==txt(second.status)||
@@ -134,7 +146,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     const patch=accountPatches[accountId];
     const effectiveOwner=obj(patch)&&typeof patch.ownerId==="string"?
       txt(patch.ownerId):txt(account?.ownerId);
-    if(!account||effectiveOwner!==actor)
+    if(!account||(!assigned&&effectiveOwner!==actor))
       return fail(403,"This account is no longer assigned to you for self-delivery.");
 
     const tasks=rows(paths.tasks),overrides=rows(paths.overrides);
@@ -143,8 +155,17 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     const active=tasks.filter((row)=>txt(row.orderId)===orderId&&txt(row.status)!=="Cancelled");
     if(active.length>1)fail(409,"Duplicate delivery assignments require Operations reconciliation.");
     const task=active[0];
-    if(task&&txt(task.driverId)!==actor)
+    if(task&&txt(task.driverId)!==actor&&!management)
       fail(409,"Another delivery person has this order. Ask Operations before proceeding.");
+    const chosen=action==="assign"?txt(body.driverId):task?txt(task.driverId):actor;
+    if(assigned&&action==="assign"&&(!/^[A-Za-z0-9_-]{1,128}$/.test(chosen)||chosen===actor))fail(400,"Choose an eligible driver.");
+    if(assigned&&(task||action==="assign")){
+      if(!chosen||chosen.includes("/"))fail(409,"Invalid assigned driver.");
+      const driverAccess=(await tx.get(db.doc(paths.access(chosen)))).data();
+      if(txt(driverAccess?.accountState)!=="Active"||txt(driverAccess?.role)!=="Delivery Driver")fail(409,"Assigned delivery driver is not active; Operations must reconcile.");
+    }
+    if(assigned&&management&&!task&&!["status","assign"].includes(action))fail(409,"Assign a driver first.");
+    const custodian=assigned?chosen:actor;
     const status=txt(order.status),taskStatus=txt(task?.status);
     const response=(oStatus=status,tStatus=taskStatus,stamp?:string,replayed?:boolean):Receipt=>({
       orderId,orderStatus:oStatus,taskStatus:tStatus||"Unclaimed",
@@ -154,14 +175,14 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
       if(status==="Delivered"&&taskStatus==="Delivered"){
         const signed=obj(task?.signature)&&typeof task.signature.strokesJson==="string"&&
           task.signature.strokesJson.length>5&&
-          txt(task.signature.capturedBy)===actor&&
+          txt(task.signature.capturedBy)===custodian&&
           Array.isArray(task?.history)&&task.history.some((entry)=>
-            obj(entry)&&txt(entry.type)==="Delivered"&&txt(entry.actorId)===actor);
+            obj(entry)&&txt(entry.type)==="Delivered"&&txt(entry.actorId)===custodian);
         const posted=rows(paths.movements).filter((entry)=>
           txt(entry.relatedOrderId)===orderId&&txt(entry.type)==="Delivery");
         const correctInventory=matchExpected(expectedLines(order),posted.map((entry)=>({
           product:txt(entry.product),quantity:num(entry.quantity),
-        })))&&posted.every((entry)=>txt(entry.fromNodeId)===node(actor)&&
+        })))&&posted.every((entry)=>txt(entry.fromNodeId)===node(custodian)&&
           txt(entry.toNodeId)===customerNode(accountId));
         if(!signed||!correctInventory)return {...response(),cloudConfirmed:false};
       }
@@ -198,7 +219,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     const lots=new Map<string,Row>();
     for(const lot of [...rows(paths.lots),...rows(paths.extraLots)])lots.set(txt(lot.id),lot);
     const nodes=rows(paths.nodes);
-    const staffNode=node(actor),locationNode=customerNode(accountId);
+    const staffNode=node(custodian),locationNode=customerNode(accountId);
     const getNode=(id:string)=>nodes.find((row)=>txt(row.id)===id);
     const expected=expectedLines(order);
     const activeForOrder=reservations.filter((row)=>txt(row.orderId)===orderId&&txt(row.status)==="Active");
@@ -210,12 +231,12 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     const loadedCases=loaded.map((movement)=>({
       product:txt(lots.get(txt(movement.lotId))?.product),quantity:num(movement.quantity),
     }));
-    if(action==="claim"){
-      if(task&&taskStatus==="Accepted"&&status==="Approved")return response(status,"Accepted",undefined,true);
+    if(action==="claim"||action==="assign"){
+      if(task&&txt(task.driverId)===custodian&&taskStatus==="Accepted"&&status==="Approved")return response(status,"Accepted",undefined,true);
       if(task||status!=="Approved"||activeForOrder.length||anyOrderTransfer.length||existingDelivery.length)
         fail(409,"This order is already assigned or in fulfillment. Ask Operations to review it.");
-      const fresh={id:uid("rep-delivery"),orderId,driverId:actor,status:"Accepted",
-        acceptedAt:stamp,acceptedBy:actor,history:[event(actor,"Accepted","Sales Rep claimed own approved order.")],collections:[]};
+      const fresh={id:uid("rep-delivery"),orderId,driverId:custodian,status:"Accepted",
+        acceptedAt:stamp,acceptedBy:actor,history:[event(actor,action==="assign"?"Assigned":"Accepted",assigned?"Delivery driver assigned or claimed approved order.":"Sales Rep claimed own approved order.")],collections:[]};
       set(paths.tasks,[fresh,...tasks]);
     }else if(action==="pack"){
       if(taskStatus!=="Accepted")fail(409,"Claim your own delivery before reserving inventory.");
@@ -252,11 +273,11 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
       if(!getNode(warehouse))fail(409,"Warehouse location is missing.");
       const savedStaffNode=getNode(staffNode);
       if(savedStaffNode&&(txt(savedStaffNode.type)!=="Employee custody"||
-          txt(savedStaffNode.userId)!==actor))
+          txt(savedStaffNode.userId)!==custodian))
         fail(409,"Rep inventory custody node is invalid.");
       if(!savedStaffNode){
-        set(paths.nodes,[...nodes,{id:staffNode,name:"Sales Rep custody",
-          type:"Employee custody",active:true,userId:actor}]);
+        set(paths.nodes,[...nodes,{id:staffNode,name:assigned?"Delivery driver custody":"Sales Rep custody",
+          type:"Employee custody",active:true,userId:custodian}]);
       }
       const planned=activeForOrder.map((reservation)=>({
         product:txt(lots.get(txt(reservation.lotId))?.product),quantity:num(reservation.quantity),
@@ -273,7 +294,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
         id:uid("rep-load"),lotId:txt(reservation.lotId),
         product:txt(lots.get(txt(reservation.lotId))?.product),
         quantity:num(reservation.quantity),type:"Transfer",fromNodeId:warehouse,toNodeId:staffNode,
-        relatedOrderId:orderId,reason:"Sales Rep self-delivery loaded stock",at:stamp,actorId:actor,
+        relatedOrderId:orderId,reason:assigned?"Assigned delivery loaded stock":"Sales Rep self-delivery loaded stock",at:stamp,actorId:actor,
       }));
       set(paths.movements,[...adds,...movements]);
       updateTask("Loaded","Loaded",{loadedAt:stamp});
@@ -312,12 +333,12 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
       const posted=loaded.map((movement):Row=>({
         id:uid("rep-delivered"),lotId:txt(movement.lotId),product:txt(movement.product),
         quantity:num(movement.quantity),type:"Delivery",fromNodeId:staffNode,toNodeId:locationNode,
-        relatedOrderId:orderId,reason:"Signed Sales Rep self-delivery",at:stamp,actorId:actor,
+        relatedOrderId:orderId,reason:assigned?"Signed assigned delivery":"Signed Sales Rep self-delivery",at:stamp,actorId:actor,
       }));
       set(paths.movements,[...posted,...movements]);
       set(paths.reservations,reservations.map((row)=>txt(row.orderId)===orderId&&
         txt(row.status)==="Active"?{...row,status:"Fulfilled",fulfilledAt:stamp}:row));
-      const deliveredEvent=event(actor,"Delivered","Recipient signed Sales Rep self-delivery.");
+      const deliveredEvent=event(actor,"Delivered",assigned?"Recipient signed assigned delivery.":"Recipient signed Sales Rep self-delivery.");
       const signature={strokesJson:JSON.stringify(proof!.strokes),recipientName:proof!.name,
         signedAt:stamp,capturedBy:actor};
       // The invoice trigger reads the same signed-delivery task and validates
@@ -335,7 +356,7 @@ export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<R
     tx.set(meta,{versions},{merge:true});
     return response(
       action==="pack"?"Allocated":action==="depart"?"Out for delivery":action==="complete"?"Delivered":status,
-      action==="claim"||action==="pack"?"Accepted":action==="load"?"Loaded":action==="depart"?"In transit":"Delivered",
+      action==="claim"||action==="assign"||action==="pack"?"Accepted":action==="load"?"Loaded":action==="depart"?"In transit":"Delivered",
       action==="complete"?stamp:undefined,
     );
   });
