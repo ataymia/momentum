@@ -2262,7 +2262,9 @@ export {staffMeetingsApi} from "./staff-meetings";
 export {purchasingApi} from "./purchasing-api";
 
 /** Authenticated driver and operations fulfillment transactions. */
-export const assignedDeliveryApi=onRequest({cors:true,region:"us-central1"},async(req,res)=>{
+export const assignedDeliveryApi=onRequest({
+  cors:true,region:"us-central1",
+},async(req,res)=>{
   if(req.method!=="POST"){json(res,405,{ok:false,message:"POST required."});return;}
   let actor:string;
   try{actor=(await getAuth().verifyIdToken((req.headers.authorization??"").replace(/^Bearer /,""),true)).uid;}

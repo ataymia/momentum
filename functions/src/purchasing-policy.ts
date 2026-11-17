@@ -36,14 +36,14 @@ export function normalizePurchasingDemoState(raw:unknown):PurchasingState{
   const validate=(key:typeof keys[number],item:unknown):boolean=>{
     if(!plain(item)||!str(item.id))return false;
     switch(key){
-      case "vendors":return str(item.name)&&typeof item.contact==="string"&&typeof item.active==="boolean"&&str(item.createdAt)&&str(item.createdBy);
-      case "orders":return str(item.vendorId)&&str(item.sku)&&integer(item.cases)&&integer(item.unitCostCents)&&str(item.warehouse)&&str(item.expectedDate)&&str(item.createdAt)&&str(item.createdBy);
-      case "receipts":return str(item.poId)&&integer(item.cases)&&str(item.lotCode)&&str(item.bestBy)&&str(item.warehouse)&&str(item.recordedAt)&&str(item.recordedBy)&&item.inventoryPosted===false;
-      case "bills":return str(item.poId)&&str(item.invoiceNumber)&&integer(item.cases)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy);
-      case "payments":return str(item.billId)&&str(item.reference)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy)&&(item.externalSettlementVerified===false||(item.externalSettlementVerified===true&&str(item.verifiedAt)&&str(item.verifiedBy)&&str(item.settlementEvidence)));
-      case "credits":return str(item.billId)&&str(item.reference)&&str(item.reason)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy);
-      case "expenses":return str(item.description)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy)&&(!item.vendorId||str(item.vendorId));
-      case "audit":return str(item.at)&&str(item.actorId)&&str(item.action)&&str(item.recordId)&&typeof item.detail==="string";
+      case "vendors": return str(item.name)&&typeof item.contact==="string"&&typeof item.active==="boolean"&&str(item.createdAt)&&str(item.createdBy);
+      case "orders": return str(item.vendorId)&&str(item.sku)&&integer(item.cases)&&integer(item.unitCostCents)&&str(item.warehouse)&&str(item.expectedDate)&&str(item.createdAt)&&str(item.createdBy);
+      case "receipts": return str(item.poId)&&integer(item.cases)&&str(item.lotCode)&&str(item.bestBy)&&str(item.warehouse)&&str(item.recordedAt)&&str(item.recordedBy)&&item.inventoryPosted===false;
+      case "bills": return str(item.poId)&&str(item.invoiceNumber)&&integer(item.cases)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy);
+      case "payments": return str(item.billId)&&str(item.reference)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy)&&(item.externalSettlementVerified===false||(item.externalSettlementVerified===true&&str(item.verifiedAt)&&str(item.verifiedBy)&&str(item.settlementEvidence)));
+      case "credits": return str(item.billId)&&str(item.reference)&&str(item.reason)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy);
+      case "expenses": return str(item.description)&&integer(item.amountCents)&&str(item.recordedAt)&&str(item.recordedBy)&&(!item.vendorId||str(item.vendorId));
+      case "audit": return str(item.at)&&str(item.actorId)&&str(item.action)&&str(item.recordId)&&typeof item.detail==="string";
     }
   };
   for(const key of keys){
@@ -56,7 +56,7 @@ export function normalizePurchasingDemoState(raw:unknown):PurchasingState{
     }
   }
   const byId=(key:typeof keys[number])=>new Set(records[key].map(item=>(item as Record<string,unknown>).id));
-  const vendors=byId("vendors"),orders=byId("orders"),bills=byId("bills");
+  const vendors=byId("vendors");const orders=byId("orders");const bills=byId("bills");
   const linked=(items:unknown[],field:string,ids:Set<unknown>)=>items.every(item=>ids.has((item as Record<string,unknown>)[field]));
   if(!linked(records.orders,"vendorId",vendors)||!linked(records.receipts,"poId",orders)||
     !linked(records.bills,"poId",orders)||!linked(records.payments,"billId",bills)||
@@ -117,37 +117,37 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
   const s:PurchasingState={...original,vendors:original.vendors.map(v=>({...v})),orders:original.orders.map(p=>({...p})),receipts:[...original.receipts],bills:original.bills.map(b=>({...b})),payments:[...original.payments],credits:original.credits.map(c=>({...c})),expenses:original.expenses.map(e=>({...e})),audit:[...original.audit]};
   let recordId="";let detail="";
   switch(action.kind){
-    case "vendor.add":{
+    case "vendor.add": {
       if(!isAdmin(actor))return reject("Only an administrator may register vendors.");
       if(!label(action.name)||s.vendors.some(v=>v.name.trim().toLowerCase()===action.name.trim().toLowerCase()))return reject("A distinct vendor name is required.");
       recordId=newId(s,"vendor");s.vendors.push({id:recordId,name:action.name.trim(),contact:action.contact.trim().slice(0,160),active:true,createdAt:at,createdBy:actor.id});break;
     }
-    case "po.create":{
+    case "po.create": {
       if(!canProcure(actor))return reject("Only purchasing staff may prepare purchase orders.");
       if(!s.vendors.some(v=>v.id===action.vendorId&&v.active))return reject("Select a registered active vendor.");
       if(!approvedSkuIds.has(action.sku)||!amount(action.cases)||!amount(action.unitCostCents)||!Number.isSafeInteger(action.cases*action.unitCostCents)||!label(action.warehouse)||!dateKey(action.expectedDate))return reject("Enter a SKU, whole case quantity, cost, location and valid expected date.");
       recordId=newId(s,"po");s.orders.push({id:recordId,vendorId:action.vendorId,sku:action.sku,cases:action.cases,unitCostCents:action.unitCostCents,warehouse:action.warehouse.trim(),expectedDate:action.expectedDate,createdAt:at,createdBy:actor.id});break;
     }
-    case "po.submit":{
+    case "po.submit": {
       if(!canProcure(actor))return reject("Only purchasing staff may submit purchase orders.");
       const p=s.orders.find(x=>x.id===action.id);
       if(!p||p.submittedAt||p.cancelledAt)return reject("Only a draft purchase order can be submitted.");
       recordId=p.id;p.submittedAt=at;break;
     }
-    case "po.approve":{
+    case "po.approve": {
       if(!isAdmin(actor))return reject("An administrator must approve the purchase order.");
       const p=s.orders.find(x=>x.id===action.id);
       if(!p||!p.submittedAt||p.approvedAt||p.cancelledAt)return reject("A submitted, undecided purchase order is required.");
       if(p.createdBy===actor.id)return reject("The preparer cannot approve their own purchase order.");
       recordId=p.id;p.approvedAt=at;p.approvedBy=actor.id;break;
     }
-    case "po.cancel":{
+    case "po.cancel": {
       if(!isAdmin(actor))return reject("Only an administrator may cancel purchase orders.");
       const p=s.orders.find(x=>x.id===action.id);
       if(!p||p.cancelledAt||receivedCases(s,p.id)>0||billedCases(s,p.id)>0)return reject("Orders with receipts or bills need a separately approved reversal, not cancellation.");
       recordId=p.id;p.cancelledAt=at;break;
     }
-    case "receipt.record":{
+    case "receipt.record": {
       if(!canReceive(actor))return reject("Receiving access is required.");
       const p=s.orders.find(x=>x.id===action.poId);
       if(!p?.approvedAt||p.cancelledAt)return reject("An approved purchase order is required before receiving.");
@@ -156,7 +156,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       recordId=newId(s,"receipt");s.receipts.push({id:recordId,poId:p.id,cases:action.cases,lotCode:action.lotCode.trim(),bestBy:action.bestBy,warehouse:action.warehouse.trim(),recordedAt:at,recordedBy:actor.id,inventoryPosted:false});
       detail="Physical receipt evidence recorded; inventory posting remains a separate step.";break;
     }
-    case "bill.record":{
+    case "bill.record": {
       if(!canProcure(actor))return reject("Only purchasing staff may register supplier bills.");
       const p=s.orders.find(x=>x.id===action.poId);
       if(!p?.approvedAt||p.cancelledAt||!label(action.invoiceNumber)||!amount(action.cases)||!amount(action.amountCents))return reject("An approved order, supplier invoice and positive billed amount are required.");
@@ -164,7 +164,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       if(s.bills.some(b=>s.orders.find(po=>po.id===b.poId)?.vendorId===p.vendorId&&b.invoiceNumber.toLowerCase()===action.invoiceNumber.trim().toLowerCase()))return reject("Duplicate supplier invoice number for this vendor.");
       recordId=newId(s,"bill");s.bills.push({id:recordId,poId:p.id,invoiceNumber:action.invoiceNumber.trim(),cases:action.cases,amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id});break;
     }
-    case "bill.approve":{
+    case "bill.approve": {
       if(!isAdmin(actor))return reject("Only an administrator may approve a bill.");
       const bill=s.bills.find(b=>b.id===action.id);
       if(!bill||bill.approvedAt)return reject("An unapproved bill is required.");
@@ -172,7 +172,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       if(!threeWayMatch(s,bill).matched)return reject("Three-way match failed: approved order, recorded receipt quantity and exact invoice cost must agree.");
       recordId=bill.id;bill.approvedAt=at;bill.approvedBy=actor.id;break;
     }
-    case "payment.record":{
+    case "payment.record": {
       if(!isAdmin(actor))return reject("Only an administrator may record a supplier payment.");
       const bill=s.bills.find(b=>b.id===action.billId);
       if(!bill?.approvedAt||!label(action.reference)||!amount(action.amountCents)||action.amountCents>billDueCents(s,bill)-pendingPaymentCents(s,bill.id)-pendingCreditCents(s,bill.id))return reject("Approved bill, distinct reference and amount within the unreconciled balance are required.");
@@ -180,7 +180,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       recordId=newId(s,"pay");s.payments.push({id:recordId,billId:bill.id,reference:action.reference.trim(),amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id,externalSettlementVerified:false});
       detail="Payment reference recorded; no money moved and no external settlement verified.";break;
     }
-    case "payment.verify":{
+    case "payment.verify": {
       if(!isAdmin(actor)||!actor.canVerifySettlement)return reject("An authorized connected administrator must verify settlement.");
       const p=s.payments.find(x=>x.id===action.id);
       if(!p||p.externalSettlementVerified||p.recordedBy===actor.id||!label(action.evidence)||action.evidence.trim().length<8)return reject("Independent reviewer and external settlement evidence are required.");
@@ -190,14 +190,14 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       s.payments=s.payments.map(row=>row.id===p.id?{...row,externalSettlementVerified:true,verifiedAt:at,verifiedBy:actor.id,settlementEvidence:action.evidence.trim()}:row);
       detail="External settlement evidence manually reviewed; no money moved and no bank integration verified it.";break;
     }
-    case "credit.record":{
+    case "credit.record": {
       if(!canProcure(actor))return reject("Only purchasing staff may submit vendor credit requests.");
       const bill=s.bills.find(b=>b.id===action.billId);
       if(!bill?.approvedAt||!label(action.reference)||!label(action.reason)||!amount(action.amountCents)||action.amountCents>billDueCents(s,bill)-pendingPaymentCents(s,bill.id)-pendingCreditCents(s,bill.id))return reject("An approved bill, reason, reference and credit within remaining uncommitted payable are required.");
       if(s.credits.some(c=>c.reference.toLowerCase()===action.reference.trim().toLowerCase()))return reject("Vendor credit reference already recorded.");
       recordId=newId(s,"credit");s.credits.push({id:recordId,billId:bill.id,reference:action.reference.trim(),reason:action.reason.trim(),amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id});detail="Credit is pending independent review and does not yet change the bill balance.";break;
     }
-    case "credit.approve":{
+    case "credit.approve": {
       if(!isAdmin(actor))return reject("Only an administrator may approve vendor credits.");
       const credit=s.credits.find(c=>c.id===action.id);
       if(!credit||credit.approvedAt||credit.recordedBy===actor.id)return reject("Independent review of an unapproved vendor credit is required.");
@@ -206,18 +206,18 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       recordId=credit.id;credit.approvedAt=at;credit.approvedBy=actor.id;
       detail="Vendor credit reviewed in local demo only; external supplier credit evidence and GL posting remain unverified.";break;
     }
-    case "expense.record":{
+    case "expense.record": {
       if(!canProcure(actor))return reject("Only purchasing staff may submit expenses.");
       if(!label(action.description)||!amount(action.amountCents)||(action.vendorId&&!s.vendors.some(v=>v.id===action.vendorId)))return reject("A description, positive amount and valid optional vendor are required.");
       recordId=newId(s,"expense");s.expenses.push({id:recordId,vendorId:action.vendorId||undefined,description:action.description.trim(),amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id});break;
     }
-    case "expense.approve":{
+    case "expense.approve": {
       if(!isAdmin(actor))return reject("Only an administrator may approve expenses.");
       const e=s.expenses.find(x=>x.id===action.id);
       if(!e||e.approvedAt||e.recordedBy===actor.id)return reject("An independent approval of a submitted expense is required.");
       recordId=e.id;e.approvedAt=at;e.approvedBy=actor.id;break;
     }
-    default:return reject("Unsupported purchasing action.");
+    default: return reject("Unsupported purchasing action.");
   }
   s.audit.push({id:"audit-"+String(s.audit.length+1).padStart(5,"0"),at,actorId:actor.id,action:action.kind,recordId,detail});
   return {ok:true,state:s,message:detail||"Recorded in isolated local review. No production transaction occurred."};

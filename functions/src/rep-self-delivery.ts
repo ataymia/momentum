@@ -244,9 +244,9 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
       if(reason.length<8||reason.length>500)fail(400,"Enter a release reason of 8–500 characters.");
       if(!task||taskStatus!=="Accepted"||!["Approved","Allocated"].includes(status)||anyOrderTransfer.length||existingDelivery.length)fail(409,"Only an unloaded assignment can be released.");
       if(status==="Allocated"){
-        const planned=activeForOrder.map(r=>({product:txt(lots.get(txt(r.lotId))?.product),quantity:num(r.quantity)}));
+        const planned=activeForOrder.map((r)=>({product:txt(lots.get(txt(r.lotId))?.product),quantity:num(r.quantity)}));
         if(!matchExpected(expected,planned))fail(409,"Reservations require reconciliation before release.");
-        set(paths.reservations,reservations.map(r=>txt(r.orderId)===orderId&&txt(r.status)==="Active"?{...r,status:"Released",releasedAt:stamp}:r));
+        set(paths.reservations,reservations.map((r)=>txt(r.orderId)===orderId&&txt(r.status)==="Active"?{...r,status:"Released",releasedAt:stamp}:r));
         changedOrder("Approved");
       }else if(activeForOrder.length)fail(409,"Unexpected reservation requires reconciliation.");
       newTask({...task,status:"Cancelled",cancelledAt:stamp,cancelledBy:actor,history:[event(actor,"Cancelled",reason),...(Array.isArray(task.history)?task.history:[])]});
@@ -332,7 +332,7 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
       if(taskStatus==="Delivered"&&status==="Delivered"){
         const savedSignature=task?.signature;
         const sameProof=obj(savedSignature)&&savedSignature.strokesJson===JSON.stringify(proof!.strokes)&&txt(savedSignature.recipientName)===proof!.name&&txt(savedSignature.capturedBy)===actor;
-        const posted=matchExpected(expected,existingDelivery.map(m=>({product:txt(m.product),quantity:num(m.quantity)})))&&existingDelivery.every(m=>txt(m.fromNodeId)===staffNode&&txt(m.toNodeId)===locationNode);
+        const posted=matchExpected(expected,existingDelivery.map((m)=>({product:txt(m.product),quantity:num(m.quantity)})))&&existingDelivery.every((m)=>txt(m.fromNodeId)===staffNode&&txt(m.toNodeId)===locationNode);
         if(!sameProof||!posted)fail(409,"Existing signed delivery evidence differs or requires reconciliation; do not sign again.");
         return response("Delivered","Delivered",txt(task?.deliveredAt),true);
       }

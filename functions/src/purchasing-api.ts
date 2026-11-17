@@ -56,7 +56,8 @@ export async function commitPurchasingRequest(uid:string,body:unknown){
   const action=body.mode==="write"?validatePurchasingAction(body.action):null;
   const requestId=body.requestId;
   if(action&&(typeof requestId!=="string"||!/^[A-Za-z0-9_-]{16,80}$/.test(requestId)))throw new PurchaseApiError(400,"Invalid request key.");
-  const db=getFirestore(),stateRef=db.doc("purchasingRegisters/current");
+  const db=getFirestore();
+  const stateRef=db.doc("purchasingRegisters/current");
   return db.runTransaction(async tx=>{
    const access=(await tx.get(db.doc("userAccess/"+uid))).data();
    if(access?.accountState!=="Active"||!["Administrator","Operations","Warehouse"].includes(access.role))throw new PurchaseApiError(403,"Active purchasing staff access required.");
