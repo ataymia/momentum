@@ -30,6 +30,7 @@ import {submitTrustedOrderIntake,getTrustedOrderIntake,pageTrustedOrderIntakes,O
 import {decideTrustedOrderIntake} from "./trusted-order-intake-review";
 import {registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError} from "./trusted-hr-template";
 import {uploadTrustedBlankHrTemplate} from "./trusted-hr-template-upload";
+import {assignTrustedHrTemplate,listTrustedHrAssignments,readTrustedHrAssignedTemplate,HrAssignmentError} from "./trusted-hr-template-assignment";
 import {archiveTrustedHrSignedOriginal,listTrustedHrSignedOriginals,HrOriginalArchiveError} from "./trusted-hr-signed-original";
 import {readTrustedHrOriginal} from "./trusted-hr-original-read";
 import {decideTrustedHrOriginalReview} from "./trusted-hr-original-review";
@@ -1926,6 +1927,47 @@ export const hrFormTemplateLibrary=onRequest({cors:true,region:"us-central1"},as
  * A PDF upload is never evidence of an authorized e-sign ceremony, I-9 Section 2,
  * or completed tax compliance. Neither browser nor server can assert that here.
  */
+/** Assigned source PDFs are delivered only over authenticated no-cache responses. */
+export const hrTemplateAssignmentApi=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const body=request.body;
+ if(!body||typeof body!=="object"||Array.isArray(body)||
+  Object.keys(body).some(k=>!["action","assignment","requestId","employeeUid","assignmentId"].includes(k))||
+  !["Assign","List","Download"].includes(body.action)){
+  json(response,400,{ok:false,message:"Invalid HR assignment request."});return;
+ }
+ const auth=request.headers.authorization??"";
+ const token=auth.startsWith("Bearer ")?auth.slice(7).trim():"";
+ if(!token){json(response,401,{ok:false,message:"Sign in first."});return;}
+ let actor="";
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Session expired."});return;}
+ try{
+  if(body.action==="Assign"){
+   if(Object.keys(body).some(k=>!["action","assignment","requestId"].includes(k)))
+    throw new HrAssignmentError(400,"Invalid assignment envelope.");
+   const result=await assignTrustedHrTemplate(actor,body.assignment,body.requestId);
+   json(response,200,{ok:true,...result});return;
+  }
+  if(body.action==="List"){
+   if(Object.keys(body).some(k=>!["action","employeeUid"].includes(k)))
+    throw new HrAssignmentError(400,"Invalid assignment list envelope.");
+   const records=await listTrustedHrAssignments(actor,body.employeeUid);
+   json(response,200,{ok:true,records});return;
+  }
+  if(Object.keys(body).some(k=>!["action","assignmentId"].includes(k)))
+   throw new HrAssignmentError(400,"Invalid assigned PDF request.");
+  const file=await readTrustedHrAssignedTemplate(actor,body.assignmentId);
+  json(response,200,{ok:true,...file});
+ }catch(error){
+  if(error instanceof HrAssignmentError){
+   json(response,error.status,{ok:false,message:error.message});return;
+  }
+  console.error("hrTemplateAssignmentApi unavailable",error);
+  json(response,503,{ok:false,message:"HR assignment source unavailable."});
+ }
+});
+
 export const hrSignedOriginalArchive=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
  const body=request.body;
