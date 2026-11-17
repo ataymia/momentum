@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {reconcileInvoicePdfLines} from "../functions/src/invoice-line-reconciliation";
+import * as reconcileModule from "../functions/src/invoice-line-reconciliation";
+
+// Functions builds to CommonJS; tsx test runner can present exports under default.
+const exportsForTest=(reconcileModule as unknown as {default?:typeof reconcileModule}).default??reconcileModule;
+const reconcileInvoicePdfLines=exportsForTest.reconcileInvoicePdfLines;
 
 const order={product:"Stale order product",cases:10,pricePerCase:24,amount:240};
 
