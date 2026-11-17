@@ -20,7 +20,7 @@ export type CustomerRequestSummary={
  * breakdown, even if the upstream Firestore query or historical data is wrong.
  * No buyer notes, payment data, internal owner or untrusted HTML are returned.
  * @param {string} uid Verified Firebase actor.
- * @param {readonly string[]} ids Authorized customer location IDs.
+ * @param {string[]} ids Authorized customer location IDs.
  * @param {Row[]} source Source intake records.
  * @param {number} limit Maximum recent entries.
  * @return {CustomerRequestSummary[]} Privacy-scoped summary.

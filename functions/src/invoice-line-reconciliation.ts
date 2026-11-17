@@ -41,13 +41,15 @@ export function reconcileInvoicePdfLines(
     !money(candidate.pricePerCase)||!money(candidate.amount))
    return{ok:false,reason:"A product, case count or line amount is missing or invalid."};
   const cases=Number(candidate.cases);
-  const unit=Number(candidate.pricePerCase),amount=Number(candidate.amount);
+  const unit=Number(candidate.pricePerCase);
+  const amount=Number(candidate.amount);
   if(Math.abs(cases*unit-amount)>0.011)
    return{ok:false,reason:"A saved line amount differs from cases multiplied by unit price."};
   const cents=Math.round(amount*100);
   if(!Number.isSafeInteger(cents))
    return{ok:false,reason:"A line amount is too large to reconcile safely."};
-  casesTotal+=cases;lineCents+=cents;
+  casesTotal+=cases;
+  lineCents+=cents;
   lines.push({product:string(candidate.product),cases,pricePerCase:unit,amount});
  }
  const totalCents=Math.round(Number(rawInvoice.total)*100);
