@@ -200,8 +200,8 @@ export function PurchasingExperience({section,id}:{section:string;id?:string}){
   const demo=runtime.isDemo&&momentumStorage.mode()==="local"&&!firebaseSession;
   const selected=sections.has(section)?section as Section:"vendors";
   if(!currentUser)return <p className="prototype-empty">Sign in to view purchasing.</p>;
-  const connected=!runtime.isDemo&&momentumStorage.mode()==="firestore"&&firebaseSession?.status==="ready"&&firebaseSession.session?.uid===currentUser.id&&firebaseSession.access?.accountState==="Active"&&["Administrator","Operations"].includes(currentUser.role);
-  if(!demo&&!connected)return <div><header className="prototype-heading"><h1>{sectionTitles[selected]}</h1></header><p className="prototype-note">A verified active purchasing administrator or Operations session is required. Warehouse-only users need a restricted receipt projection, not access to the complete financial register.</p></div>;
+  const connected=!runtime.isDemo&&momentumStorage.mode()==="firestore"&&firebaseSession?.status==="ready"&&firebaseSession.session?.uid===currentUser.id&&firebaseSession.access?.accountState==="Active"&&(["Administrator","Operations"].includes(currentUser.role)||(currentUser.role==="Warehouse"&&selected==="receipts"));
+  if(!demo&&!connected)return <div><header className="prototype-heading"><h1>{sectionTitles[selected]}</h1></header><p className="prototype-note">An active authorized purchasing session is required. Warehouse staff can record receipts but cannot view supplier prices, payments or bills.</p></div>;
   if(!isClient)return <p className="prototype-note" role="status">Loading purchasing…</p>;
   return <LocalPurchasingExperience key={currentUser.id+":"+String(connected)} section={section} id={id} connected={connected}/>;
 }
@@ -262,7 +262,7 @@ function LocalPurchasingExperience({section,id,connected}:{section:string;id?:st
     {!ready&&<p role="status">Company register is not loaded. Entry is disabled until it can be verified.</p>}
     {notice&&<p className="prototype-note" role="status">{notice}</p>}
     {id&&<PurchasingRecordDetail section={selected} id={id} state={state}/>}
-    <div className="prototype-metrics"><div><small>Records in module</small><strong>{records.length}</strong></div><div><small>Matching filters</small><strong>{filtered.length}</strong></div><div><small>Audit events</small><strong>{state.audit.length}</strong></div></div>
+    <div className="prototype-metrics"><div><small>Records in module</small><strong>{records.length}</strong></div><div><small>Matching filters</small><strong>{filtered.length}</strong></div><div><small>{currentUser.role==="Warehouse"?"Visible receipt records":"Audit events"}</small><strong>{currentUser.role==="Warehouse"?state.receipts.length:state.audit.length}</strong></div></div>
     <section className="prototype-panel">
       <div className="prototype-commerce-filters">
         <label className="prototype-search"><Search size={15}/><input aria-label="Search purchasing records" placeholder="Search records" value={search} onChange={e=>setSearch(e.target.value)}/></label>

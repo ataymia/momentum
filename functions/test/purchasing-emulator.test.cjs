@@ -8,12 +8,12 @@ if(!process.env.FIRESTORE_EMULATOR_HOST)throw new Error("Purchasing test require
 const app=initializeApp({projectId:"momentum-rules-test"});
 const db=getFirestore(app);
 const {commitPurchasingRequest}=require("../lib/purchasing-api.js");
-const actor="qa-purchase-admin",ops="qa-purchase-ops",outside="qa-purchase-rep";
+const actor="qa-purchase-admin",ops="qa-purchase-ops",outside="qa-purchase-rep",warehouse="qa-purchase-warehouse";
 const call=(uid,action,requestId)=>commitPurchasingRequest(uid,{mode:"write",action,requestId});
 const key=(suffix)=>"qa-purchasing-key-"+suffix;
 after(async()=>{await deleteApp(app);});
 test("Connected purchasing uses authoritative roles, atomic receipts, replay and distinct approval",async()=>{
- await Promise.all([db.doc("userAccess/"+actor).set({role:"Administrator",accountState:"Active"}),db.doc("userAccess/"+ops).set({role:"Operations",accountState:"Active"}),db.doc("userAccess/"+outside).set({role:"Sales Representative",accountState:"Active"})]);
+ await Promise.all([db.doc("userAccess/"+actor).set({role:"Administrator",accountState:"Active"}),db.doc("userAccess/"+ops).set({role:"Operations",accountState:"Active"}),db.doc("userAccess/"+outside).set({role:"Sales Representative",accountState:"Active"}),db.doc("userAccess/"+warehouse).set({role:"Warehouse",accountState:"Active"})]);
  await assert.rejects(()=>commitPurchasingRequest(outside,{mode:"read"}),e=>e.status===403);
  const action={kind:"vendor.add",name:"QA Supplier",contact:"QA only"};
  const first=await call(actor,action,key("vendor"));
@@ -30,7 +30,11 @@ test("Connected purchasing uses authoritative roles, atomic receipts, replay and
  await assert.rejects(()=>call(ops,{kind:"po.approve",id:po.id},key("deny")),e=>e.status===409);
  const approved=await call(actor,{kind:"po.approve",id:po.id},key("approve"));
  assert.equal(approved.state.orders.find(p=>p.id===po.id).approvedBy,actor);
- const receipt=await call(ops,{kind:"receipt.record",poId:po.id,cases:10,lotCode:"QA-LOT",bestBy:"2027-01-01",warehouse:"QA"},key("receipt"));
+ const warehouseView=await commitPurchasingRequest(warehouse,{mode:"read"});
+ assert.equal(warehouseView.state.orders.find(p=>p.id===po.id).unitCostCents,0);
+ assert.equal(warehouseView.state.bills.length,0);
+ await assert.rejects(()=>call(warehouse,{kind:"vendor.add",name:"Forbidden",contact:""},key("warehouse-denied")),e=>e.status===403);
+ const receipt=await call(warehouse,{kind:"receipt.record",poId:po.id,cases:10,lotCode:"QA-LOT",bestBy:"2027-01-01",warehouse:"QA"},key("receipt"));
  assert.equal(receipt.state.receipts.find(r=>r.poId===po.id).inventoryPosted,false);
  const billed=await call(ops,{kind:"bill.record",poId:po.id,invoiceNumber:"QA-BILL",cases:10,amountCents:10000},key("bill"));
  const bill=billed.state.bills.find(b=>b.poId===po.id);

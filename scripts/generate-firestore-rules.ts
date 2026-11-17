@@ -629,6 +629,10 @@ service cloud.firestore {
 
 const footer = `    }
 
+    // Purchasing writes and reads are handled only by the authenticated Admin SDK API.
+    match /purchasingRegisters/{recordId} { allow read, write: if false; }
+    match /purchasingRequestKeys/{requestId} { allow read, write: if false; }
+
     // Anything not matched above is denied.
     match /{document=**} {
       allow read, write: if false;

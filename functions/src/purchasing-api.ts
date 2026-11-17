@@ -43,6 +43,11 @@ function readState(raw:unknown):PurchasingState{
 }
 function projectState(state:PurchasingState,role:string):PurchasingState{
  if(role==="Administrator")return state;
+ if(role==="Warehouse"){
+  const orders=state.orders.filter(p=>p.approvedAt&&!p.cancelledAt);
+  const ids=new Set(orders.map(p=>p.id));
+  return {...emptyPurchasingState(),orders:orders.map(p=>({...p,unitCostCents:0,createdBy:"Restricted",approvedBy:"Restricted"})),vendors:state.vendors.filter(v=>orders.some(p=>p.vendorId===v.id)).map(v=>({...v,contact:"",createdBy:"Restricted"})),receipts:state.receipts.filter(r=>ids.has(r.poId))};
+ }
  return {...state,payments:state.payments.map(p=>({...p,reference:"Restricted",settlementEvidence:undefined})),audit:state.audit.map(e=>({...e,detail:""}))};
 }
 /** Verified UID is supplied by the HTTPS handler; the transaction checks role and account state. */
@@ -54,7 +59,8 @@ export async function commitPurchasingRequest(uid:string,body:unknown){
   const db=getFirestore(),stateRef=db.doc("purchasingRegisters/current");
   return db.runTransaction(async tx=>{
    const access=(await tx.get(db.doc("userAccess/"+uid))).data();
-   if(access?.accountState!=="Active"||!["Administrator","Operations"].includes(access.role))throw new PurchaseApiError(403,"Active purchasing staff access required.");
+   if(access?.accountState!=="Active"||!["Administrator","Operations","Warehouse"].includes(access.role))throw new PurchaseApiError(403,"Active purchasing staff access required.");
+   if(access.role==="Warehouse"&&action&&action.kind!=="receipt.record")throw new PurchaseApiError(403,"Warehouse access is restricted to receiving.");
    const stateDoc=await tx.get(stateRef);
    const state=stateDoc.exists?readState(stateDoc.data()?.state):emptyPurchasingState();
    if(!action)return {state:projectState(state,access.role),message:"Purchasing register loaded."};
