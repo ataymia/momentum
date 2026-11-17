@@ -1,10 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
- validateCheckoutIntent,assertProviderCapabilities,checkHostedCheckout,
- settlementMatchesInvoice,ProviderNotReadyError,type CheckoutIntent,
- type PaymentProviderPort,type VerifiedProcessorEvent,type ProcessorSettlement,
+import {createRequire} from "node:module";
+import type {
+ CheckoutIntent,PaymentProviderPort,VerifiedProcessorEvent,ProcessorSettlement,
 } from "../functions/src/payment-provider-port";
+type Port=typeof import("../functions/src/payment-provider-port");
+const {validateCheckoutIntent,assertProviderCapabilities,checkHostedCheckout,
+ settlementMatchesInvoice,ProviderNotReadyError}=createRequire(import.meta.url)(
+ "../functions/src/payment-provider-port.ts") as Port;
 const intent:CheckoutIntent={
  requestId:"paymentRequest123456",customerUid:"customer1",accountId:"account1",
  invoiceId:"invoice1",amountCents:2400,currency:"USD",rail:"ACH",
