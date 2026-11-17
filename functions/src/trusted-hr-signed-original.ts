@@ -149,6 +149,9 @@ export async function archiveTrustedHrSignedOriginal(
    txt(assignmentSnap.data()?.employeeUid)!==incoming.employeeUid||
    txt(assignmentSnap.data()?.kind)!==incoming.kind))
    throw new HrOriginalArchiveError(403,"Assigned HR document is outside your worker and form scope.");
+  if(assignmentSnap&&(!/^[a-f0-9]{64}$/.test(txt(assignmentSnap.data()?.sha256))||
+   txt(assignmentSnap.data()?.sha256)===incoming.sha256))
+   throw new HrOriginalArchiveError(409,"The assigned blank form cannot be archived as a completed submission.");
   if(prior.exists){
    if(txt(prior.data()?.fingerprint)!==fingerprint||
     txt(prior.data()?.actorUid)!==actorUid)
@@ -245,6 +248,8 @@ export async function archiveTrustedHrSignedOriginal(
   if(assignment&&(
    txt(assignment.data()?.employeeUid)!==incoming.employeeUid||
    txt(assignment.data()?.kind)!==incoming.kind||
+   !/^[a-f0-9]{64}$/.test(txt(assignment.data()?.sha256))||
+   txt(assignment.data()?.sha256)===incoming.sha256||
    (txt(assignment.data()?.status)!=="Assigned"&&
     txt(assignment.data()?.submittedOriginalId)!==reserved.id)))
    throw new HrOriginalArchiveError(409,"Assigned form changed while submitting.");

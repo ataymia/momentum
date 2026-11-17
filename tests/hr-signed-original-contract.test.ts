@@ -104,9 +104,20 @@ test("authenticated employee can only submit and list their own unverified PDF t
 
 test("worker HR PDF assignments cannot submit unedited blank source or stale form type",()=>{
  const ui=load("components/hcm/hr-worker-document-submission.tsx");
- assert.match(ui,/if\(selectedAssignment&&!completed\)/);
- assert.match(ui,/disabled=\{!file\|\|!attested\|\|busy\|\|Boolean\(selectedAssignment&&!completed\)\}/);
+ assert.match(ui,/if\(\(selectedAssignment\|\|needsEdited\)&&!completed\)/);
+ assert.match(ui,/disabled=\{!file\|\|!attested\|\|busy\|\|opening\|\|Boolean\(\(selectedAssignment\|\|needsEdited\)&&!completed\)\}/);
  assert.match(ui,/setKind\(event.target.value as HrTemplateKind\);setSelectedAssignment\(null\)/);
  assert.match(ui,/setFile\(null\);setCompleted\(null\)/);
  assert.match(ui,/if\(filePicker.current\)filePicker.current.value=""/);
+});
+
+
+test("worker edits invalidate prior attestation and source history is isolated by authenticated identity",()=>{
+ const worker=load("components/hcm/hr-worker-document-submission.tsx");
+ const archive=load("functions/src/trusted-hr-signed-original.ts");
+ assert.match(worker,/WorkerHrDocumentSubmissionSession key=\{session\.uid\}/);
+ assert.match(worker,/setCompleted\(null\);setNeedsEdited\(true\);reset\(\)/);
+ assert.match(worker,/setLoaded\(false\);setRecords\(\[\]\);setOriginalsError\(true\)/);
+ assert.match(archive,/txt\(assignmentSnap\.data\(\)\?\.sha256\)===incoming\.sha256/);
+ assert.match(archive,/txt\(assignment\.data\(\)\?\.sha256\)===incoming\.sha256/);
 });

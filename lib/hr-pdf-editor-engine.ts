@@ -4,7 +4,7 @@ import {
 } from "pdf-lib";
 
 export type PdfFieldType="Text"|"Checkbox"|"Dropdown"|"Radio"|"List"|"Other";
-export type PdfDetectedField={name:string;type:PdfFieldType;options:string[];suggestedRole:"Worker"|"Company";suggestedKind:"Text"|"Date"|"Initials"|"Signature"|"Checkbox"};
+export type PdfDetectedField={name:string;type:PdfFieldType;options:string[];initialValue?:string|boolean;selectedValues?:string[];suggestedRole:"Worker"|"Company";suggestedKind:"Text"|"Date"|"Initials"|"Signature"|"Checkbox"};
 export type PdfPageInfo={page:number;width:number;height:number};
 export type PdfInfo={pages:PdfPageInfo[];fields:PdfDetectedField[]};
 export type PdfOverlay={
@@ -51,11 +51,27 @@ export async function inspectHrPdf(input:Uint8Array|ArrayBuffer):Promise<PdfInfo
   const name=field.getName(),type=getType(field);
   const options=field instanceof PDFDropdown||field instanceof PDFOptionList?
    field.getOptions():field instanceof PDFRadioGroup?field.getOptions():[];
-  return{name,type,options,...inferred(name)};
+  const initialValue=field instanceof PDFTextField?field.getText()??"":
+   field instanceof PDFCheckBox?field.isChecked():field instanceof PDFRadioGroup?field.getSelected()??"":undefined;
+  const selectedValues=field instanceof PDFDropdown||field instanceof PDFOptionList?field.getSelected():undefined;
+  return{name,type,options,initialValue,selectedValues,...inferred(name)};
  });
  return{pages,fields};
 }
 export type HrPdfFields=Record<string,string|boolean>;
+
+/** Undefined means preserve the original field; empty text can explicitly clear a prefilled text field. */
+export function updateHrPdfDraft(values:HrPdfFields,field:PdfDetectedField,value:string|boolean|undefined):HrPdfFields{
+ const next={...values};
+ const initial=field.initialValue??(field.selectedValues?.length===1?field.selectedValues[0]:undefined);
+ if(value===undefined||value===initial)delete next[field.name];
+ else Object.defineProperty(next,field.name,{value,enumerable:true,writable:true,configurable:true});
+ return next;
+}
+
+export function hasHrPdfChanges(values:HrPdfFields,overlays:PdfOverlay[]):boolean{
+ return Object.keys(values).length>0||overlays.length>0;
+}
 
 /** Embed AcroForm values and optional precisely placed text or drawn marks.
  * This makes an edited PDF; it never proves identity, consent or legal signature validity.

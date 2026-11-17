@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {PDFDocument} from "pdf-lib";
-import {inspectHrPdf,fillHrPdf} from "../lib/hr-pdf-editor-engine";
+import {inspectHrPdf,fillHrPdf,hasHrPdfChanges,updateHrPdfDraft} from "../lib/hr-pdf-editor-engine";
 
 test("PDF editor detects compressed AcroForm and writes visible field values",async()=>{
  const original=await PDFDocument.create(),page=original.addPage([612,792]);
@@ -35,4 +35,42 @@ test("PDF editor preview is permitted by Firebase Hosting CSP",()=>{
  const headers=hosting.hosting.headers[0].headers;
  const csp=headers.find((h:{key:string;value:string})=>h.key==="Content-Security-Policy")?.value;
  assert.match(csp,/frame-src 'self' blob:/);
+});
+
+
+test("prefilled PDF values are visible and preserving an original choice does not create a fake edit",async()=>{
+ const original=await PDFDocument.create(),page=original.addPage([400,400]);
+ const form=original.getForm();
+ const existing=form.createTextField("Employee Name");
+ existing.setText("Already filled");existing.addToPage(page,{x:10,y:300,width:200,height:20});
+ const checkbox=form.createCheckBox("Consent");
+ checkbox.check();checkbox.addToPage(page,{x:10,y:260,width:15,height:15});
+ const dropdown=form.createDropdown("Election");dropdown.addOptions(["First","Second"]);
+ dropdown.select("First");dropdown.addToPage(page,{x:10,y:220,width:150,height:20});
+ const pdf=await original.save();
+ const fields=(await inspectHrPdf(pdf)).fields;
+ const name=fields.find(f=>f.name==="Employee Name")!,consent=fields.find(f=>f.name==="Consent")!,
+ election=fields.find(f=>f.name==="Election")!;
+ assert.equal(name.initialValue,"Already filled");
+ assert.equal(consent.initialValue,true);
+ assert.deepEqual(election.selectedValues,["First"]);
+ assert.equal(hasHrPdfChanges({},[]),false);
+ assert.deepEqual(updateHrPdfDraft({},name,"Already filled"),{});
+ assert.deepEqual(updateHrPdfDraft({},consent,true),{});
+ assert.deepEqual(updateHrPdfDraft({Election:"Second"},election,undefined),{});
+ assert.deepEqual(updateHrPdfDraft({},election,"First"),{});
+ const draft=updateHrPdfDraft(updateHrPdfDraft({},name,""),consent,false);
+ assert.equal(hasHrPdfChanges(draft,[]),true);
+ const reopened=await PDFDocument.load(await fillHrPdf(pdf,draft,[],false));
+ assert.equal(reopened.getForm().getTextField("Employee Name").getText()??"","");
+ assert.equal(reopened.getForm().getCheckBox("Consent").isChecked(),false);
+ assert.deepEqual(reopened.getForm().getDropdown("Election").getSelected(),["First"]);
+});
+
+test("PDF creation cannot publish a stale async completion after a source switch",()=>{
+ const editor=readFileSync("components/hcm/hr-pdf-editor.tsx","utf8");
+ assert.match(editor,/readySource!==source/);
+ assert.match(editor,/generation\.current!==attempt/);
+ assert.match(editor,/!hasHrPdfChanges\(values,overlays\)/);
+ assert.match(editor,/fieldset disabled=\{busy\|\|disabled\}/);
 });

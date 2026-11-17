@@ -13,7 +13,7 @@ const app=initializeApp({projectId:"momentum-rules-test",
 const db=getFirestore(app),bucket=getStorage(app).bucket();
 const {assignTrustedHrTemplate,listTrustedHrAssignments,readTrustedHrAssignedTemplate,
  HrAssignmentError}=require("../lib/trusted-hr-template-assignment.js");
-const {archiveTrustedHrSignedOriginal}=require("../lib/trusted-hr-signed-original.js");
+const {archiveTrustedHrSignedOriginal,HrOriginalArchiveError}=require("../lib/trusted-hr-signed-original.js");
 const uid=randomUUID().replaceAll("-").slice(0,12);
 const admin="hr-assign-admin-"+uid,worker="hr-assign-worker-"+uid,
  other="hr-assign-other-"+uid,customer="hr-assign-customer-"+uid,
@@ -66,12 +66,17 @@ test("administrator assigns immutable template; only intended worker may prepare
  const source=await readTrustedHrAssignedTemplate(worker,saved.assignmentId);
  assert.equal(source.sha256,sha256);
  assert.equal(source.pdfBase64,pdf.toString("base64"));
+ const completed=Buffer.from("%PDF-1.7\n2 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n");
  const original={
   employeeUid:worker,kind:"W4",sourceType:"Employee-submitted PDF (unverified)",
   reference:"Authenticated worker self-service submission",
-  pdfBase64:pdf.toString("base64"),sha256,attestedByWorker:true,
+  pdfBase64:completed.toString("base64"),sha256:createHash("sha256").update(completed).digest("hex"),attestedByWorker:true,
   assignmentId:saved.assignmentId,
  };
+ await assert.rejects(archiveTrustedHrSignedOriginal(worker,{
+  ...original,pdfBase64:pdf.toString("base64"),sha256,
+ },"blank"+key),error=>error instanceof HrOriginalArchiveError&&error.status===409);
+ assert.equal((await db.doc("hrDocumentAssignments/"+saved.assignmentId).get()).data().status,"Assigned");
  const submitted=await archiveTrustedHrSignedOriginal(worker,original,"archive"+key);
  assert.equal(submitted.status,"Pending independent HR review");
  const savedOriginal=(await db.doc("hrOriginalIntakeRecords/"+submitted.recordId).get()).data();
