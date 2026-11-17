@@ -67,8 +67,10 @@ async function seed(){
 }
 const browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
 const sessions=new Map();
+const failedSessions=new Map();
 const root=p=>p.locator(".page-container, .driver-shell-main").first();
 async function open(key){
+ if(failedSessions.has(key))throw new Error(failedSessions.get(key));
  if(sessions.has(key))return sessions.get(key).page;
  const context=await browser.newContext({viewport:{width:1440,height:900},reducedMotion:"reduce",acceptDownloads:true});
  // Real tokens issued by the Auth emulator, real Firestore rules, real Functions
@@ -93,12 +95,14 @@ async function open(key){
  page.on("pageerror",e=>reports.errors.push({key,route:new URL(page.url()).pathname,error:e.message}));
  page.on("response",r=>{const u=new URL(r.url());if(r.status()>=400&&["firestore.googleapis.com","identitytoolkit.googleapis.com","127.0.0.1"].includes(u.hostname))reports.requests.push({key,path:u.pathname,status:r.status()});});
  sessions.set(key,{context,page});
+ try{
  await page.goto(HOST+"/",{waitUntil:"domcontentloaded"});
  await page.getByLabel("Username or work email").fill(people.get(key).email);
  await page.getByLabel("Password",{exact:true}).fill(password);
  await page.getByRole("button",{name:"Sign in",exact:true}).click();
  await root(page).waitFor({timeout:60000});
  return page;
+ }catch(e){const reason="Authenticated "+key+" session failed: "+String(e);failedSessions.set(key,reason);throw new Error(reason);}
 }
 async function goto(page,path){
  await page.evaluate(path=>{history.pushState(null,"",path);window.dispatchEvent(new PopStateEvent("popstate"));},path);
@@ -139,6 +143,7 @@ async function inspectRoute(key,path,expected=true,device="desktop"){
   row.pass=true;
  }catch(e){row.failure=String(e).slice(0,400);if(page)await page.screenshot({path:OUT+"/"+key+"-"+device+"-"+path.replace(/[^a-z0-9]+/gi,"-")+".png"}).catch(()=>{});}
  reports.routes.push(row);
+ console.log("CONNECTED_ROUTE "+JSON.stringify({key,path,device,pass:row.pass,failure:row.failure}));
 }
 async function run(name,task){
  try{await task();reports.actions.push({name,pass:true});console.log("CONNECTED_ACTION PASS "+name);}
@@ -180,6 +185,22 @@ try{
  for(const path of ["/admin/access","/people/payroll","/inventory","/purchases/bills"])await inspectRoute("customer",path,false);
  for(const entry of routes.DRIVER_MENU)await inspectRoute("driver",entry.path);
  console.log("CONNECTED_ROLE_ROUTE_COUNT "+reports.routes.length);
+ await run("Customer PDF upload, reload, private download and independent review permission",async()=>{
+  const page=await open("customer");await goto(page,"/portal/documents");
+  const pdf=Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n");
+  await page.getByLabel("Document title").fill("QA connected document");
+  await page.getByLabel("PDF file (up to 5 MB)").setInputFiles({name:"qa-test.pdf",mimeType:"application/pdf",buffer:pdf});
+  await page.getByLabel(/This PDF is intended/).check();
+  await page.getByRole("button",{name:"Submit PDF for review"}).click();
+  await page.getByText("QA connected document",{exact:true}).waitFor({timeout:30000});
+  const docs=await db.collection("customerDocuments").where("accountId","==",accountId).get();
+  assert.equal(docs.size,1);const record=docs.docs[0].data();assert.equal(record.state,"Archived");assert.equal(record.status,"Submitted for review");
+  await page.reload({waitUntil:"domcontentloaded"});await root(page).waitFor({timeout:60000});await goto(page,"/portal/documents");
+  const row=page.getByRole("row").filter({hasText:"QA connected document"});await row.waitFor({timeout:30000});
+  const downloaded=page.waitForEvent("download");await row.getByRole("button",{name:"Download PDF"}).click();
+  const download=await downloaded;const path=await download.path();assert.deepEqual(fs.readFileSync(path),pdf);
+  assert.equal(await row.getByRole("button",{name:"Mark reviewed"}).count(),0);
+ });
  await run("Vendor create and fresh reload",async()=>{
   const page=await form("admin","vendors",{name:"QA Connected Supplier",contact:"Synthetic reference"});
   const v=await waitDb(async()=>(await register())?.vendors.find(v=>v.name==="QA Connected Supplier"),"Vendor missing in Firestore");

@@ -34,8 +34,13 @@ test("document tab accurately distinguishes missing attachments from verificatio
  assert.match(s,/taxDocumentType/);
  assert.match(s,/taxExemptionStatus/);
  assert.match(s,/onboardingPackageStatus/);
- assert.match(s,/No authenticated document vault/);
- assert.match(s,/does not create, sign, verify or download documents/);
+ assert.match(s,/CustomerDocumentWorkspace allowedIds=/);
+ assert.match(s,/File intake and review do not establish legal or tax validity/);
+ const connected=readFileSync("components/prototype/customer-document-workspace.tsx","utf8");
+ assert.match(connected,/firebaseFunctionUrl\("customerDocumentsApi"\)/);
+ assert.match(connected,/action:"download"/);
+ assert.match(connected,/action:"upload"/);
+ assert.doesNotMatch(connected,/getDownloadURL\(|uploadBytes\(/);
  assert.doesNotMatch(s,/getDownloadURL\(|uploadBytes\(|document\.fileURL/);
 });
 
