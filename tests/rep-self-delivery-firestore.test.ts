@@ -105,3 +105,46 @@ test("server self-delivery atomically verifies rep, approval, exact custody, sig
     await assert.rejects(()=>commit(stranger,{action:"complete",orderId,signature}),/Only orders placed by you/);
   }finally{await deleteApp(app);}
 });
+
+test("assigned delivery enforces driver custody and independent recipient proof",async()=>{
+  assert.ok(process.env.FIRESTORE_EMULATOR_HOST,"Run only against the Firestore emulator.");
+  const m=await import(new URL("../functions/src/rep-self-delivery.ts",import.meta.url).href);
+  const commit=(m.default??m).commitAssignedDelivery as (uid:string,body:unknown)=>Promise<{taskStatus:string;orderStatus:string;replayed?:boolean}>;
+  const app=initializeApp({projectId:"momentum-rules-test"});
+  const db=getFirestore(app);
+  const admin="assigned-qa-admin",driver="assigned-qa-driver",other="assigned-qa-other",orderId="assigned-qa-order",accountId="assigned-qa-account";
+  const d=(path:string)=>db.doc("domains/"+path);
+  try{
+    await Promise.all([
+      db.doc("userAccess/"+admin).set({role:"Administrator",accountState:"Active"}),
+      db.doc("userAccess/"+driver).set({role:"Delivery Driver",accountState:"Active"}),
+      db.doc("userAccess/"+other).set({role:"Delivery Driver",accountState:"Active"}),
+      d("commercial/fields/orders").set({items:[{id:orderId,number:"QA-ASSIGNED",ownerId:"qa-rep",accountId,status:"Approved",cases:4,lines:[{product:"Golden Eagle Original",cases:4}],paymentStatus:"Not invoiced",amount:96}]}),
+      d("workspace/fields/orders").set({items:[]}),
+      d("workspace/fields/accounts").set({items:[{id:accountId,ownerId:"qa-rep",name:"QA Store"}]}),
+      d("commercial/fields/_root").set({}),
+      d("workspace/fields/inventory").set({items:[{id:"assigned-qa-lot",product:"Golden Eagle Original",bestBy:"2099-01-01",receivedAt:"2026-01-01",status:"Available"}]}),
+      d("commercial/fields/inventoryLots").set({items:[]}),
+      d("inventoryLedger/fields/nodes").set({items:[{id:"node-warehouse-main",type:"Warehouse",active:true,name:"Warehouse"},{id:"node-user-"+driver,userId:driver,type:"Employee custody",active:true,name:"Driver"},{id:"node-account-"+accountId,accountId,type:"Customer",active:true,name:"Customer"},{id:"node-external",type:"External",active:true,name:"External"}]}),
+      d("inventoryLedger/fields/movements").set({items:[{id:"qa-assigned-receipt",lotId:"assigned-qa-lot",product:"Golden Eagle Original",quantity:8,type:"Receipt",fromNodeId:"node-external",toNodeId:"node-warehouse-main",reason:"Received",actorId:"system"}]}),
+      d("inventoryLedger/fields/reservations").set({items:[]}),
+      d("delivery/fields/tasks").set({items:[]}),
+      d("delivery/fields/overrides").set({items:[]}),
+      d("periodLocks/fields/locks").set({items:[]}),
+    ]);
+    await commit(admin,{action:"assign",orderId,driverId:driver});
+    await assert.rejects(()=>commit(other,{action:"pack",orderId}));
+    await commit(admin,{action:"pack",orderId});
+    await commit(driver,{action:"load",orderId});
+    await commit(driver,{action:"depart",orderId});
+    const signature={recipientName:"QA Receiver",strokes:[[[50,60],[120,110],[210,65]]]};
+    await assert.rejects(()=>commit(admin,{action:"complete",orderId,signature}));
+    assert.equal((await commit(driver,{action:"complete",orderId,signature})).orderStatus,"Delivered");
+    assert.equal((await commit(driver,{action:"complete",orderId,signature})).replayed,true);
+    await assert.rejects(()=>commit(driver,{action:"complete",orderId,signature:{...signature,recipientName:"Different Receiver"}}));
+    const movements=(await d("inventoryLedger/fields/movements").get()).data()?.items.filter((row:{relatedOrderId:string;type:string})=>row.relatedOrderId===orderId&&row.type==="Delivery");
+    assert.equal(movements.length,1);
+    assert.equal(movements[0].fromNodeId,"node-user-"+driver);
+    assert.equal(movements[0].quantity,4);
+  }finally{await deleteApp(app);}
+});

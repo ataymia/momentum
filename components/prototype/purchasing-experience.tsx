@@ -241,7 +241,7 @@ function LocalPurchasingExperience({section,id,connected}:{section:string;id?:st
       if(pending.current&&pending.current.fingerprint!==fingerprint){setNotice("A previous save is unconfirmed. Retry the same entry or reload and reconcile it first.");return false;}
       const key=pending.current?.id??crypto.randomUUID();pending.current={fingerprint,id:key};
       locked.current=true;setBusy(true);
-      try{const result=await connectedPurchasing(session,action,key);setState(result.state);setNotice(result.message);pending.current=null;return true;}
+      try{const result=await connectedPurchasing(session,action,key);setState(result.state);setNotice(result.message);pending.current=null;if(action.kind==="receipt.post"){const refreshed=await momentumStorage.refreshKeys(["momentum-commercial-controls-v1","momentum-inventory-ledger-v1"]);if(!refreshed.ok)setNotice(result.message+" Inventory refresh pending; refresh before allocating.");}return true;}
       catch(error){if(error instanceof PurchasingRequestError&&error.definitive)pending.current=null;setNotice(error instanceof Error?error.message:"Save unconfirmed.");return false;}
       finally{locked.current=false;setBusy(false);}
     }
@@ -259,7 +259,7 @@ function LocalPurchasingExperience({section,id,connected}:{section:string;id?:st
   return <div>
     <header className="prototype-heading">{id&&<button type="button" className="prototype-back" onClick={()=>navigateToRoute("/purchases/"+selected)}><ArrowLeft size={15}/> Back to {sectionTitles[selected]}</button>}
       <h1>{sectionTitles[selected]}{id?" · "+id:""}</h1><p>Purchasing work queue with draft approvals, physical receipt evidence and three-way bill checks.</p></header>
-    <section className="prototype-panel"><p className="prototype-note"><ShieldCheck size={15}/> {connected?"Connected purchasing register. Writes are validated and audited on the server. Purchase orders are not sent to vendors, receipts do not increase sellable stock, and approved records do not automatically post to the general ledger.":"Isolated local demonstration. Do not enter real vendor or financial information. Purchase orders are not sent to vendors, receipts do not increase sellable stock, payment references do not reduce verified payables, and browser records are not a financial ledger."}</p>
+    <section className="prototype-panel"><p className="prototype-note"><ShieldCheck size={15}/> {connected?"Connected purchasing register. Writes are validated and audited on the server. Purchase orders are not sent automatically. Independently inspected receipts can post inventory; approved financial records do not automatically post to the general ledger.":"Isolated local demonstration. Do not enter real vendor or financial information. Purchase orders are not sent to vendors, receipts do not increase sellable stock, payment references do not reduce verified payables, and browser records are not a financial ledger."}</p>
     <p>Operating sequence: registered vendor → prepared PO → independent approval → physical receipt → invoice-to-PO/receipt match → independent bill approval → payment reference and vendor credit review.</p></section>
     {connected&&<button type="button" disabled={busy} onClick={()=>{setReady(false);setReload(n=>n+1);}}>Refresh company register</button>}
     {ready&&<PurchasingForm key={selected} section={selected} state={state} role={currentUser.role} run={run} connected={connected} busy={busy}/>}

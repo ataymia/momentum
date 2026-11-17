@@ -104,7 +104,7 @@ export async function commitPurchasingRequest(uid:string,body:unknown){
     const [baseLots,commercialLots,nodes,movements,locks]=arrays;
     const warehouse=nodes.find(n=>n.id==="node-warehouse-main"&&n.type==="Warehouse"&&n.active===true);
     if(!warehouse||!nodes.some(n=>n.id==="node-external"&&n.type==="External"&&n.active===true)||![warehouse.id,warehouse.name].includes(r.warehouse))throw new PurchaseApiError(409,"Receipt must match a verified active warehouse and external source node.");
-    if(locks.length>0)throw new PurchaseApiError(409,"Inventory period lock records require review before receipt posting.");
+    if(locks.some(l=>l.domain==="Inventory"&&!l.releasedAt&&typeof l.startDate==="string"&&typeof l.endDate==="string"&&l.startDate<=phoenixDateKey()&&l.endDate>=phoenixDateKey()))throw new PurchaseApiError(409,"Inventory period lock records require review before receipt posting.");
     if([...baseLots,...commercialLots].some(l=>l.id===r.inventoryLotId||(typeof l.lotCode==="string"&&l.lotCode.trim().toLowerCase()===r.lotCode.trim().toLowerCase())))throw new PurchaseApiError(409,"Existing batch code must be reconciled instead of creating duplicate stock.");
     const movementId="purchase-receipt-"+r.id;
     if(movements.some(m=>m.id===movementId))throw new PurchaseApiError(409,"Receipt movement already exists; reconcile the register.");
@@ -115,6 +115,8 @@ export async function commitPurchasingRequest(uid:string,body:unknown){
     if([lots,ledger].some(items=>Buffer.byteLength(JSON.stringify(items),"utf8")>700000))throw new PurchaseApiError(409,"Inventory register capacity requires review.");
     tx.set(refs[1],{items:lots},{merge:true});
     tx.set(refs[3],{items:ledger},{merge:true});
+    const version=new Date().toISOString()+"#"+receiptRef.id.slice(0,6);
+    tx.set(db.doc("platform/meta"),{versions:{domains_commercial_fields_inventoryLots:version,domains_inventoryLedger_fields_movements:version}},{merge:true});
    }
    tx.set(stateRef,{state:next,updatedAt:new Date().toISOString()});
    tx.create(receiptRef,{digest,actorUid:uid,recordId:next.audit[next.audit.length-1].recordId,recordedAt:new Date().toISOString()});
