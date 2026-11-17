@@ -25,6 +25,7 @@ export function HrWorkerDocumentSubmission(){
  const [opening,setOpening]=useState(false);
  const [loaded,setLoaded]=useState(false);
  const pending=useRef<{fingerprint:string;id:string}|null>(null);
+ const filePicker=useRef<HTMLInputElement|null>(null);
  const reset=()=>{pending.current=null;setAttested(false);setNotice("");};
  useEffect(()=>{
   if(!session)return;
@@ -54,6 +55,9 @@ export function HrWorkerDocumentSubmission(){
  const submit=async(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();
   if(!session||!file||busy||!attested)return;
+  if(selectedAssignment&&!completed){
+   setNotice("Complete the assigned PDF with the editor before submitting it to HR.");return;
+  }
   const chosen=completed??file;
   const fingerprint=[kind,chosen.name,chosen.size,chosen.lastModified,selectedAssignment??""].join("|");
   if(!pending.current||pending.current.fingerprint!==fingerprint)
@@ -71,6 +75,7 @@ export function HrWorkerDocumentSubmission(){
     throw new Error("Submission was not linked to the signed-in worker.");
    pending.current=null;
    setFile(null);setCompleted(null);setAttested(false);setSelectedAssignment(null);
+   if(filePicker.current)filePicker.current.value="";
    setNotice("Document "+receipt.recordId+
     " saved privately for HR review. This is not a compliance approval.");
    try{
@@ -101,9 +106,10 @@ export function HrWorkerDocumentSubmission(){
   <div>
    <div className="prototype-controls">
     <label>Document type<select value={kind} disabled={busy} onChange={event=>{
-     setKind(event.target.value as HrTemplateKind);setSelectedAssignment(null);reset();
+     setKind(event.target.value as HrTemplateKind);setSelectedAssignment(null);
+     setFile(null);setCompleted(null);if(filePicker.current)filePicker.current.value="";reset();
     }}>{HR_TEMPLATE_CHOICES.map(item=><option key={item.kind} value={item.kind}>{item.title}</option>)}</select></label>
-    <label>PDF to complete<input type="file" accept="application/pdf,.pdf" disabled={busy}
+    <label>PDF to complete<input ref={filePicker} type="file" accept="application/pdf,.pdf" disabled={busy}
      onChange={event=>{setFile(event.target.files?.[0]??null);setCompleted(null);setSelectedAssignment(null);reset();}}/></label>
    </div>
   </div>
@@ -116,7 +122,7 @@ export function HrWorkerDocumentSubmission(){
     onChange={event=>setAttested(event.target.checked)}/>
     I am submitting my own document. Any signature or initials I added are mine and
     intended as my marks. I understand HR must independently review this document.</label>}
-   <button type="submit" disabled={!file||!attested||busy}>
+   <button type="submit" disabled={!file||!attested||busy||Boolean(selectedAssignment&&!completed)}>
     {busy?"Submitting securely…":"Submit PDF to HR"}</button>
   </form>
   {notice&&<p role="status">{notice}</p>}

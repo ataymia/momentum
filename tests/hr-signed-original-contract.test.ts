@@ -101,3 +101,12 @@ test("authenticated employee can only submit and list their own unverified PDF t
  assert.match(service,/if\(!administrator&&!ownWorker\)/);
  assert.match(client,/Employee-submitted PDF \(unverified\)/);
 });
+
+test("worker HR PDF assignments cannot submit unedited blank source or stale form type",()=>{
+ const ui=load("components/hcm/hr-worker-document-submission.tsx");
+ assert.match(ui,/if\(selectedAssignment&&!completed\)/);
+ assert.match(ui,/disabled=\{!file\|\|!attested\|\|busy\|\|Boolean\(selectedAssignment&&!completed\)\}/);
+ assert.match(ui,/setKind\(event.target.value as HrTemplateKind\);setSelectedAssignment\(null\)/);
+ assert.match(ui,/setFile\(null\);setCompleted\(null\)/);
+ assert.match(ui,/if\(filePicker.current\)filePicker.current.value=""/);
+});
