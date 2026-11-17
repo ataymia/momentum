@@ -111,11 +111,17 @@ export async function saveTrustedCrmDeal(
   const next:Row={...(old??{}),id:dealId,
    customerId:txt(account.customerId),locationId:intent.locationId,
    ownerId,createdAt:txt(old?.createdAt)||at,createdBy:txt(old?.createdBy)||actorUid,
-   name:d.name,stage:d.stage,status,estimatedCases:d.estimatedCases,
-   expectedCloseDate:d.expectedCloseDate||undefined,
+   name:d.name,stage:d.stage,status,
    nextAction:d.nextAction,nextActionDate:d.nextActionDate,
-   lossReason:d.stage==="Lost"?d.lossReason:undefined,
    updatedAt:at,updatedBy:actorUid,revision:revision+1};
+  // Firestore refuses undefined values, including inside arrays of contact/deal rows.
+  // Explicitly remove cleared optional fields rather than serializing undefined.
+  if(d.estimatedCases!==undefined)next.estimatedCases=d.estimatedCases;
+  else delete next.estimatedCases;
+  if(d.expectedCloseDate)next.expectedCloseDate=d.expectedCloseDate;
+  else delete next.expectedCloseDate;
+  if(d.stage==="Lost")next.lossReason=d.lossReason;
+  else delete next.lossReason;
   const nextDeals=old?current.map(x=>txt(x.id)===dealId?next:x):[next,...current];
   if(Buffer.byteLength(JSON.stringify({items:nextDeals}),"utf8")>900000)
    throw new TrustedCrmDealError(409,"Opportunity register needs maintenance.");
