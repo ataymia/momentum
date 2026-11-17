@@ -7,6 +7,7 @@ export type CustomerFinanceSnapshot={
  orders:{id:string;accountId:string;number:string;placedAt:string;status:string;cases:number}[];
  statements:{id:string;accountId:string;invoice:string;date:string;due:string;status:string;amount:number;cleared:number;pending:number;credits:number;balance:number}[];
  payments:{id:string;accountId:string;invoice:string;date:string;settled:string;status:string;method:string;amount:number}[];
+ requests?:{id:string;accountId:string;createdAt:string;status:string;cases:number}[];
  truncated:boolean;
 };
 export const txt=(value:unknown)=>typeof value==="string"?value.trim():"";

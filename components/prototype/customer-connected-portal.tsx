@@ -30,7 +30,7 @@ export function CustomerConnectedPortal({section}:{section:Section}){
     if(!Array.isArray(payload.accounts)||!Array.isArray(payload.orders)||!Array.isArray(payload.statements)||!Array.isArray(payload.payments))
       throw new Error("The server response could not be verified.");
     if(mounted)setView({kind:"ready",data:{
-      accounts:payload.accounts,orders:payload.orders,statements:payload.statements,payments:payload.payments,truncated:payload.truncated===true,
+      accounts:payload.accounts,orders:payload.orders,statements:payload.statements,payments:payload.payments,requests:Array.isArray(payload.requests)?payload.requests:[],truncated:payload.truncated===true,
     },message:""});
    }catch(e){if(mounted)setView({kind:"error",data:null,message:e instanceof Error?e.message:"Customer records are unavailable."});}
   };
@@ -65,7 +65,7 @@ export function CustomerConnectedPortal({section}:{section:Section}){
      {view.kind==="loading"&&<p role="status">Loading authorized records…</p>}
      {view.kind==="error"&&<p role="alert">{view.message}</p>}
      {view.kind==="ready"&&view.data&&<>
-       {section==="orders"&&<CustomerOrderRequest accounts={view.data.accounts}/> }
+       {section==="orders"&&<CustomerOrderRequest accounts={view.data.accounts} onSubmitted={()=>setVersion(v=>v+1)}/> }
        {section==="account"?<>
         <h2>Authorized retail locations</h2>
         {view.data.accounts.map(account=><dl key={account.id} className="prototype-facts">
@@ -90,6 +90,16 @@ export function CustomerConnectedPortal({section}:{section:Section}){
           <td>{"invoice" in row?cash(row.amount):row.cases}</td>
           {section==="invoices"&&<td>{"balance" in row?cash(row.balance):""}</td>}
          </tr>)}</tbody></table></div>
+        {section==="orders"&&Boolean(view.data.requests?.length)&&<section aria-label="Submitted product requests">
+         <h3>Requests awaiting sales review</h3>
+         <div className="prototype-table-scroll"><table className="prototype-table">
+          <thead><tr><th>Request</th><th>Submitted</th><th>Location</th><th>Cases requested</th><th>Review stage</th></tr></thead>
+          <tbody>{(view.data.requests??[]).filter(item=>location==="all"||item.accountId===location).map(item=><tr key={item.id}>
+           <td>{item.id}</td><td>{item.createdAt.slice(0,10)}</td>
+           <td>{view.data?.accounts.find(a=>a.id===item.accountId)?.name??"Authorized location"}</td>
+           <td>{item.cases}</td><td>{item.status}</td>
+          </tr>)}</tbody></table></div>
+        </section>}
         {!rows.length&&<div className="prototype-empty">{section==="deliveries"?"No dispatched or delivered orders match. Pending and cancelled orders remain in My Orders.":"No authorized records matched."}</div>}
         {section==="invoices"&&<p className="prototype-note">Official PDF access and hosted payment links require server-verified document authorization and an approved payment provider.</p>}
         {section==="deliveries"&&<p className="prototype-note">Only recorded order states are shown here, not a verified route ETA, recipient signature, or proof of delivery.</p>}

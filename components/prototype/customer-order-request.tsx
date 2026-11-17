@@ -14,7 +14,7 @@ const products=[
  ["ge-strawberry-250ml-24","Golden Eagle Strawberry"],
 ] as const;
 
-export function CustomerOrderRequest({accounts}:{accounts:Account[]}){
+export function CustomerOrderRequest({accounts,onSubmitted}:{accounts:Account[];onSubmitted?:()=>void}){
  const [accountId,setAccountId]=useState(accounts[0]?.id??"");
  const [skuId,setSkuId]=useState<string>(products[0][0]);
  const [cases,setCases]=useState("10");
@@ -62,6 +62,7 @@ export function CustomerOrderRequest({accounts}:{accounts:Account[]}){
     throw new Error("Request submitted but source readback was not verified.");
    pending.current=null;
    setReceipt({id:sent.intakeId,status:checked.record.status??sent.status});
+   onSubmitted?.();
    setMessage("Request received for review. No order, stock reservation or payment was created.");
   }catch(error){
    setMessage(error instanceof Error?error.message:"Request not confirmed. Check with sales before retrying.");

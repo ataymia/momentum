@@ -42,7 +42,23 @@ export const customerCommerceSnapshot=onRequest({
      accounts:items[0],orders:[...items[1],...items[2]],invoices:items[3],
      payments:items[4],allocations:items[5],credits:items[6],refunds:items[7],
    });
-   send(200,{ok:true,...payload});
+   // Only the active authenticated customer's own submitted requests are included.
+   // Request statuses are not financial orders or evidence of payment.
+   const intakeSnapshot=await db.collection("commerceOrderIntakes")
+    .where("requestedByUid","==",uid).limit(100).get();
+   const assigned=new Set(ids);
+   const requests=intakeSnapshot.docs.map(snapshot=>snapshot.data()).filter(item=>
+    assigned.has(String(item.accountId??""))&&
+    /^intake-[a-f0-9-]{36}$/.test(String(item.id??"")))
+    .map(item=>({
+      id:String(item.id),accountId:String(item.accountId),
+      createdAt:String(item.createdAt??""),
+      status:String(item.status??"Needs commercial review"),
+      cases:Number.isSafeInteger(item.totalCases)&&item.totalCases>0?item.totalCases:0,
+    }))
+    .filter(item=>item.cases>0)
+    .sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,50);
+   send(200,{ok:true,...payload,requests});
  }catch{
    // Do not disclose account names, document existence, or payment internals.
    send(503,{ok:false,error:"Customer finance records are unavailable."});

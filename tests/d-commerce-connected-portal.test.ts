@@ -19,3 +19,14 @@ test("R33/R37 customer deliveries exclude unfulfilled and cancelled sales orders
  assert.match(page,/Pending and cancelled orders remain in My Orders/);
  assert.match(page,/not a verified route ETA, recipient signature, or proof of delivery/);
 });
+
+test("customer portal displays only authenticated server-scoped order requests",()=>{
+ const server=readFileSync("functions/src/customer-commerce-read.ts","utf8");
+ const projection=readFileSync("functions/src/customer-commerce-projection.ts","utf8");
+ const client=readFileSync("components/prototype/customer-connected-portal.tsx","utf8");
+ assert.match(server,/where\("requestedByUid","==",uid\)/);
+ assert.match(server,/assigned\.has\(String\(item\.accountId/);
+ assert.match(client,/aria-label="Submitted product requests"/);
+ assert.match(client,/onSubmitted=\{\(\)=>setVersion/);
+ assert.match(projection,/requests\?:/);
+});
