@@ -1,4 +1,5 @@
 "use client";
+import {ConnectedPayrollPreparation} from "./connected-payroll-preparation";
 
 import {useMemo,useState} from "react";
 import {CalendarDays,Download,FileCheck2,ShieldAlert,WalletCards} from "lucide-react";
@@ -82,7 +83,8 @@ export function PayrollWorkflowExperience(){
       {admin&&<article><CalendarDays size={18}/><small>Active pay groups</small><strong>{payroll.payGroups.filter(group=>group.active).length}</strong></article>}
     </div>
     {admin&&<section className="prototype-panel"><h2>Payroll setup &amp; source readiness</h2><p className="prototype-note">Read-only setup review. A configured employee and approved timecards are prerequisites, not authorization to release payroll.</p><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Employee</th><th>Classification</th><th>Compensation</th><th>HR pay group</th><th>Setup review</th></tr></thead><tbody>{hcm.employees.filter(e=>e.status==="Active").map(e=>{const comp=activeCompensation(hcm,e.userId);return <tr key={e.userId}><td>{employeeName(e.userId)}</td><td>{e.classification}</td><td>{comp?"Effective record":"Missing effective record"}</td><td>{e.payGroup||"Not configured"}</td><td>{e.classification==="Not configured"||!comp||!e.payGroup?"Review required":"HR sources present"}</td></tr>;})}</tbody></table></div><div className="prototype-controls"><button type="button" onClick={()=>navigateToRoute("/people/attendance")}>Review timecards</button></div><p className="prototype-note">Verify tax tables, payroll settings, deductions and settlement provider before enabling connected payroll. Test write controls in isolated demo mode.</p></section>}
-    {admin&&<section className="prototype-panel">
+    {admin&&!writeEnabled&&<ConnectedPayrollPreparation/>}
+    {admin&&writeEnabled&&<section className="prototype-panel">
       <h2>1. Calculate regular payroll draft</h2>
       <p className="prototype-note">Calculates from approved, unconsumed timecards and current HR/payroll configuration. Missing or invalid sources block the draft. This is an internal calculation, not certified tax payroll.</p>
       <div className="prototype-controls">

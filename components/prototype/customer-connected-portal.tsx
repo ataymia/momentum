@@ -8,7 +8,7 @@ import {CustomerOrderRequest} from "./customer-order-request";
 import {navigateToRoute} from "../../lib/navigation-store";
 import type {CustomerFinanceSnapshot} from "../../functions/src/customer-commerce-projection";
 
-type Section="orders"|"invoices"|"account"|"deliveries";
+type Section="orders"|"invoices"|"account"|"deliveries"|"products";
 type ViewState={kind:"loading"|"ready"|"error";data:CustomerFinanceSnapshot|null;message:string};
 type Payload=Partial<CustomerFinanceSnapshot>&{ok?:boolean;error?:string};
 const cash=(amount:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(amount);
@@ -39,7 +39,7 @@ export function CustomerConnectedPortal({section,id}:{section:Section;id?:string
   };
   void load();return()=>{mounted=false;};
  },[version]);
- const title={orders:"My Orders",invoices:"My Invoices",account:"My Account",deliveries:"My Deliveries"}[section];
+ const title={orders:"My Orders",invoices:"My Invoices",account:"My Account",deliveries:"My Deliveries",products:"Products & Order Requests"}[section];
  // A delivery is not the same thing as a placed or cancelled sales order.
  // Until server PODs are available, show only order states indicating dispatch
  // or delivery and disclose that the status is not signature evidence.
@@ -69,8 +69,8 @@ export function CustomerConnectedPortal({section,id}:{section:Section;id?:string
      {view.kind==="loading"&&<p role="status">Loading authorized records…</p>}
      {view.kind==="error"&&<p role="alert">{view.message}</p>}
      {view.kind==="ready"&&view.data&&<>
-       {section==="orders"&&!id&&<CustomerOrderRequest accounts={view.data.accounts} onSubmitted={()=>setVersion(v=>v+1)}/> }
-       {section==="account"?<>
+       {(section==="orders"||section==="products")&&!id&&<CustomerOrderRequest accounts={view.data.accounts} onSubmitted={()=>setVersion(v=>v+1)}/> }
+       {section==="products"?<p>Submit case quantities for commercial review. Confirmed pricing, availability and payment are separate steps.</p>:section==="account"?<>
         <h2>Authorized retail locations</h2>
         {view.data.accounts.map(account=><dl key={account.id} className="prototype-facts">
          <div><dt>Business</dt><dd>{account.name}</dd></div><div><dt>Location</dt><dd>{account.location}</dd></div>

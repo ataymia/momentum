@@ -724,6 +724,7 @@ function CustomerPortalContent({section}:{section:string}){
   const [deliveryAccount,setDeliveryAccount]=useState("all");const [deliveryFrom,setDeliveryFrom]=useState("");
   const [deliveryThrough,setDeliveryThrough]=useState("");const [deliverySort,setDeliverySort]=useState<"newest"|"oldest"|"order"|"cases">("newest");
   if(currentUser?.role!=="Customer") return <Empty>Customer access only.</Empty>;
+  if(section==="products"&&!runtime.isDemo)return <CustomerConnectedPortal section="products"/>;
   if(section==="documents")return <div><Heading title="My Documents" description="Private business document intake and review."/><CustomerDocumentWorkspace/></div>;
   if(section==="payments"||section==="statements")return <CustomerCommerceLedgers section={section}/>;
   if((!runtime.isDemo||momentumStorage.mode()!=="local")&&
@@ -947,7 +948,7 @@ export function PrototypeOperationsHub(){
   if(path==="/support/cases"||path.startsWith("/support/cases/"))return <SupportCasesExperience/>;
   if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<Empty>Marketing write administration is available in isolated local demo only. The redesign provides source-linked read and export access.</Empty>;
   if(path==="/people/payroll")return <PayrollWorkflowExperience/>;
-  if(path==="/people/payroll/workflow")return writeEnabled?<LegacyPayrollPage/>:<Empty>Read-only redesign prototype. Payroll processing is available only in isolated local demo mode until production controls are approved.</Empty>;
+  if(path==="/people/payroll/workflow")return writeEnabled?<LegacyPayrollPage/>:<PayrollWorkflowExperience/>;
   if(path==="/people/onboarding/workflow")return provisioningEnabled?<NewHireProvisioning view="queue"/>:<Empty>Full onboarding controls require a verified active administrator session.</Empty>;
   if(path==="/people/new-hire")return <HrNewHireExperience/>;
   if(path==="/people/onboarding")return <HrOnboardingExperience/>;
