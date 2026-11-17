@@ -48,13 +48,13 @@ async function seed(){
   await db.doc("userAccess/"+id).set({uid:id,email,role,team,accountState:"Active",managerId:person.managerId??null,managedTeams:person.managedTeams??[],updatedAt:stamp,updatedBy:"emulator-seed"});
   await db.doc("employeeDirectory/"+id).set({...person,updatedAt:stamp});
  }
- const location={id:accountId,customerId:uid("customer"),name:"QA isolated store",locationName:"QA Phoenix",location:"Phoenix, AZ",streetAddress:"100 QA Way",postalCode:"85001",channel:"Retail",stage:"Active",ownerId:uid("rep"),contactName:"QA receiver",contactRole:"Buyer",email:"customer@example.invalid",phone:"555-0100",lastActivity:date,nextAction:"QA",nextActionDate:date,health:"Healthy",lifetimeCases:0,reorderCount:0,notes:"Synthetic only",deliveryAddressSameAsBusiness:true};
- const order={id:orderId,accountId,number:"QA-174-ORDER",ownerId:uid("rep"),cases:4,pricePerCase:24,amount:96,status:"Approved",placedAt:stamp,priceBasis:"QA price",paymentStatus:"Not invoiced",product,lines:[{id:"qa-line",product,cases:4,pricePerCase:24,amount:96}]};
+ const location={id:accountId,customerId:uid("customer"),name:"QA isolated store",locationName:"QA Phoenix",location:"Phoenix, AZ",streetAddress:"100 QA Way",postalCode:"85001",channel:"Retail",stage:"Opening order",ownerId:uid("rep"),contactName:"QA receiver",contactRole:"Buyer",email:"customer@example.invalid",phone:"555-0100",lastActivity:date,nextAction:"QA",nextActionDate:date,health:"New",lifetimeCases:0,reorderCount:0,notes:"Synthetic only",deliveryAddressSameAsBusiness:true};
+ const order={id:orderId,accountId,number:"QA-174-ORDER",ownerId:uid("rep"),cases:4,pricePerCase:24,amount:96,status:"Approved",placedAt:stamp,priceBasis:"QA price",inventoryAvailableAtOrder:10,paymentStatus:"Not invoiced",product,lines:[{id:"qa-line",product,cases:4,pricePerCase:24,amount:96}]};
  await Promise.all([
   db.doc("platform/bootstrap").set({uid:uid("admin"),createdAt:stamp}),
   db.doc("platform/meta").set({versions:{}}),
   db.doc("domains/workspace/fields/accounts").set({items:[location]}),
-  db.doc("domains/workspace/fields/customers").set({items:[]}),
+  db.doc("domains/workspace/fields/customers").set({items:[{id:uid("customer"),name:"QA isolated business",accountType:"Independent",createdAt:stamp}]}),
   db.doc("domains/workspace/fields/orders").set({items:[]}),
   db.doc("domains/commercial/fields/orders").set({items:[order]}),
   db.doc("domains/workspace/fields/inventory").set({items:[]}),
@@ -81,19 +81,20 @@ async function open(key){
  await context.route("**/*",async route=>{
   const req=route.request(),u=new URL(req.url());
   if(["data:","blob:"].includes(u.protocol))return route.continue();
-  if(u.origin===HOST||u.origin==="http://127.0.0.1:5001"&&u.pathname.startsWith("/"+PROJECT+"/us-central1/")){
-   return route.continue();
-  }
+  if(u.origin===HOST)return route.continue();
   let target="";
+  if(u.origin==="http://127.0.0.1:5001"&&u.pathname.startsWith("/"+PROJECT+"/us-central1/"))target=req.url();
   if(u.hostname==="firestore.googleapis.com"&&u.pathname.includes("/projects/"+PROJECT+"/"))target="http://127.0.0.1:8080"+u.pathname+u.search;
   if(["identitytoolkit.googleapis.com","securetoken.googleapis.com"].includes(u.hostname)&&u.searchParams.get("key")==="isolated-emulator-key")target="http://127.0.0.1:9099/"+u.hostname+u.pathname+u.search;
   if(u.hostname==="firebasestorage.googleapis.com"&&u.pathname.includes(PROJECT))target="http://127.0.0.1:9199"+u.pathname+u.search;
-  if(!target)return route.abort("blockedbyclient");
+  if(!target){if(req.resourceType()==="fetch"||req.resourceType()==="xhr")console.log("CONNECTED_TRANSPORT_BLOCKED "+JSON.stringify({key,origin:u.origin,path:u.pathname}));return route.abort("blockedbyclient");}
   if(req.method()==="OPTIONS")return route.fulfill({status:204,headers:{"access-control-allow-origin":HOST,"access-control-allow-headers":"authorization,content-type,x-firebase-storage-version,x-goog-upload-protocol","access-control-allow-methods":"GET,POST,PATCH,DELETE,OPTIONS"}});
   const response=await route.fetch({url:target,maxRedirects:0});
+  if(u.origin==="http://127.0.0.1:5001")console.log("CONNECTED_API "+JSON.stringify({key,path:u.pathname,status:response.status()}));
   await route.fulfill({response,headers:{...response.headers(),"access-control-allow-origin":HOST,"access-control-expose-headers":"*"}});
  });
  const page=await context.newPage();
+ page.on("requestfailed",r=>{const u=new URL(r.url());if(r.resourceType()==="fetch"||r.resourceType()==="xhr")console.log("CONNECTED_REQUEST_FAILED "+JSON.stringify({key,origin:u.origin,path:u.pathname,error:r.failure()?.errorText}));});
  page.on("pageerror",e=>reports.errors.push({key,route:new URL(page.url()).pathname,error:e.message}));
  page.on("response",r=>{const u=new URL(r.url());if(r.status()>=400&&["firestore.googleapis.com","identitytoolkit.googleapis.com","127.0.0.1"].includes(u.hostname))reports.requests.push({key,path:u.pathname,status:r.status()});});
  sessions.set(key,{context,page});
@@ -149,7 +150,7 @@ async function inspectRoute(key,path,expected=true,device="desktop"){
 }
 async function run(name,task){
  try{await task();reports.actions.push({name,pass:true});console.log("CONNECTED_ACTION PASS "+name);}
- catch(e){reports.actions.push({name,pass:false,failure:String(e).slice(0,700)});console.log("CONNECTED_ACTION FAIL "+name+" "+String(e).slice(0,500));}
+ catch(e){reports.actions.push({name,pass:false,failure:String(e).slice(0,700)});console.log("CONNECTED_ACTION FAIL "+name+" "+String(e).slice(0,500));for(const [key,{page}] of sessions){if(["admin","ops","warehouse","customer","rep","driver"].includes(key)){const text=await root(page).innerText({timeout:1000}).catch(()=>"");console.log("CONNECTED_ACTION_DIAGNOSTIC "+JSON.stringify({key,path:new URL(page.url()).pathname,text:text.slice(0,1200)}));}}}
 }
 async function form(key,section,values){
  const page=await open(key);await goto(page,"/purchases/"+section);
@@ -174,6 +175,16 @@ async function button(key,section,id,label,prompt){
 }
 try{
  await seed();
+ await run("Authenticated browser and server purchasing handshake",async()=>{
+  const page=await open("admin");
+  const result=await page.evaluate(async ({project})=>{
+   const session=JSON.parse(sessionStorage.getItem("momentum-firebase-session-v1")??"null");
+   if(!session?.idToken)return {status:0,message:"No signed-in browser session"};
+   const response=await fetch("http://127.0.0.1:5001/"+project+"/us-central1/purchasingApi",{method:"POST",headers:{"Content-Type":"application/json",authorization:"Bearer "+session.idToken},body:JSON.stringify({mode:"read"})});
+   const data=await response.json();return {status:response.status,ok:data.ok,message:data.message};
+  },{project:PROJECT});
+  console.log("CONNECTED_HANDSHAKE "+JSON.stringify(result));assert.equal(result.status,200);assert.equal(result.ok,true);
+ });
  const staff=routes.MENU_GROUPS.flatMap(g=>g.entries);
  const customer=routes.CUSTOMER_MENU;
  for(const entry of staff)await inspectRoute("admin",entry.path);
@@ -273,6 +284,7 @@ try{
  await run("Customer PDF upload, reload, private download and independent review permission",async()=>{
   const page=await open("customer");await goto(page,"/portal/documents");
   const pdf=Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n");
+  await page.getByLabel("Document business location").selectOption(accountId);
   await page.getByLabel("Document title").fill("QA connected document");
   await page.getByLabel("PDF file (up to 5 MB)").setInputFiles({name:"qa-test.pdf",mimeType:"application/pdf",buffer:pdf});
   await page.getByLabel(/This PDF is intended/).check();
