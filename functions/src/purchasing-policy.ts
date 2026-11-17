@@ -1,4 +1,4 @@
-/* eslint-disable max-len, indent, comma-spacing, key-spacing, keyword-spacing, curly, brace-style, arrow-parens, space-before-blocks, object-curly-spacing, require-jsdoc, valid-jsdoc, semi-spacing, space-infix-ops, space-before-function-paren, operator-linebreak, padded-blocks, eol-last, no-multiple-empty-lines, quote-props, block-spacing, no-trailing-spaces */
+/* eslint-disable max-len, indent, comma-spacing, key-spacing, keyword-spacing, curly, brace-style, arrow-parens, space-before-blocks, object-curly-spacing, semi-spacing, space-infix-ops, space-before-function-paren, operator-linebreak, padded-blocks, eol-last, no-multiple-empty-lines, quote-props, block-spacing, no-trailing-spaces */
 /**
  * Shared purchasing state transitions. Not a payment processor, Firestore authorization,
  * accounts payable ledger or inventory posting integration.
@@ -154,7 +154,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       if(!amount(action.cases)||receivedCases(s,p.id)+action.cases>p.cases||!label(action.lotCode)||!dateKey(action.bestBy)||!label(action.warehouse))return reject("Receipt needs valid cases, lot, best-by and location, without exceeding ordered quantity.");
       if(action.warehouse.trim()!==p.warehouse)return reject("Receipt warehouse must match the approved purchase order.");
       recordId=newId(s,"receipt");s.receipts.push({id:recordId,poId:p.id,cases:action.cases,lotCode:action.lotCode.trim(),bestBy:action.bestBy,warehouse:action.warehouse.trim(),recordedAt:at,recordedBy:actor.id,inventoryPosted:false});
-      detail="Receipt recorded in local review only; inventory posting remains blocked.";break;
+      detail="Physical receipt evidence recorded; inventory posting remains a separate step.";break;
     }
     case "bill.record":{
       if(!canProcure(actor))return reject("Only purchasing staff may register supplier bills.");
@@ -178,7 +178,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       if(!bill?.approvedAt||!label(action.reference)||!amount(action.amountCents)||action.amountCents>billDueCents(s,bill)-pendingPaymentCents(s,bill.id)-pendingCreditCents(s,bill.id))return reject("Approved bill, distinct reference and amount within the unreconciled balance are required.");
       if(s.payments.some(p=>p.reference.toLowerCase()===action.reference.trim().toLowerCase()))return reject("Payment reference already recorded.");
       recordId=newId(s,"pay");s.payments.push({id:recordId,billId:bill.id,reference:action.reference.trim(),amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id,externalSettlementVerified:false});
-      detail="Local payment note only; no money moved and no external settlement verified.";break;
+      detail="Payment reference recorded; no money moved and no external settlement verified.";break;
     }
     case "payment.verify":{
       if(!isAdmin(actor)||!actor.canVerifySettlement)return reject("An authorized connected administrator must verify settlement.");

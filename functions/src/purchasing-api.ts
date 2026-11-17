@@ -1,4 +1,4 @@
-/* eslint-disable max-len, indent, comma-spacing, key-spacing, keyword-spacing, curly, brace-style, arrow-parens, space-before-blocks, object-curly-spacing, require-jsdoc, valid-jsdoc, semi-spacing, space-infix-ops, space-before-function-paren, operator-linebreak, quote-props, block-spacing */
+/* eslint-disable max-len, indent, comma-spacing, key-spacing, keyword-spacing, curly, brace-style, arrow-parens, space-before-blocks, object-curly-spacing, semi-spacing, space-infix-ops, space-before-function-paren, operator-linebreak, quote-props, block-spacing */
 import {createHash} from "node:crypto";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore} from "firebase-admin/firestore";
@@ -41,6 +41,10 @@ function readState(raw:unknown):PurchasingState{
  }
  return state;
 }
+function projectState(state:PurchasingState,role:string):PurchasingState{
+ if(role==="Administrator")return state;
+ return {...state,payments:state.payments.map(p=>({...p,reference:"Restricted",settlementEvidence:undefined})),audit:state.audit.map(e=>({...e,detail:""}))};
+}
 export const purchasingApi=onRequest({cors:true,region:"us-central1"},async(req,res)=>{
  if(req.method!=="POST"){res.status(405).json({ok:false,message:"POST required."});return;}
  const token=(req.headers.authorization??"").replace(/^Bearer /,"");
@@ -58,13 +62,13 @@ export const purchasingApi=onRequest({cors:true,region:"us-central1"},async(req,
    if(access?.accountState!=="Active"||!["Administrator","Operations"].includes(access.role))throw new PurchaseApiError(403,"Active purchasing staff access required.");
    const stateDoc=await tx.get(stateRef);
    const state=stateDoc.exists?readState(stateDoc.data()?.state):emptyPurchasingState();
-   if(!action)return {state,message:"Purchasing register loaded."};
+   if(!action)return {state:projectState(state,access.role),message:"Purchasing register loaded."};
    const digest=createHash("sha256").update(JSON.stringify(action)).digest("hex");
    const receiptRef=db.doc("purchasingRequestKeys/"+createHash("sha256").update(uid+":"+requestId).digest("hex"));
    const receipt=await tx.get(receiptRef);
    if(receipt.exists){
     if(receipt.data()?.digest!==digest)throw new PurchaseApiError(409,"Request key was used for different details.");
-    return {state,message:"Previously recorded; current register loaded."};
+    return {state:projectState(state,access.role),message:"Previously recorded; current register loaded."};
    }
    const actor:PurchaseActor={id:uid,role:access.role,canVerifySettlement:access.role==="Administrator"};
    const outcome=applyPurchaseAction(state,actor,action,new Date().toISOString());
@@ -73,7 +77,7 @@ export const purchasingApi=onRequest({cors:true,region:"us-central1"},async(req,
    if(Buffer.byteLength(JSON.stringify(next),"utf8")>700000||next.audit.length>4500)throw new PurchaseApiError(409,"Register capacity reached; contact operations before further entry.");
    tx.set(stateRef,{state:next,updatedAt:new Date().toISOString()});
    tx.create(receiptRef,{digest,actorUid:uid,recordId:next.audit[next.audit.length-1].recordId,recordedAt:new Date().toISOString()});
-   return {state:next,message:"Saved to company purchasing register. No payment was initiated or stock posted."};
+   return {state:projectState(next,access.role),message:"Saved to company purchasing register. No payment was initiated or stock posted."};
   });
   res.status(200).json({ok:true,...result});
  }catch(error){
