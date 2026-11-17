@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {GOLDEN_EAGLE_SKUS} from "../lib/product-catalog";
+import {validateCustomerOrderDraft} from "../lib/customer-order-request-draft";
 
 test("R33 source-owned order intake accepts all and only approved catalog product identities",()=>{
  const server=readFileSync("functions/src/trusted-order-intake.ts","utf8");
@@ -47,4 +48,39 @@ test("R33 authenticated only, readback-safe and no financial or inventory mutati
  assert(queue.includes("setRecords(current=>current.map(row=>row.id===selected.id?readback:row))"));
  assert(orderActions.includes("<ConnectedOrderIntakeForm/>"));
  assert(orderActions.includes("<ConnectedOrderIntakeQueue/>"));
+});
+
+
+test("Customer portal composes a canonical multi-product request without creating a financial order",()=>{
+ const accountIds=["location-a"];
+ const valid=validateCustomerOrderDraft("location-a",accountIds,[
+  {skuId:"ge-original-250ml-24",cases:"8"},
+  {skuId:"ge-tropical-250ml-24",cases:"3"},
+ ],"Urgent review");
+ assert.deepEqual(valid,{
+  ok:true,draft:{accountId:"location-a",lines:[
+   {skuId:"ge-original-250ml-24",cases:8},
+   {skuId:"ge-tropical-250ml-24",cases:3},
+  ],note:"Urgent review"},totalCases:11,
+ });
+ for(const row of [
+  [{skuId:"ge-original-250ml-24",cases:"2"},{skuId:"ge-original-250ml-24",cases:"3"}],
+  [{skuId:"ge-original-250ml-24",cases:"0"}],
+  [{skuId:"ge-original-250ml-24",cases:"1.2"}],
+  [{skuId:"ge-original-250ml-24",cases:"1e2"}],
+  [{skuId:"ge-original-250ml-24",cases:"10001"}],
+  [{skuId:"ge-original-250ml-24",cases:"9999"},{skuId:"ge-tropical-250ml-24",cases:"2"}],
+  [{skuId:"unknown-product",cases:"1"}],
+ ])assert.equal(validateCustomerOrderDraft("location-a",accountIds,row,"").ok,false);
+ assert.equal(validateCustomerOrderDraft("other",accountIds,[
+  {skuId:"ge-original-250ml-24",cases:"1"}],"").ok,false);
+ assert.equal(validateCustomerOrderDraft("location-a",accountIds,[
+  {skuId:"ge-original-250ml-24",cases:"1"}],"x".repeat(1001)).ok,false);
+ const ui=readFileSync("components/prototype/customer-order-request.tsx","utf8");
+ assert.match(ui,/lines\.map\(/);
+ assert.match(ui,/validateCustomerOrderDraft\(/);
+ assert.match(ui,/remaining\.length/);
+ assert.match(ui,/submittedFingerprint/);
+ assert.match(ui,/reviewOrderIntake/);
+ assert.doesNotMatch(ui,/paymentsReceived|pricePerCase|createOrder|cardNumber/);
 });
