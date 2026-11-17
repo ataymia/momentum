@@ -31,7 +31,9 @@ test("Deals URL routes render real directory, create and record views rather tha
   assert.match(hub,/if\(path==="\/crm\/deals"\)return <DealsDirectory\/>/);
   assert.match(ui,/addOpportunity\(/);
   assert.match(ui,/updateOpportunity\(/);
-  assert.match(ui,/canWrite=runtime\.isDemo&&momentumStorage\.mode\(\)==="local"/);
+  assert.match(ui,/runtime\.isDemo&&momentumStorage\.mode\(\)==="local"/);
+  assert.match(ui,/!runtime\.isDemo&&Boolean\(firebase\?\.session\)/);
+  assert.match(ui,/saveConnectedCrmDeal\(firebase\.session,intent,request\.current\.id\)/);
   assert.match(ui,/scope\.accounts\.filter\(account=>Boolean\(account\.customerId\)\)/);
   assert.match(ui,/scope\.orders\.filter\(order=>!order\.testOnly&&order\.accountId===deal\.locationId\)/);
   assert.match(ui,/Deal creation rejected/);

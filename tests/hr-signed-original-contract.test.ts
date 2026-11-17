@@ -78,6 +78,8 @@ test("Contractor and employee forms remain isolated, with no implied completed c
  assert(status.includes('if(classification==="Contractor")return ["W-9"]'));
  assert(status.includes('if(classification==="Hourly"||classification==="Salary")'));
  assert(status.includes('productionReady:false'));
- assert(packageUi.includes("This form cannot create e-signatures"));
+ assert(packageUi.includes("In-app drawn marks are not provider-verified signatures"));
+ assert(packageUi.includes('setSourceType("In-app prepared PDF (unverified)")'));
+ assert(packageUi.includes("Every mark requires independent identity and consent review"));
  assert(packageUi.includes("does not change a worker's onboarding or compliance status"));
 });
