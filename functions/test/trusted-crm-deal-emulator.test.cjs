@@ -60,7 +60,7 @@ test("server deals enforce tenant, revisions, idempotency and zero financial wri
  assert.equal(second.revision,2);
  assert.equal((await opportunities.get()).data().items[0].status,"Won");
  await deny(saveTrustedCrmDeal(ids.rep,closed,"stale"+key),409);
- await deny(saveTrustedCrmDeal(ids.rep,{...closed,expectedRevision:2,details:{...closed.details,stage:"Qualified"}},"reopen"+key),409);
+ await deny(saveTrustedCrmDeal(ids.rep,{...closed,expectedRevision:2,details:{...draft.details,stage:"Qualified"}},"reopen"+key),409);
  assert.equal((await orders.get()).data().items[0].id,"preserve-order-"+suffix);
  assert.equal((await payments.get()).data().items[0].id,"preserve-payment-"+suffix);
  const audits=await db.collection("crmDealAudit").where("dealId","==",receipt.dealId).get();
