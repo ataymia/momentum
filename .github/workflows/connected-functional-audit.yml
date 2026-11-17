@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
+      MOMENTUM_FIREBASE_WEB_API_KEY: isolated-emulator-key
       NEXT_PUBLIC_FIREBASE_API_KEY: isolated-emulator-key
       NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: demo-momentum-connected-audit.invalid
       NEXT_PUBLIC_FIREBASE_PROJECT_ID: demo-momentum-connected-audit
@@ -44,6 +45,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Run real connected browser tests on local-only emulator project
         run: |
+          printf 'MOMENTUM_FIREBASE_WEB_API_KEY=isolated-emulator-key\n' > functions/.env.local
           printf 'RESEND_API_KEY=disabled-local-test\nRESEND_WEBHOOK_SECRET=disabled-local-test\n' > functions/.secret.local
           npx --yes firebase-tools@15.30.1 emulators:exec --only auth,firestore,storage,functions,hosting --project demo-momentum-connected-audit --config firebase.connected-audit.json 'node --import tsx scripts/connected-functional-audit.mjs'
       - name: Upload per-route and per-action evidence

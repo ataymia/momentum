@@ -92,8 +92,14 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
   const loadDirectory=useCallback(async(current:UserAccessRecord)=>{
     let users:WorkspaceUser[]=[];
     try{
+      if(current.role==="Customer"){
+        const self=await getFirestoreSnapshot(`${EMPLOYEE_DIRECTORY_COLLECTION}/${current.uid}`);
+        const entry=normalizeDirectoryEntry(current.uid,self.data);
+        users=entry?[entry]:[];
+      }else{
       const snapshots=await listFirestoreSnapshots(EMPLOYEE_DIRECTORY_COLLECTION);
       users=snapshots.map((item)=>normalizeDirectoryEntry(item.path.split("/").pop()??"",item.data)).filter((item):item is WorkspaceUser=>Boolean(item));
+      }
     }catch(caught){
       if(!(caught instanceof FirestoreRequestError&&caught.status===403))throw caught;
       const self=await getFirestoreSnapshot(`${EMPLOYEE_DIRECTORY_COLLECTION}/${current.uid}`);

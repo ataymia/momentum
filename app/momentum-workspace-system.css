@@ -382,3 +382,25 @@ body{background:var(--workspace-canvas);}
 /* Keyboard navigation through the persistent shell. */
 .momentum-skip-link{position:fixed;top:-100px;left:16px;z-index:500;background:#fff;color:#0c448d;border:2px solid #0c448d;padding:10px 16px;border-radius:10px;font-weight:800;box-shadow:0 6px 22px #10203d22}
 .momentum-skip-link:focus{top:10px}
+
+/* Connected sessions add the sync indicator to the topbar. Keep the real
+   authenticated mobile shell within the viewport without hiding controls. */
+@media screen and (max-width:640px){
+  .app-layout .topbar{width:100%;max-width:100%;min-width:0;gap:5px;box-sizing:border-box;}
+  .app-layout .topbar__left{flex:1 1 0;min-width:0;gap:6px;overflow:hidden;}
+  .app-layout .topbar__left .menu-button{flex:0 0 auto;}
+  .app-layout .topbar__location{flex:1 1 0;min-width:0;max-width:100%;overflow:hidden;display:flex;}
+  .app-layout .topbar__location .breadcrumb-home{display:none;}
+  .app-layout .topbar__location .breadcrumb-step:not(:last-child){display:none;}
+  .app-layout .topbar__location .breadcrumb-step:last-child{min-width:0;max-width:100%;display:flex;}
+  .app-layout .topbar__location .breadcrumb-step:last-child>svg{display:none;}
+  .app-layout .topbar__location .breadcrumb-step:last-child strong{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .app-layout .topbar__actions{flex:0 0 auto;gap:4px;max-width:66%;min-width:0;}
+  .app-layout .topbar__actions .sync-status-pill{flex:0 0 auto;min-width:28px;width:28px;height:28px;padding:5px;}
+  .app-layout .topbar__actions .sync-status-pill span{display:none;}
+  .app-layout .topbar__actions .user-button{min-width:40px;max-width:48px;}
+  .app-layout .topbar__actions .user-button>span,.app-layout .topbar__actions .user-button>svg{display:none;}
+  .page-container.momentum-workspace-ui{min-width:0;max-width:100%;box-sizing:border-box;}
+  .page-container.momentum-workspace-ui :is(.prototype-panel,.prototype-controls,.prototype-heading,.prototype-table-scroll,.company-request-list){min-width:0;max-width:100%;box-sizing:border-box;}
+  .page-container.momentum-workspace-ui .prototype-controls>*{min-width:0;max-width:100%;}
+}

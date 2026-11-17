@@ -16,11 +16,13 @@ const routes=routesModule.default??routesModule;
 assert.equal(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,PROJECT);
 assert.equal(process.env.RESEND_LIVE_EMAIL_ENABLED,"false");
 assert.equal(process.env.MOMENTUM_INVOICE_ISSUE_APPROVED,"false");
+const ready=await fetch("http://127.0.0.1:5001/"+PROJECT+"/us-central1/purchasingApi",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+assert.equal(ready.status,401,"Functions emulator must actually serve authenticated endpoints before the audit.");
 for(const name of ["FIRESTORE_EMULATOR_HOST","FIREBASE_AUTH_EMULATOR_HOST"]){
  assert.match(process.env[name]??"",/^127\.0\.0\.1:\d+$/,"Local emulator required: "+name);
 }
 fs.mkdirSync(OUT,{recursive:true});
-const app=initializeApp({projectId:PROJECT});
+const app=initializeApp({projectId:PROJECT,storageBucket:PROJECT+".appspot.com"});
 const db=getFirestore(app), auth=getAuth(app);
 const roles=[["admin","Administrator","Leadership"],["reviewer","Administrator","Leadership"],["ops","Operations","Operations"],["warehouse","Warehouse","Operations"],["manager","Sales Manager","Sales"],["rep","Sales Representative","Sales"],["ambassador","Brand Ambassador","Marketing"],["marketing","Marketing","Marketing"],["driver","Delivery Driver","Operations"],["customer","Customer","Customer"],["other-customer","Customer","Customer"]];
 const password="Local-QA-Only!2026";
