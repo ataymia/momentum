@@ -6,7 +6,7 @@ import {useWorkspace} from "../../lib/workspace-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {momentumStorage} from "../../lib/persistence";
-import {connectedPurchasing} from "../../lib/firebase-purchasing";
+import {connectedPurchasing,PurchasingRequestError} from "../../lib/firebase-purchasing";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {GOLDEN_EAGLE_SKUS,skuById} from "../../lib/product-catalog";
 import {
@@ -238,7 +238,7 @@ function LocalPurchasingExperience({section,id,connected}:{section:string;id?:st
       const key=pending.current?.id??crypto.randomUUID();pending.current={fingerprint,id:key};
       locked.current=true;setBusy(true);
       try{const result=await connectedPurchasing(session,action,key);setState(result.state);setNotice(result.message);pending.current=null;return true;}
-      catch(error){setNotice(error instanceof Error?error.message:"Save unconfirmed.");return false;}
+      catch(error){if(error instanceof PurchasingRequestError&&error.definitive)pending.current=null;setNotice(error instanceof Error?error.message:"Save unconfirmed.");return false;}
       finally{locked.current=false;setBusy(false);}
     }
     const result=applyPurchaseAction(state,actor,action,new Date().toISOString());
