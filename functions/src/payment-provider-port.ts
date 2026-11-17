@@ -1,4 +1,4 @@
-/* eslint-disable max-len, comma-spacing, require-jsdoc, space-before-blocks, indent, brace-style, valid-jsdoc, keyword-spacing, curly, arrow-parens */
+/* eslint-disable max-len, comma-spacing, space-before-blocks, indent, brace-style, keyword-spacing, curly, arrow-parens */
 /** Provider-neutral server payment boundary.
  * An adapter is installed only after an approved merchant account, credentials,
  * hosted tokenization/mandate and webhook validation are ready.
