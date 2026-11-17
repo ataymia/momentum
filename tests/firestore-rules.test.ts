@@ -1370,3 +1370,16 @@ describe("connected CRM opportunities require trusted server mutations",()=>{
   }
  });
 });
+
+describe("HR assignments are exclusively server-owned",()=>{
+ test("no browser can mint an assignment or read private assignment ledger",async()=>{
+  for(const uid of [ADMIN,MANAGER,REP,OTHER_REP,OPS,DRIVER,null]){
+   for(const path of ["hrDocumentAssignments/forged",
+    "hrTemplateAssignmentKeys/forged","hrTemplateAssignmentIndex/forged",
+    "hrDocumentAssignmentAudit/forged"]){
+    await assertFails(setDoc(doc(dbFor(uid),path),{workerUid:uid,status:"Completed"}));
+    await assertFails(getDoc(doc(dbFor(uid),path)));
+   }
+  }
+ });
+});

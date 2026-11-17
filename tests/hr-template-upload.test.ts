@@ -94,3 +94,19 @@ test("compressed PDF field discovery becomes editable signer hints",async()=>{
  assert.match(ui,/inspectHrPdf\(/);
  assert.match(ui,/mapHrPdfFields\(/);
 });
+
+test("HR template assignment follows uploaded PDF identity and employee-only private download",()=>{
+ const server=readFileSync("functions/src/trusted-hr-template-assignment.ts","utf8");
+ const index=readFileSync("functions/src/index.ts","utf8");
+ const worker=readFileSync("components/hcm/hr-worker-document-submission.tsx","utf8");
+ const admin=readFileSync("components/hcm/hr-assign-blank-template.tsx","utf8");
+ assert.match(server,/assigned|assignTrustedHrTemplate/i);
+ assert.match(server,/getStorage\(\)\.bucket\(\)\.file\(source\.storagePath\)/);
+ assert.match(server,/sha256!==source\.sha256/);
+ assert.match(server,/employeeUid===actorUid/);
+ assert.match(server,/reviewedForWorkerPreparation/);
+ assert.match(index,/export const hrTemplateAssignmentApi=/);
+ assert.match(worker,/downloadAssignedHrDocument\(session,id\)/);
+ assert.match(worker,/assignmentId:selectedAssignment/);
+ assert.match(admin,/assignHrDocument\(session,employeeUid,templateId,request\.current\)/);
+});
