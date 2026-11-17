@@ -3,7 +3,7 @@
 **Release status: business approval required.** The printed invoice and emailed PDF include hardcoded legal issuer details, address, contact phone, and email. These facts have not been independently verified by engineering.
 
 ## Implemented
-- Automatic customer invoice emails are held unless the Firebase Functions runtime explicitly sets `MOMENTUM_INVOICE_ISSUE_APPROVED=true`. Unset and all other values mean hold. A review event is written to `notificationAdminEvents`, not a customer invoice outbox.
+- Automatic customer invoice emails are held unless the Firebase Functions runtime explicitly sets `MOMENTUM_INVOICE_ISSUE_APPROVED=true`. Unset and all other values mean hold. A review event is written to `notificationAdminEvents`, not a customer invoice outbox. The Resend transport also independently checks this flag before attempting to send any **already-queued** `delivered_invoice` item.
 - The issuer approval is **independent** of Resend live email activation. It is an operational sign-off flag, not proof of correctness.
 - Prefilled Zelle, bank account and routing destinations were removed from emailed PDF attachments and browser printing. Send remittance instructions separately via an approved authenticated channel.
 - When no verified recipient signature is present, printed name and signature date are blank; the signature cell says no recipient signature is on file. An admin delivery confirmation is not presented as a customer signature.

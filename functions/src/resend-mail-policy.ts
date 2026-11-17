@@ -33,7 +33,12 @@ export const safeMail=(value:string)=>value.length<=254&&
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)&&!/[\r\n]/.test(value);
 export const safeText=(value:string,max:number)=>value.length>0&&
   value.length<=max&&!/[\x00-\x08\x0b-\x1f\x7f]/.test(value);
-export function validMailToSend(value:ServerMail,cutoff:string){
+export function validMailToSend(
+ value:ServerMail,cutoff:string,
+ invoiceIssueApproved=process.env.MOMENTUM_INVOICE_ISSUE_APPROVED==="true",
+){
+ if(value.kind==="delivered_invoice"&&!invoiceIssueApproved)
+   return "Customer invoice issuer approval is required.";
  if(value.status!=="Approved")return "Not approved for transport.";
  if(!Number.isFinite(Date.parse(cutoff))||!Number.isFinite(Date.parse(value.createdAt))||
    Date.parse(value.createdAt)<Date.parse(cutoff))return "Historical or unapproved activation window.";

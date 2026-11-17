@@ -84,7 +84,7 @@ test("Resend transport accepts a validated PDF invoice attachment",()=>{
     createdAt:"2026-10-18T21:00:00.000Z",
   };
   assert.equal(
-    policy.validMailToSend(mail,"2026-10-18T20:59:00.000Z"),
+    policy.validMailToSend(mail,"2026-10-18T20:59:00.000Z",true),
     null,
   );
 });
