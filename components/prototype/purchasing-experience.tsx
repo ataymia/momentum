@@ -1,11 +1,12 @@
 "use client";
 
-import {useEffect,useMemo,useState,useSyncExternalStore,type FormEvent} from "react";
+import {useEffect,useMemo,useRef,useState,useSyncExternalStore,type FormEvent} from "react";
 import {ArrowLeft,ArrowUpDown,Search,ShieldCheck} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {momentumStorage} from "../../lib/persistence";
+import {connectedPurchasing} from "../../lib/firebase-purchasing";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {GOLDEN_EAGLE_SKUS,skuById} from "../../lib/product-catalog";
 import {
@@ -35,7 +36,7 @@ const defaultDate=()=>new Date().toISOString().slice(0,10);
 const vendorName=(s:PurchasingState,id:string)=>s.vendors.find(v=>v.id===id)?.name??"Unknown vendor";
 const poName=(s:PurchasingState,id:string)=>s.orders.find(p=>p.id===id)?.id??"Unknown order";
 
-function PurchasingForm({section,state,run,role}:{section:Section;state:PurchasingState;run:(a:PurchaseAction)=>boolean;role:string}){
+function PurchasingForm({section,state,run,role,connected,busy}:{section:Section;state:PurchasingState;run:(a:PurchaseAction)=>Promise<boolean>;role:string;connected:boolean;busy:boolean}){
   const isAdmin=role==="Administrator";const canPrepare=isAdmin||role==="Operations";
   const canReceive=canPrepare||role==="Warehouse";
   const canCreate=(section==="receipts"?canReceive:["orders","expenses","bills","credits"].includes(section)?canPrepare:isAdmin);
@@ -45,8 +46,8 @@ function PurchasingForm({section,state,run,role}:{section:Section;state:Purchasi
   const orders=state.orders.filter(p=>p.approvedAt&&!p.cancelledAt);
   const bills=state.bills.filter(b=>b.approvedAt);
   const supplierOptions=state.vendors.filter(v=>v.active);
-  const submit=(e:FormEvent<HTMLFormElement>)=>{
-    e.preventDefault();const fd=new FormData(e.currentTarget);
+  const submit=async(e:FormEvent<HTMLFormElement>)=>{
+    e.preventDefault();const form=e.currentTarget;const fd=new FormData(form);
     let action:PurchaseAction;
     switch(section){
       case "vendors":action={kind:"vendor.add",name:field(fd,"name"),contact:field(fd,"contact")};break;
@@ -57,8 +58,8 @@ function PurchasingForm({section,state,run,role}:{section:Section;state:Purchasi
       case "credits":action={kind:"credit.record",billId:field(fd,"bill"),reference:field(fd,"reference"),reason:field(fd,"reason"),amountCents:cents(field(fd,"amount"))};break;
       case "expenses":action={kind:"expense.record",vendorId:field(fd,"vendor")||undefined,description:field(fd,"description"),amountCents:cents(field(fd,"amount"))};break;
     }
-    if(run(action)){
-      e.currentTarget.reset();setSelection("");
+    if(await run(action)){
+      form.reset();setSelection("");
     }
   };
   const poOptions=orders.filter(p=>section==="receipts"?receivedCases(state,p.id)<p.cases:true);
@@ -99,7 +100,7 @@ function PurchasingForm({section,state,run,role}:{section:Section;state:Purchasi
         <label>Expense purpose<input name="description" required/></label>
         <label>Amount (USD)<input name="amount" type="number" min="0.01" step="0.01" required/></label>
       </>}
-      <div className="prototype-purchasing-actions"><button type="submit">Record in local demo</button><small>Not a live purchase, stock receipt or money transfer.</small></div>
+      <div className="prototype-purchasing-actions"><button type="submit" disabled={busy}>{busy?"Saving…":connected?"Save company record":"Record in local demo"}</button><small>No external purchase order or money transfer is initiated.</small></div>
     </form>}
   </section>;
 }
@@ -119,29 +120,33 @@ function buildRows(s:PurchasingState,section:Section):Row[]{
     case "orders":return s.orders.map(p=>({id:p.id,date:date(p.createdAt),status:poStatus(s,p),values:{vendor:vendorName(s,p.vendorId),sku:skuById(p.sku)?.shortName??p.sku,cases:p.cases,received:receivedCases(s,p.id),cost:p.cases*p.unitCostCents,status:poStatus(s,p)}}));
     case "receipts":return s.receipts.map(r=>({id:r.id,date:date(r.recordedAt),status:"Not posted",values:{po:poName(s,r.poId),cases:r.cases,lot:r.lotCode,bestBy:r.bestBy,warehouse:r.warehouse,status:"Pending inventory posting"}}));
     case "bills":return s.bills.map(b=>{const m=threeWayMatch(s,b);const st=b.approvedAt?"Approved":m.matched?"Matched · review needed":"Mismatch / awaiting receipt";return {id:b.id,date:date(b.recordedAt),status:st,values:{invoice:b.invoiceNumber,po:poName(s,b.poId),cases:b.cases,total:b.amountCents,variance:m.varianceCents,status:st,due:billDueCents(s,b)}};});
-    case "payments":return s.payments.map(p=>({id:p.id,date:date(p.recordedAt),status:"Unverified",values:{bill:s.bills.find(b=>b.id===p.billId)?.invoiceNumber??p.billId,reference:p.reference,total:p.amountCents,status:"Local note only"}}));
+    case "payments":return s.payments.map(p=>({id:p.id,date:date(p.recordedAt),status:p.externalSettlementVerified?"Evidence reviewed":"Unverified",values:{bill:s.bills.find(b=>b.id===p.billId)?.invoiceNumber??p.billId,reference:p.reference,total:p.amountCents,status:p.externalSettlementVerified?"Evidence reviewed":"Pending settlement review"}}));
     case "credits":return s.credits.map(c=>({id:c.id,date:date(c.recordedAt),status:c.approvedAt?"Reviewed":"Pending review",values:{bill:s.bills.find(b=>b.id===c.billId)?.invoiceNumber??c.billId,reference:c.reference,reason:c.reason,total:c.amountCents,status:c.approvedAt?"Reviewed":"Pending review"}}));
     case "expenses":return s.expenses.map(e=>({id:e.id,date:date(e.recordedAt),status:e.approvedAt?"Approved":"Awaiting approval",values:{description:e.description,vendor:e.vendorId?vendorName(s,e.vendorId):"Not linked",total:e.amountCents,status:e.approvedAt?"Approved":"Awaiting approval"}}));
   }
 }
-function RowAction({section,id,state,role,actorId,run}:{section:Section;id:string;state:PurchasingState;role:string;actorId:string;run:(a:PurchaseAction)=>boolean}){
+function RowAction({section,id,state,role,actorId,run,connected,busy}:{section:Section;id:string;state:PurchasingState;role:string;actorId:string;run:(a:PurchaseAction)=>Promise<boolean>;connected:boolean;busy:boolean}){
   const admin=role==="Administrator";
   if(section==="orders"){
-    const po=state.orders.find(p=>p.id===id)!;if(!po.submittedAt&&!po.cancelledAt&&["Administrator","Operations"].includes(role))return <button type="button" onClick={()=>run({kind:"po.submit",id})}>Submit</button>;
-    if(admin&&po.submittedAt&&!po.approvedAt&&!po.cancelledAt&&po.createdBy!==actorId)return <button type="button" onClick={()=>run({kind:"po.approve",id})}>Approve PO</button>;
+    const po=state.orders.find(p=>p.id===id)!;if(!po.submittedAt&&!po.cancelledAt&&["Administrator","Operations"].includes(role))return <button type="button" disabled={busy} onClick={()=>void run({kind:"po.submit",id})}>Submit</button>;
+    if(admin&&po.submittedAt&&!po.approvedAt&&!po.cancelledAt&&po.createdBy!==actorId)return <button type="button" disabled={busy} onClick={()=>void run({kind:"po.approve",id})}>Approve PO</button>;
     return <span>{po.createdBy===actorId&&!po.approvedAt?"Independent reviewer required":"Review only"}</span>;
   }
   if(section==="bills"){
     const b=state.bills.find(b=>b.id===id)!;
-    if(admin&&!b.approvedAt&&b.recordedBy!==actorId&&threeWayMatch(state,b).matched)return <button type="button" onClick={()=>run({kind:"bill.approve",id})}>Approve match</button>;
+    if(admin&&!b.approvedAt&&b.recordedBy!==actorId&&threeWayMatch(state,b).matched)return <button type="button" disabled={busy} onClick={()=>void run({kind:"bill.approve",id})}>Approve match</button>;
+  }
+  if(section==="payments"&&connected&&admin){
+    const p=state.payments.find(p=>p.id===id);
+    if(p&&!p.externalSettlementVerified&&p.recordedBy!==actorId)return <button type="button" disabled={busy} onClick={()=>{const evidence=window.prompt("Enter the reviewed bank/processor settlement evidence reference (no account or routing numbers)");if(evidence&&evidence.trim().length>=8)void run({kind:"payment.verify",id,evidence:evidence.trim()});}}>Verify recorded settlement</button>;
   }
   if(section==="credits"){
     const c=state.credits.find(c=>c.id===id)!;
-    if(admin&&!c.approvedAt&&c.recordedBy!==actorId)return <button type="button" onClick={()=>run({kind:"credit.approve",id})}>Review credit</button>;
+    if(admin&&!c.approvedAt&&c.recordedBy!==actorId)return <button type="button" disabled={busy} onClick={()=>void run({kind:"credit.approve",id})}>Review credit</button>;
   }
   if(section==="expenses"){
     const e=state.expenses.find(e=>e.id===id)!;
-    if(admin&&!e.approvedAt&&e.recordedBy!==actorId)return <button type="button" onClick={()=>run({kind:"expense.approve",id})}>Approve</button>;
+    if(admin&&!e.approvedAt&&e.recordedBy!==actorId)return <button type="button" disabled={busy} onClick={()=>void run({kind:"expense.approve",id})}>Approve</button>;
   }
   return <span>Review only</span>;
 }
@@ -166,11 +171,11 @@ function PurchasingRecordDetail({section,id,state}:{section:Section;id:string;st
     const b=state.bills.find(x=>x.id===id);if(!b)return <p className="prototype-empty">Supplier bill record not found.</p>;
     const match=threeWayMatch(state,b);
     facts.push({label:"Supplier invoice",value:b.invoiceNumber},{label:"Purchase order",value:poName(state,b.poId)},{label:"Vendor",value:match.po?vendorName(state,match.po.vendorId):"Not linked"},{label:"Billed cases",value:String(b.cases)},{label:"Recorded received cases",value:String(match.received)},{label:"Supplier invoice total",value:money(b.amountCents)},{label:"PO-price variance",value:money(match.varianceCents)},{label:"Three-way match",value:match.matched?"Matched for independent review":"Not matched"},{label:"Independent approval",value:b.approvedAt?b.approvedBy+" · "+b.approvedAt:"Not approved"},{label:"Remaining review payable",value:money(billDueCents(state,b))},{label:"Recorded by",value:b.recordedBy});
-    state.payments.filter(x=>x.billId===id).forEach(p=>related.push({id:p.id,type:"Unverified payment reference",detail:p.reference+" · "+money(p.amountCents)+" · not bank-confirmed"}));
+    state.payments.filter(x=>x.billId===id).forEach(p=>related.push({id:p.id,type:p.externalSettlementVerified?"Manually reviewed settlement":"Unverified payment reference",detail:p.reference+" · "+money(p.amountCents)+" · "+(p.externalSettlementVerified?"evidence reviewed":"not verified")}));
     state.credits.filter(x=>x.billId===id).forEach(c=>related.push({id:c.id,type:"Vendor credit review",detail:c.reference+" · "+money(c.amountCents)+" · "+(c.approvedAt?"Reviewed locally":"Pending review")}));
   }else if(section==="payments"){
     const p=state.payments.find(x=>x.id===id);if(!p)return <p className="prototype-empty">Payment reference not found.</p>;
-    facts.push({label:"Bill",value:p.billId},{label:"Reference",value:p.reference},{label:"Amount recorded",value:money(p.amountCents)},{label:"Entered by",value:p.recordedBy},{label:"Recorded at",value:p.recordedAt},{label:"External settlement",value:"NOT VERIFIED · no money moved by this review"});
+    facts.push({label:"Bill",value:p.billId},{label:"Reference",value:p.reference},{label:"Amount recorded",value:money(p.amountCents)},{label:"Entered by",value:p.recordedBy},{label:"Recorded at",value:p.recordedAt},{label:"External settlement",value:p.externalSettlementVerified?"Evidence reviewed by "+p.verifiedBy+" · "+p.settlementEvidence:"NOT VERIFIED · no money moved by this review"});
   }else if(section==="credits"){
     const c=state.credits.find(x=>x.id===id);if(!c)return <p className="prototype-empty">Credit request not found.</p>;
     facts.push({label:"Bill",value:c.billId},{label:"Supplier credit reference",value:c.reference},{label:"Reason",value:c.reason},{label:"Requested credit",value:money(c.amountCents)},{label:"Recorded by",value:c.recordedBy},{label:"Reviewed by",value:c.approvedBy??"Pending"},{label:"External supplier/GL proof",value:"Not verified"});
@@ -184,7 +189,7 @@ function PurchasingRecordDetail({section,id,state}:{section:Section;id:string;st
     {related.length>0&&<><h3>Related purchasing records</h3><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Record</th><th>Type</th><th>Evidence</th></tr></thead><tbody>{related.map(row=><tr key={row.id}><td>{row.id}</td><td>{row.type}</td><td>{row.detail}</td></tr>)}</tbody></table></div></>}
     <h3>Review activity</h3><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>When</th><th>Actor</th><th>Recorded step</th><th>Control note</th></tr></thead><tbody>{history.map(event=><tr key={event.id}><td>{event.at}</td><td>{event.actorId}</td><td>{event.action}</td><td>{event.detail||"Local review event"}</td></tr>)}</tbody></table></div>
     {!history.length&&<p className="prototype-empty">No matching review event in this local session.</p>}
-    <p className="prototype-note">These details are editable local demonstration evidence. They are NOT a supplier accounting ledger, production audit, verified warehouse receipt or proof of settlement.</p>
+    <p className="prototype-note">These details explain the register entries. Inventory posting, general ledger integration, and external bank confirmation are separate controls.</p>
   </section>;
 }
 
@@ -195,15 +200,19 @@ export function PurchasingExperience({section,id}:{section:string;id?:string}){
   const demo=runtime.isDemo&&momentumStorage.mode()==="local"&&!firebaseSession;
   const selected=sections.has(section)?section as Section:"vendors";
   if(!currentUser)return <p className="prototype-empty">Sign in to view purchasing.</p>;
-  if(!demo)return <div><header className="prototype-heading"><h1>{sectionTitles[selected]}</h1><p>Purchasing is not yet connected to verified vendor, payable or warehouse receipt records.</p></header><section className="prototype-panel"><h2>Production connection blocked</h2><p>There is no approved purchasing backend or inventory-posting authorization for this new module. No vendor invoices, inventory receipts, payments or credits will be invented from retail orders.</p><p className="prototype-note">An isolated local demo is available only in demo mode, without a Firebase session and with local storage. Its records never represent live company liabilities.</p></section></div>;
-  if(!isClient)return <p className="prototype-note" role="status">Loading isolated purchasing demonstration…</p>;
-  return <LocalPurchasingExperience section={section} id={id}/>;
+  const connected=!runtime.isDemo&&momentumStorage.mode()==="firestore"&&firebaseSession?.status==="ready"&&firebaseSession.session?.uid===currentUser.id&&firebaseSession.access?.accountState==="Active"&&["Administrator","Operations"].includes(currentUser.role);
+  if(!demo&&!connected)return <div><header className="prototype-heading"><h1>{sectionTitles[selected]}</h1></header><p className="prototype-note">A verified active purchasing administrator or Operations session is required. Warehouse-only users need a restricted receipt projection, not access to the complete financial register.</p></div>;
+  if(!isClient)return <p className="prototype-note" role="status">Loading purchasing…</p>;
+  return <LocalPurchasingExperience key={currentUser.id+":"+String(connected)} section={section} id={id} connected={connected}/>;
 }
 
-function LocalPurchasingExperience({section,id}:{section:string;id?:string}){
+function LocalPurchasingExperience({section,id,connected}:{section:string;id?:string;connected:boolean}){
   const selected=sections.has(section)?section as Section:"vendors";
-  const {currentUser}=useWorkspace();
+  const {currentUser}=useWorkspace();const firebase=useFirebaseSessionOptional();
+  const [ready,setReady]=useState(!connected);const [busy,setBusy]=useState(false);const [reload,setReload]=useState(0);
+  const pending=useRef<{fingerprint:string;id:string}|null>(null);const locked=useRef(false);
   const [state,setState]=useState<PurchasingState>(()=>{
+    if(connected)return emptyPurchasingState();
     try{const raw=momentumStorage.getItem(PURCHASING_DEMO_KEY);return normalizePurchasingDemoState(raw?JSON.parse(raw):null);}
     catch{return emptyPurchasingState();}
   });
@@ -211,10 +220,27 @@ function LocalPurchasingExperience({section,id}:{section:string;id?:string}){
   const [search,setSearch]=useState("");const [status,setStatus]=useState("all");
   const [from,setFrom]=useState("");const [to,setTo]=useState("");
   const [sort,setSort]=useState("date");const [descending,setDescending]=useState(true);
-  useEffect(()=>{momentumStorage.setItem(PURCHASING_DEMO_KEY,JSON.stringify(state));},[state]);
+  useEffect(()=>{if(!connected)momentumStorage.setItem(PURCHASING_DEMO_KEY,JSON.stringify(state));},[state,connected]);
+  const session=firebase?.session;
+  useEffect(()=>{
+    if(!connected||!session)return;
+    let active=true;
+    void connectedPurchasing(session).then(result=>{if(active){setState(result.state);setReady(true);setNotice(result.message);}}).catch(error=>{if(active){setReady(false);setNotice(error instanceof Error?error.message:"Unable to load register.");}});
+    return()=>{active=false;};
+  },[connected,session,reload]);
   const actor:PurchaseActor={id:currentUser?.id??"",role:currentUser?.role==="Administrator"||currentUser?.role==="Operations"||currentUser?.role==="Warehouse"?currentUser.role:"Other"};
-  const run=(action:PurchaseAction):boolean=>{
-    if(!currentUser)return false;
+  const run=async(action:PurchaseAction):Promise<boolean>=>{
+    if(!currentUser||locked.current||!ready)return false;
+    if(connected){
+      if(!session)return false;
+      const fingerprint=JSON.stringify(action);
+      if(pending.current&&pending.current.fingerprint!==fingerprint){setNotice("A previous save is unconfirmed. Retry the same entry or reload and reconcile it first.");return false;}
+      const key=pending.current?.id??crypto.randomUUID();pending.current={fingerprint,id:key};
+      locked.current=true;setBusy(true);
+      try{const result=await connectedPurchasing(session,action,key);setState(result.state);setNotice(result.message);pending.current=null;return true;}
+      catch(error){setNotice(error instanceof Error?error.message:"Save unconfirmed.");return false;}
+      finally{locked.current=false;setBusy(false);}
+    }
     const result=applyPurchaseAction(state,actor,action,new Date().toISOString());
     setNotice(result.message);
     if(result.ok)setState(result.state);
@@ -229,9 +255,11 @@ function LocalPurchasingExperience({section,id}:{section:string;id?:string}){
   return <div>
     <header className="prototype-heading">{id&&<button type="button" className="prototype-back" onClick={()=>navigateToRoute("/purchases/"+selected)}><ArrowLeft size={15}/> Back to {sectionTitles[selected]}</button>}
       <h1>{sectionTitles[selected]}{id?" · "+id:""}</h1><p>Purchasing work queue with draft approvals, physical receipt evidence and three-way bill checks.</p></header>
-    <section className="prototype-panel"><p className="prototype-note"><ShieldCheck size={15}/> Isolated local demonstration. Do not enter real vendor or financial information. Purchase orders are not sent to vendors, receipts do not increase sellable stock, payment references do not reduce verified payables, and browser records are not a financial ledger.</p>
+    <section className="prototype-panel"><p className="prototype-note"><ShieldCheck size={15}/> {connected?"Connected purchasing register. Writes are validated and audited on the server. Purchase orders are not sent to vendors, receipts do not increase sellable stock, and approved records do not automatically post to the general ledger.":"Isolated local demonstration. Do not enter real vendor or financial information. Purchase orders are not sent to vendors, receipts do not increase sellable stock, payment references do not reduce verified payables, and browser records are not a financial ledger."}</p>
     <p>Operating sequence: registered vendor → prepared PO → independent approval → physical receipt → invoice-to-PO/receipt match → independent bill approval → payment reference and vendor credit review.</p></section>
-    <PurchasingForm key={selected} section={selected} state={state} role={currentUser.role} run={run}/>
+    {connected&&<button type="button" disabled={busy} onClick={()=>{setReady(false);setReload(n=>n+1);}}>Refresh company register</button>}
+    {ready&&<PurchasingForm key={selected} section={selected} state={state} role={currentUser.role} run={run} connected={connected} busy={busy}/>}
+    {!ready&&<p role="status">Company register is not loaded. Entry is disabled until it can be verified.</p>}
     {notice&&<p className="prototype-note" role="status">{notice}</p>}
     {id&&<PurchasingRecordDetail section={selected} id={id} state={state}/>}
     <div className="prototype-metrics"><div><small>Records in module</small><strong>{records.length}</strong></div><div><small>Matching filters</small><strong>{filtered.length}</strong></div><div><small>Audit events</small><strong>{state.audit.length}</strong></div></div>
@@ -246,17 +274,17 @@ function LocalPurchasingExperience({section,id}:{section:string;id?:string}){
         <th><button type="button" onClick={()=>{setDescending(sort==="date"?!descending:true);setSort("date");}}>Recorded <ArrowUpDown size={13}/></button></th>
         <th><button type="button" onClick={()=>{setDescending(sort==="id"?!descending:false);setSort("id");}}>ID <ArrowUpDown size={13}/></button></th>
         {columns[selected].map(col=><th key={col.key}><button type="button" onClick={()=>{setDescending(sort===col.key?!descending:false);setSort(col.key);}}>{col.label} <ArrowUpDown size={13}/></button></th>)}
-        {["orders","bills","credits","expenses"].includes(selected)&&<th>Control</th>}
+        {["orders","bills","credits","expenses","payments"].includes(selected)&&<th>Control</th>}
       </tr></thead><tbody>{filtered.map(row=><tr key={row.id}>
         <td>{row.date}</td><td><button className="prototype-link" type="button" onClick={()=>navigateToRoute("/purchases/"+selected+"/"+encodeURIComponent(row.id))}>{row.id}</button></td>
         {columns[selected].map(col=><td key={col.key}>{monetaryColumns.has(col.key)?money(Number(row.values[col.key]??0)):String(row.values[col.key]??"")}</td>)}
-        {["orders","bills","expenses"].includes(selected)&&<td><RowAction section={selected} id={row.id} state={state} run={run} role={currentUser.role} actorId={currentUser.id}/></td>}
+        {["orders","bills","credits","expenses","payments"].includes(selected)&&<td><RowAction section={selected} id={row.id} state={state} run={run} role={currentUser.role} actorId={currentUser.id} connected={connected} busy={busy||!ready}/></td>}
       </tr>)}</tbody></table></div>
-      {!filtered.length&&<p className="prototype-empty">No real purchasing records in this local review. Create a demo record to test the workflow.</p>}
+      {!filtered.length&&<p className="prototype-empty">No purchasing records match the current register and filters.</p>}
     </section>
     {currentUser.role==="Administrator"&&<section className="prototype-panel"><h2>Append-only review activity</h2>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Time</th><th>Actor ID</th><th>Change</th><th>Record ID</th><th>Control note</th></tr></thead><tbody>{state.audit.slice(-20).reverse().map(e=><tr key={e.id}><td>{e.at}</td><td>{e.actorId}</td><td>{e.action}</td><td>{e.recordId}</td><td>{e.detail||"Recorded"}</td></tr>)}</tbody></table></div>
-      <p className="prototype-note">Local audit history is editable by the browser owner and is not production-grade or tamper-proof.</p>
+      <p className="prototype-note">{connected?"Audit events are generated by the trusted purchasing API.":"Local audit history is editable by the browser owner and is not production-grade or tamper-proof."}</p>
     </section>}
   </div>;
 }

@@ -2257,3 +2257,5 @@ export {
 
 // B workstream: verified employee meeting service. Deployment requires owner approval.
 export {staffMeetingsApi} from "./staff-meetings";
+
+export {purchasingApi} from "./purchasing-api";

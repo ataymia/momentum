@@ -132,13 +132,14 @@ test("approval and receipt references do not allow cancellation of posted purcha
   const next=success(s,warehouse,receipt(s.orders[0].id,1));
   assert.equal(act(next,admin,{kind:"po.cancel",id:next.orders[0].id}).ok,false);
 });
-test("purchasing is gated to isolated demo and route-specific roles",()=>{
+test("purchasing separates server-owned production from isolated demo and route-specific roles",()=>{
   const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
   const routes=readFileSync("lib/navigation-route-registry.ts","utf8");
   assert.match(view,/runtime\.isDemo&&momentumStorage\.mode\(\)==="local"&&!firebaseSession/);
   assert.match(view,/useFirebaseSessionOptional/);
   assert.match(view,/useSyncExternalStore\(subscribeBrowser,clientSnapshot,serverSnapshot\)/);
-  assert.match(view,/if\(run\(action\)\)/);
+  assert.match(view,/if\(await run\(action\)\)/);
+  assert.match(view,/connectedPurchasing\(session,action,key\)/);
   assert.match(view,/inventoryPosted:false|receipts do not increase sellable stock/);
   for(const route of ["vendors","expenses","orders","receipts","bills","payments","credits"])assert.match(routes,new RegExp("/purchases/"+route));
   assert.match(routes,/if\(clean\.startsWith\("\/purchases\/"\)\)/);
@@ -168,4 +169,16 @@ test("purchasing directory roles align with distinct preparation, receiving and 
   assert(!canVisitRoute(user("Operations"),"/purchases/payments"));
   assert(canVisitRoute(user("Administrator"),"/purchases/payments"));
   assert(!canVisitRoute(user("Customer"),"/purchases/receipts"));
+});
+
+test("connected vendor payment evidence requires independent authorized reviewer",()=>{
+ let s=approvedPurchase();const id=s.orders[0].id;
+ s=success(s,warehouse,receipt(id,10));s=success(s,operations,bill(id,10,16000,"SETTLE-INV"));s=success(s,admin,{kind:"bill.approve",id:s.bills[0].id});
+ s=success(s,admin,{kind:"payment.record",billId:s.bills[0].id,reference:"SETTLE-PAY",amountCents:4000});
+ const action:PurchaseAction={kind:"payment.verify",id:s.payments[0].id,evidence:"Reconciled statement REF-1"};
+ assert.equal(act(s,otherAdmin,action).ok,false);
+ assert.equal(act(s,{...admin,canVerifySettlement:true},action).ok,false);
+ s=success(s,{...otherAdmin,canVerifySettlement:true},action);
+ assert.equal(billDueCents(s,s.bills[0]),12000);
+ assert.equal(s.payments[0].externalSettlementVerified,true);
 });
