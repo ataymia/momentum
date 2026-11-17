@@ -1,3 +1,4 @@
+/* eslint-disable max-len, comma-spacing, key-spacing, indent, object-curly-spacing, curly, brace-style, keyword-spacing, arrow-parens, space-before-blocks, operator-linebreak */
 export type InvoicePdfLine={product:string;cases:number;pricePerCase:number;amount:number};
 export type InvoiceLineReconciliation=
  |{ok:true;lines:InvoicePdfLine[];source:"Invoice snapshot"|"Order fallback"}
