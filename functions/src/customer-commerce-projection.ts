@@ -8,6 +8,8 @@ export type CustomerFinanceSnapshot={
  statements:{id:string;accountId:string;invoice:string;date:string;due:string;status:string;amount:number;cleared:number;pending:number;credits:number;balance:number}[];
  payments:{id:string;accountId:string;invoice:string;date:string;settled:string;status:string;method:string;amount:number}[];
  requests?:CustomerRequestSummary[];
+ requestHistoryAvailable?:boolean;
+ requestHistoryPartial?:boolean;
  truncated:boolean;
 };
 
@@ -22,18 +24,30 @@ export type CustomerRequestSummary={
  * @param {string} uid Verified Firebase actor.
  * @param {string[]} ids Authorized customer location IDs.
  * @param {Row[]} source Source intake records.
+ * @param {Row[]} sourceAccounts Current authoritative business locations.
  * @param {number} limit Maximum recent entries.
  * @return {CustomerRequestSummary[]} Privacy-scoped summary.
  */
 export function projectCustomerOrderRequests(
- uid:string,ids:readonly string[],source:Row[],limit=50,
+ uid:string,ids:readonly string[],source:Row[],sourceAccounts:Row[],limit=50,
 ):CustomerRequestSummary[]{
  if(!/^[A-Za-z0-9_-]{1,128}$/.test(uid))return[];
  const assigned=new Set(ids.filter(id=>/^[A-Za-z0-9_-]{1,128}$/.test(id)));
+ const owners=new Map<string,string>();
+ const ambiguous=new Set<string>();
+ for(const account of sourceAccounts){
+  const id=txt(account.id),customerId=txt(account.customerId);
+  if(!assigned.has(id))continue;
+  if(owners.has(id)||ambiguous.has(id)||!validId(customerId)){
+   ambiguous.add(id);owners.delete(id);continue;
+  }
+  owners.set(id,customerId);
+ }
  const allowedStatus=new Set(["Needs commercial review","Needs clarification",
   "Pricing and inventory verification","Declined"]);
  return source.filter(item=>txt(item.requestedByUid)===uid&&
     assigned.has(txt(item.accountId))&&
+    owners.has(txt(item.accountId))&&owners.get(txt(item.accountId))===txt(item.customerId)&&
     /^intake-[0-9a-f-]{36}$/.test(txt(item.id))&&
     Number.isSafeInteger(item.totalCases)&&num(item.totalCases)>0&&num(item.totalCases)<=10000)
   .map(item=>{

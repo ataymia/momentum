@@ -30,7 +30,9 @@ export function CustomerConnectedPortal({section}:{section:Section}){
     if(!Array.isArray(payload.accounts)||!Array.isArray(payload.orders)||!Array.isArray(payload.statements)||!Array.isArray(payload.payments))
       throw new Error("The server response could not be verified.");
     if(mounted)setView({kind:"ready",data:{
-      accounts:payload.accounts,orders:payload.orders,statements:payload.statements,payments:payload.payments,requests:Array.isArray(payload.requests)?payload.requests:[],truncated:payload.truncated===true,
+      accounts:payload.accounts,orders:payload.orders,statements:payload.statements,payments:payload.payments,requests:Array.isArray(payload.requests)?payload.requests:[],
+      requestHistoryAvailable:payload.requestHistoryAvailable===true&&Array.isArray(payload.requests),
+      requestHistoryPartial:payload.requestHistoryPartial===true,truncated:payload.truncated===true,
     },message:""});
    }catch(e){if(mounted)setView({kind:"error",data:null,message:e instanceof Error?e.message:"Customer records are unavailable."});}
   };
@@ -90,9 +92,12 @@ export function CustomerConnectedPortal({section}:{section:Section}){
           <td>{"invoice" in row?cash(row.amount):row.cases}</td>
           {section==="invoices"&&<td>{"balance" in row?cash(row.balance):""}</td>}
          </tr>)}</tbody></table></div>
-        {section==="orders"&&Boolean(view.data.requests?.length)&&<section aria-label="Submitted product requests">
+        {section==="orders"&&<section aria-label="Submitted product requests">
          <h3>Submitted requests and review status</h3>
-         <div className="prototype-table-scroll"><table className="prototype-table">
+         {!view.data.requestHistoryAvailable&&<p role="status">Request history is temporarily unavailable. Refresh records; do not assume no requests exist.</p>}
+         {view.data.requestHistoryAvailable&&!(view.data.requests??[]).filter(item=>location==="all"||item.accountId===location).length&&<p className="prototype-note">No verified requests in the recent records for this location.</p>}
+         {view.data.requestHistoryPartial&&<p role="status">History is limited to recent verified requests (up to 50 shown). Older requests may not be included.</p>}
+         {view.data.requestHistoryAvailable&&Boolean(view.data.requests?.length)&&<div className="prototype-table-scroll"><table className="prototype-table">
           <thead><tr><th>Request</th><th>Submitted</th><th>Location</th><th>Cases requested</th><th>Products</th><th>Review stage</th></tr></thead>
           <tbody>{(view.data.requests??[]).filter(item=>location==="all"||item.accountId===location).map(item=><tr key={item.id}>
            <td>{item.id}</td><td>{item.createdAt.slice(0,10)}</td>
@@ -105,7 +110,7 @@ export function CustomerConnectedPortal({section}:{section:Section}){
             </li>)}</ul>
            </details>:<span>Breakdown unavailable</span>}</td>
            <td>{item.status}</td>
-          </tr>)}</tbody></table></div>
+          </tr>)}</tbody></table></div>}
         </section>}
         {!rows.length&&<div className="prototype-empty">{section==="deliveries"?"No dispatched or delivered orders match. Pending and cancelled orders remain in My Orders.":"No authorized records matched."}</div>}
         {section==="invoices"&&<p className="prototype-note">Official PDF access and hosted payment links require server-verified document authorization and an approved payment provider.</p>}

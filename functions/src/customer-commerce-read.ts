@@ -44,11 +44,21 @@ export const customerCommerceSnapshot=onRequest({
    });
    // Only the active authenticated customer's own submitted requests are included.
    // Request statuses are not financial orders or evidence of payment.
-   const intakeSnapshot=await db.collection("commerceOrderIntakes")
-    .where("requestedByUid","==",uid).limit(100).get();
-   const requests=projectCustomerOrderRequests(uid,ids,
-    intakeSnapshot.docs.map(snapshot=>snapshot.data()),50);
-   send(200,{ok:true,...payload,requests});
+   let requests:ReturnType<typeof projectCustomerOrderRequests>=[];
+   let requestHistoryAvailable=false,requestHistoryPartial=false;
+   try{
+    // Sort before limiting; an arbitrary limited query can hide recent requests.
+    const intakeSnapshot=await db.collection("commerceOrderIntakes")
+     .where("requestedByUid","==",uid).orderBy("createdAt","desc").limit(101).get();
+    requests=projectCustomerOrderRequests(uid,ids,
+     intakeSnapshot.docs.slice(0,100).map(snapshot=>snapshot.data()),items[0],50);
+    requestHistoryAvailable=true;
+    requestHistoryPartial=intakeSnapshot.size>100||requests.length===50;
+   }catch{
+    // A missing index or temporary history error must not hide authorized invoices.
+    // Explicitly report unavailable history rather than inventing an empty list.
+   }
+   send(200,{ok:true,...payload,requests,requestHistoryAvailable,requestHistoryPartial});
  }catch{
    // Do not disclose account names, document existence, or payment internals.
    send(503,{ok:false,error:"Customer finance records are unavailable."});

@@ -31,3 +31,12 @@ test("customer portal displays only authenticated server-scoped order requests",
  assert.match(client,/onSubmitted=\{\(\)=>setVersion/);
  assert.match(projection,/requests\?:/);
 });
+
+
+test("customer request history distinguishes unavailable, empty and partial records",()=>{
+ const page=readFileSync("components/prototype/customer-connected-portal.tsx","utf8");
+ assert.match(page,/requestHistoryAvailable:payload\.requestHistoryAvailable===true/);
+ assert.match(page,/Request history is temporarily unavailable/);
+ assert.match(page,/No verified requests in the recent records/);
+ assert.match(page,/Older requests may not be included/);
+});

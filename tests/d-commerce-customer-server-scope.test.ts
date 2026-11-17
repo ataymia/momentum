@@ -101,29 +101,54 @@ test("R23 prior payments or applied credits block a replacement balance until re
 test("customer product-request detail projection isolates customer identity and source location",()=>{
  const good={
   id:"intake-11111111-1111-4111-8111-111111111111",accountId:"store-a",
-  requestedByUid:"buyer-a",createdAt:"2026-11-16T18:00:00.000Z",
+  requestedByUid:"buyer-a",customerId:"customer-a",createdAt:"2026-11-16T18:00:00.000Z",
   status:"Needs commercial review",totalCases:14,
   lines:[
    {skuId:"ge-original-250ml-24",description:"Golden Eagle Original 24-pack",cases:10},
    {skuId:"ge-tropical-250ml-24",description:"Golden Eagle Tropical 24-pack",cases:4},
   ],note:"Private buyer narrative must not leak",ownerAtSubmission:"private-rep",
  };
+ const locations=[{id:"store-a",customerId:"customer-a"},{id:"store-b",customerId:"customer-b"}];
  const records=[good,
   {...good,id:"intake-22222222-2222-4222-8222-222222222222",accountId:"store-b"},
   {...good,id:"intake-33333333-3333-4333-8333-333333333333",requestedByUid:"buyer-b"},
  ];
- const visible=projection.projectCustomerOrderRequests("buyer-a",["store-a"],records);
+ const visible=projection.projectCustomerOrderRequests("buyer-a",["store-a"],records,locations);
  assert.equal(visible.length,1);
  assert.deepEqual(visible[0].lines.map(line=>line.cases),[10,4]);
  assert.equal(visible[0].cases,14);
  assert(!JSON.stringify(visible).includes("Private buyer narrative"));
  assert(!JSON.stringify(visible).includes("private-rep"));
- assert.deepEqual(projection.projectCustomerOrderRequests("buyer-a",[],records),[]);
- assert.deepEqual(projection.projectCustomerOrderRequests("buyer-b",["store-a"],records),[
+ assert.deepEqual(projection.projectCustomerOrderRequests("buyer-a",[],records,locations),[]);
+ assert.deepEqual(projection.projectCustomerOrderRequests("buyer-b",["store-a"],records,locations),[
   {...visible[0],id:"intake-33333333-3333-4333-8333-333333333333"},
  ]);
  const corrupt={...good,lines:[{skuId:"ge-original-250ml-24",description:"Original",cases:10}]};
- const hidden=projection.projectCustomerOrderRequests("buyer-a",["store-a"],[corrupt]);
+ const hidden=projection.projectCustomerOrderRequests("buyer-a",["store-a"],[corrupt],locations);
  assert.equal(hidden[0].cases,14);
  assert.deepEqual(hidden[0].lines,[],"Inconsistent source details are not presented as verified");
+});
+
+
+test("customer history denies stale reassociated, deleted and ambiguous location bindings",()=>{
+ const good={id:"intake-11111111-1111-4111-8111-111111111111",
+  requestedByUid:"buyer-a",accountId:"store-a",customerId:"customer-a",
+  createdAt:"2026-11-16T18:00:00.000Z",status:"Needs commercial review",totalCases:2,
+  lines:[{skuId:"ge-original-250ml-24",description:"Original",cases:2}]};
+ const scope=["store-a"];
+ assert.equal(projection.projectCustomerOrderRequests("buyer-a",scope,[good],[{id:"store-a",customerId:"customer-a"}]).length,1);
+ assert.deepEqual(projection.projectCustomerOrderRequests("buyer-a",scope,[good],[{id:"store-a",customerId:"customer-new"}]),[]);
+ assert.deepEqual(projection.projectCustomerOrderRequests("buyer-a",scope,[good],[]),[]);
+ assert.deepEqual(projection.projectCustomerOrderRequests("buyer-a",scope,[good],[{id:"store-a",customerId:"customer-a"},{id:"store-a",customerId:"customer-other"}]),[]);
+});
+
+test("recent history is ordered before the database limit and missing index is not a finance outage",()=>{
+ const server=readFileSync("functions/src/customer-commerce-read.ts","utf8");
+ assert.match(server,/where\("requestedByUid","==",uid\)\.orderBy\("createdAt","desc"\)\.limit\(101\)/);
+ assert.match(server,/requestHistoryAvailable=false/);
+ assert.match(server,/requestHistoryAvailable=true/);
+ const indexes=JSON.parse(readFileSync("firestore.indexes.json","utf8"));
+ assert.deepEqual(indexes.indexes.find((i:{collectionGroup:string})=>i.collectionGroup==="commerceOrderIntakes")?.fields,[
+  {fieldPath:"requestedByUid",order:"ASCENDING"},{fieldPath:"createdAt",order:"DESCENDING"},
+ ]);
 });
