@@ -9,10 +9,13 @@ import {downloadCsv} from "../../lib/browser-export";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {momentumStorage} from "../../lib/persistence";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
+import {canOpenHrProvisioning} from "../../lib/hr-provisioning-access";
 
 export function HrOnboardingExperience(){
   const {data,currentUser}=useWorkspace();
-  const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
+  const runtime=useRuntimeMode();const firebase=useFirebaseSessionOptional();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
+  const provisioningEnabled=canOpenHrProvisioning({actor:currentUser,isDemo:runtime.isDemo,storageMode:momentumStorage.mode(),firebase});
   const {hcm,setHcm}=useHcm();
   const [query,setQuery]=useState("");
   const [filter,setFilter]=useState<"all"|"Open"|"Complete"|"Cancelled">("Open");
@@ -63,8 +66,8 @@ export function HrOnboardingExperience(){
       <article><UserRoundPlus size={18}/><small>Candidates in hiring pipeline</small><strong>{hcm.candidates.filter(c=>!["Hired","Rejected","Withdrawn"].includes(c.stage)).length}</strong></article>
     </div>
     <div className="prototype-controls">
-      <button type="button" disabled={!writeEnabled} onClick={()=>navigateToRoute("/people/new-hire")}>Start new-hire provisioning</button>
-      <button type="button" disabled={!writeEnabled} onClick={()=>navigateToRoute("/people/onboarding/workflow")}>Open full onboarding controls</button>
+      <button type="button" disabled={!provisioningEnabled} onClick={()=>navigateToRoute("/people/new-hire")}>Start new-hire provisioning</button>
+      <button type="button" disabled={!provisioningEnabled} onClick={()=>navigateToRoute("/people/onboarding/workflow")}>Open full onboarding controls</button>
       <button type="button" onClick={exportRegister} disabled={!cases.length}><Download size={14}/> Export visible checklists</button>
     </div>
     <div className="prototype-columns">

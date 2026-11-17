@@ -21,7 +21,7 @@ export function HrPersonnelDirectory(){
   const {data,currentUser}=useWorkspace();const {hcm}=useHcm();
   const firebase=useFirebaseSessionOptional();
   const [query,setQuery]=useState("");
-  const [status,setStatus]=useState("all");
+  const [status,setStatus]=useState("Active");
   const [sort,setSort]=useState<"name"|"team"|"status"|"hireDate">("name");
   const [reverse,setReverse]=useState(false);
   const roster=useMemo(()=>data.users.filter(u=>u.role!=="Customer").map(user=>{
@@ -43,15 +43,15 @@ export function HrPersonnelDirectory(){
   return <div className="prototype-domain prototype-domain--people momentum-personnel-directory">
     <header className="prototype-heading"><div><span className="page-header__eyebrow">Human Resources / Personnel</span><h1>Employee records</h1><p>Search real employee records, reporting lines, employment status, training and verified HR document metadata. Compensation exports stay separate.</p></div></header>
     <div className="prototype-domain-statbar">
-      <article><UserRound size={18}/><small>Employees in directory</small><strong>{data.users.filter(u=>u.role!=="Customer").length}</strong></article>
-      <article><UserRound size={18}/><small>Active employment records</small><strong>{roster.filter(row=>row.effective.status==="Active").length}</strong></article>
+      <article><UserRound size={18}/><small>Active employees in directory</small><strong>{roster.filter(row=>row.effective.status==="Active").length}</strong></article>
+      <article><UserRound size={18}/><small>Separated employee records</small><strong>{roster.filter(row=>row.effective.status==="Separated").length}</strong></article>
       <article><UserRound size={18}/><small>Identity / HR discrepancies</small><strong>{roster.filter(row=>row.effective.needsReconciliation).length}</strong></article>
       <article><FileText size={18}/><small>Missing HR documents</small><strong>{hcm.documents.filter(d=>d.status==="Missing").length}</strong></article>
     </div>
     <section className="prototype-panel">
       <div className="prototype-controls">
         <label className="prototype-search"><input aria-label="Search employee directory" placeholder="Find employee, email, team, employee number" value={query} onChange={event=>setQuery(event.target.value)}/></label>
-        <label>Status <select value={status} onChange={event=>setStatus(event.target.value)}><option value="all">All</option>{(["Prehire","Active","Leave","Separated","Suspended","Onboarding","Unverified"] as const).map(s=><option key={s}>{s}</option>)}</select></label>
+        <label>Status <select value={status} onChange={event=>setStatus(event.target.value)}><option value="Active">Active directory</option><option value="Separated">Separated employee history</option><option value="all">All personnel records</option>{(["Prehire","Leave","Suspended","Onboarding","Unverified"] as const).map(s=><option key={s}>{s}</option>)}</select></label>
         <label>Sort <select value={sort} onChange={event=>setSort(event.target.value as typeof sort)}><option value="name">Employee name</option><option value="team">Department</option><option value="status">Employment status</option><option value="hireDate">Hire date</option></select></label>
         <button type="button" onClick={()=>setReverse(v=>!v)}>{reverse?"Descending":"Ascending"}</button>
         <button type="button" disabled={!list.length} onClick={exportRoster}><Download size={15}/> Export visible roster</button>

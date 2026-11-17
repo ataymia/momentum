@@ -17,6 +17,7 @@ import {acquisitionBonusHeldAccountIds} from "../../lib/acquisition-bonus-consol
 import { useWorkspace } from "../../lib/workspace-context";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
+import {canOpenHrProvisioning} from "../../lib/hr-provisioning-access";
 import {changeConnectedCrmLead,type ConnectedLeadIntent} from "../../lib/firebase-crm-lead";
 import {momentumStorage} from "../../lib/persistence";
 import { TerritoryPanel } from "../crm/territory-panel";
@@ -908,7 +909,8 @@ function TerritoryMapPreview(){
 
 export function PrototypeOperationsHub(){
   const path=useNavigationRoute();const {currentUser}=useWorkspace();
-  const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
+  const runtime=useRuntimeMode();const firebase=useFirebaseSessionOptional();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
+  const provisioningEnabled=canOpenHrProvisioning({actor:currentUser,isDemo:runtime.isDemo,storageMode:momentumStorage.mode(),firebase});
   if(!canVisitRoute(currentUser,path))return <Empty>You do not have permission to view this module.</Empty>;
   const segments=path.split("/").filter(Boolean);
   if(path==="/")return <WorkspaceHome/>;
@@ -943,7 +945,7 @@ export function PrototypeOperationsHub(){
   if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<Empty>Marketing write administration is available in isolated local demo only. The redesign provides source-linked read and export access.</Empty>;
   if(path==="/people/payroll")return <PayrollWorkflowExperience/>;
   if(path==="/people/payroll/workflow")return writeEnabled?<LegacyPayrollPage/>:<Empty>Read-only redesign prototype. Payroll processing is available only in isolated local demo mode until production controls are approved.</Empty>;
-  if(path==="/people/onboarding/workflow")return writeEnabled?<NewHireProvisioning view="queue"/>:<Empty>Read-only redesign prototype. Full onboarding administration is available only in isolated local demo mode until authorized release.</Empty>;
+  if(path==="/people/onboarding/workflow")return provisioningEnabled?<NewHireProvisioning view="queue"/>:<Empty>Full onboarding controls require a verified active administrator session.</Empty>;
   if(path==="/people/new-hire")return <HrNewHireExperience/>;
   if(path==="/people/onboarding")return <HrOnboardingExperience/>;
   if(path==="/people/compliance")return <HrComplianceReadinessExperience/>;
