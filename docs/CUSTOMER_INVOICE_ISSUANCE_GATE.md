@@ -12,8 +12,8 @@
 1. Confirm authorized selling/invoicing entity, issuer name, trading relationship and rights, address, phone, named contact, and official customer-facing email.
 2. Finance verifies invoice numbering, legal and tax requirements, approved unit price and quantity, line totals, terms, due dates, refunds, credits, paid/balance calculation, and secure remittance workflow.
 3. Test signed and unsigned deliveries, delayed invoices, billing-account email, admin overrides and retries in staging. Check logs and customer email acceptance.
-4. Retain evidence of owner/finance approval, configure flag in correct Firebase Functions environment, and separately verify `RESEND_LIVE_EMAIL_ENABLED` plus activation cutoff before production send.
+4. Retain evidence of owner/finance approval, configure `MOMENTUM_INVOICE_ISSUE_APPROVED=true` in the correct Firebase Functions environment and `NEXT_PUBLIC_INVOICE_ISSUE_APPROVED=true` at Next.js build time, and separately verify `RESEND_LIVE_EMAIL_ENABLED` plus activation cutoff before production send.
 
-**Manual printing exception:** This server gate does not stop browser-side printing. Do not distribute those printed invoices externally before the same business approval. Server-authorized manual issuance remains future work.
+**Manual browser printing:** The app hides print actions and blocks its print handler unless the static web build sets `NEXT_PUBLIC_INVOICE_ISSUE_APPROVED=true`. Unset means internal preview only. This is a user-interface hold, **not** a cryptographic or server-enforced authorization. A browser build flag alone never authorizes emailing. Configure both build and Functions flags only after written issuer/finance approval. Dedicated server-authorized manual issuance remains future work.
 
 **Recovery:** Approval later does not automatically send previously held events. Recent signed deliveries may retry when qualifying source records change, but older invoices require an authorized reconciliation/reissue process.

@@ -147,3 +147,14 @@ test("delivery signature is rejected if it is not tied to the delivered event",(
   assert.equal(state.tasks.length,1);
   assert.equal(state.tasks[0].signature,undefined);
 });
+
+
+test("manual invoice printing stays on hold until explicit build approval",()=>{
+  const approved=invoiceSource.indexOf("NEXT_PUBLIC_INVOICE_ISSUE_APPROVED");
+  const hold=invoiceSource.indexOf("if (!invoiceIssueApproved)");
+  const print=invoiceSource.indexOf("window.print()");
+  assert.ok(approved>=0&&hold>approved&&print>hold);
+  assert.match(invoiceSource,/disabled=\{!invoiceIssueApproved\|\|!selectedIds\.length\}/);
+  assert.match(invoiceSource,/disabled=\{!invoiceIssueApproved\} onClick/);
+  assert.match(invoiceSource,/Internal invoice preview only/);
+});
