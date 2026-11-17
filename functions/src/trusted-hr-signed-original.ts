@@ -8,7 +8,7 @@ type Row=Record<string,unknown>;
 type SourceType="Paper signed scan"|"External e-sign result"|"In-app prepared PDF (unverified)"|"Employee-submitted PDF (unverified)";
 type Incoming={
  employeeUid:string;kind:HrTemplateKind;sourceType:SourceType;
- reference:string;pdf:Buffer;sha256:string;attestedByWorker:boolean;
+ reference:string;pdf:Buffer;sha256:string;attestedByWorker:boolean;assignmentId?:string;
  certificate?:{pdf:Buffer;sha256:string};
 };
 type Reservation={id:string;path:string;createdAt:string;replayed:boolean};
@@ -63,7 +63,7 @@ function parsePdf(encoded:unknown,checksum:unknown,max:number){
 function parseRequest(raw:unknown):Incoming {
  if(!row(raw)||Object.keys(raw).some(key=>![
   "employeeUid","kind","sourceType","reference","pdfBase64","sha256",
-  "certificateBase64","certificateSha256","attestedByWorker"].includes(key)))
+  "certificateBase64","certificateSha256","attestedByWorker","assignmentId"].includes(key)))
   throw new HrOriginalArchiveError(400,"Unexpected signed-original archive fields.");
  const employeeUid=txt(raw.employeeUid);
  const kind=txt(raw.kind) as HrTemplateKind;
@@ -76,6 +76,9 @@ function parseRequest(raw:unknown):Incoming {
   (sourceType==="External e-sign result"&&!reference))
   throw new HrOriginalArchiveError(400,"Worker, form kind or external evidence reference invalid.");
  const workerSource=sourceType==="Employee-submitted PDF (unverified)";
+ const assignmentId=txt(raw.assignmentId);
+ if(raw.assignmentId!==undefined&&(!workerSource||!/^hrassign-[0-9a-f-]{36}$/.test(assignmentId)))
+  throw new HrOriginalArchiveError(400,"Assigned source must belong to an employee submission.");
  if(workerSource?raw.attestedByWorker!==true:raw.attestedByWorker!==undefined)
   throw new HrOriginalArchiveError(400,"Worker attestation is required only for employee self-service intake.");
  const original=parsePdf(raw.pdfBase64,raw.sha256,8*1024*1024);
@@ -88,6 +91,7 @@ function parseRequest(raw:unknown):Incoming {
   certificate=parsePdf(raw.certificateBase64,raw.certificateSha256,4*1024*1024);
  }
  return {employeeUid,kind,sourceType,reference,...original,attestedByWorker:workerSource,
+  ...(assignmentId?{assignmentId}:{}),
   ...(certificate?{certificate}:{})};
 }
 
@@ -116,11 +120,14 @@ export async function archiveTrustedHrSignedOriginal(
   employeeUid:incoming.employeeUid,kind:incoming.kind,
   sourceType:incoming.sourceType,reference:incoming.reference,
   sha256:incoming.sha256,certificateSha256:incoming.certificate?.sha256??"",
-  attestedByWorker:incoming.attestedByWorker,
+  attestedByWorker:incoming.attestedByWorker,assignmentId:incoming.assignmentId??"",
  })).digest("hex");
  const reserved:Reservation=await db.runTransaction(async tx=>{
-  const [adminSnap,workerSnap,prior]=await Promise.all([
+  const assignmentRef=incoming.assignmentId?
+   db.doc("hrDocumentAssignments/"+incoming.assignmentId):null;
+  const [adminSnap,workerSnap,prior,assignmentSnap]=await Promise.all([
    tx.get(admin),tx.get(worker),tx.get(requestRef),
+   assignmentRef?tx.get(assignmentRef):Promise.resolve(null),
   ]);
   const accountState=txt(adminSnap.data()?.accountState);
   const role=txt(adminSnap.data()?.role);
@@ -138,6 +145,10 @@ export async function archiveTrustedHrSignedOriginal(
   if(!workerSnap.exists||txt(workerSnap.data()?.role)==="Customer"||
    txt(workerSnap.data()?.role)==="")
    throw new HrOriginalArchiveError(404,"Worker account could not be verified.");
+  if(assignmentSnap&&(
+   txt(assignmentSnap.data()?.employeeUid)!==incoming.employeeUid||
+   txt(assignmentSnap.data()?.kind)!==incoming.kind))
+   throw new HrOriginalArchiveError(403,"Assigned HR document is outside your worker and form scope.");
   if(prior.exists){
    if(txt(prior.data()?.fingerprint)!==fingerprint||
     txt(prior.data()?.actorUid)!==actorUid)
@@ -150,6 +161,9 @@ export async function archiveTrustedHrSignedOriginal(
     throw new HrOriginalArchiveError(409,"Existing archive reservation requires reconciliation.");
    return {id,path,createdAt:txt(prior.data()?.createdAt),replayed:true};
   }
+  if(incoming.assignmentId&&(!assignmentSnap?.exists||
+   txt(assignmentSnap.data()?.status)!=="Assigned"))
+   throw new HrOriginalArchiveError(409,"This HR assignment is not awaiting a submission.");
   const id=randomUUID();
   const path="hr-private/"+incoming.employeeUid+"/"+incoming.kind+"/"+id+"/signed.pdf";
   const createdAt=new Date().toISOString();
@@ -206,8 +220,11 @@ export async function archiveTrustedHrSignedOriginal(
  const recordRef=db.doc("hrOriginalIntakeRecords/"+reserved.id);
  const auditRef=db.doc("hrOriginalIntakeAudit/"+reserved.id);
  await db.runTransaction(async tx=>{
-  const [actor,workerSnap,request,existing]=await Promise.all([
+  const assignmentRef=incoming.assignmentId?
+   db.doc("hrDocumentAssignments/"+incoming.assignmentId):null;
+  const [actor,workerSnap,request,existing,assignment]=await Promise.all([
    tx.get(admin),tx.get(worker),tx.get(requestRef),tx.get(recordRef),
+   assignmentRef?tx.get(assignmentRef):Promise.resolve(null),
   ]);
   const finalState=txt(actor.data()?.accountState),finalRole=txt(actor.data()?.role);
   const adminStillAuthorized=finalState==="Active"&&finalRole==="Administrator";
@@ -225,6 +242,12 @@ export async function archiveTrustedHrSignedOriginal(
    throw new HrOriginalArchiveError(409,"Worker identity changed during upload.");
   if(txt(request.data()?.fingerprint)!==fingerprint)
    throw new HrOriginalArchiveError(409,"Original archive reservation changed.");
+  if(assignment&&(
+   txt(assignment.data()?.employeeUid)!==incoming.employeeUid||
+   txt(assignment.data()?.kind)!==incoming.kind||
+   (txt(assignment.data()?.status)!=="Assigned"&&
+    txt(assignment.data()?.submittedOriginalId)!==reserved.id)))
+   throw new HrOriginalArchiveError(409,"Assigned form changed while submitting.");
   if(existing.exists){
    if(txt(existing.data()?.sha256)!==incoming.sha256||
     txt(existing.data()?.employeeUid)!==incoming.employeeUid)
@@ -235,6 +258,7 @@ export async function archiveTrustedHrSignedOriginal(
    id:reserved.id,employeeUid:incoming.employeeUid,kind:incoming.kind,
    sourceType:incoming.sourceType,reference:incoming.reference,
    employeeAttested:incoming.attestedByWorker,
+   ...(incoming.assignmentId?{assignmentId:incoming.assignmentId}:{}),
    originalPath:reserved.path,sha256:incoming.sha256,generation,
    ...(certificatePath?{certificatePath,
     certificateSha256:incoming.certificate?.sha256,
@@ -244,6 +268,11 @@ export async function archiveTrustedHrSignedOriginal(
    independentlyVerified:false,complianceApproved:false,
    signedOriginalVerified:false,
   });
+  if(assignmentRef&&assignment)
+   tx.update(assignmentRef,{
+    status:"Submitted for HR review",submittedOriginalId:reserved.id,
+    submittedAt:reserved.createdAt,
+   });
   tx.create(auditRef,{
    recordId:reserved.id,employeeUid:incoming.employeeUid,actorUid,
    event:incoming.attestedByWorker?

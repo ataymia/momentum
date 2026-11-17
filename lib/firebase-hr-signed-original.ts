@@ -35,7 +35,7 @@ async function pdfPayload(file:File,limit=LIMIT){
 export async function archiveHrOriginal(
  session:FirebaseAuthSession,input:{
   employeeUid:string;kind:HrTemplateKind;sourceType:HrOriginalSource;
-  reference:string;pdf:File;certificate?:File;attestedByWorker?:true;
+  reference:string;pdf:File;certificate?:File;attestedByWorker?:true;assignmentId?:string;
  },requestId:string,
 ):Promise<HrOriginalArchiveReceipt>{
  const source=await pdfPayload(input.pdf);
@@ -50,6 +50,7 @@ export async function archiveHrOriginal(
     employeeUid:input.employeeUid,kind:input.kind,sourceType:input.sourceType,
     reference:input.reference,...source,
     ...(input.attestedByWorker?{attestedByWorker:true}:{}),
+    ...(input.assignmentId?{assignmentId:input.assignmentId}:{}),
     ...(certificate?{
      certificateBase64:certificate.pdfBase64,
      certificateSha256:certificate.sha256,

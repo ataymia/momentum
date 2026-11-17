@@ -4,6 +4,7 @@ import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {useWorkspace} from "../../lib/workspace-context";
 import {inspectHrPdf} from "../../lib/hr-pdf-editor-engine";
 import {mapHrPdfFields} from "../../lib/hr-pdf-mapping";
+import {HrAssignBlankTemplate} from "./hr-assign-blank-template";
 import {
  HR_TEMPLATE_CHOICES,listHrTemplates,registerHrTemplate,uploadBlankHrTemplate,
  type HrTemplateKind,type HrTemplateFieldHint,
@@ -181,6 +182,7 @@ export function HrTemplateUploadPanel(){
    <td>{record.status}</td>
   </tr>)}</tbody></table></div>
   {listed&&registered.length===0&&<p className="prototype-note">No registered blank PDFs in the newest-record window.</p>}
+  <HrAssignBlankTemplate templates={registered}/>
   <p className="prototype-note">Next release gate: separately approve the PDF edition and provider field mapping, then use an authenticated form-specific signing workflow with original-PDF preservation, signer audit, correction history and retention. I-9 employer examination is independent. No completed-form upload is accepted by this template tool.</p>
  </section>;
 }
