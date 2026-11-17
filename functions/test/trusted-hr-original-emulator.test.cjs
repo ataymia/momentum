@@ -69,6 +69,29 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  await deny(archiveTrustedHrSignedOriginal(admin,{
   ...original,sourceType:"In-app prepared PDF (unverified)",
  },"preparedCertificate"+archiveKey),400);
+ const selfSource={
+  employeeUid:worker,kind:"W4",sourceType:"Employee-submitted PDF (unverified)",
+  reference:"Authenticated worker self-service submission",
+  pdfBase64:pdf.toString("base64"),sha256:checksum(pdf),
+  attestedByWorker:true,
+ };
+ await deny(archiveTrustedHrSignedOriginal(worker,{
+  ...selfSource,employeeUid:other},"selfOther"+archiveKey),403);
+ await deny(archiveTrustedHrSignedOriginal(worker,{
+  ...selfSource,attestedByWorker:false},"noConsent"+archiveKey),400);
+ await deny(archiveTrustedHrSignedOriginal(customer,{
+  ...selfSource,employeeUid:customer},"selfCustomer"+archiveKey),403);
+ await deny(archiveTrustedHrSignedOriginal(worker,{
+  ...original,sourceType:"Employee-submitted PDF (unverified)",attestedByWorker:true,
+ },"selfCertificate"+archiveKey),400);
+ const selfReceipt=await archiveTrustedHrSignedOriginal(worker,selfSource,"selfValid"+archiveKey);
+ assert.equal(selfReceipt.employeeUid,worker);
+ assert.equal(selfReceipt.status,"Pending independent HR review");
+ assert.equal((await db.doc("hrOriginalIntakeRecords/"+selfReceipt.recordId).get()).data().employeeAttested,true);
+ assert.equal((await archiveTrustedHrSignedOriginal(worker,selfSource,"selfValid"+archiveKey)).replayed,true);
+ const selfList=await listTrustedHrSignedOriginals(worker,worker);
+ assert(selfList.some(item=>item.id===selfReceipt.recordId));
+ await deny(listTrustedHrSignedOriginals(worker,other),403);
  const receipt=await archiveTrustedHrSignedOriginal(admin,original,archiveKey);
  assert.equal(receipt.kind,"W9");
  assert.equal(receipt.employeeUid,worker);
@@ -108,7 +131,8 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  await deny(archiveTrustedHrSignedOriginal(admin,{...original,reference:"DIFFERENT-SOURCE"} ,archiveKey),409);
  const adminView=await listTrustedHrSignedOriginals(admin,worker);
  assert(adminView.some(item=>item.id===receipt.recordId&&item.hasCertificate));
- await deny(listTrustedHrSignedOriginals(worker,undefined),403);
+ const workerView=await listTrustedHrSignedOriginals(worker,undefined);
+ assert(workerView.every(item=>item.employeeUid===worker));
  // Pending originals are not released to the worker before lawful review.
  await deny(listTrustedHrSignedOriginals(other,worker),403);
  await deny(listTrustedHrSignedOriginals(customer,worker),403);
@@ -207,7 +231,8 @@ test("signed originals: trusted admin, immutable source/certificate, replay, aut
  assert.equal(quarantinedSource.status,"Quarantined; access revoked");
  assert.equal(quarantinedSource.complianceApproved,false);
  await deny(readTrustedHrOriginal(worker,{recordId:receipt.recordId,artifact:"Original"}),403);
- await deny(listTrustedHrSignedOriginals(worker),403);
+ const workerAfterQuarantine=await listTrustedHrSignedOriginals(worker);
+ assert(workerAfterQuarantine.every(item=>item.employeeUid===worker));
  const afterQuarantineAdmin=await listTrustedHrSignedOriginals(admin,worker);
  assert(afterQuarantineAdmin.some(item=>item.id===receipt.recordId&&
   item.status==="Quarantined; access revoked"));

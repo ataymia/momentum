@@ -34,7 +34,7 @@ test("R43-R49: secured signed originals are separate from blank templates and ca
  assert(review.includes("Quarantine misfiled original"));
  assert(review.includes("Quarantined; access revoked"));
  assert(read.includes("Unverified original intake is restricted to active HR Administrators."));
- assert(server.includes('if(!administrator)'));
+ assert(server.includes('if(!administrator&&!ownWorker)'));
  assert(read.includes('if(!active||role!=="Administrator")'));
  assert(firestore.includes('allow get, list: if isAdmin();'));
  assert(ui.includes("Quarantine misfiled or incorrectly assigned original"));
@@ -49,8 +49,9 @@ test("R43-R49: secured signed originals are separate from blank templates and ca
  assert(ui.includes("Download original"));
  assert(ui.includes("Certificate"));
  assert(firestore.includes("match /hrOriginalIntakeReadAudit/{eventId}"));
- assert(server.includes('txt(adminSnap.data()?.role)!=="Administrator"'));
- assert(server.includes('txt(adminSnap.data()?.accountState)!=="Active"'));
+ assert(server.includes('role==="Administrator"'));
+ assert(server.includes('ownWorker=actorUid===incoming.employeeUid'));
+ assert(server.includes('accountState==="Active"'));
  assert(server.includes('txt(workerSnap.data()?.role)==="Customer"'));
  assert(client.includes('firebaseFunctionUrl("hrSignedOriginalArchive")'));
  assert(!client.includes("getDownloadURL"));
@@ -82,4 +83,21 @@ test("Contractor and employee forms remain isolated, with no implied completed c
  assert(packageUi.includes('setSourceType("In-app prepared PDF (unverified)")'));
  assert(packageUi.includes("Every mark requires independent identity and consent review"));
  assert(packageUi.includes("does not change a worker's onboarding or compliance status"));
+});
+
+test("authenticated employee can only submit and list their own unverified PDF through HR review queue",()=>{
+ const service=load("functions/src/trusted-hr-signed-original.ts");
+ const worker=load("components/hcm/hr-worker-document-submission.tsx");
+ const onboarding=load("components/hcm/onboarding-portal.tsx");
+ const client=load("lib/firebase-hr-signed-original.ts");
+ assert.match(worker,/archiveHrOriginal\(session/);
+ assert.match(worker,/employeeUid:session\.uid/);
+ assert.match(worker,/attestedByWorker:true/);
+ assert.match(worker,/listHrOriginals\(session\)/);
+ assert.match(worker,/HrPdfEditor source=\{file\}/);
+ assert.match(onboarding,/HrWorkerDocumentSubmission/);
+ assert.match(service,/ownWorker=actorUid===incoming\.employeeUid/);
+ assert.match(service,/incoming\.attestedByWorker===true/);
+ assert.match(service,/if\(!administrator&&!ownWorker\)/);
+ assert.match(client,/Employee-submitted PDF \(unverified\)/);
 });

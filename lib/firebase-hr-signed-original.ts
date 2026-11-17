@@ -2,7 +2,7 @@ import type {FirebaseAuthSession} from "./firebase-auth-rest";
 import {firebaseFunctionUrl} from "./firebase-functions";
 import type {HrTemplateKind} from "./firebase-hr-template-library";
 
-export type HrOriginalSource="Paper signed scan"|"External e-sign result"|"In-app prepared PDF (unverified)";
+export type HrOriginalSource="Paper signed scan"|"External e-sign result"|"In-app prepared PDF (unverified)"|"Employee-submitted PDF (unverified)";
 export type HrOriginalArchiveReceipt={
  recordId:string;employeeUid:string;kind:HrTemplateKind;sha256:string;
  status:"Pending independent HR review";createdAt:string;replayed:boolean;
@@ -35,7 +35,7 @@ async function pdfPayload(file:File,limit=LIMIT){
 export async function archiveHrOriginal(
  session:FirebaseAuthSession,input:{
   employeeUid:string;kind:HrTemplateKind;sourceType:HrOriginalSource;
-  reference:string;pdf:File;certificate?:File;
+  reference:string;pdf:File;certificate?:File;attestedByWorker?:true;
  },requestId:string,
 ):Promise<HrOriginalArchiveReceipt>{
  const source=await pdfPayload(input.pdf);
@@ -49,6 +49,7 @@ export async function archiveHrOriginal(
    original:{
     employeeUid:input.employeeUid,kind:input.kind,sourceType:input.sourceType,
     reference:input.reference,...source,
+    ...(input.attestedByWorker?{attestedByWorker:true}:{}),
     ...(certificate?{
      certificateBase64:certificate.pdfBase64,
      certificateSha256:certificate.sha256,

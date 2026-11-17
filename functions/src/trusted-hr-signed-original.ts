@@ -5,10 +5,10 @@ import {getStorage} from "firebase-admin/storage";
 import {HR_TEMPLATE_KINDS, type HrTemplateKind} from "./trusted-hr-template";
 
 type Row=Record<string,unknown>;
-type SourceType="Paper signed scan"|"External e-sign result"|"In-app prepared PDF (unverified)";
+type SourceType="Paper signed scan"|"External e-sign result"|"In-app prepared PDF (unverified)"|"Employee-submitted PDF (unverified)";
 type Incoming={
  employeeUid:string;kind:HrTemplateKind;sourceType:SourceType;
- reference:string;pdf:Buffer;sha256:string;
+ reference:string;pdf:Buffer;sha256:string;attestedByWorker:boolean;
  certificate?:{pdf:Buffer;sha256:string};
 };
 type Reservation={id:string;path:string;createdAt:string;replayed:boolean};
@@ -63,7 +63,7 @@ function parsePdf(encoded:unknown,checksum:unknown,max:number){
 function parseRequest(raw:unknown):Incoming {
  if(!row(raw)||Object.keys(raw).some(key=>![
   "employeeUid","kind","sourceType","reference","pdfBase64","sha256",
-  "certificateBase64","certificateSha256"].includes(key)))
+  "certificateBase64","certificateSha256","attestedByWorker"].includes(key)))
   throw new HrOriginalArchiveError(400,"Unexpected signed-original archive fields.");
  const employeeUid=txt(raw.employeeUid);
  const kind=txt(raw.kind) as HrTemplateKind;
@@ -71,10 +71,13 @@ function parseRequest(raw:unknown):Incoming {
  const reference=txt(raw.reference);
  if(!uid.test(employeeUid)||
   !Object.prototype.hasOwnProperty.call(HR_TEMPLATE_KINDS,kind)||
-  !["Paper signed scan","External e-sign result","In-app prepared PDF (unverified)"].includes(sourceType)||
+  !["Paper signed scan","External e-sign result","In-app prepared PDF (unverified)","Employee-submitted PDF (unverified)"].includes(sourceType)||
   reference.length<5||reference.length>160||
   (sourceType==="External e-sign result"&&!reference))
   throw new HrOriginalArchiveError(400,"Worker, form kind or external evidence reference invalid.");
+ const workerSource=sourceType==="Employee-submitted PDF (unverified)";
+ if(workerSource?raw.attestedByWorker!==true:raw.attestedByWorker!==undefined)
+  throw new HrOriginalArchiveError(400,"Worker attestation is required only for employee self-service intake.");
  const original=parsePdf(raw.pdfBase64,raw.sha256,8*1024*1024);
  const hasCertificate=raw.certificateBase64!==undefined||raw.certificateSha256!==undefined;
  let certificate:{pdf:Buffer;sha256:string}|undefined;
@@ -84,13 +87,15 @@ function parseRequest(raw:unknown):Incoming {
    throw new HrOriginalArchiveError(400,"A certificate must accompany external e-sign evidence only.");
   certificate=parsePdf(raw.certificateBase64,raw.certificateSha256,4*1024*1024);
  }
- return {employeeUid,kind,sourceType,reference,...original,
+ return {employeeUid,kind,sourceType,reference,...original,attestedByWorker:workerSource,
   ...(certificate?{certificate}:{})};
 }
 
 /** Persist an immutable original plus optional e-sign completion certificate.
- * The named worker is the sole record subject; an active Administrator is the
- * only uploader. SHA readback verifies the storage object on every retry.
+ * The named worker is the sole record subject. Active Administrators can
+ * archive verified external originals; an authenticated onboarding worker can
+ * submit only their own explicitly attested unverified PDF for HR review.
+ * SHA readback verifies the storage object on every retry.
  * This never asserts that the form was properly signed or legally accepted.
  * @param {string} actorUid Revocation-verified Firebase identity.
  * @param {unknown} raw Uploaded PDF plus administrative source reference.
@@ -111,14 +116,22 @@ export async function archiveTrustedHrSignedOriginal(
   employeeUid:incoming.employeeUid,kind:incoming.kind,
   sourceType:incoming.sourceType,reference:incoming.reference,
   sha256:incoming.sha256,certificateSha256:incoming.certificate?.sha256??"",
+  attestedByWorker:incoming.attestedByWorker,
  })).digest("hex");
  const reserved:Reservation=await db.runTransaction(async tx=>{
   const [adminSnap,workerSnap,prior]=await Promise.all([
    tx.get(admin),tx.get(worker),tx.get(requestRef),
   ]);
-  if(txt(adminSnap.data()?.accountState)!=="Active"||
-   txt(adminSnap.data()?.role)!=="Administrator")
-   throw new HrOriginalArchiveError(403,"Only an active HR Administrator may archive originals.");
+  const accountState=txt(adminSnap.data()?.accountState);
+  const role=txt(adminSnap.data()?.role);
+  const administrator=accountState==="Active"&&role==="Administrator";
+  const ownWorker=actorUid===incoming.employeeUid&&
+   ["Onboarding","Pending approval","Active"].includes(accountState)&&
+   Boolean(role)&&role!=="Customer"&&
+   incoming.sourceType==="Employee-submitted PDF (unverified)"&&
+   incoming.attestedByWorker===true;
+  if(!administrator&&!ownWorker)
+   throw new HrOriginalArchiveError(403,"Active HR authorization or authenticated worker self-submission required.");
   if(!workerSnap.exists||txt(workerSnap.data()?.role)==="Customer"||
    txt(workerSnap.data()?.role)==="")
    throw new HrOriginalArchiveError(404,"Worker account could not be verified.");
@@ -193,9 +206,15 @@ export async function archiveTrustedHrSignedOriginal(
   const [actor,workerSnap,request,existing]=await Promise.all([
    tx.get(admin),tx.get(worker),tx.get(requestRef),tx.get(recordRef),
   ]);
-  if(txt(actor.data()?.accountState)!=="Active"||
-   txt(actor.data()?.role)!=="Administrator")
-   throw new HrOriginalArchiveError(403,"HR Administrator authorization was revoked.");
+  const finalState=txt(actor.data()?.accountState),finalRole=txt(actor.data()?.role);
+  const adminStillAuthorized=finalState==="Active"&&finalRole==="Administrator";
+  const workerStillAuthorized=actorUid===incoming.employeeUid&&
+   ["Onboarding","Pending approval","Active"].includes(finalState)&&
+   Boolean(finalRole)&&finalRole!=="Customer"&&
+   incoming.sourceType==="Employee-submitted PDF (unverified)"&&
+   incoming.attestedByWorker===true;
+  if(!adminStillAuthorized&&!workerStillAuthorized)
+   throw new HrOriginalArchiveError(403,"HR archive authorization was revoked.");
   if(!workerSnap.exists||txt(workerSnap.data()?.role)==="Customer")
    throw new HrOriginalArchiveError(409,"Worker identity changed during upload.");
   if(txt(request.data()?.fingerprint)!==fingerprint)
@@ -209,6 +228,7 @@ export async function archiveTrustedHrSignedOriginal(
   tx.create(recordRef,{
    id:reserved.id,employeeUid:incoming.employeeUid,kind:incoming.kind,
    sourceType:incoming.sourceType,reference:incoming.reference,
+   employeeAttested:incoming.attestedByWorker,
    originalPath:reserved.path,sha256:incoming.sha256,generation,
    ...(certificatePath?{certificatePath,
     certificateSha256:incoming.certificate?.sha256,
@@ -220,7 +240,10 @@ export async function archiveTrustedHrSignedOriginal(
   });
   tx.create(auditRef,{
    recordId:reserved.id,employeeUid:incoming.employeeUid,actorUid,
-   event:"Immutable source bytes archived for independent HR verification",
+   event:incoming.attestedByWorker?
+    "Authenticated worker submitted unverified PDF for independent HR review":
+    "Immutable source bytes archived for independent HR verification",
+   employeeAttested:incoming.attestedByWorker,
    at:reserved.createdAt,kind:incoming.kind,sha256:incoming.sha256,
   });
  });
@@ -242,11 +265,14 @@ export async function listTrustedHrSignedOriginals(actorUid:string,targetUid:unk
  if(!uid.test(actorUid))throw new HrOriginalArchiveError(401,"Sign in first.");
  const db=getFirestore();
  const access=(await db.doc("userAccess/"+actorUid).get()).data();
- const active=txt(access?.accountState)==="Active";
- const administrator=active&&txt(access?.role)==="Administrator";
- if(!administrator)
-  throw new HrOriginalArchiveError(403,"Unverified HR intake metadata is Administrator-only.");
+ const state=txt(access?.accountState),role=txt(access?.role);
+ const active=state==="Active";
+ const administrator=active&&role==="Administrator";
  const employeeUid=txt(targetUid)||actorUid;
+ const ownWorker=employeeUid===actorUid&&Boolean(role)&&role!=="Customer"&&
+  ["Onboarding","Pending approval","Active"].includes(state);
+ if(!administrator&&!ownWorker)
+  throw new HrOriginalArchiveError(403,"Private HR metadata is accessible only to HR or the submitting worker.");
  if(!uid.test(employeeUid))
   throw new HrOriginalArchiveError(403,"HR document scope is not authorized.");
  const items=await db.collection("hrOriginalIntakeRecords")
