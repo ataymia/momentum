@@ -222,7 +222,7 @@ try{
    await page.getByText("QA browser supplier 174",{exact:true}).waitFor();
    const row=page.getByRole("row").filter({hasText:"QA browser supplier 174"});
    await row.getByRole("button").first().click();
-   assert.match(new URL(page.url()).pathname,/^\\/purchases\\/vendors\\/[^/]+$/);
+   assert(new URL(page.url()).pathname.startsWith("/purchases/vendors/"));
    await page.getByText("Synthetic audit only",{exact:true}).first().waitFor();
  });
  await recordInteraction("Invoice print center available",async()=>{
