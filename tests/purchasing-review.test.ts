@@ -182,3 +182,12 @@ test("connected vendor payment evidence requires independent authorized reviewer
  assert.equal(billDueCents(s,s.bills[0]),12000);
  assert.equal(s.payments[0].externalSettlementVerified,true);
 });
+
+test("supplier bill entry excludes fully billed purchase orders",()=>{
+  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
+  assert.match(view,/const purchaseOptions=poOptions\.filter\(p=>billedCases\(state,p\.id\)<p\.cases\)/);
+  let s=approvedPurchase();const id=s.orders[0].id;
+  s=success(s,operations,bill(id,10,16000,"FULL-PO"));
+  assert.equal(billedCases(s,id),s.orders[0].cases);
+  assert.equal(act(s,operations,bill(id,1,1600,"OVERBILL")).ok,false);
+});
