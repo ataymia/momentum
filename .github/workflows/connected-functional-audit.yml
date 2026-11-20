@@ -41,8 +41,9 @@ jobs:
           npm --prefix functions ci --ignore-scripts
           npm --prefix functions run build
           npm run build
-          npm install --no-save --ignore-scripts --package-lock=false playwright@1.55.1
-          npx playwright install --with-deps chromium
+          npm install --prefix "$RUNNER_TEMP/momentum-browser" --no-save --ignore-scripts --package-lock=false playwright@1.55.1
+          ln -s "$RUNNER_TEMP/momentum-browser/node_modules/playwright" node_modules/playwright
+          node "$RUNNER_TEMP/momentum-browser/node_modules/playwright/cli.js" install --with-deps chromium
       - name: Run real connected browser tests on local-only emulator project
         run: |
           printf 'MOMENTUM_FIREBASE_WEB_API_KEY=isolated-emulator-key\n' > functions/.env.local
