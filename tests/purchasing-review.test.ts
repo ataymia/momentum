@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {canVisitRoute} from "../lib/navigation-route-registry";
 import type {WorkspaceUser} from "../lib/types";
-import {applyPurchaseAction,billDueCents,emptyPurchasingState,poStatus,receivedCases,threeWayMatch,type PurchaseAction,type PurchaseActor,type PurchasingState} from "../lib/purchasing-review";
+import {applyPurchaseAction,billDueCents,billedCases,emptyPurchasingState,poStatus,receivedCases,threeWayMatch,type PurchaseAction,type PurchaseActor,type PurchasingState} from "../lib/purchasing-review";
 const admin:PurchaseActor={id:"admin-a",role:"Administrator"};
 const otherAdmin:PurchaseActor={id:"admin-b",role:"Administrator"};
 const operations:PurchaseActor={id:"ops-a",role:"Operations"};
