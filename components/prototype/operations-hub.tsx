@@ -946,7 +946,7 @@ export function PrototypeOperationsHub(){
   if(path==="/documents")return <DocumentsExperience/>;
   if(path==="/help")return <div className="prototype-domain"><HelpPage/></div>;
   if(path==="/support/cases"||path.startsWith("/support/cases/"))return <SupportCasesExperience/>;
-  if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<Empty>Marketing write administration is available in isolated local demo only. The redesign provides source-linked read and export access.</Empty>;
+  if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<MarketingWorkspaceExperience key="marketing-connected-workflow" initialTab="production"/>;
   if(path==="/people/payroll")return <PayrollWorkflowExperience/>;
   if(path==="/people/payroll/workflow")return writeEnabled?<LegacyPayrollPage/>:<PayrollWorkflowExperience/>;
   if(path==="/people/onboarding/workflow")return provisioningEnabled?<NewHireProvisioning view="queue"/>:<Empty>Full onboarding controls require a verified active administrator session.</Empty>;

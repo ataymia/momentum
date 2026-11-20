@@ -317,6 +317,23 @@ try{
   const download=await downloaded;const path=await download.path();assert.deepEqual(fs.readFileSync(path),pdf);
   assert.equal(await row.getByRole("button",{name:"Mark reviewed"}).count(),0);
  });
+ await run("Marketing collateral request is persisted and an authorized editor changes its owner",async()=>{
+  const page=await open("marketing");await goto(page,"/marketing");
+  await page.getByRole("button",{name:"Production queue",exact:true}).click();
+  const queue=page.locator(".marketing-production-queue");
+  await queue.getByLabel("Account / use case").fill("QA isolated collateral request 174");
+  await queue.getByLabel("Quantity").fill("3");
+  await queue.getByLabel("Needed by").fill("2099-01-01");
+  await queue.getByRole("button",{name:"Request material"}).click();
+  const record=await waitDb(async()=>{const result=await db.collection("marketingProductionRequests").get();return result.docs.map(d=>d.data()).find(r=>r.useCase==="QA isolated collateral request 174");},"Marketing request missing");
+  assert.equal(record.requesterId,uid("marketing"));assert.equal(record.quantity,3);assert.equal(record.status,"Requested");
+  await page.reload({waitUntil:"domcontentloaded"});await root(page).waitFor({timeout:60000});await goto(page,"/marketing");
+  await page.getByRole("button",{name:"Production queue",exact:true}).click();
+  const card=page.locator(".marketing-production-queue article").filter({hasText:"QA isolated collateral request 174"});
+  await card.getByLabel("Assigned owner").selectOption(uid("admin"));
+  await waitDb(async()=>((await db.doc("marketingProductionRequests/"+record.id).get()).data()?.ownerId===uid("admin")),"Marketing owner not persisted");
+  const after=(await db.doc("marketingProductionRequests/"+record.id).get()).data();assert.equal(after.history.length,2);assert.equal(after.history[1].actorId,uid("marketing"));
+ });
  await run("Vendor create and fresh reload",async()=>{
   const page=await form("admin","vendors",{name:"QA Connected Supplier",contact:"Synthetic reference"});
   const v=await waitDb(async()=>(await register())?.vendors.find(v=>v.name==="QA Connected Supplier"),"Vendor missing in Firestore");
