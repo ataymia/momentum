@@ -63,7 +63,7 @@ function PurchasingForm({section,state,run,role,connected,busy}:{section:Section
     }
   };
   const poOptions=orders.filter(p=>section==="receipts"?receivedCases(state,p.id)<p.cases:true);
-  const purchaseOptions=poOptions;
+  const purchaseOptions=poOptions.filter(p=>billedCases(state,p.id)<p.cases);
   return <section className="prototype-panel">
     <button type="button" className="prototype-link" onClick={()=>setOpen(v=>!v)} aria-expanded={open}>{open?"Close entry form":"Prepare "+sectionTitles[section].toLowerCase().replace(/s$/,"")}</button>
     {open&&<form className="prototype-purchasing-form" onSubmit={submit}>
