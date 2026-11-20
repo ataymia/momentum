@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import http from "node:http";
 import {createRequire} from "node:module";
 import {chromium} from "playwright";
 import * as routesModule from "../lib/navigation-route-registry.ts";
 
 const PROJECT="demo-momentum-connected-audit";
-const HOST="http://127.0.0.1:5011";
+const HOST="http://127.0.0.1:5012";
+const FUNCTION_PREFIX="/__qa_functions/";
 const OUT="artifacts/connected-functional-audit";
 const REQUIRE=createRequire(new URL("../functions/package.json",import.meta.url));
 const {initializeApp,deleteApp}=REQUIRE("firebase-admin/app");
@@ -67,6 +69,24 @@ async function seed(){
   db.doc("domains/periodLocks/fields/locks").set({items:[]})
  ]);
 }
+// Test-only same-origin proxy to actual local emulators; no synthetic API responses.
+// Avoid cross-port browser CORS/preflight interference while retaining real Auth, rules and Functions.
+const proxy=http.createServer((req,res)=>{
+ const url=new URL(req.url,HOST);
+ const isFunction=url.pathname.startsWith(FUNCTION_PREFIX);
+ const name=url.pathname.slice(FUNCTION_PREFIX.length);
+ if(isFunction&&!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)){res.writeHead(400);res.end("Invalid QA endpoint");return;}
+ const port=isFunction?5001:5011;
+ const upstreamPath=isFunction?"/"+PROJECT+"/us-central1/"+name+url.search:url.pathname+url.search;
+ const headers={...req.headers,host:"127.0.0.1:"+port};
+ const upstream=http.request({hostname:"127.0.0.1",port,path:upstreamPath,method:req.method,headers},remote=>{
+  if(isFunction)console.log("CONNECTED_PROXY_API "+JSON.stringify({name,status:remote.statusCode}));
+  res.writeHead(remote.statusCode??502,remote.headers);remote.pipe(res);
+ });
+ upstream.on("error",error=>{console.error("CONNECTED_PROXY_ERROR",error.message);if(!res.headersSent)res.writeHead(502);res.end();});
+ req.pipe(upstream);
+});
+await new Promise((resolve,reject)=>{proxy.once("error",reject);proxy.listen(5012,"127.0.0.1",resolve);});
 const browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
 const sessions=new Map();
 const failedSessions=new Map();
@@ -83,17 +103,16 @@ async function open(key){
   if(["data:","blob:"].includes(u.protocol))return route.continue();
   if(u.origin===HOST)return route.continue();
   let target="";
-  if(u.origin==="http://127.0.0.1:5001"&&u.pathname.startsWith("/"+PROJECT+"/us-central1/"))target=req.url();
   if(u.hostname==="firestore.googleapis.com"&&u.pathname.includes("/projects/"+PROJECT+"/"))target="http://127.0.0.1:8080"+u.pathname+u.search;
   if(["identitytoolkit.googleapis.com","securetoken.googleapis.com"].includes(u.hostname)&&u.searchParams.get("key")==="isolated-emulator-key")target="http://127.0.0.1:9099/"+u.hostname+u.pathname+u.search;
   if(u.hostname==="firebasestorage.googleapis.com"&&u.pathname.includes(PROJECT))target="http://127.0.0.1:9199"+u.pathname+u.search;
   if(!target){if(req.resourceType()==="fetch"||req.resourceType()==="xhr")console.log("CONNECTED_TRANSPORT_BLOCKED "+JSON.stringify({key,origin:u.origin,path:u.pathname}));return route.abort("blockedbyclient");}
   if(req.method()==="OPTIONS")return route.fulfill({status:204,headers:{"access-control-allow-origin":HOST,"access-control-allow-headers":"authorization,content-type,x-firebase-storage-version,x-goog-upload-protocol","access-control-allow-methods":"GET,POST,PATCH,DELETE,OPTIONS"}});
   const response=await route.fetch({url:target,maxRedirects:0});
-  if(u.origin==="http://127.0.0.1:5001")console.log("CONNECTED_API "+JSON.stringify({key,path:u.pathname,status:response.status()}));
   await route.fulfill({response,headers:{...response.headers(),"access-control-allow-origin":HOST,"access-control-expose-headers":"*"}});
  });
  const page=await context.newPage();
+ page.on("console",m=>{if(m.type()==="error"&&/CORS|Content Security Policy|Failed to fetch|ERR_/i.test(m.text()))console.log("CONNECTED_BROWSER_ERROR "+JSON.stringify({key,message:m.text().slice(0,400)}));});
  page.on("requestfailed",r=>{const u=new URL(r.url());if(r.resourceType()==="fetch"||r.resourceType()==="xhr")console.log("CONNECTED_REQUEST_FAILED "+JSON.stringify({key,origin:u.origin,path:u.pathname,error:r.failure()?.errorText}));});
  page.on("pageerror",e=>reports.errors.push({key,route:new URL(page.url()).pathname,error:e.message}));
  page.on("response",r=>{const u=new URL(r.url());if(r.status()>=400&&["firestore.googleapis.com","identitytoolkit.googleapis.com","127.0.0.1"].includes(u.hostname))reports.requests.push({key,path:u.pathname,status:r.status()});});
@@ -180,7 +199,7 @@ try{
   const result=await page.evaluate(async ({project})=>{
    const session=JSON.parse(sessionStorage.getItem("momentum-firebase-session-v1")??"null");
    if(!session?.idToken)return {status:0,message:"No signed-in browser session"};
-   const response=await fetch("http://127.0.0.1:5001/"+project+"/us-central1/purchasingApi",{method:"POST",headers:{"Content-Type":"application/json",authorization:"Bearer "+session.idToken},body:JSON.stringify({mode:"read"})});
+   const response=await fetch("/__qa_functions/purchasingApi",{method:"POST",headers:{"Content-Type":"application/json",authorization:"Bearer "+session.idToken},body:JSON.stringify({mode:"read"})});
    const data=await response.json();return {status:response.status,ok:data.ok,message:data.message};
   },{project:PROJECT});
   console.log("CONNECTED_HANDSHAKE "+JSON.stringify(result));assert.equal(result.status,200);assert.equal(result.ok,true);
@@ -389,6 +408,6 @@ finally{
  console.log("CONNECTED_ACTION_FAILURES "+JSON.stringify(actions));
  console.log("CONNECTED_ERRORS "+JSON.stringify(reports.errors));
  for(const {context} of sessions.values())await context.close();
- await browser.close();await deleteApp(app);
+ await browser.close();await new Promise(resolve=>proxy.close(resolve));await deleteApp(app);
  if(!reports.routes.length||!reports.actions.length||failed.length||actions.length||reports.errors.length)process.exitCode=1;
 }
