@@ -27,7 +27,7 @@ import {updateTrustedCustomerContacts,CustomerContactUpdateError} from "./truste
 import {commitTrustedCrmLead,TrustedCrmLeadError} from "./trusted-crm-lead";
 import {saveTrustedCrmContact,TrustedCrmContactError} from "./trusted-crm-contact";
 import {saveTrustedCrmDeal,TrustedCrmDealError} from "./trusted-crm-deal";
-import {submitTrustedOrderIntake,getTrustedOrderIntake,pageTrustedOrderIntakes,OrderIntakeError} from "./trusted-order-intake";
+import {submitTrustedOrderIntake,getTrustedOrderIntake,pageTrustedOrderIntakes,listOwnTrustedOrderIntakes,OrderIntakeError} from "./trusted-order-intake";
 import {decideTrustedOrderIntake} from "./trusted-order-intake-review";
 import {registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError} from "./trusted-hr-template";
 import {uploadTrustedBlankHrTemplate} from "./trusted-hr-template-upload";
@@ -2081,7 +2081,7 @@ export const reviewOrderIntake=onRequest({cors:true,region:"us-central1"},async(
  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
  const payload=request.body;
  if(!payload||typeof payload!=="object"||Array.isArray(payload)||
-  Object.keys(payload).some(k=>!["intakeId","cursor"].includes(k))){
+  Object.keys(payload).some(k=>!["intakeId","cursor","mine"].includes(k))){
   json(response,400,{ok:false,message:"Invalid review request."});return;
  }
  const auth=request.headers.authorization??"";
@@ -2091,7 +2091,11 @@ export const reviewOrderIntake=onRequest({cors:true,region:"us-central1"},async(
  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
  catch{json(response,401,{ok:false,message:"Session expired."});return;}
  try{
-  if(payload.intakeId){
+  if(payload.mine===true){
+   if(payload.intakeId||payload.cursor){json(response,400,{ok:false,message:"Choose one request lookup mode."});return;}
+   const records=await listOwnTrustedOrderIntakes(actor);
+   json(response,200,{ok:true,records});
+  }else if(payload.intakeId){
    const record=await getTrustedOrderIntake(actor,payload.intakeId);
    json(response,200,{ok:true,record});
   }else{
@@ -2107,7 +2111,7 @@ export const reviewOrderIntake=onRequest({cors:true,region:"us-central1"},async(
  }
 });
 
-/** Administrator-only nonbinding commercial-intake decision. */
+/** Administrator-only commercial review decision; no payment or stock posting. */
 export const decideOrderIntake=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
  const payload=request.body;
