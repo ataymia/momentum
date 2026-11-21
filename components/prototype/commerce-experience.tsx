@@ -169,7 +169,7 @@ export function OrderDetail({id}:{id:string}){
   const lines=o.lines??(o.product?[{id:o.id,product:o.product,cases:o.cases,pricePerCase:o.pricePerCase,amount:o.amount}]:[]);
   const owner=data.users.find(u=>u.id===o.ownerId);
   const rep=data.users.find(u=>u.id===o.creditedRepId);
-  const canEdit=Boolean(currentUser?.id&&["Draft","Awaiting approval","Approved"].includes(o.status)&&
+  const canEdit=Boolean(!o.sourceIntakeId&&currentUser?.id&&["Draft","Awaiting approval","Approved"].includes(o.status)&&
     (currentUser.role==="Administrator"||(["Sales Representative","Sales Manager"].includes(currentUser.role)&&o.ownerId===currentUser.id)));
   return <div><Title title={"Order "+o.number} detail={"Customer: "+customerName} back="/sales/orders"/>
     <CatalogSummary data={[{label:"Order status",value:o.status},{label:"Cases",value:o.cases},{label:"Order value",value:money(o.amount)}]}/>
