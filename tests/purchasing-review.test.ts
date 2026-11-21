@@ -127,6 +127,18 @@ test("matched bill can be independently approved, paid and credited without tran
   assert.equal(billDueCents(s,s.bills[0]),6000);
   assert.equal(act(s,admin,{kind:"payment.record",billId,reference:"LATE",amountCents:100}).ok,false);
 });
+test("expense entry refuses inactive vendor references without adding financial history",()=>{
+  const s=success(emptyPurchasingState(),admin,vendor());
+  const inactive={...s,vendors:s.vendors.map(v=>({...v,active:false}))};
+  const action:PurchaseAction={kind:"expense.record",vendorId:inactive.vendors[0].id,description:"QA inactive supplier",amountCents:1200};
+  const rejected=act(inactive,operations,action);
+  assert.equal(rejected.ok,false);
+  assert.equal(rejected.state,inactive);
+  assert.equal(inactive.expenses.length,0);
+  assert.equal(inactive.audit.length,1);
+  const unlinked=success(inactive,operations,{...action,vendorId:undefined});
+  assert.equal(unlinked.expenses.length,1,"Unlinked expenses remain permitted.");
+});
 test("expenses need independent sign-off and preserve a who/what/when audit trail",()=>{
   let s=success(emptyPurchasingState(),operations,{kind:"expense.record",description:"Illustrative warehouse tape",amountCents:1200});
   assert.equal(act(s,operations,{kind:"expense.approve",id:s.expenses[0].id}).ok,false);
