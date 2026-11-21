@@ -146,6 +146,23 @@ export async function writeCase(actor:CaseAccess,command:CaseCommand,requestId:s
    if(!original.exists||!Array.isArray(original.data()?.history)||
       !original.data()?.history.some((e:Row)=>e.id===p?.eventId))
     throw new SupportCasesError(409,"Previous case action needs reconciliation.");
+   // A replay is still a read of the original case. Recheck current account
+   // scope so a revoked salesperson cannot recover a former customer's case.
+   const existing=original.data() as CaseRecord;
+   const linked=existing.accountId?
+     items(accountSnap.data()).find(a=>str(a.id)===existing.accountId):undefined;
+   const linkedAccount=linked?{id:str(linked.id),
+     ownerId:str(linked.ownerId)||undefined,stage:str(linked.stage)||undefined}:undefined;
+   const ownerAccess=linkedAccount?.ownerId?
+     (await tx.get(db.doc("userAccess/"+linkedAccount.ownerId))).data():undefined;
+   const linkedOwner=linkedAccount?.ownerId&&ownerAccess?{
+     uid:linkedAccount.ownerId,role:str(ownerAccess.role),
+     accountState:str(ownerAccess.accountState),team:str(ownerAccess.team),
+     managerId:str(ownerAccess.managerId)}:undefined;
+   if(!visible(existing,live,
+     new Map(linkedAccount?[[linkedAccount.id,linkedAccount]]:[]),
+     new Map(linkedOwner?[[linkedOwner.uid,linkedOwner]]:[])))
+    throw new SupportCasesError(404,"Case not found or access denied.");
    return{caseId:priorId,revision:original.data()?.revision,
     recordedAt:str(p?.recordedAt),replayed:true};
   }
