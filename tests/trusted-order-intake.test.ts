@@ -111,7 +111,8 @@ test("Approval workflow and requester feedback use trusted server with decline-o
  const intake=readFileSync("functions/src/trusted-order-intake.ts","utf8");
  const own=readFileSync("components/commerce/my-connected-order-intakes.tsx","utf8");
  assert.match(review,/status==="Declined"/);
- assert.match(review,/status==="Approved"/);
+ assert.match(review,/"Needs commercial review":\["Approved","Declined"\]/);
+ assert.match(review,/"Approved":\[\]/);
  assert.match(review,/reason.length!==0/);
  assert.match(intake,/requestedByName/);
  assert.match(intake,/accountName/);
