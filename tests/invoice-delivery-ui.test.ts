@@ -149,12 +149,16 @@ test("delivery signature is rejected if it is not tied to the delivered event",(
 });
 
 
-test("manual invoice printing stays on hold until explicit build approval",()=>{
-  const approved=invoiceSource.indexOf("NEXT_PUBLIC_INVOICE_ISSUE_APPROVED");
-  const hold=invoiceSource.indexOf("if (!invoiceIssueApproved)");
-  const print=invoiceSource.indexOf("window.print()");
-  assert.ok(approved>=0&&hold>approved&&print>hold);
-  assert.match(invoiceSource,/disabled=\{!invoiceIssueApproved\|\|!selectedIds\.length\}/);
-  assert.match(invoiceSource,/disabled=\{!invoiceIssueApproved\} onClick/);
-  assert.match(invoiceSource,/Internal invoice preview only/);
+test("manual invoice printing is never disabled by issuance approval or incomplete fields",()=>{
+  const handler=invoiceSource.slice(invoiceSource.indexOf("const startPrint ="),invoiceSource.indexOf("const invoiceSheet ="));
+  assert.doesNotMatch(handler,/if \(!invoiceIssueApproved\)/);
+  assert.match(handler,/window\.confirm\(invoicePrintConfirmationMessage\(reviews\)\)/);
+  assert.match(handler,/flushSync\(\(\) => setPrintJob/);
+  assert.match(handler,/window\.print\(\)/);
+  assert.doesNotMatch(invoiceSource,/disabled=\{!invoiceIssueApproved/);
+  assert.match(invoiceSource,/onClick=\{\(\) => startPrint\(\[invoice\.id\]\)\}>Print<\/Button>/);
+  assert.match(invoiceSource,/onClick=\{\(\) => startPrint\(\[previewId\]\)\}>Print \/ Save PDF<\/Button>/);
+  assert.match(invoiceSource,/printing does not email or issue an invoice/i);
+  const sheet=invoiceSource.slice(invoiceSource.indexOf("const invoiceSheet ="),invoiceSource.indexOf("const preview ="));
+  assert.doesNotMatch(sheet,/printNotice|invoicePrintWarnings|invoicePrintConfirmationMessage/);
 });
