@@ -240,3 +240,23 @@ test("supplier invoice duplicate detection ignores excess whitespace within the 
   assert.equal(result.state,s,"Rejected duplicates must leave the original state untouched.");
   assert.equal(s.bills.length,1);
 });
+
+test("payment and credit references reject whitespace/case replay without mutating purchasing history",()=>{
+  let s=approvedPurchase();const id=s.orders[0].id;
+  s=success(s,warehouse,receipt(id,10));
+  s=success(s,operations,bill(id,10,16000,"REF-INV"));
+  s=success(s,admin,{kind:"bill.approve",id:s.bills[0].id});
+  const billId=s.bills[0].id;
+  s=success(s,admin,{kind:"payment.record",billId,reference:"BANK  REF  204",amountCents:1000});
+  const paymentReplay=act(s,admin,{kind:"payment.record",billId,reference:" bank ref 204 ",amountCents:100});
+  assert.equal(paymentReplay.ok,false);
+  assert.match(paymentReplay.message,/reference already recorded/i);
+  assert.equal(paymentReplay.state,s);
+  s=success(s,operations,{kind:"credit.record",billId,reference:"SUPPLIER  CREDIT  5",reason:"Illustrative",amountCents:1000});
+  const creditReplay=act(s,operations,{kind:"credit.record",billId,reference:" supplier credit 5 ",reason:"Replay",amountCents:100});
+  assert.equal(creditReplay.ok,false);
+  assert.match(creditReplay.message,/reference already recorded/i);
+  assert.equal(creditReplay.state,s);
+  assert.equal(s.payments.length,1);
+  assert.equal(s.credits.length,1);
+});
