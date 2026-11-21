@@ -89,6 +89,27 @@ test("R62 trusted support case transaction enforces ownership, revisions, idempo
  const restored=await writeCase(actor,draft,key);
  assert.equal(restored.replayed,true);
  assert.equal((await doc.get()).data().history.length,3);
+ // Operations may open an internal case without a customer account. Firestore
+ // rejects undefined properties, so optional links must be omitted entirely.
+ const internal={kind:"create",draft:{title:"Internal receiving exception",
+  description:"Warehouse investigation without a customer reference.",
+  category:"Operations",priority:"Medium"}};
+ const internalKey=key+"-internal";
+ const internalReceipt=await writeCase(supervisor,internal,internalKey);
+ const internalDoc=db.doc("supportCases/"+internalReceipt.caseId);
+ const internalRecord=(await internalDoc.get()).data();
+ assert.equal(internalRecord.accountId,undefined);
+ assert.equal(Object.hasOwn(internalRecord,"accountId"),false);
+ assert.equal(Object.hasOwn(internalRecord,"orderId"),false);
+ assert.equal(internalRecord.history.length,1);
+ assert.equal((await writeCase(supervisor,internal,internalKey)).replayed,true);
+ assert.equal((await internalDoc.get()).data().history.length,1);
+ await assert.rejects(()=>writeCase(actor,internal,internalKey+"-rep"),
+  error=>error instanceof SupportCasesError&&error.status===403);
+ const adminRead=await readCases(supervisor,internalReceipt.caseId);
+ assert.equal(adminRead.cases.length,1);
+ const repRead=await readCases(actor,internalReceipt.caseId);
+ assert.equal(repRead.cases.length,0);
  await db.doc("userAccess/"+rep).update({accountState:"Suspended"});
  await assert.rejects(()=>writeCase(actor,{kind:"note",caseId:receipt.caseId,
   value:"Cannot write when suspended",revision:3},key+"-suspended"),
