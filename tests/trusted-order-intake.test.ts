@@ -120,3 +120,18 @@ test("Approval workflow and requester feedback use trusted server with decline-o
  assert.match(own,/declineReason/);
  assert.match(own,/Refresh my requests/);
 });
+
+test("New approvals atomically produce a sales order and draft invoice, or remain pending",()=>{
+ const review=readFileSync("functions/src/trusted-order-intake-review.ts","utf8");
+ const endpoints=readFileSync("functions/src/index.ts","utf8");
+ const client=readFileSync("lib/firebase-order-intake.ts","utf8");
+ const queue=readFileSync("components/commerce/connected-order-intake-queue.tsx","utf8");
+ assert.match(review,/parseManualPreparation\(rawPricing\)/);
+ assert.match(review,/preparation\.status!=="Prepared"/);
+ assert.match(review,/Approval was not saved/);
+ assert.match(endpoints,/decideTrustedOrderIntake\(actor,payload\.decision,payload\.requestId,payload\.pricing\)/);
+ assert.match(client,/decision,requestId,\.\.\.\(pricing\?\{pricing\}:\{\}\)/);
+ assert.match(queue,/Confirm unrecorded price \/ terms/);
+ assert.match(queue,/Approve & create order \+ draft invoice/);
+ assert.match(queue,/receipt\.orderId!==readback\.orderId/);
+});
