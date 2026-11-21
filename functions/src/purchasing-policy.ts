@@ -65,6 +65,7 @@ export function normalizePurchasingDemoState(raw:unknown):PurchasingState{
   if(keys.filter(key=>key!=="audit").some(key=>records[key].length>0)&&records.audit.length===0)return emptyPurchasingState();
   return {...emptyPurchasingState(),...v} as PurchasingState;
 }
+const normalizedReference=(s:string)=>s.trim().replace(/\s+/g," ").toLowerCase();
 const amount=(n:number)=>Number.isSafeInteger(n)&&n>0;
 const label=(s:string)=>s.trim().length>0&&s.trim().length<=160;
 const dateKey=(s:string)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;const d=new Date(s+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===s;};
@@ -172,7 +173,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       const p=s.orders.find(x=>x.id===action.poId);
       if(!p?.approvedAt||p.cancelledAt||!label(action.invoiceNumber)||!amount(action.cases)||!amount(action.amountCents))return reject("An approved order, supplier invoice and positive billed amount are required.");
       if(billedCases(s,p.id)+action.cases>p.cases)return reject("Billed quantities cannot exceed the approved order.");
-      if(s.bills.some(b=>s.orders.find(po=>po.id===b.poId)?.vendorId===p.vendorId&&b.invoiceNumber.trim().replace(/\s+/g," ").toLowerCase()===action.invoiceNumber.trim().replace(/\s+/g," ").toLowerCase()))return reject("Duplicate supplier invoice number for this vendor.");
+      if(s.bills.some(b=>s.orders.find(po=>po.id===b.poId)?.vendorId===p.vendorId&&normalizedReference(b.invoiceNumber)===normalizedReference(action.invoiceNumber)))return reject("Duplicate supplier invoice number for this vendor.");
       recordId=newId(s,"bill");s.bills.push({id:recordId,poId:p.id,invoiceNumber:action.invoiceNumber.trim(),cases:action.cases,amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id});break;
     }
     case "bill.approve": {
@@ -187,7 +188,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       if(!isAdmin(actor))return reject("Only an administrator may record a supplier payment.");
       const bill=s.bills.find(b=>b.id===action.billId);
       if(!bill?.approvedAt||!label(action.reference)||!amount(action.amountCents)||action.amountCents>billDueCents(s,bill)-pendingPaymentCents(s,bill.id)-pendingCreditCents(s,bill.id))return reject("Approved bill, distinct reference and amount within the unreconciled balance are required.");
-      if(s.payments.some(p=>p.reference.toLowerCase()===action.reference.trim().toLowerCase()))return reject("Payment reference already recorded.");
+      if(s.payments.some(p=>normalizedReference(p.reference)===normalizedReference(action.reference)))return reject("Payment reference already recorded.");
       recordId=newId(s,"pay");s.payments.push({id:recordId,billId:bill.id,reference:action.reference.trim(),amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id,externalSettlementVerified:false});
       detail="Payment reference recorded; no money moved and no external settlement verified.";break;
     }
@@ -205,7 +206,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       if(!canProcure(actor))return reject("Only purchasing staff may submit vendor credit requests.");
       const bill=s.bills.find(b=>b.id===action.billId);
       if(!bill?.approvedAt||!label(action.reference)||!label(action.reason)||!amount(action.amountCents)||action.amountCents>billDueCents(s,bill)-pendingPaymentCents(s,bill.id)-pendingCreditCents(s,bill.id))return reject("An approved bill, reason, reference and credit within remaining uncommitted payable are required.");
-      if(s.credits.some(c=>c.reference.toLowerCase()===action.reference.trim().toLowerCase()))return reject("Vendor credit reference already recorded.");
+      if(s.credits.some(c=>normalizedReference(c.reference)===normalizedReference(action.reference)))return reject("Vendor credit reference already recorded.");
       recordId=newId(s,"credit");s.credits.push({id:recordId,billId:bill.id,reference:action.reference.trim(),reason:action.reason.trim(),amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id});detail="Credit is pending independent review and does not yet change the bill balance.";break;
     }
     case "credit.approve": {
