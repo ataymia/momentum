@@ -269,3 +269,10 @@ test("payment and credit references reject whitespace/case replay without mutati
   assert.equal(s.payments.length,1);
   assert.equal(s.credits.length,1);
 });
+
+test("payment and credit forms bind the selected approved bill and cap amounts before submission",()=>{
+  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
+  assert.match(view,/name="bill" required value=\{selection\} onChange=\{e=>setSelection\(e\.target\.value\)\}/);
+  assert.match(view,/max=\{selection\?money\(availableBillCents\(selection\)\)\.replace\(/);
+  assert.match(view,/const availableBillCents=\(billId:string\)=>/);
+});
