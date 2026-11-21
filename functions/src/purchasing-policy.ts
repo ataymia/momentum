@@ -121,8 +121,8 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
   switch(action.kind){
     case "vendor.add": {
       if(!isAdmin(actor))return reject("Only an administrator may register vendors.");
-      if(typeof action.name!=="string"||!label(action.name)||typeof action.contact!=="string"||action.contact.length>1000||s.vendors.some(v=>normalizedReference(v.name)===normalizedReference(action.name)))return reject("A distinct vendor name and valid contact text are required.");
-      recordId=newId(s,"vendor");s.vendors.push({id:recordId,name:action.name.trim(),contact:action.contact.trim().slice(0,160),active:true,createdAt:at,createdBy:actor.id});break;
+      if(typeof action.name!=="string"||!label(action.name)||typeof action.contact!=="string"||action.contact.length>160||s.vendors.some(v=>normalizedReference(v.name)===normalizedReference(action.name)))return reject("A distinct vendor name and valid contact text are required.");
+      recordId=newId(s,"vendor");s.vendors.push({id:recordId,name:action.name.trim(),contact:action.contact.trim(),active:true,createdAt:at,createdBy:actor.id});break;
     }
     case "po.create": {
       if(!canProcure(actor))return reject("Only purchasing staff may prepare purchase orders.");
