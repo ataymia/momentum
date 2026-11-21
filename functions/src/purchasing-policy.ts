@@ -121,7 +121,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
   switch(action.kind){
     case "vendor.add": {
       if(!isAdmin(actor))return reject("Only an administrator may register vendors.");
-      if(!label(action.name)||s.vendors.some(v=>v.name.trim().toLowerCase()===action.name.trim().toLowerCase()))return reject("A distinct vendor name is required.");
+      if(!label(action.name)||s.vendors.some(v=>normalizedReference(v.name)===normalizedReference(action.name)))return reject("A distinct vendor name is required.");
       recordId=newId(s,"vendor");s.vendors.push({id:recordId,name:action.name.trim(),contact:action.contact.trim().slice(0,160),active:true,createdAt:at,createdBy:actor.id});break;
     }
     case "po.create": {
