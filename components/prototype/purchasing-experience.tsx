@@ -11,7 +11,7 @@ import {navigateToRoute} from "../../lib/navigation-store";
 import {GOLDEN_EAGLE_SKUS,skuById} from "../../lib/product-catalog";
 import {
   PURCHASING_DEMO_KEY,applyPurchaseAction,billDueCents,billedCases,emptyPurchasingState,
-  normalizePurchasingDemoState,poStatus,receivedCases,threeWayMatch,
+  normalizePurchasingDemoState,pendingCreditCents,pendingPaymentCents,poStatus,receivedCases,threeWayMatch,
   type PurchaseAction,type PurchaseActor,type PurchasingState,
 } from "../../lib/purchasing-review";
 
@@ -44,7 +44,8 @@ function PurchasingForm({section,state,run,role,connected,busy}:{section:Section
   const [selection,setSelection]=useState("");
   if(!canCreate)return null;
   const orders=state.orders.filter(p=>p.approvedAt&&!p.cancelledAt);
-  const bills=state.bills.filter(b=>b.approvedAt);
+  const availableBillCents=(billId:string)=>{const b=state.bills.find(item=>item.id===billId);return b?Math.max(0,billDueCents(state,b)-pendingPaymentCents(state,billId)-pendingCreditCents(state,billId)):0;};
+  const bills=state.bills.filter(b=>b.approvedAt&&availableBillCents(b.id)>0);
   const supplierOptions=state.vendors.filter(v=>v.active);
   const submit=async(e:FormEvent<HTMLFormElement>)=>{
     e.preventDefault();const form=e.currentTarget;const fd=new FormData(form);
@@ -90,7 +91,7 @@ function PurchasingForm({section,state,run,role,connected,busy}:{section:Section
         <label>Invoice total (USD)<input name="amount" type="number" min="0.01" step="0.01" required/></label>
       </>}
       {(section==="payments"||section==="credits")&&<>
-        <label>Approved bill<select name="bill" required defaultValue=""><option value="">Select bill</option>{bills.filter(b=>billDueCents(state,b)>0).map(b=><option key={b.id} value={b.id}>{b.invoiceNumber} · {money(billDueCents(state,b))} unpaid</option>)}</select></label>
+        <label>Approved bill<select name="bill" required defaultValue=""><option value="">Select bill</option>{bills.map(b=><option key={b.id} value={b.id}>{b.invoiceNumber} · {money(availableBillCents(b.id))} available after pending evidence</option>)}</select></label>
         <label>{section==="payments"?"Bank/provider reference":"Vendor credit reference"}<input name="reference" required/></label>
         {section==="credits"&&<label>Credit reason<input name="reason" required/></label>}
         <label>Amount (USD)<input name="amount" type="number" min="0.01" step="0.01" required/></label>
