@@ -115,12 +115,13 @@ export function normalizeCommercialState(input: unknown, data: WorkspaceData, to
     if (!optionalValidDate(raw.paidAt) || !optionalValidDate(raw.firstSettledAt)) return [];
     const creditedRepId = optionalText(raw.creditedRepId); if (creditedRepId && !salesRepIds.has(creditedRepId)) return [];
     const sourcePlacementId = optionalText(raw.sourcePlacementId);
+    const sourceIntakeId=optionalText(raw.sourceIntakeId);
     const lines=normalizeStoredOrderLines(raw.lines,validTest);
     if(lines&&(lines.reduce((sum,line)=>sum+line.cases,0)!==cases||Math.abs(lines.reduce((sum,line)=>sum+line.amount,0)-amount)>0.01))return [];
     const settlementEvidence = optionalText(raw.firstSettledAt) || optionalText(raw.paidAt);
     const safePaymentStatus = paymentStatus === "Paid" && !settlementEvidence ? "Open" : paymentStatus;
     const safeStatus = status === "Paid" && safePaymentStatus !== "Paid" ? "Delivered" : status;
-    return [{ id, number: text(raw.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(raw.placedAt), ownerId, paidAt: optionalText(raw.paidAt), firstSettledAt: optionalText(raw.firstSettledAt), priceBasis: text(raw.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product, creditedRepId, sourcePlacementId, inventoryAvailableAtOrder: Number(raw.inventoryAvailableAtOrder), lowStockApprovalRequired: typeof raw.lowStockApprovalRequired === "boolean" ? raw.lowStockApprovalRequired : undefined, testOnly:validTest||undefined, testSkuId:validTest?text(raw.testSkuId):undefined, lines, cancelledAt: optionalText(raw.cancelledAt), cancelledBy: optionalText(raw.cancelledBy), cancellationReason: optionalText(raw.cancellationReason) }];
+    return [{ id, number: text(raw.number), accountId, cases, pricePerCase: price, amount, status: safeStatus as Order["status"], placedAt: text(raw.placedAt), ownerId, paidAt: optionalText(raw.paidAt), firstSettledAt: optionalText(raw.firstSettledAt), priceBasis: text(raw.priceBasis), paymentStatus: safePaymentStatus as Order["paymentStatus"], product, creditedRepId, sourcePlacementId, sourceIntakeId, inventoryAvailableAtOrder: Number(raw.inventoryAvailableAtOrder), lowStockApprovalRequired: typeof raw.lowStockApprovalRequired === "boolean" ? raw.lowStockApprovalRequired : undefined, testOnly:validTest||undefined, testSkuId:validTest?text(raw.testSkuId):undefined, lines, cancelledAt: optionalText(raw.cancelledAt), cancelledBy: optionalText(raw.cancelledBy), cancellationReason: optionalText(raw.cancellationReason) }];
   }));
 
   const rawAppointments = Array.isArray(input.appointments) ? input.appointments : [];

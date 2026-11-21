@@ -87,7 +87,7 @@ export function ConnectedOrderIntakeQueue(){
     throw new Error("The decision was saved but verification is incomplete. Refresh before acting again.");
    setRecords(current=>current.map(row=>row.id===selected.id?readback:row));
    setFeedback(status==="Approved"
-    ?"Commercial review approved and saved. The request is ready for priced order preparation; no inventory, invoice or payment has been posted."
+    ?(readback.orderId?"Approved. Sales order and linked draft invoice prepared. Open Sales → Orders or Finance → Invoices.":"Approved and saved. Order preparation requires verified pricing or terms. Find this request in Sales → Orders to finish it.")
     :"Declined and saved. The reason is available in the requester's in-app request history; no external email was sent.");
    setSelectedId("");setReason("");setDeclining(false);pending.current=null;
   }catch(error){
@@ -114,7 +114,7 @@ export function ConnectedOrderIntakeQueue(){
      <td title={row.requestedByUid}>{requester(row)}</td>
      <td>{row.totalCases.toLocaleString("en-US")}</td>
      <td>{row.createdAt.slice(0,16).replace("T"," ")+" UTC"}</td>
-     <td>{stageLabel(row.status)}</td>
+     <td>{stageLabel(row.status)}{row.status==="Approved"&&<small>{row.orderId?" · Order prepared":" · Order needs preparation"}</small>}</td>
      <td><button type="button" aria-expanded={selectedId===row.id} disabled={saving} onClick={()=>choose(row)}>{selectedId===row.id?"Close":"Review"}</button></td>
     </tr>
     {selectedId===row.id&&<tr><td colSpan={7}>

@@ -166,9 +166,10 @@ export async function prepareTrustedApprovedIntake(uid:string,id:unknown,raw:unk
   const record=intakeSnap.data() as OrderIntakeRecord;
   if(record.status!=="Approved")throw new OrderIntakeError(409,"Request has not been approved.");
   const result=await prepareApprovedIntakeInTransaction(tx,db,record,uid,manual);
-  if(result.status==="Prepared")tx.update(intakeSnap.ref,{
-   preparationStatus:"Prepared",orderId:result.orderId,invoiceId:result.invoiceId,
-   preparedAt:new Date().toISOString(),preparedBy:uid,
+  tx.update(intakeSnap.ref,{
+   preparationStatus:result.status,preparationMessage:result.message,
+   ...(result.status==="Prepared"?{orderId:result.orderId,invoiceId:result.invoiceId,
+    preparedAt:new Date().toISOString(),preparedBy:uid}:{})
   });
   return result;
  });
