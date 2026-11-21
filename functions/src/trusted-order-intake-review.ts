@@ -1,7 +1,8 @@
 /* eslint-disable max-len,comma-spacing,key-spacing,indent,object-curly-spacing,curly,brace-style,keyword-spacing,arrow-parens,space-before-blocks */
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
-import {OrderIntakeError,type OrderIntakeStage} from "./trusted-order-intake";
+import {OrderIntakeError,type OrderIntakeStage,type OrderIntakeRecord} from "./trusted-order-intake";
+import {prepareApprovedIntakeInTransaction} from "./trusted-order-intake-preparation";
 type Row=Record<string,unknown>;
 const isRow=(v:unknown):v is Row=>Boolean(v&&typeof v==="object"&&!Array.isArray(v));
 const text=(v:unknown)=>typeof v==="string"?v.trim():"";
@@ -15,7 +16,7 @@ const transitions:Record<OrderIntakeStage,OrderIntakeStage[]>={
  "Approved":[],
  "Declined":[],
 };
-type Receipt={intakeId:string;status:OrderIntakeStage;reviewRevision:number;reviewedAt:string;replayed:boolean};
+type Receipt={intakeId:string;status:OrderIntakeStage;reviewRevision:number;reviewedAt:string;replayed:boolean;preparationStatus?:string;orderId?:string;invoiceId?:string;preparationMessage?:string};
 /** Final commercial intake review with compare-and-set and idempotency.
  * Never quotes, invoices, reserves inventory, charges funds, or pays commissions.
  * @param {string} actorUid Verified Firebase caller.
@@ -63,22 +64,31 @@ export async function decideTrustedOrderIntake(
    if(!original.exists)
     throw new OrderIntakeError(409,"Prior source intake is missing.");
    return{intakeId,status:data?.status as OrderIntakeStage,
-    reviewRevision:expectedRevision+1,reviewedAt:text(data?.reviewedAt),replayed:true};
+    reviewRevision:expectedRevision+1,reviewedAt:text(data?.reviewedAt),replayed:true,
+    preparationStatus:text(original.data()?.preparationStatus),orderId:text(original.data()?.orderId),
+    invoiceId:text(original.data()?.invoiceId)};
   }
   if(!original.exists)throw new OrderIntakeError(404,"Intake not found.");
   const storedRevision=original.data()?.reviewRevision??0;
   if(original.data()?.status!==expected||storedRevision!==expectedRevision||
    !Number.isSafeInteger(storedRevision)||storedRevision<0||storedRevision>=Number.MAX_SAFE_INTEGER)
    throw new OrderIntakeError(409,"Intake changed since last read. Refresh before review.");
+  const preparation=status==="Approved"?await prepareApprovedIntakeInTransaction(
+   tx,db,{...original.data() as OrderIntakeRecord,status:"Approved"},actorUid,null):null;
   const reviewRevision=expectedRevision+1;
   const reviewedAt=new Date().toISOString();
   const auditId="intake-review-"+randomUUID();
-  tx.update(intakeRef,{status,reviewRevision,reviewedAt,reviewedBy:actorUid,reviewReason:reason});
+  tx.update(intakeRef,{status,reviewRevision,reviewedAt,reviewedBy:actorUid,reviewReason:reason,
+   ...(preparation?{preparationStatus:preparation.status,preparationMessage:preparation.message,
+    ...(preparation.orderId?{orderId:preparation.orderId,invoiceId:preparation.invoiceId,
+     preparedBy:actorUid,preparedAt:reviewedAt}:{})}:{})});
   tx.create(keyRef,{intakeId,actorUid,status,reviewRevision,reviewedAt,fingerprint,auditId});
   tx.create(db.doc("commerceOrderIntakeReviewAudit/"+auditId),{
    id:auditId,intakeId,actorUid,before:expected,after:status,reviewRevision,reviewedAt,
    reason,source:"Trusted commercial intake decision",financialPosting:false,
   });
-  return{intakeId,status,reviewRevision,reviewedAt,replayed:false};
+  return{intakeId,status,reviewRevision,reviewedAt,replayed:false,
+   ...(preparation?{preparationStatus:preparation.status,preparationMessage:preparation.message,
+    orderId:preparation.orderId,invoiceId:preparation.invoiceId}:{})};
  });
 }

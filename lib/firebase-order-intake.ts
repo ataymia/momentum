@@ -10,6 +10,8 @@ export type OrderIntakeRecord={
  ownerAtSubmission:string;createdAt:string;status:OrderIntakeStage;
  reviewRevision?:number;reviewedAt?:string;reviewedBy?:string;reviewReason?:string;
  requestedByName?:string;accountName?:string;
+ preparationStatus?:"Prepared"|"Needs pricing";preparationMessage?:string;
+ orderId?:string;invoiceId?:string;
  totalCases:number;note:string;
  lines:Array<{skuId:string;description:string;casePack:number;cases:number}>;
  source:string;
