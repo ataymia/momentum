@@ -220,7 +220,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
     }
     case "expense.record": {
       if(!canProcure(actor))return reject("Only purchasing staff may submit expenses.");
-      if(!label(action.description)||!amount(action.amountCents)||(action.vendorId&&!s.vendors.some(v=>v.id===action.vendorId)))return reject("A description, positive amount and valid optional vendor are required.");
+      if(!label(action.description)||!amount(action.amountCents)||(action.vendorId&&!s.vendors.some(v=>v.id===action.vendorId&&v.active)))return reject("A description, positive amount and valid optional vendor are required.");
       recordId=newId(s,"expense");s.expenses.push({id:recordId,vendorId:action.vendorId||undefined,description:action.description.trim(),amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id});break;
     }
     case "expense.approve": {
