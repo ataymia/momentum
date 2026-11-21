@@ -16,6 +16,7 @@ import {
 } from "./admin-delivery-override";
 import {
   commitRepSelfDelivery,
+  commitAssignedDelivery,
   RepSelfDeliveryError,
 } from "./rep-self-delivery";
 import {submitDeliveryCorrection,approveDeliveryCorrection,closeDeliveryCorrection,listDeliveryCorrections,DeliveryCorrectionError} from "./delivery-correction";
@@ -2257,3 +2258,23 @@ export {
 
 // B workstream: verified employee meeting service. Deployment requires owner approval.
 export {staffMeetingsApi} from "./staff-meetings";
+
+export {purchasingApi} from "./purchasing-api";
+
+/** Authenticated driver and operations fulfillment transactions. */
+export const assignedDeliveryApi=onRequest({
+  cors:true,region:"us-central1",
+},async(req,res)=>{
+  if(req.method!=="POST"){json(res,405,{ok:false,message:"POST required."});return;}
+  let actor:string;
+  try{actor=(await getAuth().verifyIdToken((req.headers.authorization??"").replace(/^Bearer /,""),true)).uid;}
+  catch{json(res,401,{ok:false,message:"Sign in again."});return;}
+  try{json(res,200,{ok:true,...await commitAssignedDelivery(actor,req.body)});}
+  catch(error){
+    if(error instanceof RepSelfDeliveryError){json(res,error.status,{ok:false,message:error.message});return;}
+    console.error("Assigned delivery transaction failed",error);
+    json(res,503,{ok:false,message:"Delivery change unconfirmed. Refresh the order before retrying."});
+  }
+});
+
+export {customerDocumentsApi} from "./customer-documents";

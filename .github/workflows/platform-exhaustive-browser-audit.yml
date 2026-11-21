@@ -5,6 +5,7 @@ on:
     branches:
       - integration/a-g-unified-2026-11-07
       - release-candidate/2026-11-16-premerge-audit
+      - stabilization/production-workflows
     paths:
       - .github/workflows/platform-exhaustive-browser-audit.yml
       - scripts/platform-exhaustive-browser-audit.mjs
@@ -53,8 +54,9 @@ jobs:
         run: npm run build
       - name: Install isolated Chromium browser
         run: |
-          npm install --no-save --ignore-scripts --package-lock=false playwright@1.55.1
-          npx playwright install --with-deps chromium
+          npm install --prefix "$RUNNER_TEMP/momentum-browser" --no-save --ignore-scripts --package-lock=false playwright@1.55.1
+          ln -s "$RUNNER_TEMP/momentum-browser/node_modules/playwright" node_modules/playwright
+          node "$RUNNER_TEMP/momentum-browser/node_modules/playwright/cli.js" install --with-deps chromium
       - name: Survey every staff route at desktop and phone, tablet core routes, roles and actual journeys
         run: npx --yes firebase-tools@15.30.1 emulators:exec --only hosting --project demo-momentum-product-review --config firebase.architecture-smoke.json 'node scripts/platform-exhaustive-browser-audit.mjs'
       - name: Upload findings and responsive screenshots

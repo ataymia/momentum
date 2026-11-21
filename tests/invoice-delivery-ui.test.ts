@@ -149,12 +149,18 @@ test("delivery signature is rejected if it is not tied to the delivered event",(
 });
 
 
-test("manual invoice printing stays on hold until explicit build approval",()=>{
-  const approved=invoiceSource.indexOf("NEXT_PUBLIC_INVOICE_ISSUE_APPROVED");
-  const hold=invoiceSource.indexOf("if (!invoiceIssueApproved)");
-  const print=invoiceSource.indexOf("window.print()");
-  assert.ok(approved>=0&&hold>approved&&print>hold);
-  assert.match(invoiceSource,/disabled=\{!invoiceIssueApproved\|\|!selectedIds\.length\}/);
-  assert.match(invoiceSource,/disabled=\{!invoiceIssueApproved\} onClick/);
-  assert.match(invoiceSource,/Internal invoice preview only/);
+test("manual internal invoice printing is available without customer issuance approval",()=>{
+  assert.match(invoiceSource,/NEXT_PUBLIC_INVOICE_ISSUE_APPROVED/);
+  assert.match(invoiceSource,/INVOICE • INTERNAL REVIEW/);
+  assert.match(invoiceSource,/!invoiceIssueApproved&&<strong>NOT FOR CUSTOMER ISSUANCE/);
+  assert.doesNotMatch(invoiceSource,/disabled=\{!invoiceIssueApproved/);
+  const handler=invoiceSource.slice(invoiceSource.indexOf("const startPrint ="),invoiceSource.indexOf("const invoiceSheet ="));
+  assert.match(handler,/invoices\.some/);
+  assert.match(handler,/window\.print\(\)/);
+});
+
+test("approved manual print requires authoritative line reconciliation",()=>{
+ const handler=invoiceSource.slice(invoiceSource.indexOf("const startPrint ="),invoiceSource.indexOf("const invoiceSheet ="));
+ assert.match(handler,/reconcileInvoicePdfLines\(invoice,data.orders.find/);
+ assert.match(handler,/requires reconciliation/);
 });

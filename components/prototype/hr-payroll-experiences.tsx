@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { ArrowDownUp, CalendarDays, ClipboardList, GraduationCap, Search, ShieldCheck, Users } from "lucide-react";
 import { useWorkspace } from "../../lib/workspace-context";
 import { useHcm } from "../../lib/hcm-context";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
+import {employeeRosterTruth} from "../../lib/employee-roster-truth";
 import { usePayroll } from "../../lib/payroll-context";
 import {hiringReadiness} from "../../lib/hr-compliance-readiness";
 import { navigateToRoute } from "../../lib/navigation-store";
@@ -22,17 +24,19 @@ function NavTile({label,path,detail}:{label:string;path:string;detail:string}){
 export function PeopleExperience(){
   const {data,scope,currentUser}=useWorkspace();
   const {hcm}=useHcm();
+  const firebase=useFirebaseSessionOptional();
   const [query,setQuery]=useState("");
   const [sort,setSort]=useState<"name"|"department"|"status">("name");
   const [descending,setDescending]=useState(false);
   if(!currentUser||currentUser.role==="Customer")return <div className="prototype-empty">Not authorized.</div>;
   const admin=currentUser.role==="Administrator";
   const people=(admin?data.users.filter(u=>u.role!=="Customer"):data.users.filter(u=>u.id===currentUser.id))
-    .map(user=>({user,employment:hcm.employees.find(e=>e.userId===user.id)}))
-    .filter(row=>[row.user.name,row.user.title,row.user.team,row.employment?.status].join(" ").toLowerCase().includes(query.toLowerCase()))
+    .map(user=>{const employment=hcm.employees.find(e=>e.userId===user.id);return {user,employment,effective:employeeRosterTruth(user,employment,firebase?.accessRecords[user.id],Boolean(firebase?.configured))};})
+    .filter(row=>!admin||row.effective.status==="Active")
+    .filter(row=>[row.user.name,row.user.title,row.user.team,row.effective.status].join(" ").toLowerCase().includes(query.toLowerCase()))
     .sort((a,b)=>{
-      const va=sort==="name"?a.user.name:sort==="department"?a.user.team:(a.employment?.status??"");
-      const vb=sort==="name"?b.user.name:sort==="department"?b.user.team:(b.employment?.status??"");
+      const va=sort==="name"?a.user.name:sort==="department"?a.user.team:a.effective.status;
+      const vb=sort==="name"?b.user.name:sort==="department"?b.user.team:b.effective.status;
       return va.localeCompare(vb)*(descending?-1:1);
     });
   const leave=hcm.leaveRequests.filter(r=>admin||r.userId===currentUser.id);
@@ -47,7 +51,7 @@ export function PeopleExperience(){
   return <div className="prototype-domain prototype-domain--people">
     {title(admin?"Human Resources":"My Employee Workspace",admin?"Personnel records, requests, attendance and learning.":"Authorized self-service information and tasks.")}
     <div className="prototype-domain-statbar">
-      <article><Users size={18}/><small>Visible employees</small><strong>{people.length}</strong></article>
+      <article><Users size={18}/><small>{admin?"Active employees matching search":"My employee record"}</small><strong>{people.length}</strong></article>
       <article><CalendarDays size={18}/><small>Leave awaiting review</small><strong>{leave.filter(r=>r.status==="Submitted").length}</strong></article>
       <article><GraduationCap size={18}/><small>Incomplete learning</small><strong>{training.filter(r=>r.status!=="Complete").length}</strong></article>
       <article><ClipboardList size={18}/><small>Pending timecards</small><strong>{pendingTimecards.length}</strong></article>
@@ -66,6 +70,7 @@ export function PeopleExperience(){
     </div>
     {admin&&<p role="status" className="prototype-note">HR readiness counts are based on loaded personnel records and signed-original evidence requirements. Zero records here would not certify legal onboarding, identity verification, tax setup or retention.</p>}
     <Pane label={admin?"Employee register":"My employee profile"}>
+      {admin&&<button type="button" onClick={()=>navigateToRoute("/people/directory")}>Review personnel status &amp; separated history</button>}
       <div className="prototype-controls">
         <label className="prototype-search"><Search size={16}/><input aria-label="Search employees" placeholder="Find employee or department" value={query} onChange={e=>setQuery(e.target.value)}/></label>
         <div className="prototype-controls-right">
@@ -73,9 +78,9 @@ export function PeopleExperience(){
           <button type="button" onClick={()=>setDescending(d=>!d)}><ArrowDownUp size={15}/>{descending?"Descending":"Ascending"}</button>
         </div>
       </div>
-      <div className="prototype-people-grid">{people.map(({user,employment})=><article key={user.id} className="prototype-employee-card">
+      <div className="prototype-people-grid">{people.map(({user,employment,effective})=><article key={user.id} className="prototype-employee-card">
         <div className="prototype-employee-avatar" aria-hidden="true">{user.initials}</div>
-        <div><strong>{user.name}</strong><span>{employment?.jobTitle??user.title}</span><small>{user.team} · {employment?.status??"Not configured"}</small></div>
+        <div><strong>{user.name}</strong><span>{employment?.jobTitle??user.title}</span><small>{user.team} · {effective.status}</small></div>
       </article>)}</div>
       {!people.length&&<div className="prototype-empty">No matching employee records.</div>}
     </Pane>

@@ -34,7 +34,7 @@ export function HrLeaveReviewExperience(){
  const records=assigned.filter(r=>(filter==="all"||r.status===filter)&&
    [r.reason,r.id,r.status,data.users.find(u=>u.id===r.userId)?.name??""].join(" ").toLowerCase().includes(query.toLowerCase()))
    .sort((a,b)=>b.submittedAt.localeCompare(a.submittedAt)||a.id.localeCompare(b.id));
- const selected=assigned.find(r=>r.id===selectedId)??records[0];
+ const selected=records.find(r=>r.id===selectedId)??records[0];
  const pending=assigned.filter(r=>r.status==="Submitted");
  const unresolved=assigned.filter(r=>r.status==="Returned");
  const currentBalance=selected?.policyId?ptoBalance(hcm,selected.userId,selected.policyId,selected.startDate):null;
@@ -98,7 +98,7 @@ export function HrLeaveReviewExperience(){
  };
  return <div className="prototype-domain prototype-domain--people">
   <header className="prototype-heading"><h1>HR · Time Off & Leave Review</h1>
-    <p>Manage employee leave requests, manager decisions and recorded PTO usage. Staff submit their own time-off requests under My Account, not in this administration queue.</p></header>
+    <p>Manage employee leave requests, manager decisions and recorded PTO usage. Staff submit their own time-off requests under My Account, not in this administration queue.</p><button type="button" onClick={()=>navigateToRoute("/my-account/time-off")}>My time-off requests</button></header>
   <div className="prototype-domain-statbar">
    <article><small>Submitted awaiting HR review</small><strong>{pending.length}</strong></article>
    <article><small>Returned for employee correction</small><strong>{unresolved.length}</strong></article>

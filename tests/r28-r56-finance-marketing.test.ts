@@ -36,3 +36,11 @@ test("R56 Campaigns and Marketing Operations share one navigation entry without 
  const page=readFileSync("components/prototype/marketing-workspace-experience.tsx","utf8");
  assert(page.includes('navigateToRoute("/marketing/workflow")'));
 });
+
+test("Marketing connected writes never advertise success after rejected commits",()=>{
+ const queue=readFileSync("components/marketing/production-queue.tsx","utf8");
+ const files=readFileSync("components/marketing/asset-library.tsx","utf8");
+ assert.equal((queue.match(/if\(!saved\.ok\)throw/g)||[]).length,2);
+ assert.equal((files.match(/if\(!saved\.ok\)throw/g)||[]).length,2);
+ assert.match(files,/updateTime:snapshot.updateTime/);
+});

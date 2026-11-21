@@ -29,7 +29,10 @@ module.exports = {
       "src/live-test-product.ts",
       "src/staff-meetings.ts", "src/staff-meeting-policy.ts",
       "src/payment-provider-port.ts", "src/trusted-crm-contact.ts",
-      "src/trusted-crm-deal.ts", "src/trusted-hr-template-assignment.ts"],
+      "src/trusted-crm-deal.ts", "src/trusted-hr-template-assignment.ts",
+      "src/purchasing-api.ts",
+      "src/purchasing-policy.ts", "src/rep-self-delivery.ts",
+      "src/customer-documents.ts"],
     rules: {"require-jsdoc": "off", "valid-jsdoc": "off"},
   }],
   plugins: [

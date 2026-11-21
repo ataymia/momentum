@@ -1,4 +1,5 @@
 "use client";
+import {CustomerDocumentWorkspace} from "./customer-document-workspace";
 
 import {useMemo,useState} from "react";
 import {downloadCsv} from "../../lib/browser-export";
@@ -80,19 +81,20 @@ export function CrmCustomerDocuments({customer,locations,invoices,invoiceReadAut
     {title:"Resale / exemption certificate",status:customer?.taxDocumentType&&customer.taxDocumentType!=="Undetermined"?customer.taxDocumentType:"Unverified / not recorded",detail:customer?.taxExemptionStatus??"No verified certificate record available"},
     {title:"Arizona TPT registration reference",status:customer?.azTptLicenseNumber?"Reference on file":"Not recorded",detail:"A recorded number does not establish verified registration or resale eligibility"},
     {title:"Customer onboarding package",status:customer?.onboardingPackageStatus??"Not started",detail:"Status is metadata; signed files and version-specific evidence require provider verification"},
-    {title:"Customer-location attachments",status:"Not available in this register",detail:"No authenticated document vault or approved customer-level attachments source is connected"},
+
   ];
   const visible=records.filter(r=>[r.title,r.status,r.detail].join(" ").toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a,b)=>(ascending?1:-1)*(String(a[sort]).localeCompare(String(b[sort]),undefined,{numeric:true})||a.title.localeCompare(b.title)));
   const heading=(field:typeof sort,label:string)=><th aria-sort={sort===field?(ascending?"ascending":"descending"):"none"}><button type="button" onClick={()=>{if(field===sort)setAscending(v=>!v);else{setSort(field);setAscending(true);}}}>{label}</button></th>;
   return <section className="prototype-panel" aria-label="Customer document status">
     <h2>Documents and compliance records</h2>
-    <p className="prototype-note">Source-backed customer onboarding metadata only. This screen does not create, sign, verify or download documents. A missing document is not silently treated as complete.</p>
+    <p className="prototype-note">Source-backed customer onboarding metadata only. The private archive below is separate from legal and tax verification. A missing document is not silently treated as complete.</p>
     <label>Search document status <input type="search" aria-label="Search customer documents" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Category, status or evidence"/></label>
     <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>{heading("title","Document category")}{heading("status","Recorded status")}{heading("detail","Evidence limitation")}</tr></thead>
       <tbody>{visible.map(record=><tr key={record.title}><td>{record.title}</td><td>{record.status}</td><td>{record.detail}</td></tr>)}</tbody>
     </table></div>
-    <p className="prototype-note">{locations.length} authorized locations share this recorded billing parent. Uploaded files, signed-original verification and secure download permissions remain blocked pending an approved document provider.</p>
+    <p className="prototype-note">{locations.length} authorized locations share this recorded billing parent. File intake and review do not establish legal or tax validity.</p>
+    {currentUser.role==="Administrator"&&locations.length>0&&<CustomerDocumentWorkspace allowedIds={locations.map(l=>l.id)}/>}
     <h3>Invoices and transaction documents</h3>
     <p className="prototype-note">Invoices below are linked to recorded delivered orders. Open the original invoice record to review its details or use the authorized print workflow. An invoice record is not proof of an uploaded signed document or cleared payment.</p>
     {invoiceReadAuthorized

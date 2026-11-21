@@ -92,8 +92,14 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
   const loadDirectory=useCallback(async(current:UserAccessRecord)=>{
     let users:WorkspaceUser[]=[];
     try{
+      if(current.role==="Customer"){
+        const self=await getFirestoreSnapshot(`${EMPLOYEE_DIRECTORY_COLLECTION}/${current.uid}`);
+        const entry=normalizeDirectoryEntry(current.uid,self.data);
+        users=entry?[entry]:[];
+      }else{
       const snapshots=await listFirestoreSnapshots(EMPLOYEE_DIRECTORY_COLLECTION);
       users=snapshots.map((item)=>normalizeDirectoryEntry(item.path.split("/").pop()??"",item.data)).filter((item):item is WorkspaceUser=>Boolean(item));
+      }
     }catch(caught){
       if(!(caught instanceof FirestoreRequestError&&caught.status===403))throw caught;
       const self=await getFirestoreSnapshot(`${EMPLOYEE_DIRECTORY_COLLECTION}/${current.uid}`);
@@ -377,7 +383,7 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
       if(current)await loadDirectory(current);
       // Fetch the committed assignment release now, rather than waiting on background polling.
       const refreshed=await momentumStorage.refreshKeys([
-        "momentum-demo-workspace-v5","momentum-commercial-controls-v1",
+        "momentum-demo-workspace-v5","momentum-commercial-controls-v1","momentum-hcm-v4",
       ]);
       return{ok:true,message:`Employee access revoked. ${result.releasedAccountIds.length} accounts released, ${result.releasedAppointmentIds.length} open appointments unassigned for review, and ${result.suspendedTerritoryIds.length} territories suspended. Historical records retained.${refreshed.ok?"":" Current workspace has unsaved edits; appointment changes will appear after cloud sync."}${result.authDisabled?"":" Firebase Auth identity was already missing."}`};
     }catch(caught){

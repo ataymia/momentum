@@ -10,6 +10,7 @@ import { useCommerce } from "../../lib/commerce-context";
 import { useDelivery } from "../../lib/delivery-context";
 import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
 import { orderLinesFor } from "../../lib/order-lines";
+import {reconcileInvoicePdfLines} from "../../functions/src/invoice-line-reconciliation";
 import { invoicePrintPages } from "../../lib/invoice-print-pages";
 import {legalBillingName} from "../../lib/legal-billing-name";
 import {invoicePlacerLabel} from "../../lib/invoice-placer-name";
@@ -85,9 +86,9 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       setPrintNotice("Select at least one invoice to print.");
       return;
     }
-    if (!invoiceIssueApproved) {
-      setPrintNotice("Invoice printing is on hold until the issuer and customer-facing invoice details are approved.");
-      return;
+    if(invoiceIssueApproved){
+      const blocked=unique.map(id=>invoices.find(row=>row.id===id)!).map(invoice=>({invoice,check:reconcileInvoicePdfLines(invoice,data.orders.find(order=>order.id===invoice.orderId))})).find(row=>!row.check.ok);
+      if(blocked&&!blocked.check.ok){setPrintNotice("Invoice "+blocked.invoice.number+" requires reconciliation: "+blocked.check.reason);return;}
     }
     if (typeof window.print !== "function") {
       setPrintNotice("This browser does not expose a print dialog. Open the invoice preview in a browser that supports printing.");
@@ -109,6 +110,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
     const location = data.accounts.find((item) => item.id === invoice.accountId);
     const customer = location ? customerForLocation(data, location) : undefined;
     const lines = invoice.linesSnapshot?.length ? invoice.linesSnapshot : order ? orderLinesFor(order) : [];
+    const lineReview=reconcileInvoicePdfLines(invoice,order);
     const deliveryTask = order ? taskForOrder(order.id) : undefined;
     const deliverySignature = deliveryTask?.signature;
     const adminConfirmedDelivery = !deliverySignature &&
@@ -131,7 +133,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
           <Image className="invoice-sheet__brand-logo" src={invoiceBrandSrc} width={1536} height={1024} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" priority unoptimized />
           <div className="invoice-sheet__issuer-copy"><strong>{company.name}</strong><span>Golden Eagle distribution</span><span>{company.street}</span><span>{company.cityStateZip}</span></div>
         </div>
-        <div className="invoice-sheet__title"><h1>INVOICE</h1></div>
+        <div className="invoice-sheet__title"><h1>{invoiceIssueApproved?"INVOICE":"INVOICE • INTERNAL REVIEW"}</h1>{!invoiceIssueApproved&&<strong>NOT FOR CUSTOMER ISSUANCE</strong>}{!lineReview.ok&&<strong>RECONCILIATION REQUIRED</strong>}</div>
       </header>
 
       <section className="invoice-sheet__legacy-grid">
@@ -192,11 +194,11 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
 
   return <>
     <Section title={title} description={description}>
-      {!invoiceIssueApproved && <p role="status" className="form-notice invoice-print-notice">Internal invoice preview only. External printing is paused until the authorized issuer information is approved.</p>}
+      {!invoiceIssueApproved && <p role="status" className="form-notice invoice-print-notice">Internal invoice printing and PDF review are available. Every page is marked NOT FOR CUSTOMER ISSUANCE until the invoice approval gate is cleared.</p>}
       <div className="invoice-print-toolbar">
         <Button type="button" size="sm" variant="secondary" icon={allSelected ? <CheckSquare2 size={15}/> : <Square size={15}/>} onClick={toggleAll}>{allSelected ? "Clear all" : "Select all"}</Button>
         <label className="invoice-copy-select"><span>Copies per invoice</span><select value={copies} onChange={(event) => setCopies(Number(event.target.value) as Copies)}><option value={1}>1 copy</option><option value={2}>2 copies</option></select></label>
-        <Button type="button" size="sm" icon={<Printer size={15}/>} disabled={!invoiceIssueApproved||!selectedIds.length} onClick={() => startPrint(selectedIds)}>Print selected ({selectedIds.length})</Button><Button type="button" size="sm" variant="secondary" icon={<Printer size={15}/>} disabled={!invoiceIssueApproved||!invoices.some(invoice=>invoice.status!=="Void")} onClick={() => startPrint(invoices.filter(invoice=>invoice.status!=="Void").map(invoice=>invoice.id))}>Print all active ({invoices.filter(invoice=>invoice.status!=="Void").length})</Button>
+        <Button type="button" size="sm" icon={<Printer size={15}/>} disabled={!selectedIds.length} onClick={() => startPrint(selectedIds)}>Print selected ({selectedIds.length})</Button><Button type="button" size="sm" variant="secondary" icon={<Printer size={15}/>} disabled={!invoices.some(invoice=>invoice.status!=="Void")} onClick={() => startPrint(invoices.filter(invoice=>invoice.status!=="Void").map(invoice=>invoice.id))}>Print all active ({invoices.filter(invoice=>invoice.status!=="Void").length})</Button>
       </div>
       {printNotice && <p className="form-notice invoice-print-notice" role="status">{printNotice}</p>}
 
@@ -211,11 +213,11 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
           task.orderId===invoice.orderId&&task.status==="Delivered")||
           deliveryState.overrides.some((record)=>record.orderId===invoice.orderId));
         const billingBlocked=isConfirmedDelivered&&!billingCustomer?.billingEmail?.trim();
-        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{order?invoicePlacerLabel(placedBy?.name):"Not recorded"}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill>{billingBlocked&&<small role="status">Billing email required for delivery invoice.</small>}</span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => setPreviewId(invoice.id)}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} disabled={!invoiceIssueApproved} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
+        return <div className="finance-order-row invoice-register__row" key={invoice.id}><span><button type="button" className="invoice-check" aria-label={`${checked ? "Deselect" : "Select"} ${invoice.number}`} aria-pressed={checked} onClick={() => toggleInvoice(invoice.id)}>{checked ? <CheckSquare2 size={18}/> : <Square size={18}/>}</button></span><span><strong>{invoice.number}</strong></span><span>{location?.locationName ?? location?.name}</span><span>{order?invoicePlacerLabel(placedBy?.name):"Not recorded"}</span><span>{formatMoney(invoice.total)}</span><span>{formatMoney(balance)}</span><span><StatusPill tone={status === "Paid" ? "success" : status === "Void" ? "danger" : "warning"}>{status}</StatusPill>{billingBlocked&&<small role="status">Billing email required for delivery invoice.</small>}</span><span className="invoice-row-actions"><Button type="button" size="sm" variant="secondary" icon={<FileText size={14}/>} onClick={() => setPreviewId(invoice.id)}>View</Button><Button type="button" size="sm" icon={<Printer size={14}/>} onClick={() => startPrint([invoice.id])}>Print</Button></span></div>;
       })}{invoices.length === 0 && <div className="review-empty"><FileText size={24}/><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}</div>
     </Section>
 
-    <Modal open={Boolean(previewId)} title={previewId ? commerce.invoices.find((invoice) => invoice.id === previewId)?.number ?? "Invoice" : "Invoice"} description={invoiceIssueApproved?"Print-ready invoice preview":"Internal review only. Invoice issuing has not been approved."} onClose={() => setPreviewId(null)} wide footer={<><Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>Close</Button>{previewId && <Button type="button" icon={<Printer size={15}/>} disabled={!invoiceIssueApproved} onClick={() => startPrint([previewId])}>Print / Save PDF</Button>}</>}><div className="invoice-preview-shell">{preview}</div></Modal>
+    <Modal open={Boolean(previewId)} title={previewId ? commerce.invoices.find((invoice) => invoice.id === previewId)?.number ?? "Invoice" : "Invoice"} description={invoiceIssueApproved?"Print-ready invoice preview":"Internal print / PDF review only. Customer issuance has not been approved."} onClose={() => setPreviewId(null)} wide footer={<><Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>Close</Button>{previewId && <Button type="button" icon={<Printer size={15}/>} onClick={() => startPrint([previewId])}>Print / Save PDF</Button>}</>}><div className="invoice-preview-shell">{preview}</div></Modal>
 
     {printPortal}
   </>;

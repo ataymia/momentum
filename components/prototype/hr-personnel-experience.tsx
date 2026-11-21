@@ -10,6 +10,7 @@ import {activeCompensation} from "../../lib/hcm-engine";
 import {downloadCsv} from "../../lib/browser-export";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useRuntimeMode} from "../../lib/runtime-mode";
+import {canOpenHrProvisioning} from "../../lib/hr-provisioning-access";
 import {momentumStorage} from "../../lib/persistence";
 
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
@@ -21,9 +22,10 @@ export function HrPersonnelDirectory(){
   const {data,currentUser}=useWorkspace();const {hcm}=useHcm();
   const firebase=useFirebaseSessionOptional();
   const [query,setQuery]=useState("");
-  const [status,setStatus]=useState("all");
+  const [status,setStatus]=useState("Active");
   const [sort,setSort]=useState<"name"|"team"|"status"|"hireDate">("name");
   const [reverse,setReverse]=useState(false);
+  const [repairNote,setRepairNote]=useState("");const [repairBusy,setRepairBusy]=useState(false);
   const roster=useMemo(()=>data.users.filter(u=>u.role!=="Customer").map(user=>{
     const employment=hcm.employees.find(e=>e.userId===user.id);
     const access=firebase?.accessRecords[user.id];
@@ -37,38 +39,45 @@ export function HrPersonnelDirectory(){
       return value(a).localeCompare(value(b))*(reverse?-1:1);
     }),[roster,query,status,sort,reverse]);
   if(currentUser?.role!=="Administrator")return <div className="prototype-empty">Personnel records require Administrator access.</div>;
+  const reconcileFormer=async(uid:string)=>{
+    if(!firebase||repairBusy||!roster.some(row=>row.user.id===uid&&row.effective.status==="Separated"))return;
+    const reason=window.prompt("Confirm this employee was separated and provide the HR record/reconciliation reason.");
+    if(!reason||reason.trim().length<5)return;
+    setRepairBusy(true);try{const result=await firebase.separateEmployeeAccount(uid,reason.trim());setRepairNote(result.message??(result.ok?"Separation recorded; verify refreshed HR and access status.":"Could not reconcile separation."));}catch{setRepairNote("Separation unconfirmed. Check employee access and record history.");}finally{setRepairBusy(false);}
+  };
   const exportRoster=()=>downloadCsv("momentum-employee-roster.csv",list.map(({user,employment,effective,identityState})=>({
     employeeNumber:employment?.employeeNumber??"",name:user.name,department:employment?.department??user.team,jobTitle:employment?.jobTitle??user.title,location:employment?.location??"",role:user.role,employmentStatus:effective.status,hrStatus:employment?.status??"Not configured",identityState,requiresReconciliation:effective.needsReconciliation?"Yes":"No",issue:effective.issue??"",hireDate:employment?.hireDate??"",manager:data.users.find(u=>u.id===employment?.managerId)?.name??""
   })),["employeeNumber","name","department","jobTitle","location","role","employmentStatus","hrStatus","identityState","requiresReconciliation","issue","hireDate","manager"]);
   return <div className="prototype-domain prototype-domain--people momentum-personnel-directory">
     <header className="prototype-heading"><div><span className="page-header__eyebrow">Human Resources / Personnel</span><h1>Employee records</h1><p>Search real employee records, reporting lines, employment status, training and verified HR document metadata. Compensation exports stay separate.</p></div></header>
     <div className="prototype-domain-statbar">
-      <article><UserRound size={18}/><small>Employees in directory</small><strong>{data.users.filter(u=>u.role!=="Customer").length}</strong></article>
-      <article><UserRound size={18}/><small>Active employment records</small><strong>{roster.filter(row=>row.effective.status==="Active").length}</strong></article>
+      <article><UserRound size={18}/><small>Active employees in directory</small><strong>{roster.filter(row=>row.effective.status==="Active").length}</strong></article>
+      <article><UserRound size={18}/><small>Separated employee records</small><strong>{roster.filter(row=>row.effective.status==="Separated").length}</strong></article>
       <article><UserRound size={18}/><small>Identity / HR discrepancies</small><strong>{roster.filter(row=>row.effective.needsReconciliation).length}</strong></article>
       <article><FileText size={18}/><small>Missing HR documents</small><strong>{hcm.documents.filter(d=>d.status==="Missing").length}</strong></article>
     </div>
     <section className="prototype-panel">
       <div className="prototype-controls">
         <label className="prototype-search"><input aria-label="Search employee directory" placeholder="Find employee, email, team, employee number" value={query} onChange={event=>setQuery(event.target.value)}/></label>
-        <label>Status <select value={status} onChange={event=>setStatus(event.target.value)}><option value="all">All</option>{(["Prehire","Active","Leave","Separated","Suspended","Onboarding","Unverified"] as const).map(s=><option key={s}>{s}</option>)}</select></label>
+        <label>Status <select value={status} onChange={event=>setStatus(event.target.value)}><option value="Active">Active directory</option><option value="Separated">Separated employee history</option><option value="all">All personnel records</option>{(["Prehire","Leave","Suspended","Onboarding","Unverified"] as const).map(s=><option key={s}>{s}</option>)}</select></label>
         <label>Sort <select value={sort} onChange={event=>setSort(event.target.value as typeof sort)}><option value="name">Employee name</option><option value="team">Department</option><option value="status">Employment status</option><option value="hireDate">Hire date</option></select></label>
         <button type="button" onClick={()=>setReverse(v=>!v)}>{reverse?"Descending":"Ascending"}</button>
         <button type="button" disabled={!list.length} onClick={exportRoster}><Download size={15}/> Export visible roster</button>
       </div>
       <div className="prototype-table-scroll"><table className="prototype-table momentum-personnel-table">
         <thead><tr><th>Employee</th><th>Number</th><th>Department</th><th>Job title</th><th>Status</th><th>Hire date</th><th>Profile</th></tr></thead><tbody>
-        {list.map(({user,employment,effective})=><tr key={user.id}><td><div className="momentum-personnel-person"><span className="momentum-personnel-avatar" aria-hidden="true">{user.initials}</span><span><strong>{user.name}</strong><small className="prototype-description">{user.email}</small></span></div></td><td>{employment?.employeeNumber??"Not assigned"}</td><td>{employment?.department??user.team}</td><td>{employment?.jobTitle??user.title}</td><td>{effective.status}{effective.needsReconciliation&&<small className="prototype-description">Review discrepancy: {effective.issue}</small>}</td><td>{employment?.hireDate??"Not recorded"}</td><td><button type="button" className="prototype-link" onClick={()=>navigateToRoute(profilePath(user.id))}>Open profile</button></td></tr>)}
+        {list.map(({user,employment,effective})=><tr key={user.id}><td><div className="momentum-personnel-person"><span className="momentum-personnel-avatar" aria-hidden="true">{user.initials}</span><span><strong>{user.name}</strong><small className="prototype-description">{user.email}</small></span></div></td><td>{employment?.employeeNumber??"Not assigned"}</td><td>{employment?.department??user.team}</td><td>{employment?.jobTitle??user.title}</td><td>{effective.status}{effective.needsReconciliation&&<small className="prototype-description">Review discrepancy: {effective.issue}</small>}</td><td>{employment?.hireDate??"Not recorded"}</td><td><button type="button" className="prototype-link" onClick={()=>navigateToRoute(profilePath(user.id))}>Open profile</button>{firebase?.status==="ready"&&effective.status==="Separated"&&user.role!=="Administrator"&&<button type="button" disabled={repairBusy} onClick={()=>void reconcileFormer(user.id)}>Reconcile separation</button>}</td></tr>)}
         </tbody></table></div>
         {!list.length&&<div className="prototype-empty">No employee records match these filters.</div>}
     </section>
+    {repairNote&&<p role="status" className="prototype-note">{repairNote}</p>}
     <p className="prototype-note">Roster exports exclude private contact details, tax identifiers, benefits and compensation. Statuses are reconciled read-only from HR and identity sources; discrepancies require HR action and do not automatically revoke access or alter historical records.</p>
   </div>;
 }
 
 export function HrPersonnelRecord({id,section="overview"}:{id:string;section?:string}){
   const {data,currentUser}=useWorkspace();const {hcm}=useHcm();
-  const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
+  const runtime=useRuntimeMode();const firebase=useFirebaseSessionOptional();const writeEnabled=canOpenHrProvisioning({actor:currentUser,isDemo:runtime.isDemo,storageMode:momentumStorage.mode(),firebase});
   if(currentUser?.role!=="Administrator")return <div className="prototype-empty">Employee records require Administrator access.</div>;
   const user=data.users.find(u=>u.id===id&&u.role!=="Customer");
   if(!user)return <div className="prototype-empty">Employee not found.</div>;

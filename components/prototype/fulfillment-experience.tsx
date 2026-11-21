@@ -282,7 +282,6 @@ export function DeliveryOperationsDirectory(){
   return <div><Title heading="Delivery Operations" subtitle="Traceable orders, driver assignment, proof of delivery and inventory posting exceptions from existing records."/>
     {["Administrator","Operations"].includes(currentUser.role)&&<div className="prototype-controls">
       <button type="button" onClick={()=>setTab("scheduling")}>Open field scheduling board</button>
-      <button type="button" className="prototype-link" onClick={()=>navigateToRoute("/inventory/shipments")}>Shipment workflow & assignments</button>
     </div>}
     <Summary stats={[{label:"Orders in workflow",value:summary.length},{label:"Unassigned orders",value:summary.filter(x=>!x.task).length},{label:"Reconciliation exceptions",value:summary.filter(x=>Boolean(x.issue)).length},{label:"Delivered with recorded proof",value:summary.filter(x=>x.complete&&x.proof).length}]}/>
     <section className="prototype-panel"><div className="prototype-commerce-filters">
@@ -296,7 +295,7 @@ export function DeliveryOperationsDirectory(){
       {rows.map(x=><tr key={x.order.id}><td><RecordLink path={"/inventory/shipments/"+encodeURIComponent(x.order.id)}>{x.order.number}</RecordLink></td>
         <td>{accounts.get(x.order.accountId)?.name??"Restricted"}</td><td>{showDate(x.order.placedAt)}</td><td>{x.order.cases}</td>
         <td>{x.task?users.get(x.task.driverId)??"Recorded driver ID":"Unassigned"}</td><td>{x.status}</td>
-        <td>{x.delivered}</td><td>{x.proof?"Signature recorded":"Not verified"}</td><td>{x.issue??"No detected discrepancy"}</td><td><RecordLink path={"/inventory/shipments/"+encodeURIComponent(x.order.id)}>Review shipment workflow</RecordLink></td></tr>)}</tbody></table></div>
+        <td>{x.delivered}</td><td>{x.proof?"Signature recorded":"Not verified"}</td><td>{x.issue??"No detected discrepancy"}</td><td><RecordLink path={"/inventory/shipments/"+encodeURIComponent(x.order.id)}>Open shipment details</RecordLink></td></tr>)}</tbody></table></div>
       {!rows.length&&<p className="prototype-empty">No recorded delivery orders match these filters.</p>}
       <Note/>
       <p className="prototype-note">An administrator override is not a substitute for missing stock posting. Assignments, field signatures and stock movement changes remain in their authorized workflows. Field appointment scheduling is available above. Delivery-driver assignment, signed custody, and inventory movements remain in the shipment workflow. Connected dispatch mutation and route optimization still require separate authorization.</p>

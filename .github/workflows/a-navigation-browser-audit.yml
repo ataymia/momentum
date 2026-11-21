@@ -54,8 +54,9 @@ jobs:
         run: npm run build
       - name: Install ephemeral Playwright browser (no production connections)
         run: |
-          npm install --no-save --ignore-scripts --package-lock=false playwright@1.55.1
-          npx playwright install --with-deps chromium
+          npm install --prefix "$RUNNER_TEMP/momentum-browser" --no-save --ignore-scripts --package-lock=false playwright@1.55.1
+          ln -s "$RUNNER_TEMP/momentum-browser/node_modules/playwright" node_modules/playwright
+          node "$RUNNER_TEMP/momentum-browser/node_modules/playwright/cli.js" install --with-deps chromium
       - name: Check synthetic desktop/tablet/mobile navigation in local Hosting emulator
         run: npx --yes firebase-tools@15.30.1 emulators:exec --only hosting --project demo-momentum-browser --config firebase.architecture-smoke.json 'node scripts/a-premerge-browser.mjs'
       - name: Save synthetic UI screenshots

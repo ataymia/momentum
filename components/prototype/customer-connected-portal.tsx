@@ -5,13 +5,14 @@ import {currentFirebaseSession} from "../../lib/firebase-auth-rest";
 import {firebaseFunctionUrl} from "../../lib/firebase-functions";
 import {downloadCsv} from "../../lib/browser-export";
 import {CustomerOrderRequest} from "./customer-order-request";
+import {navigateToRoute} from "../../lib/navigation-store";
 import type {CustomerFinanceSnapshot} from "../../functions/src/customer-commerce-projection";
 
-type Section="orders"|"invoices"|"account"|"deliveries";
+type Section="orders"|"invoices"|"account"|"deliveries"|"products";
 type ViewState={kind:"loading"|"ready"|"error";data:CustomerFinanceSnapshot|null;message:string};
 type Payload=Partial<CustomerFinanceSnapshot>&{ok?:boolean;error?:string};
 const cash=(amount:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(amount);
-export function CustomerConnectedPortal({section}:{section:Section}){
+export function CustomerConnectedPortal({section,id}:{section:Section;id?:string}){
  const [view,setView]=useState<ViewState>({kind:"loading",data:null,message:""});
  const [version,setVersion]=useState(0);
  const [query,setQuery]=useState(""),[location,setLocation]=useState("all");
@@ -38,7 +39,7 @@ export function CustomerConnectedPortal({section}:{section:Section}){
   };
   void load();return()=>{mounted=false;};
  },[version]);
- const title={orders:"My Orders",invoices:"My Invoices",account:"My Account",deliveries:"My Deliveries"}[section];
+ const title={orders:"My Orders",invoices:"My Invoices",account:"My Account",deliveries:"My Deliveries",products:"Products & Order Requests"}[section];
  // A delivery is not the same thing as a placed or cancelled sales order.
  // Until server PODs are available, show only order states indicating dispatch
  // or delivery and disclose that the status is not signature evidence.
@@ -46,7 +47,7 @@ export function CustomerConnectedPortal({section}:{section:Section}){
  const records=view.data?(section==="invoices"?view.data.statements:
    section==="deliveries"?view.data.orders.filter(order=>deliveryStates.has(order.status)):
    view.data.orders):[];
- const rows=records.filter(item=>(location==="all"||item.accountId===location)&&
+ const rows=records.filter(item=>(!id||item.id===id)&&(location==="all"||item.accountId===location)&&
   (query.trim()===""||[item.id,item.status,("invoice" in item?item.invoice:item.number)].join(" ").toLowerCase().includes(query.trim().toLowerCase())))
   .sort((a,b)=>{
     const value=(r:typeof records[number]):number|string=>{
@@ -62,13 +63,14 @@ export function CustomerConnectedPortal({section}:{section:Section}){
  const setSortColumn=(key:typeof sort)=>{if(sort===key)setAsc(x=>!x);else{setSort(key);setAsc(true);}};
  const heading=(key:typeof sort,label:string)=><button type="button" aria-label={"Sort by "+label} onClick={()=>setSortColumn(key)}>{label}<ArrowUpDown size={14}/></button>;
  return <div><header className="prototype-heading"><h1>{title}</h1><p>Authenticated business-location records, read only. Source status is not independent proof of payment or signed delivery.</p></header>
+   {id&&<button type="button" onClick={()=>navigateToRoute("/portal/"+section)}>Back to {title}</button>}
    <section className="prototype-panel">
      <button type="button" onClick={()=>{setView({kind:"loading",data:null,message:""});setVersion(v=>v+1);}}><RefreshCw size={14}/> Refresh records</button>
      {view.kind==="loading"&&<p role="status">Loading authorized records…</p>}
      {view.kind==="error"&&<p role="alert">{view.message}</p>}
      {view.kind==="ready"&&view.data&&<>
-       {section==="orders"&&<CustomerOrderRequest accounts={view.data.accounts} onSubmitted={()=>setVersion(v=>v+1)}/> }
-       {section==="account"?<>
+       {(section==="orders"||section==="products")&&!id&&<CustomerOrderRequest accounts={view.data.accounts} onSubmitted={()=>setVersion(v=>v+1)}/> }
+       {section==="products"?<p>Submit case quantities for commercial review. Confirmed pricing, availability and payment are separate steps.</p>:section==="account"?<>
         <h2>Authorized retail locations</h2>
         {view.data.accounts.map(account=><dl key={account.id} className="prototype-facts">
          <div><dt>Business</dt><dd>{account.name}</dd></div><div><dt>Location</dt><dd>{account.location}</dd></div>
@@ -87,12 +89,13 @@ export function CustomerConnectedPortal({section}:{section:Section}){
         <button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-"+section+".csv",rows,section==="invoices"?["invoice","date","status","amount","cleared","pending","credits","balance","due"]:["number","placedAt","status","cases"])}>Export visible records (CSV)</button>
         <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>{heading("number",section==="invoices"?"Invoice":"Order")}</th><th>{heading("date","Date")}</th><th>{heading("status","Status")}</th><th>{heading("amount",section==="invoices"?"Amount":"Cases")}</th>{section==="invoices"&&<th>Balance</th>}</tr></thead>
          <tbody>{rows.map(row=><tr key={row.id}>
-          <td>{"invoice" in row?row.invoice:row.number}</td>
+          <td>{id?("invoice" in row?row.invoice:row.number):<button type="button" className="prototype-link" onClick={()=>navigateToRoute("/portal/"+section+"/"+encodeURIComponent(row.id))}>{"invoice" in row?row.invoice:row.number}</button>}</td>
           <td>{"date" in row?row.date:row.placedAt}</td><td>{row.status}</td>
           <td>{"invoice" in row?cash(row.amount):row.cases}</td>
           {section==="invoices"&&<td>{"balance" in row?cash(row.balance):""}</td>}
          </tr>)}</tbody></table></div>
-        {section==="orders"&&<section aria-label="Submitted product requests">
+        {id&&section==="invoices"&&rows.length===1&&"invoice" in rows[0]&&<dl className="prototype-facts"><div><dt>Due</dt><dd>{rows[0].due||"Not recorded"}</dd></div><div><dt>Cleared</dt><dd>{cash(rows[0].cleared)}</dd></div><div><dt>Pending</dt><dd>{cash(rows[0].pending)}</dd></div><div><dt>Credits</dt><dd>{cash(rows[0].credits)}</dd></div></dl>}
+        {section==="orders"&&!id&&<section aria-label="Submitted product requests">
          <h3>Submitted requests and review status</h3>
          {!view.data.requestHistoryAvailable&&<p role="status">Request history is temporarily unavailable. Refresh records; do not assume no requests exist.</p>}
          {view.data.requestHistoryAvailable&&!(view.data.requests??[]).filter(item=>location==="all"||item.accountId===location).length&&<p className="prototype-note">No verified requests in the recent records for this location.</p>}

@@ -44,6 +44,7 @@ const RECORD_ROUTES: readonly RecordRouteDefinition[] = [
   { pattern: /^\/crm\/contacts\/new$/, page: "accounts", label: "New contact", prototype: true },
   { pattern: /^\/crm\/contacts\/[^/]+$/, page: "accounts", label: "Contact details", prototype: true },
   { pattern: /^\/admin\/employee-profiles\/[^/]+(?:\/(?:overview|time|documents|training|compensation))?$/, page: "settings", label: "Employee profile", prototype: true },
+  { pattern: /^\/portal\/invoices\/[^/]+$/, page: "orders", label: "Customer invoice details", prototype: true },
   { pattern: /^\/portal\/orders\/[^/]+$/, page: "orders", label: "Order details", prototype: true },
   { pattern: /^\/portal\/deliveries\/[^/]+$/, page: "orders", label: "Delivery details", prototype: true },
 ];
