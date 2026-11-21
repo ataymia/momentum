@@ -222,10 +222,18 @@ export function OrderApprovalDirectory(){
     }catch{setNotice("Could not verify the decision. Inspect sync status before trying again.");}
     finally{setInFlight("");}
   };
+  if(!runtime.isDemo)return <div>
+   <header className="prototype-heading"><h1>Approvals</h1>
+    <p>Review submitted commercial requests. Open a request, then approve or decline. A reason is required only when declining.</p>
+   </header>
+   {currentUser?.role==="Administrator"
+    ?<ConnectedOrderIntakeQueue/>
+    :<section className="prototype-panel"><p className="prototype-note">Commercial order decisions require an authorized Administrator. Other departmental approvals remain in their respective workspaces.</p></section>}
+  </div>;
   return <div>
     <header className="prototype-heading"><h1>Approvals</h1><p>Order decisions, team requests, priority and status history. Order approval remains Administrator-governed.</p></header>
     <DemoGuard isDemo={runtime.isDemo}/>
-    {!runtime.isDemo&&currentUser?.role==="Administrator"&&<ConnectedOrderIntakeQueue/>}
+
     <div className="prototype-metrics"><div><small>Open order approval requests</small><strong>{pending}</strong></div><div><small>Matching approvals</small><strong>{records.length}</strong></div><div><small>Authority</small><strong>{currentUser?.role==="Administrator"?"Administrator":"View only"}</strong></div></div>
     <section className="prototype-panel"><h2>Sales order approvals</h2>
       <div className="prototype-commerce-filters">

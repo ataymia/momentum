@@ -9,13 +9,14 @@ const uid=/^[A-Za-z0-9_-]{1,128}$/;
 const retryId=/^[A-Za-z0-9_-]{16,80}$/;
 const intakeIdPattern=/^intake-[0-9a-f-]{36}$/;
 const transitions:Record<OrderIntakeStage,OrderIntakeStage[]>={
- "Needs commercial review":["Needs clarification","Pricing and inventory verification","Declined"],
- "Needs clarification":["Needs commercial review","Pricing and inventory verification","Declined"],
- "Pricing and inventory verification":["Needs commercial review","Needs clarification","Declined"],
+ "Needs commercial review":["Approved","Declined"],
+ "Needs clarification":["Approved","Declined"],
+ "Pricing and inventory verification":["Approved","Declined"],
+ "Approved":[],
  "Declined":[],
 };
 type Receipt={intakeId:string;status:OrderIntakeStage;reviewRevision:number;reviewedAt:string;replayed:boolean};
-/** Nonbinding, server-authorized review with compare-and-set and idempotency.
+/** Final commercial intake review with compare-and-set and idempotency.
  * Never quotes, invoices, reserves inventory, charges funds, or pays commissions.
  * @param {string} actorUid Verified Firebase caller.
  * @param {unknown} rawDecision Untrusted state and reason.
@@ -39,8 +40,8 @@ export async function decideTrustedOrderIntake(
   !Object.prototype.hasOwnProperty.call(transitions,expected)||
   !transitions[expected].includes(status)||typeof expectedRevision!=="number"||
   !Number.isSafeInteger(expectedRevision)||expectedRevision<0||
-  reason.length<10||reason.length>1000)
-  throw new OrderIntakeError(400,"Invalid stage transition or review reason.");
+  (status==="Declined"?(reason.length<10||reason.length>1000):reason.length!==0))
+  throw new OrderIntakeError(400,"Choose Approve or Decline. Only a decline requires a reason of 10–1000 characters.");
  const fingerprint=createHash("sha256").update(JSON.stringify({
   intakeId,expectedStatus:expected,expectedRevision,nextStatus:status,reason,
  })).digest("hex");
@@ -76,7 +77,7 @@ export async function decideTrustedOrderIntake(
   tx.create(keyRef,{intakeId,actorUid,status,reviewRevision,reviewedAt,fingerprint,auditId});
   tx.create(db.doc("commerceOrderIntakeReviewAudit/"+auditId),{
    id:auditId,intakeId,actorUid,before:expected,after:status,reviewRevision,reviewedAt,
-   reason,source:"Trusted nonbinding review",financialPosting:false,
+   reason,source:"Trusted commercial intake decision",financialPosting:false,
   });
   return{intakeId,status,reviewRevision,reviewedAt,replayed:false};
  });

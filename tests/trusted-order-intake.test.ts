@@ -40,6 +40,11 @@ test("R33 authenticated only, readback-safe and no financial or inventory mutati
  assert(form.includes("nonbinding review request"));
  assert(queue.includes("listConnectedOrderIntakes"));
  assert(queue.includes("Load older source requests"));
+ assert.match(queue,/decide\("Approved"\)/);
+ assert.match(queue,/decide\("Declined"\)/);
+ assert.match(queue,/requestedByName/);
+ assert.match(queue,/accountName/);
+ assert.doesNotMatch(queue,/Save nonbinding review|Pricing and inventory verification<\/option>|Next stage <select/);
  assert(queue.includes("getConnectedOrderIntake"));
  assert(src.includes("pageTrustedOrderIntakes"));
  assert(endpoints.includes("pageTrustedOrderIntakes(actor,payload.cursor)"));
@@ -99,4 +104,19 @@ test("R33 intake replay and customer receipt authorization require current role 
  const queue=readFileSync("components/commerce/connected-order-intake-queue.tsx","utf8");
  assert.match(queue,/expectedRevision:selected\.reviewRevision\?\?0/);
  assert.match(queue,/readback\.reviewRevision!==receipt\.reviewRevision/);
+});
+
+test("Approval workflow and requester feedback use trusted server with decline-only reason",()=>{
+ const review=readFileSync("functions/src/trusted-order-intake-review.ts","utf8");
+ const intake=readFileSync("functions/src/trusted-order-intake.ts","utf8");
+ const own=readFileSync("components/commerce/my-connected-order-intakes.tsx","utf8");
+ assert.match(review,/status==="Declined"/);
+ assert.match(review,/"Needs commercial review":\["Approved","Declined"\]/);
+ assert.match(review,/"Approved":\[\]/);
+ assert.match(review,/reason.length!==0/);
+ assert.match(intake,/requestedByName/);
+ assert.match(intake,/accountName/);
+ assert.match(intake,/listOwnTrustedOrderIntakes/);
+ assert.match(own,/declineReason/);
+ assert.match(own,/Refresh my requests/);
 });

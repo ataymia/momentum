@@ -6,16 +6,18 @@ import {customerAccountIds} from "./customer-commerce-projection";
 type Row=Record<string,unknown>;
 type OrderLine={skuId:string;description:string;casePack:number;cases:number};
 type IntakeDraft={accountId:string;lines:OrderLine[];note:string};
-export type OrderIntakeStage="Needs commercial review"|"Needs clarification"|"Pricing and inventory verification"|"Declined";
+export type OrderIntakeStage="Needs commercial review"|"Needs clarification"|"Pricing and inventory verification"|"Approved"|"Declined";
 export type OrderIntakeRecord={
  id:string;accountId:string;customerId:string;requestedByUid:string;
  ownerAtSubmission:string;createdAt:string;status:OrderIntakeStage;
  reviewRevision?:number;reviewedAt?:string;reviewedBy?:string;reviewReason?:string;
+ /** Server-resolved labels for authorized staff; never accept labels from the requester. */
+ requestedByName?:string;accountName?:string;
  lines:OrderLine[];totalCases:number;note:string;source:string;
 };
 type IntakeReceipt={intakeId:string;createdAt:string;status:OrderIntakeStage;replayed:boolean};
 export type CustomerIntakeReceiptRecord=Pick<OrderIntakeRecord,
- "id"|"accountId"|"requestedByUid"|"createdAt"|"status"|"lines"|"totalCases">;
+ "id"|"accountId"|"requestedByUid"|"createdAt"|"status"|"lines"|"totalCases"> &{declineReason?:string};
 const catalog=[
  {skuId:"ge-original-250ml-24",description:"0.25L (8.4oz) Golden Eagle Energy Drink (24pack)",casePack:24},
  {skuId:"ge-sugarfree-250ml-24",description:"0.25L (8.4oz) Golden Eagle SugarFree (24pack)",casePack:24},
@@ -190,7 +192,13 @@ export async function getTrustedOrderIntake(
    throw new OrderIntakeError(403,"An active authorized account identity is required.");
   const record=intakeSnap.data() as OrderIntakeRecord|undefined;
   if(!record)throw new OrderIntakeError(404,"Order intake not found.");
-  if(role==="Administrator")return record;
+  if(role==="Administrator"){
+   const account=records(accountsSnap.data()).find(row=>text(row.id)===record.accountId);
+   const requester=record.requestedByUid===actorUid?directorySnap.data():
+    (await tx.get(db.doc("employeeDirectory/"+record.requestedByUid))).data();
+   return{...record,accountName:text(account?.name)||"Account name unavailable",
+    requestedByName:text(requester?.name)||text(requester?.email)||"Requester name unavailable"};
+  }
   if(record.requestedByUid!==actorUid)
    throw new OrderIntakeError(403,"Order intake is outside your scope.");
   if(role==="Customer"&&!customerAccountIds(access,directorySnap.data()).includes(record.accountId))
@@ -204,7 +212,8 @@ export async function getTrustedOrderIntake(
    return{id:record.id,accountId:record.accountId,requestedByUid:record.requestedByUid,
     createdAt:record.createdAt,status:record.status,totalCases:record.totalCases,
     lines:record.lines.map(line=>({skuId:line.skuId,description:line.description,
-     casePack:line.casePack,cases:line.cases}))};
+     casePack:line.casePack,cases:line.cases})),
+    ...(record.status==="Declined"?{declineReason:record.reviewReason||"Declined; contact your sales representative."}:{})};
   }
   return record;
  });
@@ -259,10 +268,44 @@ export async function pageTrustedOrderIntakes(
  const limit=40;
  const results=await query.limit(limit+1).get();
  const visible=results.docs.slice(0,limit);
+ const originals=visible.map(doc=>doc.data() as OrderIntakeRecord);
+ const accountsSnap=await db.doc("domains/workspace/fields/accounts").get();
+ const accountNames=new Map(records(accountsSnap.data()).map(row=>[text(row.id),text(row.name)]));
+ const requesterIds=[...new Set(originals.map(row=>row.requestedByUid))].filter(id=>actorIdPattern.test(id));
+ const requesters=await Promise.all(requesterIds.map(id=>db.doc("employeeDirectory/"+id).get()));
+ const requesterNames=new Map(requesters.map((snap,i)=>[
+  requesterIds[i],text(snap.data()?.name)||text(snap.data()?.email),
+ ]));
  return{
-  records:visible.map(doc=>doc.data() as OrderIntakeRecord),
+  records:originals.map(row=>({...row,
+   accountName:accountNames.get(row.accountId)||"Account name unavailable",
+   requestedByName:requesterNames.get(row.requestedByUid)||"Requester name unavailable",
+  })),
   limit,
   nextCursor:results.docs.length>limit?
    visible[visible.length-1].id:null,
  };
+}
+
+/** Return only the signed-in requester's latest decisions, including decline feedback.
+ * No customer financial data or other people's requests are returned.
+ * @param {string} actorUid Verified Firebase user.
+ * @return {Promise<object>} Recent request outcomes.
+ */
+export async function listOwnTrustedOrderIntakes(actorUid:string):Promise<Array<{
+ id:string;status:OrderIntakeStage;createdAt:string;totalCases:number;declineReason?:string;
+}>>{
+ if(!actorIdPattern.test(actorUid))throw new OrderIntakeError(400,"Invalid requester.");
+ const db=getFirestore();
+ const access=(await db.doc("userAccess/"+actorUid).get()).data();
+ if(text(access?.accountState)!=="Active"||
+  !["Administrator","Sales Manager","Sales Representative","Customer"].includes(text(access?.role)))
+  throw new OrderIntakeError(403,"Active account access required.");
+ const result=await db.collection("commerceOrderIntakes").where("requestedByUid","==",actorUid)
+  .orderBy("createdAt","desc").limit(30).get();
+ return result.docs.map(doc=>{
+  const data=doc.data() as OrderIntakeRecord;
+  return{id:data.id,status:data.status,createdAt:data.createdAt,totalCases:data.totalCases,
+   ...(data.status==="Declined"?{declineReason:data.reviewReason||"Declined. Contact the reviewer."}:{})};
+ });
 }
