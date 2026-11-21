@@ -126,3 +126,19 @@ export async function listMyConnectedOrderIntakes(session:FirebaseAuthSession):P
   throw new Error("My submitted request status could not be verified.");
  return result.records;
 }
+
+/** Prepare an approved request using confirmed price and payment terms. */
+export async function prepareConnectedApprovedIntake(
+ session:FirebaseAuthSession,intakeId:string,
+ pricing?:{pricePerCase:number;terms:"COD"|"Prepaid"|"Net 7"|"Net 15"|"Net 30"|"Custom";priceEvidence:string},
+):Promise<{status:"Prepared"|"Needs pricing";orderId?:string;invoiceId?:string;message:string}>{
+ const response=await fetch(firebaseFunctionUrl("prepareApprovedOrderIntake"),{
+  method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.idToken},
+  body:JSON.stringify({intakeId,...(pricing?{pricing}:{})}),
+ });
+ const result=await response.json().catch(()=>null) as {ok?:boolean;status?:"Prepared"|"Needs pricing";orderId?:string;invoiceId?:string;message?:string}|null;
+ if(!response.ok||result?.ok!==true||!result.status)
+  throw new Error(result?.message||"Order preparation unconfirmed. Check Orders before retrying.");
+ return{status:result.status,orderId:result.orderId,invoiceId:result.invoiceId,
+  message:result.message||"Order preparation reviewed."};
+}
