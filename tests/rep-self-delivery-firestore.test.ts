@@ -132,7 +132,11 @@ test("assigned delivery enforces driver custody and independent recipient proof"
       d("delivery/fields/overrides").set({items:[]}),
       d("periodLocks/fields/locks").set({items:[]}),
     ]);
+    // Drivers cannot probe an unassigned order or another driver's custody.
+    await assert.rejects(()=>commit(other,{action:"status",orderId}),/Only the assigned driver/);
     await commit(admin,{action:"assign",orderId,driverId:driver});
+    await assert.rejects(()=>commit(other,{action:"status",orderId}),/Only the assigned driver/);
+    assert.equal((await commit(driver,{action:"status",orderId})).taskStatus,"Accepted");
     await assert.rejects(()=>commit(other,{action:"pack",orderId}));
     await commit(admin,{action:"pack",orderId});
     await commit(driver,{action:"load",orderId});
