@@ -48,6 +48,18 @@ test("vendor names with inconsistent internal whitespace cannot bypass duplicate
   assert.equal(original.vendors.length,1);
   assert.equal(original.audit.length,1);
 });
+test("malformed vendor contact payloads fail closed without changing state",()=>{
+  const original=emptyPurchasingState();
+  for(const contact of [undefined,null,123,{},["contact"],"x".repeat(1001)]){
+    const action={kind:"vendor.add",name:"QA Supplier",contact} as unknown as PurchaseAction;
+    const rejected=act(original,admin,action);
+    assert.equal(rejected.ok,false,"Malformed contact must reject rather than throw.");
+    assert.equal(rejected.state,original);
+    assert.equal(original.vendors.length,0);
+    assert.equal(original.audit.length,0);
+  }
+  assert.equal(success(original,admin,{kind:"vendor.add",name:"QA Supplier",contact:""}).vendors.length,1);
+});
 test("purchase order requires verified vendor, positive quantities and cost",()=>{
   const s=emptyPurchasingState();
   assert.equal(act(s,operations,po("missing")).ok,false);
