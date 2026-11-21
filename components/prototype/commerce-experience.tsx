@@ -6,6 +6,8 @@
  * approvals are prototyped separately with local-only demo mutation guards.
  * No payment, invoice issuance or email is triggered from this file.
  */
+import {ApprovedIntakeOrders} from "../orders/approved-intake-orders";
+import {MyConnectedOrderIntakes} from "../commerce/my-connected-order-intakes";
 import {useMemo,useState} from "react";
 import {ArrowLeft,ArrowUpDown,ExternalLink,Search} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
@@ -105,8 +107,8 @@ export function OrdersDirectory(){
     }),[scope.orders,status,rep,from,to,query,accountById,userById,sorter.field,sorter.direction]);
   const options=[...new Set(scope.orders.filter(o=>!o.testOnly).map(o=>o.status))].sort();
   const repIds=[...new Set(scope.orders.flatMap(o=>[o.ownerId,o.creditedRepId].filter((id):id is string=>Boolean(id))))];
-  return <div><Title title="Sales Orders" detail="Dedicated order register with customer, owner, volume and fulfillment status. Each order has its own URL."/>
-    {currentUser?.role!=="Customer"&&canCreateOrder(currentUser)&&<div className="prototype-page-actionbar"><button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/sales/orders/new")}>Create sales order</button><span className="prototype-note">New order review and submission are available in local demo only until production acceptance.</span></div>}
+  return <div><Title title="Sales Orders" detail="Approved requests stay visible here, including those awaiting price verification. Prepared orders have linked draft invoices."/><ApprovedIntakeOrders/>{currentUser?.role==="Sales Representative"&&<MyConnectedOrderIntakes/>}
+    {currentUser?.role!=="Customer"&&canCreateOrder(currentUser)&&<div className="prototype-page-actionbar"><button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/sales/orders/new")}>Create sales order</button><span className="prototype-note">Connected orders begin as requests, become approved commercial intakes and then produce a priced sales order and draft invoice.</span></div>}
     <CatalogSummary data={[{label:"Visible orders",value:rows.length},{label:"Cases in filtered orders",value:rows.reduce((n,o)=>n+o.cases,0)},{label:"Non-cancelled order value",value:money(rows.filter(o=>o.status!=="Cancelled").reduce((n,o)=>n+o.amount,0))}]}/>
     <section className="prototype-panel"><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statusOptions={options} from={from} setFrom={setFrom} to={to} setTo={setTo} searchLabel="Search orders, accounts, rep" repOptions={repIds.map(id=>({id,name:userById.get(id)??id})).sort((a,b)=>a.name.localeCompare(b.name))} rep={rep} setRep={setRep}/>
       <div className="prototype-table-scroll momentum-order-desktop-table"><table className="prototype-table"><thead><tr>
@@ -167,7 +169,7 @@ export function OrderDetail({id}:{id:string}){
   const lines=o.lines??(o.product?[{id:o.id,product:o.product,cases:o.cases,pricePerCase:o.pricePerCase,amount:o.amount}]:[]);
   const owner=data.users.find(u=>u.id===o.ownerId);
   const rep=data.users.find(u=>u.id===o.creditedRepId);
-  const canEdit=Boolean(currentUser?.id&&["Draft","Awaiting approval","Approved"].includes(o.status)&&
+  const canEdit=Boolean(!o.sourceIntakeId&&currentUser?.id&&["Draft","Awaiting approval","Approved"].includes(o.status)&&
     (currentUser.role==="Administrator"||(["Sales Representative","Sales Manager"].includes(currentUser.role)&&o.ownerId===currentUser.id)));
   return <div><Title title={"Order "+o.number} detail={"Customer: "+customerName} back="/sales/orders"/>
     <CatalogSummary data={[{label:"Order status",value:o.status},{label:"Cases",value:o.cases},{label:"Order value",value:money(o.amount)}]}/>
@@ -180,7 +182,7 @@ export function OrderDetail({id}:{id:string}){
         <Fact label="Customer" value={account?<Link url={"/sales/customers/"+encodeURIComponent(account.id)}>{account.name} · {account.location}</Link>:"Not available"}/>
         <Fact label="Placed" value={showDate(o.placedAt)}/><Fact label="Created by" value={owner?.name??"Unknown"}/>
         <Fact label="Credited sales rep" value={rep?.name??"Not assigned"}/><Fact label="Price basis" value={o.priceBasis}/>
-        <Fact label="Approval" value={approval?approval.status:"Not linked"}/><Fact label="Payment" value={o.paymentStatus}/>
+        <Fact label="Approval" value={o.sourceIntakeId?"Approved commercial intake · "+o.sourceIntakeId:approval?approval.status:"Not linked"}/><Fact label="Payment" value={o.paymentStatus}/>
         <Fact label="Invoice" value={invoice&&canAccessPage(currentUser,"orderCash")?<Link url={"/sales/invoices/"+encodeURIComponent(invoice.id)}>{invoice.number}</Link>:"Not available"}/>
       </dl></section>
       <section className="prototype-panel"><h2>Fulfillment & custody</h2>
@@ -284,12 +286,14 @@ export function InvoiceDetail({id}:{id:string}){
   const reconciliationPending=reconciliationAlerts.length>0;
   const status=computedInvoiceStatus(commerce,invoice);
   return <div><Title title={"Invoice "+invoice.number} detail={"Customer: "+(account?.name??"Restricted")} back="/sales/invoices"/>
+    {invoice.status==="Draft"&&<p className="prototype-note" role="status">Internal draft invoice. Confirm price, tax treatment, customer billing information and fulfillment requirements before customer issuance or payment collection. This draft has not been sent.</p>}
     <CatalogSummary data={[{label:"Invoice record amount",value:money(invoice.total)},{label:"Applied cleared payments",value:reconciliationPending?"Review required":money(paid)},{label:"Unpaid balance",value:reconciliationPending?"Review required":money(balance)}]}/>
     <div className="prototype-columns">
       <section className="prototype-panel"><h2>Invoice details</h2><dl className="prototype-facts">
         <Fact label="Status" value={reconciliationPending?"Review required":<Status value={status}/>}/><Fact label="Recorded date" value={showDate(invoice.issuedAt)}/><Fact label="Due date" value={showDate(invoice.dueDate)}/><Fact label="Terms" value={invoice.terms}/>
         <Fact label="Customer" value={account?<Link url={"/sales/customers/"+encodeURIComponent(account.id)}>{account.name}</Link>:"Restricted"}/>
         <Fact label="Sales order" value={order?<Link url={"/sales/orders/"+encodeURIComponent(order.id)}>{order.number}</Link>:"Not linked"}/>
+        {order?.sourceIntakeId&&<Fact label="Approved request" value={order.sourceIntakeId}/>}
         <Fact label="Aging" value={reconciliationPending?"Review required":arAgingBucket(invoice,balance)}/>
         <Fact label="Applied credits" value={money(credit)}/>
         <Fact label="Pending payments" value={money(pending)}/>

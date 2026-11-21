@@ -332,6 +332,8 @@ export type Order = {
   /** Sales Representative credited for commission, when different from the owner. */
   creditedRepId?: string;
   sourcePlacementId?: string;
+  /** Source-approved order request retained for idempotent order-to-invoice tracing. */
+  sourceIntakeId?: string;
   inventoryAvailableAtOrder?: number;
   lowStockApprovalRequired?: boolean;
   /** Authoritative SKU breakdown. Legacy single-SKU orders may omit this and are treated as one line. */

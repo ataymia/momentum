@@ -289,6 +289,7 @@ export function OrderApprovalDirectory(){
 export function OrderApprovalSummary({order}:{order:Order}){
   const {data,scope,currentUser}=useWorkspace();
   const approval=approvalForOrder(scope.approvals,order.id);
+  if(order.sourceIntakeId)return <p className="prototype-note">Approved commercial intake {order.sourceIntakeId}. Pricing is recorded on the order. Inventory, delivery and customer invoice issuance have separate controls.</p>;
   if(!approval)return <p className="prototype-note">No canonical approval record found. Fulfillment remains subject to the existing approval rules.</p>;
   return <div className="prototype-work-list"><span>{approval.type} · {approval.status} · {valueDate(approval.submittedAt)}</span>
     {approval.status==="Pending"&&currentUser&&canReviewApproval(data,currentUser,approval)?

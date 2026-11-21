@@ -13,6 +13,8 @@ export type OrderIntakeRecord={
  reviewRevision?:number;reviewedAt?:string;reviewedBy?:string;reviewReason?:string;
  /** Server-resolved labels for authorized staff; never accept labels from the requester. */
  requestedByName?:string;accountName?:string;
+ preparationStatus?:"Prepared"|"Needs pricing";preparationMessage?:string;
+ orderId?:string;invoiceId?:string;
  lines:OrderLine[];totalCases:number;note:string;source:string;
 };
 type IntakeReceipt={intakeId:string;createdAt:string;status:OrderIntakeStage;replayed:boolean};

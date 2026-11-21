@@ -28,6 +28,7 @@ import {saveTrustedCrmContact,TrustedCrmContactError} from "./trusted-crm-contac
 import {saveTrustedCrmDeal,TrustedCrmDealError} from "./trusted-crm-deal";
 import {submitTrustedOrderIntake,getTrustedOrderIntake,pageTrustedOrderIntakes,listOwnTrustedOrderIntakes,OrderIntakeError} from "./trusted-order-intake";
 import {decideTrustedOrderIntake} from "./trusted-order-intake-review";
+import {prepareTrustedApprovedIntake} from "./trusted-order-intake-preparation";
 import {registerTrustedHrTemplate,listTrustedHrTemplates,TrustedHrTemplateError} from "./trusted-hr-template";
 import {uploadTrustedBlankHrTemplate} from "./trusted-hr-template-upload";
 import {assignTrustedHrTemplate,listTrustedHrAssignments,readTrustedHrAssignedTemplate,HrAssignmentError} from "./trusted-hr-template-assignment";
@@ -2133,6 +2134,28 @@ export const decideOrderIntake=onRequest({cors:true,region:"us-central1"},async(
   }
   console.error("decideOrderIntake failed",error);
   json(response,503,{ok:false,message:"Review not confirmed. Reload source before retrying."});
+ }
+});
+
+/** Prepare or recover exactly one linked order and internal draft invoice. */
+export const prepareApprovedOrderIntake=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+ if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
+ const payload=request.body;
+ if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+   Object.keys(payload).some(k=>!["intakeId","pricing"].includes(k))){
+  json(response,400,{ok:false,message:"Invalid order preparation request."});return;
+ }
+ const token=(request.headers.authorization??"").replace(/^Bearer /,"");
+ let actor:string;
+ try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+ catch{json(response,401,{ok:false,message:"Sign in again."});return;}
+ try{
+  const result=await prepareTrustedApprovedIntake(actor,payload.intakeId,payload.pricing);
+  json(response,200,{ok:true,...result});
+ }catch(error){
+  if(error instanceof OrderIntakeError){json(response,error.status,{ok:false,message:error.message});return;}
+  console.error("Approved intake preparation failed",error);
+  json(response,503,{ok:false,message:"Order preparation unconfirmed. Check Orders before retrying."});
  }
 });
 
