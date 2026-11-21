@@ -156,6 +156,10 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
     const active=tasks.filter((row)=>txt(row.orderId)===orderId&&txt(row.status)!=="Cancelled");
     if(active.length>1)fail(409,"Duplicate delivery assignments require Operations reconciliation.");
     const task=active[0];
+    // A driver may claim an unassigned order, but must not probe the status
+    // of another driver's order or an unassigned order by guessing its ID.
+    if(assigned&&driver&&action==="status"&&(!task||txt(task.driverId)!==actor))
+      fail(403,"Only the assigned driver may inspect this delivery.");
     if(task&&txt(task.driverId)!==actor&&!management)
       fail(409,"Another delivery person has this order. Ask Operations before proceeding.");
     const chosen=action==="assign"?txt(body.driverId):task?txt(task.driverId):actor;
