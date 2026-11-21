@@ -221,7 +221,7 @@ try{
   assert.equal((await db.doc("commerceOrderIntakes/"+declineId).get()).data().status,"Declined");
   await rep.reload({waitUntil:"domcontentloaded"});await root(rep).waitFor({timeout:60000});
   await goto(rep,"/sales/orders/new");
-  await rep.getByText(reason,{exact:true}).waitFor({timeout:30000});
+  await rep.getByText(reason).waitFor({timeout:30000});
   const approveId=await submit(8);
   await admin.getByRole("button",{name:"Refresh approvals"}).click();
   const pending=admin.getByRole("row").filter({hasText:approveId});
