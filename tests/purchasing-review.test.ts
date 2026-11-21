@@ -312,3 +312,10 @@ test("vendor contact text is never silently truncated during registration",()=>{
   assert.equal(invalid.state,valid.state);
   assert.equal(invalid.state.audit.length,1);
 });
+
+test("connected purchasing route changes disable mutations until authoritative reload completes",()=>{
+  const source=readFileSync(new URL("../components/prototype/purchasing-experience.tsx",import.meta.url),"utf8");
+  assert.match(source,/useEffect\(\(\)=>\{\s*if\(!connected\|\|!session\)return;\s*let active=true;\s*\/\/[^\n]*\n\s*setReady\(false\);\s*void connectedPurchasing\(session\)/);
+  assert.match(source,/if\(!currentUser\|\|locked\.current\|\|!ready\)return false/);
+  assert.match(source,/\[connected,session,reload,selected\]/);
+});
