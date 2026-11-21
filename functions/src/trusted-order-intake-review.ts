@@ -2,7 +2,7 @@
 import {createHash,randomUUID} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
 import {OrderIntakeError,type OrderIntakeStage,type OrderIntakeRecord} from "./trusted-order-intake";
-import {prepareApprovedIntakeInTransaction} from "./trusted-order-intake-preparation";
+import {prepareApprovedIntakeInTransaction,parseManualPreparation} from "./trusted-order-intake-preparation";
 type Row=Record<string,unknown>;
 const isRow=(v:unknown):v is Row=>Boolean(v&&typeof v==="object"&&!Array.isArray(v));
 const text=(v:unknown)=>typeof v==="string"?v.trim():"";
@@ -18,14 +18,16 @@ const transitions:Record<OrderIntakeStage,OrderIntakeStage[]>={
 };
 type Receipt={intakeId:string;status:OrderIntakeStage;reviewRevision:number;reviewedAt:string;replayed:boolean;preparationStatus?:string;orderId?:string;invoiceId?:string;preparationMessage?:string};
 /** Final commercial intake review with compare-and-set and idempotency.
- * Never quotes, invoices, reserves inventory, charges funds, or pays commissions.
+ * On approval, creates a priced order and INTERNAL draft invoice atomically, never issuing it.
+ * Never allocates inventory, charges funds, or pays commissions.
  * @param {string} actorUid Verified Firebase caller.
  * @param {unknown} rawDecision Untrusted state and reason.
  * @param {unknown} rawRequestId Retry-stable ID.
+ * @param {unknown} rawPricing Optional documented Administrator price and terms.
  * @return {Promise<Receipt>} Persisted decision receipt.
  */
 export async function decideTrustedOrderIntake(
- actorUid:string,rawDecision:unknown,rawRequestId:unknown,
+ actorUid:string,rawDecision:unknown,rawRequestId:unknown,rawPricing?:unknown,
 ):Promise<Receipt>{
  if(!uid.test(actorUid)||typeof rawRequestId!=="string"||!retryId.test(rawRequestId))
   throw new OrderIntakeError(400,"Invalid review request identifier.");
@@ -37,6 +39,8 @@ export async function decideTrustedOrderIntake(
  const status=text(rawDecision.nextStatus) as OrderIntakeStage;
  const reason=text(rawDecision.reason);
  const expectedRevision=rawDecision.expectedRevision;
+ const manual=parseManualPreparation(rawPricing);
+ if(status!=="Approved"&&manual)throw new OrderIntakeError(400,"Pricing details are allowed only on approval.");
  if(!intakeIdPattern.test(intakeId)||
   !Object.prototype.hasOwnProperty.call(transitions,expected)||
   !transitions[expected].includes(status)||typeof expectedRevision!=="number"||
@@ -44,7 +48,7 @@ export async function decideTrustedOrderIntake(
   (status==="Declined"?(reason.length<10||reason.length>1000):reason.length!==0))
   throw new OrderIntakeError(400,"Choose Approve or Decline. Only a decline requires a reason of 10–1000 characters.");
  const fingerprint=createHash("sha256").update(JSON.stringify({
-  intakeId,expectedStatus:expected,expectedRevision,nextStatus:status,reason,
+  intakeId,expectedStatus:expected,expectedRevision,nextStatus:status,reason,pricing:manual,
  })).digest("hex");
  const db=getFirestore();
  const actorRef=db.doc("userAccess/"+actorUid);
@@ -74,7 +78,12 @@ export async function decideTrustedOrderIntake(
    !Number.isSafeInteger(storedRevision)||storedRevision<0||storedRevision>=Number.MAX_SAFE_INTEGER)
    throw new OrderIntakeError(409,"Intake changed since last read. Refresh before review.");
   const preparation=status==="Approved"?await prepareApprovedIntakeInTransaction(
-   tx,db,{...original.data() as OrderIntakeRecord,status:"Approved"},actorUid,null):null;
+   tx,db,{...original.data() as OrderIntakeRecord,status:"Approved"},actorUid,manual):null;
+  if(status==="Approved"&&(!preparation||preparation.status!=="Prepared"||
+    !preparation.orderId||!preparation.invoiceId))
+   throw new OrderIntakeError(409,"Approval was not saved. "+
+     (preparation?.message??"Confirm authorized price, terms and sales ownership before approval.")+
+     " You can confirm pricing in this review and approve once.");
   const reviewRevision=expectedRevision+1;
   const reviewedAt=new Date().toISOString();
   const auditId="intake-review-"+randomUUID();

@@ -1,4 +1,4 @@
-import type {FirebaseAuthSession} from "./firebase-auth-rest";
+import {currentFirebaseSession,type FirebaseAuthSession} from "./firebase-auth-rest";
 import {firebaseFunctionUrl} from "./firebase-functions";
 
 export type OrderIntakeDraft={
@@ -16,9 +16,18 @@ export type OrderIntakeRecord={
  lines:Array<{skuId:string;description:string;casePack:number;cases:number}>;
  source:string;
 };
+export type AuthorizedIntakePricing={pricePerCase:number;terms:"COD"|"Prepaid"|"Net 7"|"Net 15"|"Net 30"|"Custom";priceEvidence:string};
 export type OrderIntakeReceipt={
  intakeId:string;createdAt:string;replayed:boolean;readbackVerified:boolean;
 };
+/** Every action needs a current token, not the provider's potentially hour-old token. */
+async function activeIntakeSession(previous:FirebaseAuthSession):Promise<FirebaseAuthSession>{
+ const active=await currentFirebaseSession();
+ if(!active||active.uid!==previous.uid)
+  throw new Error("Your Momentum session needs renewal. Sign in again before changing an order.");
+ return active;
+}
+
 /** An authenticated server call, with no local or optimistic success fallback.
  * @param {FirebaseAuthSession} session Signed-in staff session.
  * @param {string} endpoint Trusted order-intake function.
@@ -29,11 +38,12 @@ async function call(
  session:FirebaseAuthSession,endpoint:"submitOrderIntake"|"reviewOrderIntake"|"decideOrderIntake",
  payload:Record<string,unknown>,
 ):Promise<unknown>{
+ const active=await activeIntakeSession(session);
  let response:Response;
  try{
   response=await fetch(firebaseFunctionUrl(endpoint),{
    method:"POST",headers:{
-    authorization:"Bearer "+session.idToken,
+    authorization:"Bearer "+active.idToken,
     "content-type":"application/json",
    },body:JSON.stringify(payload),
   });
@@ -104,15 +114,18 @@ export async function getConnectedOrderIntake(
 export async function decideConnectedOrderIntake(
  session:FirebaseAuthSession,decision:{
   intakeId:string;expectedStatus:OrderIntakeStage;expectedRevision:number;nextStatus:OrderIntakeStage;reason:string;
- },requestId:string,
-):Promise<{intakeId:string;status:OrderIntakeStage;reviewRevision:number;reviewedAt:string;replayed:boolean}>{
- const record=await call(session,"decideOrderIntake",{decision,requestId}) as
-  {intakeId?:string;status?:OrderIntakeStage;reviewRevision?:number;reviewedAt?:string;replayed?:boolean};
+ },requestId:string,pricing?:AuthorizedIntakePricing,
+):Promise<{intakeId:string;status:OrderIntakeStage;reviewRevision:number;reviewedAt:string;replayed:boolean;orderId?:string;invoiceId?:string}>{
+ const record=await call(session,"decideOrderIntake",{decision,requestId,...(pricing?{pricing}:{})}) as
+  {intakeId?:string;status?:OrderIntakeStage;reviewRevision?:number;reviewedAt?:string;replayed?:boolean;orderId?:string;invoiceId?:string};
  if(!record.reviewedAt||record.intakeId!==decision.intakeId||
   record.status!==decision.nextStatus||record.reviewRevision!==decision.expectedRevision+1)
   throw new Error("Review receipt is incomplete. Read source before retrying.");
+ if(decision.nextStatus==="Approved"&&(!record.orderId||!record.invoiceId))
+  throw new Error("Approval did not confirm an order and invoice draft. Refresh the source before trying again.");
  return{intakeId:record.intakeId,status:record.status,
-  reviewRevision:record.reviewRevision,reviewedAt:record.reviewedAt,replayed:Boolean(record.replayed)};
+  reviewRevision:record.reviewRevision,reviewedAt:record.reviewedAt,replayed:Boolean(record.replayed),
+  orderId:record.orderId,invoiceId:record.invoiceId};
 }
 
 /** The signed-in requester's source-backed outcome inbox; visible after refresh or on a new device. */
@@ -130,10 +143,11 @@ export async function listMyConnectedOrderIntakes(session:FirebaseAuthSession):P
 /** Prepare an approved request using confirmed price and payment terms. */
 export async function prepareConnectedApprovedIntake(
  session:FirebaseAuthSession,intakeId:string,
- pricing?:{pricePerCase:number;terms:"COD"|"Prepaid"|"Net 7"|"Net 15"|"Net 30"|"Custom";priceEvidence:string},
+ pricing?:AuthorizedIntakePricing,
 ):Promise<{status:"Prepared"|"Needs pricing";orderId?:string;invoiceId?:string;message:string}>{
+ const active=await activeIntakeSession(session);
  const response=await fetch(firebaseFunctionUrl("prepareApprovedOrderIntake"),{
-  method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.idToken},
+  method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+active.idToken},
   body:JSON.stringify({intakeId,...(pricing?{pricing}:{})}),
  });
  const result=await response.json().catch(()=>null) as {ok?:boolean;status?:"Prepared"|"Needs pricing";orderId?:string;invoiceId?:string;message?:string}|null;

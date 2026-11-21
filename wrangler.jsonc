@@ -15,9 +15,9 @@
   "assets": {
     "directory": "./out",
     "binding": "ASSETS",
-    // Serves out/404.html with a 404 status. Not "single-page-application": the app renders
-    // one route ("/") and navigates by state, not by URL, so there are no deep links to rewrite.
-    "not_found_handling": "404-page",
+    // Browser-history URLs like /sales/orders must serve the app shell on reload/back.
+    // Keep /api/* Worker-first for the privileged provisioning endpoints.
+    "not_found_handling": "single-page-application",
     // Everything outside /api/* is a static file and never invokes the script.
     "run_worker_first": ["/api/*"]
   },

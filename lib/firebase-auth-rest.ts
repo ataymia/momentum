@@ -23,6 +23,7 @@ type UpdateResponse={localId:string;email?:string;idToken:string;refreshToken:st
 const SESSION_KEY="momentum-firebase-session-v1";
 const SESSION_CHANNEL="momentum-firebase-session-channel-v1";
 const EXPIRY_SAFETY_MS=60_000;
+let refreshPending:Promise<FirebaseAuthSession>|null=null;
 
 function authErrorMessage(payload:unknown){
   if(!payload||typeof payload!=="object")return"Authentication request failed.";
@@ -114,8 +115,17 @@ export async function refreshFirebaseSession(session:FirebaseAuthSession):Promis
   const body=new URLSearchParams({grant_type:"refresh_token",refresh_token:session.refreshToken});
   const response=await fetch(`https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(config.apiKey)}`,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body});
   const payload=await response.json().catch(()=>null) as RefreshResponse|null;
-  if(!response.ok||!payload?.user_id||!payload.id_token||!payload.refresh_token){persistFirebaseSession(null);throw new Error(authErrorMessage(payload));}
+  if(!response.ok||!payload?.user_id||!payload.id_token||!payload.refresh_token){
+    const code=(payload as {error?:{message?:string}}|null)?.error?.message??"";
+    // A temporary network or Firebase outage must not erase a recoverable signed-in session.
+    if(["INVALID_REFRESH_TOKEN","TOKEN_EXPIRED","USER_DISABLED","USER_NOT_FOUND"].includes(code))persistFirebaseSession(null);
+    throw new Error(authErrorMessage(payload));
+  }
   const refreshed:FirebaseAuthSession={...session,uid:payload.user_id,idToken:payload.id_token,refreshToken:payload.refresh_token,expiresAt:expiresAt(payload.expires_in)};
+  const latest=readFirebaseSession();
+  // Do not resurrect an old session after sign-out or switching accounts mid-refresh.
+  if(!latest||latest.uid!==session.uid)throw new Error("Sign-in session changed during refresh.");
+  if(latest.refreshToken!==session.refreshToken&&latest.expiresAt>session.expiresAt)return latest;
   persistFirebaseSession(refreshed);
   return refreshed;
 }
@@ -124,7 +134,10 @@ export async function currentFirebaseSession():Promise<FirebaseAuthSession|null>
   const session=readFirebaseSession();
   if(!session)return null;
   if(session.expiresAt-Date.now()>EXPIRY_SAFETY_MS)return session;
-  try{return await refreshFirebaseSession(session);}catch{return null;}
+  // Several modules may request a token simultaneously when a tab wakes up.
+  // Refresh once and share the result instead of racing rotating refresh tokens.
+  if(!refreshPending)refreshPending=refreshFirebaseSession(session).finally(()=>{refreshPending=null;});
+  try{return await refreshPending;}catch{return null;}
 }
 
 export async function updateFirebasePassword(session:FirebaseAuthSession,newPassword:string):Promise<FirebaseAuthSession>{

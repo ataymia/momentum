@@ -42,9 +42,12 @@ const approve=async(name,id)=>decideTrustedOrderIntake(admin,{
 test("Existing approved request stays recoverable; one manual confirmation prepares only one order and internal draft invoice",async()=>{
  await setup();
  const id=await submit("old",12);
- const approval=await approve("old",id);
+ // Grandfather an intake approved by the old workflow, before atomic preparation existed.
+ await db.doc("commerceOrderIntakes/"+id).update({
+  status:"Approved",reviewRevision:1,reviewedAt:new Date().toISOString(),
+ });
+ const approval=(await db.doc("commerceOrderIntakes/"+id).get()).data();
  assert.equal(approval.status,"Approved");
- assert.equal(approval.preparationStatus,"Needs pricing");
  assert.equal((await items("domains/commercial/fields/orders")).length,0);
  assert.equal((await items("domains/commerce/fields/invoices")).length,0);
  const manual={pricePerCase:27.5,terms:"COD",priceEvidence:"Approved buyer price agreement QA-2026"};
@@ -81,6 +84,25 @@ test("Existing approved request stays recoverable; one manual confirmation prepa
  assert.equal(saved.invoiceId,invoices[0].id);
  assert.equal(saved.preparationStatus,"Prepared");
 });
+test("New approval cannot become Approved without an order and invoice; documented terms allow one-step conversion",async()=>{
+ await db.doc("domains/commercial/fields/_root").set({data:{}});
+ const id=await submit("one-step",6);
+ await assert.rejects(()=>approve("one-step",id),e=>e.status===409&&/Approval was not saved/.test(e.message));
+ assert.equal((await db.doc("commerceOrderIntakes/"+id).get()).data().status,"Needs commercial review");
+ const manual={pricePerCase:24,terms:"COD",priceEvidence:"Signed owner price approval dated 2026-11-21"};
+ const receipt=await decideTrustedOrderIntake(admin,{
+  intakeId:id,expectedStatus:"Needs commercial review",expectedRevision:0,nextStatus:"Approved",reason:""
+ },key("one-step-with-price"),manual);
+ assert.equal(receipt.status,"Approved");
+ assert.equal(receipt.preparationStatus,"Prepared");
+ const [orders,invoices]=await Promise.all([
+  items("domains/commercial/fields/orders"),items("domains/commerce/fields/invoices"),
+ ]);
+ assert.equal(orders.filter(item=>item.sourceIntakeId===id).length,1);
+ assert.equal(invoices.filter(item=>item.sourceIntakeId===id).length,1);
+ assert.equal(invoices.find(item=>item.sourceIntakeId===id).status,"Draft");
+ assert.equal((await db.doc("commerceOrderIntakes/"+id).get()).data().orderId,receipt.orderId);
+});
 test("Active documented price and COD automatically create linked order/invoice when approved",async()=>{
  await db.doc("domains/commercial/fields/_root").set({data:{
   accountPatches:{[account]:{programPricePerCase:24,programPricingStatus:"Active",programPricingLabel:"Owner approved QA program"}},
@@ -102,8 +124,12 @@ test("Malformed source quantity and unsupported credit terms cannot silently gen
  await db.doc("domains/commercial/fields/_root").set({data:{}});
  await db.doc("domains/workspace/fields/customers").set({items:[{id:customer,name:"QA Customer",paymentTerms:"Net 30",creditStatus:"Pending"}]});
  const id=await submit("no-credit",9);
- const approved=await approve("no-credit",id);
- assert.equal(approved.preparationStatus,"Needs pricing");
+ await assert.rejects(()=>approve("no-credit",id),e=>e.status===409);
+ assert.equal((await db.doc("commerceOrderIntakes/"+id).get()).data().status,"Needs commercial review");
+ // Reproduce a second legacy-approved record for the recovery-only path.
+ await db.doc("commerceOrderIntakes/"+id).update({
+  status:"Approved",reviewRevision:1,reviewedAt:new Date().toISOString(),
+ });
  const manual={pricePerCase:24,terms:"Net 30",priceEvidence:"QA unauthorised net terms"};
  await assert.rejects(()=>prepareTrustedApprovedIntake(admin,id,manual),e=>e.status===409);
  const receipt={pricePerCase:24,terms:"COD",priceEvidence:"QA confirmed payment before delivery"};
