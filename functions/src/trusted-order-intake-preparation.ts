@@ -21,6 +21,10 @@ const arizonaToday=()=>{
  const get=(type:string)=>values.find(part=>part.type===type)?.value??"";
  return get("year")+"-"+get("month")+"-"+get("day");
 };
+/** Validate explicit manual pricing evidence and invoice terms.
+ * @param {unknown} raw Operator-supplied information.
+ * @return {ManualTerms|null} Validated terms or no override.
+ */
 export function parseManualPreparation(raw:unknown):ManualTerms|null{
  if(raw===null||raw===undefined)return null;
  if(!row(raw)||Object.keys(raw).some(k=>!["pricePerCase","terms","priceEvidence"].includes(k)))
@@ -172,7 +176,7 @@ export async function prepareTrustedApprovedIntake(uid:string,id:unknown,raw:unk
   tx.update(intakeSnap.ref,{
    preparationStatus:result.status,preparationMessage:result.message,
    ...(result.status==="Prepared"?{orderId:result.orderId,invoiceId:result.invoiceId,
-    preparedAt:new Date().toISOString(),preparedBy:uid}:{})
+    preparedAt:new Date().toISOString(),preparedBy:uid}:{}),
   });
   return result;
  });
