@@ -322,3 +322,12 @@ test("connected purchasing route changes disable mutations until authoritative r
   assert.match(source,/if\(!currentUser\|\|locked\.current\|\|!ready\)return false/);
   assert.match(source,/\[connected,session,reload,selected\]/);
 });
+
+
+test("connected purchasing section navigation remounts the authoritative register gate",()=>{
+  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
+  assert.match(view,/key=\{currentUser\.id\+"\:"\+String\(connected\)\+"\:"\+selected\}/);
+  assert.match(view,/const \[ready,setReady\]=useState\(!connected\)/);
+  assert.match(view,/if\(!currentUser\|\|locked\.current\|\|!ready\)return false/);
+  assert.match(view,/if\(connected\)return emptyPurchasingState\(\)/);
+});
