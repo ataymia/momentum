@@ -11,6 +11,7 @@ const db=getFirestore(app);
 const {submitTrustedOrderIntake}=require("../lib/trusted-order-intake.js");
 const {decideTrustedOrderIntake}=require("../lib/trusted-order-intake-review.js");
 const {prepareTrustedApprovedIntake}=require("../lib/trusted-order-intake-preparation.js");
+const {reconcileInvoicePdfLines}=require("../lib/invoice-line-reconciliation.js");
 const tag=randomUUID().slice(0,10);
 const admin="qa-prep-admin-"+tag,rep="qa-prep-rep-"+tag;
 const account="qa-prep-account-"+tag,customer="qa-prep-customer-"+tag;
@@ -68,6 +69,7 @@ test("Existing approved request stays recoverable; one manual confirmation prepa
  assert.equal(invoices[0].total,330);
  assert.equal(invoices[0].linesSnapshot[0].amount,330);
  assert.equal(invoices[0].orderId,orders[0].id);
+ assert.equal(reconcileInvoicePdfLines(invoices[0],orders[0]).ok,true);
  assert.equal((await items("domains/commerce/fields/payments")).length,0);
  assert.equal((await items("domains/workspace/fields/inventory")).length,0);
  const replay=await prepareTrustedApprovedIntake(admin,id,manual);

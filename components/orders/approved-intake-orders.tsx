@@ -20,7 +20,7 @@ export function ApprovedIntakeOrders(){
  const [busy,setBusy]=useState("");
  const [notice,setNotice]=useState("");
  const [details,setDetails]=useState("");
- const [manual,setManual]=useState({pricePerCase:"",terms:"COD",priceEvidence:""});
+ const [manual,setManual]=useState({pricePerCase:"",terms:"",priceEvidence:""});
  useEffect(()=>{
   if(!enabled||!session)return;
   let active=true;
@@ -86,7 +86,7 @@ export function ApprovedIntakeOrders(){
   <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
    <th>Request</th><th>Customer</th><th>Cases</th><th>Order status</th><th>Next action</th>
   </tr></thead><tbody>
-   {approved.map(r=><tr key={r.id}><td>{r.id}</td><td>{accountName(r)}</td><td>{r.totalCases}</td>
+   {approved.map(r=><tr key={r.id}><td>{r.id}</td><td>{accountName(r)}<button type="button" className="prototype-link" onClick={()=>navigateToRoute("/sales/customers/"+encodeURIComponent(r.accountId))}>Open account</button></td><td>{r.totalCases}</td>
     <td>{r.orderId&&r.invoiceId?"Order "+r.orderId+" · invoice draft "+r.invoiceId:"Approved · awaiting order and invoice"}</td>
     <td>{r.orderId&&r.invoiceId?<div className="prototype-controls"><button type="button" onClick={()=>navigateToRoute("/sales/orders/"+encodeURIComponent(r.orderId!))}>Open sales order</button><button type="button" onClick={()=>navigateToRoute("/sales/invoices/"+encodeURIComponent(r.invoiceId!))}>Open invoice draft</button></div>:
      <button type="button" disabled={Boolean(busy)} onClick={()=>void prepare(r.id,false)}>
@@ -101,14 +101,14 @@ export function ApprovedIntakeOrders(){
       </label>
       <label>Customer payment terms<select aria-label={"Approved payment terms "+r.id}
        value={manual.terms} onChange={e=>setManual(v=>({...v,terms:e.target.value}))}>
-       {["COD","Prepaid","Net 7","Net 15","Net 30","Custom"].map(t=><option key={t}>{t}</option>)}
+       <option value="">Select authorized terms</option>{["COD","Prepaid","Net 7","Net 15","Net 30","Custom"].map(t=><option key={t}>{t}</option>)}
       </select></label>
       <label>Price authorization / source
        <textarea aria-label={"Pricing evidence "+r.id} maxLength={240} value={manual.priceEvidence}
         onChange={e=>setManual(v=>({...v,priceEvidence:e.target.value}))}
         placeholder="Record the agreed price approval and its source, not a guess."/>
       </label>
-      <button type="button" disabled={Boolean(busy)||!manual.pricePerCase||manual.priceEvidence.trim().length<10}
+      <button type="button" disabled={Boolean(busy)||!manual.pricePerCase||!manual.terms||manual.priceEvidence.trim().length<10}
        onClick={()=>void prepare(r.id,true)}>Prepare order and draft invoice</button>
      </div>}
     </td>

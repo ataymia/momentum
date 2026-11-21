@@ -119,6 +119,8 @@ export async function prepareApprovedIntakeInTransaction(
  const amount=totalCents/100,price=unitCents/100;
  const stamp=new Date().toISOString();
  const number="GE-"+idsuffix.slice(0,8).toUpperCase()+"-"+idsuffix.slice(-4).toUpperCase();
+ if(orders.some(o=>o.number===number)||invoices.some(i=>i.number==="INV-"+number.replace(/^GE-/,"")))
+  throw new OrderIntakeError(409,"Generated order or invoice number conflicts with existing records.");
  const orderLines=intake.lines.map((l,i)=>({
   id:orderId+"-line-"+(i+1),product:l.description,cases:l.cases,
   pricePerCase:price,amount:l.cases*unitCents/100,inventoryAvailableAtOrder:0,
