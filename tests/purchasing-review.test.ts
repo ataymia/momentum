@@ -191,3 +191,9 @@ test("supplier bill entry excludes fully billed purchase orders",()=>{
   assert.equal(billedCases(s,id),s.orders[0].cases);
   assert.equal(act(s,operations,bill(id,1,1600,"OVERBILL")).ok,false);
 });
+
+test("purchasing currency entry rejects fractional cents rather than silently rounding",()=>{
+  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
+  assert.match(view,/const cents=\(s:string\)=>\/\^\\d\+\(\?:\\\.\\d\{1,2\}\)\?\$\//);
+  assert.match(view,/Number\.NaN/);
+});
