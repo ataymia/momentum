@@ -208,7 +208,7 @@ export function PurchasingExperience({section,id}:{section:string;id?:string}){
   const connected=!runtime.isDemo&&momentumStorage.mode()==="firestore"&&firebaseSession?.status==="ready"&&firebaseSession.session?.uid===currentUser.id&&firebaseSession.access?.accountState==="Active"&&(["Administrator","Operations"].includes(currentUser.role)||(currentUser.role==="Warehouse"&&selected==="receipts"));
   if(!demo&&!connected)return <div><header className="prototype-heading"><h1>{sectionTitles[selected]}</h1></header><p className="prototype-note">An active authorized purchasing session is required. Warehouse staff can record receipts but cannot view supplier prices, payments or bills.</p></div>;
   if(!isClient)return <p className="prototype-note" role="status">Loading purchasing…</p>;
-  return <LocalPurchasingExperience key={currentUser.id+":"+String(connected)} section={section} id={id} connected={connected}/>;
+  return <LocalPurchasingExperience key={currentUser.id+":"+String(connected)+":"+selected} section={section} id={id} connected={connected}/>;
 }
 
 function LocalPurchasingExperience({section,id,connected}:{section:string;id?:string;connected:boolean}){
