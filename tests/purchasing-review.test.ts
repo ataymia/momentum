@@ -203,3 +203,13 @@ test("supplier bill form binds quantity cap to the selected PO remaining unbille
   assert.match(view,/purchaseOptions\.find\(p=>p\.id===selection\).*cases-billedCases\(state,selection\)/);
   assert.match(view,/Approved PO<select name="order" required value=\{selection\} onChange=/);
 });
+
+
+test("receipt form caps physical cases to the unreceived PO balance",()=>{
+  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
+  assert.match(view,/Received cases<input name="cases"[^>]*max=\{poOptions\.find\(p=>p\.id===selection\).*cases-receivedCases\(state,selection\)/);
+  let s=approvedPurchase();const id=s.orders[0].id;
+  s=success(s,warehouse,receipt(id,7));
+  assert.equal(s.orders[0].cases-receivedCases(s,id),3);
+  assert.equal(act(s,warehouse,receipt(id,4)).ok,false);
+});
