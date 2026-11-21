@@ -300,3 +300,15 @@ test("payment and credit forms bind the selected approved bill and cap amounts b
   assert.match(view,/max=\{selection\?money\(availableBillCents\(selection\)\)\.replace\(/);
   assert.match(view,/const availableBillCents=\(billId:string\)=>/);
 });
+
+
+test("vendor contact text is never silently truncated during registration",()=>{
+  const contact="x".repeat(160);
+  const valid=act(emptyPurchasingState(),admin,{kind:"vendor.add",name:"Contact length boundary",contact});
+  assert.equal(valid.ok,true);
+  assert.equal(valid.state.vendors[0].contact,contact);
+  const invalid=act(valid.state,admin,{kind:"vendor.add",name:"Contact overflow",contact:contact+"x"});
+  assert.equal(invalid.ok,false);
+  assert.equal(invalid.state,valid.state);
+  assert.equal(invalid.state.audit.length,1);
+});
