@@ -150,5 +150,13 @@ test("assigned delivery enforces driver custody and independent recipient proof"
     assert.equal(movements.length,1);
     assert.equal(movements[0].fromNodeId,"node-user-"+driver);
     assert.equal(movements[0].quantity,4);
+    // Revoked drivers cannot inspect or replay completion; inventory remains immutable.
+    await db.doc("userAccess/"+driver).update({accountState:"Separated"});
+    await assert.rejects(()=>commit(driver,{action:"status",orderId}),/active authorized delivery role/);
+    await assert.rejects(()=>commit(driver,{action:"complete",orderId,signature}),/active authorized delivery role/);
+    const afterRevocation=(await d("inventoryLedger/fields/movements").get()).data()?.items.filter((row:{relatedOrderId:string;type:string})=>row.relatedOrderId===orderId&&row.type==="Delivery");
+    assert.deepEqual(afterRevocation,movements);
+    await db.doc("userAccess/"+driver).update({accountState:"Active"});
+    assert.equal((await commit(driver,{action:"complete",orderId,signature})).replayed,true);
   }finally{await deleteApp(app);}
 });
