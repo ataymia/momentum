@@ -229,3 +229,14 @@ test("payment and credit entry choices reserve unverified commitments without re
   assert.equal(act(s,admin,{kind:"payment.record",billId,reference:"OVERCOMMIT",amountCents:1}).ok,false);
   assert.equal(act(s,operations,{kind:"credit.record",billId,reference:"OVER-CREDIT",reason:"Review",amountCents:1}).ok,false);
 });
+
+test("supplier invoice duplicate detection ignores excess whitespace within the same vendor",()=>{
+  let s=approvedPurchase();const id=s.orders[0].id;
+  s=success(s,operations,bill(id,2,3200,"INV  204"));
+  const duplicate=bill(id,1,1600," INV 204 ");
+  const result=act(s,operations,duplicate);
+  assert.equal(result.ok,false);
+  assert.match(result.message,/Duplicate supplier invoice/);
+  assert.equal(result.state,s,"Rejected duplicates must leave the original state untouched.");
+  assert.equal(s.bills.length,1);
+});
