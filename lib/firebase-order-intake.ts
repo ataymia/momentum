@@ -16,6 +16,7 @@ export type OrderIntakeRecord={
  lines:Array<{skuId:string;description:string;casePack:number;cases:number}>;
  source:string;
 };
+export type AuthorizedIntakePricing={pricePerCase:number;terms:"COD"|"Prepaid"|"Net 7"|"Net 15"|"Net 30"|"Custom";priceEvidence:string};
 export type OrderIntakeReceipt={
  intakeId:string;createdAt:string;replayed:boolean;readbackVerified:boolean;
 };
@@ -113,15 +114,18 @@ export async function getConnectedOrderIntake(
 export async function decideConnectedOrderIntake(
  session:FirebaseAuthSession,decision:{
   intakeId:string;expectedStatus:OrderIntakeStage;expectedRevision:number;nextStatus:OrderIntakeStage;reason:string;
- },requestId:string,
-):Promise<{intakeId:string;status:OrderIntakeStage;reviewRevision:number;reviewedAt:string;replayed:boolean}>{
- const record=await call(session,"decideOrderIntake",{decision,requestId}) as
-  {intakeId?:string;status?:OrderIntakeStage;reviewRevision?:number;reviewedAt?:string;replayed?:boolean};
+ },requestId:string,pricing?:AuthorizedIntakePricing,
+):Promise<{intakeId:string;status:OrderIntakeStage;reviewRevision:number;reviewedAt:string;replayed:boolean;orderId?:string;invoiceId?:string}>{
+ const record=await call(session,"decideOrderIntake",{decision,requestId,...(pricing?{pricing}:{})}) as
+  {intakeId?:string;status?:OrderIntakeStage;reviewRevision?:number;reviewedAt?:string;replayed?:boolean;orderId?:string;invoiceId?:string};
  if(!record.reviewedAt||record.intakeId!==decision.intakeId||
   record.status!==decision.nextStatus||record.reviewRevision!==decision.expectedRevision+1)
   throw new Error("Review receipt is incomplete. Read source before retrying.");
+ if(decision.nextStatus==="Approved"&&(!record.orderId||!record.invoiceId))
+  throw new Error("Approval did not confirm an order and invoice draft. Refresh the source before trying again.");
  return{intakeId:record.intakeId,status:record.status,
-  reviewRevision:record.reviewRevision,reviewedAt:record.reviewedAt,replayed:Boolean(record.replayed)};
+  reviewRevision:record.reviewRevision,reviewedAt:record.reviewedAt,replayed:Boolean(record.replayed),
+  orderId:record.orderId,invoiceId:record.invoiceId};
 }
 
 /** The signed-in requester's source-backed outcome inbox; visible after refresh or on a new device. */
@@ -139,7 +143,7 @@ export async function listMyConnectedOrderIntakes(session:FirebaseAuthSession):P
 /** Prepare an approved request using confirmed price and payment terms. */
 export async function prepareConnectedApprovedIntake(
  session:FirebaseAuthSession,intakeId:string,
- pricing?:{pricePerCase:number;terms:"COD"|"Prepaid"|"Net 7"|"Net 15"|"Net 30"|"Custom";priceEvidence:string},
+ pricing?:AuthorizedIntakePricing,
 ):Promise<{status:"Prepared"|"Needs pricing";orderId?:string;invoiceId?:string;message:string}>{
  const active=await activeIntakeSession(session);
  const response=await fetch(firebaseFunctionUrl("prepareApprovedOrderIntake"),{
