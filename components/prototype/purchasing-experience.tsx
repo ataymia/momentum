@@ -28,7 +28,7 @@ const clientSnapshot=()=>true;
 const serverSnapshot=()=>false;
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n/100);
 const date=(v?:string)=>v?v.slice(0,10):"Not recorded";
-const cents=(s:string)=>Math.round(Number(s)*100);
+const cents=(s:string)=>/^\d+(?:\.\d{1,2})?$/.test(s.trim())?Math.round(Number(s)*100):Number.NaN;
 const field=(fd:FormData,key:string)=>String(fd.get(key)??"").trim();
 const positive=(s:string)=>Number(s);
 const monetaryColumns=new Set(["cost","total","variance","due"]);
