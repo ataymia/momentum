@@ -230,6 +230,8 @@ function LocalPurchasingExperience({section,id,connected}:{section:string;id?:st
   useEffect(()=>{
     if(!connected||!session)return;
     let active=true;
+    // Never allow actions against a previous section's register while the authoritative snapshot reloads.
+    setReady(false);
     void connectedPurchasing(session).then(result=>{if(active){setState(result.state);setReady(true);setNotice(result.message);}}).catch(error=>{if(active){setReady(false);setNotice(error instanceof Error?error.message:"Unable to load register.");}});
     return()=>{active=false;};
   },[connected,session,reload,selected]);
