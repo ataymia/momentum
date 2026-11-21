@@ -231,7 +231,9 @@ function LocalPurchasingExperience({section,id,connected}:{section:string;id?:st
     if(!connected||!session)return;
     let active=true;
     // Never allow actions against a previous section's register while the authoritative snapshot reloads.
-    setReady(false);
+    // Defer the loading-state update to avoid a synchronous state cascade inside the effect.
+    // The active flag also prevents stale section requests from changing the current view.
+    queueMicrotask(()=>{if(active)setReady(false);});
     void connectedPurchasing(session).then(result=>{if(active){setState(result.state);setReady(true);setNotice(result.message);}}).catch(error=>{if(active){setReady(false);setNotice(error instanceof Error?error.message:"Unable to load register.");}});
     return()=>{active=false;};
   },[connected,session,reload,selected]);
