@@ -91,10 +91,10 @@ function PurchasingForm({section,state,run,role,connected,busy}:{section:Section
         <label>Invoice total (USD)<input name="amount" type="number" min="0.01" step="0.01" required/></label>
       </>}
       {(section==="payments"||section==="credits")&&<>
-        <label>Approved bill<select name="bill" required defaultValue=""><option value="">Select bill</option>{bills.map(b=><option key={b.id} value={b.id}>{b.invoiceNumber} · {money(availableBillCents(b.id))} available after pending evidence</option>)}</select></label>
+        <label>Approved bill<select name="bill" required value={selection} onChange={e=>setSelection(e.target.value)}><option value="">Select bill</option>{bills.map(b=><option key={b.id} value={b.id}>{b.invoiceNumber} · {money(availableBillCents(b.id))} available after pending evidence</option>)}</select></label>
         <label>{section==="payments"?"Bank/provider reference":"Vendor credit reference"}<input name="reference" required/></label>
         {section==="credits"&&<label>Credit reason<input name="reason" required/></label>}
-        <label>Amount (USD)<input name="amount" type="number" min="0.01" step="0.01" required/></label>
+        <label>Amount (USD)<input name="amount" type="number" min="0.01" max={selection?money(availableBillCents(selection)).replace(/[$,]/g,""):undefined} step="0.01" required/></label>
       </>}
       {section==="expenses"&&<>
         <label>Vendor (optional)<select name="vendor" defaultValue=""><option value="">No vendor linked</option>{supplierOptions.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
