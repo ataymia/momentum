@@ -84,9 +84,9 @@ function PurchasingForm({section,state,run,role,connected,busy}:{section:Section
         <label>Warehouse location<input name="warehouse" required value={orders.find(p=>p.id===selection)?.warehouse??""} readOnly/></label>
       </>}
       {section==="bills"&&<>
-        <label>Approved PO<select name="order" required defaultValue=""><option value="">Select approved order</option>{purchaseOptions.map(p=><option key={p.id} value={p.id}>{p.id} · {p.cases-billedCases(state,p.id)} unbilled cases</option>)}</select></label>
+        <label>Approved PO<select name="order" required value={selection} onChange={e=>setSelection(e.target.value)}><option value="">Select approved order</option>{purchaseOptions.map(p=><option key={p.id} value={p.id}>{p.id} · {p.cases-billedCases(state,p.id)} unbilled cases</option>)}</select></label>
         <label>Vendor invoice reference<input name="invoice" required/></label>
-        <label>Billed cases<input name="cases" type="number" min={1} step={1} required/></label>
+        <label>Billed cases<input name="cases" type="number" min={1} max={purchaseOptions.find(p=>p.id===selection)?purchaseOptions.find(p=>p.id===selection)!.cases-billedCases(state,selection):undefined} step={1} required/></label>
         <label>Invoice total (USD)<input name="amount" type="number" min="0.01" step="0.01" required/></label>
       </>}
       {(section==="payments"||section==="credits")&&<>
