@@ -194,6 +194,6 @@ test("supplier bill entry excludes fully billed purchase orders",()=>{
 
 test("purchasing currency entry rejects fractional cents rather than silently rounding",()=>{
   const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
-  assert.match(view,/const cents=\(s:string\)=>\/\^\\d\+\(\?:\\\.\\d\{1,2\}\)\?\$\//);
-  assert.match(view,/Number\.NaN/);
+  assert.ok(view.includes("const cents=(s:string)=>/^\\d+(?:\\.\\d{1,2})?$/"));
+  assert.ok(view.includes(":Number.NaN;"));
 });
