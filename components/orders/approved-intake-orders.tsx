@@ -19,6 +19,7 @@ export function ApprovedIntakeOrders(){
  const [nextCursor,setNextCursor]=useState<string|null>(null);
  const [busy,setBusy]=useState("");
  const [notice,setNotice]=useState("");
+ const [noticeFor,setNoticeFor]=useState("");
  const [details,setDetails]=useState("");
  const [manual,setManual]=useState({pricePerCase:"",terms:"",priceEvidence:""});
  useEffect(()=>{
@@ -30,18 +31,19 @@ export function ApprovedIntakeOrders(){
   return()=>{active=false;};
  },[enabled,session]);
  if(!enabled)return null;
- const approved=records.filter(r=>r.status==="Approved");
+ // Completed requests belong in the real Orders register, not a second approval step.
+ const approved=records.filter(r=>r.status==="Approved"&&(!r.orderId||!r.invoiceId));
  const accountName=(r:OrderIntakeRecord)=>scope.accounts.find(a=>a.id===r.accountId)?.name||r.accountName||"Customer account unavailable";
  const reload=async()=>{
   if(!session||busy)return;
-  setBusy("reload");setNotice("");
+  setBusy("reload");setNotice("");setNoticeFor("");
   try{const page=await listConnectedOrderIntakes(session);setRecords(page.records);setNextCursor(page.nextCursor);setLoaded(true);}
   catch(e){setNotice(e instanceof Error?e.message:"Approved requests could not be refreshed.");}
   finally{setBusy("");}
  };
  const older=async()=>{
   if(!session||busy||!nextCursor)return;
-  setBusy("older");
+  setBusy("older");setNoticeFor("");
   try{
    const page=await listConnectedOrderIntakes(session,nextCursor);
    setRecords(rows=>{const seen=new Set(rows.map(r=>r.id));return[...rows,...page.records.filter(r=>!seen.has(r.id))];});
@@ -51,12 +53,22 @@ export function ApprovedIntakeOrders(){
  };
  const prepare=async(intakeId:string,withManual:boolean)=>{
   if(!session||busy)return;
+  setNoticeFor(intakeId);
   let pricing:Parameters<typeof prepareConnectedApprovedIntake>[2];
   if(withManual){
    const price=Number(manual.pricePerCase);
-   if(!Number.isFinite(price)||price<=0||!Number.isSafeInteger(Math.round(price*100))||
-      Math.abs(price*100-Math.round(price*100))>0.0001||manual.priceEvidence.trim().length<10){
-    setNotice("Enter an authorized price in dollars per case and evidence of approval (at least 10 characters).");
+   const validPrice=manual.pricePerCase.trim().length>0&&Number.isFinite(price)&&price>0&&
+    Number.isSafeInteger(Math.round(price*100))&&Math.abs(price*100-Math.round(price*100))<=0.0001;
+   if(!validPrice){
+    setNotice("Enter the authorized case price in dollars, with no more than two decimal places.");
+    return;
+   }
+   if(!manual.terms){
+    setNotice("Select the payment terms actually approved for this customer.");
+    return;
+   }
+   if(manual.priceEvidence.trim().length<10){
+    setNotice("Record the documented price authorization and source (at least 10 characters).");
     return;
    }
    pricing={pricePerCase:price,terms:manual.terms as NonNullable<Parameters<typeof prepareConnectedApprovedIntake>[2]>["terms"],
@@ -75,12 +87,13 @@ export function ApprovedIntakeOrders(){
      "Order and invoice were saved, but local refresh is unconfirmed. Reload the platform and check Orders before retrying.");
     setDetails("");
    }else{setDetails(intakeId);setNotice(result.message);}
-  }catch(e){setNotice(e instanceof Error?e.message:"Preparation not confirmed. Reconcile before retrying.");}
+  }catch(e){setDetails(intakeId);setNotice(e instanceof Error?e.message:"Preparation not confirmed. Reconcile before retrying.");}
   finally{setBusy("");}
  };
- return <section className="prototype-panel" aria-label="Approved requests and linked sales orders">
-  <h2>Approved requests · order preparation</h2>
-  <p className="prototype-note">An approved request stays here until its real sales order and draft invoice are linked. Only a verified account price and payment terms can create financial documents. No stock is allocated or customer invoice issued at this step.</p>
+ if(loaded&&approved.length===0&&!nextCursor&&!notice)return null;
+ return <section className="prototype-panel" aria-label="Approved requests requiring order recovery">
+  <h2>Approved requests needing recovery</h2>
+  <p className="prototype-note">New approvals automatically create a sales order and internal invoice draft when authorized price, payment terms and account ownership are verified. This is only an exception queue for older requests or missing commercial details. No invoice is sent or inventory reserved here.</p>
   <button type="button" disabled={Boolean(busy)} onClick={()=>void reload()}>Refresh approved requests</button>
   {notice&&<p role="status">{notice}</p>}
   <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
@@ -93,7 +106,7 @@ export function ApprovedIntakeOrders(){
       {busy===r.id?"Checking…":"Create linked order & draft invoice"}
      </button>}
      {!r.orderId&&<button type="button" disabled={Boolean(busy)} aria-expanded={details===r.id}
-      onClick={()=>{setDetails(v=>v===r.id?"":r.id);setManual({pricePerCase:"",terms:"COD",priceEvidence:""});}}>Confirm pricing</button>}
+      onClick={()=>{setDetails(v=>v===r.id?"":r.id);setManual({pricePerCase:"",terms:"",priceEvidence:""});setNotice("");}}>Confirm pricing</button>}
      {details===r.id&&!r.orderId&&<div className="prototype-controls">
       <label>Authorized price per case ($)
        <input aria-label={"Approved case price "+r.id} type="number" min="0.01" step="0.01"
@@ -108,13 +121,14 @@ export function ApprovedIntakeOrders(){
         onChange={e=>setManual(v=>({...v,priceEvidence:e.target.value}))}
         placeholder="Record the agreed price approval and its source, not a guess."/>
       </label>
-      <button type="button" disabled={Boolean(busy)||!manual.pricePerCase||!manual.terms||manual.priceEvidence.trim().length<10}
-       onClick={()=>void prepare(r.id,true)}>Prepare order and draft invoice</button>
+      <button type="button" disabled={Boolean(busy)}
+       onClick={()=>void prepare(r.id,true)}>{busy===r.id?"Preparing…":"Prepare order and draft invoice"}</button>
      </div>}
+     {noticeFor===r.id&&notice&&<p role="status" className="prototype-note">{notice}</p>}
     </td>
    </tr>)}
   </tbody></table></div>
-  {loaded&&approved.length===0&&<p className="prototype-note">No approved requests in the loaded records. Previously prepared orders remain in the order register.</p>}
+  {loaded&&approved.length===0&&<p className="prototype-note">No outstanding recoveries in the loaded records. Completed orders are in the normal Orders register.</p>}
   {nextCursor&&<button type="button" disabled={Boolean(busy)} onClick={()=>void older()}>Load older approved requests</button>}
  </section>;
 }
