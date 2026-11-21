@@ -172,7 +172,7 @@ export function applyPurchaseAction(original:PurchasingState,actor:PurchaseActor
       const p=s.orders.find(x=>x.id===action.poId);
       if(!p?.approvedAt||p.cancelledAt||!label(action.invoiceNumber)||!amount(action.cases)||!amount(action.amountCents))return reject("An approved order, supplier invoice and positive billed amount are required.");
       if(billedCases(s,p.id)+action.cases>p.cases)return reject("Billed quantities cannot exceed the approved order.");
-      if(s.bills.some(b=>s.orders.find(po=>po.id===b.poId)?.vendorId===p.vendorId&&b.invoiceNumber.toLowerCase()===action.invoiceNumber.trim().toLowerCase()))return reject("Duplicate supplier invoice number for this vendor.");
+      if(s.bills.some(b=>s.orders.find(po=>po.id===b.poId)?.vendorId===p.vendorId&&b.invoiceNumber.trim().replace(/\s+/g," ").toLowerCase()===action.invoiceNumber.trim().replace(/\s+/g," ").toLowerCase()))return reject("Duplicate supplier invoice number for this vendor.");
       recordId=newId(s,"bill");s.bills.push({id:recordId,poId:p.id,invoiceNumber:action.invoiceNumber.trim(),cases:action.cases,amountCents:action.amountCents,recordedAt:at,recordedBy:actor.id});break;
     }
     case "bill.approve": {
