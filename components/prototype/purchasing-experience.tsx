@@ -232,7 +232,7 @@ function LocalPurchasingExperience({section,id,connected}:{section:string;id?:st
     let active=true;
     void connectedPurchasing(session).then(result=>{if(active){setState(result.state);setReady(true);setNotice(result.message);}}).catch(error=>{if(active){setReady(false);setNotice(error instanceof Error?error.message:"Unable to load register.");}});
     return()=>{active=false;};
-  },[connected,session,reload]);
+  },[connected,session,reload,selected]);
   const actor:PurchaseActor={id:currentUser?.id??"",role:currentUser?.role==="Administrator"||currentUser?.role==="Operations"||currentUser?.role==="Warehouse"?currentUser.role:"Other"};
   const run=async(action:PurchaseAction):Promise<boolean>=>{
     if(!currentUser||locked.current||!ready)return false;
