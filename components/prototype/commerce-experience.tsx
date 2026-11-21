@@ -7,6 +7,7 @@
  * No payment, invoice issuance or email is triggered from this file.
  */
 import {ApprovedIntakeOrders} from "../orders/approved-intake-orders";
+import {MyConnectedOrderIntakes} from "../commerce/my-connected-order-intakes";
 import {useMemo,useState} from "react";
 import {ArrowLeft,ArrowUpDown,ExternalLink,Search} from "lucide-react";
 import {useWorkspace} from "../../lib/workspace-context";
@@ -106,7 +107,7 @@ export function OrdersDirectory(){
     }),[scope.orders,status,rep,from,to,query,accountById,userById,sorter.field,sorter.direction]);
   const options=[...new Set(scope.orders.filter(o=>!o.testOnly).map(o=>o.status))].sort();
   const repIds=[...new Set(scope.orders.flatMap(o=>[o.ownerId,o.creditedRepId].filter((id):id is string=>Boolean(id))))];
-  return <div><Title title="Sales Orders" detail="Approved requests stay visible here, including those awaiting price verification. Prepared orders have linked draft invoices."/><ApprovedIntakeOrders/>
+  return <div><Title title="Sales Orders" detail="Approved requests stay visible here, including those awaiting price verification. Prepared orders have linked draft invoices."/><ApprovedIntakeOrders/>{currentUser?.role==="Sales Representative"&&<MyConnectedOrderIntakes/>}
     {currentUser?.role!=="Customer"&&canCreateOrder(currentUser)&&<div className="prototype-page-actionbar"><button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/sales/orders/new")}>Create sales order</button><span className="prototype-note">Connected orders begin as requests, become approved commercial intakes and then produce a priced sales order and draft invoice.</span></div>}
     <CatalogSummary data={[{label:"Visible orders",value:rows.length},{label:"Cases in filtered orders",value:rows.reduce((n,o)=>n+o.cases,0)},{label:"Non-cancelled order value",value:money(rows.filter(o=>o.status!=="Cancelled").reduce((n,o)=>n+o.amount,0))}]}/>
     <section className="prototype-panel"><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statusOptions={options} from={from} setFrom={setFrom} to={to} setTo={setTo} searchLabel="Search orders, accounts, rep" repOptions={repIds.map(id=>({id,name:userById.get(id)??id})).sort((a,b)=>a.name.localeCompare(b.name))} rep={rep} setRep={setRep}/>

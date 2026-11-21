@@ -54,7 +54,8 @@ export async function prepareApprovedIntakeInTransaction(
  const accountsRef=db.doc("domains/workspace/fields/accounts");
  const customersRef=db.doc("domains/workspace/fields/customers");
  const rootRef=db.doc("domains/commercial/fields/_root");
- const ownerRef=db.doc("userAccess/"+intake.ownerAtSubmission);
+ const hasOwner=/^[A-Za-z0-9_-]{1,128}$/.test(intake.ownerAtSubmission);
+ const ownerRef=db.doc("userAccess/"+(hasOwner?intake.ownerAtSubmission:actor));
  const requesterRef=db.doc("userAccess/"+intake.requestedByUid);
  const [ordersSnap,invoicesSnap,accountsSnap,customersSnap,rootSnap,ownerSnap,requesterSnap]=await Promise.all([
   tx.get(orderRef),tx.get(invoiceRef),tx.get(accountsRef),tx.get(customersRef),
@@ -87,7 +88,7 @@ export async function prepareApprovedIntakeInTransaction(
  const customer={...customerBase,...customerPatch};
  const ownerStatus=ownerSnap.data(),requesterStatus=requesterSnap.data();
  const owner=string(account.ownerId);
- const validOwner=owner===intake.ownerAtSubmission&&ownerStatus?.accountState==="Active"&&
+ const validOwner=hasOwner&&owner===intake.ownerAtSubmission&&ownerStatus?.accountState==="Active"&&
   ["Administrator","Sales Manager","Sales Representative"].includes(string(ownerStatus.role));
  if(!validOwner)return{status:"Needs pricing",message:"Assign an active sales owner to the customer before preparing the order."};
  const creditedRepId=requesterStatus?.role==="Sales Representative"&&requesterStatus?.accountState==="Active"?intake.requestedByUid:undefined;

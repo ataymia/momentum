@@ -2,6 +2,7 @@
 import {useEffect,useState} from "react";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {useWorkspace} from "../../lib/workspace-context";
+import {navigateToRoute} from "../../lib/navigation-store";
 import {listConnectedOrderIntakes,getConnectedOrderIntake,prepareConnectedApprovedIntake,type OrderIntakeRecord} from "../../lib/firebase-order-intake";
 import {momentumStorage} from "../../lib/persistence";
 import {COMMERCIAL_KEY} from "../../lib/workspace-context";
@@ -87,7 +88,7 @@ export function ApprovedIntakeOrders(){
   </tr></thead><tbody>
    {approved.map(r=><tr key={r.id}><td>{r.id}</td><td>{accountName(r)}</td><td>{r.totalCases}</td>
     <td>{r.orderId&&r.invoiceId?"Order "+r.orderId+" · invoice draft "+r.invoiceId:"Approved · awaiting order and invoice"}</td>
-    <td>{r.orderId&&r.invoiceId?<span>Prepared, open Orders or Finance → Invoices</span>:
+    <td>{r.orderId&&r.invoiceId?<div className="prototype-controls"><button type="button" onClick={()=>navigateToRoute("/sales/orders/"+encodeURIComponent(r.orderId!))}>Open sales order</button><button type="button" onClick={()=>navigateToRoute("/sales/invoices/"+encodeURIComponent(r.invoiceId!))}>Open invoice draft</button></div>:
      <button type="button" disabled={Boolean(busy)} onClick={()=>void prepare(r.id,false)}>
       {busy===r.id?"Checking…":"Create linked order & draft invoice"}
      </button>}
