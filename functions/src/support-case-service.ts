@@ -182,7 +182,11 @@ export async function writeCase(actor:CaseAccess,command:CaseCommand,requestId:s
   const at=new Date().toISOString(),eventId="case-event-"+randomUUID();
   let next:CaseRecord;
   if(command.kind==="create"){
-   next={...command.draft,id:caseId,createdBy:actor.uid,ownerId:actor.uid,
+   next={title:command.draft.title,description:command.draft.description,
+    category:command.draft.category,priority:command.draft.priority,
+    ...(command.draft.accountId?{accountId:command.draft.accountId}:{}),
+    ...(command.draft.orderId?{orderId:command.draft.orderId}:{}),
+    id:caseId,createdBy:actor.uid,ownerId:actor.uid,
     status:"Open",createdAt:at,updatedAt:at,revision:1,
     history:[{id:eventId,at,actorId:actor.uid,action:"Created",
      detail:"Case submitted and initially assigned to the creating employee."}]};
