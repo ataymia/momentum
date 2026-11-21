@@ -263,7 +263,14 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
       set(paths.tasks,[fresh,...tasks]);
     }else if(action==="pack"){
       if(taskStatus!=="Accepted")fail(409,"Claim your own delivery before reserving inventory.");
-      if(status==="Allocated"&&activeForOrder.length)return response("Allocated","Accepted",undefined,true);
+      if(status==="Allocated"&&activeForOrder.length){
+        const reserved=activeForOrder.map((row)=>({
+          product:txt(lots.get(txt(row.lotId))?.product),quantity:num(row.quantity),
+        }));
+        if(!matchExpected(expected,reserved))
+          fail(409,"Existing reservations do not match the exact ordered SKUs and cases.");
+        return response("Allocated","Accepted",undefined,true);
+      }
       if(status!=="Approved"||activeForOrder.length||anyOrderTransfer.length||existingDelivery.length)
         fail(409,"Inventory has previous movements or reservations. Operations must reconcile it.");
       const availableLots=[...lots.values()].filter((lot)=>lotEligibleForAutomaticDelivery(lot,localDay))
