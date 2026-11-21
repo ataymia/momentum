@@ -73,6 +73,22 @@ test("R62 trusted support case transaction enforces ownership, revisions, idempo
  assert.equal((await doc.get()).data().status,"Investigating");
  await assert.rejects(()=>writeCase(actor,{...note,revision:1},key+"-stale"),
    error=>error instanceof SupportCasesError&&error.status===409);
+ // A previously successful request must not bypass current customer scope.
+ await db.doc("domains/workspace/fields/accounts").update({items:[
+  {id:account,ownerId:stranger,stage:"Qualified"},
+  {id:foreign,ownerId:stranger,stage:"Qualified"},
+ ]});
+ await assert.rejects(()=>writeCase(actor,draft,key),
+   error=>error instanceof SupportCasesError&&error.status===404);
+ assert.equal((await doc.get()).data().history.length,3);
+ assert.equal((await db.doc("supportCaseRequests/"+rep+"_"+key).get()).data().caseId,receipt.caseId);
+ await db.doc("domains/workspace/fields/accounts").update({items:[
+  {id:account,ownerId:rep,stage:"Qualified"},
+  {id:foreign,ownerId:stranger,stage:"Qualified"},
+ ]});
+ const restored=await writeCase(actor,draft,key);
+ assert.equal(restored.replayed,true);
+ assert.equal((await doc.get()).data().history.length,3);
  await db.doc("userAccess/"+rep).update({accountState:"Suspended"});
  await assert.rejects(()=>writeCase(actor,{kind:"note",caseId:receipt.caseId,
   value:"Cannot write when suspended",revision:3},key+"-suspended"),
