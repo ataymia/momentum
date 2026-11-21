@@ -78,7 +78,7 @@ function PurchasingForm({section,state,run,role,connected,busy}:{section:Section
       </>}
       {section==="receipts"&&<>
         <label>Approved PO<select name="order" required value={selection} onChange={e=>setSelection(e.target.value)}><option value="">Select approved order</option>{poOptions.map(p=><option key={p.id} value={p.id}>{p.id} · {p.sku} · {p.cases-receivedCases(state,p.id)} cases remaining</option>)}</select></label>
-        <label>Received cases<input name="cases" type="number" min={1} step={1} required/></label>
+        <label>Received cases<input name="cases" type="number" min={1} max={poOptions.find(p=>p.id===selection)?poOptions.find(p=>p.id===selection)!.cases-receivedCases(state,selection):undefined} step={1} required/></label>
         <label>Physical lot / batch code<input name="lot" required/></label>
         <label>Best-by date<input name="bestBy" type="date" required/></label>
         <label>Warehouse location<input name="warehouse" required value={orders.find(p=>p.id===selection)?.warehouse??""} readOnly/></label>
