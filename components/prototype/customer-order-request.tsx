@@ -3,6 +3,7 @@ import {useRef,useState,type FormEvent} from "react";
 import {currentFirebaseSession} from "../../lib/firebase-auth-rest";
 import {firebaseFunctionUrl} from "../../lib/firebase-functions";
 import {GOLDEN_EAGLE_SKUS} from "../../lib/product-catalog";
+import {MyConnectedOrderIntakes} from "../commerce/my-connected-order-intakes";
 import {
  validateCustomerOrderDraft,type CustomerRequestLine,
 } from "../../lib/customer-order-request-draft";
@@ -137,5 +138,6 @@ export function CustomerOrderRequest({accounts,onSubmitted}:{accounts:Account[];
   </form>
   {message&&<p role="status">{message}</p>}
   {receipt&&<p role="status">Request {receipt.id} · {receipt.status}</p>}
+  <MyConnectedOrderIntakes key={receipt?.id??"requests"}/>
  </section>;
 }

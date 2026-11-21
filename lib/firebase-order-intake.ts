@@ -4,11 +4,12 @@ import {firebaseFunctionUrl} from "./firebase-functions";
 export type OrderIntakeDraft={
  accountId:string;lines:Array<{skuId:string;cases:number}>;note:string;
 };
-export type OrderIntakeStage="Needs commercial review"|"Needs clarification"|"Pricing and inventory verification"|"Declined";
+export type OrderIntakeStage="Needs commercial review"|"Needs clarification"|"Pricing and inventory verification"|"Approved"|"Declined";
 export type OrderIntakeRecord={
  id:string;accountId:string;customerId:string;requestedByUid:string;
  ownerAtSubmission:string;createdAt:string;status:OrderIntakeStage;
  reviewRevision?:number;reviewedAt?:string;reviewedBy?:string;reviewReason?:string;
+ requestedByName?:string;accountName?:string;
  totalCases:number;note:string;
  lines:Array<{skuId:string;description:string;casePack:number;cases:number}>;
  source:string;
@@ -59,7 +60,7 @@ export async function submitConnectedOrderIntake(
   const record=evidence.record;
   readbackVerified=Boolean(record&&record.id===response.intakeId&&
    record.accountId===draft.accountId&&record.requestedByUid===session.uid&&
-   ["Needs commercial review","Needs clarification","Pricing and inventory verification","Declined"].includes(record.status)&&record.lines.length===draft.lines.length&&
+   ["Needs commercial review","Needs clarification","Pricing and inventory verification","Approved","Declined"].includes(record.status)&&record.lines.length===draft.lines.length&&
    draft.lines.every(line=>record.lines.some(item=>
     item.skuId===line.skuId&&item.cases===line.cases)));
  }catch{
@@ -110,4 +111,16 @@ export async function decideConnectedOrderIntake(
   throw new Error("Review receipt is incomplete. Read source before retrying.");
  return{intakeId:record.intakeId,status:record.status,
   reviewRevision:record.reviewRevision,reviewedAt:record.reviewedAt,replayed:Boolean(record.replayed)};
+}
+
+/** The signed-in requester's source-backed outcome inbox; visible after refresh or on a new device. */
+export async function listMyConnectedOrderIntakes(session:FirebaseAuthSession):Promise<Array<{
+ id:string;status:OrderIntakeStage;createdAt:string;totalCases:number;declineReason?:string;
+}>>{
+ const result=await call(session,"reviewOrderIntake",{mine:true}) as {records?:Array<{
+  id:string;status:OrderIntakeStage;createdAt:string;totalCases:number;declineReason?:string;
+ }>};
+ if(!Array.isArray(result.records)||result.records.some(row=>!row.id||!row.status))
+  throw new Error("My submitted request status could not be verified.");
+ return result.records;
 }
