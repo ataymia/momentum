@@ -213,3 +213,19 @@ test("receipt form caps physical cases to the unreceived PO balance",()=>{
   assert.equal(s.orders[0].cases-receivedCases(s,id),3);
   assert.equal(act(s,warehouse,receipt(id,4)).ok,false);
 });
+
+test("payment and credit entry choices reserve unverified commitments without reducing verified payable",()=>{
+  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
+  assert.match(view,/billDueCents\(state,b\)-pendingPaymentCents\(state,billId\)-pendingCreditCents\(state,billId\)/);
+  assert.match(view,/bills=state\.bills\.filter\(b=>b\.approvedAt&&availableBillCents\(b\.id\)>0\)/);
+  let s=approvedPurchase();const id=s.orders[0].id;
+  s=success(s,warehouse,receipt(id,10));
+  s=success(s,operations,bill(id,10,16000,"PENDING-INV"));
+  s=success(s,admin,{kind:"bill.approve",id:s.bills[0].id});
+  const billId=s.bills[0].id;
+  s=success(s,admin,{kind:"payment.record",billId,reference:"PENDING-PAY",amountCents:10000});
+  s=success(s,operations,{kind:"credit.record",billId,reference:"PENDING-CREDIT",reason:"Review",amountCents:6000});
+  assert.equal(billDueCents(s,s.bills[0]),16000);
+  assert.equal(act(s,admin,{kind:"payment.record",billId,reference:"OVERCOMMIT",amountCents:1}).ok,false);
+  assert.equal(act(s,operations,{kind:"credit.record",billId,reference:"OVER-CREDIT",reason:"Review",amountCents:1}).ok,false);
+});
