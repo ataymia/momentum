@@ -1,4 +1,4 @@
-import type {FirebaseAuthSession} from "./firebase-auth-rest";
+import {currentFirebaseSession,type FirebaseAuthSession} from "./firebase-auth-rest";
 import {firebaseFunctionUrl} from "./firebase-functions";
 
 export type OrderIntakeDraft={
@@ -19,6 +19,14 @@ export type OrderIntakeRecord={
 export type OrderIntakeReceipt={
  intakeId:string;createdAt:string;replayed:boolean;readbackVerified:boolean;
 };
+/** Every action needs a current token, not the provider's potentially hour-old token. */
+async function activeIntakeSession(previous:FirebaseAuthSession):Promise<FirebaseAuthSession>{
+ const active=await currentFirebaseSession();
+ if(!active||active.uid!==previous.uid)
+  throw new Error("Your Momentum session needs renewal. Sign in again before changing an order.");
+ return active;
+}
+
 /** An authenticated server call, with no local or optimistic success fallback.
  * @param {FirebaseAuthSession} session Signed-in staff session.
  * @param {string} endpoint Trusted order-intake function.
@@ -29,11 +37,12 @@ async function call(
  session:FirebaseAuthSession,endpoint:"submitOrderIntake"|"reviewOrderIntake"|"decideOrderIntake",
  payload:Record<string,unknown>,
 ):Promise<unknown>{
+ const active=await activeIntakeSession(session);
  let response:Response;
  try{
   response=await fetch(firebaseFunctionUrl(endpoint),{
    method:"POST",headers:{
-    authorization:"Bearer "+session.idToken,
+    authorization:"Bearer "+active.idToken,
     "content-type":"application/json",
    },body:JSON.stringify(payload),
   });
@@ -132,8 +141,9 @@ export async function prepareConnectedApprovedIntake(
  session:FirebaseAuthSession,intakeId:string,
  pricing?:{pricePerCase:number;terms:"COD"|"Prepaid"|"Net 7"|"Net 15"|"Net 30"|"Custom";priceEvidence:string},
 ):Promise<{status:"Prepared"|"Needs pricing";orderId?:string;invoiceId?:string;message:string}>{
+ const active=await activeIntakeSession(session);
  const response=await fetch(firebaseFunctionUrl("prepareApprovedOrderIntake"),{
-  method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.idToken},
+  method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+active.idToken},
   body:JSON.stringify({intakeId,...(pricing?{pricing}:{})}),
  });
  const result=await response.json().catch(()=>null) as {ok?:boolean;status?:"Prepared"|"Needs pricing";orderId?:string;invoiceId?:string;message?:string}|null;
