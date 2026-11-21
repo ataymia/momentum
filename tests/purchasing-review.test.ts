@@ -39,6 +39,15 @@ test("vendor creation requires admin and rejects duplicate names",()=>{
   const next=success(s,admin,vendor());
   assert.equal(act(next,admin,{...vendor(),name:"illustrative demo-only vendor"}).ok,false);
 });
+test("vendor names with inconsistent internal whitespace cannot bypass duplicate registration",()=>{
+  const original=success(emptyPurchasingState(),admin,{kind:"vendor.add",name:"Acme  Supply  Co",contact:"QA only"});
+  const replay=act(original,admin,{kind:"vendor.add",name:" acme supply co ",contact:"Different contact"});
+  assert.equal(replay.ok,false);
+  assert.match(replay.message,/distinct vendor name/i);
+  assert.equal(replay.state,original,"Duplicate registration must preserve the original purchasing state.");
+  assert.equal(original.vendors.length,1);
+  assert.equal(original.audit.length,1);
+});
 test("purchase order requires verified vendor, positive quantities and cost",()=>{
   const s=emptyPurchasingState();
   assert.equal(act(s,operations,po("missing")).ok,false);
