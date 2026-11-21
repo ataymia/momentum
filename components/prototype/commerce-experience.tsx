@@ -182,7 +182,7 @@ export function OrderDetail({id}:{id:string}){
         <Fact label="Customer" value={account?<Link url={"/sales/customers/"+encodeURIComponent(account.id)}>{account.name} · {account.location}</Link>:"Not available"}/>
         <Fact label="Placed" value={showDate(o.placedAt)}/><Fact label="Created by" value={owner?.name??"Unknown"}/>
         <Fact label="Credited sales rep" value={rep?.name??"Not assigned"}/><Fact label="Price basis" value={o.priceBasis}/>
-        <Fact label="Approval" value={approval?approval.status:"Not linked"}/><Fact label="Payment" value={o.paymentStatus}/>
+        <Fact label="Approval" value={o.sourceIntakeId?"Approved commercial intake · "+o.sourceIntakeId:approval?approval.status:"Not linked"}/><Fact label="Payment" value={o.paymentStatus}/>
         <Fact label="Invoice" value={invoice&&canAccessPage(currentUser,"orderCash")?<Link url={"/sales/invoices/"+encodeURIComponent(invoice.id)}>{invoice.number}</Link>:"Not available"}/>
       </dl></section>
       <section className="prototype-panel"><h2>Fulfillment & custody</h2>
@@ -286,12 +286,14 @@ export function InvoiceDetail({id}:{id:string}){
   const reconciliationPending=reconciliationAlerts.length>0;
   const status=computedInvoiceStatus(commerce,invoice);
   return <div><Title title={"Invoice "+invoice.number} detail={"Customer: "+(account?.name??"Restricted")} back="/sales/invoices"/>
+    {invoice.status==="Draft"&&<p className="prototype-note" role="status">Internal draft invoice. Confirm price, tax treatment, customer billing information and fulfillment requirements before customer issuance or payment collection. This draft has not been sent.</p>}
     <CatalogSummary data={[{label:"Invoice record amount",value:money(invoice.total)},{label:"Applied cleared payments",value:reconciliationPending?"Review required":money(paid)},{label:"Unpaid balance",value:reconciliationPending?"Review required":money(balance)}]}/>
     <div className="prototype-columns">
       <section className="prototype-panel"><h2>Invoice details</h2><dl className="prototype-facts">
         <Fact label="Status" value={reconciliationPending?"Review required":<Status value={status}/>}/><Fact label="Recorded date" value={showDate(invoice.issuedAt)}/><Fact label="Due date" value={showDate(invoice.dueDate)}/><Fact label="Terms" value={invoice.terms}/>
         <Fact label="Customer" value={account?<Link url={"/sales/customers/"+encodeURIComponent(account.id)}>{account.name}</Link>:"Restricted"}/>
         <Fact label="Sales order" value={order?<Link url={"/sales/orders/"+encodeURIComponent(order.id)}>{order.number}</Link>:"Not linked"}/>
+        {order?.sourceIntakeId&&<Fact label="Approved request" value={order.sourceIntakeId}/>}
         <Fact label="Aging" value={reconciliationPending?"Review required":arAgingBucket(invoice,balance)}/>
         <Fact label="Applied credits" value={money(credit)}/>
         <Fact label="Pending payments" value={money(pending)}/>
