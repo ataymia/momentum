@@ -152,7 +152,7 @@ export function ConnectedOrderIntakeQueue(){
   {loaded&&visible.length===0&&<p className="prototype-empty">No requests match this view.</p>}
   {loaded&&<div className="prototype-controls">
    <span className="prototype-note">{records.length} source requests loaded across {pageCount} page(s).</span>
-   {nextCursor&&<button type="button" disabled={loading||loadingOlder||saving||!session} onClick={()=>void loadOlder()}>{loadingOlder?"Loading…":"Load older requests"}</button>}
+   {nextCursor&&<button type="button" disabled={loading||loadingOlder||saving||!session} onClick={()=>void loadOlder()}>{loadingOlder?"Loading…":"Load older source requests"}</button>}
   </div>}
  </section>;
 }

@@ -5,6 +5,7 @@ import {useWorkspace} from "../../lib/workspace-context";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {submitConnectedOrderIntake,type OrderIntakeDraft} from "../../lib/firebase-order-intake";
 import {navigateToRoute} from "../../lib/navigation-store";
+import {MyConnectedOrderIntakes} from "./my-connected-order-intakes";
 
 const catalog=GOLDEN_EAGLE_SKUS.filter(s=>s.active&&!s.testOnly);
 type DraftLine={key:number;skuId:string;cases:string};
@@ -110,5 +111,6 @@ export function ConnectedOrderIntakeForm(){
     </div>
    </section>
   </form>
+  <MyConnectedOrderIntakes key={completedId||"requests"}/>
  </div>;
 }
