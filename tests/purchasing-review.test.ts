@@ -197,3 +197,9 @@ test("purchasing currency entry rejects fractional cents rather than silently ro
   assert.ok(view.includes("const cents=(s:string)=>/^\\d+(?:\\.\\d{1,2})?$/"));
   assert.ok(view.includes(":Number.NaN;"));
 });
+
+test("supplier bill form binds quantity cap to the selected PO remaining unbilled cases",()=>{
+  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
+  assert.match(view,/purchaseOptions\.find\(p=>p\.id===selection\).*cases-billedCases\(state,selection\)/);
+  assert.match(view,/Approved PO<select name="order" required value=\{selection\} onChange=/);
+});
