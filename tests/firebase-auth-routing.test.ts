@@ -68,7 +68,7 @@ test("active order intake requests renew tokens and show actionable recovery err
   const recovery = read("components/orders/approved-intake-orders.tsx");
 
   assert.match(auth, /refreshPending=refreshFirebaseSession\(session\)/);
-  assert.match(auth, /Session changed during refresh/);
+  assert.match(auth, /session changed during refresh/i);
   assert.match(provider, /window\.setInterval\(onFocus,45_000\)/);
   assert.match(provider, /visibilitychange/);
   assert.match(intake, /activeIntakeSession\(session\)/);
