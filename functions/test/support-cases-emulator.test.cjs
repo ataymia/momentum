@@ -93,7 +93,7 @@ test("R62 trusted support case transaction enforces ownership, revisions, idempo
  // rejects undefined properties, so optional links must be omitted entirely.
  const internal={kind:"create",draft:{title:"Internal receiving exception",
   description:"Warehouse investigation without a customer reference.",
-  category:"Operations",priority:"Medium"}};
+  category:"Other",priority:"Normal"}};
  const internalKey=key+"-internal";
  const internalReceipt=await writeCase(supervisor,internal,internalKey);
  const internalDoc=db.doc("supportCases/"+internalReceipt.caseId);
