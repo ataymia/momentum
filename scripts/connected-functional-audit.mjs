@@ -194,6 +194,47 @@ async function button(key,section,id,label,prompt){
 }
 try{
  await seed();
+ await run("Commercial approval names, decline reason and one-click approval persist across users",async()=>{
+  const rep=await open("rep");
+  async function submit(casesCount){
+   await goto(rep,"/sales/orders/new");
+   await rep.getByLabel("Order intake account").selectOption(accountId);
+   await rep.getByLabel("Intake cases 1").fill(String(casesCount));
+   await rep.getByRole("button",{name:"Submit nonbinding review request"}).click();
+   await rep.getByText(/Source intake recorded/).waitFor({timeout:30000});
+   const snapshots=await db.collection("commerceOrderIntakes").where("requestedByUid","==",uid("rep")).get();
+   const intake=snapshots.docs.map(d=>d.data()).find(r=>r.totalCases===casesCount);
+   assert(intake,"Submitted record must persist in source.");
+   return intake.id;
+  }
+  const declineId=await submit(7);
+  const admin=await open("admin");await goto(admin,"/work/approvals");
+  const row=admin.getByRole("row").filter({hasText:declineId});
+  await row.getByText("QA isolated store").waitFor({timeout:30000});
+  await row.getByText("QA rep").waitFor({timeout:30000});
+  await row.getByRole("button",{name:"Review"}).click();
+  await admin.getByRole("button",{name:"Decline",exact:true}).click();
+  const reason="The retail customer must correct the case request before proceeding.";
+  await admin.getByLabel("Decline order reason").fill(reason);
+  await admin.getByRole("button",{name:"Confirm decline"}).click();
+  await admin.getByText(/Declined and saved/).waitFor({timeout:30000});
+  assert.equal((await db.doc("commerceOrderIntakes/"+declineId).get()).data().status,"Declined");
+  await rep.reload({waitUntil:"domcontentloaded"});await root(rep).waitFor({timeout:60000});
+  await goto(rep,"/sales/orders/new");
+  await rep.getByText(reason,{exact:true}).waitFor({timeout:30000});
+  const approveId=await submit(8);
+  await admin.getByRole("button",{name:"Refresh approvals"}).click();
+  const pending=admin.getByRole("row").filter({hasText:approveId});
+  await pending.getByRole("button",{name:"Review"}).click();
+  const review=admin.getByRole("region",{name:"Review request "+approveId});
+  assert.equal(await review.getByLabel("Decline order reason").count(),0);
+  await review.getByRole("button",{name:"Approve",exact:true}).click();
+  await admin.getByText(/Commercial review approved and saved/).waitFor({timeout:30000});
+  assert.equal((await db.doc("commerceOrderIntakes/"+approveId).get()).data().status,"Approved");
+  const orders=await getItems("domains/commercial/fields/orders");
+  assert.equal(orders.length,1,"Approval must not invent a priced sales order.");
+  assert.equal(orders[0].id,orderId);
+ });
  await run("Authenticated browser and server purchasing handshake",async()=>{
   const page=await open("admin");
   const result=await page.evaluate(async ({project})=>{
