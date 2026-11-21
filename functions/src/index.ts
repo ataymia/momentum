@@ -2116,7 +2116,7 @@ export const decideOrderIntake=onRequest({cors:true,region:"us-central1"},async(
  if(request.method!=="POST"){json(response,405,{ok:false,message:"POST required."});return;}
  const payload=request.body;
  if(!payload||typeof payload!=="object"||Array.isArray(payload)||
-  Object.keys(payload).some(k=>!["decision","requestId"].includes(k))){
+  Object.keys(payload).some(k=>!["decision","requestId","pricing"].includes(k))){
   json(response,400,{ok:false,message:"Invalid review request."});return;
  }
  const authorization=request.headers.authorization??"";
@@ -2126,7 +2126,7 @@ export const decideOrderIntake=onRequest({cors:true,region:"us-central1"},async(
  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
  catch{json(response,401,{ok:false,message:"Session expired."});return;}
  try{
-  const receipt=await decideTrustedOrderIntake(actor,payload.decision,payload.requestId);
+  const receipt=await decideTrustedOrderIntake(actor,payload.decision,payload.requestId,payload.pricing);
   json(response,200,{ok:true,...receipt});
  }catch(error){
   if(error instanceof OrderIntakeError){
