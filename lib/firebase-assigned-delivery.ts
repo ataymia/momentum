@@ -11,8 +11,8 @@ const pendingOrderActions=new Map<string,string>();
 export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDeliveryAction){
  // Reject malformed requests before entering the pending-operation registry or
  // contacting the trusted endpoint. The server remains the authority.
- if(!session.uid?.trim()||!session.idToken?.trim())return Promise.reject(new Error("Sign in again before changing delivery custody."));
- if(!/^[A-Za-z0-9_-]{5,120}$/.test(body.orderId??""))return Promise.reject(new Error("Select a valid delivery order before continuing."));
+ if(!session||typeof session.uid!=="string"||!session.uid.trim()||typeof session.idToken!=="string"||!session.idToken.trim())return Promise.reject(new Error("Sign in again before changing delivery custody."));
+ if(!body||typeof body!=="object"||!/^[A-Za-z0-9_-]{5,120}$/.test(body.orderId??""))return Promise.reject(new Error("Select a valid delivery order before continuing."));
  // Types are erased at runtime. Reject malformed actions and assignment targets
  // before any network call; backend authorization and state checks remain required.
  const allowedActions=new Set(["status","claim","assign","pack","load","depart","release","note","complete"]);
@@ -40,7 +40,7 @@ export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDelive
    if(typeof signature.recipientName!=="string"||!signature.recipientName.trim()||signature.recipientName.trim().length>120)
      return Promise.reject(new Error("Enter the recipient's name before completing delivery."));
  }
- const key=JSON.stringify([session.uid,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
+ const key=JSON.stringify([session.uid,session.idToken,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
  const pending=pendingCustodyActions.get(key);
  if(pending)return pending;
  const orderKey=JSON.stringify([session.uid,body.orderId]);
