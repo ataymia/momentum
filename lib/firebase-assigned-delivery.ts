@@ -9,6 +9,10 @@ const pendingCustodyActions=new Map<string,Promise<Awaited<ReturnType<typeof sub
 // Different custody transitions for one order must not race in the same tab.
 const pendingOrderActions=new Map<string,string>();
 export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDeliveryAction){
+ // Reject malformed requests before entering the pending-operation registry or
+ // contacting the trusted endpoint. The server remains the authority.
+ if(!session.uid?.trim()||!session.idToken?.trim())return Promise.reject(new Error("Sign in again before changing delivery custody."));
+ if(!/^[A-Za-z0-9_-]{5,120}$/.test(body.orderId??""))return Promise.reject(new Error("Select a valid delivery order before continuing."));
  const key=JSON.stringify([session.uid,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
  const pending=pendingCustodyActions.get(key);
  if(pending)return pending;
