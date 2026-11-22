@@ -67,3 +67,11 @@ test("malformed custody requests are rejected before network submission",()=>{
  assert.match(client,/\^\[A-Za-z0-9_-\]\{5,120\}\$/);
  assert.ok(client.indexOf("Select a valid delivery order")<client.indexOf("const operation=submitAssignedDelivery"),"invalid orders never reach Firebase");
 });
+
+
+test("runtime custody action and assignment IDs are validated before posting",()=>{
+ const client=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
+ assert.match(client,/allowedActions\.has\(body\.action\)/,"unknown actions fail closed");
+ assert.match(client,/body\.driverId!==undefined&&!/,"malformed driver IDs are rejected");
+ assert.ok(client.indexOf("Select a valid driver before assigning delivery custody.")<client.indexOf("const operation=submitAssignedDelivery"),"invalid assignments cannot reach the network");
+});
