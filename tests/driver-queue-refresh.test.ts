@@ -140,9 +140,17 @@ test("connected custody executes duplicate, conflict and server-confirmation saf
  assert.equal(calls,2,"invalid assignment never posts");
  await assert.rejects(assigned(session,{orderId:"bad",action:"claim"}),/valid delivery order/);
  await assert.rejects(assigned({uid:"",idToken:"qa-token"},order),/Sign in again/);
+ await assert.rejects(assigned(null,order),/Sign in again/);
+ await assert.rejects(assigned({uid:"driver123",idToken:42},order),/Sign in again/);
+ await assert.rejects(assigned(session,null),/valid delivery order/);
  await assert.rejects(assigned(session,{...order,action:"note",note:"x"}),/delivery note/);
  await assert.rejects(assigned(session,{...order,action:"release",reason:"short"}),/release reason/);
  await assert.rejects(assigned(session,{...order,action:"complete",signature:{recipientName:"Test Recipient",strokes:[[[0,0],[1001,2]]]}}),/signature is invalid/);
  await assert.rejects(assigned(session,{...order,action:"complete",signature:{recipientName:"",strokes:[[[0,0],[100,100]]]}}),/recipient's name/);
  assert.equal(calls,2,"invalid inputs and signatures never post or occupy a custody lock");
+ const pending=assigned(session,order);
+ await assert.rejects(assigned({...session,idToken:"rotated-token"},order),/Another delivery action/);
+ assert.equal(calls,3,"token rotation cannot reuse a pending request from another auth session");
+ resolveResponse?.({ok:true,json:async()=>({ok:true,cloudConfirmed:true})});
+ await pending;
 });
