@@ -59,3 +59,11 @@ test("conflicting custody actions for one order are rejected while a mutation is
  assert.match(client,/pendingOrderActions\.set\(orderKey,key\)/);
  assert.match(client,/pendingOrderActions\.get\(orderKey\)===key\)pendingOrderActions\.delete\(orderKey\)/,"cleanup releases the order after settlement");
 });
+
+
+test("malformed custody requests are rejected before network submission",()=>{
+ const client=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
+ assert.match(client,/!session\.uid\?\.trim\(\)\|\|!session\.idToken\?\.trim\(\)/);
+ assert.match(client,/\^\[A-Za-z0-9_-\]\{5,120\}\$/);
+ assert.ok(client.indexOf("Select a valid delivery order")<client.indexOf("const operation=submitAssignedDelivery"),"invalid orders never reach Firebase");
+});
