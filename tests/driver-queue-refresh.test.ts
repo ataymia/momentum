@@ -48,3 +48,14 @@ test("same-tab duplicate custody submissions share one pending operation and rel
  assert.match(client,/pendingCustodyActions\.set\(key,operation\)/);
  assert.match(client,/operation\.finally\([\s\S]*?pendingCustodyActions\.delete\(key\)/,"settled actions do not permanently block retries");
 });
+
+
+test("conflicting custody actions for one order are rejected while a mutation is pending",()=>{
+ const client=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
+ assert.match(client,/pendingOrderActions=new Map<string,string>\(\)/);
+ assert.match(client,/const orderKey=JSON\.stringify\(\[session\.uid,body\.orderId\]\)/);
+ assert.match(client,/if\(pending\)return pending/,"identical submissions still share one operation");
+ assert.match(client,/if\(pendingOrderActions\.has\(orderKey\)\)return Promise\.reject/,"different actions must not race");
+ assert.match(client,/pendingOrderActions\.set\(orderKey,key\)/);
+ assert.match(client,/pendingOrderActions\.get\(orderKey\)===key\)pendingOrderActions\.delete\(orderKey\)/,"cleanup releases the order after settlement");
+});
