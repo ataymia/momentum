@@ -101,3 +101,41 @@ test("assignment requires a concrete driver target before sending a custody requ
  assert.match(client,/body\.action==="assign"&&!body\.driverId/,"targetless assignments fail closed");
  assert.ok(client.indexOf("Select a driver before assigning delivery custody.")<client.indexOf("const operation=submitAssignedDelivery"),"targetless assignments never contact Firebase");
 });
+
+
+test("connected custody executes duplicate, conflict and server-confirmation safeguards",async()=>{
+ const ts=(await import("typescript")).default;
+ const vm=await import("node:vm");
+ const source=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
+ const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ let calls=0,refreshes=0;
+ let resolveResponse:((response:unknown)=>void)|undefined;
+ const fetchMock=()=>{calls++;return new Promise(resolve=>{resolveResponse=resolve;});};
+ const exports:Record<string,unknown>={};
+ const context={exports,fetch:fetchMock,Response,Promise,Map,Set,JSON,Number,Error,
+  require:(name:string)=>{
+   if(name==="./firebase-functions")return {firebaseFunctionUrl:()=>"https://example.invalid/assignedDeliveryApi"};
+   if(name==="./persistence")return {momentumStorage:{refreshKeys:async()=>{refreshes++;return {ok:true};}}};
+   throw new Error("Unexpected module "+name);
+  }};
+ vm.runInNewContext(compiled,context,{filename:"firebase-assigned-delivery.js"});
+ const assigned=exports.assignedDelivery as (session:unknown,body:unknown)=>Promise<{ok:boolean;refreshed:boolean}>;
+ const session={uid:"driver123",idToken:"qa-token"};
+ const order={orderId:"order123",action:"claim"};
+ const first=assigned(session,order);
+ const duplicate=assigned(session,order);
+ assert.strictEqual(duplicate,first,"identical pending action shares the same promise");
+ await assert.rejects(assigned(session,{...order,action:"depart"}),/Another delivery action/);
+ assert.equal(calls,1,"only one network submission");
+ resolveResponse?.({ok:true,json:async()=>({ok:true,cloudConfirmed:true})});
+ const result=await first;
+ assert.equal(result.refreshed,true);
+ assert.equal(refreshes,1);
+ const second=assigned(session,{...order,action:"depart"});
+ assert.equal(calls,2,"settled lock permits the next action");
+ resolveResponse?.({ok:true,json:async()=>({ok:false,cloudConfirmed:false})});
+ await assert.rejects(second,/Refresh the queue/);
+ assert.equal(refreshes,1,"rejected cloud mutation never triggers readback");
+ await assert.rejects(assigned(session,{...order,action:"assign"}),/Select a driver/);
+ assert.equal(calls,2,"invalid assignment never posts");
+});
