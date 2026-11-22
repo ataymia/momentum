@@ -53,7 +53,7 @@ test("same-tab duplicate custody submissions share one pending operation and rel
 test("conflicting custody actions for one order are rejected while a mutation is pending",()=>{
  const client=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
  assert.match(client,/pendingOrderActions=new Map<string,string>\(\)/);
- assert.match(client,/const orderKey=JSON\.stringify\(\[session\.uid,body\.orderId\]\)/);
+ assert.match(client,/const orderKey=body\.orderId/, "order lock remains active across identity changes");
  assert.match(client,/if\(pending\)return pending/,"identical submissions still share one operation");
  assert.match(client,/if\(pendingOrderActions\.has\(orderKey\)\)return Promise\.reject/,"different actions must not race");
  assert.match(client,/pendingOrderActions\.set\(orderKey,key\)/);
@@ -150,6 +150,8 @@ test("connected custody executes duplicate, conflict and server-confirmation saf
  assert.equal(calls,2,"invalid inputs and signatures never post or occupy a custody lock");
  const pending=assigned(session,order);
  await assert.rejects(assigned({...session,idToken:"rotated-token"},order),/Another delivery action/);
+ await assert.rejects(assigned({uid:"otherDriver123",idToken:"other-token"},order),/Another delivery action/);
+ assert.equal(calls,3,"switching users cannot race custody transitions for the same order");
  assert.equal(calls,3,"token rotation cannot reuse a pending request from another auth session");
  resolveResponse?.({ok:true,json:async()=>({ok:true,cloudConfirmed:true})});
  await pending;
