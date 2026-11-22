@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import test from "node:test";
 import {approvedIntakeRefState,visibleApprovedIntakes} from "../lib/approved-intake-visibility";
+import {canonicalOrderInvoiceLinked} from "../lib/order-intake-link-proof";
 
 const request=(id:string,status:string,orderId?:string,invoiceId?:string)=>({
  id,status,orderId,invoiceId,totalCases:8,
@@ -48,4 +49,38 @@ test("old approved source stays navigable after preparation and partial linkage 
  assert.match(recovery,/momentumStorage\.refreshKeys\(\[COMMERCIAL_KEY,COMMERCE_STORAGE_KEY\]\)/);
  assert.match(recovery,/Open sales order/);
  assert.match(recovery,/Open invoice draft/);
+});
+
+test("canonical Firestore readback rejects partial links, duplicates, wrong accounts and mismatched totals",()=>{
+ const orders=[{id:"order-1",sourceIntakeId:"intake-1",accountId:"location-a",amount:240}];
+ const invoices=[{id:"invoice-1",sourceIntakeId:"intake-1",orderId:"order-1",accountId:"location-a",total:240}];
+ const verify=(o:typeof orders|undefined,i:typeof invoices|undefined)=>
+  canonicalOrderInvoiceLinked(o,i,"intake-1","order-1","invoice-1");
+ assert.equal(verify(orders,invoices),true);
+ assert.equal(verify(undefined,invoices),false);
+ assert.equal(verify(orders,undefined),false);
+ assert.equal(verify([],invoices),false);
+ assert.equal(verify(orders,[]),false);
+ assert.equal(verify([...orders,...orders],invoices),false);
+ assert.equal(verify(orders,[...invoices,...invoices]),false);
+ assert.equal(verify(orders,[{...invoices[0],orderId:"other-order"}]),false);
+ assert.equal(verify(orders,[{...invoices[0],accountId:"other-location"}]),false);
+ assert.equal(verify(orders,[{...invoices[0],total:241}]),false);
+ assert.equal(verify([{...orders[0],amount:240.001}],invoices),false);
+ assert.equal(verify([{...orders[0],sourceIntakeId:"other-intake"}],invoices),false);
+ assert.equal(canonicalOrderInvoiceLinked(orders,invoices,"intake-1","other","invoice-1"),false);
+ assert.equal(canonicalOrderInvoiceLinked(orders,invoices,"intake-1","order-1","other"),false);
+});
+
+test("approval and recovery prove the canonical pair independently, not just the source links",()=>{
+ const api=readFileSync("lib/firebase-order-intake.ts","utf8");
+ const queue=readFileSync("components/commerce/connected-order-intake-queue.tsx","utf8");
+ const recovery=readFileSync("components/orders/approved-intake-orders.tsx","utf8");
+ assert.match(api,/getFirestoreSnapshot<\{items\?:SourceLinkedOrder\[\]\}>\("domains\/commercial\/fields\/orders"\)/);
+ assert.match(api,/getFirestoreSnapshot<\{items\?:SourceLinkedInvoice\[\]\}>\("domains\/commerce\/fields\/invoices"\)/);
+ assert.match(api,/canonicalOrderInvoiceLinked\(/);
+ assert.match(queue,/await verifyConnectedOrderInvoicePair\(/);
+ assert.match(recovery,/await verifyConnectedOrderInvoicePair\(/);
+ assert.match(queue,/momentumStorage\.mode\(\)==="firestore"/);
+ assert.match(recovery,/momentumStorage\.mode\(\)==="firestore"/);
 });
