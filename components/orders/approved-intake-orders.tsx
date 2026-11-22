@@ -3,7 +3,7 @@ import {useEffect,useState} from "react";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {useWorkspace} from "../../lib/workspace-context";
 import {navigateToRoute} from "../../lib/navigation-store";
-import {listConnectedOrderIntakes,getConnectedOrderIntake,prepareConnectedApprovedIntake,type OrderIntakeRecord} from "../../lib/firebase-order-intake";
+import {listConnectedOrderIntakes,getConnectedOrderIntake,prepareConnectedApprovedIntake,verifyConnectedOrderInvoicePair,type OrderIntakeRecord} from "../../lib/firebase-order-intake";
 import {momentumStorage} from "../../lib/persistence";
 import {COMMERCIAL_KEY} from "../../lib/workspace-context";
 import {COMMERCE_STORAGE_KEY} from "../../lib/commerce-engine";
@@ -84,12 +84,20 @@ export function ApprovedIntakeOrders(){
    setRecords(rows=>rows.map(r=>r.id===intakeId?confirmed:r));
    if(result.status==="Prepared"){
     if(confirmed.orderId!==result.orderId||confirmed.invoiceId!==result.invoiceId)
-     throw new Error("Order preparation receipt saved; references have not finished loading. Refresh before retrying.");
-    // Preserve the source links even if local register hydration fails.
+     throw new Error("Order preparation source and receipt disagree. Do not retry or resubmit. Reconcile the original request with canonical records.");
+    // Preserve source links even if canonical readback or local hydration fails.
     setShowPrepared(true);
-    const sync=await momentumStorage.refreshKeys([COMMERCIAL_KEY,COMMERCE_STORAGE_KEY]);
-    setNotice(sync.ok?"Sales order and internal draft invoice created. Check Orders and Finance → Invoices. No customer invoice was sent.":
-     "Order and invoice were saved, but local refresh is unconfirmed. Reload the platform and check Orders before retrying.");
+    const pairVerified=await verifyConnectedOrderInvoicePair(
+     session,intakeId,confirmed.orderId!,confirmed.invoiceId!,
+    );
+    const sync=pairVerified&&momentumStorage.mode()==="firestore"
+     ?await momentumStorage.refreshKeys([COMMERCIAL_KEY,COMMERCE_STORAGE_KEY])
+     :{ok:false,message:"Connected order and invoice readback is not ready."};
+    setNotice(!pairVerified
+     ?"The approved source has links, but its canonical order and invoice could not be independently verified. Do not create another order. Reconcile these records."
+     :sync.ok
+      ?"Matching sales order and internal draft invoice independently verified and synced. No customer invoice was sent."
+      :"Order and invoice are independently verified in the database, but local refresh is unconfirmed. Reload the platform and inspect the links below. Do not create another order.");
     setDetails("");
    }else{setDetails(intakeId);setNotice(result.message);}
   }catch(e){setDetails(intakeId);setNotice(e instanceof Error?e.message:"Preparation not confirmed. Reconcile before retrying.");}
