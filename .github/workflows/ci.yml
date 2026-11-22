@@ -76,6 +76,19 @@ jobs:
       - name: Production build
         run: npm run build
 
+      - name: Cloudflare Worker local SPA and deep-link smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --local --port 8792 --ip 127.0.0.1 > /tmp/momentum-worker-smoke.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+          if ! node scripts/check-worker-fallback.mjs; then
+            echo "::error::Worker deep-link smoke failed"
+            cat /tmp/momentum-worker-smoke.log
+            exit 1
+          fi
+
       - name: A04 Firebase Hosting local emulator fallback smoke
         run: npx --yes firebase-tools@15.30.1 emulators:exec --only hosting --project demo-momentum-architecture --config firebase.architecture-smoke.json 'node scripts/check-hosting-fallback.mjs'
 
