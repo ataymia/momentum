@@ -83,7 +83,12 @@ export function DeliveriesPage() {
     if (!task && ["Delivered","Paid"].includes(order.status)) return false;
     return task?.driverId === currentUser?.id || (!task && ["Approved","Allocated","Out for delivery"].includes(order.status));
   });
-  // Driver-facing marketing requests must be scoped to orders visible in their custody queue.\n  // Unlinked requests remain available to Operations, never to a driver.\n  const visibleMarketingRequests = isDriver\n    ? approvedMarketingRequests.filter((request) => Boolean(request.accountId) && visible.some((order) => order.accountId === request.accountId))\n    : approvedMarketingRequests;\n  const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
+  // Driver-facing marketing requests must be scoped to orders visible in their custody queue.
+  // Unlinked requests remain available to Operations, never to a driver.
+  const visibleMarketingRequests = isDriver
+    ? approvedMarketingRequests.filter((request) => Boolean(request.accountId) && visible.some((order) => order.accountId === request.accountId))
+    : approvedMarketingRequests;
+  const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
   const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
   const completedByOverride=(orderId:string)=>state.overrides?.some((record)=>record.orderId===orderId)??false;
   const issueForOrder=(order:typeof eligible[number])=>
