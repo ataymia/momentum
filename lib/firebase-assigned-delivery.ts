@@ -13,6 +13,11 @@ export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDelive
  // contacting the trusted endpoint. The server remains the authority.
  if(!session.uid?.trim()||!session.idToken?.trim())return Promise.reject(new Error("Sign in again before changing delivery custody."));
  if(!/^[A-Za-z0-9_-]{5,120}$/.test(body.orderId??""))return Promise.reject(new Error("Select a valid delivery order before continuing."));
+ // Types are erased at runtime. Reject malformed actions and assignment targets
+ // before any network call; backend authorization and state checks remain required.
+ const allowedActions=new Set(["status","claim","assign","pack","load","depart","release","note","complete"]);
+ if(!allowedActions.has(body.action))return Promise.reject(new Error("Select a supported delivery action before continuing."));
+ if(body.driverId!==undefined&&!/^[A-Za-z0-9_-]{5,120}$/.test(body.driverId))return Promise.reject(new Error("Select a valid driver before assigning delivery custody."));
  const key=JSON.stringify([session.uid,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
  const pending=pendingCustodyActions.get(key);
  if(pending)return pending;
