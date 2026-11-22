@@ -3,11 +3,12 @@ import {useEffect,useState} from "react";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {useWorkspace} from "../../lib/workspace-context";
 import {navigateToRoute} from "../../lib/navigation-store";
-import {listConnectedOrderIntakes,getConnectedOrderIntake,prepareConnectedApprovedIntake,verifyConnectedOrderInvoicePair,type OrderIntakeRecord} from "../../lib/firebase-order-intake";
+import {listConnectedOrderIntakes,getConnectedOrderIntake,prepareConnectedApprovedIntake,verifyConnectedOrderInvoicePair,auditConnectedApprovedIntakePairs,type OrderIntakeRecord} from "../../lib/firebase-order-intake";
 import {momentumStorage} from "../../lib/persistence";
 import {COMMERCIAL_KEY} from "../../lib/workspace-context";
 import {COMMERCE_STORAGE_KEY} from "../../lib/commerce-engine";
 import {approvedIntakeRefState,visibleApprovedIntakes} from "../../lib/approved-intake-visibility";
+import type {CanonicalPairAudit} from "../../lib/order-intake-link-proof";
 
 /** Approved source requests remain visible in Sales Orders even if a draft cannot yet be priced. */
 export function ApprovedIntakeOrders(){
@@ -18,6 +19,7 @@ export function ApprovedIntakeOrders(){
  const [records,setRecords]=useState<OrderIntakeRecord[]>([]);
  const [loaded,setLoaded]=useState(false);
  const [showPrepared,setShowPrepared]=useState(false);
+ const [linkAudit,setLinkAudit]=useState<CanonicalPairAudit|null>(null);
  const [nextCursor,setNextCursor]=useState<string|null>(null);
  const [busy,setBusy]=useState("");
  const [notice,setNotice]=useState("");
@@ -39,14 +41,14 @@ export function ApprovedIntakeOrders(){
  const accountName=(r:OrderIntakeRecord)=>scope.accounts.find(a=>a.id===r.accountId)?.name||r.accountName||"Customer account unavailable";
  const reload=async()=>{
   if(!session||busy)return;
-  setBusy("reload");setNotice("");setNoticeFor("");
+  setBusy("reload");setNotice("");setNoticeFor("");setLinkAudit(null);
   try{const page=await listConnectedOrderIntakes(session);setRecords(page.records);setNextCursor(page.nextCursor);setLoaded(true);}
   catch(e){setNotice(e instanceof Error?e.message:"Approved requests could not be refreshed.");}
   finally{setBusy("");}
  };
  const older=async()=>{
   if(!session||busy||!nextCursor)return;
-  setBusy("older");setNoticeFor("");
+  setBusy("older");setNoticeFor("");setLinkAudit(null);
   try{
    const page=await listConnectedOrderIntakes(session,nextCursor);
    setRecords(rows=>{const seen=new Set(rows.map(r=>r.id));return[...rows,...page.records.filter(r=>!seen.has(r.id))];});
@@ -77,7 +79,7 @@ export function ApprovedIntakeOrders(){
    pricing={pricePerCase:price,terms:manual.terms as NonNullable<Parameters<typeof prepareConnectedApprovedIntake>[2]>["terms"],
     priceEvidence:manual.priceEvidence.trim()};
   }
-  setBusy(intakeId);setNotice("");
+  setBusy(intakeId);setNotice("");setLinkAudit(null);
   try{
    const result=await prepareConnectedApprovedIntake(session,intakeId,pricing);
    const confirmed=await getConnectedOrderIntake(session,intakeId);
@@ -103,6 +105,19 @@ export function ApprovedIntakeOrders(){
   }catch(e){setDetails(intakeId);setNotice(e instanceof Error?e.message:"Preparation not confirmed. Reconcile before retrying.");}
   finally{setBusy("");}
  };
+ const verifyLoaded=async()=>{
+  if(!session||busy||!hasPrepared)return;
+  setBusy("verify");setNotice("");setNoticeFor("");setLinkAudit(null);
+  try{
+   const result=await auditConnectedApprovedIntakePairs(session,records);
+   setLinkAudit(result);setShowPrepared(true);
+   setNotice("Read-only check of "+result.checked+" loaded prepared request(s): "+
+    result.verifiedIds.length+" matching order/invoice pair(s), "+
+    result.unresolvedIds.length+" requiring source reconciliation. No orders or invoices were changed.");
+  }catch(e){
+   setNotice(e instanceof Error?e.message:"Canonical link audit could not be completed. No records were changed.");
+  }finally{setBusy("");}
+ };
  if(loaded&&approved.length===0&&!nextCursor&&!notice&&!hasPrepared)return null;
  return <section className="prototype-panel" aria-label="Approved requests requiring order recovery">
   <h2>Approved requests · order preparation</h2>
@@ -111,6 +126,10 @@ export function ApprovedIntakeOrders(){
   {hasPrepared&&<button type="button" disabled={Boolean(busy)}
    onClick={()=>setShowPrepared(value=>!value)}>
    {showPrepared?"Show recoveries only":"Show prepared requests too"}
+  </button>}
+  {hasPrepared&&<button type="button" disabled={Boolean(busy)}
+   onClick={()=>void verifyLoaded()}>
+   {busy==="verify"?"Verifying…":"Verify loaded order/invoice links"}
   </button>}
   {notice&&<p role="status">{notice}</p>}
   <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
@@ -144,6 +163,8 @@ export function ApprovedIntakeOrders(){
       <button type="button" disabled={Boolean(busy)}
        onClick={()=>void prepare(r.id,true)}>{busy===r.id?"Preparing…":"Prepare order and draft invoice"}</button>
      </div>}
+     {linkAudit?.unresolvedIds.includes(r.id)&&<p role="alert" className="prototype-note">Reconciliation required: this approved source does not match one valid canonical Sales Order and Invoice pair. Do not create or approve another order.</p>}
+     {linkAudit?.verifiedIds.includes(r.id)&&<p role="status" className="prototype-note">Canonical order and invoice pair independently verified.</p>}
      {noticeFor===r.id&&notice&&<p role="status" className="prototype-note">{notice}</p>}
     </td>
    </tr>)}
