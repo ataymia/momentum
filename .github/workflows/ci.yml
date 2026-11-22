@@ -43,6 +43,9 @@ jobs:
       - name: Git integrity check
         run: git diff --check
 
+      - name: Check every test is registered and browser gate is mandatory
+        run: node scripts/check-test-coverage.mjs
+
       - name: Typecheck application
         run: npm run typecheck
 
