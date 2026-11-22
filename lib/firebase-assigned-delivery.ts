@@ -9,6 +9,14 @@ export async function assignedDelivery(session:FirebaseAuthSession,body:Assigned
  const result=await response.json().catch(()=>null) as {ok?:boolean;cloudConfirmed?:boolean;message?:string;orderStatus?:string;taskStatus?:string;replayed?:boolean}|null;
  if(!response.ok||result?.ok!==true||result.cloudConfirmed!==true)
    throw new Error(result?.message||"Delivery update is not confirmed by the company server. Refresh the queue before taking another action.");
- const refreshed=await momentumStorage.refreshKeys(["momentum-delivery-v1","momentum-inventory-ledger-v1","momentum-commercial-controls-v1","momentum-demo-workspace-v5"]);
- return {...result,refreshed:refreshed.ok};
+ // Server acknowledgement is authoritative. A failed client readback must not
+ // turn an accepted custody mutation into an apparent rejected mutation.
+ let refreshed=false;
+ try {
+   const readback=await momentumStorage.refreshKeys(["momentum-delivery-v1","momentum-inventory-ledger-v1","momentum-commercial-controls-v1","momentum-demo-workspace-v5"]);
+   refreshed=readback.ok;
+ } catch {
+   refreshed=false;
+ }
+ return {...result,refreshed};
 }
