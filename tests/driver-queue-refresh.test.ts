@@ -138,4 +138,11 @@ test("connected custody executes duplicate, conflict and server-confirmation saf
  assert.equal(refreshes,1,"rejected cloud mutation never triggers readback");
  await assert.rejects(assigned(session,{...order,action:"assign"}),/Select a driver/);
  assert.equal(calls,2,"invalid assignment never posts");
+ await assert.rejects(assigned(session,{orderId:"bad",action:"claim"}),/valid delivery order/);
+ await assert.rejects(assigned({uid:"",idToken:"qa-token"},order),/Sign in again/);
+ await assert.rejects(assigned(session,{...order,action:"note",note:"x"}),/delivery note/);
+ await assert.rejects(assigned(session,{...order,action:"release",reason:"short"}),/release reason/);
+ await assert.rejects(assigned(session,{...order,action:"complete",signature:{recipientName:"Test Recipient",strokes:[[[0,0],[1001,2]]]}}),/signature is invalid/);
+ await assert.rejects(assigned(session,{...order,action:"complete",signature:{recipientName:"",strokes:[[[0,0],[100,100]]]}}),/recipient's name/);
+ assert.equal(calls,2,"invalid inputs and signatures never post or occupy a custody lock");
 });
