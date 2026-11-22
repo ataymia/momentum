@@ -254,6 +254,9 @@ try{
    await page.goBack({waitUntil:"domcontentloaded"});
    assert.equal(new URL(page.url()).pathname,"/sales/invoices");
    await page.reload({waitUntil:"domcontentloaded"});
+   // A Next.js static shell can be initially blank before the client hydrates.
+   // Prove the actual Invoices heading renders, instead of sampling the loading frame.
+   await page.getByRole("heading",{name:"Invoices",exact:true}).first().waitFor({timeout:20000});
    const view=await inspect();
    assert.equal(view.blocked,false,"A deep link/back must not become a 404");
    assert.equal(view.errorText,false,"A refresh must not render an application crash");
