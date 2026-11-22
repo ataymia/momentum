@@ -6,13 +6,18 @@ export type AssignedDeliveryAction={orderId:string;action:"status"|"claim"|"assi
 // This is a client-side guard only; the trusted function must still enforce
 // authorization and replay safety across devices and sessions.
 const pendingCustodyActions=new Map<string,Promise<Awaited<ReturnType<typeof submitAssignedDelivery>>>>();
+// Different custody transitions for one order must not race in the same tab.
+const pendingOrderActions=new Map<string,string>();
 export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDeliveryAction){
  const key=JSON.stringify([session.uid,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
  const pending=pendingCustodyActions.get(key);
  if(pending)return pending;
+ const orderKey=JSON.stringify([session.uid,body.orderId]);
+ if(pendingOrderActions.has(orderKey))return Promise.reject(new Error("Another delivery action is still pending for this order. Refresh the queue and verify custody before continuing."));
  const operation=submitAssignedDelivery(session,body);
+ pendingOrderActions.set(orderKey,key);
  pendingCustodyActions.set(key,operation);
- void operation.finally(()=>{if(pendingCustodyActions.get(key)===operation)pendingCustodyActions.delete(key);}).catch(()=>{});
+ void operation.finally(()=>{if(pendingCustodyActions.get(key)===operation){pendingCustodyActions.delete(key);if(pendingOrderActions.get(orderKey)===key)pendingOrderActions.delete(orderKey);}}).catch(()=>{});
  return operation;
 }
 async function submitAssignedDelivery(session:FirebaseAuthSession,body:AssignedDeliveryAction){
