@@ -22,7 +22,12 @@ test("R52: employee can read but cannot directly mutate own leave records in Fir
   supervisedBrandAmbassadorIds:new Set()};
  const docs=domainDocuments(spec,scope);
  assert.equal(docs.find(item=>item.path===userDocPath("rep-a","hcm","leaveRequests"))?.writable,false);
- assert.equal(docs.find(item=>item.path===userDocPath("rep-a","hcm","audit"))?.writable,true);
+ // HR audit is Administrator-only and may not be read or written by a Sales Rep.
+ assert.equal(docs.some(item=>item.path===userDocPath("rep-a","hcm","audit")),false);
+ const administratorScope:PersistenceScope={...scope,role:"Administrator",
+  readableUserIds:new Set(["rep-a"])};
+ const adminDocs=domainDocuments(spec,administratorScope);
+ assert.equal(adminDocs.find(item=>item.path===userDocPath("rep-a","hcm","audit"))?.writable,true);
  assert.equal(docs.some(item=>item.path===userDocPath("rep-b","hcm","leaveRequests")),false);
 });
 test("R23: customer transactions include only authorized linked finance records and disclose unmatched historical invoices",()=>{
