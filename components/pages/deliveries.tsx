@@ -217,6 +217,10 @@ export function DeliveriesPage() {
     const canRecordCollection = Boolean((ownTask || canManage) && task && ["In transit", "Delivered"].includes(task.status) && remaining > 0);
     const updateCollection = (patch: Partial<CollectionDraft>) => setCollectionDrafts((current) => ({ ...current, [order.id]: { ...collectionDraft, ...patch } }));
     const saveCollection = () => {
+      if(momentumStorage.mode()==="firestore"){
+        setNotice("Connected payment collection recording is awaiting a server-authorized, auditable settlement-evidence workflow. No collection was posted. Contact Finance to record the receipt through its approved process.");
+        return;
+      }
       if (!collectionDraft.method) { setNotice("Choose the actual payment method before recording a collection."); return; }
       if (collectionDraft.method==="Check"&&!collectionDraft.reference.trim()){setNotice("Enter the check number before recording a check collection.");return;}
       const result = recordDeliveryCollection(order.id, Number(collectionDraft.amount), collectionDraft.method, collectionDraft.reference);
@@ -264,7 +268,8 @@ export function DeliveriesPage() {
         {task?.status === "In transit" && !needsReconciliation && (ownTask || canManage&&momentumStorage.mode()!=="firestore") && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => openSignature(order.id)}>Complete delivery & sign</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) runStage({orderId:order.id,action:"note",note},()=>addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
       </div>
 
-      {canRecordCollection && <div className="delivery-payment-collection">
+      {canRecordCollection && momentumStorage.mode()==="firestore" && <p className="form-callout" role="status">Connected collection entry is held until Finance has a server-authorized receipt and settlement-evidence workflow. No payment can be recorded from this delivery screen.</p>}
+      {canRecordCollection && momentumStorage.mode()!=="firestore" && <div className="delivery-payment-collection">
         <label><small>Amount collected</small><input type="number" min="0.01" step="0.01" max={remaining} value={collectionDraft.amount} onChange={(event) => updateCollection({ amount: event.target.value })} /></label>
         <label><small>Payment method</small><select value={collectionDraft.method} onChange={(event) => updateCollection({ method: event.target.value as PaymentMethod })}><option value="">Select actual method</option><option>Cash</option><option>Check</option><option>ACH</option><option>Wire</option><option>Card</option><option>Other</option></select></label>
         <label><small>{collectionDraft.method === "Check" ? "Check number / reference" : "Reference / confirmation"}</small><input required={collectionDraft.method === "Check"} value={collectionDraft.reference} onChange={(event) => updateCollection({ reference: event.target.value })} placeholder={collectionDraft.method === "Check" ? "Required for checks" : "Optional unless available"} /></label>
