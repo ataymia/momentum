@@ -38,3 +38,13 @@ test("network transport failure leaves custody outcome uncertain and requires re
  assert.match(client,/try\s*\{[\s\S]*?response=await fetch\([\s\S]*?catch\s*\{[\s\S]*?Refresh the queue and verify the current custody status before taking another action/);
  assert.match(client,/result\.cloudConfirmed!==true/,"only explicit cloud confirmation is accepted");
 });
+
+
+test("same-tab duplicate custody submissions share one pending operation and release after settlement",()=>{
+ const client=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
+ assert.match(client,/pendingCustodyActions=new Map/);
+ assert.match(client,/session\.uid,body\.orderId,body\.action/,"dedupe scope includes identity, order and action");
+ assert.match(client,/if\(pending\)return pending/,"second simultaneous submission cannot post twice");
+ assert.match(client,/pendingCustodyActions\.set\(key,operation\)/);
+ assert.match(client,/operation\.finally\([\s\S]*?pendingCustodyActions\.delete\(key\)/,"settled actions do not permanently block retries");
+});
