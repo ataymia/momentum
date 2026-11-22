@@ -18,6 +18,10 @@ export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDelive
  const allowedActions=new Set(["status","claim","assign","pack","load","depart","release","note","complete"]);
  if(!allowedActions.has(body.action))return Promise.reject(new Error("Select a supported delivery action before continuing."));
  if(body.driverId!==undefined&&!/^[A-Za-z0-9_-]{5,120}$/.test(body.driverId))return Promise.reject(new Error("Select a valid driver before assigning delivery custody."));
+ // Match the trusted function's note and release contracts before posting.
+ // Invalid notes and release reasons must not create uncertain network outcomes.
+ if(body.action==="note"&&(typeof body.note!=="string"||body.note.trim().length<3||body.note.trim().length>500))return Promise.reject(new Error("Enter a delivery note of 3–500 characters."));
+ if(body.action==="release"&&(typeof body.reason!=="string"||body.reason.trim().length<8||body.reason.trim().length>500))return Promise.reject(new Error("Enter a release reason of 8–500 characters."));
  const key=JSON.stringify([session.uid,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
  const pending=pendingCustodyActions.get(key);
  if(pending)return pending;
