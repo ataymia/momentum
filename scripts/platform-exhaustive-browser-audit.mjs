@@ -213,6 +213,52 @@ try{
    if(await toggle.count()>0){await toggle.first().click();assert(await page.getByText(/Print selected|Print \/ Save PDF/).count()>0);}
    else throw new Error("Invoice print-center toggle missing");
  });
+ // P0: Actually click the print control in the rendered UI. A source-string
+ // assertion would have missed the exact release-flag regression in PR #178.
+ await recordInteraction("P0 unapproved-issuer invoice prints after off-document warning",async()=>{
+   await goto("/sales/invoices");
+   await page.getByRole("button",{name:"Print / Save PDF (single or bulk)"}).click();
+   const firstInvoice=page.locator(".invoice-register .invoice-check").first();
+   await firstInvoice.waitFor({state:"visible",timeout:12000});
+   await firstInvoice.click();
+   const printButton=page.getByRole("button",{name:"Print selected (1)"});
+   assert.equal(await printButton.isEnabled(),true,"Unapproved issuer cannot disable printing");
+   await page.evaluate(()=>{
+     window.__momentumTestPrinted=[];
+     window.print=()=>{window.__momentumTestPrinted.push(
+       document.querySelector(".invoice-print-root")?.textContent??""
+     );};
+   });
+   let warningSeen=false;
+   const acknowledge=async dialog=>{
+     warningSeen=true;
+     assert.equal(dialog.type(),"confirm");
+     assert.match(dialog.message(),/Do you understand these issues and want to print anyway/);
+     assert.match(dialog.message(),/Issuer name, address and contact details/);
+     await dialog.accept();
+   };
+   page.on("dialog",acknowledge);
+   try{
+     await printButton.click();
+     await page.waitForFunction(()=>window.__momentumTestPrinted?.length===1,undefined,{timeout:10000});
+     const printed=await page.evaluate(()=>window.__momentumTestPrinted[0]);
+     assert(printed?.length>30,"The click must render the actual invoice sheet");
+     assert.equal(warningSeen,true,"Missing approval must warn, not silently print or disable");
+     assert.doesNotMatch(printed,/Invoice printing warning|Do you understand these issues|issuer details still require approval/i,
+       "The preprint warning must never appear on paper or PDF");
+   }finally{page.off("dialog",acknowledge);}
+ });
+ await recordInteraction("P0 browser Back and refresh retain the selected module",async()=>{
+   await goto("/sales/invoices");
+   await goto("/sales/orders");
+   await page.goBack({waitUntil:"domcontentloaded"});
+   assert.equal(new URL(page.url()).pathname,"/sales/invoices");
+   await page.reload({waitUntil:"domcontentloaded"});
+   const view=await inspect();
+   assert.equal(view.blocked,false,"A deep link/back must not become a 404");
+   assert.equal(view.errorText,false,"A refresh must not render an application crash");
+   assert.equal(view.blank,false,"Invoice route must render a meaningful page");
+ });
  // R15/R16: a physical Quick Visit is an editable three-stage form.
  await recordInteraction("R15 Quick Visit freehand entry, validation and demo persistence",async()=>{
    await goto("/crm/quick-visit");
