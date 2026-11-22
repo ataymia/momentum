@@ -94,3 +94,10 @@ test("completion signature preflight enforces trusted stroke, coordinate and rec
  assert.match(client,/signature\.recipientName\.trim\(\)\.length>120/);
  assert.ok(client.indexOf('body.action==="complete"')<client.indexOf("const operation=submitAssignedDelivery"),"invalid signatures cannot reach Firebase");
 });
+
+
+test("assignment requires a concrete driver target before sending a custody request",()=>{
+ const client=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
+ assert.match(client,/body\.action==="assign"&&!body\.driverId/,"targetless assignments fail closed");
+ assert.ok(client.indexOf("Select a driver before assigning delivery custody.")<client.indexOf("const operation=submitAssignedDelivery"),"targetless assignments never contact Firebase");
+});
