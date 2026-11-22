@@ -86,7 +86,7 @@ export function DeliveriesPage() {
   // Driver-facing marketing requests must be scoped to orders visible in their custody queue.
   // Unlinked requests remain available to Operations, never to a driver.
   const visibleMarketingRequests = isDriver
-    ? approvedMarketingRequests.filter((request) => Boolean(request.accountId) && visible.some((order) => order.accountId === request.accountId))
+    ? approvedMarketingRequests.filter((request) => Boolean(request.accountId) && visible.some((order) => order.accountId === request.accountId && taskForOrder(order.id)?.driverId === currentUser?.id))
     : approvedMarketingRequests;
   const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
   const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
