@@ -19,3 +19,10 @@ test("driver marketing notices require an assigned delivery, not a merely claima
  assert.match(page,/const visibleMarketingRequests = isDriver[\s\S]*?taskForOrder\(order\.id\)\?\.driverId === currentUser\?\.id/);
  assert.ok(page.includes(": approvedMarketingRequests;"),"operations retains approved requests");
 });
+
+test("connected delivery never treats gateway HTML or missing cloud acknowledgement as success",()=>{
+ const client=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
+ assert.match(client,/response\.json\(\)\.catch\(\(\)=>null\)/,"non-JSON responses are handled");
+ assert.match(client,/!response\.ok\|\|result\?\.ok!==true\|\|result\.cloudConfirmed!==true/,"explicit server acknowledgement required");
+ assert.match(client,/Refresh the queue before taking another action/,"uncertain writes warn against blind replay");
+});
