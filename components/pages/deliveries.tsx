@@ -73,7 +73,7 @@ export function DeliveriesPage() {
 
   const isDriver = currentUser?.role === "Delivery Driver";
   const canManage = Boolean(currentUser && ["Administrator", "Operations"].includes(currentUser.role));
-  const drivers = data.users.filter((user) => user.role === "Delivery Driver");
+  const drivers = data.users.filter((user) => user.role === "Delivery Driver" && user.employmentStatus !== "Separated");
   const eligible = useMemo(() => data.orders.filter(processedForDelivery).sort((a, b) => b.placedAt.localeCompare(a.placedAt)), [data.orders]);
   const approvedMarketingRequests = useMemo(() => marketing.deliveryNotices.filter((request) => request.status === "Approved").sort((a, b) => b.approvedAt.localeCompare(a.approvedAt)), [marketing.deliveryNotices]);
   const visible = eligible.filter((order) => {
