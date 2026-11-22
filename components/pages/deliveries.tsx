@@ -211,7 +211,9 @@ export function DeliveriesPage() {
     const selectedDriver = driverByOrder[order.id] ?? drivers[0]?.id ?? "";
     const lines = orderLinesFor(order);
     const linkedMarketing = approvedMarketingRequests.filter((request) => request.accountId === order.accountId);
-    const collected = (task?.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
+    const legacyCollected = (task?.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
+    // Connected local collection entries are not verified Finance receipts.
+    const collected = momentumStorage.mode() === "firestore" ? 0 : legacyCollected;
     const remaining = Math.max(0, order.amount - collected);
     const collectionDraft = collectionDrafts[order.id] ?? defaultCollection(remaining);
     const canRecordCollection = Boolean((ownTask || canManage) && task && ["In transit", "Delivered"].includes(task.status) && remaining > 0);
@@ -268,6 +270,7 @@ export function DeliveriesPage() {
         {task?.status === "In transit" && !needsReconciliation && (ownTask || canManage&&momentumStorage.mode()!=="firestore") && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => openSignature(order.id)}>Complete delivery & sign</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) runStage({orderId:order.id,action:"note",note},()=>addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
       </div>
 
+      {momentumStorage.mode()==="firestore" && legacyCollected > 0 && <p className="form-callout" role="alert">This delivery contains {formatMoney(legacyCollected)} in legacy collection entries. These entries are not verified Finance receipts or settled payments. Finance must reconcile the original evidence before treating any amount as collected. Do not collect or record the payment again based on this display.</p>}
       {canRecordCollection && momentumStorage.mode()==="firestore" && <p className="form-callout" role="status">Connected collection entry is held until Finance has a server-authorized receipt and settlement-evidence workflow. No payment can be recorded from this delivery screen.</p>}
       {canRecordCollection && momentumStorage.mode()!=="firestore" && <div className="delivery-payment-collection">
         <label><small>Amount collected</small><input type="number" min="0.01" step="0.01" max={remaining} value={collectionDraft.amount} onChange={(event) => updateCollection({ amount: event.target.value })} /></label>
