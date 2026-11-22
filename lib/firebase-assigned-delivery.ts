@@ -2,7 +2,20 @@ import type {FirebaseAuthSession} from "./firebase-auth-rest";
 import {firebaseFunctionUrl} from "./firebase-functions";
 import {momentumStorage} from "./persistence";
 export type AssignedDeliveryAction={orderId:string;action:"status"|"claim"|"assign"|"pack"|"load"|"depart"|"release"|"note"|"complete";driverId?:string;reason?:string;note?:string;signature?:{strokes:number[][][];recipientName:string}};
-export async function assignedDelivery(session:FirebaseAuthSession,body:AssignedDeliveryAction){
+// Deduplicate simultaneous submissions from multiple UI controls in this tab.
+// This is a client-side guard only; the trusted function must still enforce
+// authorization and replay safety across devices and sessions.
+const pendingCustodyActions=new Map<string,Promise<Awaited<ReturnType<typeof submitAssignedDelivery>>>>();
+export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDeliveryAction){
+ const key=JSON.stringify([session.uid,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
+ const pending=pendingCustodyActions.get(key);
+ if(pending)return pending;
+ const operation=submitAssignedDelivery(session,body);
+ pendingCustodyActions.set(key,operation);
+ void operation.finally(()=>{if(pendingCustodyActions.get(key)===operation)pendingCustodyActions.delete(key);}).catch(()=>{});
+ return operation;
+}
+async function submitAssignedDelivery(session:FirebaseAuthSession,body:AssignedDeliveryAction){
  // A network failure does not prove that the server rejected the mutation.
  // Drivers must reconcile the authoritative queue rather than repeat a
  // possibly accepted custody transition.
