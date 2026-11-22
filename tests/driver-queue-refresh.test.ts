@@ -26,3 +26,9 @@ test("connected delivery never treats gateway HTML or missing cloud acknowledgem
  assert.match(client,/!response\.ok\|\|result\?\.ok!==true\|\|result\.cloudConfirmed!==true/,"explicit server acknowledgement required");
  assert.match(client,/Refresh the queue before taking another action/,"uncertain writes warn against blind replay");
 });
+
+test("acknowledged custody mutations survive a failed client readback",()=>{
+ const client=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
+ assert.match(client,/let refreshed=false;[\s\S]*?try\s*\{[\s\S]*?momentumStorage\.refreshKeys\([\s\S]*?catch\s*\{[\s\S]*?refreshed=false;[\s\S]*?return \{\.\.\.result,refreshed\};/);
+ assert.match(client,/result\.cloudConfirmed!==true/,"server acknowledgement remains mandatory");
+});
