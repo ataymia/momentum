@@ -28,3 +28,33 @@ export function canonicalOrderInvoiceLinked(
   invoice.orderId===order.id&&invoice.accountId===order.accountId&&
   Boolean(order.accountId)&&total!==null&&total===cents(invoice.total);
 }
+
+export type ApprovedIntakeLink={id:string;status:string;orderId?:string;invoiceId?:string};
+export type CanonicalPairAudit={checked:number;verifiedIds:string[];unresolvedIds:string[]};
+
+/** Audit loaded approved sources in one read-only pass across both canonical registers.
+ * Unprepared and half-linked requests are handled separately by the recovery workflow.
+ */
+export function auditCanonicalIntakePairs(
+ records:readonly ApprovedIntakeLink[],
+ orders:readonly SourceLinkedOrder[],
+ invoices:readonly SourceLinkedInvoice[],
+):CanonicalPairAudit{
+ const verifiedIds:string[]=[],unresolvedIds:string[]=[];
+ const checkedIds=new Set<string>();
+ for(const record of records){
+  if(record.status!=="Approved"||!record.orderId?.trim()||!record.invoiceId?.trim())continue;
+  if(checkedIds.has(record.id)){
+   // Duplicate source rows are not independently accepted evidence.
+   const index=verifiedIds.indexOf(record.id);
+   if(index>=0)verifiedIds.splice(index,1);
+   if(!unresolvedIds.includes(record.id))unresolvedIds.push(record.id);
+   continue;
+  }
+  checkedIds.add(record.id);
+  if(canonicalOrderInvoiceLinked(orders,invoices,record.id,record.orderId,record.invoiceId))
+   verifiedIds.push(record.id);
+  else unresolvedIds.push(record.id);
+ }
+ return{checked:checkedIds.size,verifiedIds,unresolvedIds};
+}
