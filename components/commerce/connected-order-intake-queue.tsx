@@ -1,7 +1,9 @@
 "use client";
 import {Fragment,useEffect,useRef,useState} from "react";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
-import {useWorkspace} from "../../lib/workspace-context";
+import {useWorkspace,COMMERCIAL_KEY} from "../../lib/workspace-context";
+import {momentumStorage} from "../../lib/persistence";
+import {COMMERCE_STORAGE_KEY} from "../../lib/commerce-engine";
 import {listConnectedOrderIntakes,getConnectedOrderIntake,decideConnectedOrderIntake,type OrderIntakeStage,type OrderIntakeRecord,type AuthorizedIntakePricing} from "../../lib/firebase-order-intake";
 
 const final=(stage:OrderIntakeStage)=>stage==="Approved"||stage==="Declined";
@@ -103,9 +105,17 @@ export function ConnectedOrderIntakeQueue(){
      (status==="Approved"&&(!readback.orderId||!readback.invoiceId||
        receipt.orderId!==readback.orderId||receipt.invoiceId!==readback.invoiceId)))
     throw new Error("The decision was saved but verification is incomplete. Refresh before acting again.");
+   // The source receipt alone does NOT hydrate the canonical commercial and
+   // commerce registers displayed by Orders and Invoices. Refresh both after
+   // source readback, never optimistically declare the local workspace synced.
+   const sync=status==="Approved"
+    ?await momentumStorage.refreshKeys([COMMERCIAL_KEY,COMMERCE_STORAGE_KEY])
+    :{ok:true};
    setRecords(current=>current.map(row=>row.id===selected.id?readback:row));
    setFeedback(status==="Approved"
-    ?"Approved. The sales order and internal draft invoice were created together. Find them in Sales → Orders and Finance → Invoices."
+    ?sync.ok
+      ?"Approved and confirmed. The sales order and internal draft invoice are now synced to this workspace. No customer invoice was sent."
+      :"Approved and saved in the company database, with linked order and invoice confirmed, but this device has not refreshed Orders and Invoices. Reload the platform and check both records. Do not approve or submit the request again."
     :"Declined and saved. The reason is available in the requester's in-app request history; no external email was sent.");
    setSelectedId("");setReason("");setDeclining(false);setPricingOpen(false);pending.current=null;
   }catch(error){
