@@ -65,6 +65,25 @@ test("server self-delivery atomically verifies rep, approval, exact custody, sig
     await lotRef.set({items:[originalLot]});
     const packed=await commit(rep,{action:"pack",orderId});
     assert.equal(packed.orderStatus,"Allocated");
+    const reservationRef=db.doc(prefix+"inventoryLedger/fields/reservations");
+    const validReservations=(await reservationRef.get()).data()?.items;
+    assert.equal(validReservations.length,1);
+    // A replay must not bless missing cases, an incorrect SKU, or invalid quantities.
+    const originalReservation=validReservations[0];
+    for(const corrupted of [
+      {...originalReservation,quantity:3},
+      {...originalReservation,lotId:"unknown-lot"},
+      {...originalReservation,quantity:5},
+    ]){
+      await reservationRef.set({items:[corrupted]});
+      await assert.rejects(()=>commit(rep,{action:"pack",orderId}),
+        /Existing reservations do not match the exact ordered SKUs and cases/);
+      const after=(await reservationRef.get()).data()?.items;
+      assert.deepEqual(after,[corrupted],"A rejected replay must not rewrite reservation evidence.");
+    }
+    await reservationRef.set({items:validReservations});
+    assert.equal((await commit(rep,{action:"pack",orderId})).replayed,true);
+    assert.deepEqual((await reservationRef.get()).data()?.items,validReservations);
     const loaded=await commit(rep,{action:"load",orderId});
     assert.equal(loaded.taskStatus,"Loaded");
     assert.equal((await commit(rep,{action:"load",orderId})).replayed,true);
