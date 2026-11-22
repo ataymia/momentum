@@ -22,6 +22,22 @@ export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDelive
  // Invalid notes and release reasons must not create uncertain network outcomes.
  if(body.action==="note"&&(typeof body.note!=="string"||body.note.trim().length<3||body.note.trim().length>500))return Promise.reject(new Error("Enter a delivery note of 3–500 characters."));
  if(body.action==="release"&&(typeof body.reason!=="string"||body.reason.trim().length<8||body.reason.trim().length>500))return Promise.reject(new Error("Enter a release reason of 8–500 characters."));
+ // Match the server's signature bounds before a completion request enters the network.
+ if(body.action==="complete"){
+   const signature=body.signature;
+   if(!signature||!Array.isArray(signature.strokes)||signature.strokes.length<1||signature.strokes.length>80)
+     return Promise.reject(new Error("Ask the recipient to sign before completing delivery."));
+   let points=0;
+   for(const stroke of signature.strokes){
+     if(!Array.isArray(stroke)||stroke.length<2||stroke.length>300||
+       !stroke.every(pt=>Array.isArray(pt)&&pt.length===2&&pt.every(Number.isFinite)&&pt[0]>=0&&pt[0]<=1000&&pt[1]>=0&&pt[1]<=300))
+       return Promise.reject(new Error("Recipient signature is invalid. Please sign again."));
+     points+=stroke.length;
+   }
+   if(points<2||points>1200)return Promise.reject(new Error("Please sign again using shorter strokes."));
+   if(typeof signature.recipientName!=="string"||!signature.recipientName.trim()||signature.recipientName.trim().length>120)
+     return Promise.reject(new Error("Enter the recipient's name before completing delivery."));
+ }
  const key=JSON.stringify([session.uid,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
  const pending=pendingCustodyActions.get(key);
  if(pending)return pending;
