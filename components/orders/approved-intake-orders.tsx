@@ -3,10 +3,11 @@ import {useEffect,useState} from "react";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {useWorkspace} from "../../lib/workspace-context";
 import {navigateToRoute} from "../../lib/navigation-store";
-import {listConnectedOrderIntakes,getConnectedOrderIntake,prepareConnectedApprovedIntake,type OrderIntakeRecord} from "../../lib/firebase-order-intake";
+import {listConnectedOrderIntakes,getConnectedOrderIntake,prepareConnectedApprovedIntake,verifyConnectedOrderInvoicePair,type OrderIntakeRecord} from "../../lib/firebase-order-intake";
 import {momentumStorage} from "../../lib/persistence";
 import {COMMERCIAL_KEY} from "../../lib/workspace-context";
 import {COMMERCE_STORAGE_KEY} from "../../lib/commerce-engine";
+import {approvedIntakeRefState,visibleApprovedIntakes} from "../../lib/approved-intake-visibility";
 
 /** Approved source requests remain visible in Sales Orders even if a draft cannot yet be priced. */
 export function ApprovedIntakeOrders(){
@@ -16,6 +17,7 @@ export function ApprovedIntakeOrders(){
  const enabled=currentUser?.role==="Administrator"&&firebase?.status==="ready"&&Boolean(session);
  const [records,setRecords]=useState<OrderIntakeRecord[]>([]);
  const [loaded,setLoaded]=useState(false);
+ const [showPrepared,setShowPrepared]=useState(false);
  const [nextCursor,setNextCursor]=useState<string|null>(null);
  const [busy,setBusy]=useState("");
  const [notice,setNotice]=useState("");
@@ -32,7 +34,8 @@ export function ApprovedIntakeOrders(){
  },[enabled,session]);
  if(!enabled)return null;
  // Completed requests belong in the real Orders register, not a second approval step.
- const approved=records.filter(r=>r.status==="Approved"&&(!r.orderId||!r.invoiceId));
+ const approved=visibleApprovedIntakes(records,showPrepared);
+ const hasPrepared=records.some(r=>approvedIntakeRefState(r)==="prepared");
  const accountName=(r:OrderIntakeRecord)=>scope.accounts.find(a=>a.id===r.accountId)?.name||r.accountName||"Customer account unavailable";
  const reload=async()=>{
   if(!session||busy)return;
@@ -81,33 +84,50 @@ export function ApprovedIntakeOrders(){
    setRecords(rows=>rows.map(r=>r.id===intakeId?confirmed:r));
    if(result.status==="Prepared"){
     if(confirmed.orderId!==result.orderId||confirmed.invoiceId!==result.invoiceId)
-     throw new Error("Order preparation receipt saved; references have not finished loading. Refresh before retrying.");
-    const sync=await momentumStorage.refreshKeys([COMMERCIAL_KEY,COMMERCE_STORAGE_KEY]);
-    setNotice(sync.ok?"Sales order and internal draft invoice created. Check Orders and Finance → Invoices. No customer invoice was sent.":
-     "Order and invoice were saved, but local refresh is unconfirmed. Reload the platform and check Orders before retrying.");
+     throw new Error("Order preparation source and receipt disagree. Do not retry or resubmit. Reconcile the original request with canonical records.");
+    // Preserve source links even if canonical readback or local hydration fails.
+    setShowPrepared(true);
+    const pairVerified=await verifyConnectedOrderInvoicePair(
+     session,intakeId,confirmed.orderId!,confirmed.invoiceId!,
+    );
+    const sync=pairVerified&&momentumStorage.mode()==="firestore"
+     ?await momentumStorage.refreshKeys([COMMERCIAL_KEY,COMMERCE_STORAGE_KEY])
+     :{ok:false,message:"Connected order and invoice readback is not ready."};
+    setNotice(!pairVerified
+     ?"The approved source has links, but its canonical order and invoice could not be independently verified. Do not create another order. Reconcile these records."
+     :sync.ok
+      ?"Matching sales order and internal draft invoice independently verified and synced. No customer invoice was sent."
+      :"Order and invoice are independently verified in the database, but local refresh is unconfirmed. Reload the platform and inspect the links below. Do not create another order.");
     setDetails("");
    }else{setDetails(intakeId);setNotice(result.message);}
   }catch(e){setDetails(intakeId);setNotice(e instanceof Error?e.message:"Preparation not confirmed. Reconcile before retrying.");}
   finally{setBusy("");}
  };
- if(loaded&&approved.length===0&&!nextCursor&&!notice)return null;
+ if(loaded&&approved.length===0&&!nextCursor&&!notice&&!hasPrepared)return null;
  return <section className="prototype-panel" aria-label="Approved requests requiring order recovery">
-  <h2>Approved requests needing recovery</h2>
+  <h2>Approved requests · order preparation</h2>
   <p className="prototype-note">New approvals automatically create a sales order and internal invoice draft when authorized price, payment terms and account ownership are verified. This is only an exception queue for older requests or missing commercial details. No invoice is sent or inventory reserved here.</p>
   <button type="button" disabled={Boolean(busy)} onClick={()=>void reload()}>Refresh approved requests</button>
+  {hasPrepared&&<button type="button" disabled={Boolean(busy)}
+   onClick={()=>setShowPrepared(value=>!value)}>
+   {showPrepared?"Show recoveries only":"Show prepared requests too"}
+  </button>}
   {notice&&<p role="status">{notice}</p>}
   <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
    <th>Request</th><th>Customer</th><th>Cases</th><th>Order status</th><th>Next action</th>
   </tr></thead><tbody>
    {approved.map(r=><tr key={r.id}><td>{r.id}</td><td>{accountName(r)}<button type="button" className="prototype-link" onClick={()=>navigateToRoute("/sales/customers/"+encodeURIComponent(r.accountId))}>Open account</button></td><td>{r.totalCases}</td>
-    <td>{r.orderId&&r.invoiceId?"Order "+r.orderId+" · invoice draft "+r.invoiceId:"Approved · awaiting order and invoice"}</td>
-    <td>{r.orderId&&r.invoiceId?<div className="prototype-controls"><button type="button" onClick={()=>navigateToRoute("/sales/orders/"+encodeURIComponent(r.orderId!))}>Open sales order</button><button type="button" onClick={()=>navigateToRoute("/sales/invoices/"+encodeURIComponent(r.invoiceId!))}>Open invoice draft</button></div>:
-     <button type="button" disabled={Boolean(busy)} onClick={()=>void prepare(r.id,false)}>
+    <td>{approvedIntakeRefState(r)==="prepared"?"Order "+r.orderId+" · invoice draft "+r.invoiceId:
+     approvedIntakeRefState(r)==="partial-linkage"?"Partial linkage · reconciliation required":
+     "Approved · awaiting order and invoice"}</td>
+    <td>{approvedIntakeRefState(r)==="prepared"?<div className="prototype-controls"><button type="button" onClick={()=>navigateToRoute("/sales/orders/"+encodeURIComponent(r.orderId!))}>Open sales order</button><button type="button" onClick={()=>navigateToRoute("/sales/invoices/"+encodeURIComponent(r.invoiceId!))}>Open invoice draft</button></div>:approvedIntakeRefState(r)==="partial-linkage"
+      ?<p role="status" className="prototype-note">Order or invoice reference is missing. Do not create or approve a duplicate. Reconcile the original source with the canonical records before continuing.</p>
+      :<button type="button" disabled={Boolean(busy)} onClick={()=>void prepare(r.id,false)}>
       {busy===r.id?"Checking…":"Create linked order & draft invoice"}
      </button>}
-     {!r.orderId&&<button type="button" disabled={Boolean(busy)} aria-expanded={details===r.id}
+     {approvedIntakeRefState(r)==="needs-preparation"&&<button type="button" disabled={Boolean(busy)} aria-expanded={details===r.id}
       onClick={()=>{setDetails(v=>v===r.id?"":r.id);setManual({pricePerCase:"",terms:"",priceEvidence:""});setNotice("");}}>Confirm pricing</button>}
-     {details===r.id&&!r.orderId&&<div className="prototype-controls">
+     {details===r.id&&approvedIntakeRefState(r)==="needs-preparation"&&<div className="prototype-controls">
       <label>Authorized price per case ($)
        <input aria-label={"Approved case price "+r.id} type="number" min="0.01" step="0.01"
         value={manual.pricePerCase} onChange={e=>setManual(v=>({...v,pricePerCase:e.target.value}))}/>

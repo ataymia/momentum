@@ -1,8 +1,10 @@
 "use client";
 import {Fragment,useEffect,useRef,useState} from "react";
 import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
-import {useWorkspace} from "../../lib/workspace-context";
-import {listConnectedOrderIntakes,getConnectedOrderIntake,decideConnectedOrderIntake,type OrderIntakeStage,type OrderIntakeRecord,type AuthorizedIntakePricing} from "../../lib/firebase-order-intake";
+import {useWorkspace,COMMERCIAL_KEY} from "../../lib/workspace-context";
+import {momentumStorage} from "../../lib/persistence";
+import {COMMERCE_STORAGE_KEY} from "../../lib/commerce-engine";
+import {listConnectedOrderIntakes,getConnectedOrderIntake,decideConnectedOrderIntake,verifyConnectedOrderInvoicePair,type OrderIntakeStage,type OrderIntakeRecord,type AuthorizedIntakePricing} from "../../lib/firebase-order-intake";
 
 const final=(stage:OrderIntakeStage)=>stage==="Approved"||stage==="Declined";
 const stageLabel=(stage:OrderIntakeStage)=>final(stage)?stage:"Commercial review";
@@ -103,11 +105,28 @@ export function ConnectedOrderIntakeQueue(){
      (status==="Approved"&&(!readback.orderId||!readback.invoiceId||
        receipt.orderId!==readback.orderId||receipt.invoiceId!==readback.invoiceId)))
     throw new Error("The decision was saved but verification is incomplete. Refresh before acting again.");
+   // Independently read both canonical Firestore registers after source readback.
+   // A success receipt is not sufficient evidence that the normal workspaces
+   // can locate one coherent Order and one corresponding draft Invoice.
+   const verifiedPair=status!=="Approved"||await verifyConnectedOrderInvoicePair(
+    session,selected.id,readback.orderId!,readback.invoiceId!,
+   );
+   const sync=status==="Approved"
+    ?verifiedPair&&momentumStorage.mode()==="firestore"
+      ?await momentumStorage.refreshKeys([COMMERCIAL_KEY,COMMERCE_STORAGE_KEY])
+      :{ok:false,message:"Connected order and invoice readback is not ready."}
+    :{ok:true};
    setRecords(current=>current.map(row=>row.id===selected.id?readback:row));
    setFeedback(status==="Approved"
-    ?"Approved. The sales order and internal draft invoice were created together. Find them in Sales → Orders and Finance → Invoices."
+    ?!verifiedPair
+      ?"The approval source is saved, but a matching canonical order and invoice could not be independently verified. Do not approve or submit it again. Reconcile the original source in Sales → Orders."
+      :sync.ok
+       ?"Approved and independently verified. The matching sales order and internal draft invoice are synced to this workspace. No customer invoice was sent."
+       :"The approval, order and invoice are verified in the company database, but this device has not refreshed Orders and Invoices. Reload the platform and check both records. Do not approve or submit the request again."
     :"Declined and saved. The reason is available in the requester's in-app request history; no external email was sent.");
-   setSelectedId("");setReason("");setDeclining(false);setPricingOpen(false);pending.current=null;
+   if(status==="Approved"&&!sync.ok){setFilter("all");setSelectedId(selected.id);}
+   else setSelectedId("");
+   setReason("");setDeclining(false);setPricingOpen(false);pending.current=null;
   }catch(error){
    const details=error instanceof Error?error.message:"Decision unconfirmed. Refresh company records before retrying.";
    setFeedback(details);
