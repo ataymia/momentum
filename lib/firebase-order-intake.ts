@@ -1,5 +1,7 @@
 import {currentFirebaseSession,type FirebaseAuthSession} from "./firebase-auth-rest";
 import {firebaseFunctionUrl} from "./firebase-functions";
+import {getFirestoreSnapshot} from "./firebase-firestore-rest";
+import {canonicalOrderInvoiceLinked,type SourceLinkedOrder,type SourceLinkedInvoice} from "./order-intake-link-proof";
 
 export type OrderIntakeDraft={
  accountId:string;lines:Array<{skuId:string;cases:number}>;note:string;
@@ -108,6 +110,27 @@ export async function getConnectedOrderIntake(
  if(!response.record||response.record.id!==intakeId)
   throw new Error("Order-intake review source readback failed.");
  return response.record;
+}
+
+/** Verify real, canonical documents independently of the intake source receipt.
+ * This is a read-only check. An unconfirmed pair must never trigger resubmission.
+ */
+export async function verifyConnectedOrderInvoicePair(
+ session:FirebaseAuthSession,intakeId:string,orderId:string,invoiceId:string,
+):Promise<boolean>{
+ try{
+  await activeIntakeSession(session);
+  const [orders,invoices]=await Promise.all([
+   getFirestoreSnapshot<{items?:SourceLinkedOrder[]}>("domains/commercial/fields/orders"),
+   getFirestoreSnapshot<{items?:SourceLinkedInvoice[]}>("domains/commerce/fields/invoices"),
+  ]);
+  return orders.exists&&invoices.exists&&canonicalOrderInvoiceLinked(
+   orders.data?.items,invoices.data?.items,intakeId,orderId,invoiceId,
+  );
+ }catch{
+  // Backend data could be saved even when the connected client lost access.
+  return false;
+ }
 }
 
 /** Verified Administrator decision; does not issue an order or charge money. */
