@@ -83,7 +83,7 @@ export function DeliveriesPage() {
     if (!task && ["Delivered","Paid"].includes(order.status)) return false;
     return task?.driverId === currentUser?.id || (!task && ["Approved","Allocated","Out for delivery"].includes(order.status));
   });
-  const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
+  // Driver-facing marketing requests must be scoped to orders visible in their custody queue.\n  // Unlinked requests remain available to Operations, never to a driver.\n  const visibleMarketingRequests = isDriver\n    ? approvedMarketingRequests.filter((request) => Boolean(request.accountId) && visible.some((order) => order.accountId === request.accountId))\n    : approvedMarketingRequests;\n  const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
   const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
   const completedByOverride=(orderId:string)=>state.overrides?.some((record)=>record.orderId===orderId)??false;
   const issueForOrder=(order:typeof eligible[number])=>
@@ -210,7 +210,7 @@ export function DeliveriesPage() {
     const ownTask = Boolean(isDriver && task?.driverId === currentUser?.id);
     const selectedDriver = driverByOrder[order.id] ?? drivers[0]?.id ?? "";
     const lines = orderLinesFor(order);
-    const linkedMarketing = approvedMarketingRequests.filter((request) => request.accountId === order.accountId);
+    const linkedMarketing = visibleMarketingRequests.filter((request) => request.accountId === order.accountId);
     const legacyCollected = (task?.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
     // Connected local collection entries are not verified Finance receipts.
     const collected = momentumStorage.mode() === "firestore" ? 0 : legacyCollected;
@@ -289,7 +289,7 @@ export function DeliveriesPage() {
   const detailDriver = detailTask ? data.users.find((user) => user.id === detailTask.driverId) : undefined;
   const detailPlacedBy = detailOrder ? data.users.find((user) => user.id === detailOrder.ownerId) : undefined;
   const detailLines = detailOrder ? orderLinesFor(detailOrder) : [];
-  const detailMarketing = detailOrder ? approvedMarketingRequests.filter((request) => request.accountId === detailOrder.accountId) : [];
+  const detailMarketing = detailOrder ? visibleMarketingRequests.filter((request) => request.accountId === detailOrder.accountId) : [];
   const detailCollected = (detailTask?.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
   const detailStatus = detailOrder ? deliveryStatusForOrder(state, detailOrder) : "";
 
@@ -299,7 +299,7 @@ export function DeliveriesPage() {
       {notice && <p className="form-notice" role="status">{notice}</p>}
       <div className="company-rule-facts"><div><span>Available / accepted</span><strong>{ready.length}</strong><small>Ready for driver action</small></div><div><span>Loaded / in transit</span><strong>{active.length}</strong><small>Active driver custody</small></div><div><span>Delivered</span><strong>{complete.length}</strong><small>Completed delivery records</small></div><div><span>Drivers</span><strong>{drivers.length}</strong><small>{drivers.length ? "Provisioned delivery users" : "No delivery drivers provisioned"}</small></div></div>
 
-      {approvedMarketingRequests.length > 0 && <Section title="Approved marketing / delivery requests"><div className="delivery-marketing-request-list">{approvedMarketingRequests.map((request) => { const account = request.accountId ? data.accounts.find((item) => item.id === request.accountId) : undefined; const requester = data.users.find((item) => item.id === request.requesterId); return <article key={request.id}><span><Megaphone size={17} /></span><div><small>{request.type}{request.neededBy ? ` · needed ${formatDate(request.neededBy, { month: "short", day: "numeric" })}` : ""}</small><strong>{request.title}</strong><p>{request.detail}</p><em>{account ? (account.locationName ?? account.name) : "No location linked"}{requester ? ` · requested by ${requester.name}` : ""}</em></div><StatusPill tone="warning">Approved</StatusPill></article>; })}</div></Section>}
+      {visibleMarketingRequests.length > 0 && <Section title="Approved marketing / delivery requests"><div className="delivery-marketing-request-list">{visibleMarketingRequests.map((request) => { const account = request.accountId ? data.accounts.find((item) => item.id === request.accountId) : undefined; const requester = data.users.find((item) => item.id === request.requesterId); return <article key={request.id}><span><Megaphone size={17} /></span><div><small>{request.type}{request.neededBy ? ` · needed ${formatDate(request.neededBy, { month: "short", day: "numeric" })}` : ""}</small><strong>{request.title}</strong><p>{request.detail}</p><em>{account ? (account.locationName ?? account.name) : "No location linked"}{requester ? ` · requested by ${requester.name}` : ""}</em></div><StatusPill tone="warning">Approved</StatusPill></article>; })}</div></Section>}
 
       <InvoicePrintCenter allowedOrderIds={visible.map((order)=>order.id)} title={isDriver?"Delivery invoices":"Delivery-run invoices"} description="Print one invoice or a complete delivery batch directly from the delivery workspace."/>
 
