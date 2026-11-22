@@ -41,6 +41,16 @@ Status at audit opening. This table lists **journeys to verify**, not completed 
 | Marketing & partner program / Marketing, Admin | Campaign request → approval → approved spend → attributable demand / reorders | Marketing and cross-domain logic tests | Live permissions, source attribution, spend authorization, revenue reconciliation | **NOT VERIFIED end-to-end** |
 | Support/notifications/audit / authorized roles | Case/event → routed recipient → resolution and audit history | Support emulator, notification, audit tests | End-to-end signal delivery, read/unread, correct recipient, retries/failure states | **NOT VERIFIED end-to-end** |
 
+## Confirmed operational restrictions found in source (not just missing tests)
+
+- **P0 Purchasing:** `components/prototype/purchasing-experience.tsx` explicitly renders **Production connection blocked** in connected mode. Vendor, PO, receipt, bill and payment forms in that redesigned surface are isolated local-demo forms. This is a *confirmed functionality gap* on the new Purchasing routes, independent of whether older purchasing features exist elsewhere. **Owner: Purchasing/Operations.** Requires real approved vendor, payable, warehouse posting, permissions and reconciliation source.
+- **P1 HR onboarding:** `components/prototype/hr-onboarding-experience.tsx` sets `writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local"`, and prevents onboarding task updates / entry actions in connected mode. Existing secure new-hire provisioning and electronic forms are separate paths. **Owner: HR.** Require one connected case-to-form-to-verified-completion handoff rather than counting separate screens as complete.
+- **P1 Fulfillment experience:** `components/prototype/fulfillment-experience.tsx` labels its new views read-only and sends actual pack/allocate/inventory custody work to established operations workflows. **Owner: Operations.** Validate deep links to real controls and shipment-state/custody persistence before marking new redesigned workspaces functional.
+- **P0 Billing print and order linking:** PRs #176–#178 deployed, but connected production recovery, real browser/PDF and role-based live evidence are still pending **P/S acceptance**.
+- **P0 CRM/HR previously omitted tests:** The first expanded run surfaced five failed *legacy source assertions*. Verify they reflect current policy before updating. The current CRM lead handoff requires an 8-character source, active authorized roles, server transaction and source readback; HR audit data is Administrator-only. Do **not** change access rules to satisfy stale text assertions.
+
+**Do not suggest those connected workflows are operationally ready based on demonstration-mode passing tests.** The underlying existing production pathways must be independently traced as a separate source-of-truth check.
+
 ## Release gates implemented in this audit PR
 
 1. **All unregistered existing pure logic tests** are added to `npm run test:logic`. `node scripts/check-test-coverage.mjs` fails normal CI if a `tests/*.test.ts` file disappears from the test commands.
