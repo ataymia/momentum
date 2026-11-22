@@ -153,4 +153,22 @@ test("connected custody executes duplicate, conflict and server-confirmation saf
  assert.equal(calls,3,"token rotation cannot reuse a pending request from another auth session");
  resolveResponse?.({ok:true,json:async()=>({ok:true,cloudConfirmed:true})});
  await pending;
+ // A rejected server response must not be reported as a successful custody change.
+ const denied=assigned(session,{...order,action:"depart"});
+ assert.equal(calls,4);
+ resolveResponse?.({ok:false,json:async()=>({ok:false,cloudConfirmed:false,message:"Permission denied"})});
+ await assert.rejects(denied,/Permission denied/);
+ assert.equal(refreshes,2,"authorization denial cannot trigger a cloud readback");
+ // A successful HTTP status without an explicit cloud acknowledgement is not success.
+ const unconfirmed=assigned(session,{...order,action:"depart"});
+ assert.equal(calls,5);
+ resolveResponse?.({ok:true,json:async()=>({ok:true,cloudConfirmed:false})});
+ await assert.rejects(unconfirmed,/Refresh the queue/);
+ assert.equal(refreshes,2);
+ // Non-JSON gateway responses must be treated as uncertain, never accepted.
+ const gateway=assigned(session,{...order,action:"depart"});
+ assert.equal(calls,6);
+ resolveResponse?.({ok:false,json:async()=>{throw new Error("HTML gateway response");}});
+ await assert.rejects(gateway,/Refresh the queue/);
+ assert.equal(refreshes,2);
 });
