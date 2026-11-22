@@ -83,3 +83,14 @@ test("delivery notes and release reasons fail locally when outside trusted serve
  assert.match(client,/body\.action==="release"[\s\S]*?body\.reason\.trim\(\)\.length<8[\s\S]*?body\.reason\.trim\(\)\.length>500/);
  assert.ok(client.indexOf("Enter a release reason of 8–500 characters.")<client.indexOf("const operation=submitAssignedDelivery"),"invalid release requests never reach the server");
 });
+
+test("completion signature preflight enforces trusted stroke, coordinate and recipient bounds",()=>{
+ const client=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
+ assert.match(client,/body\.action==="complete"/);
+ assert.match(client,/signature\.strokes\.length>80/);
+ assert.match(client,/stroke\.length<2\|\|stroke\.length>300/);
+ assert.match(client,/pt\[0\]>=0&&pt\[0\]<=1000&&pt\[1\]>=0&&pt\[1\]<=300/);
+ assert.match(client,/points<2\|\|points>1200/);
+ assert.match(client,/signature\.recipientName\.trim\(\)\.length>120/);
+ assert.ok(client.indexOf('body.action==="complete"')<client.indexOf("const operation=submitAssignedDelivery"),"invalid signatures cannot reach Firebase");
+});
