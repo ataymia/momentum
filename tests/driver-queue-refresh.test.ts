@@ -75,3 +75,11 @@ test("runtime custody action and assignment IDs are validated before posting",()
  assert.match(client,/body\.driverId!==undefined&&!/,"malformed driver IDs are rejected");
  assert.ok(client.indexOf("Select a valid driver before assigning delivery custody.")<client.indexOf("const operation=submitAssignedDelivery"),"invalid assignments cannot reach the network");
 });
+
+
+test("delivery notes and release reasons fail locally when outside trusted server limits",()=>{
+ const client=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
+ assert.match(client,/body\.action==="note"[\s\S]*?body\.note\.trim\(\)\.length<3[\s\S]*?body\.note\.trim\(\)\.length>500/);
+ assert.match(client,/body\.action==="release"[\s\S]*?body\.reason\.trim\(\)\.length<8[\s\S]*?body\.reason\.trim\(\)\.length>500/);
+ assert.ok(client.indexOf("Enter a release reason of 8–500 characters.")<client.indexOf("const operation=submitAssignedDelivery"),"invalid release requests never reach the server");
+});
