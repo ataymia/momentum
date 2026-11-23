@@ -69,7 +69,9 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
     brandImage.src = invoiceBrandSrc;
   }, []);
 
-  const selectedSet = new Set(selectedIds);
+  const authorizedIds = new Set(invoices.map((invoice) => invoice.id));
+  const activeSelectedIds = selectedIds.filter((id) => authorizedIds.has(id));
+  const selectedSet = new Set(activeSelectedIds);
   const allSelected = invoices.length > 0 && invoices.every((invoice) => selectedSet.has(invoice.id));
 
   useEffect(() => {
@@ -209,7 +211,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
   };
 
   const preview = previewId ? invoiceSheet(previewId, 0) : null;
-  const printSheets = printJob ? invoicePrintPages(printJob.ids, printJob.copies).map(({ invoiceId, copyIndex }) => invoiceSheet(invoiceId, copyIndex)) : [];
+  const printSheets = printJob ? invoicePrintPages(printJob.ids.filter((id) => authorizedIds.has(id)), printJob.copies).map(({ invoiceId, copyIndex }) => invoiceSheet(invoiceId, copyIndex)) : [];
   const printPortal = typeof document !== "undefined" && printSheets.length ? createPortal(<div className="invoice-print-root" aria-hidden="true">{printSheets}</div>, document.body) : null;
 
   return <>
@@ -218,7 +220,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       <div className="invoice-print-toolbar">
         <Button type="button" size="sm" variant="secondary" icon={allSelected ? <CheckSquare2 size={15}/> : <Square size={15}/>} onClick={toggleAll}>{allSelected ? "Clear all" : "Select all"}</Button>
         <label className="invoice-copy-select"><span>Copies per invoice</span><select value={copies} onChange={(event) => setCopies(Number(event.target.value) as Copies)}><option value={1}>1 copy</option><option value={2}>2 copies</option></select></label>
-        <Button type="button" size="sm" icon={<Printer size={15}/>} disabled={!selectedIds.length} onClick={() => startPrint(selectedIds)}>Print selected ({selectedIds.length})</Button><Button type="button" size="sm" variant="secondary" icon={<Printer size={15}/>} disabled={!invoices.length} onClick={() => startPrint(invoices.map(invoice=>invoice.id))}>Print all ({invoices.length})</Button>
+        <Button type="button" size="sm" icon={<Printer size={15}/>} disabled={!activeSelectedIds.length} onClick={() => startPrint(activeSelectedIds)}>Print selected ({activeSelectedIds.length})</Button><Button type="button" size="sm" variant="secondary" icon={<Printer size={15}/>} disabled={!invoices.length} onClick={() => startPrint(invoices.map(invoice=>invoice.id))}>Print all ({invoices.length})</Button>
       </div>
       {printNotice && <p className="form-notice invoice-print-notice" role="status">{printNotice}</p>}
 
