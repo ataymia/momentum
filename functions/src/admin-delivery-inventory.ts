@@ -26,6 +26,13 @@ export function overrideSourceAvailable(
   sourceType: string,
   orderId: string,
 ): boolean {
+  // Refuse malformed quantities and identifiers before computing stock balances.
+  // A negative or zero request must never pass an availability comparison.
+  if (!txt(entry.lotId) || !txt(entry.fromNodeId) || !txt(orderId) ||
+      !Number.isSafeInteger(entry.quantity) || entry.quantity <= 0 ||
+      !["Warehouse", "Employee custody", "Vehicle", "Bin"].includes(sourceType)) {
+    return false;
+  }
   const matching = movements.filter((row) => txt(row.lotId) === entry.lotId);
   const onHand = matching.reduce((sum, row) => {
     const quantity = number(row.quantity);

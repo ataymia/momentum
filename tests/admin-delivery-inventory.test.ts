@@ -27,6 +27,19 @@ test("admin warehouse delivery must not consume stock reserved for another order
   ), false);
 });
 
+test("custody availability rejects malformed quantity and identity before stock math", () => {
+  for (const quantity of [0, -1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(overrideSourceAvailable([receipt], [],
+      {...entry, quantity}, "Warehouse", "ord-1"), false);
+  }
+  assert.equal(overrideSourceAvailable([receipt], [],
+    {...entry, lotId: ""}, "Warehouse", "ord-1"), false);
+  assert.equal(overrideSourceAvailable([receipt], [],
+    {...entry, fromNodeId: ""}, "Warehouse", "ord-1"), false);
+  assert.equal(overrideSourceAvailable([receipt], [], entry, "Warehouse", ""), false);
+  assert.equal(overrideSourceAvailable([receipt], [], entry, "Unknown", "ord-1"), false);
+});
+
 test("own active reservation remains eligible in the same order", () => {
   assert.equal(overrideSourceAvailable(
     [receipt], [active("ord-1", 6)], entry, "Warehouse", "ord-1",
