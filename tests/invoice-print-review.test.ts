@@ -55,5 +55,9 @@ test("all available invoice print controls remain enabled regardless of release 
  assert.match(source,/Print all \(\{invoices\.length\}\)/);
  assert.match(source,/onClick=\{\(\) => startPrint\(\[invoice\.id\]\)\}>Print<\/Button>/);
  assert.match(source,/onClick=\{\(\) => startPrint\(\[previewId\]\)\}>Print \/ Save PDF<\/Button>/);
- assert.match(source,/disabled=\{!selectedIds\.length\}/);
+ // Only invoices in the current authorized scope may enable bulk printing.
+ assert.match(source,/const activeSelectedIds = selectedIds\.filter\(\(id\) => authorizedIds\.has\(id\)\)/);
+ assert.match(source,/disabled=\{!activeSelectedIds\.length\}/);
+ assert.match(source,/onClick=\{\(\) => startPrint\(activeSelectedIds\)\}/);
+ assert.doesNotMatch(source,/disabled=\{!selectedIds\.length\}/);
 });
