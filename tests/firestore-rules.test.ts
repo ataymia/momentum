@@ -349,7 +349,9 @@ describe("Sales Representative privilege boundaries", () => {
 
   test("cannot read Administrator-only provisioning state or another employee's access", async () => {
     const db = dbFor(REP);
+    await assertSucceeds(getDoc(doc(db, `userDomains/${REP}/identity/records`)));
     await assertFails(getDoc(doc(db, "domains/identity/fields/drafts")));
+    await assertFails(getDoc(doc(db, "domains/identity/fields/records")));
     await assertFails(getDoc(doc(db, "domains/identity/fields/_root")));
     await assertFails(getDoc(doc(db, USER_ACCESS_COLLECTION, ADMIN)));
     await assertFails(getDoc(doc(db, `userDomains/${ADMIN}/identity/records`)));
