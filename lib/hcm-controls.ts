@@ -18,12 +18,12 @@ type HcmArrayKey = Exclude<keyof HCMState, "version">;
 const HCM_ARRAY_KEYS: HcmArrayKey[] = [
   "employees","employmentChanges","privateProfiles","profileChangeRequests","documents","policies","acknowledgments",
   "ptoPolicies","ptoAssignments","ptoLedger","leaveRequests","availability","shifts","shiftRequests","benefitPlans","dependents",
-  "benefitEnrollments","benefitEvents","compensation","compensationChanges","requisitions","candidates","interviews","offers",
+  "benefitEnrollments","benefitEvents","compensation","compensationChanges","commissionRateAdjustments","requisitions","candidates","interviews","offers",
   "lifecycleCases","courses","training","goals","reviewCycles","reviews","workflows","tasks","audit",
 ];
 
 const ADMIN_ONLY_COLLECTIONS: HcmArrayKey[] = [
-  "employees","employmentChanges","policies","ptoPolicies","ptoAssignments","benefitPlans","compensation","compensationChanges",
+  "employees","employmentChanges","policies","ptoPolicies","ptoAssignments","benefitPlans","compensation","compensationChanges","commissionRateAdjustments",
   "requisitions","lifecycleCases","courses","goals","reviewCycles",
 ];
 
@@ -360,6 +360,22 @@ export function activeBenefitEnrollmentConflicts(state: HCMState, enrollment: Be
 export function validateHcmTransition(current: HCMState, next: HCMState): HcmTransitionCheck {
   const currentLedgerIds = new Set(current.ptoLedger.map((entry) => entry.id));
 
+  // Approved commission terms are append-only, even for administrators.
+  const priorPlans=new Map(current.commissionRateAdjustments.map(item=>[item.id,item]));
+  for(const [id,original] of priorPlans){
+    const plan=next.commissionRateAdjustments.find(item=>item.id===id);
+    if(!plan||JSON.stringify(plan)!==JSON.stringify(original))
+      return fail("Commission rate history is append-only.");
+  }
+  for(const plan of next.commissionRateAdjustments){
+    if(!Number.isFinite(plan.representativeRate)||!Number.isFinite(plan.managerOverrideRate)||
+      plan.representativeRate<0||plan.managerOverrideRate<0||
+      plan.representativeRate+plan.managerOverrideRate>1||
+      !/^\d{4}-\d{2}-\d{2}$/.test(plan.effectiveDate)||!plan.approvalReference.trim()||!plan.reason.trim())
+      return fail("Commission adjustment requires rates, effective date, and approval evidence.");
+    if(next.commissionRateAdjustments.filter(other=>other.userId===plan.userId&&other.effectiveDate===plan.effectiveDate).length>1)
+      return fail("Only one commission plan per employee and effective date is allowed.");
+  }
   for (const entry of next.ptoLedger.filter((item) => item.type === "Used" && !currentLedgerIds.has(item.id))) {
     if (!entry.requestId) return { ok: false, message: "PTO Used entries created by leave approval must reference the source leave request." };
     const request = next.leaveRequests.find((item) => item.id === entry.requestId);
