@@ -162,3 +162,13 @@ test("manual invoice printing is never disabled by issuance approval or incomple
   const sheet=invoiceSource.slice(invoiceSource.indexOf("const invoiceSheet ="),invoiceSource.indexOf("const preview ="));
   assert.doesNotMatch(sheet,/printNotice|invoicePrintWarnings|invoicePrintConfirmationMessage/);
 });
+
+test("blocked invoice warning confirmation fails closed before print sheets mount", () => {
+  const handler = invoiceSource.slice(invoiceSource.indexOf("const startPrint ="), invoiceSource.indexOf("const invoiceSheet ="));
+  const review = handler.indexOf("confirmed = window.confirm(invoicePrintConfirmationMessage(reviews))");
+  const blocked = handler.indexOf("The browser could not show the invoice review");
+  const mount = handler.indexOf("flushSync(() => setPrintJob({ ids: unique, copies }))");
+  assert.ok(review >= 0 && blocked > review && mount > blocked);
+  assert.match(handler, /catch \\{[\\s\\S]*?setPrintNotice\\("The browser could not show the invoice review[\\s\\S]*?return;[\\s\\S]*?\\}/);
+  assert.match(handler, /if \\(!confirmed\\) \\{/);
+});
