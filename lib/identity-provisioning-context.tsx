@@ -75,9 +75,17 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Production identity data is Administrator-owned. Active employees must not
+    // re-save synthetic onboarding seed data during ordinary page mounts: doing so
+    // used to journal an impossible admin-domain write and poison cloud sync.
+    // Genuine pre-activation employee changes still use their own allowed records shard.
+    if (firebase) {
+      if (!firebase.session || !currentUser || firebase.session.uid !== currentUser.id) return;
+      if (currentUser.role !== "Administrator" && firebase.access?.accountState === "Active") return;
+    }
     const persisted = firebase ? { ...state, records: state.records.filter((record) => !isFailClosedPlaceholder(record)) } : state;
     momentumStorage.setItem(IDENTITY_PROVISIONING_STORAGE_KEY, JSON.stringify(persisted));
-  }, [firebase, state]);
+  }, [currentUser, firebase, state]);
   useRemoteStorageSync(IDENTITY_PROVISIONING_STORAGE_KEY, () => setState(readState(data)));
 
   useEffect(() => {
