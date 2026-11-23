@@ -40,6 +40,7 @@ export function SyncStatusPill() {
       <strong>Cloud sync details</strong>
       <span style={{display:"block",marginTop:6}}>{sync.lastError??"No reported cloud error."}</span>
       <span style={{display:"block",marginTop:6}}>Pending changes: {sync.pending}. Rules denials: {sync.deniedDocuments.length}.</span>
+      {sync.deniedDocuments.length>0&&<span style={{display:"block",marginTop:6,overflowWrap:"anywhere"}}>Restricted cloud paths: {sync.deniedDocuments.slice(0,3).join(" | ")}{sync.deniedDocuments.length>3?" (and more)":""}</span>}
       <span style={{display:"block",marginTop:6}}>Last confirmed: {sync.lastSyncedAt?new Date(sync.lastSyncedAt).toLocaleString():"Not confirmed yet"}.</span>
       {retryResult&&<span style={{display:"block",marginTop:6}}>{retryResult}</span>}
       <button type="button" disabled={retrying||sync.flushing} onClick={()=>void retry()} style={{marginTop:10,padding:"7px 10px",cursor:"pointer"}}>{retrying?"Retrying…":"Retry unsaved changes"}</button>
