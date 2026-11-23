@@ -250,7 +250,7 @@ async function handleFieldClockStatus(request: Request, admin: FirebaseAdmin): P
     const rawNotice = activity?.notice;
     const notice = rawNotice && typeof rawNotice === "object" && !Array.isArray(rawNotice)
       ? rawNotice as Record<string,unknown> : null;
-    const pending = Boolean(notice?.entryId && notice?.clockOutAt && !notice?.acknowledgedAt);
+    const pending = Boolean(!open && notice?.entryId && notice?.clockOutAt && !notice?.acknowledgedAt);
     return json({
       ok:true,pending,
       notice:pending?{entryId:notice?.entryId,clockOutAt:notice?.clockOutAt,
