@@ -63,7 +63,8 @@ test("conflicting custody actions for one order are rejected while a mutation is
 
 test("malformed custody requests are rejected before network submission",()=>{
  const client=readFileSync("lib/firebase-assigned-delivery.ts","utf8");
- assert.match(client,/!session\.uid\?\.trim\(\)\|\|!session\.idToken\?\.trim\(\)/);
+ assert.match(client,/typeof session\.uid!=="string"/);
+ assert.match(client,/typeof session\.idToken!=="string"/);
  assert.match(client,/\^\[A-Za-z0-9_-\]\{5,120\}\$/);
  assert.ok(client.indexOf("Select a valid delivery order")<client.indexOf("const operation=submitAssignedDelivery"),"invalid orders never reach Firebase");
 });
@@ -150,6 +151,10 @@ test("connected custody executes duplicate, conflict and server-confirmation saf
  const invalidPayload={...order,note:circularNote};
  await assert.rejects(assigned(session,invalidPayload),/unsupported values/);
  assert.equal(calls,2,"unserializable payload cannot contact the server or occupy a custody lock");
+ const extraCircular={...order,unexpected:circularNote};
+ await assert.rejects(assigned(session,extraCircular),/unsupported values/);
+ await assert.rejects(assigned(session,{...order,unexpected:12n}),/unsupported values/);
+ assert.equal(calls,2,"unexpected unserializable fields are rejected before a custody lock or network call");
  await assert.rejects(assigned(session,{...order,action:"note",note:"x"}),/delivery note/);
  await assert.rejects(assigned(session,{...order,action:"release",reason:"short"}),/release reason/);
  await assert.rejects(assigned(session,{...order,action:"complete",signature:{recipientName:"Test Recipient",strokes:[[[0,0],[1001,2]]]}}),/signature is invalid/);
