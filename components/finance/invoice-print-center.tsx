@@ -121,7 +121,13 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
     // mount the print sheets. Never queue an automatic invoice email or payment.
     flushSync(() => setPrintJob({ ids: unique, copies }));
     setPrintNotice(`${unique.length} invoice${unique.length === 1 ? "" : "s"} prepared · ${copies} cop${copies === 1 ? "y" : "ies"} each.`);
-    window.print();
+    try {
+      window.print();
+    } catch {
+      // A blocked or failing print dialog must not leave sensitive sheets mounted.
+      flushSync(() => setPrintJob(null));
+      setPrintNotice("The browser could not open the print dialog. No invoice was issued or changed. Try again in a browser with printing enabled.");
+    }
   };
 
   const invoiceSheet = (invoiceId: string, copyIndex = 0) => {
