@@ -4,6 +4,22 @@ import { normalizeUsername, usernameProblem } from "./username";
 
 export const IDENTITY_PROVISIONING_STORAGE_KEY = "momentum-identity-provisioning-v1";
 
+/** An active employee must never write the HR provisioning domain on routine CRM visits.
+ * Only Administrators and employees finishing their own pre-activation workflow
+ * may persist this domain. Server access state remains the access authority.
+ */
+export function canPersistIdentityProvisioning(
+  actor:Pick<WorkspaceData["users"][number],"id"|"role">|null|undefined,
+  authenticatedUid:string|null|undefined,
+  accessState:AccountAccessState|null|undefined,
+):boolean{
+  if(!actor||!authenticatedUid||actor.id!==authenticatedUid)return false;
+  if(actor.role==="Administrator")return accessState==="Active";
+  if(actor.role==="Customer")return false;
+  return accessState==="Password change required"||
+    accessState==="Onboarding"||accessState==="Pending approval";
+}
+
 export type AccountAccessState = "Password change required" | "Onboarding" | "Pending approval" | "Active" | "Suspended" | "Separated";
 export type ProvisioningSource = "Direct hire" | "Accepted offer" | "Referral" | "Bootstrap admin";
 export type ProvisionableRole = Exclude<Role, "Administrator" | "Customer">;
