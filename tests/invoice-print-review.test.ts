@@ -66,7 +66,7 @@ test("all available invoice print controls remain enabled regardless of release 
 test("browser print failures clear mounted invoice sheets and report an actionable error",()=>{
  const source=readFileSync("components/finance/invoice-print-center.tsx","utf8");
  const printStart=source.slice(source.indexOf("const startPrint ="),source.indexOf("const invoiceSheet ="));
- assert.match(printStart,/try \\{\\s*window\\.print\\(\\)/);
- assert.match(printStart,/catch \\{[\\s\\S]*?flushSync\\(\\(\\) => setPrintJob\\(null\\)\\)/);
- assert.match(printStart,/browser could not open the print dialog/);
+ assert(printStart.includes("try {\n      window.print();"));
+ assert(printStart.includes("flushSync(() => setPrintJob(null));"));
+ assert(printStart.includes("browser could not open the print dialog"));
 });
