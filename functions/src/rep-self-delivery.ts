@@ -40,8 +40,13 @@ export class RepSelfDeliveryError extends Error{
 }
 const fail=(code:number,message:string):never=>{throw new RepSelfDeliveryError(code,message);};
 const expectedLines=(order:Row)=>{
-  const raw=Array.isArray(order.lines)&&order.lines.length?
-    order.lines.filter(obj):[{product:order.product,cases:order.cases}];
+  // A malformed line must not disappear during filtering: a matching header
+  // total is not evidence that every original SKU line was accounted for.
+  if(order.lines!==undefined&&(!Array.isArray(order.lines)||!order.lines.length||
+      order.lines.some((line:unknown)=>!obj(line))))
+    fail(409,"This order has invalid SKU lines. Ask Operations to reconcile it.");
+  const raw=Array.isArray(order.lines)?order.lines as Row[]:
+    [{product:order.product,cases:order.cases}];
   const out=new Map<string,number>();
   for(const row of raw){
     const name=key(txt(row.product)),cases=num(row.cases);
