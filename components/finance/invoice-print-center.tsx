@@ -113,9 +113,19 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       });
       return issues.length?[{number:invoice.number,issues}]:[];
     });
-    if(reviews.length&&!window.confirm(invoicePrintConfirmationMessage(reviews))){
-      setPrintNotice("Printing canceled. The invoice was not changed.");
-      return;
+    if (reviews.length) {
+      let confirmed = false;
+      try {
+        confirmed = window.confirm(invoicePrintConfirmationMessage(reviews));
+      } catch {
+        // If browser policy blocks confirmation, never bypass the preprint review.
+        setPrintNotice("The browser could not show the invoice review. Nothing was printed or changed. Enable browser dialogs and try again.");
+        return;
+      }
+      if (!confirmed) {
+        setPrintNotice("Printing canceled. The invoice was not changed.");
+        return;
+      }
     }
     // Keep the browser print call inside the confirmed user's gesture and synchronously
     // mount the print sheets. Never queue an automatic invoice email or payment.
