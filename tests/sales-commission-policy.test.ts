@@ -57,3 +57,8 @@ test("approved dated commission exceptions do not rewrite historical rates",()=>
   assert.equal(commissionPolicyForRepresentative(state,"rep-1","2026-12-01").managerOverrideRate,0.01);
   assert.equal(commissionPolicyForRepresentative(state,"other","2026-12-01").representativeRate,0.025);
 });
+
+test("prior HCM snapshots without commission overrides retain the standard default",()=>{
+  const oldState={} as HCMState;
+  assert.equal(commissionPolicyForRepresentative(oldState,"rep","2026-11-23").representativeRate,0.025);
+});
