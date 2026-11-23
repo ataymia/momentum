@@ -19,7 +19,7 @@ export function commissionAdjustmentProblem(plan:Pick<CommissionRateAdjustment,
 /** The policy for a source earning uses its collection date, not the current date. */
 export function commissionPolicyForRepresentative(state:HCMState,repId:string,earningDate:string):SalesCommissionPolicy{
   if(!isValidCalendarDateKey(earningDate))return STANDARD_SALES_COMMISSION_POLICY;
-  const plan=state.commissionRateAdjustments
+  const plan=(state.commissionRateAdjustments??[])
     .filter(item=>item.userId===repId && item.effectiveDate<=earningDate)
     .sort((a,b)=>b.effectiveDate.localeCompare(a.effectiveDate))[0];
   if(!plan||commissionAdjustmentProblem(plan))return STANDARD_SALES_COMMISSION_POLICY;
