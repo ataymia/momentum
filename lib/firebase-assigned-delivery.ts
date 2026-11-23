@@ -43,8 +43,10 @@ export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDelive
  // A malformed runtime payload must reject as a Promise, not throw before the
  // UI can handle it. Circular objects and BigInt values cannot be serialized.
  let key:string;
+ let serializedBody:string;
  try {
-   key=JSON.stringify([session.uid,session.idToken,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
+   serializedBody=JSON.stringify(body);
+   key=JSON.stringify([session.uid,session.idToken,body.orderId,body.action,serializedBody]);
  } catch {
    return Promise.reject(new Error("Delivery request contains unsupported values. Refresh the queue and try again."));
  }
@@ -54,19 +56,19 @@ export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDelive
  // Auth tokens remain part of exact-request deduplication, never the order lock.
  const orderKey=body.orderId;
  if(pendingOrderActions.has(orderKey))return Promise.reject(new Error("Another delivery action is still pending for this order. Refresh the queue and verify custody before continuing."));
- const operation=submitAssignedDelivery(session,body);
+ const operation=submitAssignedDelivery(session,serializedBody);
  pendingOrderActions.set(orderKey,key);
  pendingCustodyActions.set(key,operation);
  void operation.finally(()=>{if(pendingCustodyActions.get(key)===operation){pendingCustodyActions.delete(key);if(pendingOrderActions.get(orderKey)===key)pendingOrderActions.delete(orderKey);}}).catch(()=>{});
  return operation;
 }
-async function submitAssignedDelivery(session:FirebaseAuthSession,body:AssignedDeliveryAction){
+async function submitAssignedDelivery(session:FirebaseAuthSession,serializedBody:string){
  // A network failure does not prove that the server rejected the mutation.
  // Drivers must reconcile the authoritative queue rather than repeat a
  // possibly accepted custody transition.
  let response:Response;
  try {
-   response=await fetch(firebaseFunctionUrl("assignedDeliveryApi"),{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.idToken},body:JSON.stringify(body)});
+   response=await fetch(firebaseFunctionUrl("assignedDeliveryApi"),{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.idToken},body:serializedBody});
  } catch {
    throw new Error("Delivery server confirmation is unavailable. Refresh the queue and verify the current custody status before taking another action.");
  }
