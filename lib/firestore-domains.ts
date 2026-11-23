@@ -66,7 +66,7 @@ export const DOMAIN_SPECS:DomainSpec[]=[
       privateProfiles:perUser("userId",{managerRead:false,managerWrite:false}),profileChangeRequests:perUser("userId",{managerRead:false,managerWrite:false}),acknowledgments:perUser(),leaveRequests:perUser("userId",{selfWrite:false}),availability:perUser(),shiftRequests:perUser(),
       dependents:perUser("userId",{managerRead:false,managerWrite:false}),benefitEnrollments:perUser("userId",{managerRead:false,managerWrite:false}),benefitEvents:perUser("userId",{managerRead:false,managerWrite:false}),training:perUser(),goals:perUser(),reviews:perUser(),workflows:perUser(),tasks:perUser("ownerId"),documents:adminOwned(),
       employmentChanges:perUser("userId",{selfWrite:false}),ptoAssignments:perUser("userId",{selfWrite:false}),ptoLedger:perUser("userId",{selfWrite:false}),
-      compensation:adminOwned(),compensationChanges:perUser("userId",{selfWrite:false}),
+      compensation:adminOwned(),compensationChanges:perUser("userId",{selfWrite:false}),commissionRateAdjustments:adminOwned(),
     },
   },
   {key:"momentum-identity-provisioning-v1",id:"identity",read:ADMIN,write:ADMIN,fields:{drafts:{},records:perUser("userId",{selfWrite:true,managerWrite:false,managerRead:false})}},
