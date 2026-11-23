@@ -139,6 +139,8 @@ test("connected custody executes duplicate, conflict and server-confirmation saf
  await assert.rejects(assigned(session,{...order,action:"assign"}),/Select a driver/);
  assert.equal(calls,2,"invalid assignment never posts");
  await assert.rejects(assigned(session,{orderId:"bad",action:"claim"}),/valid delivery order/);
+ await assert.rejects(assigned(session,{orderId:123456,action:"claim"}),/valid delivery order/);
+ await assert.rejects(assigned(session,{...order,action:"assign",driverId:123456}),/valid driver/);
  await assert.rejects(assigned({uid:"",idToken:"qa-token"},order),/Sign in again/);
  await assert.rejects(assigned(null,order),/Sign in again/);
  await assert.rejects(assigned({uid:"driver123",idToken:42},order),/Sign in again/);
