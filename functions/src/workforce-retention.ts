@@ -83,9 +83,9 @@ export const workforceMidnightAndRouteRetention=onSchedule({
       const events=items(snapshots[2].data());
       const savedRoutes=retainedLocationItems(route,today);
       const savedEvents=retainedLocationItems(events,today);
-      if(time.closed)tx.set(timeRef,{items:time.entries});
-      if(savedRoutes.length!==route.length)tx.set(sampleRef,{items:savedRoutes});
-      if(savedEvents.length!==events.length)tx.set(eventRef,{items:savedEvents});
+      if(time.closed)tx.set(timeRef,{items:time.entries},{merge:true});
+      if(savedRoutes.length!==route.length)tx.set(sampleRef,{items:savedRoutes},{merge:true});
+      if(savedEvents.length!==events.length)tx.set(eventRef,{items:savedEvents},{merge:true});
       // Avoid claiming this was an employee punch. A separate server audit
       // carries only counts/IDs, not location coordinates.
       if(time.closed)tx.set(db.doc("workforceMidnightAudit/"+today+"_"+uid),{
