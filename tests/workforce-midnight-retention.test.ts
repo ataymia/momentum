@@ -41,3 +41,17 @@ test("midnight punch closure is role-agnostic across the entire employee workfor
   assert.equal(result.entries.every((entry:{clockOut?:string;note?:string})=>
     entry.clockOut==="23:59"&&Boolean(entry.note?.includes("Automatically closed at Arizona midnight"))),true);
 });
+
+
+test("midnight closure never manufactures a shift from an unclocked or incomplete row",async()=>{
+  const mod=await import(new URL("../functions/src/workforce-retention.ts",import.meta.url).href);
+  const rows=[
+    {id:"absence",userId:"rep",date:"2026-10-19",status:"Absent"},
+    {id:"blank",userId:"rep",date:"2026-10-19",clockIn:"   "},
+    {id:"valid",userId:"rep",date:"2026-10-19",clockIn:"08:00"},
+  ];
+  const result=mod.closePriorDayOpenPunches(rows,"2026-10-20");
+  assert.equal(result.closed,1);
+  assert.deepEqual(result.entries.slice(0,2),rows.slice(0,2));
+  assert.equal(result.entries[2].clockOut,"23:59");
+});

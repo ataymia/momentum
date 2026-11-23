@@ -33,7 +33,7 @@ export const autoClosedMidnightNote="Automatically closed at Arizona midnight. A
 export function closePriorDayOpenPunches(rows:Row[],day:string):{entries:Row[];closed:number}{
   let closed=0;
   const entries=rows.map((row)=>{
-    if(txt(row.clockOut)||!/^20\d\d-\d\d-\d\d$/.test(txt(row.date))||
+    if(!txt(row.clockIn)||txt(row.clockOut)||!/^20\d\d-\d\d-\d\d$/.test(txt(row.date))||
       txt(row.date)>=day)return row;
     const originalDay=txt(row.date);
     const clockOutAt=azMidnight(offsetDays(originalDay,1));
