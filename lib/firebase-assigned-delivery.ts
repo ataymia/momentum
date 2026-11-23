@@ -15,7 +15,11 @@ export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDelive
  if(!body||typeof body!=="object"||typeof body.orderId!=="string"||!/^[A-Za-z0-9_-]{5,120}$/.test(body.orderId))return Promise.reject(new Error("Select a valid delivery order before continuing."));
  // Types are erased at runtime. Reject malformed actions and assignment targets
  // before any network call; backend authorization and state checks remain required.
- // The trusted custody endpoint accepts a fixed contract. Never forward arbitrary\n // client-supplied metadata (such as spoofed actor, approval or tenant fields).\n const allowedFields=new Set(["orderId","action","driverId","reason","note","signature"]);\n if(Object.keys(body).some(field=>!allowedFields.has(field)))return Promise.reject(new Error("Delivery request contains unsupported values. Refresh the queue and try again."));\n const allowedActions=new Set(["status","claim","assign","pack","load","depart","release","note","complete"]);
+ // The trusted custody endpoint accepts a fixed contract. Never forward arbitrary
+ // client-supplied metadata (such as spoofed actor, approval or tenant fields).
+ const allowedFields=new Set(["orderId","action","driverId","reason","note","signature"]);
+ if(Object.keys(body).some(field=>!allowedFields.has(field)))return Promise.reject(new Error("Delivery request contains unsupported values. Refresh the queue and try again."));
+ const allowedActions=new Set(["status","claim","assign","pack","load","depart","release","note","complete"]);
  if(!allowedActions.has(body.action))return Promise.reject(new Error("Select a supported delivery action before continuing."));
  if(body.driverId!==undefined&&(typeof body.driverId!=="string"||!/^[A-Za-z0-9_-]{5,120}$/.test(body.driverId)))return Promise.reject(new Error("Select a valid driver before assigning delivery custody."));
  // An assignment without a target is not a valid custody transition.
