@@ -40,7 +40,14 @@ export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDelive
    if(typeof signature.recipientName!=="string"||!signature.recipientName.trim()||signature.recipientName.trim().length>120)
      return Promise.reject(new Error("Enter the recipient's name before completing delivery."));
  }
- const key=JSON.stringify([session.uid,session.idToken,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
+ // A malformed runtime payload must reject as a Promise, not throw before the
+ // UI can handle it. Circular objects and BigInt values cannot be serialized.
+ let key:string;
+ try {
+   key=JSON.stringify([session.uid,session.idToken,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
+ } catch {
+   return Promise.reject(new Error("Delivery request contains unsupported values. Refresh the queue and try again."));
+ }
  const pending=pendingCustodyActions.get(key);
  if(pending)return pending;
  // Serialize custody transitions for the same order even if the tab changes users.
