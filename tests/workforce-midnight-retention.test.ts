@@ -70,3 +70,16 @@ test("midnight retention preserves unrelated Firestore document fields",()=>{
       `Retention write for ${ref} must merge instead of replacing shared document fields`);
   }
 });
+
+test("midnight closure rejects corrupt and future clock-in instants without inventing attendance",async()=>{
+  const mod=await import(new URL("../functions/src/workforce-retention.ts",import.meta.url).href);
+  const rows=[
+    {id:"invalid",date:"2026-10-19",clockIn:"08:00",clockInAt:"not-a-timestamp"},
+    {id:"future",date:"2026-10-19",clockIn:"08:00",clockInAt:"2026-10-21T15:00:00.000Z"},
+    {id:"valid",date:"2026-10-19",clockIn:"08:00",clockInAt:"2026-10-19T15:00:00.000Z"},
+  ];
+  const result=mod.closePriorDayOpenPunches(rows,"2026-10-20");
+  assert.equal(result.closed,1);
+  assert.deepEqual(result.entries.slice(0,2),rows.slice(0,2));
+  assert.equal(result.entries[2].clockOut,"23:59");
+});
