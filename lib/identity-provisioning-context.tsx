@@ -96,8 +96,12 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
     const manager = data.users.find((user) => user.id === input.managerId && user.role !== "Customer");
     if (usernameProblem(username)) return null;
     if (data.users.some((user) => user.username === username) || state.drafts.some((draft) => draft.status !== "Cancelled" && draft.username === username)) return null;
-    if (input.legalName.trim().length < 2 || !emailPattern.test(email) || input.jobTitle.trim().length < 2 || input.team !== expectedTeam[input.role] || !manager || input.workLocation.trim().length < 2 || !/^\d{4}-\d{2}-\d{2}$/.test(input.startDate) || !Array.isArray(input.courseIds) || input.courseIds.length === 0 || new Set(input.courseIds).size !== input.courseIds.length) return null;
-    if (input.classification === "Not configured" || input.payBasis === "Not configured" || !Number.isFinite(input.payRate) || Number(input.payRate) <= 0 || input.payGroup.trim().length < 2 || input.payGroup.trim().toLowerCase() === "not configured") return null;
+    if (input.legalName.trim().length < 2 || !emailPattern.test(email) || input.jobTitle.trim().length < 2 || input.team !== expectedTeam[input.role] || !manager || input.workLocation.trim().length < 2 || !/^\d{4}-\d{2}-\d{2}$/.test(input.startDate) || !Array.isArray(input.courseIds) || new Set(input.courseIds).size !== input.courseIds.length) return null;
+    // Payroll may run through an external provider: capture known details now,
+    // leave unknown compensation and pay group as pending without faking values.
+    if (input.classification === "Not configured" ||
+        (input.payRate !== undefined && (!Number.isFinite(input.payRate) || Number(input.payRate) <= 0)) ||
+        (input.payGroup.trim().length > 0 && input.payGroup.trim().length < 2)) return null;
     if (input.standardWeeklyHours !== undefined && (!Number.isFinite(input.standardWeeklyHours) || input.standardWeeklyHours < 0 || input.standardWeeklyHours > 168)) return null;
     if (input.courseIds.some((courseId) => !hcm.courses.some((course) => course.id === courseId && course.active))) return null;
     if (data.users.some((user) => user.email.toLowerCase() === email) || state.drafts.some((draft) => draft.status !== "Cancelled" && draft.workEmail.toLowerCase() === email)) return null;
@@ -219,6 +223,9 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
   const activateUser = async (userId: string) => {
     if (currentUser?.role !== "Administrator") return false;
     const record = accountAccessFor(state, userId);
+    // Normal Administrator operation: credentials must be rotated and the
+    // employee must have a scoped role and reviewed worker type. Document upload,
+    // outside payroll records and training can be reconciled after CRM access.
     if (!record || !onboardingReadiness(hcm, record, userId).readyForActivation) return false;
     if (firebase) { const persisted = await firebase.setAccountState(userId, "Active"); if (!persisted.ok) return false; }
     const at = new Date().toISOString();
