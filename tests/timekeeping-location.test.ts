@@ -87,3 +87,15 @@ describe("timekeeping production controls",()=>{
     assert.match(tracking,/addEventListener\("online",catchUp\)/);
   });
 });
+
+test("field clock status reads authenticated source punches without inventing a clock event",()=>{
+  const worker=readFileSync(new URL("../worker/index.ts",import.meta.url),"utf8");
+  const client=readFileSync(new URL("../lib/sales-inactivity-client.ts",import.meta.url),"utf8");
+  assert.match(worker,/handleFieldClockStatus/);
+  assert.match(worker,/\/api\/field\/clock-status/);
+  assert.match(worker,/verifyFirebaseIdToken/);
+  assert.match(worker,/userDomains\/\$\{uid\}\/workspace\/timeEntries/);
+  assert.match(worker,/const pending = Boolean\(!open && notice/);
+  assert.match(worker,/action !== "read"/);
+  assert.match(client,/action==="read"\?"\/api\/field\/clock-status"/);
+});
