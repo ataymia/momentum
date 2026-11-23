@@ -538,7 +538,7 @@ service cloud.firestore {
 
     // momentum-identity-provisioning-v1
     match /identity/fields/{field} {
-      allow get, list: if field in ['_root', 'drafts', 'records'] && ((isActiveRole('Administrator'))) && (!(field in ['records']) || isAdmin());
+      allow get, list: if field in ['_root', 'drafts', 'records'] && (field in ['records'] ? (hasAccess()) : (isActiveRole('Administrator'))) && (!(field in ['records']) || isAdmin());
       allow write: if field in ['_root', 'drafts', 'records'] && ((isActiveRole('Administrator'))) && (!(field in ['records']) || isAdmin());
     }
 
