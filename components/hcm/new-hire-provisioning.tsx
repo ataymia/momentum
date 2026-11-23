@@ -209,7 +209,11 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   const rescueQueue = provisioning.rescueQueue;
   const documentFollowups = hcm.employees.filter((employee) => employee.status !== "Separated").flatMap((employee) => {
     const missing = onboardingReadiness(hcm, provisioning.state.records.find((record) => record.userId === employee.userId), employee.userId).documentReminders;
-    const pending = employee.classification === "Not configured" ? ["Worker classification review"] : [];
+    const pending = [
+      ...(employee.classification === "Not configured" ? ["Worker classification review"] : []),
+      ...(!employee.payGroup || employee.payGroup === "Not configured" ? ["Payroll provider / pay group confirmation"] : []),
+      ...(!hcm.compensation.some((item) => item.userId === employee.userId && item.status !== "Ended" && item.rate > 0) ? ["Approved compensation / external payroll verification"] : []),
+    ];
     if (!missing.length && !pending.length) return [];
     const user = data.users.find((item) => item.id === employee.userId);
     return [{ userId: employee.userId, name: user?.name ?? employee.employeeNumber, workerType: employee.classification === "Contractor" ? "Contractor / 1099" : "Employee / W-2", missing: [...pending, ...missing] }];
@@ -485,8 +489,8 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
       })}{pendingApprovals.length===0&&<div className="review-empty"><CheckCircle2 size={24}/><h3>No onboarding approvals waiting</h3><p>Employees appear here after they complete and submit their onboarding work.</p></div>}</div>
     </Section>
 
-    <Section title="HR document follow-ups" description="In-app reminders only. Missing documents do not block CRM access. Signed originals may be held by the approved payroll or HR provider; secure verification is still required." action={<StatusPill tone={documentFollowups.length?"warning":"success"}>{documentFollowups.length} needing review</StatusPill>}>
-      <div className="provisioning-queue onboarding-approval-list">{documentFollowups.map((entry)=><article key={entry.userId} className="onboarding-review-card"><span className="provisioning-avatar"><FileCheck2 size={18}/></span><div className="onboarding-review-body"><strong>{entry.name}</strong><p>{entry.workerType}</p><small>Documents to collect or securely verify: {entry.missing.join(", ")}</small><small>Do not enter tax IDs, identity images, or sensitive payroll data into CRM notes.</small></div><StatusPill tone="warning">{entry.missing.length} pending</StatusPill></article>)}{documentFollowups.length===0&&<div className="review-empty"><ShieldCheck size={24}/><h3>No document follow-ups in this list</h3><p>Compliance verification and outside-provider obligations still require separate review.</p></div>}</div>
+    <Section title="HR document and payroll follow-ups" description="In-app reminders only. Missing documents and external payroll settings do not block CRM access. Signed originals may be held by the approved provider; secure verification is still required." action={<StatusPill tone={documentFollowups.length?"warning":"success"}>{documentFollowups.length} needing review</StatusPill>}>
+      <div className="provisioning-queue onboarding-approval-list">{documentFollowups.map((entry)=><article key={entry.userId} className="onboarding-review-card"><span className="provisioning-avatar"><FileCheck2 size={18}/></span><div className="onboarding-review-body"><strong>{entry.name}</strong><p>{entry.workerType}</p><small>HR / payroll items to collect or securely verify: {entry.missing.join(", ")}</small><small>Do not enter tax IDs, identity images, or sensitive payroll data into CRM notes.</small></div><StatusPill tone="warning">{entry.missing.length} pending</StatusPill></article>)}{documentFollowups.length===0&&<div className="review-empty"><ShieldCheck size={24}/><h3>No document follow-ups in this list</h3><p>Compliance verification and outside-provider obligations still require separate review.</p></div>}</div>
     </Section>
 
     <Section title="Access setup & recovery" description="Employees waiting for secure password setup or CRM activation. Enable CRM access normally when identity controls are ready; unfinished paperwork remains tracked below." action={<StatusPill tone={rescueQueue.length?"warning":"success"}><LifeBuoy size={14}/> {rescueQueue.length} to rescue</StatusPill>}>
