@@ -69,7 +69,7 @@ export const DOMAIN_SPECS:DomainSpec[]=[
       compensation:adminOwned(),compensationChanges:perUser("userId",{selfWrite:false}),commissionRateAdjustments:adminOwned(),
     },
   },
-  {key:"momentum-identity-provisioning-v1",id:"identity",read:ADMIN,write:ADMIN,fields:{drafts:{},records:perUser("userId",{selfWrite:true,managerWrite:false,managerRead:false})}},
+  {key:"momentum-identity-provisioning-v1",id:"identity",read:ADMIN,write:ADMIN,fields:{drafts:{},records:perUser("userId",{selfWrite:true,managerWrite:false,managerRead:false,read:"hasAccess"})}},
   {key:"momentum-brand-ambassador-v1",id:"brandAmbassador",read:"hasAccess",write:ADMIN,fields:{assignments:perUser("ambassadorId",{selfWrite:false,managerWrite:false,managerRead:false,salesRepSupervise:true,read:ADMIN,write:ADMIN})}},
   {key:"momentum-training-library-v1",id:"trainingLibrary",read:"hasAccess",write:ADMIN,fields:{materials:{},audiences:{}}},
   {key:"momentum-document-templates-v1",id:"documentTemplates",read:"hasAccess",write:ADMIN,fields:{templates:{},packets:perUser("userId",{managerRead:false,managerWrite:false,selfWrite:false,serverOwned:true,write:[]})}},

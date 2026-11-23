@@ -4,7 +4,7 @@ import { ReactNode, createContext, useContext, useEffect, useMemo, useState } fr
 import { useFirebaseSessionOptional } from "./firebase-session-context";
 import { useHcm } from "./hcm-context";
 import { appendAudit } from "./hcm-engine";
-import { AccountAccessState, IDENTITY_PROVISIONING_STORAGE_KEY, IdentityProvisioningRecord, IdentityProvisioningState, ProvisioningDraft, ProvisioningSource, accountAccessFor, createIdentityProvisioningSeed, isFailClosedPlaceholder, normalizeIdentityProvisioningState } from "./identity-provisioning";
+import { AccountAccessState, IDENTITY_PROVISIONING_STORAGE_KEY, IdentityProvisioningRecord, IdentityProvisioningState, ProvisioningDraft, ProvisioningSource, accountAccessFor, canPersistIdentityProvisioning, createIdentityProvisioningSeed, isFailClosedPlaceholder, normalizeIdentityProvisioningState } from "./identity-provisioning";
 import { mayTransitionAccountState } from "./employee-access-authority";
 import { activateEmploymentAfterOnboarding, administratorOverrideEmploymentActivation, onboardingPackageNeedsRepair, onboardingReadiness, onboardingRescueQueue, prepareOnboardingPackage, type OnboardingRescueEntry } from "./onboarding-engine";
 import { momentumStorage, useRemoteStorageSync } from "./persistence";
@@ -75,9 +75,24 @@ export function IdentityProvisioningProvider({ children }: { children: ReactNode
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const persisted = firebase ? { ...state, records: state.records.filter((record) => !isFailClosedPlaceholder(record)) } : state;
+    // Production identity data is Administrator-owned. Active employees must not
+    // re-save synthetic onboarding seed data during ordinary page mounts: doing so
+    // used to journal an impossible admin-domain write and poison cloud sync.
+    // Genuine pre-activation employee changes still use their own allowed records shard.
+    if (firebase && !canPersistIdentityProvisioning(currentUser,firebase.session?.uid,firebase.access?.accountState)) return;
+    // Non-admin employees may persist their OWN real onboarding record only, not
+    // the synthetic placeholder or a draft/record belonging to another employee.
+    const persisted = firebase
+      ? {
+          ...state,
+          records:state.records.filter((record)=>!isFailClosedPlaceholder(record)
+            && (currentUser?.role==="Administrator"||record.userId===currentUser?.id)),
+          drafts:currentUser?.role==="Administrator"?state.drafts:[],
+        }
+      : state;
+    if(firebase && currentUser?.role!=="Administrator" && persisted.records.length===0) return;
     momentumStorage.setItem(IDENTITY_PROVISIONING_STORAGE_KEY, JSON.stringify(persisted));
-  }, [firebase, state]);
+  }, [currentUser, firebase, state]);
   useRemoteStorageSync(IDENTITY_PROVISIONING_STORAGE_KEY, () => setState(readState(data)));
 
   useEffect(() => {
