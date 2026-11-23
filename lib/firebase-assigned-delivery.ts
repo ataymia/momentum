@@ -49,7 +49,9 @@ export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDelive
    // A custom toJSON can silently remove or rewrite validated custody fields.
    // Confirm the actual bytes submitted still carry the validated identity/action.
    const wire=JSON.parse(serializedBody) as Record<string,unknown>;
-   if(!wire||typeof wire!=="object"||Array.isArray(wire)||wire.orderId!==body.orderId||wire.action!==body.action)
+   if(!wire||typeof wire!=="object"||Array.isArray(wire)||wire.orderId!==body.orderId||wire.action!==body.action||
+      wire.driverId!==body.driverId||wire.note!==body.note||wire.reason!==body.reason||
+      (body.action==="complete"&&JSON.stringify(wire.signature)!==JSON.stringify(body.signature)))
      return Promise.reject(new Error("Delivery request changed during serialization. Refresh the queue and try again."));
    key=JSON.stringify([session.uid,session.idToken,body.orderId,body.action,serializedBody]);
  } catch {
