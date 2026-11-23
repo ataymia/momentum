@@ -1,6 +1,8 @@
 import {validExternalVerification} from "./hr-document-controls";
 import type {HCMState} from "./hcm-engine";
-import {STANDARD_SALES_COMMISSION_POLICY,salesCommissionPolicyProblem} from "./sales-commission-policy";
+import {salesCommissionPolicyProblem} from "./sales-commission-policy";
+import {commissionPolicyForRepresentative} from "./commission-rate-controls";
+import {arizonaDateKey} from "./date-time";
 import {activeTerritories} from "./territory-engine";
 import type {WorkspaceData} from "./types";
 
@@ -52,7 +54,8 @@ export function commissionOnlyRepresentativeReview(
     blockers.push("No active assigned territory/ZIP scope; geographic guidance and exception responsibility must be confirmed.");
   if(missingExplicitAttribution>0)
     blockers.push(missingExplicitAttribution+" recorded order(s) lack a locked credited representative; reconcile historical attribution.");
-  const policyProblem=salesCommissionPolicyProblem();
+  const ratePolicy=commissionPolicyForRepresentative(hcm,repId,arizonaDateKey());
+  const policyProblem=salesCommissionPolicyProblem(ratePolicy);
   if(policyProblem)blockers.push(policyProblem);
   blockers.push("Commission payout is blocked: qualifying net collected sales, refund exclusions, prior disbursements, signed plan and payroll disbursement controls are not integrated into an approved release path.");
   return {
@@ -62,9 +65,9 @@ export function commissionOnlyRepresentativeReview(
     verifiedCommissionOnlyAgreement,activeTerritoryZips:territoryZips,
     attributedOrders,missingExplicitAttribution,
     commissionRates:{
-      representative:STANDARD_SALES_COMMISSION_POLICY.representativeRate,
-      managerOverride:STANDARD_SALES_COMMISSION_POLICY.managerOverrideRate,
-      combined:STANDARD_SALES_COMMISSION_POLICY.maxCombinedRate,
+      representative:ratePolicy.representativeRate,
+      managerOverride:ratePolicy.managerOverrideRate,
+      combined:ratePolicy.maxCombinedRate,
     },
     blockers,automaticPaymentEnabled:false,
   };
