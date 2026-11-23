@@ -123,11 +123,11 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
   };
 
   const invoiceSheet = (invoiceId: string, copyIndex = 0) => {
-    const invoice = commerce.invoices.find((item) => item.id === invoiceId);
+    const invoice = invoices.find((item) => item.id === invoiceId);
     if (!invoice) return null;
-    const order = data.orders.find((item) => item.id === invoice.orderId);
+    const order = scope.orders.find((item) => item.id === invoice.orderId);
     const placedBy = order ? data.users.find((user) => user.id === order.ownerId) : undefined;
-    const location = data.accounts.find((item) => item.id === invoice.accountId);
+    const location = scope.accounts.find((item) => item.id === invoice.accountId);
     const customer = location ? customerForLocation(data, location) : undefined;
     const lines = invoice.linesSnapshot?.length ? invoice.linesSnapshot : order ? orderLinesFor(order) : [];
     const deliveryTask = order ? taskForOrder(order.id) : undefined;
@@ -237,7 +237,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       })}{invoices.length === 0 && <div className="review-empty"><FileText size={24}/><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}</div>
     </Section>
 
-    <Modal open={Boolean(previewId)} title={previewId ? commerce.invoices.find((invoice) => invoice.id === previewId)?.number ?? "Invoice" : "Invoice"} description="View the invoice before printing. You can print with missing details after confirming the warning; printing does not issue or email it." onClose={() => setPreviewId(null)} wide footer={<><Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>Close</Button>{previewId && <Button type="button" icon={<Printer size={15}/>} onClick={() => startPrint([previewId])}>Print / Save PDF</Button>}</>}><div className="invoice-preview-shell">{preview}</div></Modal>
+    <Modal open={Boolean(previewId)} title={previewId ? invoices.find((invoice) => invoice.id === previewId)?.number ?? "Invoice" : "Invoice"} description="View the invoice before printing. You can print with missing details after confirming the warning; printing does not issue or email it." onClose={() => setPreviewId(null)} wide footer={<><Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>Close</Button>{previewId && <Button type="button" icon={<Printer size={15}/>} onClick={() => startPrint([previewId])}>Print / Save PDF</Button>}</>}><div className="invoice-preview-shell">{preview}</div></Modal>
 
     {printPortal}
   </>;
