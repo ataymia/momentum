@@ -145,6 +145,11 @@ test("connected custody executes duplicate, conflict and server-confirmation saf
  await assert.rejects(assigned(null,order),/Sign in again/);
  await assert.rejects(assigned({uid:"driver123",idToken:42},order),/Sign in again/);
  await assert.rejects(assigned(session,null),/valid delivery order/);
+ const circularNote:{self?:unknown}={};
+ circularNote.self=circularNote;
+ const invalidPayload={...order,note:circularNote};
+ await assert.rejects(assigned(session,invalidPayload),/unsupported values/);
+ assert.equal(calls,2,"unserializable payload cannot contact the server or occupy a custody lock");
  await assert.rejects(assigned(session,{...order,action:"note",note:"x"}),/delivery note/);
  await assert.rejects(assigned(session,{...order,action:"release",reason:"short"}),/release reason/);
  await assert.rejects(assigned(session,{...order,action:"complete",signature:{recipientName:"Test Recipient",strokes:[[[0,0],[1001,2]]]}}),/signature is invalid/);
