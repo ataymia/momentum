@@ -153,6 +153,14 @@ test("connected custody executes duplicate, conflict and server-confirmation saf
  assert.equal(calls,2,"unserializable payload cannot contact the server or occupy a custody lock");
  const rewritten={...order,toJSON:()=>({orderId:"otherOrder123",action:"claim"})};
  await assert.rejects(assigned(session,rewritten),/changed during serialization/);
+ const redirectedDriver={...order,action:"assign",driverId:"driver123",toJSON:()=>({orderId:"order123",action:"assign",driverId:"attacker123"})};
+ await assert.rejects(assigned(session,redirectedDriver),/changed during serialization/);
+ const rewrittenNote={...order,action:"note",note:"Correct delivery note",toJSON:()=>({orderId:"order123",action:"note",note:"Forged delivery note"})};
+ await assert.rejects(assigned(session,rewrittenNote),/changed during serialization/);
+ const originalSignature={recipientName:"Test Recipient",strokes:[[[0,0],[100,100]]]};
+ const rewrittenSignature={...order,action:"complete",signature:originalSignature,toJSON:()=>({orderId:"order123",action:"complete",signature:{recipientName:"Other Recipient",strokes:[[[0,0],[100,100]]]}})};
+ await assert.rejects(assigned(session,rewrittenSignature),/changed during serialization/);
+ assert.equal(calls,2,"custom serialization cannot change driver target, notes or recipient signature");
  const vanished={...order,toJSON:()=>undefined};
  await assert.rejects(assigned(session,vanished),/unsupported values/);
  assert.equal(calls,2,"custom JSON serialization cannot rewrite custody identity or suppress the request body");
