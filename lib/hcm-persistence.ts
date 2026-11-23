@@ -8,6 +8,7 @@ import type {
   Candidate,
   CompensationChangeRequest,
   CompensationRecord,
+  CommissionRateAdjustment,
   Course,
   Dependent,
   EmployeeDocument,
@@ -233,6 +234,16 @@ export function normalizePersistedHcmState(input: unknown, data: WorkspaceData, 
     return [raw as unknown as CompensationChangeRequest];
   }), (record) => record.id);
 
+  const commissionRateAdjustments=uniqueBy(records(root,"commissionRateAdjustments").flatMap((raw):CommissionRateAdjustment[]=>{
+    if(!object(raw)||!text(raw.id)||!userIds.has(text(raw.userId))||
+      !nonnegative(raw.representativeRate)||!nonnegative(raw.managerOverrideRate)||
+      Number(raw.representativeRate)>1||Number(raw.managerOverrideRate)>1||
+      Number(raw.representativeRate)+Number(raw.managerOverrideRate)>1||
+      !validDate(raw.effectiveDate)||!text(raw.reason)||!text(raw.approvalReference)||
+      !actorValid(raw.approvedBy,userIds)||!validInstant(raw.createdAt))return [];
+    return [raw as unknown as CommissionRateAdjustment];
+  }),(record)=>record.id);
+
   const requisitions = uniqueBy(records(root, "requisitions").flatMap((raw): Requisition[] => {
     if (!object(raw) || !text(raw.id) || !text(raw.title) || !text(raw.department) || !text(raw.location) || !userIds.has(text(raw.hiringManagerId)) || !integerPositive(raw.openings) || !requisitionStatuses.has(text(raw.status)) || !optionalInstant(raw.openedAt) || !optionalInstant(raw.closedAt) || !validInstant(raw.createdAt) || !actorValid(raw.createdBy, userIds)) return [];
     return [raw as unknown as Requisition];
@@ -329,6 +340,7 @@ export function normalizePersistedHcmState(input: unknown, data: WorkspaceData, 
     benefitEvents: benefitEventRecords,
     compensation,
     compensationChanges,
+    commissionRateAdjustments,
     requisitions,
     candidates,
     interviews,

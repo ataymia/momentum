@@ -38,6 +38,11 @@ export type BenefitEvent = { id:string; userId:string; type:"Marriage"|"Birth/ad
 
 export type PayBasis = "Hourly"|"Salary per pay period"|"Not configured";
 export type CompensationRecord = { id:string; userId:string; basis:PayBasis; rate:number; effectiveDate:string; endDate?:string; reason:string; status:"Active"|"Future"|"Ended"; approvedBy:string; createdAt:string };
+/** Append-only, owner-authorized prospective commission terms. Not payroll disbursement. */
+export type CommissionRateAdjustment = {
+  id:string; userId:string; representativeRate:number; managerOverrideRate:number;
+  effectiveDate:string; reason:string; approvalReference:string; approvedBy:string; createdAt:string;
+};
 export type CompensationChangeRequest = { id:string; userId:string; type:"Merit"|"Promotion"|"Market"|"Correction"|"Other"; proposedBasis:PayBasis; proposedRate:number; effectiveDate:string; reason:string; submittedBy:string; submittedAt:string; status:"Submitted"|"Approved"|"Returned"; reviewerId?:string; decidedAt?:string };
 
 export type Requisition = { id:string; title:string; department:string; location:string; hiringManagerId:string; openings:number; status:"Draft"|"Open"|"Paused"|"Closed"; openedAt?:string; closedAt?:string; createdAt:string; createdBy:string };
@@ -67,7 +72,7 @@ export type HCMState = {
   ptoPolicies:PtoPolicy[]; ptoAssignments:PtoAssignment[]; ptoLedger:PtoLedgerEntry[]; leaveRequests:LeaveRequest[];
   availability:Availability[]; shifts:Shift[]; shiftRequests:ShiftRequest[];
   benefitPlans:BenefitPlan[]; dependents:Dependent[]; benefitEnrollments:BenefitEnrollment[]; benefitEvents:BenefitEvent[];
-  compensation:CompensationRecord[]; compensationChanges:CompensationChangeRequest[];
+  compensation:CompensationRecord[]; compensationChanges:CompensationChangeRequest[]; commissionRateAdjustments:CommissionRateAdjustment[];
   requisitions:Requisition[]; candidates:Candidate[]; interviews:Interview[]; offers:Offer[]; lifecycleCases:LifecycleCase[];
   courses:Course[]; training:TrainingAssignment[]; goals:Goal[]; reviewCycles:ReviewCycle[]; reviews:PerformanceReview[];
   workflows:WorkflowRequest[]; tasks:HcmTask[]; audit:HcmAuditEvent[];
@@ -95,7 +100,7 @@ export function createHcmSeed(data:WorkspaceData):HCMState {
     {id:"course-inventory-control",title:"Inventory custody and fulfillment controls",category:"Operations",active:true,description:"Inventory custody, fulfillment, hold and exception controls.",requiredForTeams:["Operations"],version:1},
   ];
   const training:TrainingAssignment[] = nonCustomers(data).flatMap((user)=>courses.filter((course)=>course.requiredForTeams.includes(user.team)).map((course)=>({id:`train-${user.id}-${course.id}`,userId:user.id,courseId:course.id,assignedAt:today(),status:"Assigned" as const})));
-  return {version:4,employees,employmentChanges:[],privateProfiles:nonCustomers(data).map((u)=>({userId:u.id,updatedAt:now()})),profileChangeRequests:[],documents,policies:[],acknowledgments:[],ptoPolicies:[],ptoAssignments:[],ptoLedger:[],leaveRequests:[],availability:[],shifts:[],shiftRequests:[],benefitPlans:[],dependents:[],benefitEnrollments:[],benefitEvents:[],compensation:[],compensationChanges:[],requisitions:[],candidates:[],interviews:[],offers:[],lifecycleCases:[],courses,training,goals:[],reviewCycles:[],reviews:[],workflows:[],tasks:[],audit:[]};
+  return {version:4,employees,employmentChanges:[],privateProfiles:nonCustomers(data).map((u)=>({userId:u.id,updatedAt:now()})),profileChangeRequests:[],documents,policies:[],acknowledgments:[],ptoPolicies:[],ptoAssignments:[],ptoLedger:[],leaveRequests:[],availability:[],shifts:[],shiftRequests:[],benefitPlans:[],dependents:[],benefitEnrollments:[],benefitEvents:[],compensation:[],compensationChanges:[],commissionRateAdjustments:[],requisitions:[],candidates:[],interviews:[],offers:[],lifecycleCases:[],courses,training,goals:[],reviewCycles:[],reviews:[],workflows:[],tasks:[],audit:[]};
 }
 
 export function normalizeHcmState(input:unknown,data:WorkspaceData):HCMState {

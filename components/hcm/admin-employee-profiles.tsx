@@ -28,7 +28,8 @@ import {
   employeeResponsibleAccounts,
   employeeVisitLabel,
 } from "../../lib/employee-admin";
-import { activeCompensation, appendAudit, type CompensationRecord, type EmploymentRecord, type PayBasis } from "../../lib/hcm-engine";
+import { activeCompensation, appendAudit, type CommissionRateAdjustment, type CompensationRecord, type EmploymentRecord, type PayBasis } from "../../lib/hcm-engine";
+import {commissionAdjustmentProblem,commissionPolicyForRepresentative} from "../../lib/commission-rate-controls";
 import { useHcm } from "../../lib/hcm-context";
 import { visibleActiveEmployees } from "../../lib/employee-directory-visibility";
 import { useFirebaseSessionOptional } from "../../lib/firebase-session-context";
@@ -175,6 +176,57 @@ function CompensationCorrectionForm({ userId, compensation }: { userId:string; c
     <Field label="Correction reason" className="field--full"><input required value={payReason} onChange={(event) => setPayReason(event.target.value)} placeholder="Example: Correct initial rate entered during setup"/></Field>
     <div className="employee-profile-edit-actions field--full"><Button type="submit">Save pay correction</Button>{payNotice&&<StatusPill tone={payNotice.tone}>{payNotice.text}</StatusPill>}</div>
   </form>;
+}
+
+function CommissionRateEditor({userId}:{userId:string}){
+  const {hcm,setHcm}=useHcm();
+  const {currentUser}=useWorkspace();
+  const [rep,setRep]=useState("2.50");
+  const [manager,setManager]=useState("0.50");
+  const [effective,setEffective]=useState(arizonaDateKey());
+  const [reason,setReason]=useState("");
+  const [approval,setApproval]=useState("");
+  const [notice,setNotice]=useState("");
+  const todayPolicy=commissionPolicyForRepresentative(hcm,userId,arizonaDateKey());
+  const history=[...hcm.commissionRateAdjustments].filter(item=>item.userId===userId)
+    .sort((a,b)=>b.effectiveDate.localeCompare(a.effectiveDate));
+  const save=(event:FormEvent)=>{
+    event.preventDefault();setNotice("");
+    if(currentUser?.role!=="Administrator"){setNotice("Administrator authorization required.");return;}
+    const value:CommissionRateAdjustment={
+      id:uid("commission-plan"),userId,representativeRate:Number(rep)/100,
+      managerOverrideRate:Number(manager)/100,effectiveDate:effective,
+      reason:reason.trim(),approvalReference:approval.trim(),
+      approvedBy:currentUser.id,createdAt:now(),
+    };
+    const problem=commissionAdjustmentProblem(value);
+    if(problem){setNotice(problem);return;}
+    if(effective<arizonaDateKey()){setNotice("Rate changes must be effective today or later. Historical commissions require separate reconciliation.");return;}
+    if(history.some(item=>item.effectiveDate===effective)){setNotice("A plan is already recorded for that date; choose another date and preserve history.");return;}
+    setHcm(current=>appendAudit({
+      ...current,commissionRateAdjustments:[value,...current.commissionRateAdjustments],
+    },{actorId:currentUser.id,action:"Administrator recorded effective-dated commission rate",entityType:"CommissionRateAdjustment",
+      entityId:value.id,before:"Prior approved rate",after:`Rep ${rep}%; eligible manager ${manager}%; effective ${effective}`,reason:`${reason.trim()} | Approval: ${approval.trim()}`}));
+    setNotice("Commission plan submitted locally. Verify cloud sync before relying on it. No payroll or payout was released.");
+    setReason("");setApproval("");
+  };
+  return <Section title="Adjustable sales commissions" description="Administrator-only, effective-dated terms. Signed plan and owner approval must be verified before updating compensation.">
+    <p>Approved default: 2.50% rep + 0.50% eligible manager. Current recorded rates: {(todayPolicy.representativeRate*100).toFixed(2)}% rep + {(todayPolicy.managerOverrideRate*100).toFixed(2)}% eligible manager. No automatic payout.</p>
+    <form className="form-grid" onSubmit={save}>
+      <Field label="Representative commission (%)"><input type="number" min="0" max="100" step="0.01" required value={rep} onChange={event=>setRep(event.target.value)}/></Field>
+      <Field label="Eligible manager override (%)"><input type="number" min="0" max="100" step="0.01" required value={manager} onChange={event=>setManager(event.target.value)}/></Field>
+      <Field label="Effective date"><input type="date" min={arizonaDateKey()} required value={effective} onChange={event=>setEffective(event.target.value)}/></Field>
+      <Field label="Approval reference"><input required value={approval} onChange={event=>setApproval(event.target.value)} placeholder="Signed agreement or owner approval reference"/></Field>
+      <Field label="Change reason"><input required value={reason} onChange={event=>setReason(event.target.value)} placeholder="Why the rates are changing"/></Field>
+      <div className="field--full"><Button type="submit">Record approved rate change</Button>{notice&&<p role="status">{notice}</p>}</div>
+    </form>
+    <p>Past earning dates retain their previous policies. Commission calculation, settlement, attribution and payment approvals are independent.</p>
+    {history.length>0&&<div className="admin-profile-record-list">{history.map(item=><article key={item.id}><WalletCards size={16}/><div>
+      <strong>{(item.representativeRate*100).toFixed(2)}% rep + {(item.managerOverrideRate*100).toFixed(2)}% manager</strong>
+      <p>Effective {item.effectiveDate} · {item.reason}</p>
+      <small>Approval: {item.approvalReference} · recorded {new Date(item.createdAt).toLocaleDateString()}</small>
+    </div></article>)}</div>}
+  </Section>;
 }
 
 export function AdminEmployeeProfiles() {
@@ -330,6 +382,7 @@ export function AdminEmployeeProfiles() {
             </div>
             <CompensationCorrectionForm key={selected.id} userId={selected.id} compensation={compensation}/>
           </Section>
+          {selected.role==="Sales Representative"&&<CommissionRateEditor key={`commission-${selected.id}`} userId={selected.id}/>}
 
           <Section title="Recent time entries" description="Clock-in, clock-out, source, breaks, and calculated worked time.">
             <div className="employee-evidence-table">

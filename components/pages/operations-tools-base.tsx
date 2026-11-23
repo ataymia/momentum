@@ -4,6 +4,7 @@ import { BookOpen, Clock3, MapPin, PackageSearch } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { mapsIntegrationStatus, projectAccounts } from "../../lib/maps-integration";
 import { useFieldTracking } from "../../lib/location-tracking-context";
+import {useSyncStatus} from "../../lib/persistence";
 import {LocationPermissionHelp} from "../field-tracking/location-permission-help";
 import { ROUTE_PING_INTERVAL_MINUTES, roleIsTracked } from "../../lib/location-tracking-engine";
 import { GOLDEN_EAGLE_SKUS, PRODUCT_CATALOG_INVENTORY_POLICY } from "../../lib/product-catalog";
@@ -43,6 +44,7 @@ export function ProductsPage(){return <div className="page"><PageHeader eyebrow=
 export function TimekeepingPage(){
   const {data,currentUser,toggleClock,startMeal,endMeal}=useWorkspace();
   const tracking=useFieldTracking();
+  const sync=useSyncStatus();
   if(!currentUser)return null;
   const open=data.timeEntries.find(entry=>entry.userId===currentUser.id&&!entry.clockOut);
   const entries=data.timeEntries.filter(entry=>entry.userId===currentUser.id)
@@ -77,7 +79,7 @@ export function TimekeepingPage(){
       <div className="timekeeping-hero-summary">
         <div><span>Recent recorded hours</span><strong>{recordedHours.toFixed(2)}<small> hr</small></strong><p>From the 7 most recent time entries</p></div>
         <div><span>Time entries shown</span><strong>{Math.min(entries.length,10)}</strong><p>{entries.length} on record for your profile</p></div>
-        {tracked&&<div><span>Field tracking</span><strong className="timekeeping-tracking-value">{open?tracking.permission:"Off duty"}</strong><p>{open?`Evidence requested about every ${ROUTE_PING_INTERVAL_MINUTES} min`:"Off-duty tracking stopped"}</p></div>}
+        {tracked&&<div><span>Field tracking</span><strong className="timekeeping-tracking-value">{open?tracking.permission:"Off duty"}</strong><p>{open?`Device GPS sampled about every ${ROUTE_PING_INTERVAL_MINUTES} min while the app is active`:"Off-duty tracking stopped"}</p>{open&&<p>{tracking.currentSample?`Last captured: ${new Date(tracking.currentSample.at).toLocaleString("en-US",{timeZone:"America/Phoenix",hour:"numeric",minute:"2-digit"})} AZ`:"No GPS sample captured yet"}</p>}{open&&sync.mode==="firestore"&&<p>{sync.lastError?`Cloud sync warning: ${sync.lastError}`:sync.pending?`${sync.pending} cloud changes pending`:"Cloud sync has no reported error"}</p>}</div>}
       </div>
     </section>
     <div className="timekeeping-lower-grid">

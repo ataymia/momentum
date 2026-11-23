@@ -39,3 +39,26 @@ describe("standard sales commission policy", () => {
     assert.match(salesCommissionPolicyProblem(invalid) ?? "", /allocation/i);
   });
 });
+
+
+import {commissionAdjustmentProblem,commissionPolicyForRepresentative} from "../lib/commission-rate-controls";
+import type {HCMState} from "../lib/hcm-engine";
+
+test("approved dated commission exceptions do not rewrite historical rates",()=>{
+  const plan={id:"plan",userId:"rep-1",representativeRate:0.04,managerOverrideRate:0.01,
+    effectiveDate:"2026-12-01",reason:"New signed compensation terms",approvalReference:"agreement-2026-12",
+    approvedBy:"admin",createdAt:"2026-11-23T18:00:00Z"};
+  assert.equal(commissionAdjustmentProblem(plan),null);
+  assert.match(commissionAdjustmentProblem({...plan,approvalReference:""})??"",/approval/i);
+  assert.match(commissionAdjustmentProblem({...plan,representativeRate:0.8,managerOverrideRate:0.4})??"",/total/i);
+  const state={commissionRateAdjustments:[plan]} as HCMState;
+  assert.equal(commissionPolicyForRepresentative(state,"rep-1","2026-11-30").representativeRate,0.025);
+  assert.equal(commissionPolicyForRepresentative(state,"rep-1","2026-12-01").representativeRate,0.04);
+  assert.equal(commissionPolicyForRepresentative(state,"rep-1","2026-12-01").managerOverrideRate,0.01);
+  assert.equal(commissionPolicyForRepresentative(state,"other","2026-12-01").representativeRate,0.025);
+});
+
+test("prior HCM snapshots without commission overrides retain the standard default",()=>{
+  const oldState={} as HCMState;
+  assert.equal(commissionPolicyForRepresentative(oldState,"rep","2026-11-23").representativeRate,0.025);
+});
