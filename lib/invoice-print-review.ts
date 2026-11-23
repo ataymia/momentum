@@ -38,6 +38,9 @@ export function invoicePrintWarnings(
   (line.amount??-1)<0))
   issues.push("One or more invoice lines have missing or invalid descriptions, quantities, or prices.");
  if(!Number.isFinite(invoice.total)||invoice.total<0)issues.push("Invoice total is missing or invalid.");
+ else if(context.lines.length>0&&context.lines.every(line=>Number.isFinite(line.amount)&&Number.isFinite(line.cases)&&Number.isFinite(line.pricePerCase))&&
+  Math.abs(context.lines.reduce((sum,line)=>sum+(line.amount??0),0)-invoice.total)>0.005)
+  issues.push("Itemized line amounts do not reconcile to the saved invoice total.");
  return issues;
 }
 
