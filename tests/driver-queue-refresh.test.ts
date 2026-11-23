@@ -164,7 +164,7 @@ test("connected custody executes duplicate, conflict and server-confirmation saf
  const vanished={...order,toJSON:()=>undefined};
  await assert.rejects(assigned(session,vanished),/unsupported values/);
  assert.equal(calls,2,"custom JSON serialization cannot rewrite custody identity or suppress the request body");
- const extraCircular={...order,unexpected:circularNote};
+ await assert.rejects(assigned(session,{...order,actorUid:"admin123"}),/unsupported values/);\n await assert.rejects(assigned(session,{...order,tenantId:"otherTenant"}),/unsupported values/);\n assert.equal(calls,2,"spoofed actor or tenant metadata never reaches the custody endpoint");\n const extraCircular={...order,unexpected:circularNote};
  await assert.rejects(assigned(session,extraCircular),/unsupported values/);
  await assert.rejects(assigned(session,{...order,unexpected:12n}),/unsupported values/);
  assert.equal(calls,2,"unexpected unserializable fields are rejected before a custody lock or network call");
