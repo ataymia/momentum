@@ -151,6 +151,11 @@ test("connected custody executes duplicate, conflict and server-confirmation saf
  const invalidPayload={...order,note:circularNote};
  await assert.rejects(assigned(session,invalidPayload),/unsupported values/);
  assert.equal(calls,2,"unserializable payload cannot contact the server or occupy a custody lock");
+ const rewritten={...order,toJSON:()=>({orderId:"otherOrder123",action:"claim"})};
+ await assert.rejects(assigned(session,rewritten),/changed during serialization/);
+ const vanished={...order,toJSON:()=>undefined};
+ await assert.rejects(assigned(session,vanished),/unsupported values/);
+ assert.equal(calls,2,"custom JSON serialization cannot rewrite custody identity or suppress the request body");
  const extraCircular={...order,unexpected:circularNote};
  await assert.rejects(assigned(session,extraCircular),/unsupported values/);
  await assert.rejects(assigned(session,{...order,unexpected:12n}),/unsupported values/);
