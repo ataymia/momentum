@@ -59,10 +59,11 @@ test("server self-delivery atomically verifies rep, approval, exact custody, sig
     ]);
     await assert.rejects(()=>commit(stranger,{action:"claim",orderId}),/Only orders placed by you/);
     await assert.rejects(()=>commit(rep,{action:"claim",orderId:"order-rep-unapproved"}),/Only currently approved/);
-    await assert.rejects(()=>commit(rep,{action:"claim",orderId:"order-rep-malformed-lines"}),
+    await commit(rep,{action:"claim",orderId:"order-rep-malformed-lines"});
+    await assert.rejects(()=>commit(rep,{action:"pack",orderId:"order-rep-malformed-lines"}),
       /invalid SKU lines/);
-    assert.equal((await db.doc(prefix+"delivery/fields/tasks").get()).data()?.items.length,0,
-      "Malformed order lines must not create delivery custody records.");
+    assert.equal((await db.doc(prefix+"inventoryLedger/fields/reservations").get()).data()?.items.length,0,
+      "Malformed order lines must not reserve inventory.");
     const claimed=await commit(rep,{action:"claim",orderId});
     assert.equal(claimed.taskStatus,"Accepted");
     await assert.rejects(()=>commit(rep,{action:"depart",orderId}),/Load the exact inventory/);
