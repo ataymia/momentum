@@ -169,6 +169,7 @@ test("blocked invoice warning confirmation fails closed before print sheets moun
   const blocked = handler.indexOf("The browser could not show the invoice review");
   const mount = handler.indexOf("flushSync(() => setPrintJob({ ids: unique, copies }))");
   assert.ok(review >= 0 && blocked > review && mount > blocked);
-  assert.match(handler, /catch \\{[\\s\\S]*?setPrintNotice\\("The browser could not show the invoice review[\\s\\S]*?return;[\\s\\S]*?\\}/);
-  assert.match(handler, /if \\(!confirmed\\) \\{/);
+  assert.ok(handler.slice(review, mount).includes("catch {"));
+  assert.ok(handler.slice(blocked, mount).includes("return;"));
+  assert.ok(handler.slice(blocked, mount).includes("if (!confirmed) {"));
 });
