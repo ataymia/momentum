@@ -96,11 +96,17 @@ export function planAutomaticDelivery(
     .sort((a,b)=>priorities[txt(a.type)]-priorities[txt(b.type)]||
       txt(a.id).localeCompare(txt(b.id)));
   const grouped=new Map<string,number>();
+  // Reject malformed canonical lines and totals before any allocation work.
+  // Grouping duplicate SKUs must not overflow JavaScript's safe integer range.
+  if (!txt(orderId) || !Array.isArray(lines) || lines.length === 0) return null;
   for(const line of lines) {
-    if(!productKey(line.product)||!Number.isInteger(line.cases)||line.cases<1)
-      return null;
+    if(!line || typeof line.product !== "string" ||
+      !productKey(line.product) || !Number.isSafeInteger(line.cases) ||
+      line.cases < 1) return null;
     const product=productKey(line.product);
-    grouped.set(product,(grouped.get(product)??0)+line.cases);
+    const total=(grouped.get(product)??0)+line.cases;
+    if(!Number.isSafeInteger(total)) return null;
+    grouped.set(product,total);
   }
   for(const [product,required] of grouped) {
     let needed=required;
