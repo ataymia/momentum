@@ -12,6 +12,8 @@ export type OnboardingReadiness = {
   activationBlockers: string[];
   requiredDocumentIds: string[];
   requiredTrainingIds: string[];
+  /** Documents to collect or verify later; these are reminders, not CRM-access prerequisites. */
+  documentReminders: string[];
 };
 
 type PrepareOnboardingOptions = { preserveExistingEmployee?: boolean };
@@ -143,7 +145,8 @@ export function onboardingReadiness(state: HCMState, record: IdentityProvisionin
   const employee = state.employees.find((item) => item.userId === userId);
   const profile = state.privateProfiles.find((item) => item.userId === userId);
   const lifecycle = state.lifecycleCases.find((item) => item.type === "Onboarding" && item.userId === userId && item.status === "Open");
-  const requiredTitles = new Set(requiredOnboardingDocumentTemplates(employee?.classification ?? "Not configured").map((item) => item.title.toLowerCase()));
+  const requiredTemplates = requiredOnboardingDocumentTemplates(employee?.classification ?? "Not configured");
+  const requiredTitles = new Set(requiredTemplates.map((item) => item.title.toLowerCase()));
   const documents = state.documents.filter((item) => item.userId === userId && requiredTitles.has(item.title.toLowerCase()));
   const training = state.training.filter((item) => item.userId === userId);
   const requiredDocumentIds = documents.map((item) => item.id);
@@ -156,9 +159,10 @@ export function onboardingReadiness(state: HCMState, record: IdentityProvisionin
   employeeChecks.push(passwordComplete);
   if (!passwordComplete) blockers.push("Change the temporary password.");
 
-  const employmentConfigured = Boolean(employee && employee.status === "Prehire" && employee.jobTitle.trim() && employee.department.trim() && employee.location.trim() && employee.managerId && employee.classification !== "Not configured" && employee.payGroup !== "Not configured");
+  const employmentConfigured = Boolean(employee && employee.status === "Prehire" && employee.jobTitle.trim() && employee.department.trim() && employee.location.trim() && employee.managerId && employee.classification !== "Not configured");
   employeeChecks.push(employmentConfigured);
-  if (!employmentConfigured) blockers.push("HR must finish the employment profile, reporting line, classification, location, and pay group.");
+  if (!employmentConfigured) blockers.push("HR must confirm the role, reporting line, worker classification, and location.");
+  if (employee && (!employee.payGroup || employee.payGroup === "Not configured")) blockers.push("Payroll provider and pay group have not been recorded; coordinate with the owner or external payroll provider.");
 
   const profileComplete = Boolean(profile?.phone?.trim() && profile.address?.trim() && profile.emergencyContact?.trim());
   employeeChecks.push(profileComplete);
@@ -176,21 +180,26 @@ export function onboardingReadiness(state: HCMState, record: IdentityProvisionin
   employeeChecks.push(lifecycleExists);
   if (!lifecycleExists) blockers.push("HR has not prepared the onboarding case yet.");
 
-  // "Available" only describes document availability, not authenticated
-  // completion. Even external references are HR attestations, not a provider
-  // webhook, immutable PDF or form-specific legal compliance certificate.
-  const documentsComplete = requiredTitles.size > 0 && documents.length === requiredTitles.size
-    && documents.every((item) => item.status === "Available"
-      && validExternalVerification(item.verification, item.version));
-  if (!documentsComplete) activationBlockers.push(
-    "Every required employment, compensation and tax document needs a current externally verified original reference. Available alone is not a signature.");
+  // HR documents are tracked independently from role-scoped CRM access. A file being
+  // "Available" is not proof of a signed, verified version or lawful employment.
+  const documentReminders = requiredTemplates.flatMap((template) => {
+    const matches = documents.filter((item) => item.title.toLowerCase() === template.title.toLowerCase());
+    const verified = matches.some((item) => item.status === "Available" && validExternalVerification(item.verification, item.version));
+    return verified ? [] : [template.title];
+  });
 
   const readyForEmployeeSubmission = passwordComplete && employmentConfigured && profileComplete && compensationConfigured && trainingComplete && lifecycleExists;
-  if (!readyForEmployeeSubmission) activationBlockers.push("Employee onboarding has not been completed and submitted.");
-  if (record?.state !== "Pending approval") activationBlockers.push("Employee onboarding must be in Pending approval status.");
-  const readyForActivation = readyForEmployeeSubmission && documentsComplete && record?.state === "Pending approval";
+  // CRM access only needs a trusted hire record, a reviewed worker type, and a
+  // rotated password. Compensation, contact profile, training and signed paperwork
+  // stay outstanding in HR; no legal-compliance status is inferred from access.
+  if (!passwordComplete) activationBlockers.push("Employee must securely change the temporary password first.");
+  if (!employmentConfigured) activationBlockers.push("HR must configure the role, manager, worker type and location.");
+  if (!lifecycleExists) activationBlockers.push("An onboarding case must exist.");
+  if (record && !["Onboarding", "Pending approval"].includes(record.state)) activationBlockers.push("Account must be in Onboarding or Pending approval.");
+  const readyForActivation = passwordComplete && employmentConfigured && lifecycleExists
+    && Boolean(record && ["Onboarding", "Pending approval"].includes(record.state));
 
-  return { readyForEmployeeSubmission, readyForActivation, completed: employeeChecks.filter(Boolean).length, total: employeeChecks.length, blockers, activationBlockers, requiredDocumentIds, requiredTrainingIds };
+  return { readyForEmployeeSubmission, readyForActivation, completed: employeeChecks.filter(Boolean).length, total: employeeChecks.length, blockers, activationBlockers, requiredDocumentIds, requiredTrainingIds, documentReminders };
 }
 
 export function activateEmploymentAfterOnboarding(state: HCMState, userId: string, actorId: string) {
@@ -201,9 +210,15 @@ export function activateEmploymentAfterOnboarding(state: HCMState, userId: strin
   const next: HCMState = {
     ...state,
     employees: state.employees.map((item) => item.userId === userId ? { ...item, status: "Active", updatedAt: at } : item),
-    lifecycleCases: state.lifecycleCases.map((item) => item.id === lifecycle.id ? { ...item, status: "Complete", tasks: item.tasks.map((task) => ({ ...task, status: "Complete", completedAt: task.completedAt ?? at })) } : item),
+    // Operational access never declares unsigned documents, HR profile or training complete.
+    lifecycleCases: state.lifecycleCases.map((item) => item.id === lifecycle.id ? { ...item,
+      status: "Open", tasks: item.tasks.map((task) =>
+        /secure account and change first-login password|hr review and activate role-based access/i.test(task.title)
+          ? { ...task, status: "Complete", completedAt: task.completedAt ?? at, evidence: task.evidence ?? "CRM access granted; remaining HR steps tracked separately" }
+          : task),
+    } : item),
   };
-  return appendAudit(next, { actorId, action: "Completed onboarding and activated employment", entityType: "LifecycleCase", entityId: lifecycle.id, before: employee.status, after: "Active" });
+  return appendAudit(next, { actorId, action: "Granted operational CRM access with HR onboarding still open", entityType: "LifecycleCase", entityId: lifecycle.id, before: employee.status, after: "Active", reason: "Document collection and external payroll verification continue separately" });
 }
 
 /**

@@ -62,7 +62,7 @@ const RESCUE_LABELS: Record<OnboardingRescueAction, string> = {
   moveToOnboarding: "Move back to onboarding",
   advanceToReview: "Move to pending approval",
   returnForCorrections: "Return for corrections",
-  activate: "Activate access",
+  activate: "Enable CRM access",
   overrideAndActivate: "Override and force activation",
 };
 const RESCUE_HINTS: Record<OnboardingRescueAction, string> = {
@@ -72,7 +72,7 @@ const RESCUE_HINTS: Record<OnboardingRescueAction, string> = {
   moveToOnboarding: "Reopens onboarding so the employee can finish the steps they control.",
   advanceToReview: "Sends a completed onboarding to the Administrator approval queue on the employee's behalf.",
   returnForCorrections: "Sends the employee back to onboarding with a correction note.",
-  activate: "Normal activation. Available only when every readiness control is complete.",
+  activate: "Normal role-scoped CRM access once the employee has secured the account and HR has confirmed role, manager, classification and location. Paperwork, training and outside payroll remain follow-ups.",
   overrideAndActivate: "Operations override. Grants Active access now and records the reason. Unfinished documents, training, and forms stay truthfully incomplete.",
 };
 /** Actions that change access without the employee finishing their own steps. */
@@ -207,6 +207,17 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   });
   const pendingApprovals = provisioning.state.records.filter((record) => record.state === "Pending approval");
   const rescueQueue = provisioning.rescueQueue;
+  const documentFollowups = hcm.employees.filter((employee) => employee.status !== "Separated").flatMap((employee) => {
+    const missing = onboardingReadiness(hcm, provisioning.state.records.find((record) => record.userId === employee.userId), employee.userId).documentReminders;
+    const pending = [
+      ...(employee.classification === "Not configured" ? ["Worker classification review"] : []),
+      ...(!employee.payGroup || employee.payGroup === "Not configured" ? ["Payroll provider / pay group confirmation"] : []),
+      ...(!hcm.compensation.some((item) => item.userId === employee.userId && item.status !== "Ended" && item.rate > 0) ? ["Approved compensation / external payroll verification"] : []),
+    ];
+    if (!missing.length && !pending.length) return [];
+    const user = data.users.find((item) => item.id === employee.userId);
+    return [{ userId: employee.userId, name: user?.name ?? employee.employeeNumber, workerType: employee.classification === "Contractor" ? "Contractor / 1099" : "Employee / W-2", missing: [...pending, ...missing] }];
+  });
 
   // Once the new identity reaches the directory, link the draft and open onboarding.
   useEffect(() => {
@@ -247,17 +258,17 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
     }
     if (targetStep >= 3) {
       if (form.workerType === "Not selected") return "Select Employee or Contractor based on reviewed worker classification. A 1099 label alone is insufficient.";
-      if (form.payBasis === "Not configured") return "Choose the approved pay basis before issuing credentials.";
-      const payRate = Number(form.payRate);
-      if (!Number.isFinite(payRate) || payRate <= 0) return "Enter the approved pay rate before issuing credentials.";
-      if (form.payGroup.trim().length < 2 || form.payGroup.trim().toLowerCase() === "not configured") return "Choose the actual pay group before issuing credentials.";
+      if (form.workerType === "Employee" && form.payBasis === "Not configured") return "Select hourly or salary for an employee. If the pay rate or payroll provider is not known yet, leave those fields blank.";
+      const payRate = form.payRate.trim() ? Number(form.payRate) : undefined;
+      if (payRate !== undefined && (!Number.isFinite(payRate) || payRate <= 0)) return "Enter a positive pay rate or leave it pending for external payroll.";
+      if (form.payGroup.trim() && form.payGroup.trim().length < 2) return "Use a meaningful pay-group name, or leave it blank until payroll confirms.";
       if (form.standardWeeklyHours.trim()) {
         const hours = Number(form.standardWeeklyHours);
         if (!Number.isFinite(hours) || hours < 0 || hours > 168) return "Standard weekly hours must be between 0 and 168.";
       }
     }
     if (targetStep >= 4) {
-      if (!form.courseIds.length) return "Assign at least one active onboarding course before issuing credentials.";
+      // Training can be assigned after the hire is created; no onboarding file or course is required to save a CRM identity.
       if (form.courseIds.some((id) => !activeCourses.some((course) => course.id === id))) return "One or more selected training courses are no longer active.";
     }
     return null;
@@ -337,7 +348,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
     event.preventDefault();
     const validation = validateStep(4);
     if (validation) { setError(validation); return; }
-    const payRate = Number(form.payRate);
+    const payRate = form.payRate.trim() ? Number(form.payRate) : undefined;
     const hours = form.standardWeeklyHours.trim() ? Number(form.standardWeeklyHours) : undefined;
     const input: NewProvisioningDraftInput = {
       source: form.source,
@@ -362,9 +373,9 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
       courseIds: form.courseIds,
     };
     const id = provisioning.saveDraft(input);
-    if (!id) { setError("Momentum did not save this setup. Check for a duplicate email, invalid reporting line, inactive training, or incomplete pay information."); return; }
+    if (!id) { setError("Momentum did not save this setup. Check for a duplicate email, role/reporting-line mismatch, or invalid classification."); return; }
     setError("");
-    setNotice("New-hire setup saved. The employee is now waiting in the onboarding queue for account creation.");
+    setNotice("New hire saved without requiring document uploads. Create their login from the onboarding queue. Missing signed forms and external payroll records remain HR follow-ups.");
     setForm(emptyForm());
     setStep(1);
   };
@@ -403,13 +414,13 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
     setActivationBusy(userId);
     const ok=await provisioning.activateUser(userId);
     setActivationBusy(null);
-    setNotice(ok?`${name} activated.`:"Activation could not be persisted. Access remains blocked; recheck the listed controls and Firestore access before retrying.");
+    setNotice(ok?`${name} can access the CRM. Missing documentation, training and outside payroll still appear in HR follow-ups.`:"CRM access could not be persisted. Check the secure-password, role and identity controls before retrying.");
   };
 
   if (view === "create") return <div className="page page--new-hire">
-    <PageHeader eyebrow="Human Resources" title="Create new hire" description="Create one complete employee setup before any login credentials are issued." actions={<Button variant="secondary" onClick={() => navigate("onboarding")}>Open onboarding queue</Button>}/>
-    <div className="new-hire-stepper" aria-label="New hire setup steps">{["Identity","Position","Pay","Training & review"].map((label,index)=><button type="button" key={label} className={step===index+1?"is-active":step>index+1?"is-complete":""} onClick={()=>{if(index+1<step)setStep(index+1)}}><span>{index+1}</span><strong>{label}</strong></button>)}</div>
-    <Section title={`Step ${step} of 4`} description={step===1?"Who is joining and when?":step===2?"What job are they doing and who owns their work?":step===3?"Confirm classification and approved pay before access exists.":"Assign required training and review the setup before moving it to the queue."} action={<StatusPill tone="gold"><ShieldCheck size={14}/> Administrator only</StatusPill>}>
+    <PageHeader eyebrow="Human Resources" title="Create new hire" description="Save the hire and create CRM access without uploading documents. HR forms and external payroll can be completed later." actions={<Button variant="secondary" onClick={() => navigate("onboarding")}>Open onboarding queue</Button>}/>
+    <div className="new-hire-stepper" aria-label="New hire setup steps">{["Identity","Position","Classification & payroll","Training & review"].map((label,index)=><button type="button" key={label} className={step===index+1?"is-active":step>index+1?"is-complete":""} onClick={()=>{if(index+1<step)setStep(index+1)}}><span>{index+1}</span><strong>{label}</strong></button>)}</div>
+    <Section title={`Step ${step} of 4`} description={step===1?"Who is joining and when?":step===2?"What job are they doing and who owns their work?":step===3?"Confirm worker type. Pay and payroll details may remain pending if handled elsewhere.":"Optional training assignments and a final setup review."} action={<StatusPill tone="gold"><ShieldCheck size={14}/> Administrator only</StatusPill>}>
       <form className="provisioning-form new-hire-wizard" onSubmit={save}>
         {step===1&&<div className="provisioning-section"><div className="form-grid">
           {acceptedOffers.length>0&&<Field label="Prefill from accepted offer (optional)" className="field--full"><select value={form.offerId} onChange={(event)=>selectOffer(event.target.value)}><option value="">Enter manually</option>{acceptedOffers.map(({offer,candidate})=><option key={offer.id} value={offer.id}>{candidate!.name} · {offer.title}</option>)}</select></Field>}
@@ -438,14 +449,14 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
         </div></div>}
         {step===3&&<div className="provisioning-section"><div className="form-grid">
           <Field label="Worker type"><select value={form.workerType} onChange={(event)=>setForm((current)=>({...current,workerType:event.target.value as WorkerType}))}><option value="Not selected" disabled>Choose worker classification</option><option>Employee</option><option>Contractor</option></select></Field>
-          <Field label="Pay basis"><select value={form.payBasis} onChange={(event)=>setForm((current)=>({...current,payBasis:event.target.value as PayBasis}))}><option value="Not configured" disabled>Choose pay basis</option>{payBasisOptions.map((item)=><option key={item}>{item}</option>)}</select></Field>
-          <Field label={form.payBasis==="Hourly"?"Hourly rate":form.payBasis==="Salary per pay period"?"Salary per pay period":"Pay rate"}><input type="number" min="0.01" step="0.01" required value={form.payRate} onChange={(event)=>setForm((current)=>({...current,payRate:event.target.value}))}/></Field>
-          <Field label="Pay group"><input required value={form.payGroup} onChange={(event)=>setForm((current)=>({...current,payGroup:event.target.value}))} placeholder="Weekly, biweekly, etc."/></Field>
+          <Field label="Pay basis"><select value={form.payBasis} onChange={(event)=>setForm((current)=>({...current,payBasis:event.target.value as PayBasis}))}><option value="Not configured">Not recorded (external payroll)</option>{payBasisOptions.map((item)=><option key={item}>{item}</option>)}</select></Field>
+          <Field label={form.payBasis==="Hourly"?"Hourly rate":form.payBasis==="Salary per pay period"?"Salary per pay period":"Pay rate"}><input type="number" min="0.01" step="0.01" value={form.payRate} onChange={(event)=>setForm((current)=>({...current,payRate:event.target.value}))}/></Field>
+          <Field label="Pay group (optional)"><input value={form.payGroup} onChange={(event)=>setForm((current)=>({...current,payGroup:event.target.value}))} placeholder="Weekly, biweekly, or leave pending"/></Field>
         </div><div className="provisioning-banner"><ShieldCheck size={20}/><div><strong>Worker classification requires a real legal review.</strong><p>{form.workerType==="Contractor"
         ?"Contractors generally complete a W-9 and a contractor agreement. A 1099 is a tax reporting form, not an employment classification. Do not assign employee I-9, W-4 or Arizona A-4 forms merely because a contractor has a Momentum login."
         :form.workerType==="Employee"?"Employees generally complete I-9, federal W-4 and applicable state withholding paperwork. Review employment eligibility, pay rules and Arizona requirements before treating onboarding as compliant.":"Choose the worker type after reviewing the actual working relationship."}</p>
         <p>Selecting Contractor or Employee does not verify classification, taxes, signed originals, or payment readiness. Login access and compliance approval remain separate.</p></div></div></div>}
-        {step===4&&<div className="provisioning-section"><div className="training-picker">{activeCourses.map((course)=><label key={course.id}><input type="checkbox" checked={form.courseIds.includes(course.id)} onChange={()=>toggleCourse(course.id)}/><span><strong>{course.title}</strong><small>{course.description}</small></span></label>)}</div><div className="new-hire-review-grid"><div><small>Employee</small><strong>{form.preferredName.trim()||legalName}</strong><span>{form.workEmail}</span></div><div><small>Position</small><strong>{form.jobTitle}</strong><span>{form.role} · {team}</span></div><div><small>Manager</small><strong>{data.users.find((user)=>user.id===form.managerId)?.name??"Not selected"}</strong><span>{form.workLocation||"Work location missing"}</span></div><div><small>Pay</small><strong>{form.payRate?formatMoney(Number(form.payRate)):"Missing"}</strong><span>{form.payBasis} · {form.payGroup||"pay group missing"}</span></div><div><small>Start</small><strong>{form.startDate}</strong><span>{form.courseIds.length} training assignment{form.courseIds.length===1?"":"s"}</span></div></div></div>}
+        {step===4&&<div className="provisioning-section"><div className="training-picker">{activeCourses.map((course)=><label key={course.id}><input type="checkbox" checked={form.courseIds.includes(course.id)} onChange={()=>toggleCourse(course.id)}/><span><strong>{course.title}</strong><small>{course.description}</small></span></label>)}</div><div className="new-hire-review-grid"><div><small>Employee</small><strong>{form.preferredName.trim()||legalName}</strong><span>{form.workEmail}</span></div><div><small>Position</small><strong>{form.jobTitle}</strong><span>{form.role} · {team}</span></div><div><small>Manager</small><strong>{data.users.find((user)=>user.id===form.managerId)?.name??"Not selected"}</strong><span>{form.workLocation||"Work location missing"}</span></div><div><small>Pay</small><strong>{form.payRate?formatMoney(Number(form.payRate)):"Pending external payroll"}</strong><span>{form.payBasis} · {form.payGroup||"pay group pending"}</span></div><div><small>Start</small><strong>{form.startDate}</strong><span>{form.courseIds.length} training assignment{form.courseIds.length===1?"":"s"}</span></div></div></div>}
         {error&&<p className="form-error" role="alert">{error}</p>}
         {notice&&<div className="form-callout"><p>{notice}</p><Button type="button" size="sm" variant="secondary" onClick={()=>navigate("onboarding")}>Continue to onboarding queue</Button></div>}
         <div className="provisioning-actions new-hire-wizard-actions">{step>1&&<Button type="button" variant="ghost" onClick={()=>{setError("");setStep((current)=>Math.max(1,current-1))}}>Back</Button>}{step<4?<Button type="button" onClick={nextStep}>Continue</Button>:<Button type="submit" icon={<UserPlus size={16}/>}>Save new-hire setup</Button>}</div>
@@ -454,7 +465,7 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
   </div>;
 
   return <div className="page page--onboarding-queue">
-    <PageHeader eyebrow="Human Resources" title="Onboarding queue" description="Create employee login credentials only from an approved setup, monitor first-login onboarding, verify external documents, and activate access when controls are complete." actions={<Button variant="secondary" icon={<UserPlus size={16}/>} onClick={()=>navigate("newHire")}>Create new hire</Button>}/>
+    <PageHeader eyebrow="Human Resources" title="Onboarding queue" description="Provision employees, enable their role-scoped CRM access after secure password setup, and monitor outstanding HR documents separately." actions={<Button variant="secondary" icon={<UserPlus size={16}/>} onClick={()=>navigate("newHire")}>Create new hire</Button>}/>
     <Section title="Account provisioning" description={firebase?"Prepared hires waiting for a Firebase identity, first sign-in, or onboarding progression.":"Prepared hires waiting for identity provisioning."} action={<StatusPill tone="neutral">{activeDrafts.length} setup{activeDrafts.length===1?"":"s"}</StatusPill>}>
       {issued&&<div className="temp-password" role="status"><strong>{issued.name} · {issued.username}</strong><span>Give the employee their username and this temporary password. The password is shown once and must be replaced at first sign-in. Recovery e-mail on file: {issued.email}.</span><code>{issued.username}</code><code>{issued.password}</code><div className="provisioning-row-actions"><Button size="sm" variant="secondary" icon={<Copy size={14}/>} onClick={()=>void copyPassword()}>Copy password</Button><Button size="sm" variant="ghost" icon={<MailCheck size={14}/>} onClick={()=>void sendResetInstead()}>Email password setup link</Button><Button size="sm" variant="ghost" onClick={()=>setIssued(null)}>Dismiss</Button></div></div>}
       {notice&&<div className="form-callout"><p>{notice}</p></div>}
@@ -467,18 +478,22 @@ export function NewHireProvisioning({ view }: { view: NewHireView }) {
       })}{activeDrafts.length===0&&<div className="review-empty"><UserPlus size={24}/><h3>No hires waiting for account creation</h3><p>Create a new-hire setup first.</p></div>}</div>
     </Section>
 
-    <Section title="Final onboarding review" description="Employees may submit after completing the work they control. Administrators verify required paperwork before activating production access." action={<StatusPill tone={pendingApprovals.length?"warning":"success"}>{pendingApprovals.length} pending</StatusPill>}>
+    <Section title="Final onboarding review" description="Employee-submitted cases. CRM access can be enabled separately while missing document evidence remains in the follow-up queue." action={<StatusPill tone={pendingApprovals.length?"warning":"success"}>{pendingApprovals.length} pending</StatusPill>}>
       <div className="provisioning-queue onboarding-approval-list">{pendingApprovals.map((record)=>{
         const user=data.users.find((item)=>item.id===record.userId);
         const readiness=onboardingReadiness(hcm,record,record.userId);
         const employee=hcm.employees.find((item)=>item.userId===record.userId);
         const requiredTitles=new Set(requiredOnboardingDocumentTemplates(employee?.classification??"Not configured").map((item)=>item.title.toLowerCase()));
         const documents=hcm.documents.filter((item)=>item.userId===record.userId&&requiredTitles.has(item.title.toLowerCase()));
-        return <article key={record.id} className="onboarding-review-card"><span className="provisioning-avatar"><CheckCircle2 size={18}/></span><div className="onboarding-review-body"><strong>{user?.name??record.userId}</strong><p>{readiness.readyForActivation?"All activation controls are complete.":`${readiness.activationBlockers.length} activation blocker${readiness.activationBlockers.length===1?"":"s"} remain.`}</p><div className="onboarding-doc-review">{documents.map((document)=><div key={document.id}><span><FileCheck2 size={15}/><span><strong>{document.title}</strong><small>{document.status==="Available"?document.verification ? "External signed record verified" : "Legacy verification — evidence review needed":"Awaiting Administrator verification"}</small></span></span>{document.status==="Available"&&validExternalVerification(document.verification,document.version)?<StatusPill tone="success">Verified</StatusPill>:<Button size="sm" variant="secondary" onClick={()=>verifyDocumentExternally(document.id)}>Verify externally</Button>}</div>)}</div>{readiness.activationBlockers.length>0&&<ul className="onboarding-activation-blockers">{readiness.activationBlockers.map((blocker)=><li key={blocker}>{blocker}</li>)}</ul>}</div><StatusPill tone={readiness.readyForActivation?"success":"warning"}>{readiness.readyForActivation?"Ready":"Review"}</StatusPill><Button size="sm" disabled={!readiness.readyForActivation||activationBusy===record.userId} onClick={()=>void activatePendingUser(record.userId,user?.name??"Employee")}>{activationBusy===record.userId?"Activating…":"Activate access"}</Button></article>;
+        return <article key={record.id} className="onboarding-review-card"><span className="provisioning-avatar"><CheckCircle2 size={18}/></span><div className="onboarding-review-body"><strong>{user?.name??record.userId}</strong><p>{readiness.readyForActivation?"Secure identity and role are ready for CRM access.":`${readiness.activationBlockers.length} CRM-access blocker${readiness.activationBlockers.length===1?"":"s"} remain.`}</p>{readiness.documentReminders.length>0&&<small>HR paperwork still pending: {readiness.documentReminders.join(", ")}</small>}<div className="onboarding-doc-review">{documents.map((document)=><div key={document.id}><span><FileCheck2 size={15}/><span><strong>{document.title}</strong><small>{document.status==="Available"?document.verification ? "External signed record verified" : "Legacy verification — evidence review needed":"Awaiting Administrator verification"}</small></span></span>{document.status==="Available"&&validExternalVerification(document.verification,document.version)?<StatusPill tone="success">Verified</StatusPill>:<Button size="sm" variant="secondary" onClick={()=>verifyDocumentExternally(document.id)}>Verify externally</Button>}</div>)}</div>{readiness.activationBlockers.length>0&&<ul className="onboarding-activation-blockers">{readiness.activationBlockers.map((blocker)=><li key={blocker}>{blocker}</li>)}</ul>}</div><StatusPill tone={readiness.readyForActivation?"success":"warning"}>{readiness.readyForActivation?"Ready":"Review"}</StatusPill><Button size="sm" disabled={!readiness.readyForActivation||activationBusy===record.userId} onClick={()=>void activatePendingUser(record.userId,user?.name??"Employee")}>{activationBusy===record.userId?"Activating…":"Enable CRM access"}</Button></article>;
       })}{pendingApprovals.length===0&&<div className="review-empty"><CheckCircle2 size={24}/><h3>No onboarding approvals waiting</h3><p>Employees appear here after they complete and submit their onboarding work.</p></div>}</div>
     </Section>
 
-    <Section title="Stuck employees & Administrator rescue" description="Every employee who is not Active yet, including anyone stranded before Pending approval by an incomplete provisioning record. Each control writes the real access record and an HCM audit event; none of them mark unfinished documents, training, or forms as complete." action={<StatusPill tone={rescueQueue.length?"warning":"success"}><LifeBuoy size={14}/> {rescueQueue.length} to rescue</StatusPill>}>
+    <Section title="HR document and payroll follow-ups" description="In-app reminders only. Missing documents and external payroll settings do not block CRM access. Signed originals may be held by the approved provider; secure verification is still required." action={<StatusPill tone={documentFollowups.length?"warning":"success"}>{documentFollowups.length} needing review</StatusPill>}>
+      <div className="provisioning-queue onboarding-approval-list">{documentFollowups.map((entry)=><article key={entry.userId} className="onboarding-review-card"><span className="provisioning-avatar"><FileCheck2 size={18}/></span><div className="onboarding-review-body"><strong>{entry.name}</strong><p>{entry.workerType}</p><small>HR / payroll items to collect or securely verify: {entry.missing.join(", ")}</small><small>Do not enter tax IDs, identity images, or sensitive payroll data into CRM notes.</small></div><StatusPill tone="warning">{entry.missing.length} pending</StatusPill></article>)}{documentFollowups.length===0&&<div className="review-empty"><ShieldCheck size={24}/><h3>No document follow-ups in this list</h3><p>Compliance verification and outside-provider obligations still require separate review.</p></div>}</div>
+    </Section>
+
+    <Section title="Access setup & recovery" description="Employees waiting for secure password setup or CRM activation. Enable CRM access normally when identity controls are ready; unfinished paperwork remains tracked below." action={<StatusPill tone={rescueQueue.length?"warning":"success"}><LifeBuoy size={14}/> {rescueQueue.length} to rescue</StatusPill>}>
       <div className="provisioning-queue onboarding-approval-list">{rescueQueue.map((entry)=><RescueCard key={entry.user.id} entry={entry}/>)}{rescueQueue.length===0&&<div className="review-empty"><ShieldCheck size={24}/><h3>No employee is stuck</h3><p>Every provisioned employee has an active Momentum account.</p></div>}</div>
     </Section>
   </div>;

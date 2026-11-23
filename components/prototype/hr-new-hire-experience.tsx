@@ -6,14 +6,17 @@ import {useWorkspace} from "../../lib/workspace-context";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useRuntimeMode} from "../../lib/runtime-mode";
 import {momentumStorage} from "../../lib/persistence";
+import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
+import {canOpenHrProvisioning} from "../../lib/hr-provisioning-access";
 import {NewHireProvisioning} from "../hcm/new-hire-provisioning";
 
 export function HrNewHireExperience(){
  const {currentUser}=useWorkspace();const {hcm}=useHcm();
- const runtime=useRuntimeMode();const writeEnabled=runtime.isDemo&&momentumStorage.mode()==="local";
+ const runtime=useRuntimeMode();const firebase=useFirebaseSessionOptional();
+ const writeEnabled=canOpenHrProvisioning({actor:currentUser,isDemo:runtime.isDemo,storageMode:momentumStorage.mode(),firebase});
  if(currentUser?.role!=="Administrator")return <div className="prototype-empty">New-hire provisioning requires Administrator access.</div>;
  return <div className="prototype-domain prototype-domain--people prototype-hr-hire">
-  <header className="prototype-heading"><h1>New employee setup</h1><p>Move from candidate to authorized employee record without bypassing identity, pay, training, document or approval gates.</p></header>
+  <header className="prototype-heading"><h1>New employee setup</h1><p>Create a secure CRM identity while tracking HR forms, payroll confirmation, and training as separate follow-up work.</p></header>
   <div className="prototype-domain-statbar">
     <article><UserRoundPlus size={18}/><small>Accepted candidate offers</small><strong>{hcm.offers.filter(o=>o.status==="Accepted").length}</strong></article>
     <article><BriefcaseBusiness size={18}/><small>Employees in prehire</small><strong>{hcm.employees.filter(e=>e.status==="Prehire").length}</strong></article>
@@ -22,10 +25,10 @@ export function HrNewHireExperience(){
   <div className="prototype-domain-cards">
    <div className="prototype-domain-card prototype-domain-card--static"><strong>01 · Identity</strong><span>Legal name, contact, start date and account identity</span></div>
    <div className="prototype-domain-card prototype-domain-card--static"><strong>02 · Employment</strong><span>Job, manager, team, classification, work location</span></div>
-   <div className="prototype-domain-card prototype-domain-card--static"><strong>03 · Compensation</strong><span>Approved pay and pay group; no placeholder payroll</span></div>
-   <div className="prototype-domain-card prototype-domain-card--static"><strong>04 · Readiness</strong><span>Training, credentials, official form evidence and activation review</span></div>
+   <div className="prototype-domain-card prototype-domain-card--static"><strong>03 · Compensation</strong><span>Capture known pay details; external payroll may be pending</span></div>
+   <div className="prototype-domain-card prototype-domain-card--static"><strong>04 · Readiness</strong><span>First login, CRM access and tracked outstanding HR tasks</span></div>
   </div>
   <div className="prototype-controls"><button type="button" onClick={()=>navigateToRoute("/people/onboarding")}>Review onboarding cases</button><button type="button" onClick={()=>navigateToRoute("/admin/employees")}>Employee roster</button></div>
-  <section className="prototype-panel prototype-onboarding-wizard"><h2><FileCheck2 size={18}/> Secure new-hire wizard</h2><p className="prototype-note">Existing identity and provisioning workflow, restricted to isolated local demo mode for redesign acceptance. Do not use demo credentials as real employee access.</p>{writeEnabled?<NewHireProvisioning view="create"/>:<div className="prototype-empty">Read-only prototype: new-hire provisioning is disabled against connected data until approved release testing.</div>}</section>
+  <section className="prototype-panel prototype-onboarding-wizard"><h2><FileCheck2 size={18}/> Secure new-hire wizard</h2><p className="prototype-note">Existing identity and provisioning workflow. Only verified active administrators may provision connected employees; isolated demo credentials are never real employee access.</p>{writeEnabled?<NewHireProvisioning view="create"/>:<div className="prototype-empty">New-hire provisioning unavailable. A ready, verified active administrator session is required for connected employees.</div>}</section>
  </div>;
 }

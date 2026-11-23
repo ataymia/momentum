@@ -175,6 +175,19 @@ describe("deleting an account frees the hire to be recreated", () => {
 
   const admin = () => user(ADMIN_ID, { role: "Administrator", team: "Leadership", email: "admin@momentum.test" });
 
+  test("new hires without uploaded paperwork, in-app training or in-app payroll amounts survive reload", () => {
+    const data = workspace([admin()]);
+    const pendingPayroll: ProvisioningDraft = {
+      ...draftFor(), payRate: undefined, payGroup: "", courseIds: [],
+    };
+    const state = normalizeIdentityProvisioningState({version: 1, records: [], drafts: [pendingPayroll]}, data);
+    assert.equal(state.drafts.length, 1, "optional external-payroll details must not silently erase the hire");
+    assert.equal(state.drafts[0].payRate, undefined);
+    assert.equal(state.drafts[0].payGroup, "");
+    assert.deepEqual(state.drafts[0].courseIds, []);
+    assert.equal(state.drafts[0].status, "Ready to invite");
+  });
+
   test("a draft whose identity was deleted returns to the queue instead of being discarded", () => {
     // The hire's account is gone, so HIRE_ID is no longer in the directory.
     const data = workspace([admin()]);
