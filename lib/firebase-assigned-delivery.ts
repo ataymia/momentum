@@ -43,7 +43,9 @@ export function assignedDelivery(session:FirebaseAuthSession,body:AssignedDelive
  const key=JSON.stringify([session.uid,session.idToken,body.orderId,body.action,body.driverId,body.reason,body.note,body.signature]);
  const pending=pendingCustodyActions.get(key);
  if(pending)return pending;
- // Serialize custody transitions for the same order even if the tab changes users.\n // Auth tokens remain part of exact-request deduplication, never the order lock.\n const orderKey=body.orderId;
+ // Serialize custody transitions for the same order even if the tab changes users.
+ // Auth tokens remain part of exact-request deduplication, never the order lock.
+ const orderKey=body.orderId;
  if(pendingOrderActions.has(orderKey))return Promise.reject(new Error("Another delivery action is still pending for this order. Refresh the queue and verify custody before continuing."));
  const operation=submitAssignedDelivery(session,body);
  pendingOrderActions.set(orderKey,key);
