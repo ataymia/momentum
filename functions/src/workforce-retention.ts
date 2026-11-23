@@ -37,7 +37,10 @@ export function closePriorDayOpenPunches(rows:Row[],day:string):{entries:Row[];c
       txt(row.date)>=day)return row;
     const originalDay=txt(row.date);
     const clockOutAt=azMidnight(offsetDays(originalDay,1));
-    if(txt(row.clockInAt)&&Date.parse(txt(row.clockInAt))>=Date.parse(clockOutAt))return row;
+    // An invalid or future clock-in instant cannot justify a fabricated closure.
+    const clockInInstant=txt(row.clockInAt);
+    if(clockInInstant&&(!Number.isFinite(Date.parse(clockInInstant))||
+      Date.parse(clockInInstant)>=Date.parse(clockOutAt)))return row;
     closed++;
     return {...row,clockOut:"23:59",clockOutAt,
       note:[txt(row.note),autoClosedMidnightNote].filter(Boolean).join(" | ")};
