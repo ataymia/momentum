@@ -47,3 +47,11 @@ test("invoice register and stale preview respect active scope", () => {
   assert.match(source, /\{preview && previewId && <Button/);
   assert.doesNotMatch(source, /const location = data\.accounts\.find\(\(item\) => item\.id === invoice\.accountId\)/);
 });
+
+test("bulk print selection and mounted sheets discard IDs outside current authorization", () => {
+  const source = readFileSync("components/finance/invoice-print-center.tsx", "utf8");
+  assert.match(source, /const activeSelectedIds = selectedIds\.filter\(\(id\) => authorizedIds\.has\(id\)\)/);
+  assert.match(source, /disabled=\{!activeSelectedIds\.length\} onClick=\{\(\) => startPrint\(activeSelectedIds\)\}/);
+  assert.match(source, /printJob\.ids\.filter\(\(id\) => authorizedIds\.has\(id\)\)/);
+  assert.doesNotMatch(source, /onClick=\{\(\) => startPrint\(selectedIds\)\}/);
+});
