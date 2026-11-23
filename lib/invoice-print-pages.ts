@@ -4,6 +4,9 @@ export type InvoiceCopies = 1 | 2;
 
 export function invoicePrintPages(invoiceIds: readonly string[], copies: InvoiceCopies): InvoicePrintPage[] {
   if (copies !== 1 && copies !== 2) throw new Error("Unsupported invoice copy count");
+  if (invoiceIds.some((invoiceId) => typeof invoiceId !== "string" || !invoiceId.trim())) {
+    throw new Error("Invoice selection contains a missing invoice ID");
+  }
   return [...new Set(invoiceIds)].flatMap((invoiceId) =>
     Array.from({ length: copies }, (_, copyIndex) => ({ invoiceId, copyIndex })),
   );

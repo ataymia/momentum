@@ -55,5 +55,26 @@ test("all available invoice print controls remain enabled regardless of release 
  assert.match(source,/Print all \(\{invoices\.length\}\)/);
  assert.match(source,/onClick=\{\(\) => startPrint\(\[invoice\.id\]\)\}>Print<\/Button>/);
  assert.match(source,/onClick=\{\(\) => startPrint\(\[previewId\]\)\}>Print \/ Save PDF<\/Button>/);
- assert.match(source,/disabled=\{!selectedIds\.length\}/);
+ // Only invoices in the current authorized scope may enable bulk printing.
+ assert.match(source,/const activeSelectedIds = selectedIds\.filter\(\(id\) => authorizedIds\.has\(id\)\)/);
+ assert.match(source,/disabled=\{!activeSelectedIds\.length\}/);
+ assert.match(source,/onClick=\{\(\) => startPrint\(activeSelectedIds\)\}/);
+ assert.doesNotMatch(source,/disabled=\{!selectedIds\.length\}/);
+});
+
+
+test("browser print failures clear mounted invoice sheets and report an actionable error",()=>{
+ const source=readFileSync("components/finance/invoice-print-center.tsx","utf8");
+ const printStart=source.slice(source.indexOf("const startPrint ="),source.indexOf("const invoiceSheet ="));
+ assert(printStart.includes("try {\n      window.print();"));
+ assert(printStart.includes("flushSync(() => setPrintJob(null));"));
+ assert(printStart.includes("browser could not open the print dialog"));
+});
+
+test("preprint review flags nonreconciling line totals without blocking manual print",()=>{
+ const warnings=invoicePrintWarnings({...complete.invoice,total:250},complete.context);
+ assert(warnings.some(message=>message.includes("do not reconcile")));
+ assert.deepEqual(invoicePrintWarnings(complete.invoice,complete.context),[]);
+ const rounding=invoicePrintWarnings({...complete.invoice,total:240.004},complete.context);
+ assert(!rounding.some(message=>message.includes("do not reconcile")));
 });

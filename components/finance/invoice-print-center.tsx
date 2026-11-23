@@ -69,7 +69,9 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
     brandImage.src = invoiceBrandSrc;
   }, []);
 
-  const selectedSet = new Set(selectedIds);
+  const authorizedIds = new Set(invoices.map((invoice) => invoice.id));
+  const activeSelectedIds = selectedIds.filter((id) => authorizedIds.has(id));
+  const selectedSet = new Set(activeSelectedIds);
   const allSelected = invoices.length > 0 && invoices.every((invoice) => selectedSet.has(invoice.id));
 
   useEffect(() => {
@@ -111,23 +113,39 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       });
       return issues.length?[{number:invoice.number,issues}]:[];
     });
-    if(reviews.length&&!window.confirm(invoicePrintConfirmationMessage(reviews))){
-      setPrintNotice("Printing canceled. The invoice was not changed.");
-      return;
+    if (reviews.length) {
+      let confirmed = false;
+      try {
+        confirmed = window.confirm(invoicePrintConfirmationMessage(reviews));
+      } catch {
+        // If browser policy blocks confirmation, never bypass the preprint review.
+        setPrintNotice("The browser could not show the invoice review. Nothing was printed or changed. Enable browser dialogs and try again.");
+        return;
+      }
+      if (!confirmed) {
+        setPrintNotice("Printing canceled. The invoice was not changed.");
+        return;
+      }
     }
     // Keep the browser print call inside the confirmed user's gesture and synchronously
     // mount the print sheets. Never queue an automatic invoice email or payment.
     flushSync(() => setPrintJob({ ids: unique, copies }));
     setPrintNotice(`${unique.length} invoice${unique.length === 1 ? "" : "s"} prepared · ${copies} cop${copies === 1 ? "y" : "ies"} each.`);
-    window.print();
+    try {
+      window.print();
+    } catch {
+      // A blocked or failing print dialog must not leave sensitive sheets mounted.
+      flushSync(() => setPrintJob(null));
+      setPrintNotice("The browser could not open the print dialog. No invoice was issued or changed. Try again in a browser with printing enabled.");
+    }
   };
 
   const invoiceSheet = (invoiceId: string, copyIndex = 0) => {
-    const invoice = commerce.invoices.find((item) => item.id === invoiceId);
+    const invoice = invoices.find((item) => item.id === invoiceId);
     if (!invoice) return null;
-    const order = data.orders.find((item) => item.id === invoice.orderId);
+    const order = scope.orders.find((item) => item.id === invoice.orderId);
     const placedBy = order ? data.users.find((user) => user.id === order.ownerId) : undefined;
-    const location = data.accounts.find((item) => item.id === invoice.accountId);
+    const location = scope.accounts.find((item) => item.id === invoice.accountId);
     const customer = location ? customerForLocation(data, location) : undefined;
     const lines = invoice.linesSnapshot?.length ? invoice.linesSnapshot : order ? orderLinesFor(order) : [];
     const deliveryTask = order ? taskForOrder(order.id) : undefined;
@@ -209,7 +227,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
   };
 
   const preview = previewId ? invoiceSheet(previewId, 0) : null;
-  const printSheets = printJob ? invoicePrintPages(printJob.ids, printJob.copies).map(({ invoiceId, copyIndex }) => invoiceSheet(invoiceId, copyIndex)) : [];
+  const printSheets = printJob ? invoicePrintPages(printJob.ids.filter((id) => authorizedIds.has(id)), printJob.copies).map(({ invoiceId, copyIndex }) => invoiceSheet(invoiceId, copyIndex)) : [];
   const printPortal = typeof document !== "undefined" && printSheets.length ? createPortal(<div className="invoice-print-root" aria-hidden="true">{printSheets}</div>, document.body) : null;
 
   return <>
@@ -218,16 +236,16 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       <div className="invoice-print-toolbar">
         <Button type="button" size="sm" variant="secondary" icon={allSelected ? <CheckSquare2 size={15}/> : <Square size={15}/>} onClick={toggleAll}>{allSelected ? "Clear all" : "Select all"}</Button>
         <label className="invoice-copy-select"><span>Copies per invoice</span><select value={copies} onChange={(event) => setCopies(Number(event.target.value) as Copies)}><option value={1}>1 copy</option><option value={2}>2 copies</option></select></label>
-        <Button type="button" size="sm" icon={<Printer size={15}/>} disabled={!selectedIds.length} onClick={() => startPrint(selectedIds)}>Print selected ({selectedIds.length})</Button><Button type="button" size="sm" variant="secondary" icon={<Printer size={15}/>} disabled={!invoices.length} onClick={() => startPrint(invoices.map(invoice=>invoice.id))}>Print all ({invoices.length})</Button>
+        <Button type="button" size="sm" icon={<Printer size={15}/>} disabled={!activeSelectedIds.length} onClick={() => startPrint(activeSelectedIds)}>Print selected ({activeSelectedIds.length})</Button><Button type="button" size="sm" variant="secondary" icon={<Printer size={15}/>} disabled={!invoices.length} onClick={() => startPrint(invoices.map(invoice=>invoice.id))}>Print all ({invoices.length})</Button>
       </div>
       {printNotice && <p className="form-notice invoice-print-notice" role="status">{printNotice}</p>}
 
       <div className="finance-order-list invoice-register"><div className="finance-order-row finance-order-row--head invoice-register__row"><span>Select</span><span>Invoice</span><span>Location</span><span>Placed by</span><span>Total</span><span>Balance</span><span>Status</span><span>Actions</span></div>{invoices.map((invoice) => {
-        const location = data.accounts.find((item) => item.id === invoice.accountId);
+        const location = scope.accounts.find((item) => item.id === invoice.accountId);
         const balance = invoiceBalance(commerce, invoice);
         const status = computedInvoiceStatus(commerce, invoice);
         const checked = selectedSet.has(invoice.id);
-        const order=data.orders.find((item)=>item.id===invoice.orderId);const placedBy=data.users.find((user)=>user.id===order?.ownerId);
+        const order=scope.orders.find((item)=>item.id===invoice.orderId);const placedBy=data.users.find((user)=>user.id===order?.ownerId);
         const billingCustomer=location?customerForLocation(data,location):undefined;
         const isConfirmedDelivered=Boolean(deliveryState.tasks.some((task)=>
           task.orderId===invoice.orderId&&task.status==="Delivered")||
@@ -237,7 +255,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       })}{invoices.length === 0 && <div className="review-empty"><FileText size={24}/><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}</div>
     </Section>
 
-    <Modal open={Boolean(previewId)} title={previewId ? commerce.invoices.find((invoice) => invoice.id === previewId)?.number ?? "Invoice" : "Invoice"} description="View the invoice before printing. You can print with missing details after confirming the warning; printing does not issue or email it." onClose={() => setPreviewId(null)} wide footer={<><Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>Close</Button>{previewId && <Button type="button" icon={<Printer size={15}/>} onClick={() => startPrint([previewId])}>Print / Save PDF</Button>}</>}><div className="invoice-preview-shell">{preview}</div></Modal>
+    <Modal open={Boolean(preview)} title={previewId ? invoices.find((invoice) => invoice.id === previewId)?.number ?? "Invoice" : "Invoice"} description="View the invoice before printing. You can print with missing details after confirming the warning; printing does not issue or email it." onClose={() => setPreviewId(null)} wide footer={<><Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>Close</Button>{preview && previewId && <Button type="button" icon={<Printer size={15}/>} onClick={() => startPrint([previewId])}>Print / Save PDF</Button>}</>}><div className="invoice-preview-shell">{preview}</div></Modal>
 
     {printPortal}
   </>;
