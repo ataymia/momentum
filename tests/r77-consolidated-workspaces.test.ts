@@ -38,7 +38,7 @@ test("R34/R35 office scheduling is preserved with a modern route and actual ship
  assert.match(redesigned,/<DispatchPage\/>/);
  assert.match(redesigned,/Schedule overview/);
  assert.match(fulfillment,/tab==="scheduling"/);
- assert.match(fulfillment,/Open shipment details/);
+ assert.match(fulfillment,/Review shipment workflow/);
  assert.match(fulfillment,/ShipmentWorkflowControls/);
  assert(canVisitRoute(person("Sales Representative"),"/operations/field-schedule"));
  assert(!canVisitRoute(person("Customer"),"/operations/field-schedule"));

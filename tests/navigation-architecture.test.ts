@@ -131,6 +131,10 @@ test("history navigation adopts copied URLs, popstate and cleans its listener", 
 test("static export and Firebase Hosting fallback preserve deep route entry points", () => {
   const next=readFileSync("next.config.ts","utf8");
   const hosting=JSON.parse(readFileSync("firebase.json","utf8")) as {hosting:{rewrites:{source:string;destination:string}[]}};
+  const wrangler=readFileSync("wrangler.jsonc","utf8");
+  // Cloudflare, like Firebase Hosting, must serve the SPA shell on browser-history routes.
+  assert.match(wrangler,/"not_found_handling": "single-page-application"/);
+  assert.match(wrangler,/"run_worker_first": \["\/api\/\*"\]/);
   const css=readFileSync("app/architecture-navigation.css","utf8");
   const layout=readFileSync("app/layout.tsx","utf8");
   assert.match(next,/output: "export"/);

@@ -14,7 +14,7 @@ test("F11: administration must not falsely mark payment processor, payroll, host
 });
 test("F03: attendance table sorting never mutates the scoped timecards",()=>{
  const source=readFileSync("components/prototype/hr-attendance-experience.tsx","utf8");
- assert(source.includes("[...filteredTimecards].sort("));
+ assert(source.includes("[...visibleTimecards].sort("));
  assert(!source.includes("{visibleTimecards.sort("));
 });
 

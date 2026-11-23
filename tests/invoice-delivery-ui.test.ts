@@ -149,18 +149,16 @@ test("delivery signature is rejected if it is not tied to the delivered event",(
 });
 
 
-test("manual internal invoice printing is available without customer issuance approval",()=>{
-  assert.match(invoiceSource,/NEXT_PUBLIC_INVOICE_ISSUE_APPROVED/);
-  assert.match(invoiceSource,/INVOICE • INTERNAL REVIEW/);
-  assert.match(invoiceSource,/!invoiceIssueApproved&&<strong>NOT FOR CUSTOMER ISSUANCE/);
-  assert.doesNotMatch(invoiceSource,/disabled=\{!invoiceIssueApproved/);
+test("manual invoice printing is never disabled by issuance approval or incomplete fields",()=>{
   const handler=invoiceSource.slice(invoiceSource.indexOf("const startPrint ="),invoiceSource.indexOf("const invoiceSheet ="));
-  assert.match(handler,/invoices\.some/);
+  assert.doesNotMatch(handler,/if \(!invoiceIssueApproved\)/);
+  assert.match(handler,/window\.confirm\(invoicePrintConfirmationMessage\(reviews\)\)/);
+  assert.match(handler,/flushSync\(\(\) => setPrintJob/);
   assert.match(handler,/window\.print\(\)/);
-});
-
-test("approved manual print requires authoritative line reconciliation",()=>{
- const handler=invoiceSource.slice(invoiceSource.indexOf("const startPrint ="),invoiceSource.indexOf("const invoiceSheet ="));
- assert.match(handler,/reconcileInvoicePdfLines\(invoice,data.orders.find/);
- assert.match(handler,/requires reconciliation/);
+  assert.doesNotMatch(invoiceSource,/disabled=\{!invoiceIssueApproved/);
+  assert.match(invoiceSource,/onClick=\{\(\) => startPrint\(\[invoice\.id\]\)\}>Print<\/Button>/);
+  assert.match(invoiceSource,/onClick=\{\(\) => startPrint\(\[previewId\]\)\}>Print \/ Save PDF<\/Button>/);
+  assert.match(invoiceSource,/printing does not email or issue an invoice/i);
+  const sheet=invoiceSource.slice(invoiceSource.indexOf("const invoiceSheet ="),invoiceSource.indexOf("const preview ="));
+  assert.doesNotMatch(sheet,/printNotice|invoicePrintWarnings|invoicePrintConfirmationMessage/);
 });

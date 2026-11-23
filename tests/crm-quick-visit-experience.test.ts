@@ -59,7 +59,10 @@ test("Quick Visit keeps physical evidence workflow while giving fields a usable 
    assert.match(page,new RegExp(section));
  assert.equal((page.match(/<fieldset className="prototype-field-step">/g)||[]).length,3);
  assert.match(page,/prototype-field-confirmation/);
- assert.match(page,/disabled=!\{physical\}|disabled=\{!physical\}/);
+ assert.match(page,/if\(!physical\|\|!name\)/);
+ assert.match(page,/disabled=\{!physical\|\|saving\}/);
+ assert.match(page,/recordTrustedFieldVisit\(firebase\.session,visit,requestId\)/);
+ assert.match(page,/if\(!visit\)\{setFeedback/);
  assert.match(css,/\.prototype-field-step-number/);
  assert.match(layout,/import "\.\/crm-field-workflows\.css"/);
 });

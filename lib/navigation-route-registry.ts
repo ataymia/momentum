@@ -47,6 +47,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     { label: "Account Setup", path: "/crm/account-setup", permission: "accountSetup", state: "prototype" },
     { label: "Account Health", path: "/crm/account-health", permission: "accountHealth", state: "prototype" },
     { label: "Account Map & Territories", path: "/crm/account-map", permission: "salesMap", state: "prototype" },
+    { label: "Rep Self-Delivery", path: "/crm/self-delivery", permission: "orders", state: "prototype" },
     { label: "Sales Incentives", path: "/crm/incentives", permission: "accounts", state: "prototype" },
   ] },
   { label: "Commerce", entries: [
@@ -182,7 +183,6 @@ const ROUTE_OVERRIDES: Record<string, PageKey> = {
   "/self-service/pay": "timekeeping",
   "/work/approvals": "work",
   "/crm/self-delivery": "orders",
-  "/people/leave/review": "people",
   "/admin/access": "settings",
   "/portal/orders": "orders",
   "/crm/map": "salesMap",
@@ -292,7 +292,7 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
       && clean !== "/sales/orders/new" && clean !== "/sales/orders/workflow";
     const legacyCustomer = clean === "/sales/orders" || clean === "/sales/customers"
       || customerOrderDetail || /^\/sales\/customers\/[^/]+(?:\/(?:overview|comments|transactions|mails|statements|locations))?$/.test(clean);
-    const portalDetail = /^\/portal\/(orders|deliveries|invoices)\/[^/]+$/.test(clean);
+    const portalDetail = /^\/portal\/(orders|deliveries)\/[^/]+$/.test(clean);
     return (clean === "/" || CUSTOMER_MENU.some(entry => entry.path === clean)
       || legacyCustomer || portalDetail)
       && canAccessPage(user, permissionForPath(clean) ?? "home");
@@ -310,7 +310,6 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
   if(clean==="/inventory/locations"||clean.startsWith("/inventory/locations/"))
     return ["Administrator","Operations","Warehouse"].includes(user.role);
   if(clean==="/crm/self-delivery")return user.role==="Sales Representative"||user.role==="Administrator";
-  if(clean==="/people/leave/review")return ["Administrator","Sales Manager"].includes(user.role);
   // Copying a URL must not bypass employee confidentiality when a module is hidden in navigation.
   // Until verified employee-specific payroll is integrated, these paths remain Administrator-only.
   const privilegedHr = ["/people/new-hire","/people/onboarding","/people/compliance","/people/training","/people/payroll"];
@@ -321,7 +320,7 @@ export function canVisitRoute(user: WorkspaceUser | null, path: string): boolean
   if (clean==="/support/cases"||clean.startsWith("/support/cases/")) return ["Administrator","Operations","Sales Manager","Sales Representative"].includes(user.role)&&canAccessPage(user,"work");
   if (clean.startsWith("/portal/")) return false;
   if (clean === "/operations/deliveries"
-    && !["Administrator", "Operations", "Warehouse", "Sales Representative"].includes(user.role)) return false;
+    && !["Administrator", "Operations", "Warehouse"].includes(user.role)) return false;
   if (clean.startsWith("/admin/") && user.role !== "Administrator") return false;
   const permission = permissionForPath(clean);
   return permission !== null && canAccessPage(user, permission);
@@ -344,7 +343,7 @@ export function canShowModuleInMenu(user: WorkspaceUser | null, path: string): b
 export function requiresPrototypePage(path: string): boolean {
   const clean = normalizeRoutePath(path);
   // Preserve campaign bookmarks after removing the duplicate sidebar entry.
-  if(["/crm/self-delivery","/people/leave/review","/marketing/campaigns","/marketing/workflow","/crm/territory-map","/crm/territories","/crm/deals","/admin/commission-readiness","/admin/employee-profiles","/operations/legacy-dispatch","/reports/center","/reports/explorer"].includes(clean))return true;
+  if(["/marketing/campaigns","/marketing/workflow","/crm/territory-map","/crm/territories","/crm/deals","/admin/commission-readiness","/admin/employee-profiles","/operations/legacy-dispatch","/reports/center","/reports/explorer"].includes(clean))return true;
   // Historical copied links and work-queue entry points retain the redesigned views
   // after personal information moves out of the Workspace sidebar.
   if(["/self-service","/self-service/leave","/self-service/pay","/work/approvals","/work/exceptions","/work/completed"].includes(clean))return true;

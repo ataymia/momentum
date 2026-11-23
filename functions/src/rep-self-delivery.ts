@@ -4,7 +4,7 @@ import {getFirestore} from "firebase-admin/firestore";
 import {lotEligibleForAutomaticDelivery} from "./inventory-lot-quality";
 
 type Row=Record<string,unknown>;
-type Action="status"|"claim"|"assign"|"pack"|"load"|"depart"|"complete"|"release"|"note";
+type Action="status"|"claim"|"pack"|"load"|"depart"|"complete";
 type Receipt={orderId:string;orderStatus:string;taskStatus:string;cloudConfirmed:boolean;replayed?:boolean;deliveredAt?:string};
 const obj=(value:unknown):value is Row=>Boolean(value&&typeof value==="object"&&!Array.isArray(value));
 const txt=(value:unknown)=>typeof value==="string"?value.trim():"";
@@ -40,13 +40,8 @@ export class RepSelfDeliveryError extends Error{
 }
 const fail=(code:number,message:string):never=>{throw new RepSelfDeliveryError(code,message);};
 const expectedLines=(order:Row)=>{
-  // A malformed line must not disappear during filtering: a matching header
-  // total is not evidence that every original SKU line was accounted for.
-  if(order.lines!==undefined&&(!Array.isArray(order.lines)||!order.lines.length||
-      order.lines.some((line:unknown)=>!obj(line))))
-    fail(409,"This order has invalid SKU lines. Ask Operations to reconcile it.");
-  const raw=Array.isArray(order.lines)?order.lines as Row[]:
-    [{product:order.product,cases:order.cases}];
+  const raw=Array.isArray(order.lines)&&order.lines.length?
+    order.lines.filter(obj):[{product:order.product,cases:order.cases}];
   const out=new Map<string,number>();
   for(const row of raw){
     const name=key(txt(row.product)),cases=num(row.cases);
@@ -101,17 +96,10 @@ const signatureDraft=(value:unknown)=>{
  * @return {Promise<Receipt>} Confirmed server state.
  */
 export async function commitRepSelfDelivery(actor:string,body:unknown):Promise<Receipt>{
-  return commitDelivery(actor,body,false);
-}
-/** Assigned driver workflow, with authorization distinct from rep self-delivery. */
-export async function commitAssignedDelivery(actor:string,body:unknown):Promise<Receipt>{
-  return commitDelivery(actor,body,true);
-}
-async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promise<Receipt>{
   if(!actor||!obj(body))return fail(400,"Invalid self-delivery request.");
   const action=txt(body.action) as Action;
   const orderId=txt(body.orderId);
-  if(!(assigned?["status","claim","assign","pack","load","depart","complete","release","note"]:["status","claim","pack","load","depart","complete"]).includes(action)||
+  if(!["status","claim","pack","load","depart","complete"].includes(action)||
      !/^[A-Za-z0-9_-]{5,120}$/.test(orderId))fail(400,"Invalid order or self-delivery step.");
   const proof=action==="complete"?signatureDraft(body.signature):undefined;
   const db=getFirestore();
@@ -125,20 +113,14 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
     const saved=new Map(allPaths.map((path,index)=>[path,snapshots[index].data() as Row|undefined]));
     const rows=(path:string)=>items(saved.get(path));
     const access=saved.get(paths.access(actor));
-    const role=txt(access?.role);
-    const management=assigned&&["Administrator","Operations"].includes(role);
-    const driver=assigned&&role==="Delivery Driver";
-    if(txt(access?.accountState)!=="Active"||!(assigned?(management||driver):role==="Sales Representative"))fail(403,"An active authorized delivery role is required.");
-    if(assigned&&action==="assign"&&!management)fail(403,"Only Operations or Administrator may assign a driver.");
-    if(assigned&&action==="claim"&&!driver)fail(403,"Only a driver may claim a delivery.");
-    if(assigned&&action==="complete"&&!driver)fail(403,"Recipient proof must be captured by the assigned driver.");
+    if(txt(access?.role)!=="Sales Representative"||txt(access?.accountState)!=="Active")
+      fail(403,"Only active Sales Representatives can self-deliver orders.");
 
     const commercial=rows(paths.commercial),workspace=rows(paths.workspace);
     const order=commercial.find((item)=>txt(item.id)===orderId)||
       workspace.find((item)=>txt(item.id)===orderId);
     if(!order)return fail(404,"Order not found.");
-    if(assigned&&order.testOnly===true)fail(403,"Test-only orders cannot enter the ordinary driver workflow.");
-    if(!assigned&&txt(order.ownerId)!==actor)fail(403,"Only orders placed by you qualify for self-delivery.");
+    if(txt(order.ownerId)!==actor)fail(403,"Only orders placed by you qualify for self-delivery.");
     const copy=commercial.find((item)=>txt(item.id)===orderId);
     const second=workspace.find((item)=>txt(item.id)===orderId);
     if(copy&&second&&(txt(copy.status)!==txt(second.status)||
@@ -152,7 +134,7 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
     const patch=accountPatches[accountId];
     const effectiveOwner=obj(patch)&&typeof patch.ownerId==="string"?
       txt(patch.ownerId):txt(account?.ownerId);
-    if(!account||(!assigned&&effectiveOwner!==actor))
+    if(!account||effectiveOwner!==actor)
       return fail(403,"This account is no longer assigned to you for self-delivery.");
 
     const tasks=rows(paths.tasks),overrides=rows(paths.overrides);
@@ -161,22 +143,8 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
     const active=tasks.filter((row)=>txt(row.orderId)===orderId&&txt(row.status)!=="Cancelled");
     if(active.length>1)fail(409,"Duplicate delivery assignments require Operations reconciliation.");
     const task=active[0];
-    // A driver may claim an unassigned order, but must not probe the status
-    // of another driver's order or an unassigned order by guessing its ID.
-    if(assigned&&driver&&action==="status"&&(!task||txt(task.driverId)!==actor))
-      fail(403,"Only the assigned driver may inspect this delivery.");
-    if(task&&txt(task.driverId)!==actor&&!management)
+    if(task&&txt(task.driverId)!==actor)
       fail(409,"Another delivery person has this order. Ask Operations before proceeding.");
-    const chosen=action==="assign"?txt(body.driverId):task?txt(task.driverId):actor;
-    if(assigned&&action==="assign"&&(!/^[A-Za-z0-9_-]{1,128}$/.test(chosen)||chosen===actor))fail(400,"Choose an eligible driver.");
-    if(assigned&&(task||action==="assign")){
-      if(!chosen||chosen.includes("/"))fail(409,"Invalid assigned driver.");
-      const driverAccess=(await tx.get(db.doc(paths.access(chosen)))).data();
-      if(txt(driverAccess?.accountState)!=="Active"||txt(driverAccess?.role)!=="Delivery Driver")fail(409,"Assigned delivery driver is not active; Operations must reconcile.");
-    }
-    if(assigned&&management&&!task&&!["status","assign"].includes(action))fail(409,"Assign a driver first.");
-    if(assigned&&driver&&!task&&!["status","claim"].includes(action))fail(409,"Claim this delivery before changing it.");
-    const custodian=assigned?chosen:actor;
     const status=txt(order.status),taskStatus=txt(task?.status);
     const response=(oStatus=status,tStatus=taskStatus,stamp?:string,replayed?:boolean):Receipt=>({
       orderId,orderStatus:oStatus,taskStatus:tStatus||"Unclaimed",
@@ -186,14 +154,14 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
       if(status==="Delivered"&&taskStatus==="Delivered"){
         const signed=obj(task?.signature)&&typeof task.signature.strokesJson==="string"&&
           task.signature.strokesJson.length>5&&
-          txt(task.signature.capturedBy)===custodian&&
+          txt(task.signature.capturedBy)===actor&&
           Array.isArray(task?.history)&&task.history.some((entry)=>
-            obj(entry)&&txt(entry.type)==="Delivered"&&txt(entry.actorId)===custodian);
+            obj(entry)&&txt(entry.type)==="Delivered"&&txt(entry.actorId)===actor);
         const posted=rows(paths.movements).filter((entry)=>
           txt(entry.relatedOrderId)===orderId&&txt(entry.type)==="Delivery");
         const correctInventory=matchExpected(expectedLines(order),posted.map((entry)=>({
           product:txt(entry.product),quantity:num(entry.quantity),
-        })))&&posted.every((entry)=>txt(entry.fromNodeId)===node(custodian)&&
+        })))&&posted.every((entry)=>txt(entry.fromNodeId)===node(actor)&&
           txt(entry.toNodeId)===customerNode(accountId));
         if(!signed||!correctInventory)return {...response(),cloudConfirmed:false};
       }
@@ -230,7 +198,7 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
     const lots=new Map<string,Row>();
     for(const lot of [...rows(paths.lots),...rows(paths.extraLots)])lots.set(txt(lot.id),lot);
     const nodes=rows(paths.nodes);
-    const staffNode=node(custodian),locationNode=customerNode(accountId);
+    const staffNode=node(actor),locationNode=customerNode(accountId);
     const getNode=(id:string)=>nodes.find((row)=>txt(row.id)===id);
     const expected=expectedLines(order);
     const activeForOrder=reservations.filter((row)=>txt(row.orderId)===orderId&&txt(row.status)==="Active");
@@ -242,40 +210,16 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
     const loadedCases=loaded.map((movement)=>({
       product:txt(lots.get(txt(movement.lotId))?.product),quantity:num(movement.quantity),
     }));
-    if(action==="note"){
-      const note=txt(body.note);
-      if(!task||note.length<3||note.length>500)fail(400,"Enter a delivery note of 3–500 characters.");
-      const last=Array.isArray(task.history)?task.history[0]:undefined;
-      if(task.note===note&&obj(last)&&last.actorId===actor)return response(status,taskStatus,undefined,true);
-      newTask({...task,note,history:[event(actor,"Note",note),...(Array.isArray(task.history)?task.history:[])]});
-    }else if(action==="release"){
-      const reason=txt(body.reason);
-      if(reason.length<8||reason.length>500)fail(400,"Enter a release reason of 8–500 characters.");
-      if(!task||taskStatus!=="Accepted"||!["Approved","Allocated"].includes(status)||anyOrderTransfer.length||existingDelivery.length)fail(409,"Only an unloaded assignment can be released.");
-      if(status==="Allocated"){
-        const planned=activeForOrder.map((r)=>({product:txt(lots.get(txt(r.lotId))?.product),quantity:num(r.quantity)}));
-        if(!matchExpected(expected,planned))fail(409,"Reservations require reconciliation before release.");
-        set(paths.reservations,reservations.map((r)=>txt(r.orderId)===orderId&&txt(r.status)==="Active"?{...r,status:"Released",releasedAt:stamp}:r));
-        changedOrder("Approved");
-      }else if(activeForOrder.length)fail(409,"Unexpected reservation requires reconciliation.");
-      newTask({...task,status:"Cancelled",cancelledAt:stamp,cancelledBy:actor,history:[event(actor,"Cancelled",reason),...(Array.isArray(task.history)?task.history:[])]});
-    }else if(action==="claim"||action==="assign"){
-      if(task&&txt(task.driverId)===custodian&&taskStatus==="Accepted"&&status==="Approved")return response(status,"Accepted",undefined,true);
+    if(action==="claim"){
+      if(task&&taskStatus==="Accepted"&&status==="Approved")return response(status,"Accepted",undefined,true);
       if(task||status!=="Approved"||activeForOrder.length||anyOrderTransfer.length||existingDelivery.length)
         fail(409,"This order is already assigned or in fulfillment. Ask Operations to review it.");
-      const fresh={id:uid("rep-delivery"),orderId,driverId:custodian,status:"Accepted",
-        acceptedAt:stamp,acceptedBy:actor,history:[event(actor,action==="assign"?"Assigned":"Accepted",assigned?"Delivery driver assigned or claimed approved order.":"Sales Rep claimed own approved order.")],collections:[]};
+      const fresh={id:uid("rep-delivery"),orderId,driverId:actor,status:"Accepted",
+        acceptedAt:stamp,acceptedBy:actor,history:[event(actor,"Accepted","Sales Rep claimed own approved order.")],collections:[]};
       set(paths.tasks,[fresh,...tasks]);
     }else if(action==="pack"){
       if(taskStatus!=="Accepted")fail(409,"Claim your own delivery before reserving inventory.");
-      if(status==="Allocated"&&activeForOrder.length){
-        const reserved=activeForOrder.map((row)=>({
-          product:txt(lots.get(txt(row.lotId))?.product),quantity:num(row.quantity),
-        }));
-        if(!matchExpected(expected,reserved))
-          fail(409,"Existing reservations do not match the exact ordered SKUs and cases.");
-        return response("Allocated","Accepted",undefined,true);
-      }
+      if(status==="Allocated"&&activeForOrder.length)return response("Allocated","Accepted",undefined,true);
       if(status!=="Approved"||activeForOrder.length||anyOrderTransfer.length||existingDelivery.length)
         fail(409,"Inventory has previous movements or reservations. Operations must reconcile it.");
       const availableLots=[...lots.values()].filter((lot)=>lotEligibleForAutomaticDelivery(lot,localDay))
@@ -308,11 +252,11 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
       if(!getNode(warehouse))fail(409,"Warehouse location is missing.");
       const savedStaffNode=getNode(staffNode);
       if(savedStaffNode&&(txt(savedStaffNode.type)!=="Employee custody"||
-          txt(savedStaffNode.userId)!==custodian))
+          txt(savedStaffNode.userId)!==actor))
         fail(409,"Rep inventory custody node is invalid.");
       if(!savedStaffNode){
-        set(paths.nodes,[...nodes,{id:staffNode,name:assigned?"Delivery driver custody":"Sales Rep custody",
-          type:"Employee custody",active:true,userId:custodian}]);
+        set(paths.nodes,[...nodes,{id:staffNode,name:"Sales Rep custody",
+          type:"Employee custody",active:true,userId:actor}]);
       }
       const planned=activeForOrder.map((reservation)=>({
         product:txt(lots.get(txt(reservation.lotId))?.product),quantity:num(reservation.quantity),
@@ -329,7 +273,7 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
         id:uid("rep-load"),lotId:txt(reservation.lotId),
         product:txt(lots.get(txt(reservation.lotId))?.product),
         quantity:num(reservation.quantity),type:"Transfer",fromNodeId:warehouse,toNodeId:staffNode,
-        relatedOrderId:orderId,reason:assigned?"Assigned delivery loaded stock":"Sales Rep self-delivery loaded stock",at:stamp,actorId:actor,
+        relatedOrderId:orderId,reason:"Sales Rep self-delivery loaded stock",at:stamp,actorId:actor,
       }));
       set(paths.movements,[...adds,...movements]);
       updateTask("Loaded","Loaded",{loadedAt:stamp});
@@ -345,13 +289,8 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
       changedOrder("Out for delivery");
       updateTask("In transit","Departed",{departedAt:stamp});
     }else if(action==="complete"){
-      if(taskStatus==="Delivered"&&status==="Delivered"){
-        const savedSignature=task?.signature;
-        const sameProof=obj(savedSignature)&&savedSignature.strokesJson===JSON.stringify(proof!.strokes)&&txt(savedSignature.recipientName)===proof!.name&&txt(savedSignature.capturedBy)===actor;
-        const posted=matchExpected(expected,existingDelivery.map((m)=>({product:txt(m.product),quantity:num(m.quantity)})))&&existingDelivery.every((m)=>txt(m.fromNodeId)===staffNode&&txt(m.toNodeId)===locationNode);
-        if(!sameProof||!posted)fail(409,"Existing signed delivery evidence differs or requires reconciliation; do not sign again.");
+      if(taskStatus==="Delivered"&&status==="Delivered"&&existingDelivery.length)
         return response("Delivered","Delivered",txt(task?.deliveredAt),true);
-      }
       if(taskStatus!=="In transit"||status!=="Out for delivery"||!task?.loadedAt||!task?.departedAt)
         fail(409,"Only an in-transit, fully loaded self-delivery can be completed.");
       if(existingDelivery.length||conflictingTransfers||!matchExpected(expected,loadedCases))
@@ -373,12 +312,12 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
       const posted=loaded.map((movement):Row=>({
         id:uid("rep-delivered"),lotId:txt(movement.lotId),product:txt(movement.product),
         quantity:num(movement.quantity),type:"Delivery",fromNodeId:staffNode,toNodeId:locationNode,
-        relatedOrderId:orderId,reason:assigned?"Signed assigned delivery":"Signed Sales Rep self-delivery",at:stamp,actorId:actor,
+        relatedOrderId:orderId,reason:"Signed Sales Rep self-delivery",at:stamp,actorId:actor,
       }));
       set(paths.movements,[...posted,...movements]);
       set(paths.reservations,reservations.map((row)=>txt(row.orderId)===orderId&&
         txt(row.status)==="Active"?{...row,status:"Fulfilled",fulfilledAt:stamp}:row));
-      const deliveredEvent=event(actor,"Delivered",assigned?"Recipient signed assigned delivery.":"Recipient signed Sales Rep self-delivery.");
+      const deliveredEvent=event(actor,"Delivered","Recipient signed Sales Rep self-delivery.");
       const signature={strokesJson:JSON.stringify(proof!.strokes),recipientName:proof!.name,
         signedAt:stamp,capturedBy:actor};
       // The invoice trigger reads the same signed-delivery task and validates
@@ -395,8 +334,8 @@ async function commitDelivery(actor:string,body:unknown,assigned:boolean):Promis
     for(const path of touched.keys())versions[path.replace(/[^A-Za-z0-9]+/g,"_")]=version;
     tx.set(meta,{versions},{merge:true});
     return response(
-      action==="pack"?"Allocated":action==="depart"?"Out for delivery":action==="complete"?"Delivered":action==="release"?"Approved":status,
-      action==="claim"||action==="assign"||action==="pack"?"Accepted":action==="load"?"Loaded":action==="depart"?"In transit":action==="release"?"Cancelled":action==="note"?taskStatus:"Delivered",
+      action==="pack"?"Allocated":action==="depart"?"Out for delivery":action==="complete"?"Delivered":status,
+      action==="claim"||action==="pack"?"Accepted":action==="load"?"Loaded":action==="depart"?"In transit":"Delivered",
       action==="complete"?stamp:undefined,
     );
   });

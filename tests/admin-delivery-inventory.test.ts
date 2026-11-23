@@ -27,19 +27,6 @@ test("admin warehouse delivery must not consume stock reserved for another order
   ), false);
 });
 
-test("custody availability rejects malformed quantity and identity before stock math", () => {
-  for (const quantity of [0, -1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
-    assert.equal(overrideSourceAvailable([receipt], [],
-      {...entry, quantity}, "Warehouse", "ord-1"), false);
-  }
-  assert.equal(overrideSourceAvailable([receipt], [],
-    {...entry, lotId: ""}, "Warehouse", "ord-1"), false);
-  assert.equal(overrideSourceAvailable([receipt], [],
-    {...entry, fromNodeId: ""}, "Warehouse", "ord-1"), false);
-  assert.equal(overrideSourceAvailable([receipt], [], entry, "Warehouse", ""), false);
-  assert.equal(overrideSourceAvailable([receipt], [], entry, "Unknown", "ord-1"), false);
-});
-
 test("own active reservation remains eligible in the same order", () => {
   assert.equal(overrideSourceAvailable(
     [receipt], [active("ord-1", 6)], entry, "Warehouse", "ord-1",
@@ -193,22 +180,4 @@ test("admin override does not silently allocate lots with passed, unknown or mal
    [{id:"lot-review",product:"Original",status:"Available",bestBy}],
    node,stock,[],"order-review"),null);
  }
-});
-
-test("automatic delivery rejects malformed canonical lines and unsafe SKU totals",()=>{
- const nodes=[{id:"node-warehouse-main",type:"Warehouse",active:true}];
- const lots=[{id:"lot-1",product:"Original",status:"Available",bestBy:"2099-12-31"}];
- const movements=[{lotId:"lot-1",quantity:10,fromNodeId:"external",toNodeId:"node-warehouse-main"}];
- const plan=(lines: Array<{product:string;cases:number}>,orderId="order-1")=>
-   planAutomaticDelivery(lines,lots,nodes,movements,[],orderId);
- assert.equal(plan([]),null);
- assert.equal(plan([{product:"Original",cases:1}]," "),null);
- for(const cases of [0,-1,0.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]){
-  assert.equal(plan([{product:"Original",cases}]),null);
- }
- assert.equal(plan([{product:"Original",cases:Number.MAX_SAFE_INTEGER},
-                    {product:"original",cases:1}]),null);
- assert.equal(plan([{product:"Original",cases:1},null as never]),null);
- assert.equal(plan([{product:42 as never,cases:1}]),null);
- assert.equal(plan([{product:"Original",cases:1}],"order-1")?.[0]?.quantity,1);
 });

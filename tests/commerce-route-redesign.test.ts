@@ -77,12 +77,12 @@ test("phone orders render readable cards while the sortable desktop table remain
   assert.match(layout,/import "\.\/mobile-sales-orders\.css"/);
 });
 
-test("administrators and representatives share a role-scoped delivery workspace",()=>{
+test("administrators have a nonblank handoff instead of a representative self-delivery form",()=>{
   const hub=readFileSync("components/prototype/operations-hub.tsx","utf8");
   const view=readFileSync("components/orders/rep-self-delivery.tsx","utf8");
   assert(canVisitRoute(person("Administrator"),"/crm/self-delivery"));
   assert.match(hub,/currentUser\?\.role==="Sales Representative"\s*\?<RepSelfDelivery\/>/);
-  assert.match(hub,/<RepSelfDelivery\/>:<DeliveryOperationsDirectory\/>/);
-  assert.doesNotMatch(hub,/Open Delivery Operations<\/OpenLink>/);
+  assert.match(hub,/Administrator delivery oversight/);
+  assert.match(hub,/Open Delivery Operations/);
   assert.match(view,/if\(currentUser\?\.role!=="Sales Representative"\)return null/);
 });

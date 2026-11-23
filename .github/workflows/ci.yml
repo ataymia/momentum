@@ -43,6 +43,9 @@ jobs:
       - name: Git integrity check
         run: git diff --check
 
+      - name: Check every test is registered and browser gate is mandatory
+        run: node scripts/check-test-coverage.mjs
+
       - name: Typecheck application
         run: npm run typecheck
 
@@ -65,13 +68,26 @@ jobs:
         run: npm --prefix functions run build
 
       - name: Trusted CRM, HR, Storage and Support transactions emulator
-        run: npx --yes firebase-tools@15.30.1 emulators:exec --only firestore,storage --project momentum-rules-test 'node --test --test-concurrency=1 functions/test/trusted-crm-visit-emulator.test.cjs functions/test/trusted-account-creation-emulator.test.cjs functions/test/trusted-customer-contact-emulator.test.cjs functions/test/trusted-crm-lead-emulator.test.cjs functions/test/trusted-crm-contact-emulator.test.cjs functions/test/trusted-crm-deal-emulator.test.cjs functions/test/trusted-order-intake-emulator.test.cjs functions/test/trusted-hr-template-emulator.test.cjs functions/test/trusted-hr-assignment-emulator.test.cjs functions/test/trusted-hr-original-emulator.test.cjs functions/test/trusted-hr-leave-emulator.test.cjs functions/test/trusted-hr-decision-emulator.test.cjs functions/test/support-cases-emulator.test.cjs functions/test/purchasing-emulator.test.cjs functions/test/customer-documents-emulator.test.cjs'
+        run: npx --yes firebase-tools@15.30.1 emulators:exec --only firestore,storage --project momentum-rules-test 'node --test --test-concurrency=1 functions/test/trusted-crm-visit-emulator.test.cjs functions/test/trusted-account-creation-emulator.test.cjs functions/test/trusted-customer-contact-emulator.test.cjs functions/test/trusted-crm-lead-emulator.test.cjs functions/test/trusted-crm-contact-emulator.test.cjs functions/test/trusted-crm-deal-emulator.test.cjs functions/test/trusted-order-intake-emulator.test.cjs functions/test/approved-intake-preparation-emulator.test.cjs functions/test/trusted-hr-template-emulator.test.cjs functions/test/trusted-hr-assignment-emulator.test.cjs functions/test/trusted-hr-original-emulator.test.cjs functions/test/trusted-hr-leave-emulator.test.cjs functions/test/trusted-hr-decision-emulator.test.cjs functions/test/support-cases-emulator.test.cjs'
 
       - name: Lint Firebase Functions
         run: npm --prefix functions run lint
 
       - name: Production build
         run: npm run build
+
+      - name: Cloudflare Worker local SPA and deep-link smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --local --port 8792 --ip 127.0.0.1 > /tmp/momentum-worker-smoke.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+          if ! node scripts/check-worker-fallback.mjs; then
+            echo "::error::Worker deep-link smoke failed"
+            cat /tmp/momentum-worker-smoke.log
+            exit 1
+          fi
 
       - name: A04 Firebase Hosting local emulator fallback smoke
         run: npx --yes firebase-tools@15.30.1 emulators:exec --only hosting --project demo-momentum-architecture --config firebase.architecture-smoke.json 'node scripts/check-hosting-fallback.mjs'

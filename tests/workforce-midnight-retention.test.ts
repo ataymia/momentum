@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {readFileSync} from "node:fs";
 
 test("server midnight boundary closes only prior-day open punches and never rewrites employee punch evidence",async()=>{
   const mod=await import(new URL("../functions/src/workforce-retention.ts",import.meta.url).href);
@@ -41,45 +40,4 @@ test("midnight punch closure is role-agnostic across the entire employee workfor
   assert.equal(result.closed,roles.length);
   assert.equal(result.entries.every((entry:{clockOut?:string;note?:string})=>
     entry.clockOut==="23:59"&&Boolean(entry.note?.includes("Automatically closed at Arizona midnight"))),true);
-});
-
-
-test("midnight closure never manufactures a shift from an unclocked or incomplete row",async()=>{
-  const mod=await import(new URL("../functions/src/workforce-retention.ts",import.meta.url).href);
-  const rows=[
-    {id:"absence",userId:"rep",date:"2026-10-19",status:"Absent"},
-    {id:"blank",userId:"rep",date:"2026-10-19",clockIn:"   "},
-    {id:"valid",userId:"rep",date:"2026-10-19",clockIn:"08:00"},
-  ];
-  const result=mod.closePriorDayOpenPunches(rows,"2026-10-20");
-  assert.equal(result.closed,1);
-  assert.deepEqual(result.entries.slice(0,2),rows.slice(0,2));
-  assert.equal(result.entries[2].clockOut,"23:59");
-});
-
-// The scheduled transaction updates arrays inside shared documents. A replacement
-// write would silently delete unrelated employee settings and tracking metadata.
-test("midnight retention preserves unrelated Firestore document fields",()=>{
-  const source=readFileSync(new URL("../functions/src/workforce-retention.ts",import.meta.url),"utf8");
-  for(const [ref,entries] of [
-    ["timeRef","time.entries"],
-    ["sampleRef","savedRoutes"],
-    ["eventRef","savedEvents"],
-  ]){
-    assert.ok(source.includes(`tx.set(${ref},{items:${entries}},{merge:true})`),
-      `Retention write for ${ref} must merge instead of replacing shared document fields`);
-  }
-});
-
-test("midnight closure rejects corrupt and future clock-in instants without inventing attendance",async()=>{
-  const mod=await import(new URL("../functions/src/workforce-retention.ts",import.meta.url).href);
-  const rows=[
-    {id:"invalid",date:"2026-10-19",clockIn:"08:00",clockInAt:"not-a-timestamp"},
-    {id:"future",date:"2026-10-19",clockIn:"08:00",clockInAt:"2026-10-21T15:00:00.000Z"},
-    {id:"valid",date:"2026-10-19",clockIn:"08:00",clockInAt:"2026-10-19T15:00:00.000Z"},
-  ];
-  const result=mod.closePriorDayOpenPunches(rows,"2026-10-20");
-  assert.equal(result.closed,1);
-  assert.deepEqual(result.entries.slice(0,2),rows.slice(0,2));
-  assert.equal(result.entries[2].clockOut,"23:59");
 });

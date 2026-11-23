@@ -53,7 +53,7 @@ test("E05-E07 delivery exception queue is sortable while established self-delive
   assert.match(review,/exceptionsOnly/);
   assert.match(review,/DateFilter start=\{from\}/);
   assert.match(review,/const sort=useTableSort\("placedAt"\)/);
-  assert.match(routes,/Delivery Operations/);
+  assert.match(routes,/Rep Self-Delivery/);
   assert.match(routes,/\/crm\/self-delivery/);
   assert.match(routes,/\/operations\/legacy-dispatch/);
 });
@@ -97,8 +97,8 @@ test("E06 self-delivery redesign preserves the trusted server-only workflow and 
   assert.doesNotMatch(view,/createDeliveryTask\(/);
   assert.match(hub,/if\(path==="\/crm\/self-delivery"\)return currentUser\?\.role==="Sales Representative"/);
   assert.match(hub,/<RepSelfDelivery\/>/);
-  assert.match(hub,/<RepSelfDelivery\/>:<DeliveryOperationsDirectory\/>/);
-  assert.doesNotMatch(routes,/label: "Rep Self-Delivery", path:/);
+  assert.match(hub,/Administrator delivery oversight/);
+  assert.match(routes,/Rep Self-Delivery.*state: "prototype"/);
   assert.equal(requiresPrototypePage("/crm/self-delivery"),true);
 });
 
@@ -115,7 +115,7 @@ test("E07/R34-R35 preserves field appointment scheduling while consolidating del
   assert.match(dispatch,/canManageSchedule/);
   assert.match(review,/<DispatchPage\/>/);
   assert.match(review,/Open field scheduling board/);
-  assert.match(review,/Open shipment details/);
+  assert.match(review,/Review shipment workflow/);
 });
 
 test("E05 distinguishes posted over-delivery and missing warehouse custody from legitimate completion",()=>{

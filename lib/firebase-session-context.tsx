@@ -4,7 +4,7 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, 
 import { EMPLOYEE_DIRECTORY_COLLECTION, PLATFORM_BOOTSTRAP_DOCUMENT, PLATFORM_META_DOCUMENT, USER_ACCESS_COLLECTION, buildPersistenceScope, directoryDocument, normalizeDirectoryEntry, normalizeUserAccess, userAccessDocument, type UserAccessRecord } from "./firebase-access";
 import { ProvisioningError, createFirebaseIdentityAsAdministrator, deleteEmployeeIdentity, separateEmployeeIdentity, lookupProvisioningStatus, type CreatedFirebaseIdentity } from "./firebase-admin-provisioning";
 import { isProvisionableRole, type ProvisionEmployeeProfile, type ProvisioningStage, type ProvisioningStatusSuccess } from "./provisioning-contract";
-import { FirebaseAuthSession, currentFirebaseSession, installFirebaseSessionPeerResponder, lookupFirebaseAccount, persistFirebaseSession, refreshFirebaseSession, requestFirebaseSessionFromPeer, requestPasswordResetByUsername, requestUsernameReminder, sendFirebaseEmailVerification, sendFirebasePasswordReset, signInWithFirebasePassword, signInWithUsername, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
+import { FirebaseAuthSession, currentFirebaseSession, readFirebaseSession, installFirebaseSessionPeerResponder, lookupFirebaseAccount, persistFirebaseSession, refreshFirebaseSession, requestFirebaseSessionFromPeer, requestPasswordResetByUsername, requestUsernameReminder, sendFirebaseEmailVerification, sendFirebasePasswordReset, signInWithFirebasePassword, signInWithUsername, signOutFirebase, updateFirebasePassword } from "./firebase-auth-rest";
 import { updateMomentumAccountEmail } from "./firebase-account-management";
 import { SIGN_IN_REJECTED, classifyLoginIdentifier } from "./auth-contract";
 import { firebaseConfigurationStatus } from "./firebase-config";
@@ -92,14 +92,8 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
   const loadDirectory=useCallback(async(current:UserAccessRecord)=>{
     let users:WorkspaceUser[]=[];
     try{
-      if(current.role==="Customer"){
-        const self=await getFirestoreSnapshot(`${EMPLOYEE_DIRECTORY_COLLECTION}/${current.uid}`);
-        const entry=normalizeDirectoryEntry(current.uid,self.data);
-        users=entry?[entry]:[];
-      }else{
       const snapshots=await listFirestoreSnapshots(EMPLOYEE_DIRECTORY_COLLECTION);
       users=snapshots.map((item)=>normalizeDirectoryEntry(item.path.split("/").pop()??"",item.data)).filter((item):item is WorkspaceUser=>Boolean(item));
-      }
     }catch(caught){
       if(!(caught instanceof FirestoreRequestError&&caught.status===403))throw caught;
       const self=await getFirestoreSnapshot(`${EMPLOYEE_DIRECTORY_COLLECTION}/${current.uid}`);
@@ -177,6 +171,41 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
     const handle=window.setTimeout(()=>void boot(),0);
     return()=>{window.clearTimeout(handle);stopPeerResponder();void detachFirestorePersistence();};
   },[boot]);
+
+  // Firebase ID tokens expire regularly. Keep the live page session in sync with the
+  // refreshed sessionStorage token when a tab is idle, backgrounded or restored.
+  const signedInUid=session?.uid;
+  useEffect(()=>{
+    if(!signedInUid)return;
+    let active=true;
+    let checking=false;
+    const sync=async()=>{
+      if(checking)return;
+      checking=true;
+      try{
+        const latest=await currentFirebaseSession();
+        if(!active)return;
+        if(latest?.uid===signedInUid){
+          setSession(previous=>previous?.uid===latest.uid&&
+            previous.idToken===latest.idToken&&previous.expiresAt===latest.expiresAt?previous:latest);
+        }else if(!latest&&!readFirebaseSession()){
+          // Only a revoked/removed session signs out; transient refresh failures retain state.
+          await resetToSignedOut();
+        }
+      }finally{checking=false;}
+    };
+    const onFocus=()=>{void sync();};
+    const onVisible=()=>{if(document.visibilityState==="visible")void sync();};
+    const interval=window.setInterval(onFocus,45_000);
+    window.addEventListener("focus",onFocus);
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>{
+      active=false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus",onFocus);
+      document.removeEventListener("visibilitychange",onVisible);
+    };
+  },[signedInUid,resetToSignedOut]);
 
   /**
    * Accepts an e-mail address or a username.
@@ -383,7 +412,7 @@ export function FirebaseSessionProvider({children}:{children:ReactNode}){
       if(current)await loadDirectory(current);
       // Fetch the committed assignment release now, rather than waiting on background polling.
       const refreshed=await momentumStorage.refreshKeys([
-        "momentum-demo-workspace-v5","momentum-commercial-controls-v1","momentum-hcm-v4",
+        "momentum-demo-workspace-v5","momentum-commercial-controls-v1",
       ]);
       return{ok:true,message:`Employee access revoked. ${result.releasedAccountIds.length} accounts released, ${result.releasedAppointmentIds.length} open appointments unassigned for review, and ${result.suspendedTerritoryIds.length} territories suspended. Historical records retained.${refreshed.ok?"":" Current workspace has unsaved edits; appointment changes will appear after cloud sync."}${result.authDisabled?"":" Firebase Auth identity was already missing."}`};
     }catch(caught){

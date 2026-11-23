@@ -290,10 +290,7 @@ service cloud.firestore {
     }
 
     match /employeeDirectory/{uid} {
-      // Customers need their own scoped profile for portal sign-in, never the employee directory.
-      allow get: if isEmployee() || (hasAccessRecord() && role() == 'Customer'
-        && access().accountState == 'Active' && uid == request.auth.uid);
-      allow list: if isEmployee();
+      allow get, list: if isEmployee();
       allow create, update: if isAdmin()
         || (bootstrapClaimant() && uid == request.auth.uid);
       allow delete: if false;
@@ -631,10 +628,6 @@ service cloud.firestore {
 `;
 
 const footer = `    }
-
-    // Purchasing writes and reads are handled only by the authenticated Admin SDK API.
-    match /purchasingRegisters/{recordId} { allow read, write: if false; }
-    match /purchasingRequestKeys/{requestId} { allow read, write: if false; }
 
     // Anything not matched above is denied.
     match /{document=**} {

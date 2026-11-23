@@ -33,14 +33,11 @@ export const autoClosedMidnightNote="Automatically closed at Arizona midnight. A
 export function closePriorDayOpenPunches(rows:Row[],day:string):{entries:Row[];closed:number}{
   let closed=0;
   const entries=rows.map((row)=>{
-    if(!txt(row.clockIn)||txt(row.clockOut)||!/^20\d\d-\d\d-\d\d$/.test(txt(row.date))||
+    if(txt(row.clockOut)||!/^20\d\d-\d\d-\d\d$/.test(txt(row.date))||
       txt(row.date)>=day)return row;
     const originalDay=txt(row.date);
     const clockOutAt=azMidnight(offsetDays(originalDay,1));
-    // An invalid or future clock-in instant cannot justify a fabricated closure.
-    const clockInInstant=txt(row.clockInAt);
-    if(clockInInstant&&(!Number.isFinite(Date.parse(clockInInstant))||
-      Date.parse(clockInInstant)>=Date.parse(clockOutAt)))return row;
+    if(txt(row.clockInAt)&&Date.parse(txt(row.clockInAt))>=Date.parse(clockOutAt))return row;
     closed++;
     return {...row,clockOut:"23:59",clockOutAt,
       note:[txt(row.note),autoClosedMidnightNote].filter(Boolean).join(" | ")};
@@ -86,9 +83,9 @@ export const workforceMidnightAndRouteRetention=onSchedule({
       const events=items(snapshots[2].data());
       const savedRoutes=retainedLocationItems(route,today);
       const savedEvents=retainedLocationItems(events,today);
-      if(time.closed)tx.set(timeRef,{items:time.entries},{merge:true});
-      if(savedRoutes.length!==route.length)tx.set(sampleRef,{items:savedRoutes},{merge:true});
-      if(savedEvents.length!==events.length)tx.set(eventRef,{items:savedEvents},{merge:true});
+      if(time.closed)tx.set(timeRef,{items:time.entries});
+      if(savedRoutes.length!==route.length)tx.set(sampleRef,{items:savedRoutes});
+      if(savedEvents.length!==events.length)tx.set(eventRef,{items:savedEvents});
       // Avoid claiming this was an employee punch. A separate server audit
       // carries only counts/IDs, not location coordinates.
       if(time.closed)tx.set(db.doc("workforceMidnightAudit/"+today+"_"+uid),{

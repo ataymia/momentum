@@ -10,17 +10,17 @@ import { useCommerce } from "../../lib/commerce-context";
 import { useDelivery } from "../../lib/delivery-context";
 import { customerForLocation, locationLabel } from "../../lib/crm-hierarchy";
 import { orderLinesFor } from "../../lib/order-lines";
-import {reconcileInvoicePdfLines} from "../../functions/src/invoice-line-reconciliation";
 import { invoicePrintPages } from "../../lib/invoice-print-pages";
 import {legalBillingName} from "../../lib/legal-billing-name";
 import {invoicePlacerLabel} from "../../lib/invoice-placer-name";
+import {invoicePrintConfirmationMessage,invoicePrintWarnings} from "../../lib/invoice-print-review";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Modal, Section, StatusPill, formatDate, formatMoney } from "../ui";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 // Verified byte-for-byte copy of the uploaded artwork in public/.
 const invoiceBrandSrc = `${basePath}/momentum-invoice-brand.jpg`;
-// This build-time flag is a UI hold, not a substitute for server-side release authorization.
+// This flag only informs the warning; manual browser printing is NEVER gated by it.
 const invoiceIssueApproved = process.env.NEXT_PUBLIC_INVOICE_ISSUE_APPROVED === "true";
 const company = {
   name: "Momentum Distribution Inc.",
@@ -35,6 +35,7 @@ type Copies = 1 | 2;
 type PrintJob = { ids: string[]; copies: Copies } | null;
 
 function dueLabel(terms: string, dueDate?: string) {
+  if (!terms.trim()) return "";
   if (terms === "COD") return "Due upon delivery";
   if (terms === "Prepaid") return "Due before delivery";
   if (dueDate) return `Due ${dueDate}`;
@@ -86,17 +87,36 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       setPrintNotice("Select at least one invoice to print.");
       return;
     }
-    if(invoiceIssueApproved){
-      const blocked=unique.map(id=>invoices.find(row=>row.id===id)!).map(invoice=>({invoice,check:reconcileInvoicePdfLines(invoice,data.orders.find(order=>order.id===invoice.orderId))})).find(row=>!row.check.ok);
-      if(blocked&&!blocked.check.ok){setPrintNotice("Invoice "+blocked.invoice.number+" requires reconciliation: "+blocked.check.reason);return;}
-    }
     if (typeof window.print !== "function") {
       setPrintNotice("This browser does not expose a print dialog. Open the invoice preview in a browser that supports printing.");
       return;
     }
 
-    // Keep the browser print call inside the user's click gesture and synchronously mount the print sheets.
-    // The old delayed setTimeout could lose user activation and made Print appear dead on some browsers.
+    // Browser confirmation is separate from the invoice print portal, so warning text
+    // never appears on the printed invoice. Missing details or draft/void status never block
+    // a user who explicitly chooses to print. Invoices remain in their authorized scope.
+    const reviews=unique.flatMap(id=>{
+      const invoice=invoices.find(row=>row.id===id);
+      if(!invoice)return [];
+      const order=scope.orders.find(row=>row.id===invoice.orderId);
+      const location=scope.accounts.find(row=>row.id===invoice.accountId);
+      const customer=location?customerForLocation(data,location):undefined;
+      const lines=invoice.linesSnapshot?.length?invoice.linesSnapshot:order?orderLinesFor(order):[];
+      const issues=invoicePrintWarnings(invoice,{
+        orderNumber:order?.number,
+        billingName:legalBillingName(customer)??customer?.name??location?.name,
+        billingAddress:invoice.billToAddressSnapshot?.trim()||(location?businessAddressLabel(location):""),
+        deliveryAddress:invoice.shipToAddressSnapshot?.trim()||(location?deliveryAddressLabel(location):""),
+        lines,issuerDetailsApproved:invoiceIssueApproved,
+      });
+      return issues.length?[{number:invoice.number,issues}]:[];
+    });
+    if(reviews.length&&!window.confirm(invoicePrintConfirmationMessage(reviews))){
+      setPrintNotice("Printing canceled. The invoice was not changed.");
+      return;
+    }
+    // Keep the browser print call inside the confirmed user's gesture and synchronously
+    // mount the print sheets. Never queue an automatic invoice email or payment.
     flushSync(() => setPrintJob({ ids: unique, copies }));
     setPrintNotice(`${unique.length} invoice${unique.length === 1 ? "" : "s"} prepared · ${copies} cop${copies === 1 ? "y" : "ies"} each.`);
     window.print();
@@ -110,7 +130,6 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
     const location = data.accounts.find((item) => item.id === invoice.accountId);
     const customer = location ? customerForLocation(data, location) : undefined;
     const lines = invoice.linesSnapshot?.length ? invoice.linesSnapshot : order ? orderLinesFor(order) : [];
-    const lineReview=reconcileInvoicePdfLines(invoice,order);
     const deliveryTask = order ? taskForOrder(order.id) : undefined;
     const deliverySignature = deliveryTask?.signature;
     const adminConfirmedDelivery = !deliverySignature &&
@@ -133,7 +152,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
           <Image className="invoice-sheet__brand-logo" src={invoiceBrandSrc} width={1536} height={1024} alt="Momentum Distribution Inc. Golden Eagle Energy Drink" priority unoptimized />
           <div className="invoice-sheet__issuer-copy"><strong>{company.name}</strong><span>Golden Eagle distribution</span><span>{company.street}</span><span>{company.cityStateZip}</span></div>
         </div>
-        <div className="invoice-sheet__title"><h1>{invoiceIssueApproved?"INVOICE":"INVOICE • INTERNAL REVIEW"}</h1>{!invoiceIssueApproved&&<strong>NOT FOR CUSTOMER ISSUANCE</strong>}{!lineReview.ok&&<strong>RECONCILIATION REQUIRED</strong>}</div>
+        <div className="invoice-sheet__title"><h1>INVOICE</h1></div>
       </header>
 
       <section className="invoice-sheet__legacy-grid">
@@ -158,7 +177,8 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
 
       <table className="invoice-sheet__table">
         <thead><tr><th>Qty</th><th>Description</th><th>Unit price</th><th>Amount</th></tr></thead>
-        <tbody>{lines.map((line) => <tr key={line.id}><td>{line.cases}</td><td>{line.product}</td><td>{formatMoney(line.pricePerCase)}</td><td>{formatMoney(line.amount)}</td></tr>)}</tbody>
+        <tbody>{lines.length?lines.map((line) => <tr key={line.id}><td>{line.cases}</td><td>{line.product}</td><td>{formatMoney(line.pricePerCase)}</td><td>{formatMoney(line.amount)}</td></tr>):
+        Array.from({length:3},(_,i)=><tr key={`blank-line-${i}`}><td> </td><td> </td><td> </td><td> </td></tr>)}</tbody>
       </table>
 
       <section className="invoice-sheet__totals">
@@ -194,11 +214,11 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
 
   return <>
     <Section title={title} description={description}>
-      {!invoiceIssueApproved && <p role="status" className="form-notice invoice-print-notice">Internal invoice printing and PDF review are available. Every page is marked NOT FOR CUSTOMER ISSUANCE until the invoice approval gate is cleared.</p>}
+      {!invoiceIssueApproved && <p role="status" className="form-notice invoice-print-notice">Invoice issuer details still require approval for customer-facing issuance. You may print or save a PDF after acknowledging any preprint warnings. Printing does not email or issue an invoice.</p>}
       <div className="invoice-print-toolbar">
         <Button type="button" size="sm" variant="secondary" icon={allSelected ? <CheckSquare2 size={15}/> : <Square size={15}/>} onClick={toggleAll}>{allSelected ? "Clear all" : "Select all"}</Button>
         <label className="invoice-copy-select"><span>Copies per invoice</span><select value={copies} onChange={(event) => setCopies(Number(event.target.value) as Copies)}><option value={1}>1 copy</option><option value={2}>2 copies</option></select></label>
-        <Button type="button" size="sm" icon={<Printer size={15}/>} disabled={!selectedIds.length} onClick={() => startPrint(selectedIds)}>Print selected ({selectedIds.length})</Button><Button type="button" size="sm" variant="secondary" icon={<Printer size={15}/>} disabled={!invoices.some(invoice=>invoice.status!=="Void")} onClick={() => startPrint(invoices.filter(invoice=>invoice.status!=="Void").map(invoice=>invoice.id))}>Print all active ({invoices.filter(invoice=>invoice.status!=="Void").length})</Button>
+        <Button type="button" size="sm" icon={<Printer size={15}/>} disabled={!selectedIds.length} onClick={() => startPrint(selectedIds)}>Print selected ({selectedIds.length})</Button><Button type="button" size="sm" variant="secondary" icon={<Printer size={15}/>} disabled={!invoices.length} onClick={() => startPrint(invoices.map(invoice=>invoice.id))}>Print all ({invoices.length})</Button>
       </div>
       {printNotice && <p className="form-notice invoice-print-notice" role="status">{printNotice}</p>}
 
@@ -217,7 +237,7 @@ export function InvoicePrintCenter({allowedOrderIds,allowedInvoiceIds,title="Cus
       })}{invoices.length === 0 && <div className="review-empty"><FileText size={24}/><h3>No invoices in scope</h3><p>Approved or fulfillment-stage orders create invoice records automatically.</p></div>}</div>
     </Section>
 
-    <Modal open={Boolean(previewId)} title={previewId ? commerce.invoices.find((invoice) => invoice.id === previewId)?.number ?? "Invoice" : "Invoice"} description={invoiceIssueApproved?"Print-ready invoice preview":"Internal print / PDF review only. Customer issuance has not been approved."} onClose={() => setPreviewId(null)} wide footer={<><Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>Close</Button>{previewId && <Button type="button" icon={<Printer size={15}/>} onClick={() => startPrint([previewId])}>Print / Save PDF</Button>}</>}><div className="invoice-preview-shell">{preview}</div></Modal>
+    <Modal open={Boolean(previewId)} title={previewId ? commerce.invoices.find((invoice) => invoice.id === previewId)?.number ?? "Invoice" : "Invoice"} description="View the invoice before printing. You can print with missing details after confirming the warning; printing does not issue or email it." onClose={() => setPreviewId(null)} wide footer={<><Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>Close</Button>{previewId && <Button type="button" icon={<Printer size={15}/>} onClick={() => startPrint([previewId])}>Print / Save PDF</Button>}</>}><div className="invoice-preview-shell">{preview}</div></Modal>
 
     {printPortal}
   </>;

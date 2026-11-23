@@ -6,9 +6,6 @@
  * context and its own validation. No fake conversions or implied revenue credit.
  */
 import {useState} from "react";
-import {MarketingProductionQueue} from "../marketing/production-queue";
-import {MarketingAssetLibrary} from "../marketing/asset-library";
-import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
 import {useWorkspace} from "../../lib/workspace-context";
 import {useMarketing} from "../../lib/marketing-context";
 import {campaignSpend,attributionSummary,materialBalance,marketingSpendReadyForReconciliation,type MarketingRequestType} from "../../lib/marketing-engine";
@@ -18,9 +15,9 @@ import {downloadCsv} from "../../lib/browser-export";
 import {navigateToRoute} from "../../lib/navigation-store";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n);
-type Tab="requests"|"campaigns"|"spend"|"outcomes"|"materials"|"partners"|"production"|"files";
+type Tab="requests"|"campaigns"|"spend"|"outcomes"|"materials"|"partners";
 const tabs:ReadonlyArray<{id:Tab;label:string}>=[
- {id:"requests",label:"Requests"},{id:"production",label:"Production queue"},{id:"files",label:"File library"},{id:"campaigns",label:"Campaigns"},
+ {id:"requests",label:"Requests"},{id:"campaigns",label:"Campaigns"},
  {id:"spend",label:"Budget & spend"},{id:"outcomes",label:"Attribution"},
  {id:"materials",label:"Assets & stock"},{id:"partners",label:"Partnerships"},
 ];
@@ -34,9 +31,7 @@ export function MarketingWorkspaceExperience({initialTab="requests"}:{initialTab
  const admin=currentUser?.role==="Administrator";
  const campaignViewer=admin;
  const demo=runtime.isDemo&&momentumStorage.mode()==="local";
- const firebase=useFirebaseSessionOptional();
- const connected=!runtime.isDemo&&momentumStorage.mode()==="firestore"&&firebase?.status==="ready"&&firebase.session?.uid===currentUser?.id;
- const [tab,setTab]=useState<Tab>(initialTab==="requests"&&connected?"production":initialTab);
+ const [tab,setTab]=useState<Tab>(initialTab);
  const [query,setQuery]=useState("");
  const [status,setStatus]=useState("all");
  const [showForm,setShowForm]=useState(false);
@@ -139,13 +134,13 @@ export function MarketingWorkspaceExperience({initialTab="requests"}:{initialTab
     {admin&&<article><small>Approved / reconciled spend</small><strong>{money(state.spend.filter(s=>["Approved","Reconciled"].includes(s.status)).reduce((n,s)=>n+s.amount,0))}</strong></article>}
     {admin&&<article><small>Reviewed outcome evidence</small><strong>{state.attributions.filter(a=>a.reviewed).length}</strong></article>}
    </div>
-   {connected&&<p className="prototype-note">Create and manage collateral requests in Production queue and use File library for approved assets. Campaign finance and historical attribution have separate approval controls.</p>}
+   {!demo&&<p className="prototype-note">Connected records are read-only in this redesign. Record mutations require separately authorized server-side controls. Exports show only your permitted records.</p>}
    <nav aria-label="Marketing workstreams" className="prototype-tabs">
-    {tabs.filter(t=>(t.id==="production"||t.id==="files")?connected:admin||t.id==="requests").map(t=><button key={t.id} type="button"
+    {tabs.filter(t=>admin||t.id==="requests").map(t=><button key={t.id} type="button"
       className={tab===t.id?"is-active":""} aria-current={tab===t.id?"page":undefined}
       onClick={()=>{setTab(t.id);setStatus("all");setQuery("");setShowForm(false);setError("");setMessage("");}}>{t.label}</button>)}
    </nav>
-   {connected&&tab==="production"?<MarketingProductionQueue/>:connected&&tab==="files"?<MarketingAssetLibrary/>:<section className="prototype-panel">
+   <section className="prototype-panel">
      <div className="prototype-controls">
       <label className="prototype-search"><input aria-label="Search marketing records" value={query}
         onChange={e=>setQuery(e.target.value)} placeholder="Search current workstream"/></label>
@@ -231,7 +226,7 @@ export function MarketingWorkspaceExperience({initialTab="requests"}:{initialTab
         <p>{p.notes}</p><p>{p.contact??"Contact not recorded"}</p></div></article>)}
        {!partners.length&&<p>No matching partnerships.</p>}
      </div>}
-   </section>}
+   </section>
    <p className="prototype-note">Campaign spend and paid-order association are not interchangeable. Source-linked, reviewed attribution is shown separately from total sales. No money, email, or payroll is executed from this screen. A receipt filename or local reconciliation label is not proof of bank settlement.</p>
  </div>;
 }

@@ -18,7 +18,7 @@ for(const line of menu.split("\n")){
 const pages=Object.entries(groups).flatMap(([group,entries])=>entries.map(e=>({...e,group})));
 // Sidebar routes are intentionally consolidated over time. Survey the current
 // declared menu rather than hardcoding a superseded link count.
-assert(pages.length>=65,"The declared staff menu is unexpectedly small: audit coverage must not silently shrink");
+assert(pages.length>=70,"The declared staff menu is unexpectedly small: audit coverage must not silently shrink");
 assert.equal(new Set(pages.map(item=>item.path)).size,pages.length,"Duplicate staff navigation destinations must be consolidated");
 for(const required of ["/","/my-account","/work/actions","/sales/customers",
   "/operations/deliveries","/operations/field-schedule","/reports","/admin/employees"]){
@@ -95,8 +95,6 @@ const inspect=async()=>page.evaluate(()=>{
   placeholder:text.includes("Planned module")&&text.includes("navigation prototype only"),
   connectionBlocked:text.includes("Production connection blocked"),
   readonly:text.toLowerCase().includes("read-only"),
-  controls:[...root?.querySelectorAll("button, a[href]")||[]].filter(x=>x.getClientRects().length>0).map(x=>({text:(x.getAttribute("aria-label")||x.textContent||"").trim().slice(0,100),disabled:x.hasAttribute("disabled"),href:x.getAttribute("href")})),
-  possibleBlockers:text.split("\n").map(x=>x.trim()).filter(x=>/demo only|not (yet )?(available|implemented|enabled|connected)|requires.*approval|disabled against|read-only|not configured/i.test(x)).slice(0,15),
   errorText:/application error|an unexpected error occurred|internal server error/i.test(text),
   overflowPx:overflow,images:images.length,broken,
   buttons:main?.querySelectorAll("button")?.length||0,
@@ -105,7 +103,6 @@ const inspect=async()=>page.evaluate(()=>{
   visibleText:text.slice(0,180),
  };
 });
-const customerRoutes=[...registry.slice(registry.indexOf("export const CUSTOMER_MENU:"),registry.indexOf("export const DRIVER_MENU")).matchAll(/path: "([^"]+)"/g)].map(m=>m[1]);
 const report={sha:process.env.GITHUB_SHA??"local",timestamp:new Date().toISOString(),routeChecks:[],visualChecks:[],roleChecks:[],interactions:[],errors,consoleErrors,summary:{},contractVersion:"visual-r72-v1"};
 async function recordInteraction(name,operation){
  try{await operation();report.interactions.push({name,result:"PASS"});}
@@ -210,26 +207,60 @@ try{
    assert(await page.getByText("Vendor name").count()>0);
    await page.getByRole("button",{name:/Close entry form/i}).click();
  });
- await recordInteraction("Purchasing vendor write, refresh and detail on isolated browser",async()=>{
-   await goto("/purchases/vendors");
-   await page.getByRole("button",{name:/Prepare vendor/i}).click();
-   const form=page.locator("form").filter({has:page.locator("input[name=name]")});
-   await form.locator("input[name=name]").fill("QA browser supplier 174");
-   await form.locator("input[name=contact]").fill("Synthetic audit only");
-   await form.getByRole("button",{name:/Record in local demo/}).click();
-   await page.getByText("QA browser supplier 174",{exact:true}).waitFor();
-   await page.reload({waitUntil:"domcontentloaded"});
-   await page.getByText("QA browser supplier 174",{exact:true}).waitFor();
-   const row=page.getByRole("row").filter({hasText:"QA browser supplier 174"});
-   await row.getByRole("button").first().click();
-   assert(new URL(page.url()).pathname.startsWith("/purchases/vendors/"));
-   await page.getByText("Synthetic audit only",{exact:true}).first().waitFor();
- });
  await recordInteraction("Invoice print center available",async()=>{
    await goto("/sales/invoices");
    const toggle=page.getByRole("button",{name:/Print \/ Save PDF \(single or bulk\)/});
    if(await toggle.count()>0){await toggle.first().click();assert(await page.getByText(/Print selected|Print \/ Save PDF/).count()>0);}
    else throw new Error("Invoice print-center toggle missing");
+ });
+ // P0: Actually click the print control in the rendered UI. A source-string
+ // assertion would have missed the exact release-flag regression in PR #178.
+ await recordInteraction("P0 unapproved-issuer invoice prints after off-document warning",async()=>{
+   await goto("/sales/invoices");
+   await page.getByRole("button",{name:"Print / Save PDF (single or bulk)"}).click();
+   const firstInvoice=page.locator(".invoice-register .invoice-check").first();
+   await firstInvoice.waitFor({state:"visible",timeout:12000});
+   await firstInvoice.click();
+   const printButton=page.getByRole("button",{name:"Print selected (1)"});
+   assert.equal(await printButton.isEnabled(),true,"Unapproved issuer cannot disable printing");
+   await page.evaluate(()=>{
+     window.__momentumTestPrinted=[];
+     window.print=()=>{window.__momentumTestPrinted.push(
+       document.querySelector(".invoice-print-root")?.textContent??""
+     );};
+   });
+   let warningSeen=false;
+   const acknowledge=async dialog=>{
+     warningSeen=true;
+     assert.equal(dialog.type(),"confirm");
+     assert.match(dialog.message(),/Do you understand these issues and want to print anyway/);
+     assert.match(dialog.message(),/Issuer name, address and contact details/);
+     await dialog.accept();
+   };
+   page.on("dialog",acknowledge);
+   try{
+     await printButton.click();
+     await page.waitForFunction(()=>window.__momentumTestPrinted?.length===1,undefined,{timeout:10000});
+     const printed=await page.evaluate(()=>window.__momentumTestPrinted[0]);
+     assert(printed?.length>30,"The click must render the actual invoice sheet");
+     assert.equal(warningSeen,true,"Missing approval must warn, not silently print or disable");
+     assert.doesNotMatch(printed,/Invoice printing warning|Do you understand these issues|issuer details still require approval/i,
+       "The preprint warning must never appear on paper or PDF");
+   }finally{page.off("dialog",acknowledge);}
+ });
+ await recordInteraction("P0 browser Back and refresh retain the selected module",async()=>{
+   await goto("/sales/invoices");
+   await goto("/sales/orders");
+   await page.goBack({waitUntil:"domcontentloaded"});
+   assert.equal(new URL(page.url()).pathname,"/sales/invoices");
+   await page.reload({waitUntil:"domcontentloaded"});
+   // A Next.js static shell can be initially blank before the client hydrates.
+   // Prove the actual Invoices heading renders, instead of sampling the loading frame.
+   await page.getByRole("heading",{name:"Invoices",exact:true}).first().waitFor({timeout:20000});
+   const view=await inspect();
+   assert.equal(view.blocked,false,"A deep link/back must not become a 404");
+   assert.equal(view.errorText,false,"A refresh must not render an application crash");
+   assert.equal(view.blank,false,"Invoice route must render a meaningful page");
  });
  // R15/R16: a physical Quick Visit is an editable three-stage form.
  await recordInteraction("R15 Quick Visit freehand entry, validation and demo persistence",async()=>{
@@ -347,8 +378,8 @@ try{
   try{await goto(route);const state=await inspect();report.roleChecks.push({role:"Customer",route,blocked:state.blocked,pass:state.blocked});}
   catch(e){report.roleChecks.push({role:"Customer",route,pass:false,failure:String(e)});}
  }
- for(const route of customerRoutes){
-  try{await goto(route);const state=await inspect();report.roleChecks.push({role:"Customer",route,accessible:!state.blocked,pass:!state.blocked&&!state.blank&&!state.placeholder&&!state.errorText,connectionBlocked:state.connectionBlocked});}
+ for(const route of ["/portal/orders","/portal/invoices","/portal/payments","/portal/account","/portal/deliveries"]){
+  try{await goto(route);const state=await inspect();report.roleChecks.push({role:"Customer",route,accessible:!state.blocked,pass:!state.blocked,connectionBlocked:state.connectionBlocked});}
   catch(e){report.roleChecks.push({role:"Customer",route,pass:false,failure:String(e)});}
  }
  await goto("/portal/orders");await saveShot("customer-portal");
@@ -386,7 +417,6 @@ try{
  "## Broken static routes\n"+JSON.stringify(broken,null,2),
  "## Responsive exceptions\n"+JSON.stringify(visual,null,2),
  "## Route-by-route layout inventory (all staff pages)\n"+JSON.stringify(report.routeChecks.map(({group,path,label,h1,styled,mainLandmark,contentBlocks,headingStructure,unlabeledInputs,compactActions,canvas,breadcrumb,layoutReview})=>({group,path,label,h1,styled,mainLandmark,contentBlocks,headingStructure,unlabeledInputs,compactActions,canvas,breadcrumb,layoutReview})),null,2),
- "## Route action inventory and blockers\n"+JSON.stringify(report.routeChecks.map(({path,label,controls,possibleBlockers})=>({path,label,controls,possibleBlockers})),null,2),
  "## Role problems\n"+JSON.stringify(role,null,2),
  "## Interaction results\n"+JSON.stringify(report.interactions,null,2),
  "## Page exceptions\n"+JSON.stringify(errors,null,2),

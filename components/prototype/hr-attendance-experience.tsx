@@ -18,7 +18,6 @@ export function HrAttendanceExperience(){
  const [sort,setSort]=useState<SortField>("date"),[desc,setDesc]=useState(true);
  const [activeCardId,setActiveCardId]=useState(()=>typeof window==="undefined"?"":window.sessionStorage.getItem("momentum-focus-record")??"");
  const [returnReason,setReturnReason]=useState("");
- const [weekStatus,setWeekStatus]=useState("all");
  const [notice,setNotice]=useState("");
  const nameFor=(id:string)=>data.users.find(u=>u.id===id)?.name??"Employee";
  const allowed=new Set(scope.timeEntries.map(t=>t.id));
@@ -34,7 +33,6 @@ export function HrAttendanceExperience(){
    }),[scope.timeEntries,query,from,to,userFilter,stateFilter,sort,desc,data.users]);
  const users=[...new Set(scope.timeEntries.map(t=>t.userId))].map(id=>({id,name:nameFor(id)})).sort((a,b)=>a.name.localeCompare(b.name));
  const visibleTimecards=scope.timecards;
- const filteredTimecards=visibleTimecards.filter(card=>(userFilter==="all"||card.userId===userFilter)&&(weekStatus==="all"||card.status===weekStatus)&&(!from||card.weekEnd>=from)&&(!to||card.weekStart<=to));
  const weekly=weeklyTimecardReview(visibleTimecards,scope.timeEntries,arizonaDateKey());
  const activeCard=visibleTimecards.find(t=>t.id===activeCardId);
  const activeApproval=activeCard?data.approvals.find(a=>a.type==="Timecard"&&a.recordId===activeCard.id&&a.status==="Pending"):undefined;
@@ -75,7 +73,6 @@ export function HrAttendanceExperience(){
  {!entries.length&&<p className="prototype-note">No matching punch records for your access scope.</p>}</section>
  <section className="prototype-panel" aria-label="Weekly timecard submissions and review">
   <h2>Weekly timecard submissions & approval queue</h2>
-  <div className="prototype-controls"><label>Weekly status <select value={weekStatus} onChange={e=>setWeekStatus(e.target.value)}><option value="all">All weekly statuses</option>{[...new Set(visibleTimecards.map(t=>t.status))].sort().map(value=><option key={value}>{value}</option>)}</select></label><button type="button" onClick={()=>navigateToRoute("/people/timekeeping")}>Open timekeeping &amp; corrections</button></div>
   <p className="prototype-note">Employees must attest and submit each recorded weekly timecard at week end. Unsubmitted and returned weeks remain outstanding. Do not prevent an employee from recording hours solely because a previous week is late.</p>
   {weekly.overdue.length>0&&<p role="alert" className="prototype-note">{weekly.overdue.length} employee timecard(s) are past their recorded week end without a completed submission. These require follow-up, not automatic approval.</p>}
   {weekly.unmatchedPunches.length>0&&<p role="alert" className="prototype-note">{weekly.unmatchedPunches.length} recorded punch(es) do not match any accessible weekly card. HR must reconcile coverage before treating the timecard register as complete.</p>}
@@ -87,7 +84,7 @@ export function HrAttendanceExperience(){
   {notice&&<p role="status" className="prototype-note">{notice}</p>}
   <div className="prototype-table-scroll"><table className="prototype-table">
    <thead><tr><th>Employee</th><th>Week</th><th>Workflow</th><th>Attestation</th><th>Submitted</th><th>Approval</th><th>Open record</th></tr></thead>
-   <tbody>{[...filteredTimecards].sort((a,b)=>b.weekStart.localeCompare(a.weekStart)).map(t=><tr key={t.id}>
+   <tbody>{[...visibleTimecards].sort((a,b)=>b.weekStart.localeCompare(a.weekStart)).map(t=><tr key={t.id}>
     <td>{nameFor(t.userId)}</td><td>{t.weekStart} – {t.weekEnd}</td>
     <td>{t.status}{["Open","Returned"].includes(t.status)&&t.weekEnd<arizonaDateKey()?" · Overdue":""}</td>
     <td>{t.attested?"Recorded":"Not attested"}</td>
@@ -95,7 +92,7 @@ export function HrAttendanceExperience(){
     <td>{t.approvedAt?.slice(0,10)??"Not approved"}</td>
     <td><button type="button" className="prototype-link" onClick={()=>{setActiveCardId(t.id);setReturnReason("");setNotice("");}}>Review week</button></td>
    </tr>)}</tbody></table></div>
-  {!filteredTimecards.length&&<p className="prototype-note">No authorized weekly cards match these filters. Punches without cards still require timekeeping reconciliation.</p>}
+  {!visibleTimecards.length&&<p className="prototype-note">No authorized weekly cards are recorded. Punches without cards still require timekeeping reconciliation.</p>}
   {activeCard&&<section className="prototype-panel" aria-label="Selected weekly timecard">
    <h3>{nameFor(activeCard.userId)} · {activeCard.weekStart} to {activeCard.weekEnd}</h3>
    <p className="prototype-note">Current status: {activeCard.status}. The full punch record, corrections and source history remain visible below.</p>

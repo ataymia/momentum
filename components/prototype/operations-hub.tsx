@@ -1,5 +1,4 @@
 "use client";
-import {CustomerDocumentWorkspace} from "./customer-document-workspace";
 import {contactExportRows,contactExportColumns} from "../../lib/saturday-scoped-workflows";
 
 import { useMemo, useRef, useState } from "react";
@@ -59,7 +58,6 @@ import {HelpPage} from "../pages/help";
 import {MarketingPage as LegacyMarketingPage} from "../pages/marketing";
 import {HrPersonnelDirectory,HrPersonnelRecord} from "./hr-personnel-experience";
 import {CustomerPortalAdminOverview} from "./customer-portal-admin-overview";
-import {HrLeaveReviewExperience} from "./hr-leave-review-experience";
 import {HrTimeOffExperience} from "./hr-time-off-experience";
 import {HrNewHireExperience} from "./hr-new-hire-experience";
 import {NewHireProvisioning} from "../hcm/new-hire-provisioning";
@@ -724,8 +722,6 @@ function CustomerPortalContent({section}:{section:string}){
   const [deliveryAccount,setDeliveryAccount]=useState("all");const [deliveryFrom,setDeliveryFrom]=useState("");
   const [deliveryThrough,setDeliveryThrough]=useState("");const [deliverySort,setDeliverySort]=useState<"newest"|"oldest"|"order"|"cases">("newest");
   if(currentUser?.role!=="Customer") return <Empty>Customer access only.</Empty>;
-  if(section==="products"&&!runtime.isDemo)return <CustomerConnectedPortal section="products"/>;
-  if(section==="documents")return <div><Heading title="My Documents" description="Private business document intake and review."/><CustomerDocumentWorkspace/></div>;
   if(section==="payments"||section==="statements")return <CustomerCommerceLedgers section={section}/>;
   if((!runtime.isDemo||momentumStorage.mode()!=="local")&&
     (section==="orders"||section==="invoices"||section==="account"||section==="deliveries"))
@@ -918,8 +914,8 @@ export function PrototypeOperationsHub(){
   if(!canVisitRoute(currentUser,path))return <Empty>You do not have permission to view this module.</Empty>;
   const segments=path.split("/").filter(Boolean);
   if(path==="/")return <WorkspaceHome/>;
-  if(segments[0]==="portal"&&segments[1]==="invoices"&&segments.length===3)return writeEnabled?<CustomerInvoiceRecord id={decodeURIComponent(segments[2])}/>:<CustomerConnectedPortal section="invoices" id={decodeURIComponent(segments[2])}/>;
-  if(segments[0]==="portal"&&["orders","deliveries"].includes(segments[1])&&segments.length===3)return writeEnabled?<CustomerOrderRecord id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>:<CustomerConnectedPortal id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>;
+  if(segments[0]==="portal"&&segments[1]==="invoices"&&segments.length===3)return <CustomerInvoiceRecord id={decodeURIComponent(segments[2])}/>;
+  if(segments[0]==="portal"&&["orders","deliveries"].includes(segments[1])&&segments.length===3)return <CustomerOrderRecord id={decodeURIComponent(segments[2])} section={segments[1] as "orders"|"deliveries"}/>;
   if(segments[0]==="portal"&&segments[1])return <CustomerPortalContent section={segments[1]}/>;
   // Personal employee records live in Account; old copied links remain compatible.
   if(path==="/my-account"||path==="/self-service")return <EmployeeAccountExperience/>;
@@ -946,28 +942,32 @@ export function PrototypeOperationsHub(){
   if(path==="/documents")return <DocumentsExperience/>;
   if(path==="/help")return <div className="prototype-domain"><HelpPage/></div>;
   if(path==="/support/cases"||path.startsWith("/support/cases/"))return <SupportCasesExperience/>;
-  if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<MarketingWorkspaceExperience key="marketing-connected-workflow" initialTab="production"/>;
+  if(path==="/marketing/workflow")return currentUser?.role==="Administrator"&&writeEnabled?<LegacyMarketingPage/>:<Empty>Marketing write administration is available in isolated local demo only. The redesign provides source-linked read and export access.</Empty>;
   if(path==="/people/payroll")return <PayrollWorkflowExperience/>;
-  if(path==="/people/payroll/workflow")return writeEnabled?<LegacyPayrollPage/>:<PayrollWorkflowExperience/>;
-  if(path==="/people/onboarding/workflow")return provisioningEnabled?<NewHireProvisioning view="queue"/>:<Empty>Full onboarding controls require a verified active administrator session.</Empty>;
+  if(path==="/people/payroll/workflow")return writeEnabled?<LegacyPayrollPage/>:<Empty>Read-only redesign prototype. Payroll processing is available only in isolated local demo mode until production controls are approved.</Empty>;
+  if(path==="/people/onboarding/workflow")return provisioningEnabled?<NewHireProvisioning view="queue"/>:<Empty>Full onboarding controls require a verified active Administrator session.</Empty>;
   if(path==="/people/new-hire")return <HrNewHireExperience/>;
   if(path==="/people/onboarding")return <HrOnboardingExperience/>;
   if(path==="/people/compliance")return <HrComplianceReadinessExperience/>;
   if(path==="/people/attendance"||path.startsWith("/people/attendance/"))return <HrAttendanceExperience/>;
   if(path==="/people/performance"||path.startsWith("/people/performance/"))return <HrPerformanceExperience/>;
-  if(path==="/people/leave/review")return <HrLeaveReviewExperience/>;
-  if(path==="/people/leave")return ["Administrator","Sales Manager"].includes(currentUser?.role??"")?<HrLeaveReviewExperience/>:<HrTimeOffExperience personalOnly/>;
+  if(path==="/people/leave")return <HrTimeOffExperience/>;
   if(path==="/admin/accounts")return <AccountConsolidationReview/>;
   if(path==="/admin/employee-profiles")return <HrPersonnelDirectory/>;
-  if(path==="/admin/employee-profiles/workflow")return provisioningEnabled?<div><Heading title="Secure personnel editor" description="Existing audited editing controls retained during redesign." back="/admin/employee-profiles"/><AdminEmployeeProfiles/></div>:<Empty>Personnel editing requires a verified active administrator session.</Empty>;
+  if(path==="/admin/employee-profiles/workflow")return writeEnabled?<div><Heading title="Secure personnel editor" description="Existing audited editing controls retained during redesign." back="/admin/employee-profiles"/><AdminEmployeeProfiles/></div>:<Empty>Read-only redesign prototype. Personnel editing is disabled against connected records.</Empty>;
   if(segments[0]==="admin"&&segments[1]==="employee-profiles"&&segments[2])return <HrPersonnelRecord id={decodeURIComponent(segments[2])} section={segments[3]}/>
   if(path==="/admin/employees")return <HrPersonnelDirectory/>;
   if(path==="/crm/account-health")return <CrmAccountHealth/>;
   if(path==="/crm/account-setup")return <CrmAccountSetup/>;
   if(path==="/crm/account-map"||path==="/crm/territories"||path==="/crm/territory-map")return <TerritoryMapPreview/>;
   if(path==="/crm/quick-visit")return <CrmQuickVisit/>;
-  // Compatibility bookmark: the same role-scoped delivery workspace, not a second menu.
-  if(path==="/crm/self-delivery")return currentUser?.role==="Sales Representative"?<RepSelfDelivery/>:<DeliveryOperationsDirectory/>;
+  if(path==="/crm/self-delivery")return currentUser?.role==="Sales Representative"
+    ?<RepSelfDelivery/>
+    :<div><Heading title="Rep Self-Delivery" description="This fulfillment action belongs to the sales representative assigned to the order."/>
+      <section className="prototype-panel"><h2>Administrator delivery oversight</h2>
+        <p>Self-delivery pickup, custody and recipient signature must be performed by the authorized representative. Administrators can review warehouse and delivery exceptions in Delivery Operations; this page does not impersonate a representative or complete a delivery.</p>
+        <OpenLink to="/operations/deliveries">Open Delivery Operations</OpenLink>
+      </section></div>;
   if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
   if(segments[0]==="commerce"&&segments[1]==="price-books"&&segments[2])return <PriceBookDetail id={decodeURIComponent(segments[2])}/>;
@@ -986,7 +986,7 @@ export function PrototypeOperationsHub(){
   if(segments[0]==="purchases"&&segments[1])return <PurchasingExperience section={segments[1]} id={segments[2]?decodeURIComponent(segments[2]):undefined}/>;
   if(path==="/inventory/packages")return <PackagesDirectory/>;
   if(path==="/inventory/shipments")return <ShipmentsDirectory/>;
-  if(path==="/operations/deliveries")return currentUser?.role==="Sales Representative"?<RepSelfDelivery/>:<DeliveryOperationsDirectory/>;
+  if(path==="/operations/deliveries")return <DeliveryOperationsDirectory/>;
   if(path==="/inventory")return <InventoryDirectory/>;
   if(path==="/inventory/ledger")return <InventoryLedgerDirectory/>;
   if(path==="/inventory/adjustments")return <InventoryAdjustmentDirectory/>;
@@ -1001,7 +1001,6 @@ export function PrototypeOperationsHub(){
   if(path==="/commerce/customer-portal")return <CustomerPortalAdminOverview/>;
   if(path==="/commerce/price-books")return <PriceBooksDirectory/>;
   if(path==="/sales/customers")return <AccountsDirectory/>;
-  if(path==="/crm/leads/new")return <CrmAccountSetup/>;
   if(segments[0]==="crm"&&segments[1]==="leads"&&segments[2])return <LeadRecord id={decodeURIComponent(segments[2])}/>;
   if(path==="/crm/leads")return <AccountsDirectory leadMode/>;
   if(path==="/crm/deals/new")return <DealEditor/>;

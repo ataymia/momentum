@@ -17,9 +17,7 @@ import {
   UserCheck,
   UserRound,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
-import {useFirebaseSessionOptional} from "../../lib/firebase-session-context";
-import {assignedDelivery,type AssignedDeliveryAction} from "../../lib/firebase-assigned-delivery";
+import { useMemo, useState } from "react";
 import { deliveryAddressLabel } from "../../lib/account-address";
 import { deliveryReconciliationIssue } from "../../lib/delivery-reconciliation";
 import type { PaymentMethod } from "../../lib/commerce-engine";
@@ -58,8 +56,6 @@ export function DeliveriesPage() {
     addDeliveryNote,
   } = useDelivery();
   const sync = useSyncStatus();
-  const firebase=useFirebaseSessionOptional();
-  const deliveryLock=useRef(false);
   const [driverByOrder, setDriverByOrder] = useState<Record<string, string>>({});
   const [collectionDrafts, setCollectionDrafts] = useState<Record<string, CollectionDraft>>({});
   const [notice, setNotice] = useState("");
@@ -73,7 +69,7 @@ export function DeliveriesPage() {
 
   const isDriver = currentUser?.role === "Delivery Driver";
   const canManage = Boolean(currentUser && ["Administrator", "Operations"].includes(currentUser.role));
-  const drivers = data.users.filter((user) => user.role === "Delivery Driver" && user.employmentStatus !== "Separated");
+  const drivers = data.users.filter((user) => user.role === "Delivery Driver");
   const eligible = useMemo(() => data.orders.filter(processedForDelivery).sort((a, b) => b.placedAt.localeCompare(a.placedAt)), [data.orders]);
   const approvedMarketingRequests = useMemo(() => marketing.deliveryNotices.filter((request) => request.status === "Approved").sort((a, b) => b.approvedAt.localeCompare(a.approvedAt)), [marketing.deliveryNotices]);
   const visible = eligible.filter((order) => {
@@ -83,11 +79,6 @@ export function DeliveriesPage() {
     if (!task && ["Delivered","Paid"].includes(order.status)) return false;
     return task?.driverId === currentUser?.id || (!task && ["Approved","Allocated","Out for delivery"].includes(order.status));
   });
-  // Driver-facing marketing requests must be scoped to orders visible in their custody queue.
-  // Unlinked requests remain available to Operations, never to a driver.
-  const visibleMarketingRequests = isDriver
-    ? approvedMarketingRequests.filter((request) => Boolean(request.accountId) && visible.some((order) => order.accountId === request.accountId && taskForOrder(order.id)?.driverId === currentUser?.id))
-    : approvedMarketingRequests;
   const ready = visible.filter((order) => !taskForOrder(order.id) || taskForOrder(order.id)?.status === "Accepted");
   const active = visible.filter((order) => ["Loaded", "In transit"].includes(taskForOrder(order.id)?.status ?? ""));
   const completedByOverride=(orderId:string)=>state.overrides?.some((record)=>record.orderId===orderId)??false;
@@ -96,14 +87,6 @@ export function DeliveriesPage() {
   const discrepancies = visible.filter((order)=>Boolean(issueForOrder(order)));
   const complete = visible.filter((order) => ["Delivered","Paid"].includes(order.status) && !issueForOrder(order) && (taskForOrder(order.id)?.status === "Delivered" || completedByOverride(order.id)));
   const run = async(result: { ok: boolean; message?: string }, success: string) => {if(!result.ok){setNotice(result.message??"The delivery update was not accepted.");return;}setNotice("Saving delivery change to Momentum cloud…");const checks=await Promise.all([momentumStorage.flushAndConfirm(DELIVERY_STORAGE_KEY),momentumStorage.flushAndConfirm(INVENTORY_LEDGER_STORAGE_KEY),momentumStorage.flushAndConfirm(COMMERCIAL_KEY)]);const failed=checks.find((item)=>!item.ok);setNotice(failed?`Change is still on this device but Momentum cloud has NOT confirmed every record. Do not repeat the action. ${failed.message??"Check the sync status."}`:success);};
-  const runStage=async(action:AssignedDeliveryAction,local:()=>{ok:boolean;message?:string},success:string)=>{
-    if(momentumStorage.mode()!=="firestore"){await run(local(),success);return;}
-    if(!firebase?.session||deliveryLock.current){setNotice("Wait for the pending action or sign in again.");return;}
-    deliveryLock.current=true;setNotice("Confirming delivery change with company server…");
-    try{const result=await assignedDelivery(firebase.session,action);setNotice(result.refreshed?success:"Server saved the change. Refresh the queue before repeating.");}
-    catch(error){setNotice(error instanceof Error?error.message:"Delivery update unconfirmed.");}
-    finally{deliveryLock.current=false;}
-  };
   const refreshQueue = async () => {
     if(refreshingQueue)return;
     setRefreshingQueue(true);
@@ -131,23 +114,9 @@ export function DeliveriesPage() {
       setSignatureError("Have the recipient sign in the box before completing the delivery.");
       return;
     }
-    if(momentumStorage.mode()==="firestore"&&!recipientName.trim()){
-      setSignatureError("Enter the recipient name before completing the delivery.");return;
-    }
     setSavingSignedDelivery(true);
     setSignatureError("");
     try {
-      if(momentumStorage.mode()==="firestore"){
-        if(!firebase?.session)throw new Error("Sign in again before recording recipient proof.");
-        if(deliveryLock.current)throw new Error("A delivery change is still in progress.");
-        deliveryLock.current=true;
-        try{
-          const receipt=await assignedDelivery(firebase.session,{orderId:signingOrderId,action:"complete",signature:{strokes,recipientName}});
-          if(!receipt.refreshed||receipt.orderStatus!=="Delivered"||receipt.taskStatus!=="Delivered"){setSignatureError("Server recorded the delivery but the queue has not refreshed. Verify the original signature again; do not sign twice.");return;}
-          closeSignature();setNotice("Recipient proof, inventory and Delivered status confirmed by server. Invoice delivery is a separate process.");
-        }finally{deliveryLock.current=false;}
-        return;
-      }
       const task = taskForOrder(signingOrderId);
       if (task?.status === "Delivered") {
         // A previous save attempt might still be pending. Never post duplicate
@@ -215,19 +184,13 @@ export function DeliveriesPage() {
     const ownTask = Boolean(isDriver && task?.driverId === currentUser?.id);
     const selectedDriver = driverByOrder[order.id] ?? drivers[0]?.id ?? "";
     const lines = orderLinesFor(order);
-    const linkedMarketing = visibleMarketingRequests.filter((request) => request.accountId === order.accountId);
-    const legacyCollected = (task?.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
-    // Connected local collection entries are not verified Finance receipts.
-    const collected = momentumStorage.mode() === "firestore" ? 0 : legacyCollected;
+    const linkedMarketing = approvedMarketingRequests.filter((request) => request.accountId === order.accountId);
+    const collected = (task?.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
     const remaining = Math.max(0, order.amount - collected);
     const collectionDraft = collectionDrafts[order.id] ?? defaultCollection(remaining);
     const canRecordCollection = Boolean((ownTask || canManage) && task && ["In transit", "Delivered"].includes(task.status) && remaining > 0);
     const updateCollection = (patch: Partial<CollectionDraft>) => setCollectionDrafts((current) => ({ ...current, [order.id]: { ...collectionDraft, ...patch } }));
     const saveCollection = () => {
-      if(momentumStorage.mode()==="firestore"){
-        setNotice("Connected payment collection recording is awaiting a server-authorized, auditable settlement-evidence workflow. No collection was posted. Contact Finance to record the receipt through its approved process.");
-        return;
-      }
       if (!collectionDraft.method) { setNotice("Choose the actual payment method before recording a collection."); return; }
       if (collectionDraft.method==="Check"&&!collectionDraft.reference.trim()){setNotice("Enter the check number before recording a check collection.");return;}
       const result = recordDeliveryCollection(order.id, Number(collectionDraft.amount), collectionDraft.method, collectionDraft.reference);
@@ -268,16 +231,14 @@ export function DeliveriesPage() {
       {needsReconciliation&&<div className="form-callout" role="alert"><strong>Delivery record discrepancy.</strong> Order: {order.status}; driver task: {task?.status??"Missing"}; posted inventory: {deliveryPosted}/{order.cases} cases. {reconciliationIssue} Do not collect another signature or post stock again. Operations must review the saved task, order, inventory and invoice before correcting.</div>}
       <div className="delivery-card__actions">
         <Button type="button" size="sm" variant="secondary" icon={<Eye size={15} />} onClick={() => setDetailOrderId(order.id)}>View details</Button>
-        {!task && isDriver && !needsReconciliation && <Button type="button" size="sm" icon={<UserCheck size={15} />} onClick={() => runStage({orderId:order.id,action:"claim"},()=>claimDelivery(order.id), `${order.number} claimed. You can now pack it.`)}>Claim delivery</Button>}
-        {!task && canManage && !needsReconciliation && <><select value={selectedDriver} onChange={(event) => setDriverByOrder((current) => ({ ...current, [order.id]: event.target.value }))}>{drivers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><Button type="button" size="sm" disabled={!selectedDriver} onClick={() => runStage({orderId:order.id,action:"assign",driverId:selectedDriver},()=>assignDelivery(order.id, selectedDriver), `${order.number} assigned.`)}>Assign driver</Button></>}
-        {task?.status === "Accepted" && (ownTask || canManage) && <>{order.status === "Approved" && <Button type="button" size="sm" icon={<PackageCheck size={15} />} onClick={() => runStage({orderId:order.id,action:"pack"},()=>prepareDelivery(order.id), `${order.number} packed and inventory reserved.`)}>Pack / reserve</Button>}{order.status === "Allocated" && <Button type="button" size="sm" icon={<PackageOpen size={15} />} onClick={() => runStage({orderId:order.id,action:"load"},()=>markLoaded(order.id), `${order.number} loaded into driver custody.`)}>Mark loaded</Button>}<Button type="button" size="sm" variant="ghost" onClick={() => { const reason = window.prompt("Why is this delivery assignment being released?")?.trim() ?? ""; if (reason&&reason.length>=8) runStage({orderId:order.id,action:"release",reason},()=>cancelDelivery(order.id, reason), `${order.number} returned to the delivery queue.`); }}>{ownTask ? "Release assignment" : "Cancel assignment"}</Button></>}
-        {task?.status === "Loaded" && (ownTask || canManage) && <Button type="button" size="sm" icon={<Truck size={15} />} onClick={() => runStage({orderId:order.id,action:"depart"},()=>startDelivery(order.id), `${order.number} is now in transit.`)}>Start delivery</Button>}
-        {task?.status === "In transit" && !needsReconciliation && (ownTask || canManage&&momentumStorage.mode()!=="firestore") && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => openSignature(order.id)}>Complete delivery & sign</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) runStage({orderId:order.id,action:"note",note},()=>addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
+        {!task && isDriver && !needsReconciliation && <Button type="button" size="sm" icon={<UserCheck size={15} />} onClick={() => run(claimDelivery(order.id), `${order.number} claimed. You can now pack it.`)}>Claim delivery</Button>}
+        {!task && canManage && !needsReconciliation && <><select value={selectedDriver} onChange={(event) => setDriverByOrder((current) => ({ ...current, [order.id]: event.target.value }))}>{drivers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><Button type="button" size="sm" disabled={!selectedDriver} onClick={() => run(assignDelivery(order.id, selectedDriver), `${order.number} assigned.`)}>Assign driver</Button></>}
+        {task?.status === "Accepted" && (ownTask || canManage) && <>{order.status === "Approved" && <Button type="button" size="sm" icon={<PackageCheck size={15} />} onClick={() => run(prepareDelivery(order.id), `${order.number} packed and inventory reserved.`)}>Pack / reserve</Button>}{order.status === "Allocated" && <Button type="button" size="sm" icon={<PackageOpen size={15} />} onClick={() => run(markLoaded(order.id), `${order.number} loaded into driver custody.`)}>Mark loaded</Button>}<Button type="button" size="sm" variant="ghost" onClick={() => { const reason = window.prompt("Why is this delivery assignment being released?")?.trim() ?? ""; if (reason) run(cancelDelivery(order.id, reason), `${order.number} returned to the delivery queue.`); }}>{ownTask ? "Release assignment" : "Cancel assignment"}</Button></>}
+        {task?.status === "Loaded" && (ownTask || canManage) && <Button type="button" size="sm" icon={<Truck size={15} />} onClick={() => run(startDelivery(order.id), `${order.number} is now in transit.`)}>Start delivery</Button>}
+        {task?.status === "In transit" && !needsReconciliation && (ownTask || canManage) && <><Button type="button" size="sm" icon={<CheckCircle2 size={15} />} onClick={() => openSignature(order.id)}>Complete delivery & sign</Button><Button type="button" size="sm" variant="secondary" onClick={() => { const note = window.prompt("Add a delivery note")?.trim() ?? ""; if (note) run(addDeliveryNote(order.id, note), "Delivery note saved."); }}>Add note</Button></>}
       </div>
 
-      {momentumStorage.mode()==="firestore" && legacyCollected > 0 && <p className="form-callout" role="alert">This delivery contains {formatMoney(legacyCollected)} in legacy collection entries. These entries are not verified Finance receipts or settled payments. Finance must reconcile the original evidence before treating any amount as collected. Do not collect or record the payment again based on this display.</p>}
-      {canRecordCollection && momentumStorage.mode()==="firestore" && <p className="form-callout" role="status">Connected collection entry is held until Finance has a server-authorized receipt and settlement-evidence workflow. No payment can be recorded from this delivery screen.</p>}
-      {canRecordCollection && momentumStorage.mode()!=="firestore" && <div className="delivery-payment-collection">
+      {canRecordCollection && <div className="delivery-payment-collection">
         <label><small>Amount collected</small><input type="number" min="0.01" step="0.01" max={remaining} value={collectionDraft.amount} onChange={(event) => updateCollection({ amount: event.target.value })} /></label>
         <label><small>Payment method</small><select value={collectionDraft.method} onChange={(event) => updateCollection({ method: event.target.value as PaymentMethod })}><option value="">Select actual method</option><option>Cash</option><option>Check</option><option>ACH</option><option>Wire</option><option>Card</option><option>Other</option></select></label>
         <label><small>{collectionDraft.method === "Check" ? "Check number / reference" : "Reference / confirmation"}</small><input required={collectionDraft.method === "Check"} value={collectionDraft.reference} onChange={(event) => updateCollection({ reference: event.target.value })} placeholder={collectionDraft.method === "Check" ? "Required for checks" : "Optional unless available"} /></label>
@@ -294,7 +255,7 @@ export function DeliveriesPage() {
   const detailDriver = detailTask ? data.users.find((user) => user.id === detailTask.driverId) : undefined;
   const detailPlacedBy = detailOrder ? data.users.find((user) => user.id === detailOrder.ownerId) : undefined;
   const detailLines = detailOrder ? orderLinesFor(detailOrder) : [];
-  const detailMarketing = detailOrder ? visibleMarketingRequests.filter((request) => request.accountId === detailOrder.accountId) : [];
+  const detailMarketing = detailOrder ? approvedMarketingRequests.filter((request) => request.accountId === detailOrder.accountId) : [];
   const detailCollected = (detailTask?.collections ?? []).reduce((sum, item) => sum + item.amount, 0);
   const detailStatus = detailOrder ? deliveryStatusForOrder(state, detailOrder) : "";
 
@@ -304,7 +265,7 @@ export function DeliveriesPage() {
       {notice && <p className="form-notice" role="status">{notice}</p>}
       <div className="company-rule-facts"><div><span>Available / accepted</span><strong>{ready.length}</strong><small>Ready for driver action</small></div><div><span>Loaded / in transit</span><strong>{active.length}</strong><small>Active driver custody</small></div><div><span>Delivered</span><strong>{complete.length}</strong><small>Completed delivery records</small></div><div><span>Drivers</span><strong>{drivers.length}</strong><small>{drivers.length ? "Provisioned delivery users" : "No delivery drivers provisioned"}</small></div></div>
 
-      {visibleMarketingRequests.length > 0 && <Section title="Approved marketing / delivery requests"><div className="delivery-marketing-request-list">{visibleMarketingRequests.map((request) => { const account = request.accountId ? data.accounts.find((item) => item.id === request.accountId) : undefined; const requester = data.users.find((item) => item.id === request.requesterId); return <article key={request.id}><span><Megaphone size={17} /></span><div><small>{request.type}{request.neededBy ? ` · needed ${formatDate(request.neededBy, { month: "short", day: "numeric" })}` : ""}</small><strong>{request.title}</strong><p>{request.detail}</p><em>{account ? (account.locationName ?? account.name) : "No location linked"}{requester ? ` · requested by ${requester.name}` : ""}</em></div><StatusPill tone="warning">Approved</StatusPill></article>; })}</div></Section>}
+      {approvedMarketingRequests.length > 0 && <Section title="Approved marketing / delivery requests"><div className="delivery-marketing-request-list">{approvedMarketingRequests.map((request) => { const account = request.accountId ? data.accounts.find((item) => item.id === request.accountId) : undefined; const requester = data.users.find((item) => item.id === request.requesterId); return <article key={request.id}><span><Megaphone size={17} /></span><div><small>{request.type}{request.neededBy ? ` · needed ${formatDate(request.neededBy, { month: "short", day: "numeric" })}` : ""}</small><strong>{request.title}</strong><p>{request.detail}</p><em>{account ? (account.locationName ?? account.name) : "No location linked"}{requester ? ` · requested by ${requester.name}` : ""}</em></div><StatusPill tone="warning">Approved</StatusPill></article>; })}</div></Section>}
 
       <InvoicePrintCenter allowedOrderIds={visible.map((order)=>order.id)} title={isDriver?"Delivery invoices":"Delivery-run invoices"} description="Print one invoice or a complete delivery batch directly from the delivery workspace."/>
 
@@ -330,7 +291,7 @@ export function DeliveriesPage() {
           <div><small>Delivery location</small><p><MapPin size={14} /> {detailAccount ? deliveryAddressLabel(detailAccount) : "Location unavailable"}</p></div>
           <div><small>Primary contact</small><p><UserRound size={14} /> {detailAccount?.contactName || "Not recorded"}{detailAccount?.contactRole ? ` · ${detailAccount.contactRole}` : ""}</p><p>{detailAccount?.phone || "No phone"}{detailAccount?.email ? ` · ${detailAccount.email}` : ""}</p></div>
           <div><small>Billing / A/P contact</small><p><Mail size={14} /> {detailCustomer?.accountsPayableContactName ?? detailCustomer?.billingContactName ?? "Not recorded"}</p><p>{detailCustomer?.accountsPayablePhone ?? detailCustomer?.billingPhone ?? "No phone"}{detailCustomer?.accountsPayableExtension ? ` ext. ${detailCustomer.accountsPayableExtension}` : ""}</p><p>{detailCustomer?.accountsPayableEmail ?? detailCustomer?.billingEmail ?? ""}</p></div>
-          <div><small>Terms</small><p><strong>{detailCustomer?.paymentTerms ?? "COD"}</strong></p><p>{detailCollected > 0 ? (momentumStorage.mode()==="firestore" ? `${formatMoney(detailCollected)} in legacy delivery entries · NOT verified receipts or settled payments. Finance must reconcile original evidence; do not collect again based on this display.` : `${formatMoney(detailCollected)} recorded locally at delivery · Finance reconciliation pending`) : "No delivery collection recorded."}</p></div>
+          <div><small>Terms</small><p><strong>{detailCustomer?.paymentTerms ?? "COD"}</strong></p><p>{detailCollected > 0 ? `${formatMoney(detailCollected)} collected at delivery · Finance reconciliation pending` : "No delivery collection recorded."}</p></div>
         </div></Section>
 
         {detailMarketing.length > 0 && <Section title="Approved special requests"><div className="delivery-marketing-request-list">{detailMarketing.map((request) => <article key={request.id}><span><Megaphone size={17} /></span><div><small>{request.type}{request.neededBy ? ` · needed ${formatDate(request.neededBy, { month: "short", day: "numeric" })}` : ""}</small><strong>{request.title}</strong><p>{request.detail}</p></div><StatusPill tone="warning">Approved</StatusPill></article>)}</div></Section>}
@@ -339,7 +300,7 @@ export function DeliveriesPage() {
 
         {detailTask?.signature && <Section title="Delivery signature"><div className="delivery-signature-record"><svg viewBox="0 0 1000 300" aria-label="Recipient delivery signature">{detailTask.signature.strokes.map((stroke, index) => <polyline key={index} points={stroke.map(([x,y]) => `${x},${y}`).join(" ")} />)}</svg><div><strong>{detailTask.signature.recipientName || "Recipient signature"}</strong><small>Signed {formatDate(detailTask.signature.signedAt, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</small></div></div></Section>}
 
-        {(detailTask?.collections ?? []).length > 0 && <Section title={momentumStorage.mode()==="firestore" ? "Legacy collection entries · unverified" : "Payment recorded at delivery"}><div className="company-request-list">{detailTask!.collections!.map((collection) => <article key={collection.id}><span><Banknote size={16} /></span><div><strong>{formatMoney(collection.amount)} · {collection.method}</strong><p>{collection.reference ? `Reference: ${collection.reference} · ` : ""}{momentumStorage.mode()==="firestore" ? "Legacy entry only. Not a verified Finance receipt or settled payment; reconcile before acting." : "Finance settlement/reconciliation is still required."}</p><small>{formatDate(collection.recordedAt, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</small></div></article>)}</div></Section>}
+        {(detailTask?.collections ?? []).length > 0 && <Section title="Payment collected at delivery"><div className="company-request-list">{detailTask!.collections!.map((collection) => <article key={collection.id}><span><Banknote size={16} /></span><div><strong>{formatMoney(collection.amount)} · {collection.method}</strong><p>{collection.reference ? `Reference: ${collection.reference} · ` : ""}Finance settlement/reconciliation is still required.</p><small>{formatDate(collection.recordedAt, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</small></div></article>)}</div></Section>}
 
         {(detailTask?.history ?? []).length > 0 && <Section title="Delivery history"><div style={{ display: "grid", gap: 7 }}>{detailTask!.history.map((event) => <p key={event.id} style={{ margin: 0 }}><small>{new Date(event.at).toLocaleString()} · {event.type}{event.note ? ` · ${event.note}` : ""}</small></p>)}</div></Section>}
       </div>}
@@ -349,7 +310,7 @@ export function DeliveriesPage() {
       <div className="delivery-signature-modal">
         <p className="delivery-signature-modal__order">{signingOrderId ? data.orders.find((item) => item.id === signingOrderId)?.number : ""} · {signingOrderId ? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.locationName ?? data.accounts.find((account) => account.id === data.orders.find((item) => item.id === signingOrderId)?.accountId)?.name : ""}</p>
         <DeliverySignaturePad strokes={signatureStrokes} onChange={(strokes) => { setSignatureStrokes(strokes); setSignatureError(""); }} />
-        <label className="delivery-signature-name"><span>Recipient name <small>{momentumStorage.mode()==="firestore"?"required":"optional"}</small></span><input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Name of person receiving delivery" autoComplete="name" /></label>
+        <label className="delivery-signature-name"><span>Recipient name <small>optional</small></span><input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Name of person receiving delivery" autoComplete="name" /></label>
         <p className="delivery-signature-note">This signature records delivery presence and is copied onto the Momentum invoice. It is not a separate contract or payment authorization.</p>
         {signatureError && <p className="form-error" role="alert">{signatureError}</p>}
       </div>

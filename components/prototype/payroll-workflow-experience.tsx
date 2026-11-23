@@ -1,5 +1,4 @@
 "use client";
-import {ConnectedPayrollPreparation} from "./connected-payroll-preparation";
 
 import {useMemo,useState} from "react";
 import {CalendarDays,Download,FileCheck2,ShieldAlert,WalletCards} from "lucide-react";
@@ -7,7 +6,6 @@ import {useWorkspace} from "../../lib/workspace-context";
 import {usePayroll} from "../../lib/payroll-context";
 import {useHcm} from "../../lib/hcm-context";
 import {payrollRunControlIssues} from "../../lib/payroll-controls";
-import {activeCompensation} from "../../lib/hcm-engine";
 import {downloadCsv} from "../../lib/browser-export";
 import {navigateToRoute} from "../../lib/navigation-store";
 import {useRuntimeMode} from "../../lib/runtime-mode";
@@ -82,9 +80,7 @@ export function PayrollWorkflowExperience(){
       {admin&&<article><ShieldAlert size={18}/><small>Released, unsettled disbursements</small><strong>{payroll.disbursements.filter(row=>row.status==="Released").length}</strong></article>}
       {admin&&<article><CalendarDays size={18}/><small>Active pay groups</small><strong>{payroll.payGroups.filter(group=>group.active).length}</strong></article>}
     </div>
-    {admin&&<section className="prototype-panel"><h2>Payroll setup &amp; source readiness</h2><p className="prototype-note">Read-only setup review. A configured employee and approved timecards are prerequisites, not authorization to release payroll.</p><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Employee</th><th>Classification</th><th>Compensation</th><th>HR pay group</th><th>Setup review</th></tr></thead><tbody>{hcm.employees.filter(e=>e.status==="Active").map(e=>{const comp=activeCompensation(hcm,e.userId);return <tr key={e.userId}><td>{employeeName(e.userId)}</td><td>{e.classification}</td><td>{comp?"Effective record":"Missing effective record"}</td><td>{e.payGroup||"Not configured"}</td><td>{e.classification==="Not configured"||!comp||!e.payGroup?"Review required":"HR sources present"}</td></tr>;})}</tbody></table></div><div className="prototype-controls"><button type="button" onClick={()=>navigateToRoute("/people/attendance")}>Review timecards</button></div><p className="prototype-note">Verify tax tables, payroll settings, deductions and settlement provider before enabling connected payroll. Test write controls in isolated demo mode.</p></section>}
-    {admin&&!writeEnabled&&<ConnectedPayrollPreparation/>}
-    {admin&&writeEnabled&&<section className="prototype-panel">
+    {admin&&<section className="prototype-panel">
       <h2>1. Calculate regular payroll draft</h2>
       <p className="prototype-note">Calculates from approved, unconsumed timecards and current HR/payroll configuration. Missing or invalid sources block the draft. This is an internal calculation, not certified tax payroll.</p>
       <div className="prototype-controls">
@@ -95,7 +91,7 @@ export function PayrollWorkflowExperience(){
       </div>
       <p className="prototype-note">Bonus payroll, pay-group setup, withholding, controlled release, payment evidence, liabilities, and corrections remain operational in the existing engine.</p>
       <button type="button" disabled={!writeEnabled} onClick={()=>navigateToRoute("/people/payroll/workflow")}>Open full payroll processing &amp; settings</button>
-      {!writeEnabled&&<p className="prototype-note">Live payroll calculations, settings changes, release and settlement are not certified. Use isolated local demo for write testing only; do not enter real pay or tax records there.</p>}
+      {!writeEnabled&&<p className="prototype-note">Connected environments are read-only in this redesign prototype. Use isolated local demo mode for payroll write testing.</p>}
     </section>}
     <section className="prototype-panel">
       <h2>{admin?"2. Pay-run register":"Pay history"}</h2>

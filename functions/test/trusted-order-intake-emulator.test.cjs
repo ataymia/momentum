@@ -107,7 +107,7 @@ test("R33 source-bound nonbinding intake, role isolation, idempotency and no fin
  assert.equal((await accounts.get()).data().items[0].stage,"Qualified");
 });
 
-test("R33 approve/decline saves a verified decision and displays human names without altering financial records",async()=>{
+test("R33 approval creates linked order/draft while preserving names, permissions, and other financial records",async()=>{
  const first=await submitTrustedOrderIntake(ids.rep,draft,"reviewSubmitted"+key);
  const intakeId=first.intakeId;
  await db.doc("employeeDirectory/"+ids.rep).set({name:"QA Flo Rep",role:"Sales Representative",email:"qa-rep@example.test"});
@@ -121,8 +121,15 @@ test("R33 approve/decline saves a verified decision and displays human names wit
  await deny(decideTrustedOrderIntake(ids.suspended,command,"suspendedReview"+key),403);
  await deny(decideTrustedOrderIntake(ids.admin,{...command,paid:true},"forgedReview"+key),400);
  await deny(decideTrustedOrderIntake(ids.admin,{...command,reason:"Approval note not allowed"},"approveNote"+key),400);
- const done=await decideTrustedOrderIntake(ids.admin,command,"approveReview"+key);
+ const confirmed={pricePerCase:24,terms:"COD",priceEvidence:"Administrator approved QA buyer terms and case price"};
+ const done=await decideTrustedOrderIntake(ids.admin,command,"approveReview"+key,confirmed);
  assert.equal(done.status,"Approved");assert.equal(done.replayed,false);
+ assert(done.orderId&&done.invoiceId);
+ const generatedOrders=(await db.doc("domains/commercial/fields/orders").get()).data().items;
+ const generatedInvoices=(await db.doc("domains/commerce/fields/invoices").get()).data().items;
+ assert.equal(generatedOrders.filter(o=>o.sourceIntakeId===intakeId).length,1);
+ assert.equal(generatedInvoices.filter(i=>i.sourceIntakeId===intakeId).length,1);
+ assert.equal(generatedInvoices.find(i=>i.sourceIntakeId===intakeId).status,"Draft");
  const saved=await getTrustedOrderIntake(ids.admin,intakeId);
  assert.equal(saved.status,"Approved");assert.equal(saved.reviewedBy,ids.admin);
  assert.equal(saved.reviewReason,"");assert.equal(saved.reviewRevision,1);
@@ -135,7 +142,7 @@ test("R33 approve/decline saves a verified decision and displays human names wit
  const mine=await listOwnTrustedOrderIntakes(ids.rep);
  assert(mine.some(r=>r.id===intakeId&&r.status==="Approved"));
  assert(mine.every(r=>!r.reviewedBy&&!r.customerId));
- const replay=await decideTrustedOrderIntake(ids.admin,command,"approveReview"+key);
+ const replay=await decideTrustedOrderIntake(ids.admin,command,"approveReview"+key,confirmed);
  assert.equal(replay.replayed,true);assert.equal(replay.reviewedAt,done.reviewedAt);
  await deny(decideTrustedOrderIntake(ids.admin,{...command,nextStatus:"Declined",reason:"Different decision"},"approveReview"+key),409);
  await deny(decideTrustedOrderIntake(ids.admin,command,"staleDecision"+key),409);
@@ -243,11 +250,13 @@ test("R33 legacy pending states convert directly to final decisions, preserving 
  await source.update({status:"Pricing and inventory verification",reviewRevision:2});
  const first={intakeId,expectedStatus:"Pricing and inventory verification",expectedRevision:2,
   nextStatus:"Approved",reason:""};
- const result=await decideTrustedOrderIntake(ids.admin,first,"revisionFirst"+key);
+ const pricing={pricePerCase:24,terms:"COD",priceEvidence:"Written QA owner approved pricing for legacy state"};
+ const result=await decideTrustedOrderIntake(ids.admin,first,"revisionFirst"+key,pricing);
  assert.equal(result.reviewRevision,3);
+ assert.equal(result.preparationStatus,"Prepared");
  await deny(decideTrustedOrderIntake(ids.admin,first,"revisionStale"+key),409);
  await deny(decideTrustedOrderIntake(ids.admin,{...first,expectedRevision:undefined},"revisionMissing"+key),400);
- assert.equal((await decideTrustedOrderIntake(ids.admin,first,"revisionFirst"+key)).replayed,true);
+ assert.equal((await decideTrustedOrderIntake(ids.admin,first,"revisionFirst"+key,pricing)).replayed,true);
  assert.equal((await getTrustedOrderIntake(ids.admin,intakeId)).status,"Approved");
  const another=await submitTrustedOrderIntake(ids.rep,draft,"legacyIntake"+key);
  await db.doc("commerceOrderIntakes/"+another.intakeId).update({status:"Needs clarification"});

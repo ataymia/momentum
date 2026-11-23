@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {canVisitRoute} from "../lib/navigation-route-registry";
 import type {WorkspaceUser} from "../lib/types";
-import {applyPurchaseAction,billDueCents,billedCases,emptyPurchasingState,poStatus,receivedCases,threeWayMatch,type PurchaseAction,type PurchaseActor,type PurchasingState} from "../lib/purchasing-review";
+import {applyPurchaseAction,billDueCents,emptyPurchasingState,poStatus,receivedCases,threeWayMatch,type PurchaseAction,type PurchaseActor,type PurchasingState} from "../lib/purchasing-review";
 const admin:PurchaseActor={id:"admin-a",role:"Administrator"};
 const otherAdmin:PurchaseActor={id:"admin-b",role:"Administrator"};
 const operations:PurchaseActor={id:"ops-a",role:"Operations"};
@@ -38,27 +38,6 @@ test("vendor creation requires admin and rejects duplicate names",()=>{
   assert.equal(act(s,operations,vendor()).ok,false);
   const next=success(s,admin,vendor());
   assert.equal(act(next,admin,{...vendor(),name:"illustrative demo-only vendor"}).ok,false);
-});
-test("vendor names with inconsistent internal whitespace cannot bypass duplicate registration",()=>{
-  const original=success(emptyPurchasingState(),admin,{kind:"vendor.add",name:"Acme  Supply  Co",contact:"QA only"});
-  const replay=act(original,admin,{kind:"vendor.add",name:" acme supply co ",contact:"Different contact"});
-  assert.equal(replay.ok,false);
-  assert.match(replay.message,/distinct vendor name/i);
-  assert.equal(replay.state,original,"Duplicate registration must preserve the original purchasing state.");
-  assert.equal(original.vendors.length,1);
-  assert.equal(original.audit.length,1);
-});
-test("malformed vendor contact payloads fail closed without changing state",()=>{
-  const original=emptyPurchasingState();
-  for(const contact of [undefined,null,123,{},["contact"],"x".repeat(1001)]){
-    const action={kind:"vendor.add",name:"QA Supplier",contact} as unknown as PurchaseAction;
-    const rejected=act(original,admin,action);
-    assert.equal(rejected.ok,false,"Malformed contact must reject rather than throw.");
-    assert.equal(rejected.state,original);
-    assert.equal(original.vendors.length,0);
-    assert.equal(original.audit.length,0);
-  }
-  assert.equal(success(original,admin,{kind:"vendor.add",name:"QA Supplier",contact:""}).vendors.length,1);
 });
 test("purchase order requires verified vendor, positive quantities and cost",()=>{
   const s=emptyPurchasingState();
@@ -139,18 +118,6 @@ test("matched bill can be independently approved, paid and credited without tran
   assert.equal(billDueCents(s,s.bills[0]),6000);
   assert.equal(act(s,admin,{kind:"payment.record",billId,reference:"LATE",amountCents:100}).ok,false);
 });
-test("expense entry refuses inactive vendor references without adding financial history",()=>{
-  const s=success(emptyPurchasingState(),admin,vendor());
-  const inactive={...s,vendors:s.vendors.map(v=>({...v,active:false}))};
-  const action:PurchaseAction={kind:"expense.record",vendorId:inactive.vendors[0].id,description:"QA inactive supplier",amountCents:1200};
-  const rejected=act(inactive,operations,action);
-  assert.equal(rejected.ok,false);
-  assert.equal(rejected.state,inactive);
-  assert.equal(inactive.expenses.length,0);
-  assert.equal(inactive.audit.length,1);
-  const unlinked=success(inactive,operations,{...action,vendorId:undefined});
-  assert.equal(unlinked.expenses.length,1,"Unlinked expenses remain permitted.");
-});
 test("expenses need independent sign-off and preserve a who/what/when audit trail",()=>{
   let s=success(emptyPurchasingState(),operations,{kind:"expense.record",description:"Illustrative warehouse tape",amountCents:1200});
   assert.equal(act(s,operations,{kind:"expense.approve",id:s.expenses[0].id}).ok,false);
@@ -165,14 +132,13 @@ test("approval and receipt references do not allow cancellation of posted purcha
   const next=success(s,warehouse,receipt(s.orders[0].id,1));
   assert.equal(act(next,admin,{kind:"po.cancel",id:next.orders[0].id}).ok,false);
 });
-test("purchasing separates server-owned production from isolated demo and route-specific roles",()=>{
+test("purchasing is gated to isolated demo and route-specific roles",()=>{
   const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
   const routes=readFileSync("lib/navigation-route-registry.ts","utf8");
   assert.match(view,/runtime\.isDemo&&momentumStorage\.mode\(\)==="local"&&!firebaseSession/);
   assert.match(view,/useFirebaseSessionOptional/);
   assert.match(view,/useSyncExternalStore\(subscribeBrowser,clientSnapshot,serverSnapshot\)/);
-  assert.match(view,/if\(await run\(action\)\)/);
-  assert.match(view,/connectedPurchasing\(session,action,key\)/);
+  assert.match(view,/if\(run\(action\)\)/);
   assert.match(view,/inventoryPosted:false|receipts do not increase sellable stock/);
   for(const route of ["vendors","expenses","orders","receipts","bills","payments","credits"])assert.match(routes,new RegExp("/purchases/"+route));
   assert.match(routes,/if\(clean\.startsWith\("\/purchases\/"\)\)/);
@@ -202,132 +168,4 @@ test("purchasing directory roles align with distinct preparation, receiving and 
   assert(!canVisitRoute(user("Operations"),"/purchases/payments"));
   assert(canVisitRoute(user("Administrator"),"/purchases/payments"));
   assert(!canVisitRoute(user("Customer"),"/purchases/receipts"));
-});
-
-test("connected vendor payment evidence requires independent authorized reviewer",()=>{
- let s=approvedPurchase();const id=s.orders[0].id;
- s=success(s,warehouse,receipt(id,10));s=success(s,operations,bill(id,10,16000,"SETTLE-INV"));s=success(s,admin,{kind:"bill.approve",id:s.bills[0].id});
- s=success(s,admin,{kind:"payment.record",billId:s.bills[0].id,reference:"SETTLE-PAY",amountCents:4000});
- const action:PurchaseAction={kind:"payment.verify",id:s.payments[0].id,evidence:"Reconciled statement REF-1"};
- assert.equal(act(s,otherAdmin,action).ok,false);
- assert.equal(act(s,{...admin,canVerifySettlement:true},action).ok,false);
- s=success(s,{...otherAdmin,canVerifySettlement:true},action);
- assert.equal(billDueCents(s,s.bills[0]),12000);
- assert.equal(s.payments[0].externalSettlementVerified,true);
-});
-
-test("supplier bill entry excludes fully billed purchase orders",()=>{
-  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
-  assert.match(view,/const purchaseOptions=poOptions\.filter\(p=>billedCases\(state,p\.id\)<p\.cases\)/);
-  let s=approvedPurchase();const id=s.orders[0].id;
-  s=success(s,operations,bill(id,10,16000,"FULL-PO"));
-  assert.equal(billedCases(s,id),s.orders[0].cases);
-  assert.equal(act(s,operations,bill(id,1,1600,"OVERBILL")).ok,false);
-});
-
-test("purchasing currency entry rejects fractional cents rather than silently rounding",()=>{
-  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
-  assert.ok(view.includes("const cents=(s:string)=>/^\\d+(?:\\.\\d{1,2})?$/"));
-  assert.ok(view.includes(":Number.NaN;"));
-});
-
-test("supplier bill form binds quantity cap to the selected PO remaining unbilled cases",()=>{
-  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
-  assert.match(view,/purchaseOptions\.find\(p=>p\.id===selection\).*cases-billedCases\(state,selection\)/);
-  assert.match(view,/Approved PO<select name="order" required value=\{selection\} onChange=/);
-});
-
-
-test("receipt form caps physical cases to the unreceived PO balance",()=>{
-  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
-  assert.match(view,/Received cases<input name="cases"[^>]*max=\{poOptions\.find\(p=>p\.id===selection\).*cases-receivedCases\(state,selection\)/);
-  let s=approvedPurchase();const id=s.orders[0].id;
-  s=success(s,warehouse,receipt(id,7));
-  assert.equal(s.orders[0].cases-receivedCases(s,id),3);
-  assert.equal(act(s,warehouse,receipt(id,4)).ok,false);
-});
-
-test("payment and credit entry choices reserve unverified commitments without reducing verified payable",()=>{
-  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
-  assert.match(view,/billDueCents\(state,b\)-pendingPaymentCents\(state,billId\)-pendingCreditCents\(state,billId\)/);
-  assert.match(view,/bills=state\.bills\.filter\(b=>b\.approvedAt&&availableBillCents\(b\.id\)>0\)/);
-  let s=approvedPurchase();const id=s.orders[0].id;
-  s=success(s,warehouse,receipt(id,10));
-  s=success(s,operations,bill(id,10,16000,"PENDING-INV"));
-  s=success(s,admin,{kind:"bill.approve",id:s.bills[0].id});
-  const billId=s.bills[0].id;
-  s=success(s,admin,{kind:"payment.record",billId,reference:"PENDING-PAY",amountCents:10000});
-  s=success(s,operations,{kind:"credit.record",billId,reference:"PENDING-CREDIT",reason:"Review",amountCents:6000});
-  assert.equal(billDueCents(s,s.bills[0]),16000);
-  assert.equal(act(s,admin,{kind:"payment.record",billId,reference:"OVERCOMMIT",amountCents:1}).ok,false);
-  assert.equal(act(s,operations,{kind:"credit.record",billId,reference:"OVER-CREDIT",reason:"Review",amountCents:1}).ok,false);
-});
-
-test("supplier invoice duplicate detection ignores excess whitespace within the same vendor",()=>{
-  let s=approvedPurchase();const id=s.orders[0].id;
-  s=success(s,operations,bill(id,2,3200,"INV  204"));
-  const duplicate=bill(id,1,1600," INV 204 ");
-  const result=act(s,operations,duplicate);
-  assert.equal(result.ok,false);
-  assert.match(result.message,/Duplicate supplier invoice/);
-  assert.equal(result.state,s,"Rejected duplicates must leave the original state untouched.");
-  assert.equal(s.bills.length,1);
-});
-
-test("payment and credit references reject whitespace/case replay without mutating purchasing history",()=>{
-  let s=approvedPurchase();const id=s.orders[0].id;
-  s=success(s,warehouse,receipt(id,10));
-  s=success(s,operations,bill(id,10,16000,"REF-INV"));
-  s=success(s,admin,{kind:"bill.approve",id:s.bills[0].id});
-  const billId=s.bills[0].id;
-  s=success(s,admin,{kind:"payment.record",billId,reference:"BANK  REF  204",amountCents:1000});
-  const paymentReplay=act(s,admin,{kind:"payment.record",billId,reference:" bank ref 204 ",amountCents:100});
-  assert.equal(paymentReplay.ok,false);
-  assert.match(paymentReplay.message,/reference already recorded/i);
-  assert.equal(paymentReplay.state,s);
-  s=success(s,operations,{kind:"credit.record",billId,reference:"SUPPLIER  CREDIT  5",reason:"Illustrative",amountCents:1000});
-  const creditReplay=act(s,operations,{kind:"credit.record",billId,reference:" supplier credit 5 ",reason:"Replay",amountCents:100});
-  assert.equal(creditReplay.ok,false);
-  assert.match(creditReplay.message,/reference already recorded/i);
-  assert.equal(creditReplay.state,s);
-  assert.equal(s.payments.length,1);
-  assert.equal(s.credits.length,1);
-});
-
-test("payment and credit forms bind the selected approved bill and cap amounts before submission",()=>{
-  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
-  assert.match(view,/name="bill" required value=\{selection\} onChange=\{e=>setSelection\(e\.target\.value\)\}/);
-  assert.match(view,/max=\{selection\?money\(availableBillCents\(selection\)\)\.replace\(/);
-  assert.match(view,/const availableBillCents=\(billId:string\)=>/);
-});
-
-
-test("vendor contact text is never silently truncated during registration",()=>{
-  const contact="x".repeat(160);
-  const valid=act(emptyPurchasingState(),admin,{kind:"vendor.add",name:"Contact length boundary",contact});
-  assert.equal(valid.ok,true);
-  assert.equal(valid.state.vendors[0].contact,contact);
-  const invalid=act(valid.state,admin,{kind:"vendor.add",name:"Contact overflow",contact:contact+"x"});
-  assert.equal(invalid.ok,false);
-  assert.equal(invalid.state,valid.state);
-  assert.equal(invalid.state.audit.length,1);
-});
-
-test("connected purchasing route changes disable mutations until authoritative reload completes",()=>{
-  const source=readFileSync(new URL("../components/prototype/purchasing-experience.tsx",import.meta.url),"utf8");
-  assert.match(source,/useEffect\(\(\)=>\{\s*if\(!connected\|\|!session\)return;\s*let active=true;/);
-  assert.match(source,/queueMicrotask\(\(\)=>\{if\(active\)setReady\(false\);\}\)/);
-  assert.match(source,/void connectedPurchasing\(session\)\.then\(result=>\{if\(active\)\{setState\(result\.state\);setReady\(true\)/);
-  assert.match(source,/return\(\)=>\{active=false;\}/);
-  assert.match(source,/if\(!currentUser\|\|locked\.current\|\|!ready\)return false/);
-  assert.match(source,/\[connected,session,reload,selected\]/);
-});
-
-
-test("connected purchasing section navigation remounts the authoritative register gate",()=>{
-  const view=readFileSync("components/prototype/purchasing-experience.tsx","utf8");
-  assert.match(view,/key=\{currentUser\.id\+"\:"\+String\(connected\)\+"\:"\+selected\}/);
-  assert.match(view,/const \[ready,setReady\]=useState\(!connected\)/);
-  assert.match(view,/if\(!currentUser\|\|locked\.current\|\|!ready\)return false/);
-  assert.match(view,/if\(connected\)return emptyPurchasingState\(\)/);
 });

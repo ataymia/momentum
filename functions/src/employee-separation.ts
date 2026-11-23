@@ -66,18 +66,17 @@ export async function separateEmployee(
   const appointmentsRef=db.doc("domains/workspace/fields/appointments");
   const commercialAppointmentsRef=db.doc("domains/commercial/fields/appointments");
   const auditRef=db.doc(`employeeSeparations/${targetUid}`);
-  const hrRef=db.doc("domains/hcm/fields/employees");
   const metaRef=db.doc("platform/meta");
 
   const outcome=await db.runTransaction(async (tx) => {
     const [
       admin, target, directory, accountDoc, commercial, territoryDoc,
-      workspaceAppointments, commercialAppointments, audit, hr,
+      workspaceAppointments, commercialAppointments, audit,
     ]=await Promise.all([
       tx.get(adminRef), tx.get(targetRef), tx.get(directoryRef),
       tx.get(accountsRef), tx.get(commercialRef), tx.get(territoriesRef),
       tx.get(appointmentsRef), tx.get(commercialAppointmentsRef),
-      tx.get(auditRef), tx.get(hrRef),
+      tx.get(auditRef),
     ]);
     const adminData=admin.data();
     const targetData=target.data();
@@ -110,7 +109,6 @@ export async function separateEmployee(
     const patches: Row={...currentPatches};
     const releasedAccountIds: string[]=[];
     const stamp=alreadySeparated?text(prior?.separatedAt):new Date().toISOString();
-    if(!Number.isFinite(Date.parse(stamp)))throw new EmployeeSeparationError(409,"Prior separation date requires review.");
 
     for (const account of baseAccounts) {
       const id=text(account.id);
@@ -166,15 +164,6 @@ export async function separateEmployee(
       employmentStatus: "Separated",
       separatedAt: stamp,
     }, {merge: true});
-    const rawHr=hr.data()?.items;
-    if(hr.exists&&(!Array.isArray(rawHr)||rawHr.some((item)=>!record(item))))throw new EmployeeSeparationError(409,"HR register format requires reconciliation.");
-    const hrRows=rows(rawHr);
-    const hrMatches=hrRows.filter((item)=>item.userId===targetUid);
-    if(hrMatches.length>1)throw new EmployeeSeparationError(409,"Duplicate HR employment records require reconciliation.");
-    if(hrMatches.length===1){
-      const hrDate=text(hrMatches[0].separationDate)||stamp.slice(0,10);
-      tx.set(hrRef,{items:hrRows.map((item)=>item.userId===targetUid?{...item,status:"Separated",separationDate:hrDate,updatedAt:new Date().toISOString()}:item)},{merge:true});
-    }
     if (releasedAccountIds.length) {
       tx.set(commercialRef, {
         data: {...root, accountPatches: patches},
@@ -217,7 +206,6 @@ export async function separateEmployee(
       tx.create(auditRef, event);
     }
     const paths=["employeeDirectory"];
-    if(hrMatches.length===1)paths.push("domains_hcm_fields_employees");
     if(scheduled.releasedIds.length)paths.push("domains_workspace_fields_appointments");
     if(commercialScheduled.releasedIds.length)paths.push("domains_commercial_fields_appointments");
     if (releasedAccountIds.length) {

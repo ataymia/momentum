@@ -150,20 +150,6 @@ const scopeFor = (uid: string) =>
   buildPersistenceScope(ACCESS.find((record) => record.uid === uid)!, DIRECTORY);
 
 describe("identity documents", () => {
-  test("active customer may read only their own profile to initialize the portal", async () => {
-    const uid="uid-portal-customer",suspended="uid-portal-suspended";
-    await env.withSecurityRulesDisabled(async ctx=>{
-      for(const [id,state] of [[uid,"Active"],[suspended,"Suspended"]] as const){
-        await setDoc(doc(ctx.firestore(),USER_ACCESS_COLLECTION,id),userAccessDocument(accessRecord(id,"Customer","Customer",{accountState:state})));
-        await setDoc(doc(ctx.firestore(),EMPLOYEE_DIRECTORY_COLLECTION,id),{id,name:id,role:"Customer",team:"Customer",email:id+"@momentum.test",accountIds:["qa-location"]});
-      }
-    });
-    await assertSucceeds(getDoc(doc(dbFor(uid),EMPLOYEE_DIRECTORY_COLLECTION,uid)));
-    await assertFails(getDoc(doc(dbFor(uid),EMPLOYEE_DIRECTORY_COLLECTION,REP)));
-    await assertFails(getDocs(collection(dbFor(uid),EMPLOYEE_DIRECTORY_COLLECTION)));
-    await assertFails(getDoc(doc(dbFor(suspended),EMPLOYEE_DIRECTORY_COLLECTION,suspended)));
-    await assertFails(setDoc(doc(dbFor(uid),EMPLOYEE_DIRECTORY_COLLECTION,uid),{accountIds:["different-location"]}));
-  });
   test("an employee reads only their own access record", async () => {
     await assertSucceeds(getDoc(doc(dbFor(REP), USER_ACCESS_COLLECTION, REP)));
     await assertFails(getDoc(doc(dbFor(REP), USER_ACCESS_COLLECTION, OPS)));

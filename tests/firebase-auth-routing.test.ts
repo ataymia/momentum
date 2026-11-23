@@ -60,3 +60,23 @@ test("production auth can restore an active session into a second Momentum tab",
   assert.match(provider, /requestFirebaseSessionFromPeer/);
   assert.match(provider, /peer\?await currentFirebaseSession\(\):null/);
 });
+
+test("active order intake requests renew tokens and show actionable recovery errors", () => {
+  const auth = read("lib/firebase-auth-rest.ts");
+  const provider = read("lib/firebase-session-context.tsx");
+  const intake = read("lib/firebase-order-intake.ts");
+  const recovery = read("components/orders/approved-intake-orders.tsx");
+
+  assert.match(auth, /refreshPending=refreshFirebaseSession\(session\)/);
+  assert.match(auth, /session changed during refresh/i);
+  assert.match(provider, /window\.setInterval\(onFocus,45_000\)/);
+  assert.match(provider, /visibilitychange/);
+  assert.match(intake, /activeIntakeSession\(session\)/);
+  assert.match(intake, /authorization:"Bearer "\+active\.idToken/);
+  assert.match(recovery, /Confirm pricing/);
+  assert.match(recovery, /Prepare order and draft invoice/);
+  assert.match(recovery, /setNoticeFor\(intakeId\)/);
+  assert.match(recovery, /disabled=\{Boolean\(busy\)\}/);
+  assert.doesNotMatch(recovery, /disabled=\{Boolean\(busy\)\|\|!manual\.pricePerCase/);
+  assert.match(recovery, /No outstanding recoveries in the loaded records/);
+});

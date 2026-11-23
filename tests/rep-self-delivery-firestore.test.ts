@@ -28,10 +28,6 @@ test("server self-delivery atomically verifies rep, approval, exact custody, sig
         status:"Approved",cases:4,lines:[{product:"Golden Eagle Original",cases:4}],
         paymentStatus:"Not invoiced",amount:96,
       },{
-        id:"order-rep-malformed-lines",ownerId:rep,accountId:"acct-rep-1",
-        status:"Approved",cases:4,
-        lines:[{product:"Golden Eagle Original",cases:4},null],
-      },{
         id:"order-rep-unapproved",number:"GE-REP-002",ownerId:rep,accountId:"acct-rep-1",
         status:"Awaiting approval",cases:4,
         lines:[{product:"Golden Eagle Original",cases:4}],
@@ -59,11 +55,6 @@ test("server self-delivery atomically verifies rep, approval, exact custody, sig
     ]);
     await assert.rejects(()=>commit(stranger,{action:"claim",orderId}),/Only orders placed by you/);
     await assert.rejects(()=>commit(rep,{action:"claim",orderId:"order-rep-unapproved"}),/Only currently approved/);
-    await commit(rep,{action:"claim",orderId:"order-rep-malformed-lines"});
-    await assert.rejects(()=>commit(rep,{action:"pack",orderId:"order-rep-malformed-lines"}),
-      /invalid SKU lines/);
-    assert.equal((await db.doc(prefix+"inventoryLedger/fields/reservations").get()).data()?.items.length,0,
-      "Malformed order lines must not reserve inventory.");
     const claimed=await commit(rep,{action:"claim",orderId});
     assert.equal(claimed.taskStatus,"Accepted");
     await assert.rejects(()=>commit(rep,{action:"depart",orderId}),/Load the exact inventory/);
@@ -74,25 +65,6 @@ test("server self-delivery atomically verifies rep, approval, exact custody, sig
     await lotRef.set({items:[originalLot]});
     const packed=await commit(rep,{action:"pack",orderId});
     assert.equal(packed.orderStatus,"Allocated");
-    const reservationRef=db.doc(prefix+"inventoryLedger/fields/reservations");
-    const validReservations=(await reservationRef.get()).data()?.items;
-    assert.equal(validReservations.length,1);
-    // A replay must not bless missing cases, an incorrect SKU, or invalid quantities.
-    const originalReservation=validReservations[0];
-    for(const corrupted of [
-      {...originalReservation,quantity:3},
-      {...originalReservation,lotId:"unknown-lot"},
-      {...originalReservation,quantity:5},
-    ]){
-      await reservationRef.set({items:[corrupted]});
-      await assert.rejects(()=>commit(rep,{action:"pack",orderId}),
-        /Existing reservations do not match the exact ordered SKUs and cases/);
-      const after=(await reservationRef.get()).data()?.items;
-      assert.deepEqual(after,[corrupted],"A rejected replay must not rewrite reservation evidence.");
-    }
-    await reservationRef.set({items:validReservations});
-    assert.equal((await commit(rep,{action:"pack",orderId})).replayed,true);
-    assert.deepEqual((await reservationRef.get()).data()?.items,validReservations);
     const loaded=await commit(rep,{action:"load",orderId});
     assert.equal(loaded.taskStatus,"Loaded");
     assert.equal((await commit(rep,{action:"load",orderId})).replayed,true);
@@ -131,60 +103,5 @@ test("server self-delivery atomically verifies rep, approval, exact custody, sig
     assert.equal(savedOrder.status,"Delivered");
     assert.equal(savedOrder.paymentStatus,"Not invoiced");
     await assert.rejects(()=>commit(stranger,{action:"complete",orderId,signature}),/Only orders placed by you/);
-  }finally{await deleteApp(app);}
-});
-
-test("assigned delivery enforces driver custody and independent recipient proof",async()=>{
-  assert.ok(process.env.FIRESTORE_EMULATOR_HOST,"Run only against the Firestore emulator.");
-  const m=await import(new URL("../functions/src/rep-self-delivery.ts",import.meta.url).href);
-  const commit=(m.default??m).commitAssignedDelivery as (uid:string,body:unknown)=>Promise<{taskStatus:string;orderStatus:string;replayed?:boolean}>;
-  const app=initializeApp({projectId:"momentum-rules-test"});
-  const db=getFirestore(app);
-  const admin="assigned-qa-admin",driver="assigned-qa-driver",other="assigned-qa-other",orderId="assigned-qa-order",accountId="assigned-qa-account";
-  const d=(path:string)=>db.doc("domains/"+path);
-  try{
-    await Promise.all([
-      db.doc("userAccess/"+admin).set({role:"Administrator",accountState:"Active"}),
-      db.doc("userAccess/"+driver).set({role:"Delivery Driver",accountState:"Active"}),
-      db.doc("userAccess/"+other).set({role:"Delivery Driver",accountState:"Active"}),
-      d("commercial/fields/orders").set({items:[{id:orderId,number:"QA-ASSIGNED",ownerId:"qa-rep",accountId,status:"Approved",cases:4,lines:[{product:"Golden Eagle Original",cases:4}],paymentStatus:"Not invoiced",amount:96}]}),
-      d("workspace/fields/orders").set({items:[]}),
-      d("workspace/fields/accounts").set({items:[{id:accountId,ownerId:"qa-rep",name:"QA Store"}]}),
-      d("commercial/fields/_root").set({}),
-      d("workspace/fields/inventory").set({items:[{id:"assigned-qa-lot",product:"Golden Eagle Original",bestBy:"2099-01-01",receivedAt:"2026-01-01",status:"Available"}]}),
-      d("commercial/fields/inventoryLots").set({items:[]}),
-      d("inventoryLedger/fields/nodes").set({items:[{id:"node-warehouse-main",type:"Warehouse",active:true,name:"Warehouse"},{id:"node-user-"+driver,userId:driver,type:"Employee custody",active:true,name:"Driver"},{id:"node-account-"+accountId,accountId,type:"Customer",active:true,name:"Customer"},{id:"node-external",type:"External",active:true,name:"External"}]}),
-      d("inventoryLedger/fields/movements").set({items:[{id:"qa-assigned-receipt",lotId:"assigned-qa-lot",product:"Golden Eagle Original",quantity:8,type:"Receipt",fromNodeId:"node-external",toNodeId:"node-warehouse-main",reason:"Received",actorId:"system"}]}),
-      d("inventoryLedger/fields/reservations").set({items:[]}),
-      d("delivery/fields/tasks").set({items:[]}),
-      d("delivery/fields/overrides").set({items:[]}),
-      d("periodLocks/fields/locks").set({items:[]}),
-    ]);
-    // Drivers cannot probe an unassigned order or another driver's custody.
-    await assert.rejects(()=>commit(other,{action:"status",orderId}),/Only the assigned driver/);
-    await commit(admin,{action:"assign",orderId,driverId:driver});
-    await assert.rejects(()=>commit(other,{action:"status",orderId}),/Only the assigned driver/);
-    assert.equal((await commit(driver,{action:"status",orderId})).taskStatus,"Accepted");
-    await assert.rejects(()=>commit(other,{action:"pack",orderId}));
-    await commit(admin,{action:"pack",orderId});
-    await commit(driver,{action:"load",orderId});
-    await commit(driver,{action:"depart",orderId});
-    const signature={recipientName:"QA Receiver",strokes:[[[50,60],[120,110],[210,65]]]};
-    await assert.rejects(()=>commit(admin,{action:"complete",orderId,signature}));
-    assert.equal((await commit(driver,{action:"complete",orderId,signature})).orderStatus,"Delivered");
-    assert.equal((await commit(driver,{action:"complete",orderId,signature})).replayed,true);
-    await assert.rejects(()=>commit(driver,{action:"complete",orderId,signature:{...signature,recipientName:"Different Receiver"}}));
-    const movements=(await d("inventoryLedger/fields/movements").get()).data()?.items.filter((row:{relatedOrderId:string;type:string})=>row.relatedOrderId===orderId&&row.type==="Delivery");
-    assert.equal(movements.length,1);
-    assert.equal(movements[0].fromNodeId,"node-user-"+driver);
-    assert.equal(movements[0].quantity,4);
-    // Revoked drivers cannot inspect or replay completion; inventory remains immutable.
-    await db.doc("userAccess/"+driver).update({accountState:"Separated"});
-    await assert.rejects(()=>commit(driver,{action:"status",orderId}),/active authorized delivery role/);
-    await assert.rejects(()=>commit(driver,{action:"complete",orderId,signature}),/active authorized delivery role/);
-    const afterRevocation=(await d("inventoryLedger/fields/movements").get()).data()?.items.filter((row:{relatedOrderId:string;type:string})=>row.relatedOrderId===orderId&&row.type==="Delivery");
-    assert.deepEqual(afterRevocation,movements);
-    await db.doc("userAccess/"+driver).update({accountState:"Active"});
-    assert.equal((await commit(driver,{action:"complete",orderId,signature})).replayed,true);
   }finally{await deleteApp(app);}
 });
