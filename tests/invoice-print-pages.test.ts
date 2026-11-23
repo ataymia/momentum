@@ -22,3 +22,9 @@ test("the invoice brand JPG matches the source and has a valid JPEG header", () 
   assert.equal(brand.subarray(0, 3).toString("hex"), "ffd8ff");
   assert.equal(createHash("sha256").update(brand).digest("hex"), createHash("sha256").update(original).digest("hex"));
 });
+
+test("bulk printing rejects missing invoice IDs instead of creating blank sheets", () => {
+  assert.throws(() => invoicePrintPages(["inv-1", ""], 1), /missing invoice ID/);
+  assert.throws(() => invoicePrintPages(["  "], 2), /missing invoice ID/);
+  assert.deepEqual(invoicePrintPages([], 1), []);
+});
