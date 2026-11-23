@@ -1,7 +1,7 @@
 import {currentFirebaseSession,type FirebaseAuthSession} from "./firebase-auth-rest";
 import {firebaseFunctionUrl} from "./firebase-functions";
 import {getFirestoreSnapshot} from "./firebase-firestore-rest";
-import {canonicalOrderInvoiceLinked,type SourceLinkedOrder,type SourceLinkedInvoice} from "./order-intake-link-proof";
+import {auditCanonicalIntakePairs,canonicalOrderInvoiceLinked,type ApprovedIntakeLink,type CanonicalPairAudit,type SourceLinkedOrder,type SourceLinkedInvoice} from "./order-intake-link-proof";
 
 export type OrderIntakeDraft={
  accountId:string;lines:Array<{skuId:string;cases:number}>;note:string;
@@ -131,6 +131,24 @@ export async function verifyConnectedOrderInvoicePair(
   // Backend data could be saved even when the connected client lost access.
   return false;
  }
+}
+
+/** Read-only batch reconciliation of approved source references against live
+ * Sales Orders and Invoices, without triggering an approval or financial write.
+ */
+export async function auditConnectedApprovedIntakePairs(
+ session:FirebaseAuthSession,records:readonly ApprovedIntakeLink[],
+):Promise<CanonicalPairAudit>{
+ await activeIntakeSession(session);
+ const [orders,invoices]=await Promise.all([
+  getFirestoreSnapshot<{items?:SourceLinkedOrder[]}>("domains/commercial/fields/orders"),
+  getFirestoreSnapshot<{items?:SourceLinkedInvoice[]}>("domains/commerce/fields/invoices"),
+ ]);
+ const orderItems=orders.exists?orders.data?.items??null:[];
+ const invoiceItems=invoices.exists?invoices.data?.items??null:[];
+ if(!Array.isArray(orderItems)||!Array.isArray(invoiceItems))
+  throw new Error("Canonical order or invoice register is malformed. Reconcile the source before relying on the audit.");
+ return auditCanonicalIntakePairs(records,orderItems,invoiceItems);
 }
 
 /** Verified Administrator decision; does not issue an order or charge money. */
