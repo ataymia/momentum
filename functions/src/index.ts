@@ -2282,5 +2282,10 @@ export {
   sendInventoryReorderWarnings,
 } from "./scheduled-commercial-emails";
 
+// Read, explicit re-clock and acknowledgment are separately deployed Firebase endpoints.
+// The one-minute automatic clock-out scheduler is intentionally NOT enabled here:
+// changing paid time requires a separate approved policy and server-side acceptance.
+export {salesCRMClockStatus} from "./sales-inactivity";
+
 // B workstream: verified employee meeting service. Deployment requires owner approval.
 export {staffMeetingsApi} from "./staff-meetings";

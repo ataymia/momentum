@@ -83,5 +83,7 @@ describe("timekeeping production controls",()=>{
     assert.match(tracking,/ROUTE_PING_INTERVAL_MS/);
     assert.match(tracking,/setInterval\(\(\) => void captureScheduledPing\(\), ROUTE_PING_INTERVAL_MS\)/);
     assert.match(tracking,/navigator\.geolocation\.watchPosition/);
+    assert.match(tracking,/addEventListener\("visibilitychange",onVisibility\)/);
+    assert.match(tracking,/addEventListener\("online",catchUp\)/);
   });
 });

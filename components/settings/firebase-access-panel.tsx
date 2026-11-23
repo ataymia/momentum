@@ -6,7 +6,7 @@ import { generateTemporaryPassword, validateTemporaryPassword } from "../../lib/
 import { useFirebaseSession } from "../../lib/firebase-session-context";
 import { appendAudit } from "../../lib/hcm-engine";
 import { useHcm } from "../../lib/hcm-context";
-import { useSyncStatus } from "../../lib/persistence";
+import { getSyncStatus, momentumStorage, useSyncStatus } from "../../lib/persistence";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Button, Field, Section, StatusPill } from "../ui";
 
@@ -14,11 +14,39 @@ const initialsFor = (name: string) => { const parts = name.trim().split(/\s+/).f
 
 export function SyncStatusPill() {
   const sync = useSyncStatus();
+  const [expanded,setExpanded]=useState(false);
+  const [retrying,setRetrying]=useState(false);
+  const [retryResult,setRetryResult]=useState("");
   if (sync.mode !== "firestore") return null;
   const tone = sync.lastError ? "error" : sync.pending || sync.flushing ? "pending" : "ok";
   const label = sync.lastError ? "Sync error" : sync.flushing ? "Saving…" : sync.pending ? `${sync.pending} pending` : sync.lastSyncedAt ? "Cloud synced" : "Connected";
-  const detail = sync.lastError ?? (sync.deniedDocuments.length ? `Rules denied: ${sync.deniedDocuments.join(", ")}` : undefined);
-  return <span className="sync-status-pill" data-tone={tone} aria-label={label} title={detail ?? label}><RefreshCcw size={12} />{label}</span>;
+  const retry=async()=>{
+    if(retrying)return;
+    setRetrying(true);setRetryResult("");
+    try {
+      await momentumStorage.flush();
+      const latest=getSyncStatus();
+      setRetryResult(latest.lastError ?? (latest.pending?`${latest.pending} changes still waiting for cloud confirmation.`:"No pending cloud writes detected."));
+    }catch{setRetryResult("Retry failed. Keep this page open and contact an Administrator; do not repeat business transactions.");}
+    finally{setRetrying(false);}
+  };
+  return <span style={{position:"relative",display:"inline-flex"}}>
+    <button type="button" className="sync-status-pill" data-tone={tone} aria-expanded={expanded}
+      aria-label={label+". Tap for sync details."} onClick={()=>setExpanded(value=>!value)}
+      title={sync.lastError??label} style={{cursor:"pointer",font: "inherit",border:"1px solid currentColor"}}>
+      <RefreshCcw size={12}/>{label}
+    </button>
+    {expanded&&<span role="status" style={{position:"absolute",right:0,top:"calc(100% + 8px)",zIndex:1100,width:"min(320px,86vw)",padding:14,background:"#fff",color:"#14253e",border:"1px solid #bdc9d8",borderRadius:10,boxShadow:"0 10px 28px rgba(0,0,0,.2)",fontSize:13,textAlign:"left",whiteSpace:"normal"}}>
+      <strong>Cloud sync details</strong>
+      <span style={{display:"block",marginTop:6}}>{sync.lastError??"No reported cloud error."}</span>
+      <span style={{display:"block",marginTop:6}}>Pending changes: {sync.pending}. Rules denials: {sync.deniedDocuments.length}.</span>
+      <span style={{display:"block",marginTop:6}}>Last confirmed: {sync.lastSyncedAt?new Date(sync.lastSyncedAt).toLocaleString():"Not confirmed yet"}.</span>
+      {retryResult&&<span style={{display:"block",marginTop:6}}>{retryResult}</span>}
+      <button type="button" disabled={retrying||sync.flushing} onClick={()=>void retry()} style={{marginTop:10,padding:"7px 10px",cursor:"pointer"}}>{retrying?"Retrying…":"Retry unsaved changes"}</button>
+      <button type="button" onClick={()=>setExpanded(false)} style={{marginLeft:8,padding:"7px 8px"}}>Close</button>
+      <span style={{display:"block",marginTop:6,color:"#58677d"}}>Do not submit a sale or clock event twice while sync is pending.</span>
+    </span>}
+  </span>;
 }
 
 /** Administrator view of Firebase identities and access records. Rendered only in production mode. */

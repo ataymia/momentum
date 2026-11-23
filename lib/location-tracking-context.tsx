@@ -312,7 +312,10 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
     if (!shouldTrack || !currentUser || typeof window === "undefined") return;
     const userId = currentUser.id;
     let cancelled = false;
+    let pending = false;
     const captureScheduledPing = async () => {
+      if (cancelled || pending || document.hidden) return;
+      pending = true;
       try {
         const point = await requestBrowserPoint();
         if (cancelled) return;
@@ -321,12 +324,30 @@ export function FieldTrackingProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         if (cancelled) return;
         setPermission(error instanceof Error && error.message.includes("permission") ? "Denied" : "Unavailable");
-      }
+      } finally { pending = false; }
     };
+    // Browser background tabs can suspend intervals. Capture on returning to the app
+    // when a real 15-minute gap exists. Never invent samples for suspended periods.
+    const catchUp = () => {
+      if (document.hidden) return;
+      const last=latestUserSample(stateRef.current,userId);
+      const lastAt=last?Date.parse(last.at):NaN;
+      if (!Number.isFinite(lastAt) || Date.now()-lastAt>=ROUTE_PING_INTERVAL_MS)
+        void captureScheduledPing();
+    };
+    const initialId=window.setTimeout(catchUp,0);
+    const onVisibility=()=>catchUp();
     const intervalId = window.setInterval(() => void captureScheduledPing(), ROUTE_PING_INTERVAL_MS);
+    window.addEventListener("focus",catchUp);
+    window.addEventListener("online",catchUp);
+    document.addEventListener("visibilitychange",onVisibility);
     return () => {
       cancelled = true;
+      window.clearTimeout(initialId);
       window.clearInterval(intervalId);
+      window.removeEventListener("focus",catchUp);
+      window.removeEventListener("online",catchUp);
+      document.removeEventListener("visibilitychange",onVisibility);
     };
   }, [appendRouteSample, currentUser, shouldTrack]);
 

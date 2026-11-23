@@ -220,6 +220,48 @@ async function handleDelete(request: Request, admin: FirebaseAdmin): Promise<Res
   }
 }
 
+/**
+ * Same-origin, authenticated clock-status read. Cloudflare already hosts the app;
+ * a missing separately deployed Firebase Function must never create a false
+ * timekeeping verification or a network/CORS loop on field tablets.
+ * This endpoint is intentionally read-only: it cannot create or alter punches.
+ */
+async function handleFieldClockStatus(request: Request, admin: FirebaseAdmin): Promise<Response> {
+  const authorization = request.headers.get("authorization") ?? "";
+  const token = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
+  if (!token) return json({ok:false,message:"Sign in again to verify your shift."},401);
+  let uid: string;
+  try { uid = (await verifyFirebaseIdToken(token,admin.projectId)).uid; }
+  catch { return json({ok:false,message:"Your session expired. Sign in again."},401); }
+  try {
+    const access = await admin.getDocument(`userAccess/${uid}`);
+    if (access?.role !== "Sales Representative" || access?.accountState !== "Active")
+      return json({ok:false,message:"Clock status requires an active sales account."},403);
+    const payload = await request.json().catch(() => null) as {action?:unknown}|null;
+    if (payload?.action !== "read")
+      return json({ok:false,message:"This endpoint verifies shifts; it does not change timecards."},400);
+    const [time,activity] = await Promise.all([
+      admin.getDocument(`userDomains/${uid}/workspace/timeEntries`),
+      admin.getDocument(`userDomains/${uid}/salesActivity/status`),
+    ]);
+    const entries = Array.isArray(time?.items) ? time.items.filter((item):item is Record<string,unknown> => !!item && typeof item === "object" && !Array.isArray(item)) : [];
+    const open = entries.filter((entry)=>entry.userId===uid && !entry.clockOut)
+      .sort((a,b)=>Date.parse(String(b.clockInAt??""))-Date.parse(String(a.clockInAt??"")))[0];
+    const rawNotice = activity?.notice;
+    const notice = rawNotice && typeof rawNotice === "object" && !Array.isArray(rawNotice)
+      ? rawNotice as Record<string,unknown> : null;
+    const pending = Boolean(notice?.entryId && notice?.clockOutAt && !notice?.acknowledgedAt);
+    return json({
+      ok:true,pending,
+      notice:pending?{entryId:notice?.entryId,clockOutAt:notice?.clockOutAt,
+        lastActivityAt:notice?.lastActivityAt,thresholdAt:notice?.thresholdAt}:null,
+      clockInAt:typeof open?.clockInAt==="string"?open.clockInAt:undefined,
+    },200);
+  } catch {
+    return json({ok:false,message:"Cloud timecard could not be read. Your punch is not verified; retry when connected."},503);
+  }
+}
+
 const handler = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -238,6 +280,7 @@ const handler = {
       return fail("service", "Employee provisioning is not configured on this deployment. Set the FIREBASE_SERVICE_ACCOUNT Worker secret.", 503);
     }
 
+    if (url.pathname === "/api/field/clock-status") return handleFieldClockStatus(request, admin);
     if (url.pathname === PROVISION_EMPLOYEE_PATH) return handleProvision(request, admin);
     if (url.pathname === PROVISIONING_STATUS_PATH) return handleStatus(request, admin);
     if (url.pathname === DELETE_EMPLOYEE_PATH) return handleDelete(request, admin);
