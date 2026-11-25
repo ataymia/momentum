@@ -26,7 +26,7 @@ import {
   invoicePendingAmount,invoiceCreditAmount,paymentSettlementDate,
   type Invoice,type Payment,
 } from "../../lib/commerce-engine";
-import {canAccessPage,canCreateOrder} from "../../lib/access";
+import {canAccessPage,canCreateOrder,getWorkspaceScope} from "../../lib/access";
 import {OrderApprovalSummary} from "./order-actions";
 import {navigateToRoute} from "../../lib/navigation-store";
 import type {Order} from "../../lib/types";
@@ -80,6 +80,20 @@ function CatalogSummary({data}:{data:{label:string;value:React.ReactNode}[]}){
   return <div className="prototype-metrics">{data.map(item=><div key={item.label}><small>{item.label}</small><strong>{item.value}</strong></div>)}</div>;
 }
 
+function OrderVisibilityDiagnostic(){
+  const {data,currentUser}=useWorkspace();
+  const [repId,setRepId]=useState("");
+  if(currentUser?.role!=="Administrator")return null;
+  const reps=data.users.filter(u=>u.role==="Sales Representative"&&u.employmentStatus!=="Separated");
+  const selected=reps.find(u=>u.id===repId);
+  const scoped=selected?new Set(getWorkspaceScope(data,selected).orders.map(o=>o.id)):new Set<string>();
+  const visible=data.orders.filter(o=>scoped.has(o.id)&&!o.testOnly);
+  return <details className="prototype-panel"><summary>Investigate salesperson order visibility</summary>
+    <label>Sales representative<select value={repId} onChange={e=>setRepId(e.target.value)}><option value="">Select representative</option>{reps.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+    {selected&&<><p>{visible.length} orders qualify for this representative's account scope before register filters and hidden-record metadata. This is a read-only prediction from the loaded workspace, not an authenticated employee session.</p><div className="prototype-table-scroll"><table className="prototype-table"><thead><tr><th>Order</th><th>Account</th><th>Account owner</th><th>Reason</th></tr></thead><tbody>{data.orders.map(o=>{const account=data.accounts.find(a=>a.id===o.accountId);return <tr key={o.id}><td>{o.number}</td><td>{account?.name??"Missing account"}</td><td>{data.users.find(u=>u.id===account?.ownerId)?.name??"Unassigned"}</td><td>{o.testOnly?"Legacy test-only order":scoped.has(o.id)?account?.ownerId===repId?"Assigned account":"Unassigned prospect":"Outside representative account scope"}</td></tr>;})}</tbody></table></div></>}
+  </details>;
+}
+
 export function OrdersDirectory(){
   const {scope,data,currentUser}=useWorkspace();
   const [query,setQuery]=useState(""),[status,setStatus]=useState("all"),[from,setFrom]=useState(""),[to,setTo]=useState(""),[rep,setRep]=useState("all");
@@ -112,7 +126,7 @@ export function OrdersDirectory(){
   const repIds=[...new Set(scope.orders.flatMap(o=>[o.ownerId,o.creditedRepId].filter((id):id is string=>Boolean(id))))];
   return <div><Title title="Sales Orders" detail="Approved requests stay visible here, including those awaiting price verification. Prepared orders have linked draft invoices."/><ApprovedIntakeOrders/>{currentUser?.role==="Sales Representative"&&<MyConnectedOrderIntakes/>}
     {currentUser?.role!=="Customer"&&canCreateOrder(currentUser)&&<div className="prototype-page-actionbar"><button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/sales/orders/new")}>Create sales order</button><span className="prototype-note">Connected orders begin as requests, become approved commercial intakes and then produce a priced sales order and draft invoice.</span></div>}
-    <RecordVisibilityToolbar visibility={visibility}/>
+    <RecordVisibilityToolbar visibility={visibility}/><OrderVisibilityDiagnostic/>
     <CatalogSummary data={[{label:"Visible orders",value:rows.length},{label:"Cases in filtered orders",value:rows.reduce((n,o)=>n+o.cases,0)},{label:"Non-cancelled order value",value:money(rows.filter(o=>o.status!=="Cancelled").reduce((n,o)=>n+o.amount,0))}]}/>
     <section className="prototype-panel"><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statusOptions={options} from={from} setFrom={setFrom} to={to} setTo={setTo} searchLabel="Search orders, accounts, rep" repOptions={repIds.map(id=>({id,name:userById.get(id)??id})).sort((a,b)=>a.name.localeCompare(b.name))} rep={rep} setRep={setRep}/>
       <div className="prototype-table-scroll momentum-order-desktop-table"><table className="prototype-table"><thead><tr>
