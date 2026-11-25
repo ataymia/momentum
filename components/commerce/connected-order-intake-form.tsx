@@ -12,10 +12,10 @@ type DraftLine={key:number;skuId:string;cases:string};
 const firstSku=catalog[0]?.id??"";
 
 /** Connected intake is NOT an order. No prices, tax, credit, delivery or stock posted. */
-export function ConnectedOrderIntakeForm(){
+export function ConnectedOrderIntakeForm({initialAccountId=""}:{initialAccountId?:string}={}){
  const {scope,currentUser}=useWorkspace();
  const firebase=useFirebaseSessionOptional();
- const [accountId,setAccountId]=useState("");
+ const [accountId,setAccountId]=useState(initialAccountId);
  const [search,setSearch]=useState("");
  const [lines,setLines]=useState<DraftLine[]>([{key:1,skuId:firstSku,cases:""}]);
  const [nextLine,setNextLine]=useState(2);
