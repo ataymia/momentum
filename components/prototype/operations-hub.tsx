@@ -40,6 +40,7 @@ import {downloadCsv} from "../../lib/browser-export";
 import {accountExportColumns,accountExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryColumns,customerDeliveryExportRows,filterCustomerDeliveries} from "../../lib/saturday-scoped-workflows";
 import {invoiceBalance,computedInvoiceStatus} from "../../lib/commerce-engine";
 import {projectCustomerFinance,customerPaymentColumns,customerStatementColumns} from "../../lib/customer-finance-registers";
+import {useCommerceRecordVisibility,RecordVisibilityToolbar,RecordVisibilityAction} from "../commerce/record-visibility";
 import {SendCustomerInvoice} from "../commerce/send-customer-invoice";
 import {useCommerce} from "../../lib/commerce-context";
 import {MarketingWorkspaceExperience} from "./marketing-workspace-experience";
@@ -372,6 +373,7 @@ function CustomerRecord({id,section}:{id:string;section:string}){
   const {commerce}=useCommerce();
   const runtime=useRuntimeMode();
   const [action,setAction]=useState<"order"|"visit"|"invoice"|"payment"|null>(null);
+  const visibility=useCommerceRecordVisibility();
   const [statementSearch,setStatementSearch]=useState("");
   const [statementFrom,setStatementFrom]=useState("");
   const [statementThrough,setStatementThrough]=useState("");
@@ -393,7 +395,7 @@ function CustomerRecord({id,section}:{id:string;section:string}){
   const ids=new Set(locations.map(a=>a.id));
   const orders=scope.orders.filter(o=>ids.has(o.accountId)&&!o.testOnly).sort((a,b)=>b.placedAt.localeCompare(a.placedAt));
   const activities=scope.activities.filter(a=>a.accountId&&ids.has(a.accountId)).sort((a,b)=>b.at.localeCompare(a.at));
-  const visibleOrders=orders.filter(o=>
+  const visibleOrders=orders.filter(o=>visibility.visible("order",o.id)&&
     (!transactionFrom||o.placedAt.slice(0,10)>=transactionFrom)&&
     (!transactionThrough||o.placedAt.slice(0,10)<=transactionThrough)&&
     [o.number,o.status,o.paymentStatus,locations.find(a=>a.id===o.accountId)?.name??""].join(" ").toLowerCase().includes(transactionSearch.trim().toLowerCase()))
@@ -459,8 +461,8 @@ function CustomerRecord({id,section}:{id:string;section:string}){
       {(action==="invoice"||action==="payment")&&canVisitRoute(currentUser,"/sales/invoices")&&<>
         <h2>{action==="invoice"?"Choose an invoice to review":"Choose an invoice for payment"}</h2>
         <p className="prototype-note">{action==="invoice"?"Select a current issued invoice to send or resend to the billing email on file.":"Hosted payment collection is pending the provider integration. Open an invoice to review its balance."}</p>
-        {commerce.invoices.filter(i=>ids.has(i.accountId)&&orders.some(o=>o.id===i.orderId&&o.accountId===i.accountId)&&i.status!=="Void"&&!i.supersededByInvoiceId).map(i=><div className="prototype-work-list" key={i.id}><OpenLink to={"/sales/invoices/"+encodeURIComponent(i.id)}>{i.number}</OpenLink><span>{i.status}</span>{action==="invoice"&&i.status!=="Draft"&&orders.some(o=>o.id===i.orderId&&["Delivered","Paid"].includes(o.status))&&<SendCustomerInvoice key={i.id} invoiceId={i.id} orderId={i.orderId} invoiceNumber={i.number}/>}</div>)}
-        {!commerce.invoices.some(i=>ids.has(i.accountId)&&orders.some(o=>o.id===i.orderId&&o.accountId===i.accountId)&&i.status!=="Void"&&!i.supersededByInvoiceId)&&<Empty>No linked current invoices are available in this workspace.</Empty>}
+        {commerce.invoices.filter(i=>visibility.visible("invoice",i.id)&&visibility.visible("order",i.orderId)&&ids.has(i.accountId)&&orders.some(o=>o.id===i.orderId&&o.accountId===i.accountId)&&i.status!=="Void"&&!i.supersededByInvoiceId).map(i=><div className="prototype-work-list" key={i.id}><OpenLink to={"/sales/invoices/"+encodeURIComponent(i.id)}>{i.number}</OpenLink><span>{i.status}</span><RecordVisibilityAction visibility={visibility} kind="invoice" id={i.id}/>{action==="invoice"&&i.status!=="Draft"&&orders.some(o=>o.id===i.orderId&&["Delivered","Paid"].includes(o.status))&&<SendCustomerInvoice key={i.id} invoiceId={i.id} orderId={i.orderId} invoiceNumber={i.number}/>}</div>)}
+        {!commerce.invoices.some(i=>visibility.visible("invoice",i.id)&&visibility.visible("order",i.orderId)&&ids.has(i.accountId)&&orders.some(o=>o.id===i.orderId&&o.accountId===i.accountId)&&i.status!=="Void"&&!i.supersededByInvoiceId)&&<Empty>No linked current invoices are available in this workspace.</Empty>}
       </>}
     </section>}
     <Tabs base={path} items={CUSTOMER_TABS} current={tab}/>
@@ -474,13 +476,13 @@ function CustomerRecord({id,section}:{id:string;section:string}){
       {activities.length===0&&<Empty>No recorded activity.</Empty>}</section></div>}
     {tab==="comments"&&<section className="prototype-panel"><h2>Comments and notes</h2><p className="prototype-note">Existing account notes are displayed below. A dedicated audited internal comment thread requires its own write permissions.</p>
       {locations.map(a=><div key={a.id} className="prototype-activity"><strong>{a.locationName??a.name}</strong><span>{a.notes||"No recorded notes"}</span></div>)}</section>}
-    {tab==="transactions"&&<section className="prototype-panel"><h2>Orders & billing transactions</h2><p className="prototype-note">Sales orders, invoiced amounts and settled payment evidence are distinct records. An order is not a paid invoice. Historical entries appear only when linked to an authorized location and a valid source.</p>
+    {tab==="transactions"&&<section className="prototype-panel"><h2>Orders & billing transactions</h2><RecordVisibilityToolbar visibility={visibility}/><p className="prototype-note">Sales orders, invoiced amounts and settled payment evidence are distinct records. An order is not a paid invoice. Historical entries appear only when linked to an authorized location and a valid source.</p>
       <div className="prototype-controls">
         <label>Search orders <input type="search" aria-label="Search customer transactions" value={transactionSearch} onChange={e=>setTransactionSearch(e.target.value)}/></label>
         <label>From <input type="date" aria-label="Customer transaction from" value={transactionFrom} onChange={e=>setTransactionFrom(e.target.value)}/></label>
         <label>Through <input type="date" aria-label="Customer transaction through" value={transactionThrough} onChange={e=>setTransactionThrough(e.target.value)}/></label>
       </div>
-      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>{transactionHeader("number","Order")}{transactionHeader("location","Location")}{transactionHeader("date","Date")}{transactionHeader("cases","Cases")}{transactionHeader("status","State")}{transactionHeader("payment","Order payment label")}</tr></thead><tbody>{visibleOrders.map(o=><tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink></td><td>{locations.find(a=>a.id===o.accountId)?.locationName??locations.find(a=>a.id===o.accountId)?.location??"Unknown"}</td><td>{o.placedAt}</td><td>{o.cases}</td><td>{o.status}</td><td><span title="Recorded on the order, not processor-verified">{o.paymentStatus}</span></td></tr>)}</tbody></table></div>{!visibleOrders.length&&<Empty>No sales orders match this customer and filter.</Empty>}
+      <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>{transactionHeader("number","Order")}{transactionHeader("location","Location")}{transactionHeader("date","Date")}{transactionHeader("cases","Cases")}{transactionHeader("status","State")}{transactionHeader("payment","Order payment label")}</tr></thead><tbody>{visibleOrders.map(o=><tr key={o.id}><td><OpenLink to={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</OpenLink><RecordVisibilityAction visibility={visibility} kind="order" id={o.id}/></td><td>{locations.find(a=>a.id===o.accountId)?.locationName??locations.find(a=>a.id===o.accountId)?.location??"Unknown"}</td><td>{o.placedAt}</td><td>{o.cases}</td><td>{o.status}</td><td><span title="Recorded on the order, not processor-verified">{o.paymentStatus}</span></td></tr>)}</tbody></table></div>{!visibleOrders.length&&<Empty>No sales orders match this customer and filter.</Empty>}
       {finance&&<>
         <div className="prototype-metrics"><div><small>Linked invoices</small><strong>{finance.invoices.length}</strong></div><div><small>Cleared payments in source register</small><strong>{finance.payments.length}</strong></div><div><small>Historical linkage exceptions</small><strong>{historicalUnmatched.length}</strong></div></div>
         {finance.reconciliationRequired>0&&<p role="status" className="prototype-note">{finance.reconciliationRequired} current invoice revision(s) require accounting review. These records are excluded to avoid duplicate or overstated billing.</p>}
