@@ -20,15 +20,15 @@ import {navigateToRoute} from "../../lib/navigation-store";
  * inferred from meeting, route or page events. Samples are recorded as field
  * logs without inventory removal. Connected saves require a trusted server receipt.
  */
-export function CrmQuickVisit(){
+export function CrmQuickVisit({initialAccountId=""}:{initialAccountId?:string}={}){
   const {scope,data,currentUser,claimUnassignedProspect}=useWorkspace();
   const {crm,addInteraction}=useCrm();
   const runtime=useRuntimeMode();
   const firebase=useFirebaseSessionOptional();
   const requestRef=useRef<{payload:string;id:string}|null>(null);
   const [saving,setSaving]=useState(false);
-  const [business,setBusiness]=useState("");
-  const [selectedId,setSelectedId]=useState("");
+  const [business,setBusiness]=useState(()=>{const account=scope.accounts.find(a=>a.id===initialAccountId);return account?quickVisitBusinessLabel(account):"";});
+  const [selectedId,setSelectedId]=useState(()=>scope.accounts.some(a=>a.id===initialAccountId)?initialAccountId:"");
   const [score,setScore]=useState(5);
   const [unsuccessful,setUnsuccessful]=useState(false);
   const [physical,setPhysical]=useState(false);
