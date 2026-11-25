@@ -370,6 +370,7 @@ function CustomerRecord({id,section}:{id:string;section:string}){
   const {scope,data,currentUser}=useWorkspace();
   const {commerce}=useCommerce();
   const runtime=useRuntimeMode();
+  const [action,setAction]=useState<"order"|"visit"|"invoice"|"payment"|null>(null);
   const [statementSearch,setStatementSearch]=useState("");
   const [statementFrom,setStatementFrom]=useState("");
   const [statementThrough,setStatementThrough]=useState("");
@@ -444,6 +445,23 @@ function CustomerRecord({id,section}:{id:string;section:string}){
   const transactionHeader=(key:typeof transactionSort,label:string)=><th aria-sort={transactionSort===key?(transactionAscending?"ascending":"descending"):"none"}><button type="button" onClick={()=>{if(transactionSort===key)setTransactionAscending(v=>!v);else{setTransactionSort(key);setTransactionAscending(true);}}}>{label}</button></th>;
   const locationHeader=(key:typeof locationSort,label:string)=><th aria-sort={locationSort===key?(locationAscending?"ascending":"descending"):"none"}><button type="button" onClick={()=>{if(locationSort===key)setLocationAscending(v=>!v);else{setLocationSort(key);setLocationAscending(true);}}}>{label}</button></th>;
   return <div><Heading title={label} description="Linked customer locations, activity and source-backed records" back="/sales/customers"/>
+    <div className="prototype-page-actionbar" aria-label="Customer actions">
+      {canVisitRoute(currentUser,"/sales/orders/new")&&currentUser?.role!=="Customer"&&<button type="button" className="prototype-primary-action" aria-expanded={action==="order"} onClick={()=>setAction(value=>value==="order"?null:"order")}>New order</button>}
+      {canVisitRoute(currentUser,"/crm/quick-visit")&&<button type="button" className="prototype-secondary-action" aria-expanded={action==="visit"} onClick={()=>setAction(value=>value==="visit"?null:"visit")}>Log a visit</button>}
+      {canVisitRoute(currentUser,"/sales/invoices")&&<button type="button" className="prototype-secondary-action" aria-expanded={action==="invoice"} onClick={()=>setAction(value=>value==="invoice"?null:"invoice")}>Send invoice</button>}
+      {canVisitRoute(currentUser,"/sales/payments")&&<button type="button" className="prototype-secondary-action" aria-expanded={action==="payment"} onClick={()=>setAction(value=>value==="payment"?null:"payment")}>Collect payment</button>}
+    </div>
+    {action&&<section className="prototype-panel" aria-label="Customer action">
+      <div className="prototype-controls"><button type="button" onClick={()=>setAction(null)}>Close action</button></div>
+      {action==="order"&&canVisitRoute(currentUser,"/sales/orders/new")&&<OrderEditor key={id} initialAccountId={id}/>}
+      {action==="visit"&&canVisitRoute(currentUser,"/crm/quick-visit")&&<CrmQuickVisit key={id} initialAccountId={id}/>}
+      {(action==="invoice"||action==="payment")&&canVisitRoute(currentUser,"/sales/invoices")&&<>
+        <h2>{action==="invoice"?"Choose an invoice to review":"Choose an invoice for payment"}</h2>
+        <p className="prototype-note">{action==="invoice"?"Manual sending is not connected yet. Open the existing invoice to review or print it.":"Hosted payment collection is pending the provider integration. Open an invoice to review its balance."}</p>
+        {commerce.invoices.filter(i=>ids.has(i.accountId)&&orders.some(o=>o.id===i.orderId&&o.accountId===i.accountId)&&i.status!=="Void"&&!i.supersededByInvoiceId).map(i=><div className="prototype-work-list" key={i.id}><OpenLink to={"/sales/invoices/"+encodeURIComponent(i.id)}>{i.number}</OpenLink><span>{i.status}</span></div>)}
+        {!commerce.invoices.some(i=>ids.has(i.accountId)&&orders.some(o=>o.id===i.orderId&&o.accountId===i.accountId)&&i.status!=="Void"&&!i.supersededByInvoiceId)&&<Empty>No linked current invoices are available in this workspace.</Empty>}
+      </>}
+    </section>}
     <Tabs base={path} items={CUSTOMER_TABS} current={tab}/>
     {tab==="overview"&&<div className="prototype-columns"><section className="prototype-panel"><h2>Contact & billing details</h2>
       <dl className="prototype-facts"><div><dt>Primary contact</dt><dd>{loc.contactName||"Not recorded"}</dd></div><div><dt>Email</dt><dd>{loc.email||"Not recorded"}</dd></div><div><dt>Phone</dt><dd>{loc.phone||"Not recorded"}</dd></div>
@@ -968,7 +986,7 @@ export function PrototypeOperationsHub(){
         <p>Self-delivery pickup, custody and recipient signature must be performed by the authorized representative. Administrators can review warehouse and delivery exceptions in Delivery Operations; this page does not impersonate a representative or complete a delivery.</p>
         <OpenLink to="/operations/deliveries">Open Delivery Operations</OpenLink>
       </section></div>;
-  if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
+  if(segments[0]==="sales"&&segments[1]==="customers"&&segments[2])return <CustomerRecord key={segments[2]} id={decodeURIComponent(segments[2])} section={segments[3]??"overview"}/>;
   if(segments[0]==="items"&&segments[1])return <ProductRecord skuId={decodeURIComponent(segments[1])} section={segments[2]??"overview"}/>;
   if(segments[0]==="commerce"&&segments[1]==="price-books"&&segments[2])return <PriceBookDetail id={decodeURIComponent(segments[2])}/>;
   if(path==="/work/approvals")return <OrderApprovalDirectory/>;
