@@ -2257,6 +2257,7 @@ export {
 export {sundayWeeklyReportReminders} from "./weekly-email-scheduler";
 export {workforceMidnightAndRouteRetention} from "./workforce-retention";
 export {
+  sendCustomerInvoice,
   queueSignedInvoiceOnDelivery,
   queueInvoiceOnAdminDeliveryOverride,
   retrySignedInvoiceWhenInvoiceReady,
