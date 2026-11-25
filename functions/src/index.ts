@@ -2290,3 +2290,5 @@ export {salesCRMClockStatus} from "./sales-inactivity";
 
 // B workstream: verified employee meeting service. Deployment requires owner approval.
 export {staffMeetingsApi} from "./staff-meetings";
+
+export {commerceRecordVisibility} from "./commerce-record-visibility";
