@@ -18,6 +18,7 @@ import {PaymentRequestPreview} from "./payment-request-preview";
 import {CreditCreatePanel} from "./credit-workflow-preview";
 import {InvoicePrintCenter} from "../finance/invoice-print-center";
 import {downloadCsv} from "../../lib/browser-export";
+import {SendCustomerInvoice} from "../commerce/send-customer-invoice";
 import {useCommerce} from "../../lib/commerce-context";
 import {
   arAgingBucket,computedInvoiceStatus,invoiceBalance,invoicePaidAmount,
@@ -315,6 +316,7 @@ export function InvoiceDetail({id}:{id:string}){
       {credits.length>0&&<><h3>Credit records</h3>{credits.map(c=><div key={c.id} className="prototype-work-list"><span>{c.reason} • {c.status}</span><strong>{money(c.amount)}</strong></div>)}</>}
       <p className="prototype-note">Hosted payment links are not active. This preview does not charge customers, record funds, or send emails.</p>
     </section>
+    {invoice.status!=="Draft"&&invoice.status!=="Void"&&!invoice.supersededByInvoiceId&&order&&["Delivered","Paid"].includes(order.status)&&<section className="prototype-panel"><h2>Invoice email</h2><SendCustomerInvoice key={invoice.id} invoiceId={invoice.id} orderId={order.id} invoiceNumber={invoice.number}/></section>}
     <CreditCreatePanel invoiceId={invoice.id}/>
     <PaymentRequestPreview invoiceId={invoice.id}/>
     <section className="prototype-panel"><InvoicePrintCenter allowedInvoiceIds={[invoice.id]} title="Print or save this invoice" description="Uses the original authorized invoice layout and source records. Browser printing supports Save as PDF."/></section>
