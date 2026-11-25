@@ -38,8 +38,8 @@ export function useCommerceRecordVisibility(){
     }).catch(error=>{if(active)setError(error instanceof Error?error.message:"Visibility unavailable.");});
     return()=>{active=false;};
   },[enabled,call]);
-  const isHidden=(kind:CommerceRecordKind,id:string)=>markers.has(key(kind,id));
-  const visible=(kind:CommerceRecordKind,id:string)=>!isHidden(kind,id)||Boolean(admin&&showHidden);
+  const isHidden=useCallback((kind:CommerceRecordKind,id:string)=>markers.has(key(kind,id)),[markers]);
+  const visible=useCallback((kind:CommerceRecordKind,id:string)=>!isHidden(kind,id)||Boolean(admin&&showHidden),[isHidden,admin,showHidden]);
   const change=async(kind:CommerceRecordKind,id:string)=>{
     if(!admin||busy)return;
     const hidden=!isHidden(kind,id);
