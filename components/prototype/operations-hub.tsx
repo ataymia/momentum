@@ -40,6 +40,7 @@ import {downloadCsv} from "../../lib/browser-export";
 import {accountExportColumns,accountExportRows,authorizedCustomerOrders,authorizedCustomerOrder,customerDeliveryColumns,customerDeliveryExportRows,filterCustomerDeliveries} from "../../lib/saturday-scoped-workflows";
 import {invoiceBalance,computedInvoiceStatus} from "../../lib/commerce-engine";
 import {projectCustomerFinance,customerPaymentColumns,customerStatementColumns} from "../../lib/customer-finance-registers";
+import {SendCustomerInvoice} from "../commerce/send-customer-invoice";
 import {useCommerce} from "../../lib/commerce-context";
 import {MarketingWorkspaceExperience} from "./marketing-workspace-experience";
 import {FinanceWorkspaceExperience} from "./finance-workspace-experience";
@@ -457,8 +458,8 @@ function CustomerRecord({id,section}:{id:string;section:string}){
       {action==="visit"&&canVisitRoute(currentUser,"/crm/quick-visit")&&<CrmQuickVisit key={id} initialAccountId={id}/>}
       {(action==="invoice"||action==="payment")&&canVisitRoute(currentUser,"/sales/invoices")&&<>
         <h2>{action==="invoice"?"Choose an invoice to review":"Choose an invoice for payment"}</h2>
-        <p className="prototype-note">{action==="invoice"?"Manual sending is not connected yet. Open the existing invoice to review or print it.":"Hosted payment collection is pending the provider integration. Open an invoice to review its balance."}</p>
-        {commerce.invoices.filter(i=>ids.has(i.accountId)&&orders.some(o=>o.id===i.orderId&&o.accountId===i.accountId)&&i.status!=="Void"&&!i.supersededByInvoiceId).map(i=><div className="prototype-work-list" key={i.id}><OpenLink to={"/sales/invoices/"+encodeURIComponent(i.id)}>{i.number}</OpenLink><span>{i.status}</span></div>)}
+        <p className="prototype-note">{action==="invoice"?"Select a current issued invoice to send or resend to the billing email on file.":"Hosted payment collection is pending the provider integration. Open an invoice to review its balance."}</p>
+        {commerce.invoices.filter(i=>ids.has(i.accountId)&&orders.some(o=>o.id===i.orderId&&o.accountId===i.accountId)&&i.status!=="Void"&&!i.supersededByInvoiceId).map(i=><div className="prototype-work-list" key={i.id}><OpenLink to={"/sales/invoices/"+encodeURIComponent(i.id)}>{i.number}</OpenLink><span>{i.status}</span>{action==="invoice"&&i.status!=="Draft"&&orders.some(o=>o.id===i.orderId&&["Delivered","Paid"].includes(o.status))&&<SendCustomerInvoice key={i.id} invoiceId={i.id} orderId={i.orderId} invoiceNumber={i.number}/>}</div>)}
         {!commerce.invoices.some(i=>ids.has(i.accountId)&&orders.some(o=>o.id===i.orderId&&o.accountId===i.accountId)&&i.status!=="Void"&&!i.supersededByInvoiceId)&&<Empty>No linked current invoices are available in this workspace.</Empty>}
       </>}
     </section>}
