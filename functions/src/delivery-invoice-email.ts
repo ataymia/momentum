@@ -130,24 +130,28 @@ const queueDeliveredInvoice=async (
     findById(items(workspace.data()),orderId);
   if(order?.testOnly===true)return;
   if(!order){
+    if(manual)return;
     await adminEvent("Delivered order "+orderId+
       " could not be found, so its signed invoice was not emailed.",
       orderId,eventId);
     return;
   }
   const invoice=items(invoicesDoc.data())
-    .find((item)=>text(item.orderId)===orderId&&text(item.status)!=="Void");
+    .find((item)=>text(item.orderId)===orderId&&text(item.status)!=="Void"&&(!manual||(text(item.id)===expectedInvoiceId&&!text(item.supersededByInvoiceId))));
   if(expectedInvoiceId&&text(invoice?.id)!==expectedInvoiceId){
+    if(manual)return;
     await adminEvent("Amended invoice for "+text(order.number)+" changed before email preparation.",orderId,eventId);
     return;
   }
   if(!invoice){
+    if(manual)return;
     await adminEvent("Order "+text(order.number)+
       " was delivered but no active invoice record exists. No email was sent.",
       orderId,eventId);
     return;
   }
   if(text(invoice.accountId)!==text(order.accountId)){
+    if(manual)return;
     await adminEvent("Invoice "+text(invoice.number)+
       " belongs to a different customer location than order "+text(order.number)+". Sending held.",
       orderId,eventId);
@@ -288,15 +292,28 @@ const queueDeliveredInvoice=async (
     const existing=await tx.get(outbox);
     if(existing.exists)return true;
     const originalId="delivered-invoice-"+createHash("sha256").update("delivered-invoice|"+orderId+"|"+text(invoice.id)).digest("hex");
-    const guard=manual?db.doc("invoiceManualSendGuard/"+originalId):null;
-    if(guard){
+    const guard=db.doc("invoiceManualSendGuard/"+originalId);
+    if(!manual){
+      const prior=await tx.get(guard);
+      if(prior.exists)return false;
+    }else{
       const [previous,original]=await Promise.all([tx.get(guard),tx.get(db.doc("notificationOutbox/"+originalId))]);
       const prior=previous.data();
       const lastId=text(prior?.outboxId);
       const last=lastId?await tx.get(db.doc("notificationOutbox/"+lastId)):null;
       const blocked=(status:unknown)=>["Approved","Attempting","Review required","Deferred"].includes(text(status));
       if(blocked(original.data()?.status)||blocked(last?.data()?.status)||Date.now()-number(prior?.queuedAtMs)<60000)return false;
-      tx.set(guard,{outboxId,queuedAtMs:Date.now(),actor:manual?.actor});
+      const [freshAccess,freshAccounts,freshRoot,freshInvoices,freshCustomers]=await Promise.all([tx.get(db.doc("userAccess/"+manual.actor)),tx.get(refs[2]),tx.get(refs[9]),tx.get(refs[4]),tx.get(refs[3])]);
+      const role=text(freshAccess.data()?.role);
+      const patchRoot=row(freshRoot.data()?.data)?freshRoot.data()?.data as Row:{};
+      const freshAccount=withPatch(findById(items(freshAccounts.data()),text(order.accountId)),row(patchRoot.accountPatches)?patchRoot.accountPatches:{});
+      const currentOwner=text(freshAccount?.ownerId);
+      const freshOwner=role==="Sales Manager"&&currentOwner&&!currentOwner.includes("/")?(await tx.get(db.doc("userAccess/"+currentOwner))).data():undefined;
+      const stillAllowed=Boolean(freshAccount)&&text(freshAccess.data()?.accountState)==="Active"&&(role==="Administrator"||(["Sales Manager","Sales Representative"].includes(role)&&currentOwner===manual.actor)||(role==="Sales Manager"&&text(freshOwner?.accountState)==="Active"&&text(freshOwner?.role)==="Sales Representative"&&text(freshOwner?.managerId)===manual.actor&&text(freshOwner?.team)==="Sales"));
+      const freshInvoice=findById(items(freshInvoices.data()),text(invoice.id));
+      const freshCustomer=withPatch(findById(items(freshCustomers.data()),text(freshAccount?.customerId)),row(patchRoot.customerPatches)?patchRoot.customerPatches:{});
+      if(!stillAllowed||!freshInvoice||JSON.stringify(freshInvoice)!==JSON.stringify(invoice)||text(freshCustomer?.billingEmail).toLowerCase()!==billingEmail.toLowerCase()||text(freshCustomer?.legalBusinessName)!==legalName)return false;
+      tx.set(guard,{outboxId,queuedAtMs:Date.now(),actor:manual.actor});
     }
     tx.create(outbox,{
       id:outboxId,
@@ -528,7 +545,7 @@ export const sendCustomerInvoice=onRequest({cors:true,region:"us-central1"},asyn
     const override=overrides.data();
     const deliveredAt=signature?text(task?.deliveredAt):text(override?.deliveredAt);
     if(!validInstant(deliveredAt)||(!signature&&!overrides.exists)){
-      response.status(409).json({ok:false,message:"Issued invoice requires verified delivery proof."});return;
+      response.status(409).json({ok:false,message:"Invoice send not queued. Check access and verified delivery proof."});return;
     }
     const id=await queueDeliveredInvoice(orderId,deliveredAt,"manual-invoice:"+requestId,signature,!signature,invoiceId,{actor,requestId});
     if(!id){response.status(409).json({ok:false,message:"Invoice send not queued. Check access, current invoice, billing details, prior email status and retry interval."});return;}
