@@ -1,6 +1,8 @@
 /* eslint-disable max-len,comma-spacing,key-spacing,object-curly-spacing,space-before-blocks,keyword-spacing,curly,brace-style,semi-spacing,arrow-parens,one-var,indent,operator-linebreak,space-before-function-paren */
 import {createHash} from "node:crypto";
 import {getFirestore} from "firebase-admin/firestore";
+import {getAuth} from "firebase-admin/auth";
+import {onRequest} from "firebase-functions/v2/https";
 import {onDocumentCreated,onDocumentWritten} from "firebase-functions/v2/firestore";
 import {buildSignedInvoicePdf,type InvoicePdfSignature} from "./signed-invoice-pdf";
 import {invoicePlacedByName} from "./invoice-placer-name";
@@ -97,6 +99,7 @@ const queueDeliveredInvoice=async (
   signature?:InvoicePdfSignature,
   adminOverride=false,
   expectedInvoiceId?:string,
+  manual?:{actor:string;requestId:string},
 )=>{
   const db=getFirestore();
   const refs=[
@@ -159,6 +162,20 @@ const queueDeliveredInvoice=async (
     customerPatches,
   ):undefined;
   // Only the licensed customer identity may appear as BILL TO. Never use a nickname or trading name.
+  if(manual){
+    const access=(await db.doc("userAccess/"+manual.actor).get()).data();
+    const role=text(access?.role);
+    const ownerId=text(account?.ownerId);
+    const owner=ownerId&&!ownerId.includes("/")&&role==="Sales Manager"?
+      (await db.doc("userAccess/"+ownerId).get()).data():undefined;
+    const allowed=Boolean(account)&&text(access?.accountState)==="Active"&&(
+      role==="Administrator"||
+      (["Sales Representative","Sales Manager"].includes(role)&&ownerId===manual.actor)||
+      (role==="Sales Manager"&&text(owner?.accountState)==="Active"&&
+       text(owner?.role)==="Sales Representative"&&text(owner?.managerId)===manual.actor&&text(owner?.team)==="Sales"));
+    if(!allowed||!["Delivered","Paid"].includes(text(order.status))||
+      text(invoice.status)==="Draft"||text(invoice.supersededByInvoiceId))return;
+  }
   const legalName=text(customer?.legalBusinessName);
   if(!legalName){
     await adminEvent("Order "+text(order.number)+" is missing a legal business name. Invoice email held for account review.",orderId,eventId);
@@ -262,14 +279,25 @@ const queueDeliveredInvoice=async (
   });
 
   const digest=createHash("sha256")
-    .update("delivered-invoice|"+orderId+"|"+text(invoice.id))
+    .update("delivered-invoice|"+orderId+"|"+text(invoice.id)+(manual?"|manual|"+manual.actor+"|"+manual.requestId:""))
     .digest("hex");
   const outboxId="delivered-invoice-"+digest;
   const outbox=db.doc(`notificationOutbox/${outboxId}`);
   const createdAt=new Date().toISOString();
-  await db.runTransaction(async (tx)=>{
+  const queued=await db.runTransaction(async (tx)=>{
     const existing=await tx.get(outbox);
-    if(existing.exists)return;
+    if(existing.exists)return true;
+    const originalId="delivered-invoice-"+createHash("sha256").update("delivered-invoice|"+orderId+"|"+text(invoice.id)).digest("hex");
+    const guard=manual?db.doc("invoiceManualSendGuard/"+originalId):null;
+    if(guard){
+      const [previous,original]=await Promise.all([tx.get(guard),tx.get(db.doc("notificationOutbox/"+originalId))]);
+      const prior=previous.data();
+      const lastId=text(prior?.outboxId);
+      const last=lastId?await tx.get(db.doc("notificationOutbox/"+lastId)):null;
+      const blocked=(status:unknown)=>["Approved","Attempting","Review required","Deferred"].includes(text(status));
+      if(blocked(original.data()?.status)||blocked(last?.data()?.status)||Date.now()-number(prior?.queuedAtMs)<60000)return false;
+      tx.set(guard,{outboxId,queuedAtMs:Date.now(),actor:manual?.actor});
+    }
     tx.create(outbox,{
       id:outboxId,
       kind:"delivered_invoice",
@@ -280,6 +308,7 @@ const queueDeliveredInvoice=async (
         "domains/delivery/fields/tasks",
       sourceRecordId:orderId,
       eventId,
+      ...(manual?{requestedBy:manual.actor,manualRequestId:manual.requestId}:{}),
       templateVersion:1,
       approvedBy:"system:delivery-invoice",
       approvedAt:createdAt,
@@ -308,7 +337,9 @@ const queueDeliveredInvoice=async (
       status:"Approved",
       createdAt,
     });
+    return true;
   });
+  return queued?outboxId:undefined;
 };
 
 /**
@@ -464,4 +495,47 @@ export const queueAmendedInvoiceOnCorrection=onDocumentCreated({
   await queueDeliveredInvoice(orderId,deliveredAt,
     "amended-invoice:"+event.params.requestId,
     signature,!signature,invoiceId);
+});
+
+/** Explicit resend of a current, issued invoice. Never creates a new invoice or payment. */
+export const sendCustomerInvoice=onRequest({cors:true,region:"us-central1"},async(request,response)=>{
+  if(request.method!=="POST"){response.status(405).json({ok:false,message:"POST required."});return;}
+  const token=(request.headers.authorization??"").match(/^Bearer (.+)$/)?.[1];
+  if(!token){response.status(401).json({ok:false,message:"Sign in first."});return;}
+  let actor:string;
+  try{actor=(await getAuth().verifyIdToken(token,true)).uid;}
+  catch{response.status(401).json({ok:false,message:"Session expired."});return;}
+  const input=request.body;
+  if(!row(input)||Object.keys(input).some(key=>!["orderId","invoiceId","requestId"].includes(key))){
+    response.status(400).json({ok:false,message:"Invalid invoice request."});return;
+  }
+  const orderId=text(input.orderId),invoiceId=text(input.invoiceId),requestId=text(input.requestId);
+  if(![orderId,invoiceId,requestId].every(id=>/^[A-Za-z0-9_-]{1,150}$/.test(id))){
+    response.status(400).json({ok:false,message:"Invalid invoice reference."});return;
+  }
+  const db=getFirestore();
+  try{
+    const access=(await db.doc("userAccess/"+actor).get()).data();
+    if(text(access?.accountState)!=="Active"||!["Administrator","Sales Manager","Sales Representative"].includes(text(access?.role))){
+      response.status(403).json({ok:false,message:"Active sales access required."});return;
+    }
+    if(process.env.RESEND_LIVE_EMAIL_ENABLED!=="true"||process.env.MOMENTUM_INVOICE_ISSUE_APPROVED!=="true"){
+      response.status(409).json({ok:false,message:"Live invoice email or issuer approval is not enabled."});return;
+    }
+    const [tasks,overrides]=await db.getAll(db.doc("domains/delivery/fields/tasks"),db.doc("adminDeliveryOverrides/"+orderId));
+    const task=items(tasks.data()).find(item=>text(item.orderId)===orderId&&text(item.status)==="Delivered");
+    const signature=task?signatureFrom(task.signature,task.history):undefined;
+    const override=overrides.data();
+    const deliveredAt=signature?text(task?.deliveredAt):text(override?.deliveredAt);
+    if(!validInstant(deliveredAt)||(!signature&&!overrides.exists)){
+      response.status(409).json({ok:false,message:"Issued invoice requires verified delivery proof."});return;
+    }
+    const id=await queueDeliveredInvoice(orderId,deliveredAt,"manual-invoice:"+requestId,signature,!signature,invoiceId,{actor,requestId});
+    if(!id){response.status(409).json({ok:false,message:"Invoice send not queued. Check access, current invoice, billing details, prior email status and retry interval."});return;}
+    const outbox=await db.doc("notificationOutbox/"+id).get();
+    response.status(200).json({ok:true,outboxId:id,status:text(outbox.data()?.status)});
+  }catch(error){
+    console.error("sendCustomerInvoice failed",error);
+    response.status(503).json({ok:false,message:"Send not confirmed. Retry with the same request ID."});
+  }
 });
