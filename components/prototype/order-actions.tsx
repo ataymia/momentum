@@ -49,26 +49,26 @@ function DemoGuard({isDemo}:{isDemo:boolean}){
     <p>{isDemo&&momentumStorage.mode()==="local"?"Local-only demo: actions change demonstration records on this device, not production commerce records.":"Read-only prototype: order mutations and approvals require local demo mode with no connected persistence backend. They cannot change a connected company database while the redesign is under review."}</p>
   </div>;
 }
-export function OrderEditor({orderId}:{orderId?:string}){
+export function OrderEditor({orderId,initialAccountId}:{orderId?:string;initialAccountId?:string}){
   const {scope,currentUser}=useWorkspace();
   const runtime=useRuntimeMode();
   const firebase=useFirebaseSessionOptional();
   if(!orderId&&!runtime.isDemo&&firebase?.session&&currentUser&&
     ["Administrator","Sales Manager","Sales Representative"].includes(currentUser.role))
-    return <ConnectedOrderIntakeForm/>;
+    return <ConnectedOrderIntakeForm key={initialAccountId??"new"} initialAccountId={initialAccountId}/>;
   const order=orderId?scope.orders.find(o=>o.id===orderId&&!o.testOnly):undefined;
   // Mount the form only when the deep-linked record is loaded. Otherwise its
   // initial fields would silently retain the blank state from an earlier render.
   if(orderId&&!order)return <div className="prototype-empty">Order not found or not yet loaded for this account.</div>;
-  return <OrderEditorForm key={orderId??"new"} orderId={orderId} initialOrder={order}/>;
+  return <OrderEditorForm key={orderId??initialAccountId??"new"} orderId={orderId} initialOrder={order} initialAccountId={initialAccountId}/>;
 }
-function OrderEditorForm({orderId,initialOrder}:{orderId?:string;initialOrder?:Order}){
+function OrderEditorForm({orderId,initialOrder,initialAccountId}:{orderId?:string;initialOrder?:Order;initialAccountId?:string}){
   const {data,scope,currentUser,createOrder,editOrder}=useWorkspace();
   const {ledger,releaseOrderReservationsForEdit}=useInventoryLedger();
   const runtime=useRuntimeMode();
   const order=initialOrder;
   const initialLines=order?orderLinesFor(order):[];
-  const [accountId,setAccountId]=useState(order?.accountId??"");
+  const [accountId,setAccountId]=useState(order?.accountId??initialAccountId??"");
   const [accountSearch,setAccountSearch]=useState("");
   const [counter,setCounter]=useState(initialLines.length+1);
   const [draft,setDraft]=useState<LineDraft[]>(initialLines.length?initialLines.map((line,index)=>({
