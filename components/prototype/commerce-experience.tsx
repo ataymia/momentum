@@ -18,6 +18,7 @@ import {PaymentRequestPreview} from "./payment-request-preview";
 import {CreditCreatePanel} from "./credit-workflow-preview";
 import {InvoicePrintCenter} from "../finance/invoice-print-center";
 import {downloadCsv} from "../../lib/browser-export";
+import {useCommerceRecordVisibility,RecordVisibilityToolbar,RecordVisibilityAction} from "../commerce/record-visibility";
 import {SendCustomerInvoice} from "../commerce/send-customer-invoice";
 import {useCommerce} from "../../lib/commerce-context";
 import {
@@ -82,10 +83,11 @@ function CatalogSummary({data}:{data:{label:string;value:React.ReactNode}[]}){
 export function OrdersDirectory(){
   const {scope,data,currentUser}=useWorkspace();
   const [query,setQuery]=useState(""),[status,setStatus]=useState("all"),[from,setFrom]=useState(""),[to,setTo]=useState(""),[rep,setRep]=useState("all");
+  const visibility=useCommerceRecordVisibility();const {visible}=visibility;
   const sorter=useSort("placedAt");
   const accountById=useMemo(()=>new Map(scope.accounts.map(a=>[a.id,a])),[scope.accounts]);
   const userById=useMemo(()=>new Map(data.users.map(u=>[u.id,u.name])),[data.users]);
-  const rows=useMemo(()=>scope.orders.filter(o=>!o.testOnly)
+  const rows=useMemo(()=>scope.orders.filter(o=>!o.testOnly&&visible("order",o.id))
     .filter(o=>status==="all"||o.status===status)
     .filter(o=>rep==="all"||o.ownerId===rep||o.creditedRepId===rep)
     .filter(o=>(!from||o.placedAt.slice(0,10)>=from)&&(!to||o.placedAt.slice(0,10)<=to))
@@ -105,17 +107,18 @@ export function OrdersDirectory(){
         }
       };
       return compare(value(a),value(b),sorter.direction)||a.id.localeCompare(b.id);
-    }),[scope.orders,status,rep,from,to,query,accountById,userById,sorter.field,sorter.direction]);
+    }),[scope.orders,status,rep,from,to,query,accountById,userById,sorter.field,sorter.direction,visible]);
   const options=[...new Set(scope.orders.filter(o=>!o.testOnly).map(o=>o.status))].sort();
   const repIds=[...new Set(scope.orders.flatMap(o=>[o.ownerId,o.creditedRepId].filter((id):id is string=>Boolean(id))))];
   return <div><Title title="Sales Orders" detail="Approved requests stay visible here, including those awaiting price verification. Prepared orders have linked draft invoices."/><ApprovedIntakeOrders/>{currentUser?.role==="Sales Representative"&&<MyConnectedOrderIntakes/>}
     {currentUser?.role!=="Customer"&&canCreateOrder(currentUser)&&<div className="prototype-page-actionbar"><button type="button" className="prototype-primary-action" onClick={()=>navigateToRoute("/sales/orders/new")}>Create sales order</button><span className="prototype-note">Connected orders begin as requests, become approved commercial intakes and then produce a priced sales order and draft invoice.</span></div>}
+    <RecordVisibilityToolbar visibility={visibility}/>
     <CatalogSummary data={[{label:"Visible orders",value:rows.length},{label:"Cases in filtered orders",value:rows.reduce((n,o)=>n+o.cases,0)},{label:"Non-cancelled order value",value:money(rows.filter(o=>o.status!=="Cancelled").reduce((n,o)=>n+o.amount,0))}]}/>
     <section className="prototype-panel"><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statusOptions={options} from={from} setFrom={setFrom} to={to} setTo={setTo} searchLabel="Search orders, accounts, rep" repOptions={repIds.map(id=>({id,name:userById.get(id)??id})).sort((a,b)=>a.name.localeCompare(b.name))} rep={rep} setRep={setRep}/>
       <div className="prototype-table-scroll momentum-order-desktop-table"><table className="prototype-table"><thead><tr>
       {([["number","Order"],["account","Customer"],["placedAt","Placed"],["rep","Sales rep"],["cases","Cases"],["amount","Order amount"],["status","Fulfillment"],["payment","Payment"]] as const).map(([key,label])=><Header key={key} name={label} selected={sorter.field===key} direction={sorter.direction} onClick={()=>sorter.select(key)}/>)}
       </tr></thead><tbody>{rows.map(o=><tr key={o.id}>
-        <td><Link url={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</Link></td>
+        <td><Link url={"/sales/orders/"+encodeURIComponent(o.id)}>{o.number}</Link><RecordVisibilityAction visibility={visibility} kind="order" id={o.id}/></td>
         <td>{accountById.get(o.accountId)?.name??"Account inaccessible"}</td>
         <td>{showDate(o.placedAt)}</td><td>{userById.get(o.creditedRepId??o.ownerId)??"Unknown"}</td>
         <td>{o.cases}</td><td>{money(o.amount)}</td><td><Status value={o.status}/></td><td>{o.paymentStatus}</td>
@@ -137,7 +140,7 @@ export function OrdersDirectory(){
         {rows.map(order=><article className="momentum-mobile-order-card" key={order.id}>
           <div className="momentum-mobile-order-card__head">
             <div><small>Order</small><Link url={"/sales/orders/"+encodeURIComponent(order.id)}>{order.number}</Link></div>
-            <Status value={order.status}/>
+            <Status value={order.status}/><RecordVisibilityAction visibility={visibility} kind="order" id={order.id}/>
           </div>
           <div className="momentum-mobile-order-card__customer">
             <strong>{accountById.get(order.accountId)?.name??"Account inaccessible"}</strong>
@@ -236,10 +239,11 @@ export function InvoiceDirectory(){
   const {scope}=useWorkspace();const {commerce}=useCommerce();
   const [query,setQuery]=useState(""),[status,setStatus]=useState("all"),[from,setFrom]=useState(""),[to,setTo]=useState("");
   const [showPrint,setShowPrint]=useState(false);
+  const visibility=useCommerceRecordVisibility();
   const sort=useSort("issuedAt");
   const allowedAccounts=new Set(scope.accounts.map(a=>a.id));
   const accountById=new Map(scope.accounts.map(a=>[a.id,a]));
-  const rows=commerce.invoices.filter(i=>allowedAccounts.has(i.accountId))
+  const rows=commerce.invoices.filter(i=>allowedAccounts.has(i.accountId)&&visibility.visible("invoice",i.id)&&visibility.visible("order",i.orderId))
     .map(invoice=>{
       const order=scope.orders.find(o=>o.id===invoice.orderId);
       const deliveryConfirmed=Boolean(order&&["Delivered","Paid"].includes(order.status));
@@ -254,13 +258,14 @@ export function InvoiceDirectory(){
     });
   const options=[...new Set(commerce.invoices.filter(i=>allowedAccounts.has(i.accountId)).map(i=>computedInvoiceStatus(commerce,i)))].sort();
   return <div><Title title="Invoices" detail="Individual customer receivables, invoice documents and payment allocations. Source records remain unchanged."/>
+    <RecordVisibilityToolbar visibility={visibility}/>
     <CatalogSummary data={[{label:"Visible invoice records",value:rows.length},{label:"Total recorded invoice amount",value:money(rows.filter(x=>x.status!=="Void").reduce((n,x)=>n+x.invoice.total,0))},{label:"Calculated unpaid balance",value:money(rows.filter(x=>x.status!=="Void").reduce((n,x)=>n+x.balance,0))}]}/>
     <section className="prototype-panel"><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statusOptions={options} from={from} setFrom={setFrom} to={to} setTo={setTo} searchLabel="Search invoice, order or customer"/>
       <div className="prototype-controls-right"><button type="button" onClick={()=>setShowPrint(value=>!value)}>{showPrint?"Close print center":"Print / Save PDF (single or bulk)"}</button><button type="button" disabled={!rows.length} onClick={()=>downloadCsv("momentum-invoices-visible.csv",rows.map(x=>({invoice:x.invoice.number,customer:x.customer,order:x.order?.number??"",recordedDate:x.invoice.issuedAt,dueDate:x.invoice.dueDate??"",total:x.invoice.total,unpaid:x.balance,status:x.status,terms:x.invoice.terms})),["invoice","customer","order","recordedDate","dueDate","total","unpaid","status","terms"])}>Export visible CSV ({rows.length})</button></div>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
       {([["number","Invoice"],["customer","Customer"],["order","Order"],["issuedAt","Recorded date"],["dueDate","Due date"],["total","Amount"],["balance","Unpaid"],["status","Status"]] as const).map(([key,label])=><Header key={key} name={label} selected={sort.field===key} direction={sort.direction} onClick={()=>sort.select(key)}/>)}
       </tr></thead><tbody>{rows.map(x=><tr key={x.invoice.id}>
-        <td><Link url={"/sales/invoices/"+encodeURIComponent(x.invoice.id)}>{x.invoice.number}</Link>{!x.deliveryConfirmed&&<small className="prototype-description">Delivery not verified</small>}</td>
+        <td><Link url={"/sales/invoices/"+encodeURIComponent(x.invoice.id)}>{x.invoice.number}</Link><RecordVisibilityAction visibility={visibility} kind="invoice" id={x.invoice.id}/>{!x.deliveryConfirmed&&<small className="prototype-description">Delivery not verified</small>}</td>
         <td>{x.customer}</td><td>{x.order?.number??"Not linked"}</td><td>{showDate(x.invoice.issuedAt)}</td><td>{showDate(x.invoice.dueDate)}</td>
         <td>{money(x.invoice.total)}</td><td>{money(x.balance)}</td><td><Status value={x.status}/></td>
       </tr>)}</tbody></table></div>
@@ -327,8 +332,9 @@ export function PaymentsDirectory(){
   const {scope,currentUser}=useWorkspace();const {commerce}=useCommerce();
   const [query,setQuery]=useState(""),[status,setStatus]=useState("all"),[from,setFrom]=useState(""),[to,setTo]=useState("");
   const sort=useSort("receivedAt");
+  const visibility=useCommerceRecordVisibility();
   const allowed=new Set(scope.accounts.map(a=>a.id)),names=new Map(scope.accounts.map(a=>[a.id,a.name]));
-  const rows=commerce.payments.filter(p=>allowed.has(p.accountId))
+  const rows=commerce.payments.filter(p=>allowed.has(p.accountId)&&visibility.visible("payment",p.id))
     .filter(p=>status==="all"||p.status===status)
     .filter(p=>(!from||p.receivedAt.slice(0,10)>=from)&&(!to||p.receivedAt.slice(0,10)<=to))
     .filter(p=>[p.id,names.get(p.accountId),p.method,p.status,currentUser?.role==="Administrator"?p.processorReference:""].join(" ").toLowerCase().includes(query.toLowerCase()))
@@ -337,11 +343,12 @@ export function PaymentsDirectory(){
     };return compare(value(a),value(b),sort.direction)||a.id.localeCompare(b.id)});
   const statuses=[...new Set(commerce.payments.filter(p=>allowed.has(p.accountId)).map(p=>p.status))].sort();
   return <div><Title title="Payments Received" detail="Recorded customer payments, allocations and settlement states. No payment processing occurs on this page."/>
+    <RecordVisibilityToolbar visibility={visibility}/>
     <CatalogSummary data={[{label:"Recorded payment entries",value:rows.length},{label:"Cleared payment face amount",value:money(rows.filter(p=>p.status==="Cleared").reduce((n,p)=>n+p.amount,0))},{label:"Pending payment face amount",value:money(rows.filter(p=>p.status==="Pending").reduce((n,p)=>n+p.amount,0))}]}/>
     <section className="prototype-panel"><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statusOptions={statuses} from={from} setFrom={setFrom} to={to} setTo={setTo} searchLabel="Search customer, method or reference"/>
       <div className="prototype-table-scroll"><table className="prototype-table"><thead><tr>
         {([["id","Payment"],["customer","Customer"],["receivedAt","Received"],["settledAt","Settlement"],["amount","Face amount"],["method","Method"],["status","Status"]] as const).map(([key,label])=><Header key={key} name={label} selected={sort.field===key} direction={sort.direction} onClick={()=>sort.select(key)}/>)}
-      </tr></thead><tbody>{rows.map(p=><tr key={p.id}><td><Link url={"/sales/payments/"+encodeURIComponent(p.id)}>{p.id}</Link></td>
+      </tr></thead><tbody>{rows.map(p=><tr key={p.id}><td><Link url={"/sales/payments/"+encodeURIComponent(p.id)}>{p.id}</Link><RecordVisibilityAction visibility={visibility} kind="payment" id={p.id}/></td>
         <td>{names.get(p.accountId)??"Restricted"}</td><td>{showDate(p.receivedAt)}</td><td>{showDate(paymentSettlementDate(p))}</td>
         <td>{money(p.amount)}</td><td>{p.method}</td><td><Status value={p.status}/></td></tr>)}</tbody></table></div>
       {!rows.length&&<Empty text="No recorded payments match your search."/>}
